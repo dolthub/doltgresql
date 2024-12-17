@@ -15,7 +15,7 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // NameLength is the constant length of Name in Postgres 15. Represents (NAMEDATALEN-1)
@@ -23,9 +23,7 @@ const NameLength = 63
 
 // Name is a 63-byte internal type for object names.
 var Name = &DoltgresType{
-	OID:           uint32(oid.T_name),
-	Name:          "name",
-	Schema:        "pg_catalog",
+	ID:            toInternal("name"),
 	TypLength:     int16(64),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -33,28 +31,28 @@ var Name = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
-	SubscriptFunc: toFuncID("raw_array_subscript_handler", oid.T_internal),
-	Elem:          uint32(oid.T_char),
-	Array:         uint32(oid.T__name),
-	InputFunc:     toFuncID("namein", oid.T_cstring),
-	OutputFunc:    toFuncID("nameout", oid.T_name),
-	ReceiveFunc:   toFuncID("namerecv", oid.T_internal),
-	SendFunc:      toFuncID("namesend", oid.T_name),
+	RelID:         id.Null,
+	SubscriptFunc: toFuncID("raw_array_subscript_handler", toInternal("internal")),
+	Elem:          toInternal("char"),
+	Array:         toInternal("_name"),
+	InputFunc:     toFuncID("namein", toInternal("cstring")),
+	OutputFunc:    toFuncID("nameout", toInternal("name")),
+	ReceiveFunc:   toFuncID("namerecv", toInternal("internal")),
+	SendFunc:      toFuncID("namesend", toInternal("name")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  950,
+	TypCollation:  id.NewInternal(id.Section_Collation, "pg_catalog", "C"),
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("btnamecmp", oid.T_name, oid.T_name),
+	CompareFunc:   toFuncID("btnamecmp", toInternal("name"), toInternal("name")),
 }

@@ -21,7 +21,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -88,7 +87,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 	if val == nil {
 		if c.castToType.TypType == pgtypes.TypeType_Domain && !c.domainNullable {
-			return nil, pgtypes.ErrDomainDoesNotAllowNullValues.New(c.castToType.Name)
+			return nil, pgtypes.ErrDomainDoesNotAllowNullValues.New(c.castToType.Name())
 		}
 		return nil, nil
 	}
@@ -96,7 +95,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	baseCastToType := checkForDomainType(c.castToType)
 	castFunction := framework.GetExplicitCast(fromType, baseCastToType)
 	if castFunction == nil {
-		if fromType.OID == uint32(oid.T_unknown) {
+		if fromType.ID == pgtypes.Unknown.ID {
 			castFunction = framework.UnknownLiteralCast
 		} else {
 			return nil, fmt.Errorf("EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
@@ -125,7 +124,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 				return nil, err
 			}
 			if sql.IsFalse(res) {
-				return nil, pgtypes.ErrDomainValueViolatesCheckConstraint.New(c.castToType.Name, check.Name)
+				return nil, pgtypes.ErrDomainValueViolatesCheckConstraint.New(c.castToType.Name(), check.Name)
 			}
 		}
 	}

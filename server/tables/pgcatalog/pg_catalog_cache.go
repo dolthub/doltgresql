@@ -20,9 +20,10 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/server/functions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // pgCatalogCache is a session cache that stores the contents of pg_catalog tables. Since this cache instance is only
@@ -43,26 +44,26 @@ type pgCatalogCache struct {
 
 	// pg_namespace
 	schemaNames []string
-	schemaOids  []uint32
+	schemaOids  []id.Internal
 
 	// pg_attribute
 	attributeCols      []*sql.Column
-	attributeTableOIDs []uint32
+	attributeTableOIDs []id.Internal
 	attributeColIdxs   []int
 
 	// pg_index / pg_indexes
 	indexes        []sql.Index
-	indexOIDs      []uint32
-	indexTableOIDs []uint32
+	indexOIDs      []id.Internal
+	indexTableOIDs []id.Internal
 	indexSchemas   []string
 
 	// pg_sequence
 	sequences    []*sequences.Sequence
-	sequenceOids []uint32
+	sequenceOids []id.Internal
 
 	// pg_attrdef
-	attrdefCols      []oid.ItemColumnDefault
-	attrdefTableOIDs []uint32
+	attrdefCols      []functions.ItemColumnDefault
+	attrdefTableOIDs []id.Internal
 
 	// pg_views
 	views       []sql.ViewDefinition
@@ -70,7 +71,7 @@ type pgCatalogCache struct {
 
 	// pg_types
 	types        []*pgtypes.DoltgresType
-	pgCatalogOid uint32
+	pgCatalogOid id.Internal
 
 	// pg_tables
 	tables       []sql.Table

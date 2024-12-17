@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Int32 is an int32.
 var Int32 = &DoltgresType{
-	OID:           uint32(oid.T_int4),
-	Name:          "int4",
-	Schema:        "pg_catalog",
+	ID:            toInternal("int4"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -30,29 +28,29 @@ var Int32 = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__int4),
-	InputFunc:     toFuncID("int4in", oid.T_cstring),
-	OutputFunc:    toFuncID("int4out", oid.T_int4),
-	ReceiveFunc:   toFuncID("int4recv", oid.T_internal),
-	SendFunc:      toFuncID("int4send", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_int4"),
+	InputFunc:     toFuncID("int4in", toInternal("cstring")),
+	OutputFunc:    toFuncID("int4out", toInternal("int4")),
+	ReceiveFunc:   toFuncID("int4recv", toInternal("internal")),
+	SendFunc:      toFuncID("int4send", toInternal("int4")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("btint4cmp", oid.T_int4, oid.T_int4),
+	CompareFunc:   toFuncID("btint4cmp", toInternal("int4"), toInternal("int4")),
 	InternalName:  "integer",
 }

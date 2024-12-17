@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Unknown represents an invalid or indeterminate type. This is primarily used internally.
 var Unknown = &DoltgresType{
-	OID:           uint32(oid.T_unknown),
-	Name:          "unknown",
-	Schema:        "pg_catalog",
+	ID:            toInternal("unknown"),
 	TypLength:     int16(-2),
 	PassedByVal:   false,
 	TypType:       TypeType_Pseudo,
@@ -30,24 +28,24 @@ var Unknown = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         0,
-	InputFunc:     toFuncID("unknownin", oid.T_cstring),
-	OutputFunc:    toFuncID("unknownout", oid.T_unknown),
-	ReceiveFunc:   toFuncID("unknownrecv", oid.T_internal),
-	SendFunc:      toFuncID("unknownsend", oid.T_unknown),
+	Elem:          id.Null,
+	Array:         id.Null,
+	InputFunc:     toFuncID("unknownin", toInternal("cstring")),
+	OutputFunc:    toFuncID("unknownout", toInternal("unknown")),
+	ReceiveFunc:   toFuncID("unknownrecv", toInternal("internal")),
+	SendFunc:      toFuncID("unknownsend", toInternal("unknown")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

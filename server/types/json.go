@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Json is the standard JSON type.
 var Json = &DoltgresType{
-	OID:           uint32(oid.T_json),
-	Name:          "json",
-	Schema:        "pg_catalog",
+	ID:            toInternal("json"),
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -30,24 +28,24 @@ var Json = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__json),
-	InputFunc:     toFuncID("json_in", oid.T_cstring),
-	OutputFunc:    toFuncID("json_out", oid.T_json),
-	ReceiveFunc:   toFuncID("json_recv", oid.T_internal),
-	SendFunc:      toFuncID("json_send", oid.T_json),
+	Elem:          id.Null,
+	Array:         toInternal("_json"),
+	InputFunc:     toFuncID("json_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("json_out", toInternal("json")),
+	ReceiveFunc:   toFuncID("json_recv", toInternal("internal")),
+	SendFunc:      toFuncID("json_send", toInternal("json")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

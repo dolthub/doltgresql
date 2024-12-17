@@ -19,9 +19,10 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgTypeName is a constant to the pg_type name.
@@ -51,9 +52,9 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	}
 
 	if pgCatalogCache.types == nil {
-		var pgCatalogOid uint32
-		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			Schema: func(ctx *sql.Context, schema oid.ItemSchema) (cont bool, err error) {
+		var pgCatalogOid id.Internal
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
 				if schema.Item.SchemaName() == PgCatalogName {
 					pgCatalogOid = schema.OID
 					return false, nil
@@ -65,16 +66,7 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return nil, err
 		}
 
-		var types []*pgtypes.DoltgresType
-		err = oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			Type: func(ctx *sql.Context, typ oid.ItemType) (cont bool, err error) {
-				types = append(types, typ.Item)
-				return true, nil
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
+		types := pgtypes.GetAllBuitInTypes()
 		pgCatalogCache.types = types
 		pgCatalogCache.pgCatalogOid = pgCatalogOid
 	}
@@ -132,7 +124,7 @@ var pgTypeSchema = sql.Schema{
 
 // pgTypeRowIter is the sql.RowIter for the pg_type table.
 type pgTypeRowIter struct {
-	pgCatalogOid uint32
+	pgCatalogOid id.Internal
 	types        []*pgtypes.DoltgresType
 	idx          int
 }
@@ -150,10 +142,10 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	typAcl := []any(nil)
 
 	return sql.Row{
-		typ.OID,                 //oid
-		typ.Name,                //typname
+		typ.ID,                  //oid
+		typ.Name(),              //typname
 		iter.pgCatalogOid,       //typnamespace
-		uint32(0),               //typowner
+		id.Null,                 //typowner
 		typ.TypLength,           //typlen
 		typ.PassedByVal,         //typbyval
 		string(typ.TypType),     //typtype
@@ -175,7 +167,7 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		string(typ.Align),       //typalign
 		string(typ.Storage),     //typstorage
 		typ.NotNull,             //typnotnull
-		typ.BaseTypeOID,         //typbasetype
+		typ.BaseTypeID,          //typbasetype
 		typ.TypMod,              //typtypmod
 		typ.NDims,               //typndims
 		typ.TypCollation,        //typcollation

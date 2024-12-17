@@ -22,6 +22,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/types"
 )
@@ -109,33 +110,32 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var newType *types.DoltgresType
 	switch c.typType {
 	case types.TypeType_Pseudo:
-		typOid := uint32(0) // TODO: generate unique OID for type
-		newType = types.NewShellType(ctx, c.SchemaName, c.Name, typOid)
+		newType = types.NewShellType(ctx, id.NewInternal(id.Section_Type, c.SchemaName, c.Name))
 	case types.TypeType_Enum:
-		arrayOid := uint32(0) // TODO: generate unique OID for array type
-		typOid := uint32(0)   // TODO: generate unique OID for type
+		typeID := id.NewInternal(id.Section_Type, c.SchemaName, c.Name)
+		arrayID := id.NewInternal(id.Section_Type, c.SchemaName, "_"+c.Name)
 		enumLabelMap := make(map[string]types.EnumLabel)
 		for i, l := range c.Labels {
 			if _, ok := enumLabelMap[l]; ok {
 				// DETAIL:  Key (enumtypid, enumlabel)=(16702, ok) already exists.
 				return nil, fmt.Errorf(`duplicate key value violates unique constraint "pg_enum_typid_label_index"`)
 			}
-			labelOid := uint32(0) // TODO: generate unique OID for label
-			el := types.NewEnumLabel(ctx, labelOid, typOid, float32(i+1), l)
+			labelID := id.NewInternal(id.Section_EnumLabel, string(typeID), l)
+			el := types.NewEnumLabel(ctx, labelID, float32(i+1))
 			enumLabelMap[l] = el
 		}
-		newType = types.NewEnumType(ctx, c.SchemaName, c.Name, arrayOid, typOid, enumLabelMap)
+		newType = types.NewEnumType(ctx, arrayID, typeID, enumLabelMap)
 		// TODO: store labels somewhere
 	case types.TypeType_Composite:
-		arrayOid := uint32(0) // TODO: generate unique OID for array type
-		typOid := uint32(0)   // TODO: generate unique OID for type
+		typeID := id.NewInternal(id.Section_Type, c.SchemaName, c.Name)
+		arrayID := id.NewInternal(id.Section_Type, c.SchemaName, "_"+c.Name)
 
-		relId := uint32(0) // TODO: create relation with c.AsTypes
+		relID := id.Null // TODO: create relation with c.AsTypes
 		attrs := make([]types.CompositeAttribute, len(c.AsTypes))
 		for i, a := range c.AsTypes {
-			attrs[i] = types.NewCompositeAttribute(ctx, relId, a.AttrName, a.Typ.OID, int16(i+1), a.Collation)
+			attrs[i] = types.NewCompositeAttribute(ctx, relID, a.AttrName, a.Typ.ID, int16(i+1), a.Collation)
 		}
-		newType = types.NewCompositeType(ctx, c.SchemaName, c.Name, relId, arrayOid, typOid, attrs)
+		newType = types.NewCompositeType(ctx, relID, arrayID, typeID, attrs)
 	default:
 		return nil, fmt.Errorf("create type as %s is not supported", c.typType)
 	}

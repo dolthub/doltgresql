@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Any is a type that may contain any type.
 var Any = &DoltgresType{
-	OID:           uint32(oid.T_any),
-	Name:          "any",
-	Schema:        "pg_catalog",
+	ID:            toInternal("any"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Pseudo,
@@ -30,12 +28,12 @@ var Any = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         0,
-	InputFunc:     toFuncID("any_in", oid.T_cstring),
-	OutputFunc:    toFuncID("any_out", oid.T_any),
+	Elem:          id.Null,
+	Array:         id.Null,
+	InputFunc:     toFuncID("any_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("any_out", toInternal("any")),
 	ReceiveFunc:   toFuncID("-"),
 	SendFunc:      toFuncID("-"),
 	ModInFunc:     toFuncID("-"),
@@ -44,10 +42,10 @@ var Any = &DoltgresType{
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

@@ -40,7 +40,7 @@ var enum_in = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// typOid := val2.(uint32)
+		// typOid := val2.(id.Internal)
 		// TODO: get type using given OID, which should give access to enum labels.
 		//  should return the index of label?
 		return val1.(string), nil
@@ -66,7 +66,7 @@ var enum_recv = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// typOid := val2.(uint32)
+		// typOid := val2.(id.Internal)
 		// TODO: get type using given OID, which should give access to enum labels.
 		//  should return the index of label?
 		data := val1.([]byte)
@@ -104,15 +104,15 @@ var enum_cmp = framework.Function2{
 		bb := val2.(string)
 		enumType := t[0]
 		if enumType.EnumLabels == nil {
-			return nil, fmt.Errorf(`enum label lookup failed for type %s`, enumType.Name)
+			return nil, fmt.Errorf(`enum label lookup failed for type %s`, enumType.Name())
 		}
 		abLabel, ok := enumType.EnumLabels[ab]
 		if !ok {
-			return nil, pgtypes.ErrInvalidInputValueForEnum.New(enumType.Name, ab)
+			return nil, pgtypes.ErrInvalidInputValueForEnum.New(enumType.Name(), ab)
 		}
 		bbLabel, ok := enumType.EnumLabels[bb]
 		if !ok {
-			return nil, pgtypes.ErrInvalidInputValueForEnum.New(enumType.Name, bb)
+			return nil, pgtypes.ErrInvalidInputValueForEnum.New(enumType.Name(), bb)
 		}
 		if abLabel.SortOrder == bbLabel.SortOrder {
 			return int32(0), nil

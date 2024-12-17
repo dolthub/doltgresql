@@ -18,7 +18,6 @@ import (
 	"fmt"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -57,7 +56,7 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 	castFunc := framework.GetAssignmentCast(ac.fromType, ac.toType)
 	if castFunc == nil {
-		if ac.fromType.OID == uint32(oid.T_unknown) {
+		if ac.fromType.ID == pgtypes.Unknown.ID {
 			castFunc = framework.UnknownLiteralCast
 		} else {
 			return nil, fmt.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",

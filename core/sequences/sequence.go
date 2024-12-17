@@ -20,6 +20,8 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 )
 
@@ -41,7 +43,7 @@ const (
 // Sequence represents a single sequence within the pg_sequence table.
 type Sequence struct {
 	Name        string
-	DataTypeOID uint32
+	DataTypeID  id.Internal
 	Persistence Persistence
 	Start       int64
 	Current     int64

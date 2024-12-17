@@ -19,10 +19,11 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgSequenceName is a constant to the pg_sequence name.
@@ -53,9 +54,9 @@ func (p PgSequenceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	if pgCatalogCache.sequences == nil {
 		var sequences []*sequences.Sequence
-		var sequenceOids []uint32
-		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			Sequence: func(ctx *sql.Context, _ oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
+		var sequenceOids []id.Internal
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Sequence: func(ctx *sql.Context, _ functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
 				sequences = append(sequences, sequence.Item)
 				sequenceOids = append(sequenceOids, sequence.OID)
 				return true, nil
@@ -98,7 +99,7 @@ var pgSequenceSchema = sql.Schema{
 // pgSequenceRowIter is the sql.RowIter for the pg_sequence table.
 type pgSequenceRowIter struct {
 	sequences []*sequences.Sequence
-	oids      []uint32
+	oids      []id.Internal
 	idx       int
 }
 
@@ -113,14 +114,14 @@ func (iter *pgSequenceRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	sequence := iter.sequences[iter.idx-1]
 	oid := iter.oids[iter.idx-1]
 	return sql.Row{
-		uint32(oid),                  // seqrelid
-		uint32(sequence.DataTypeOID), // seqtypid
-		int64(sequence.Start),        // seqstart
-		int64(sequence.Increment),    // seqincrement
-		int64(sequence.Maximum),      // seqmax
-		int64(sequence.Minimum),      // seqmin
-		int64(sequence.Cache),        // seqcache
-		bool(sequence.Cycle),         // seqcycle
+		oid,                       // seqrelid
+		sequence.DataTypeID,       // seqtypid
+		int64(sequence.Start),     // seqstart
+		int64(sequence.Increment), // seqincrement
+		int64(sequence.Maximum),   // seqmax
+		int64(sequence.Minimum),   // seqmin
+		int64(sequence.Cache),     // seqcache
+		bool(sequence.Cycle),      // seqcycle
 	}, nil
 }
 

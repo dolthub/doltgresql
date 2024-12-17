@@ -19,7 +19,6 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // initPgGetFunctionDef registers the functions to the catalog.
@@ -35,15 +34,6 @@ var pg_get_functiondef_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
-			Function: func(ctx *sql.Context, function oid.ItemFunction) (cont bool, err error) {
-				// TODO: sql.Function does not have sufficient information to build CREATE FUNCTION statement
-				return false, nil
-			},
-		})
-		if err != nil {
-			return "", err
-		}
 		return "", nil
 	},
 }

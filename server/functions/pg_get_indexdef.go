@@ -19,9 +19,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // initPgGetIndexDef registers the functions to the catalog.
@@ -38,9 +38,9 @@ var pg_get_indexdef_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		oidVal := val.(uint32)
-		err := oid.RunCallback(ctx, oidVal, oid.Callbacks{
-			Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+		oidVal := val.(id.Internal)
+		err := RunCallback(ctx, oidVal, Callbacks{
+			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
 				// TODO: make `create index` statement
 				return false, nil
 			},
@@ -60,14 +60,14 @@ var pg_get_indexdef_oid_integer_bool = framework.Function3{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		oidVal := val1.(uint32)
+		oidVal := val1.(id.Internal)
 		colNo := val2.(int32)
 		pretty := val3.(bool)
 		if pretty {
 			return "", fmt.Errorf("pretty printing is not yet supported")
 		}
-		err := oid.RunCallback(ctx, oidVal, oid.Callbacks{
-			Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+		err := RunCallback(ctx, oidVal, Callbacks{
+			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
 				exprs := index.Item.Expressions()
 				if int(colNo) >= len(exprs) {
 					return false, fmt.Errorf("column not found")

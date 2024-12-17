@@ -15,17 +15,15 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // InternalCharLength will always be 1.
 const InternalCharLength = 1
 
-// InternalChar is a single-byte internal type. In Postgres, it's displayed as "char".
+// InternalChar is a single-byte internal type. In Postgres, it's displayed as `"char"`.
 var InternalChar = &DoltgresType{
-	OID:           uint32(oid.T_char),
-	Name:          "char",
-	Schema:        "pg_catalog",
+	ID:            toInternal("char"),
 	TypLength:     int16(InternalCharLength),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -33,29 +31,29 @@ var InternalChar = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__char),
-	InputFunc:     toFuncID("charin", oid.T_cstring),
-	OutputFunc:    toFuncID("charout", oid.T_char),
-	ReceiveFunc:   toFuncID("charrecv", oid.T_internal),
-	SendFunc:      toFuncID("charsend", oid.T_char),
+	Elem:          id.Null,
+	Array:         toInternal("_char"),
+	InputFunc:     toFuncID("charin", toInternal("cstring")),
+	OutputFunc:    toFuncID("charout", toInternal("char")),
+	ReceiveFunc:   toFuncID("charrecv", toInternal("internal")),
+	SendFunc:      toFuncID("charsend", toInternal("char")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("btcharcmp", oid.T_char, oid.T_char),
+	CompareFunc:   toFuncID("btcharcmp", toInternal("char"), toInternal("char")),
 	InternalName:  `"char"`,
 }

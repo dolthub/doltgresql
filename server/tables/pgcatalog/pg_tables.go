@@ -19,9 +19,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgTablesName is a constant to the pg_tables name.
@@ -54,8 +54,8 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		var tables []sql.Table
 		var tableSchemas []string
 		// TODO: This should include a few information_schema tables
-		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 				tables = append(tables, table.Item)
 				tableSchemas = append(tableSchemas, schema.Item.SchemaName())
 				return true, nil

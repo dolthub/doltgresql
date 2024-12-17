@@ -20,9 +20,10 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgClassName is a constant to the pg_class name.
@@ -55,9 +56,9 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		var classes []pgClass
 		tableHasIndexes := make(map[uint32]struct{})
 
-		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
-				tableHasIndexes[table.OID] = struct{}{}
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
+				tableHasIndexes[id.Cache().ToOID(table.OID)] = struct{}{}
 				classes = append(classes, pgClass{
 					oid:        index.OID,
 					name:       getIndexName(index.Item),
@@ -67,8 +68,8 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				})
 				return true, nil
 			},
-			Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
-				_, hasIndexes := tableHasIndexes[table.OID]
+			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
+				_, hasIndexes := tableHasIndexes[id.Cache().ToOID(table.OID)]
 				classes = append(classes, pgClass{
 					oid:        table.OID,
 					name:       table.Item.Name(),
@@ -78,7 +79,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				})
 				return true, nil
 			},
-			View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+			View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
 				classes = append(classes, pgClass{
 					oid:        view.OID,
 					name:       view.Item.Name,
@@ -88,7 +89,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				})
 				return true, nil
 			},
-			Sequence: func(ctx *sql.Context, schema oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
+			Sequence: func(ctx *sql.Context, schema functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
 				classes = append(classes, pgClass{
 					oid:        sequence.OID,
 					name:       sequence.Item.Name,
@@ -168,9 +169,9 @@ var pgClassSchema = sql.Schema{
 
 // pgClass represents a row in the pg_class table.
 type pgClass struct {
-	oid        uint32
+	oid        id.Internal
 	name       string
-	schemaOid  uint32
+	schemaOid  id.Internal
 	hasIndexes bool
 	kind       string // r = ordinary table, i = index, S = sequence, t = TOAST table, v = view, m = materialized view, c = composite type, f = foreign table, p = partitioned table, I = partitioned index
 }
@@ -192,11 +193,11 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	class := iter.classes[iter.idx-1]
 
 	// TODO: this is temporary definition of 'relam' field
-	var relam = uint32(0)
+	var relam = id.Null
 	if class.kind == "i" {
-		relam = 403
+		relam = id.NewInternal(id.Section_AccessMethod, "btree")
 	} else if class.kind == "r" || class.kind == "t" {
-		relam = 2
+		relam = id.NewInternal(id.Section_AccessMethod, "heap")
 	}
 
 	// TODO: Fill in the rest of the pg_class columns
@@ -204,16 +205,16 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		class.oid,        // oid
 		class.name,       // relname
 		class.schemaOid,  // relnamespace
-		uint32(0),        // reltype
-		uint32(0),        // reloftype
-		uint32(0),        // relowner
+		id.Null,          // reltype
+		id.Null,          // reloftype
+		id.Null,          // relowner
 		relam,            // relam
-		uint32(0),        // relfilenode
-		uint32(0),        // reltablespace
+		id.Null,          // relfilenode
+		id.Null,          // reltablespace
 		int32(0),         // relpages
 		float32(0),       // reltuples
 		int32(0),         // relallvisible
-		uint32(0),        // reltoastrelid
+		id.Null,          // reltoastrelid
 		class.hasIndexes, // relhasindex
 		false,            // relisshared
 		"p",              // relpersistence
@@ -228,7 +229,7 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		true,             // relispopulated
 		"d",              // relreplident
 		false,            // relispartition
-		uint32(0),        // relrewrite
+		id.Null,          // relrewrite
 		uint32(0),        // relfrozenxid
 		uint32(0),        // relminmxid
 		nil,              // relacl

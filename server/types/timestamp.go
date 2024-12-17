@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Timestamp is the timestamp without a time zone. Precision is unbounded.
 var Timestamp = &DoltgresType{
-	OID:           uint32(oid.T_timestamp),
-	Name:          "timestamp",
-	Schema:        "pg_catalog",
+	ID:            toInternal("timestamp"),
 	TypLength:     int16(8),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -30,30 +28,30 @@ var Timestamp = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__timestamp),
-	InputFunc:     toFuncID("timestamp_in", oid.T_cstring, oid.T_oid, oid.T_int4),
-	OutputFunc:    toFuncID("timestamp_out", oid.T_timestamp),
-	ReceiveFunc:   toFuncID("timestamp_recv", oid.T_internal, oid.T_oid, oid.T_int4),
-	SendFunc:      toFuncID("timestamp_send", oid.T_timestamp),
-	ModInFunc:     toFuncID("timestamptypmodin", oid.T__cstring),
-	ModOutFunc:    toFuncID("timestamptypmodout", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_timestamp"),
+	InputFunc:     toFuncID("timestamp_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:    toFuncID("timestamp_out", toInternal("timestamp")),
+	ReceiveFunc:   toFuncID("timestamp_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:      toFuncID("timestamp_send", toInternal("timestamp")),
+	ModInFunc:     toFuncID("timestamptypmodin", toInternal("_cstring")),
+	ModOutFunc:    toFuncID("timestamptypmodout", toInternal("int4")),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("timestamp_cmp", oid.T_timestamp, oid.T_timestamp),
+	CompareFunc:   toFuncID("timestamp_cmp", toInternal("timestamp"), toInternal("timestamp")),
 }
 
 // NewTimestampType returns Timestamp type with typmod set. // TODO: implement precision

@@ -19,9 +19,10 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgNamespaceName is a constant to the pg_namespace name.
@@ -52,9 +53,9 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	if pgCatalogCache.schemaOids == nil {
 		var schemaNames []string
-		var schemaOids []uint32
-		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			Schema: func(ctx *sql.Context, schema oid.ItemSchema) (cont bool, err error) {
+		var schemaOids []id.Internal
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
 				schemaNames = append(schemaNames, schema.Item.SchemaName())
 				schemaOids = append(schemaOids, schema.OID)
 				return true, nil
@@ -63,7 +64,7 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		if err != nil {
 			return nil, err
 		}
-		schemaOids = append(schemaOids, schemaOids[len(schemaOids)-1]+1)
+		//schemaOids = append(schemaOids, schemaOids[len(schemaOids)-1]+1) // TODO: what is this for?
 		pgCatalogCache.schemaNames = schemaNames
 		pgCatalogCache.schemaOids = schemaOids
 	}
@@ -94,7 +95,7 @@ var pgNamespaceSchema = sql.Schema{
 // pgNamespaceRowIter is the sql.RowIter for the pg_namespace table.
 type pgNamespaceRowIter struct {
 	schemas []string
-	oids    []uint32
+	oids    []id.Internal
 	idx     int
 }
 
@@ -111,10 +112,10 @@ func (iter *pgNamespaceRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// TODO: columns are incomplete
 	return sql.Row{
-		nspOID,    //oid
-		sch,       //nspname
-		uint32(0), //nspowner
-		nil,       //nspacl
+		nspOID,  //oid
+		sch,     //nspname
+		id.Null, //nspowner
+		nil,     //nspacl
 	}, nil
 }
 

@@ -20,9 +20,10 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgIndexName is a constant to the pg_index name.
@@ -101,8 +102,8 @@ var pgIndexSchema = sql.Schema{
 // pgIndexRowIter is the sql.RowIter for the pg_index table.
 type pgIndexRowIter struct {
 	indexes []sql.Index
-	idxOIDs []uint32
-	tblOIDs []uint32
+	idxOIDs []id.Internal
+	tblOIDs []id.Internal
 	idx     int
 }
 
@@ -155,11 +156,11 @@ func (iter *pgIndexRowIter) Close(ctx *sql.Context) error {
 func cacheIndexMetadata(ctx *sql.Context, cache *pgCatalogCache) error {
 	var indexes []sql.Index
 	var indexSchemas []string
-	var indexOIDs []uint32
-	var tableOIDs []uint32
+	var indexOIDs []id.Internal
+	var tableOIDs []id.Internal
 
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			indexes = append(indexes, index.Item)
 			indexSchemas = append(indexSchemas, schema.Item.SchemaName())
 			indexOIDs = append(indexOIDs, index.OID)

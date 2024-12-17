@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // BpChar is a char that has an unbounded length.
 var BpChar = &DoltgresType{
-	OID:           uint32(oid.T_bpchar),
-	Name:          "bpchar",
-	Schema:        "pg_catalog",
+	ID:            toInternal("bpchar"),
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -30,30 +28,30 @@ var BpChar = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__bpchar),
-	InputFunc:     toFuncID("bpcharin", oid.T_cstring, oid.T_oid, oid.T_int4),
-	OutputFunc:    toFuncID("bpcharout", oid.T_bpchar),
-	ReceiveFunc:   toFuncID("bpcharrecv", oid.T_internal, oid.T_oid, oid.T_int4),
-	SendFunc:      toFuncID("bpcharsend", oid.T_bpchar),
-	ModInFunc:     toFuncID("bpchartypmodin", oid.T__cstring),
-	ModOutFunc:    toFuncID("bpchartypmodout", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_bpchar"),
+	InputFunc:     toFuncID("bpcharin", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:    toFuncID("bpcharout", toInternal("bpchar")),
+	ReceiveFunc:   toFuncID("bpcharrecv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:      toFuncID("bpcharsend", toInternal("bpchar")),
+	ModInFunc:     toFuncID("bpchartypmodin", toInternal("_cstring")),
+	ModOutFunc:    toFuncID("bpchartypmodout", toInternal("int4")),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  100,
+	TypCollation:  id.NewInternal(id.Section_Collation, "pg_catalog", "default"),
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("bpcharcmp", oid.T_bpchar, oid.T_bpchar),
+	CompareFunc:   toFuncID("bpcharcmp", toInternal("bpchar"), toInternal("bpchar")),
 }
 
 // NewCharType returns BpChar type with typmod set.

@@ -15,11 +15,15 @@
 package functions
 
 import (
-	"encoding/binary"
+	"fmt"
+	"strconv"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/settings"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -38,7 +42,89 @@ var regclassin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return pgtypes.Regclass_IoInput(ctx, val.(string))
+		// If the string just represents a number, then we return it.
+		input := val.(string)
+		if parsedOid, err := strconv.ParseUint(input, 10, 32); err == nil {
+			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewInternal(id.Section_OID, strconv.FormatUint(parsedOid, 10)), nil
+		}
+		sections, err := ioInputSections(input)
+		if err != nil {
+			return id.Null, err
+		}
+		if err = regclass_IoInputValidation(ctx, input, sections); err != nil {
+			return id.Null, err
+		}
+
+		var database string
+		var searchSchemas []string
+		var relationName string
+		switch len(sections) {
+		case 1:
+			database = ctx.GetCurrentDatabase()
+			searchSchemas, err = resolve.SearchPath(ctx)
+			if err != nil {
+				return id.Null, err
+			}
+			relationName = sections[0]
+		case 3:
+			database = ctx.GetCurrentDatabase()
+			searchSchemas = []string{sections[0]}
+			relationName = sections[2]
+		case 5:
+			database = sections[0]
+			searchSchemas = []string{sections[2]}
+			relationName = sections[4]
+		default:
+			return id.Null, fmt.Errorf("regclass failed validation")
+		}
+
+		// Iterate over all of the items to find which relation matches.
+		// Postgres does not need to worry about name conflicts since everything is created in the same naming space, but
+		// GMS and Dolt use different naming spaces, so for now we just ignore potential name conflicts and return the first
+		// match found.
+		var resultOid id.Internal
+		err = IterateDatabase(ctx, database, Callbacks{
+			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
+				idxName := index.Item.ID()
+				if idxName == "PRIMARY" {
+					idxName = fmt.Sprintf("%s_pkey", index.Item.Table())
+				}
+				if relationName == idxName {
+					resultOid = index.OID
+					return false, nil
+				}
+				return true, nil
+			},
+			Sequence: func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error) {
+				if sequence.Item.Name == relationName {
+					resultOid = sequence.OID
+					return false, nil
+				}
+				return true, nil
+			},
+			Table: func(ctx *sql.Context, schema ItemSchema, table ItemTable) (cont bool, err error) {
+				if table.Item.Name() == relationName {
+					resultOid = table.OID
+					return false, nil
+				}
+				return true, nil
+			},
+			View: func(ctx *sql.Context, schema ItemSchema, view ItemView) (cont bool, err error) {
+				if view.Item.Name == relationName {
+					resultOid = view.OID
+					return false, nil
+				}
+				return true, nil
+			},
+			SearchSchemas: searchSchemas,
+		})
+		if err != nil || resultOid.IsValid() {
+			return resultOid, err
+		}
+		return id.Null, fmt.Errorf(`relation "%s" does not exist`, input)
 	},
 }
 
@@ -49,7 +135,64 @@ var regclassout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regclass},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return pgtypes.Regclass_IoOutput(ctx, val.(uint32))
+		// Find all the schemas on the search path. If a schema is on the search path, then it is not included in the
+		// output of relation name. If the relation's schema is not on the search path, then it is explicitly included.
+		schemasMap, err := settings.GetCurrentSchemasAsMap(ctx)
+		if err != nil {
+			return "", err
+		}
+
+		// The pg_catalog schema is always implicitly part of the search path
+		// https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-CATALOG
+		schemasMap["pg_catalog"] = struct{}{}
+
+		input := val.(id.Internal)
+		if input.Section() == id.Section_OID {
+			return input.Segment(0), nil
+		}
+		var output string
+		err = RunCallback(ctx, input, Callbacks{
+			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
+				output = index.Item.ID()
+				if output == "PRIMARY" {
+					schemaName := schema.Item.SchemaName()
+					if _, ok := schemasMap[schemaName]; ok {
+						output = fmt.Sprintf("%s_pkey", index.Item.Table())
+					} else {
+						output = fmt.Sprintf("%s.%s_pkey", schemaName, index.Item.Table())
+					}
+				}
+				return false, nil
+			},
+			Sequence: func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error) {
+				schemaName := schema.Item.SchemaName()
+				if _, ok := schemasMap[schemaName]; ok {
+					output = sequence.Item.Name
+				} else {
+					output = fmt.Sprintf("%s.%s", schemaName, sequence.Item.Name)
+				}
+				return false, nil
+			},
+			Table: func(ctx *sql.Context, schema ItemSchema, table ItemTable) (cont bool, err error) {
+				schemaName := schema.Item.SchemaName()
+				if _, ok := schemasMap[schemaName]; ok {
+					output = table.Item.Name()
+				} else {
+					output = fmt.Sprintf("%s.%s", schemaName, table.Item.Name())
+				}
+				return false, nil
+			},
+			View: func(ctx *sql.Context, schema ItemSchema, view ItemView) (cont bool, err error) {
+				schemaName := schema.Item.SchemaName()
+				if _, ok := schemasMap[schemaName]; ok {
+					output = view.Item.Name
+				} else {
+					output = fmt.Sprintf("%s.%s", schemaName, view.Item.Name)
+				}
+				return false, nil
+			},
+		})
+		return output, err
 	},
 }
 
@@ -64,7 +207,7 @@ var regclassrecv = framework.Function1{
 		if len(data) == 0 {
 			return nil, nil
 		}
-		return binary.BigEndian.Uint32(data), nil
+		return id.Internal(data), nil
 	},
 }
 
@@ -75,8 +218,31 @@ var regclasssend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regclass},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		retVal := make([]byte, 4)
-		binary.BigEndian.PutUint32(retVal, val.(uint32))
-		return retVal, nil
+		return []byte(val.(id.Internal)), nil
 	},
+}
+
+// regclass_IoInputValidation handles the validation for the parsed sections in regclass_IoInput.
+func regclass_IoInputValidation(ctx *sql.Context, input string, sections []string) error {
+	switch len(sections) {
+	case 1:
+		return nil
+	case 3:
+		if sections[1] != "." {
+			return fmt.Errorf("invalid name syntax")
+		}
+		return nil
+	case 5:
+		if sections[1] != "." || sections[3] != "." {
+			return fmt.Errorf("invalid name syntax")
+		}
+		return nil
+	case 7:
+		if sections[1] != "." || sections[3] != "." || sections[5] != "." {
+			return fmt.Errorf("invalid name syntax")
+		}
+		return fmt.Errorf("improper qualified name (too many dotted names): %s", input)
+	default:
+		return fmt.Errorf("invalid name syntax")
+	}
 }

@@ -22,9 +22,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -146,7 +146,7 @@ func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool b
 			if err != nil {
 				return "", err
 			}
-			if baseType.OID == uint32(oid.T_bool) && trimBool {
+			if baseType.ID == Bool.ID && trimBool {
 				str = string(str[0])
 			}
 			shouldQuote := false
@@ -169,4 +169,10 @@ func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool b
 	}
 	sb.WriteRune('}')
 	return sb.String(), nil
+}
+
+// toInternal returns an Internal ID for the given type. This is only used for the built-in types, since they all share
+// the same schema (pg_catalog).
+func toInternal(typeName string) id.Internal {
+	return id.NewInternal(id.Section_Type, "pg_catalog", typeName)
 }

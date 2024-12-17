@@ -6,11 +6,11 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20241217005141-463005ab59d2
+	github.com/dolthub/dolt/go v0.40.5-0.20241217214825-ae3069681f36
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20241215010122-db690dd53c90
-	github.com/dolthub/go-mysql-server v0.18.2-0.20241217004611-eca5bf76f8f0
+	github.com/dolthub/go-mysql-server v0.18.2-0.20241217205639-85adcd5e580f
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20241211024425-b00987f7ba54
 	github.com/fatih/color v1.13.0
@@ -24,6 +24,7 @@ require (
 	github.com/jackc/pgx/v5 v5.6.1-0.20240826124046-97d20ccfadaa
 	github.com/lib/pq v1.10.9
 	github.com/madflojo/testcerts v1.1.1
+	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/pierrre/geohash v1.0.0
 	github.com/pkg/profile v1.5.0

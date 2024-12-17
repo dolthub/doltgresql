@@ -14,13 +14,11 @@
 
 package types
 
-import "github.com/lib/pq/oid"
+import "github.com/dolthub/doltgresql/core/id"
 
 // Int32Serial is an int32 serial type.
 var Int32Serial = &DoltgresType{
-	OID:           0, // doesn't have unique OID
-	Name:          "serial",
-	Schema:        "pg_catalog",
+	ID:            toInternal("serial"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -28,12 +26,12 @@ var Int32Serial = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__int4),
-	InputFunc:     toFuncID("int4in", oid.T_cstring),
-	OutputFunc:    toFuncID("int4out", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_int4"),
+	InputFunc:     toFuncID("int4in", toInternal("cstring")),
+	OutputFunc:    toFuncID("int4out", toInternal("int4")),
 	ReceiveFunc:   toFuncID("int4recv"),
 	SendFunc:      toFuncID("int4send"),
 	ModInFunc:     toFuncID("-"),
@@ -42,15 +40,15 @@ var Int32Serial = &DoltgresType{
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("btint4cmp", oid.T_int4, oid.T_int4),
+	CompareFunc:   toFuncID("btint4cmp", toInternal("int4"), toInternal("int4")),
 	IsSerial:      true,
 }

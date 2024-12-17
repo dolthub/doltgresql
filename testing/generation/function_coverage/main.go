@@ -61,7 +61,7 @@ func main() {
 				if i > 0 {
 					literalGeneratorParams = append(literalGeneratorParams, utils.Text(", "))
 				}
-				if generator, ok := valueMappings[paramType.OID]; ok {
+				if generator, ok := valueMappings[paramType.ID]; ok {
 					literalGeneratorParams = append(literalGeneratorParams, generator)
 				} else {
 					fmt.Printf("missing support for functions with the parameter type: `%s`\n", paramType.String())

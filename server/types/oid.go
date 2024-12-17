@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Oid is a data type used for identifying internal objects. It is implemented as an unsigned 32-bit integer.
 var Oid = &DoltgresType{
-	OID:           uint32(oid.T_oid),
-	Name:          "oid",
-	Schema:        "pg_catalog",
+	ID:            toInternal("oid"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -30,28 +28,28 @@ var Oid = &DoltgresType{
 	IsPreferred:   true,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__oid),
-	InputFunc:     toFuncID("oidin", oid.T_cstring),
-	OutputFunc:    toFuncID("oidout", oid.T_oid),
-	ReceiveFunc:   toFuncID("oidrecv", oid.T_internal),
-	SendFunc:      toFuncID("oidsend", oid.T_oid),
+	Elem:          id.Null,
+	Array:         toInternal("_oid"),
+	InputFunc:     toFuncID("oidin", toInternal("cstring")),
+	OutputFunc:    toFuncID("oidout", toInternal("oid")),
+	ReceiveFunc:   toFuncID("oidrecv", toInternal("internal")),
+	SendFunc:      toFuncID("oidsend", toInternal("oid")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("btoidcmp", oid.T_oid, oid.T_oid),
+	CompareFunc:   toFuncID("btoidcmp", toInternal("oid"), toInternal("oid")),
 }
