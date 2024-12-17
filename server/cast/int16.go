@@ -15,9 +15,12 @@
 package cast
 
 import (
+	"strconv"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -68,28 +71,40 @@ func int16Implicit() {
 		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return uint32(val.(int16)), nil
+			if internalID := id.Cache().ToInternal(uint32(val.(int16))); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(val.(int16)), 10)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Regclass,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return uint32(val.(int16)), nil
+			if internalID := id.Cache().ToInternal(uint32(val.(int16))); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(val.(int16)), 10)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Regproc,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return uint32(val.(int16)), nil
+			if internalID := id.Cache().ToInternal(uint32(val.(int16))); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(val.(int16)), 10)), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Regtype,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return uint32(val.(int16)), nil
+			if internalID := id.Cache().ToInternal(uint32(val.(int16))); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(val.(int16)), 10)), nil
 		},
 	})
 }

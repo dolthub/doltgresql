@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Date is the day, month, and year.
 var Date = &DoltgresType{
-	OID:           uint32(oid.T_date),
-	Name:          "date",
-	Schema:        "pg_catalog",
+	ID:            toInternal("date"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -30,28 +28,28 @@ var Date = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__date),
-	InputFunc:     toFuncID("date_in", oid.T_cstring),
-	OutputFunc:    toFuncID("date_out", oid.T_date),
-	ReceiveFunc:   toFuncID("date_recv", oid.T_internal),
-	SendFunc:      toFuncID("date_send", oid.T_date),
+	Elem:          id.Null,
+	Array:         toInternal("_date"),
+	InputFunc:     toFuncID("date_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("date_out", toInternal("date")),
+	ReceiveFunc:   toFuncID("date_recv", toInternal("internal")),
+	SendFunc:      toFuncID("date_send", toInternal("date")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("date_cmp", oid.T_date, oid.T_date),
+	CompareFunc:   toFuncID("date_cmp", toInternal("date"), toInternal("date")),
 }

@@ -15,15 +15,12 @@
 package types
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Regclass is the OID type for finding items in pg_class.
 var Regclass = &DoltgresType{
-	OID:           uint32(oid.T_regclass),
-	Name:          "regclass",
-	Schema:        "pg_catalog",
+	ID:            toInternal("regclass"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -31,24 +28,24 @@ var Regclass = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__regclass),
-	InputFunc:     toFuncID("regclassin", oid.T_cstring),
-	OutputFunc:    toFuncID("regclassout", oid.T_regclass),
-	ReceiveFunc:   toFuncID("regclassrecv", oid.T_internal),
-	SendFunc:      toFuncID("regclasssend", oid.T_regclass),
+	Elem:          id.Null,
+	Array:         toInternal("_regclass"),
+	InputFunc:     toFuncID("regclassin", toInternal("cstring")),
+	OutputFunc:    toFuncID("regclassout", toInternal("regclass")),
+	ReceiveFunc:   toFuncID("regclassrecv", toInternal("internal")),
+	SendFunc:      toFuncID("regclasssend", toInternal("regclass")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
@@ -56,9 +53,3 @@ var Regclass = &DoltgresType{
 	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }
-
-// Regclass_IoInput is the implementation for IoInput that is being set from another package to avoid circular dependencies.
-var Regclass_IoInput func(ctx *sql.Context, input string) (uint32, error)
-
-// Regclass_IoOutput is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var Regclass_IoOutput func(ctx *sql.Context, oid uint32) (string, error)

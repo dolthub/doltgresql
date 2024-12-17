@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package oid
+package id
 
-import pgtypes "github.com/dolthub/doltgresql/server/types"
-
-// Init handles the assignment of the Io functions for the "reg" types.
-func Init() {
-	pgtypes.Regclass_IoInput = regclass_IoInput
-	pgtypes.Regclass_IoOutput = regclass_IoOutput
-	pgtypes.Regproc_IoInput = regproc_IoInput
-	pgtypes.Regproc_IoOutput = regproc_IoOutput
-	pgtypes.Regtype_IoInput = regtype_IoInput
-	pgtypes.Regtype_IoOutput = regtype_IoOutput
+// This adds all of the built-in schemas to the cache.
+func init() {
+	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "heap"), 2)
+	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "btree"), 403)
+	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "hash"), 405)
+	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "gist"), 783)
+	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "gin"), 2742)
+	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "brin"), 3580)
+	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "spgist"), 4000)
 }

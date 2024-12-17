@@ -19,7 +19,6 @@ import (
 	"math"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -70,14 +69,14 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 			if err != nil {
 				return nil, err
 			}
-			switch oid.Oid(dataType.OID) {
-			case oid.T_int2:
+			switch dataType.ID {
+			case pgtypes.Int16.ID:
 				minValueLimit = int64(math.MinInt16)
 				maxValueLimit = int64(math.MaxInt16)
-			case oid.T_int4:
+			case pgtypes.Int32.ID:
 				minValueLimit = int64(math.MinInt32)
 				maxValueLimit = int64(math.MaxInt32)
-			case oid.T_int8:
+			case pgtypes.Int64.ID:
 				minValueLimit = int64(math.MinInt64)
 				maxValueLimit = int64(math.MaxInt64)
 			default:
@@ -180,7 +179,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), &sequences.Sequence{
 			Name:        name.Name.String(),
-			DataTypeOID: dataType.OID,
+			DataTypeID:  dataType.ID,
 			Persistence: sequences.Persistence_Permanent,
 			Start:       start,
 			Current:     start,

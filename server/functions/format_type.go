@@ -18,6 +18,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq/oid"
 
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -37,7 +39,8 @@ var format_type = framework.Function2{
 		if val1 == nil {
 			return nil, nil
 		}
-		if t, ok := types.OidToType[oid.Oid(val1.(uint32))]; ok {
+		toid := id.Cache().ToOID(val1.(id.Internal))
+		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
 			if val2 == nil {
 				return t.SQLStandardName(), nil
 			} else {

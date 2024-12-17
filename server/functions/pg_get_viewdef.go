@@ -19,11 +19,11 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // initPgGetViewDef registers the functions to the catalog.
@@ -41,7 +41,7 @@ var pg_get_viewdef_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		oidVal := val.(uint32)
+		oidVal := val.(id.Internal)
 		return getViewDef(ctx, oidVal)
 	},
 }
@@ -54,7 +54,7 @@ var pg_get_viewdef_oid_bool = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		oidVal := val1.(uint32)
+		oidVal := val1.(id.Internal)
 		// TODO: pretty printing is not yet supported
 		return getViewDef(ctx, oidVal)
 	},
@@ -75,10 +75,10 @@ var pg_get_viewdef_oid_int = framework.Function2{
 }
 
 // getViewDef takes oid of view and returns the text definition of underlying SELECT statement.
-func getViewDef(ctx *sql.Context, oidVal uint32) (string, error) {
+func getViewDef(ctx *sql.Context, oidVal id.Internal) (string, error) {
 	var result string
-	err := oid.RunCallback(ctx, oidVal, oid.Callbacks{
-		View: func(ctx *sql.Context, sch oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+	err := RunCallback(ctx, oidVal, Callbacks{
+		View: func(ctx *sql.Context, sch ItemSchema, view ItemView) (cont bool, err error) {
 			result = view.Item.TextDefinition
 			if result == "" {
 				stmts, err := parser.Parse(view.Item.CreateViewStatement)

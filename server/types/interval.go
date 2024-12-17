@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Interval is the interval type.
 var Interval = &DoltgresType{
-	OID:           uint32(oid.T_interval),
-	Name:          "interval",
-	Schema:        "pg_catalog",
+	ID:            toInternal("interval"),
 	TypLength:     int16(16),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -30,28 +28,28 @@ var Interval = &DoltgresType{
 	IsPreferred:   true,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__interval),
-	InputFunc:     toFuncID("interval_in", oid.T_cstring, oid.T_oid, oid.T_int4),
-	OutputFunc:    toFuncID("interval_out", oid.T_interval),
-	ReceiveFunc:   toFuncID("interval_recv", oid.T_internal, oid.T_oid, oid.T_int4),
-	SendFunc:      toFuncID("interval_send", oid.T_interval),
-	ModInFunc:     toFuncID("intervaltypmodin", oid.T__cstring),
-	ModOutFunc:    toFuncID("intervaltypmodout", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_interval"),
+	InputFunc:     toFuncID("interval_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:    toFuncID("interval_out", toInternal("interval")),
+	ReceiveFunc:   toFuncID("interval_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:      toFuncID("interval_send", toInternal("interval")),
+	ModInFunc:     toFuncID("intervaltypmodin", toInternal("_cstring")),
+	ModOutFunc:    toFuncID("intervaltypmodout", toInternal("int4")),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("interval_cmp", oid.T_interval, oid.T_interval),
+	CompareFunc:   toFuncID("interval_cmp", toInternal("interval"), toInternal("interval")),
 }

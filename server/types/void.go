@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Void is the void type.
 var Void = &DoltgresType{
-	OID:           uint32(oid.T_void),
-	Name:          "void",
-	Schema:        "pg_catalog",
+	ID:            toInternal("void"),
 	TypLength:     4,
 	PassedByVal:   true,
 	TypType:       TypeType_Pseudo,
@@ -30,24 +28,24 @@ var Void = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         0,
-	InputFunc:     toFuncID("void_in", oid.T_cstring, oid.T_oid),
-	OutputFunc:    toFuncID("void_out", oid.T_void),
-	ReceiveFunc:   toFuncID("void_recv", oid.T_internal, oid.T_oid),
-	SendFunc:      toFuncID("void_send", oid.T_void),
+	Elem:          id.Null,
+	Array:         id.Null,
+	InputFunc:     toFuncID("void_in", toInternal("cstring"), toInternal("oid")),
+	OutputFunc:    toFuncID("void_out", toInternal("void")),
+	ReceiveFunc:   toFuncID("void_recv", toInternal("internal"), toInternal("oid")),
+	SendFunc:      toFuncID("void_send", toInternal("void")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

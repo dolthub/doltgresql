@@ -18,8 +18,8 @@ import (
 	"context"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/lib/pq/oid"
 
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -39,9 +39,9 @@ func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *C
 		mergedSeq.Cache = utils.Min(mergedSeq.Cache, theirSeq.Cache)
 		mergedSeq.Cycle = mergedSeq.Cycle || theirSeq.Cycle
 		// Take the largest type specified
-		if (mergedSeq.DataTypeOID == uint32(oid.T_int2) && (theirSeq.DataTypeOID == uint32(oid.T_int4) || theirSeq.DataTypeOID == uint32(oid.T_int8))) ||
-			(mergedSeq.DataTypeOID == uint32(oid.T_int4) && theirSeq.DataTypeOID == uint32(oid.T_int8)) {
-			mergedSeq.DataTypeOID = theirSeq.DataTypeOID
+		if (mergedSeq.DataTypeID == pgtypes.Int16.ID && (theirSeq.DataTypeID == pgtypes.Int32.ID || theirSeq.DataTypeID == pgtypes.Int64.ID)) ||
+			(mergedSeq.DataTypeID == pgtypes.Int32.ID && theirSeq.DataTypeID == pgtypes.Int64.ID) {
+			mergedSeq.DataTypeID = theirSeq.DataTypeID
 		}
 		// Handle the fields that are dependent on the increment direction.
 		// We'll always take the increment size that's the smallest for the most granularity, along with the one that

@@ -17,6 +17,8 @@ package utils
 import (
 	"encoding/binary"
 	"math"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Reader handles type-safe reading from a byte slice, which was created by a Writer. This is not safe for concurrent
@@ -195,6 +197,11 @@ func (reader *Reader) String() string {
 	length := reader.VariableUint()
 	reader.offset += length
 	return string(reader.buf[reader.offset-length : reader.offset])
+}
+
+// Internal reads an Internal ID.
+func (reader *Reader) Internal() id.Internal {
+	return id.Internal(reader.String())
 }
 
 // BoolSlice reads a bool slice.

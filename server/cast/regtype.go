@@ -17,6 +17,8 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -33,14 +35,14 @@ func regtypeAssignment() {
 		FromType: pgtypes.Regtype,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return int32(val.(uint32)), nil
+			return int32(id.Cache().ToOID(val.(id.Internal))), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Regtype,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return int64(val.(uint32)), nil
+			return int64(id.Cache().ToOID(val.(id.Internal))), nil
 		},
 	})
 }

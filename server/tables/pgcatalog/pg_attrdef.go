@@ -19,9 +19,10 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgAttrdefName is a constant to the pg_attrdef name.
@@ -51,10 +52,10 @@ func (p PgAttrdefHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	}
 
 	if pgCatalogCache.attrdefCols == nil {
-		var attrdefCols []oid.ItemColumnDefault
-		var attrdefTableOIDs []uint32
-		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			ColumnDefault: func(ctx *sql.Context, _ oid.ItemSchema, table oid.ItemTable, col oid.ItemColumnDefault) (cont bool, err error) {
+		var attrdefCols []functions.ItemColumnDefault
+		var attrdefTableOIDs []id.Internal
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			ColumnDefault: func(ctx *sql.Context, _ functions.ItemSchema, table functions.ItemTable, col functions.ItemColumnDefault) (cont bool, err error) {
 				attrdefCols = append(attrdefCols, col)
 				attrdefTableOIDs = append(attrdefTableOIDs, table.OID)
 				return true, nil
@@ -92,8 +93,8 @@ var pgAttrdefSchema = sql.Schema{
 
 // pgAttrdefRowIter is the sql.RowIter for the pg_attrdef table.
 type pgAttrdefRowIter struct {
-	cols      []oid.ItemColumnDefault
-	tableOIDs []uint32
+	cols      []functions.ItemColumnDefault
+	tableOIDs []id.Internal
 	idx       int
 }
 

@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // JsonB is the deserialized and structured version of JSON that deals with JsonDocument.
 var JsonB = &DoltgresType{
-	OID:           uint32(oid.T_jsonb),
-	Name:          "jsonb",
-	Schema:        "pg_catalog",
+	ID:            toInternal("jsonb"),
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -30,28 +28,28 @@ var JsonB = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
-	SubscriptFunc: toFuncID("jsonb_subscript_handler", oid.T_internal),
-	Elem:          0,
-	Array:         uint32(oid.T__jsonb),
-	InputFunc:     toFuncID("jsonb_in", oid.T_cstring),
-	OutputFunc:    toFuncID("jsonb_out", oid.T_jsonb),
-	ReceiveFunc:   toFuncID("jsonb_recv", oid.T_internal),
-	SendFunc:      toFuncID("jsonb_send", oid.T_jsonb),
+	RelID:         id.Null,
+	SubscriptFunc: toFuncID("jsonb_subscript_handler", toInternal("internal")),
+	Elem:          id.Null,
+	Array:         toInternal("_jsonb"),
+	InputFunc:     toFuncID("jsonb_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("jsonb_out", toInternal("jsonb")),
+	ReceiveFunc:   toFuncID("jsonb_recv", toInternal("internal")),
+	SendFunc:      toFuncID("jsonb_send", toInternal("jsonb")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("jsonb_cmp", oid.T_jsonb, oid.T_jsonb),
+	CompareFunc:   toFuncID("jsonb_cmp", toInternal("jsonb"), toInternal("jsonb")),
 }

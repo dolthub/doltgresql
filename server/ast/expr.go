@@ -18,12 +18,14 @@ import (
 	"context"
 	"fmt"
 	"go/constant"
+	"strconv"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
@@ -502,8 +504,12 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Expression: pgexprs.NewRawLiteralJSON(node.JSON.String()),
 		}, nil
 	case *tree.DOid:
+		internalID := id.Cache().ToInternal(uint32(node.DInt))
+		if !internalID.IsValid() {
+			internalID = id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(node.DInt), 10))
+		}
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralOid(uint32(node.DInt)),
+			Expression: pgexprs.NewRawLiteralOid(internalID),
 		}, nil
 	case *tree.DOidWrapper:
 		return nodeExpr(ctx, node.Wrapped)

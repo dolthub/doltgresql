@@ -18,6 +18,8 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -62,10 +64,10 @@ func (pgs *TypeCollection) CreateType(schName string, typ *types.DoltgresType) e
 		nameMap = make(map[string]*types.DoltgresType)
 		pgs.schemaMap[schName] = nameMap
 	}
-	if _, ok = nameMap[typ.Name]; ok {
-		return types.ErrTypeAlreadyExists.New(typ.Name)
+	if _, ok = nameMap[typ.Name()]; ok {
+		return types.ErrTypeAlreadyExists.New(typ.Name())
 	}
-	nameMap[typ.Name] = typ
+	nameMap[typ.Name()] = typ
 	return nil
 }
 
@@ -99,7 +101,7 @@ func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*types.DoltgresT
 		}
 		totalCount += len(typs)
 		sort.Slice(typs, func(i, j int) bool {
-			return typs[i].Name < typs[j].Name
+			return typs[i].Name() < typs[j].Name()
 		})
 		typesMap[schemaName] = typs
 	}
@@ -139,15 +141,15 @@ func (pgs *TypeCollection) GetType(schName, typName string) (*types.DoltgresType
 	return nil, false
 }
 
-// GetTypeByOID returns the type matching given OID.
-func (pgs *TypeCollection) GetTypeByOID(oid uint32) (*types.DoltgresType, bool) {
+// GetTypeByID returns the type matching given ID.
+func (pgs *TypeCollection) GetTypeByID(internalID id.Internal) (*types.DoltgresType, bool) {
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
 	pgs.addSupportedBuiltInTypes()
 	for _, nameMap := range pgs.schemaMap {
 		for _, typ := range nameMap {
-			if typ.OID == oid {
+			if typ.ID == internalID {
 				return typ, true
 			}
 		}
@@ -193,7 +195,7 @@ func (pgs *TypeCollection) addSupportedBuiltInTypes() {
 		// add built-in types
 		pgCatTypeMap := make(map[string]*types.DoltgresType)
 		for _, t := range types.GetAllBuitInTypes() {
-			pgCatTypeMap[t.Name] = t
+			pgCatTypeMap[t.Name()] = t
 		}
 		pgs.schemaMap["pg_catalog"] = pgCatTypeMap
 	}

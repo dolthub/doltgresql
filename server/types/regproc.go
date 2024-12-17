@@ -15,15 +15,12 @@
 package types
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Regproc is the OID type for finding function names.
 var Regproc = &DoltgresType{
-	OID:           uint32(oid.T_regproc),
-	Name:          "regproc",
-	Schema:        "pg_catalog",
+	ID:            toInternal("regproc"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -31,24 +28,24 @@ var Regproc = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__regproc),
-	InputFunc:     toFuncID("regprocin", oid.T_cstring),
-	OutputFunc:    toFuncID("regprocout", oid.T_regproc),
-	ReceiveFunc:   toFuncID("regprocrecv", oid.T_internal),
-	SendFunc:      toFuncID("regprocsend", oid.T_regproc),
+	Elem:          id.Null,
+	Array:         toInternal("_regproc"),
+	InputFunc:     toFuncID("regprocin", toInternal("cstring")),
+	OutputFunc:    toFuncID("regprocout", toInternal("regproc")),
+	ReceiveFunc:   toFuncID("regprocrecv", toInternal("internal")),
+	SendFunc:      toFuncID("regprocsend", toInternal("regproc")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
@@ -56,9 +53,3 @@ var Regproc = &DoltgresType{
 	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }
-
-// Regproc_IoInput is the implementation for IoInput that is being set from another package to avoid circular dependencies.
-var Regproc_IoInput func(ctx *sql.Context, input string) (uint32, error)
-
-// Regproc_IoOutput is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var Regproc_IoOutput func(ctx *sql.Context, oid uint32) (string, error)

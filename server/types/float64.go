@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
-// Float64 is an float64.
+// Float64 is a float64.
 var Float64 = &DoltgresType{
-	OID:           uint32(oid.T_float8),
-	Name:          "float8",
-	Schema:        "pg_catalog",
+	ID:            toInternal("float8"),
 	TypLength:     int16(8),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -30,29 +28,29 @@ var Float64 = &DoltgresType{
 	IsPreferred:   true,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__float8),
-	InputFunc:     toFuncID("float8in", oid.T_cstring),
-	OutputFunc:    toFuncID("float8out", oid.T_float8),
-	ReceiveFunc:   toFuncID("float8recv", oid.T_internal),
-	SendFunc:      toFuncID("float8send", oid.T_float8),
+	Elem:          id.Null,
+	Array:         toInternal("_float8"),
+	InputFunc:     toFuncID("float8in", toInternal("cstring")),
+	OutputFunc:    toFuncID("float8out", toInternal("float8")),
+	ReceiveFunc:   toFuncID("float8recv", toInternal("internal")),
+	SendFunc:      toFuncID("float8send", toInternal("float8")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("btfloat8cmp", oid.T_float8, oid.T_float8),
+	CompareFunc:   toFuncID("btfloat8cmp", toInternal("float8"), toInternal("float8")),
 	InternalName:  "double precision",
 }

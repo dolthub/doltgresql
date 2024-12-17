@@ -15,6 +15,7 @@
 package main
 
 import (
+	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/testing/generation/utils"
 )
@@ -166,14 +167,14 @@ var uuidValueGenerators = utils.Or(
 )
 
 // valueMappings contains the value generators for the given type.
-var valueMappings = map[uint32]utils.StatementGenerator{
-	pgtypes.Bool.OID:    booleanValueGenerators,
-	pgtypes.Float32.OID: float32ValueGenerators,
-	pgtypes.Float64.OID: float64ValueGenerators,
-	pgtypes.Int16.OID:   int16ValueGenerators,
-	pgtypes.Int32.OID:   int32ValueGenerators,
-	pgtypes.Int64.OID:   int64ValueGenerators,
-	pgtypes.Numeric.OID: numericValueGenerators,
-	pgtypes.Uuid.OID:    uuidValueGenerators,
-	pgtypes.VarChar.OID: stringValueGenerators,
+var valueMappings = map[id.Internal]utils.StatementGenerator{
+	pgtypes.Bool.ID:    booleanValueGenerators,
+	pgtypes.Float32.ID: float32ValueGenerators,
+	pgtypes.Float64.ID: float64ValueGenerators,
+	pgtypes.Int16.ID:   int16ValueGenerators,
+	pgtypes.Int32.ID:   int32ValueGenerators,
+	pgtypes.Int64.ID:   int64ValueGenerators,
+	pgtypes.Numeric.ID: numericValueGenerators,
+	pgtypes.Uuid.ID:    uuidValueGenerators,
+	pgtypes.VarChar.ID: stringValueGenerators,
 }

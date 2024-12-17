@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // AnyEnum is a pseudo-type that can represent any type that is an enum type.
 var AnyEnum = &DoltgresType{
-	OID:           uint32(oid.T_anyenum),
-	Name:          "anyenum",
-	Schema:        "pg_catalog",
+	ID:            toInternal("anyenum"),
 	TypLength:     4,
 	PassedByVal:   true,
 	TypType:       TypeType_Pseudo,
@@ -30,12 +28,12 @@ var AnyEnum = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         0,
-	InputFunc:     toFuncID("anyenum_in", oid.T_cstring),
-	OutputFunc:    toFuncID("anyenum_out", oid.T_anyenum),
+	Elem:          id.Null,
+	Array:         id.Null,
+	InputFunc:     toFuncID("anyenum_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("anyenum_out", toInternal("anyenum")),
 	ReceiveFunc:   toFuncID("-"),
 	SendFunc:      toFuncID("-"),
 	ModInFunc:     toFuncID("-"),
@@ -44,10 +42,10 @@ var AnyEnum = &DoltgresType{
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

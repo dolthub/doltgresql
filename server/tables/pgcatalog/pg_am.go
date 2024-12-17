@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -95,7 +96,7 @@ func (iter *pgAmRowIter) Close(ctx *sql.Context) error {
 }
 
 type accessMethod struct {
-	oid     uint32
+	oid     id.Internal
 	name    string
 	handler string
 	typ     string
@@ -103,11 +104,11 @@ type accessMethod struct {
 
 // defaultPostgresAms is the list of default access methods available in Postgres.
 var defaultPostgresAms = []accessMethod{
-	{oid: 2, name: "heap", handler: "heap_tableam_handler", typ: "t"},
-	{oid: 403, name: "btree", handler: "bthandler", typ: "i"},
-	{oid: 405, name: "hash", handler: "hashhandler", typ: "i"},
-	{oid: 783, name: "gist", handler: "gisthandler", typ: "i"},
-	{oid: 2742, name: "gin", handler: "ginhandler", typ: "i"},
-	{oid: 4000, name: "spgist", handler: "spghandler", typ: "i"},
-	{oid: 3580, name: "brin", handler: "brinhandler", typ: "i"},
+	{oid: id.NewInternal(id.Section_AccessMethod, "heap"), name: "heap", handler: "heap_tableam_handler", typ: "t"},
+	{oid: id.NewInternal(id.Section_AccessMethod, "btree"), name: "btree", handler: "bthandler", typ: "i"},
+	{oid: id.NewInternal(id.Section_AccessMethod, "hash"), name: "hash", handler: "hashhandler", typ: "i"},
+	{oid: id.NewInternal(id.Section_AccessMethod, "gist"), name: "gist", handler: "gisthandler", typ: "i"},
+	{oid: id.NewInternal(id.Section_AccessMethod, "gin"), name: "gin", handler: "ginhandler", typ: "i"},
+	{oid: id.NewInternal(id.Section_AccessMethod, "spgist"), name: "spgist", handler: "spghandler", typ: "i"},
+	{oid: id.NewInternal(id.Section_AccessMethod, "brin"), name: "brin", handler: "brinhandler", typ: "i"},
 }

@@ -140,6 +140,7 @@ func compileFunctions() {
 			Fn:   createFunc,
 		})
 		compiledCatalog[funcName] = createFunc
+		namedCatalog[funcName] = overloads
 	}
 
 	// Build the overload for all unary and binary functions based on their operator. This will be used for fallback if

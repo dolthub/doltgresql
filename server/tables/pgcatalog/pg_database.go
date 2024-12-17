@@ -22,9 +22,9 @@ import (
 	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgDatabaseName is a constant to the pg_database name.
@@ -114,13 +114,13 @@ func (iter *pgDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	db := iter.dbs[iter.idx-1]
-	dbOid := oid.CreateOID(oid.Section_Database, 0, iter.idx-1)
+	dbOid := id.NewInternal(id.Section_Database, db.Name())
 
 	// TODO: Add the rest of the pg_database columns
 	return sql.Row{
 		dbOid,     // oid
 		db.Name(), // datname
-		uint32(0), // datdba
+		id.Null,   // datdba
 		int32(6),  // encoding
 		"i",       // datlocprovider
 		false,     // datistemplate
@@ -128,7 +128,7 @@ func (iter *pgDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		int32(-1), // datconnlimit
 		uint32(0), // datfrozenxid
 		uint32(0), // datminmxid
-		uint32(0), // dattablespace
+		id.Null,   // dattablespace
 		"",        // datcollate
 		"",        // datctype
 		nil,       // daticulocale

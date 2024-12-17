@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Cstring is the cstring type.
 var Cstring = &DoltgresType{
-	OID:           uint32(oid.T_cstring),
-	Name:          "cstring",
-	Schema:        "pg_catalog",
+	ID:            toInternal("cstring"),
 	TypLength:     int16(-2),
 	PassedByVal:   false,
 	TypType:       TypeType_Pseudo,
@@ -30,24 +28,24 @@ var Cstring = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__cstring),
-	InputFunc:     toFuncID("cstring_in", oid.T_cstring),
-	OutputFunc:    toFuncID("cstring_out", oid.T_cstring),
-	ReceiveFunc:   toFuncID("cstring_recv", oid.T_internal),
-	SendFunc:      toFuncID("cstring_send", oid.T_cstring),
+	Elem:          id.Null,
+	Array:         toInternal("_cstring"),
+	InputFunc:     toFuncID("cstring_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("cstring_out", toInternal("cstring")),
+	ReceiveFunc:   toFuncID("cstring_recv", toInternal("internal")),
+	SendFunc:      toFuncID("cstring_send", toInternal("cstring")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

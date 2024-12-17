@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Xid is a data type used for internal transaction IDs. It is implemented as an unsigned 32 bit integer.
 var Xid = &DoltgresType{
-	OID:           uint32(oid.T_xid),
-	Name:          "xid",
-	Schema:        "pg_catalog",
+	ID:            toInternal("xid"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -30,24 +28,24 @@ var Xid = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__xid),
-	InputFunc:     toFuncID("xidin", oid.T_cstring),
-	OutputFunc:    toFuncID("xidout", oid.T_xid),
-	ReceiveFunc:   toFuncID("xidrecv", oid.T_internal),
-	SendFunc:      toFuncID("xidsend", oid.T_xid),
+	Elem:          id.Null,
+	Array:         toInternal("_xid"),
+	InputFunc:     toFuncID("xidin", toInternal("cstring")),
+	OutputFunc:    toFuncID("xidout", toInternal("xid")),
+	ReceiveFunc:   toFuncID("xidrecv", toInternal("internal")),
+	SendFunc:      toFuncID("xidsend", toInternal("xid")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

@@ -19,7 +19,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -32,8 +31,8 @@ var errOutOfRange = errors.NewKind("%s out of range")
 // are passed in. Will always return the correct string, even on error, as some contexts may ignore the error.
 func handleStringCast(str string, targetType *pgtypes.DoltgresType) (string, error) {
 	tm := targetType.GetAttTypMod()
-	switch oid.Oid(targetType.OID) {
-	case oid.T_bpchar:
+	switch targetType.ID {
+	case pgtypes.BpChar.ID:
 		if tm == -1 {
 			return str, nil
 		}
@@ -50,14 +49,14 @@ func handleStringCast(str string, targetType *pgtypes.DoltgresType) (string, err
 		} else {
 			return str, nil
 		}
-	case oid.T_char:
+	case pgtypes.InternalChar.ID:
 		str, _ := truncateString(str, pgtypes.InternalCharLength)
 		return str, nil
-	case oid.T_name:
+	case pgtypes.Name.ID:
 		// Name seems to never throw an error, regardless of the context or how long the input is
 		str, _ := truncateString(str, uint32(targetType.TypLength))
 		return str, nil
-	case oid.T_varchar:
+	case pgtypes.VarChar.ID:
 		if tm == -1 {
 			return str, nil
 		}

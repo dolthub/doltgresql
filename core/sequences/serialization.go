@@ -43,7 +43,7 @@ func (pgs *Collection) Serialize(ctx context.Context) ([]byte, error) {
 		for _, nameMapKey := range nameMapKeys {
 			sequence := nameMap[nameMapKey]
 			writer.String(sequence.Name)
-			writer.Uint32(sequence.DataTypeOID)
+			writer.Internal(sequence.DataTypeID)
 			writer.Uint8(uint8(sequence.Persistence))
 			writer.Int64(sequence.Start)
 			writer.Int64(sequence.Current)
@@ -86,7 +86,7 @@ func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
 		for j := uint64(0); j < numOfSequences; j++ {
 			sequence := &Sequence{}
 			sequence.Name = reader.String()
-			sequence.DataTypeOID = reader.Uint32()
+			sequence.DataTypeID = reader.Internal()
 			sequence.Persistence = Persistence(reader.Uint8())
 			sequence.Start = reader.Int64()
 			sequence.Current = reader.Int64()
