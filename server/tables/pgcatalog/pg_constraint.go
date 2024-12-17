@@ -20,9 +20,10 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgConstraintName is a constant to the pg_constraint name.
@@ -53,15 +54,15 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	if pgCatalogCache.pgConstraints == nil {
 		var constraints []pgConstraint
-		tableOIDs := make(map[uint32]map[string]uint32)
+		tableOIDs := make(map[id.Internal]map[string]id.Internal)
 		tableColToIdxMap := make(map[string]int16)
 
 		// We iterate over all tables first to obtain their OIDs, which we'll need to reference for foreign keys
-		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 				inner, ok := tableOIDs[schema.OID]
 				if !ok {
-					inner = make(map[string]uint32)
+					inner = make(map[string]id.Internal)
 					tableOIDs[schema.OID] = inner
 				}
 				inner[table.Item.Name()] = table.OID
@@ -77,20 +78,20 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		}
 
 		// Then we iterate over everything to fill our constraints
-		err = oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			Check: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, check oid.ItemCheck) (cont bool, err error) {
+		err = functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Check: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, check functions.ItemCheck) (cont bool, err error) {
 				constraints = append(constraints, pgConstraint{
 					oid:         check.OID,
 					name:        check.Item.Name,
 					schemaOid:   schema.OID,
 					conType:     "c",
 					tableOid:    table.OID,
-					idxOid:      uint32(0),
-					tableRefOid: uint32(0),
+					idxOid:      id.Null,
+					tableRefOid: id.Null,
 				})
 				return true, nil
 			},
-			ForeignKey: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, foreignKey oid.ItemForeignKey) (cont bool, err error) {
+			ForeignKey: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, foreignKey functions.ItemForeignKey) (cont bool, err error) {
 				conKey := make([]any, len(foreignKey.Item.Columns))
 				for i, expr := range foreignKey.Item.Columns {
 					conKey[i] = tableColToIdxMap[expr]
@@ -127,7 +128,7 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				})
 				return true, nil
 			},
-			Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+			Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 				conType := "p"
 				if index.Item.ID() != "PRIMARY" {
 					if index.Item.IsUnique() {
@@ -149,7 +150,7 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 					conType:     conType,
 					tableOid:    table.OID,
 					idxOid:      index.OID,
-					tableRefOid: uint32(0),
+					tableRefOid: id.Null,
 					conKey:      conKey,
 					conFkey:     nil,
 				})
@@ -225,14 +226,14 @@ var PgConstraintSchema = sql.Schema{
 
 // pgConstraint is the struct for the pg_constraint table.
 type pgConstraint struct {
-	oid       uint32
+	oid       id.Internal
 	name      string
-	schemaOid uint32
+	schemaOid id.Internal
 	conType   string // c = check constraint, f = foreign key constraint, p = primary key constraint, u = unique constraint, t = constraint trigger, x = exclusion constraint
-	tableOid  uint32
-	// typeOid      uint32
-	idxOid       uint32
-	tableRefOid  uint32
+	tableOid  id.Internal
+	// typeOid      id.Internal
+	idxOid       id.Internal
+	tableRefOid  id.Internal
 	fkUpdateType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
 	fkDeleteType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
 	fkMatchType  string // f = full, p = partial, s = simple
@@ -279,9 +280,9 @@ func (iter *pgConstraintRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		false,            // condeferred
 		true,             // convalidated
 		con.tableOid,     // conrelid
-		uint32(0),        // contypid
+		id.Null,          // contypid
 		con.idxOid,       // conindid
-		uint32(0),        // conparentid
+		id.Null,          // conparentid
 		con.tableRefOid,  // confrelid
 		con.fkUpdateType, // confupdtype
 		con.fkDeleteType, // confdeltype

@@ -101,7 +101,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, fmt.Errorf(`cascading type drops are not yet supported`)
 	}
 
-	if _, ok := types.OidToBuiltInDoltgresType[typ.OID]; ok {
+	if _, ok := types.InternalToBuiltInDoltgresType[typ.ID]; ok {
 		return nil, types.ErrCannotDropSystemType.New(typ.String())
 	}
 
@@ -130,7 +130,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		if ok {
 			for _, col := range t.Schema() {
 				if dt, isDoltgresType := col.Type.(*types.DoltgresType); isDoltgresType {
-					if dt.Name == typ.Name {
+					if dt.Name() == typ.Name() {
 						// TODO: issue a detail (list of all columns and tables that uses this type)
 						//  and a hint (when we support CASCADE)
 						return nil, fmt.Errorf(`cannot drop type %s because other objects depend on it - column %s of table %s depends on type %s'`, c.typName, col.Name, t.Name(), c.typName)

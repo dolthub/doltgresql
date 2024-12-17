@@ -20,7 +20,6 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
-	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -385,8 +384,8 @@ func (c *CompiledFunction) resolveOperator(argTypes []*pgtypes.DoltgresType, ove
 	// Binary operators treat unknown literals as the other type, so we'll account for that here to see if we can find
 	// an "exact" match.
 	if len(argTypes) == 2 {
-		leftUnknownType := argTypes[0].OID == uint32(oid.T_unknown)
-		rightUnknownType := argTypes[1].OID == uint32(oid.T_unknown)
+		leftUnknownType := argTypes[0].ID == pgtypes.Unknown.ID
+		rightUnknownType := argTypes[1].ID == pgtypes.Unknown.ID
 		if (leftUnknownType && !rightUnknownType) || (!leftUnknownType && rightUnknownType) {
 			var typ *pgtypes.DoltgresType
 			casts := []TypeCastFunction{identityCast, identityCast}
@@ -482,7 +481,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 				polymorphicTargets = append(polymorphicTargets, argTypes[i])
 			} else {
 				if overloadCasts[i] = GetImplicitCast(argTypes[i], paramType); overloadCasts[i] == nil {
-					if argTypes[i].OID == uint32(oid.T_unknown) {
+					if argTypes[i].ID == pgtypes.Unknown.ID {
 						overloadCasts[i] = UnknownLiteralCast
 					} else {
 						isConvertible = false
@@ -508,7 +507,7 @@ func (*CompiledFunction) closestTypeMatches(argTypes []*pgtypes.DoltgresType, ca
 		currentMatchCount := 0
 		for argIdx := range argTypes {
 			argType := cand.params.argTypes[argIdx]
-			if argTypes[argIdx].OID == argType.OID || argTypes[argIdx].OID == uint32(oid.T_unknown) {
+			if argTypes[argIdx].ID == argType.ID || argTypes[argIdx].ID == pgtypes.Unknown.ID {
 				currentMatchCount++
 			}
 		}
@@ -530,7 +529,7 @@ func (*CompiledFunction) preferredTypeMatches(argTypes []*pgtypes.DoltgresType, 
 		currentPreferredCount := 0
 		for argIdx := range argTypes {
 			argType := cand.params.argTypes[argIdx]
-			if argTypes[argIdx].OID != argType.OID && argType.IsPreferred {
+			if argTypes[argIdx].ID != argType.ID && argType.IsPreferred {
 				currentPreferredCount++
 			}
 		}
@@ -553,7 +552,7 @@ func (c *CompiledFunction) unknownTypeCategoryMatches(argTypes []*pgtypes.Doltgr
 	// For our first loop, we'll filter matches based on whether they accept the string category
 	for argIdx := range argTypes {
 		// We're only concerned with `unknown` types
-		if argTypes[argIdx].OID != uint32(oid.T_unknown) {
+		if argTypes[argIdx].ID != pgtypes.Unknown.ID {
 			continue
 		}
 		var newMatches []overloadMatch
@@ -594,12 +593,12 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []*pgtypes.Doltgr
 
 	// If one of the types is anyarray, then anyelement behaves as anynonarray, so we can convert them to anynonarray
 	for _, paramType := range paramTypes {
-		if paramType.OID == uint32(oid.T_anyarray) {
+		if paramType.ID == pgtypes.AnyArray.ID {
 			// At least one parameter is anyarray, so copy all parameters to a new slice and replace anyelement with anynonarray
 			newParamTypes := make([]*pgtypes.DoltgresType, len(paramTypes))
 			copy(newParamTypes, paramTypes)
 			for i := range newParamTypes {
-				if paramTypes[i].OID == uint32(oid.T_anyelement) {
+				if paramTypes[i].ID == pgtypes.AnyElement.ID {
 					newParamTypes[i] = pgtypes.AnyNonArray
 				}
 			}
@@ -611,7 +610,7 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []*pgtypes.Doltgr
 	// The base type is the type that must match between all polymorphic types.
 	var baseType *pgtypes.DoltgresType
 	for i, paramType := range paramTypes {
-		if paramType.IsPolymorphicType() && exprTypes[i].OID != uint32(oid.T_unknown) {
+		if paramType.IsPolymorphicType() && exprTypes[i].ID != pgtypes.Unknown.ID {
 			// Although we do this check before we ever reach this function, we do it again as we may convert anyelement
 			// to anynonarray, which changes type validity
 			if !paramType.IsValidForPolymorphicType(exprTypes[i]) {
@@ -626,7 +625,7 @@ func (*CompiledFunction) polymorphicTypesCompatible(paramTypes []*pgtypes.Doltgr
 			// Check that the base expression type matches the previously-found base type
 			if baseType.IsEmptyType() {
 				baseType = baseExprType
-			} else if baseType.OID != baseExprType.OID {
+			} else if baseType.ID != baseExprType.ID {
 				return false
 			}
 		}
@@ -646,7 +645,7 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 	// We've verified that all polymorphic types are compatible in a previous step, so this is safe to do.
 	var firstPolymorphicType *pgtypes.DoltgresType
 	for i, functionInterfaceType := range functionInterfaceTypes {
-		if functionInterfaceType.IsPolymorphicType() && originalTypes[i].OID != uint32(oid.T_unknown) {
+		if functionInterfaceType.IsPolymorphicType() && originalTypes[i].ID != pgtypes.Unknown.ID {
 			firstPolymorphicType = originalTypes[i]
 			break
 		}
@@ -657,8 +656,8 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		firstPolymorphicType = pgtypes.Text
 	}
 
-	switch oid.Oid(returnType.OID) {
-	case oid.T_anyelement, oid.T_anynonarray:
+	switch returnType.ID {
+	case pgtypes.AnyElement.ID, pgtypes.AnyNonArray.ID:
 		// For return types, anyelement behaves the same as anynonarray.
 		// This isn't explicitly in the documentation, however it does note that:
 		// "...anynonarray and anyenum do not represent separate type variables; they are the same type as anyelement..."
@@ -669,12 +668,12 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		} else {
 			return firstPolymorphicType
 		}
-	case oid.T_anyarray:
+	case pgtypes.AnyArray.ID:
 		// Array types will return themselves, so this is safe
 		if firstPolymorphicType.IsArrayType() {
 			return firstPolymorphicType
-		} else if firstPolymorphicType.OID == uint32(oid.T_internal) {
-			return pgtypes.OidToBuiltInDoltgresType[firstPolymorphicType.BaseTypeForInternal]
+		} else if firstPolymorphicType.ID == pgtypes.Internal.ID {
+			return pgtypes.InternalToBuiltInDoltgresType[firstPolymorphicType.BaseTypeForInternal]
 		} else {
 			return firstPolymorphicType.ToArrayType()
 		}

@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // AnyNonArray is a pseudo-type that can represent any type that isn't an array type.
 var AnyNonArray = &DoltgresType{
-	OID:           uint32(oid.T_anynonarray),
-	Name:          "anynonarray",
-	Schema:        "pg_catalog",
+	ID:            toInternal("anynonarray"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Pseudo,
@@ -30,12 +28,12 @@ var AnyNonArray = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         0,
-	InputFunc:     toFuncID("anynonarray_in", oid.T_cstring),
-	OutputFunc:    toFuncID("anynonarray_out", oid.T_anynonarray),
+	Elem:          id.Null,
+	Array:         id.Null,
+	InputFunc:     toFuncID("anynonarray_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("anynonarray_out", toInternal("anynonarray")),
 	ReceiveFunc:   toFuncID("-"),
 	SendFunc:      toFuncID("-"),
 	ModInFunc:     toFuncID("-"),
@@ -44,10 +42,10 @@ var AnyNonArray = &DoltgresType{
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

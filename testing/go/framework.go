@@ -22,6 +22,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -30,11 +31,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/lib/pq/oid"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
@@ -357,7 +358,7 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 	}
 	newRow := make(sql.Row, len(row))
 	for i := range row {
-		dt, ok := types.OidToBuiltInDoltgresType[fds[i].DataTypeOID]
+		dt, ok := types.InternalToBuiltInDoltgresType[id.Cache().ToInternal(fds[i].DataTypeOID)]
 		if !ok {
 			// try using text type
 			dt = types.Text
@@ -382,14 +383,14 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 		} else {
 			newRow := make(sql.Row, len(row))
 			for i := range row {
-				dt, ok := types.OidToBuiltInDoltgresType[fds[i].DataTypeOID]
+				dt, ok := types.InternalToBuiltInDoltgresType[id.Cache().ToInternal(fds[i].DataTypeOID)]
 				if !ok {
 					// try using text type
 					dt = types.Text
 				}
-				if dt.OID == uint32(oid.T_json) {
+				if dt.ID == types.Json.ID {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
-				} else if dt.IsArrayType() && dt.ArrayBaseType().OID == uint32(oid.T_json) {
+				} else if dt.IsArrayType() && dt.ArrayBaseType().ID == types.Json.ID {
 					// TODO: need to have valid sql.Context
 					v, err := dt.IoInput(nil, row[i].(string))
 					if err != nil {
@@ -439,8 +440,8 @@ func UnmarshalAndMarshalJsonString(val string) string {
 // There are an infinite number of ways to represent the same value in-memory,
 // so we must at least normalize Numeric values.
 func NormalizeValToString(dt *types.DoltgresType, v any) any {
-	switch oid.Oid(dt.OID) {
-	case oid.T_json:
+	switch dt.ID {
+	case types.Json.ID:
 		str, err := json.Marshal(v)
 		if err != nil {
 			panic(err)
@@ -450,7 +451,7 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return ret
-	case oid.T_jsonb:
+	case types.JsonB.ID:
 		jv, err := types.ConvertToJsonDocument(v)
 		if err != nil {
 			panic(err)
@@ -460,7 +461,7 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return str
-	case oid.T_char:
+	case types.InternalChar.ID:
 		if v == nil {
 			return nil
 		}
@@ -475,7 +476,7 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return val
-	case oid.T_interval, oid.T_uuid, oid.T_date, oid.T_time, oid.T_timestamp:
+	case types.Interval.ID, types.Uuid.ID, types.Date.ID, types.Time.ID, types.Timestamp.ID:
 		// These values need to be normalized into the appropriate types
 		// before being converted to string type using the Doltgres
 		// IoOutput method.
@@ -487,7 +488,7 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return tVal
-	case oid.T_timestamptz:
+	case types.TimestampTZ.ID:
 		// timestamptz returns a value in server timezone
 		_, offset := v.(time.Time).Zone()
 		if offset%3600 != 0 {
@@ -531,7 +532,7 @@ func NormalizeArrayType(dt *types.DoltgresType, arr []any) any {
 		newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
 	}
 	baseType := dt.ArrayBaseType()
-	if baseType.OID == uint32(oid.T_bool) {
+	if baseType.ID == types.Bool.ID {
 		sqlVal, err := dt.SQL(sql.NewEmptyContext(), nil, newVal)
 		if err != nil {
 			panic(err)
@@ -550,19 +551,26 @@ func NormalizeArrayType(dt *types.DoltgresType, arr []any) any {
 // convert the values using the given Doltgres type. This is used to normalize array
 // types as the type conversion expects certain type values.
 func NormalizeVal(dt *types.DoltgresType, v any) any {
-	switch oid.Oid(dt.OID) {
-	case oid.T_json:
+	switch dt.ID {
+	case types.Json.ID:
 		str, err := json.Marshal(v)
 		if err != nil {
 			panic(err)
 		}
 		return string(str)
-	case oid.T_jsonb:
+	case types.JsonB.ID:
 		jv, err := types.ConvertToJsonDocument(v)
 		if err != nil {
 			panic(err)
 		}
 		return types.JsonDocument{Value: jv}
+	case types.Oid.ID, types.Regclass.ID, types.Regproc.ID, types.Regtype.ID:
+		if uval, ok := v.(uint32); ok {
+			if internalID := id.Cache().ToInternal(uval); internalID.IsValid() {
+				return internalID
+			}
+			return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(uval), 10))
+		}
 	}
 
 	switch val := v.(type) {

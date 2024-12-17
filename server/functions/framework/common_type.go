@@ -17,8 +17,6 @@ package framework
 import (
 	"fmt"
 
-	"github.com/lib/pq/oid"
-
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -28,9 +26,9 @@ func FindCommonType(types []*pgtypes.DoltgresType) (*pgtypes.DoltgresType, error
 	var candidateType = pgtypes.Unknown
 	var fail = false
 	for _, typ := range types {
-		if typ.OID == candidateType.OID {
+		if typ.ID == candidateType.ID {
 			continue
-		} else if candidateType.OID == uint32(oid.T_unknown) {
+		} else if candidateType.ID == pgtypes.Unknown.ID {
 			candidateType = typ
 		} else {
 			candidateType = pgtypes.Unknown
@@ -38,23 +36,23 @@ func FindCommonType(types []*pgtypes.DoltgresType) (*pgtypes.DoltgresType, error
 		}
 	}
 	if !fail {
-		if candidateType.OID == uint32(oid.T_unknown) {
+		if candidateType.ID == pgtypes.Unknown.ID {
 			return pgtypes.Text, nil
 		}
 		return candidateType, nil
 	}
 	for _, typ := range types {
-		if candidateType.OID == uint32(oid.T_unknown) {
+		if candidateType.ID == pgtypes.Unknown.ID {
 			candidateType = typ
 		}
-		if typ.OID != uint32(oid.T_unknown) && candidateType.TypCategory != typ.TypCategory {
+		if typ.ID != pgtypes.Unknown.ID && candidateType.TypCategory != typ.TypCategory {
 			return nil, fmt.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
 		}
 	}
 
 	var preferredTypeFound = false
 	for _, typ := range types {
-		if typ.OID == uint32(oid.T_unknown) {
+		if typ.ID == pgtypes.Unknown.ID {
 			continue
 		} else if GetImplicitCast(typ, candidateType) != nil {
 			continue

@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // TimeTZ is the time with a time zone. Precision is unbounded.
 var TimeTZ = &DoltgresType{
-	OID:           uint32(oid.T_timetz),
-	Name:          "timetz",
-	Schema:        "pg_catalog",
+	ID:            toInternal("timetz"),
 	TypLength:     int16(12),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -30,30 +28,30 @@ var TimeTZ = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__timetz),
-	InputFunc:     toFuncID("timetz_in", oid.T_cstring, oid.T_oid, oid.T_int4),
-	OutputFunc:    toFuncID("timetz_out", oid.T_timetz),
-	ReceiveFunc:   toFuncID("timetz_recv", oid.T_internal, oid.T_oid, oid.T_int4),
-	SendFunc:      toFuncID("timetz_send", oid.T_timetz),
-	ModInFunc:     toFuncID("timetztypmodin", oid.T__cstring),
-	ModOutFunc:    toFuncID("timetztypmodout", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_timetz"),
+	InputFunc:     toFuncID("timetz_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:    toFuncID("timetz_out", toInternal("timetz")),
+	ReceiveFunc:   toFuncID("timetz_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:      toFuncID("timetz_send", toInternal("timetz")),
+	ModInFunc:     toFuncID("timetztypmodin", toInternal("_cstring")),
+	ModOutFunc:    toFuncID("timetztypmodout", toInternal("int4")),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("timetz_cmp", oid.T_timetz, oid.T_timetz),
+	CompareFunc:   toFuncID("timetz_cmp", toInternal("timetz"), toInternal("timetz")),
 }
 
 // NewTimeTZType returns TimeTZ type with typmod set. // TODO: implement precision

@@ -19,9 +19,10 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgAttributeName is a constant to the pg_attribute name.
@@ -52,11 +53,11 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	if pgCatalogCache.attributeCols == nil {
 		var cols []*sql.Column
-		var tableOIDs []uint32
+		var tableOIDs []id.Internal
 		var colIdxs []int
 
-		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			Table: func(ctx *sql.Context, _ oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Table: func(ctx *sql.Context, _ functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 				for i, col := range table.Item.Schema() {
 					cols = append(cols, col)
 					colIdxs = append(colIdxs, i)
@@ -123,7 +124,7 @@ var pgAttributeSchema = sql.Schema{
 type pgAttributeRowIter struct {
 	cols      []*sql.Column
 	colIdxs   []int
-	tableOIDs []uint32
+	tableOIDs []id.Internal
 	idx       int
 }
 
@@ -151,13 +152,13 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	hasDefault := col.Default != nil
 
-	typeOid := uint32(0)
+	typeOid := id.Null
 	if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
-		typeOid = doltgresType.OID
+		typeOid = doltgresType.ID
 	} else {
 		// TODO: Remove once all information_schema tables are converted to use DoltgresType
 		dt := pgtypes.FromGmsType(col.Type)
-		typeOid = dt.OID
+		typeOid = dt.ID
 	}
 
 	// TODO: Fill in the rest of the pg_attribute columns
@@ -183,7 +184,7 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		true,              // attislocal
 		int16(0),          // attinhcount
 		int16(-1),         // attstattarget
-		uint32(0),         // attcollation
+		id.Null,           // attcollation
 		nil,               // attacl
 		nil,               // attoptions
 		nil,               // attfdwoptions

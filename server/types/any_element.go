@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // AnyElement is a pseudo-type that can represent any type.
 var AnyElement = &DoltgresType{
-	OID:           uint32(oid.T_anyelement),
-	Name:          "anyelement",
-	Schema:        "pg_catalog",
+	ID:            toInternal("anyelement"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Pseudo,
@@ -30,12 +28,12 @@ var AnyElement = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         0,
-	InputFunc:     toFuncID("anyelement_in", oid.T_cstring),
-	OutputFunc:    toFuncID("anyelement_out", oid.T_anyelement),
+	Elem:          id.Null,
+	Array:         id.Null,
+	InputFunc:     toFuncID("anyelement_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("anyelement_out", toInternal("anyelement")),
 	ReceiveFunc:   toFuncID("-"),
 	SendFunc:      toFuncID("-"),
 	ModInFunc:     toFuncID("-"),
@@ -44,10 +42,10 @@ var AnyElement = &DoltgresType{
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

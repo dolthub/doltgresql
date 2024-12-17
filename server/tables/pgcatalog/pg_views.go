@@ -22,9 +22,9 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // PgViewsName is a constant to the pg_views name.
@@ -56,8 +56,8 @@ func (p PgViewsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	if pgCatalogCache.views == nil {
 		var views []sql.ViewDefinition
 		var viewSchemas []string
-		err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-			View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
 				views = append(views, view.Item)
 				viewSchemas = append(viewSchemas, schema.Item.SchemaName())
 				return true, nil

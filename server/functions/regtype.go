@@ -15,10 +15,15 @@
 package functions
 
 import (
-	"encoding/binary"
+	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/lib/pq/oid"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -38,7 +43,47 @@ var regtypein = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return pgtypes.Regtype_IoInput(ctx, val.(string))
+		// If the string just represents a number, then we return it.
+		input := val.(string)
+		if parsedOid, err := strconv.ParseUint(input, 10, 32); err == nil {
+			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
+				return internalID, nil
+			}
+			return id.NewInternal(id.Section_OID, strconv.FormatUint(parsedOid, 10)), nil
+		}
+		sections, err := ioInputSections(input)
+		if err != nil {
+			return id.Null, err
+		}
+		if err = regtype_IoInputValidation(ctx, input, sections); err != nil {
+			return id.Null, err
+		}
+		var schema string
+		var typeName string
+		switch len(sections) {
+		case 1:
+			// TODO: we should make use of the search path, but it needs to include an implicit "pg_catalog" before we can
+			typeName = sections[0]
+		case 3:
+			// TODO: sections[0] is the schema that we need to search in
+			schema = sections[0]
+			typeName = sections[2]
+			if schema == "pg_catalog" && typeName == "char" { // Sad but true
+				typeName = `"char"`
+			}
+		default:
+			return id.Null, fmt.Errorf("regtype failed validation")
+		}
+		// Remove everything after the first parenthesis
+		typeName = strings.Split(typeName, "(")[0]
+
+		if typeName == "char" && schema == "" {
+			return id.NewInternal(id.Section_Type, "pg_catalog", "bpchar"), nil
+		}
+		if internalID, ok := pgtypes.NameToInternalID[typeName]; ok && (internalID.Segment(0) == schema || schema == "") {
+			return internalID, nil
+		}
+		return id.Null, pgtypes.ErrTypeDoesNotExist.New(input)
 	},
 }
 
@@ -49,7 +94,16 @@ var regtypeout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regtype},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return pgtypes.Regtype_IoOutput(ctx, val.(uint32))
+		internalID := val.(id.Internal)
+		if internalID.Section() == id.Section_OID {
+			return internalID.Segment(0), nil
+		}
+		toid := id.Cache().ToOID(internalID)
+		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
+			return t.SQLStandardName(), nil
+		} else {
+			return internalID.Segment(1), nil
+		}
 	},
 }
 
@@ -64,7 +118,7 @@ var regtyperecv = framework.Function1{
 		if len(data) == 0 {
 			return nil, nil
 		}
-		return binary.BigEndian.Uint32(data), nil
+		return id.Internal(data), nil
 	},
 }
 
@@ -75,8 +129,32 @@ var regtypesend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regtype},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		retVal := make([]byte, 4)
-		binary.BigEndian.PutUint32(retVal, val.(uint32))
-		return retVal, nil
+		return []byte(val.(id.Internal)), nil
 	},
+}
+
+// regtype_IoInputValidation handles the validation for the parsed sections in regtypein.
+func regtype_IoInputValidation(ctx *sql.Context, input string, sections []string) error {
+	switch len(sections) {
+	case 1:
+		return nil
+	case 3:
+		// We check for name validity before checking the schema name
+		if sections[1] != "." {
+			return fmt.Errorf("invalid name syntax")
+		}
+		return nil
+	case 5:
+		if sections[1] != "." || sections[3] != "." {
+			return fmt.Errorf("invalid name syntax")
+		}
+		return fmt.Errorf("cross-database references are not implemented: %s", input)
+	case 7:
+		if sections[1] != "." || sections[3] != "." || sections[5] != "." {
+			return fmt.Errorf("invalid name syntax")
+		}
+		return fmt.Errorf("improper qualified name (too many dotted names): %s", input)
+	default:
+		return fmt.Errorf("invalid name syntax")
+	}
 }

@@ -17,14 +17,12 @@ package types
 import (
 	"fmt"
 
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Time is the time without a time zone. Precision is unbounded.
 var Time = &DoltgresType{
-	OID:           uint32(oid.T_time),
-	Name:          "time",
-	Schema:        "pg_catalog",
+	ID:            toInternal("time"),
 	TypLength:     int16(8),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -32,30 +30,30 @@ var Time = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__time),
-	InputFunc:     toFuncID("time_in", oid.T_cstring, oid.T_oid, oid.T_int4),
-	OutputFunc:    toFuncID("time_out", oid.T_time),
-	ReceiveFunc:   toFuncID("time_recv", oid.T_internal, oid.T_oid, oid.T_int4),
-	SendFunc:      toFuncID("time_send", oid.T_time),
-	ModInFunc:     toFuncID("timetypmodin", oid.T__cstring),
-	ModOutFunc:    toFuncID("timetypmodout", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_time"),
+	InputFunc:     toFuncID("time_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:    toFuncID("time_out", toInternal("time")),
+	ReceiveFunc:   toFuncID("time_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:      toFuncID("time_send", toInternal("time")),
+	ModInFunc:     toFuncID("timetypmodin", toInternal("_cstring")),
+	ModOutFunc:    toFuncID("timetypmodout", toInternal("int4")),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("time_cmp", oid.T_time, oid.T_time),
+	CompareFunc:   toFuncID("time_cmp", toInternal("time"), toInternal("time")),
 }
 
 // NewTimeType returns Time type with typmod set. // TODO: implement precision

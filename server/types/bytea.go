@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Bytea is the byte string type.
 var Bytea = &DoltgresType{
-	OID:           uint32(oid.T_bytea),
-	Name:          "bytea",
-	Schema:        "pg_catalog",
+	ID:            toInternal("bytea"),
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -30,28 +28,28 @@ var Bytea = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__bytea),
-	InputFunc:     toFuncID("byteain", oid.T_cstring),
-	OutputFunc:    toFuncID("byteaout", oid.T_bytea),
-	ReceiveFunc:   toFuncID("bytearecv", oid.T_internal),
-	SendFunc:      toFuncID("byteasend", oid.T_bytea),
+	Elem:          id.Null,
+	Array:         toInternal("_bytea"),
+	InputFunc:     toFuncID("byteain", toInternal("cstring")),
+	OutputFunc:    toFuncID("byteaout", toInternal("bytea")),
+	ReceiveFunc:   toFuncID("bytearecv", toInternal("internal")),
+	SendFunc:      toFuncID("byteasend", toInternal("bytea")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("byteacmp", oid.T_bytea, oid.T_bytea),
+	CompareFunc:   toFuncID("byteacmp", toInternal("bytea"), toInternal("bytea")),
 }

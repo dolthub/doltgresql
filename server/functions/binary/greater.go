@@ -15,11 +15,13 @@
 package binary
 
 import (
+	"cmp"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -390,8 +392,8 @@ var oidgt = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Oid.Compare(val1.(uint32), val2.(uint32))
-		return res == 1, err
+		res := cmp.Compare(id.Cache().ToOID(val1.(id.Internal)), id.Cache().ToOID(val2.(id.Internal)))
+		return res == 1, nil
 	},
 }
 

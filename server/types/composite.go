@@ -16,15 +16,14 @@ package types
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // NewCompositeType creates new instance of composite DoltgresType.
-func NewCompositeType(ctx *sql.Context, schema, name string, relId, arrayOid, typOid uint32, attrs []CompositeAttribute) *DoltgresType {
+func NewCompositeType(ctx *sql.Context, relID, arrayID, typeID id.Internal, attrs []CompositeAttribute) *DoltgresType {
 	return &DoltgresType{
-		OID:            typOid,
-		Name:           name,
-		Schema:         schema,
+		ID:             typeID,
 		TypLength:      -1,
 		PassedByVal:    false,
 		TypType:        TypeType_Composite,
@@ -32,30 +31,30 @@ func NewCompositeType(ctx *sql.Context, schema, name string, relId, arrayOid, ty
 		IsPreferred:    false,
 		IsDefined:      true,
 		Delimiter:      ",",
-		RelID:          relId,
+		RelID:          relID,
 		SubscriptFunc:  toFuncID("-"),
-		Elem:           0,
-		Array:          arrayOid,
-		InputFunc:      toFuncID("record_in", oid.T_cstring, oid.T_oid, oid.T_int4),
-		OutputFunc:     toFuncID("record_out", oid.T_record),
-		ReceiveFunc:    toFuncID("record_recv", oid.T_internal, oid.T_oid, oid.T_int4),
-		SendFunc:       toFuncID("record_send", oid.T_record),
+		Elem:           id.Null,
+		Array:          arrayID,
+		InputFunc:      toFuncID("record_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+		OutputFunc:     toFuncID("record_out", toInternal("record")),
+		ReceiveFunc:    toFuncID("record_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+		SendFunc:       toFuncID("record_send", toInternal("record")),
 		ModInFunc:      toFuncID("-"),
 		ModOutFunc:     toFuncID("-"),
 		AnalyzeFunc:    toFuncID("-"),
 		Align:          TypeAlignment_Double,
 		Storage:        TypeStorage_Extended,
 		NotNull:        false,
-		BaseTypeOID:    0,
+		BaseTypeID:     id.Null,
 		TypMod:         -1,
 		NDims:          0,
-		TypCollation:   0,
+		TypCollation:   id.Null,
 		DefaulBin:      "",
 		Default:        "",
 		Acl:            nil,
 		Checks:         nil,
 		attTypMod:      -1,
-		CompareFunc:    toFuncID("btrecordcmp", oid.T_record, oid.T_record),
+		CompareFunc:    toFuncID("btrecordcmp", toInternal("record"), toInternal("record")),
 		CompositeAttrs: attrs,
 	}
 }
@@ -63,19 +62,19 @@ func NewCompositeType(ctx *sql.Context, schema, name string, relId, arrayOid, ty
 // CompositeAttribute represents a composite type attribute.
 // This is a partial pg_attribute row entry.
 type CompositeAttribute struct {
-	relOid    uint32 // OID of the relation it belongs to
+	relID     id.Internal // ID of the relation it belongs to
 	name      string
-	typOid    uint32 // OID of DoltgresType
-	num       int16  // number of the column in relation
+	typeID    id.Internal // ID of DoltgresType
+	num       int16       // number of the column in relation
 	collation string
 }
 
 // NewCompositeAttribute creates new instance of composite type attribute.
-func NewCompositeAttribute(ctx *sql.Context, relOid uint32, name string, typOid uint32, num int16, collation string) CompositeAttribute {
+func NewCompositeAttribute(ctx *sql.Context, relID id.Internal, name string, typeID id.Internal, num int16, collation string) CompositeAttribute {
 	return CompositeAttribute{
-		relOid:    relOid,
+		relID:     relID,
 		name:      name,
-		typOid:    typOid,
+		typeID:    typeID,
 		num:       num,
 		collation: collation,
 	}

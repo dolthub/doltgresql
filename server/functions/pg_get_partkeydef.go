@@ -19,7 +19,6 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // initPgGetPartKeyDef registers the functions to the catalog.
@@ -35,15 +34,6 @@ var pg_get_partkeydef_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
-			Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
-				// TODO: sql.Table does not have sufficient information about partition
-				return false, nil
-			},
-		})
-		if err != nil {
-			return "", err
-		}
 		return "", nil
 	},
 }

@@ -15,15 +15,12 @@
 package types
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Regtype is the OID type for finding items in pg_type.
 var Regtype = &DoltgresType{
-	OID:           uint32(oid.T_regtype),
-	Name:          "regtype",
-	Schema:        "pg_catalog",
+	ID:            toInternal("regtype"),
 	TypLength:     int16(4),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -31,24 +28,24 @@ var Regtype = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__regtype),
-	InputFunc:     toFuncID("regtypein", oid.T_cstring),
-	OutputFunc:    toFuncID("regtypeout", oid.T_regtype),
-	ReceiveFunc:   toFuncID("regtyperecv", oid.T_internal),
-	SendFunc:      toFuncID("regtypesend", oid.T_regtype),
+	Elem:          id.Null,
+	Array:         toInternal("_regtype"),
+	InputFunc:     toFuncID("regtypein", toInternal("cstring")),
+	OutputFunc:    toFuncID("regtypeout", toInternal("regtype")),
+	ReceiveFunc:   toFuncID("regtyperecv", toInternal("internal")),
+	SendFunc:      toFuncID("regtypesend", toInternal("regtype")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
@@ -56,9 +53,3 @@ var Regtype = &DoltgresType{
 	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }
-
-// Regtype_IoInput is the implementation for IoInput that is being set from another package to avoid circular dependencies.
-var Regtype_IoInput func(ctx *sql.Context, input string) (uint32, error)
-
-// Regtype_IoOutput is the implementation for IoOutput that is being set from another package to avoid circular dependencies.
-var Regtype_IoOutput func(ctx *sql.Context, oid uint32) (string, error)

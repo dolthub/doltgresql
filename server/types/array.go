@@ -17,7 +17,7 @@ package types
 import (
 	"fmt"
 
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // CreateArrayTypeFromBaseType create array type from given type.
@@ -27,9 +27,7 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 		align = TypeAlignment_Double
 	}
 	return &DoltgresType{
-		OID:           baseType.Array,
-		Name:          fmt.Sprintf("_%s", baseType.Name),
-		Schema:        "pg_catalog",
+		ID:            baseType.Array,
 		TypLength:     int16(-1),
 		PassedByVal:   false,
 		TypType:       TypeType_Base,
@@ -37,21 +35,21 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 		IsPreferred:   false,
 		IsDefined:     true,
 		Delimiter:     ",",
-		RelID:         0,
-		SubscriptFunc: toFuncID("array_subscript_handler", oid.T_internal),
-		Elem:          baseType.OID,
-		Array:         0,
-		InputFunc:     toFuncID("array_in", oid.T_cstring, oid.T_oid, oid.T_int4),
-		OutputFunc:    toFuncID("array_out", oid.T_anyarray),
-		ReceiveFunc:   toFuncID("array_recv", oid.T_internal, oid.T_oid, oid.T_int4),
-		SendFunc:      toFuncID("array_send", oid.T_anyarray),
+		RelID:         id.Null,
+		SubscriptFunc: toFuncID("array_subscript_handler", toInternal("internal")),
+		Elem:          baseType.ID,
+		Array:         id.Null,
+		InputFunc:     toFuncID("array_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+		OutputFunc:    toFuncID("array_out", toInternal("anyarray")),
+		ReceiveFunc:   toFuncID("array_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+		SendFunc:      toFuncID("array_send", toInternal("anyarray")),
 		ModInFunc:     baseType.ModInFunc,
 		ModOutFunc:    baseType.ModOutFunc,
-		AnalyzeFunc:   toFuncID("array_typanalyze", oid.T_internal),
+		AnalyzeFunc:   toFuncID("array_typanalyze", toInternal("internal")),
 		Align:         align,
 		Storage:       TypeStorage_Extended,
 		NotNull:       false,
-		BaseTypeOID:   0,
+		BaseTypeID:    id.Null,
 		TypMod:        -1,
 		NDims:         0,
 		TypCollation:  baseType.TypCollation,
@@ -59,8 +57,8 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 		Default:       "",
 		Acl:           nil,
 		Checks:        nil,
-		InternalName:  fmt.Sprintf("%s[]", baseType.Name), // This will be set to the proper name in ToArrayType
-		attTypMod:     baseType.attTypMod,                 // TODO: check
-		CompareFunc:   toFuncID("btarraycmp", oid.T_anyarray, oid.T_anyarray),
+		InternalName:  fmt.Sprintf("%s[]", baseType.Name()), // This will be set to the proper name in ToArrayType
+		attTypMod:     baseType.attTypMod,                   // TODO: check
+		CompareFunc:   toFuncID("btarraycmp", toInternal("anyarray"), toInternal("anyarray")),
 	}
 }

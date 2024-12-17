@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Writer handles type-safe writing into a byte buffer, which may later be read from using Reader. The Writer will
@@ -144,6 +146,11 @@ func (writer *Writer) VariableUint(val uint64) {
 func (writer *Writer) String(val string) {
 	writer.VariableUint(uint64(len(val)))
 	writer.buf.WriteString(val)
+}
+
+// Internal writes an Internal ID.
+func (writer *Writer) Internal(val id.Internal) {
+	writer.String(string(val))
 }
 
 // BoolSlice writes a bool slice.

@@ -22,6 +22,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -71,9 +72,8 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		return nil, types.ErrTypeAlreadyExists.New(c.Name)
 	}
 
-	// TODO: generate unique OIDs
-	oid := c.AsType.OID // using underlying type OID for now
-	arrayOid := uint32(0)
+	internalID := id.NewInternal(id.Section_Type, c.SchemaName, c.Name)
+	arrayID := id.NewInternal(id.Section_Type, c.SchemaName, "_"+c.Name)
 
 	var defExpr string
 	if c.DefaultExpr != nil {
@@ -88,7 +88,7 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		}
 	}
 
-	newType := types.NewDomainType(ctx, c.SchemaName, c.Name, c.AsType, defExpr, c.IsNotNull, checkDefs, arrayOid, oid)
+	newType := types.NewDomainType(ctx, c.AsType, defExpr, c.IsNotNull, checkDefs, arrayID, internalID)
 	err = collection.CreateType(schema, newType)
 	if err != nil {
 		return nil, err

@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Uuid is the UUID type.
 var Uuid = &DoltgresType{
-	OID:           uint32(oid.T_uuid),
-	Name:          "uuid",
-	Schema:        "pg_catalog",
+	ID:            toInternal("uuid"),
 	TypLength:     int16(16),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -30,28 +28,28 @@ var Uuid = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__uuid),
-	InputFunc:     toFuncID("uuid_in", oid.T_cstring),
-	OutputFunc:    toFuncID("uuid_out", oid.T_uuid),
-	ReceiveFunc:   toFuncID("uuid_recv", oid.T_internal),
-	SendFunc:      toFuncID("uuid_send", oid.T_uuid),
+	Elem:          id.Null,
+	Array:         toInternal("_uuid"),
+	InputFunc:     toFuncID("uuid_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("uuid_out", toInternal("uuid")),
+	ReceiveFunc:   toFuncID("uuid_recv", toInternal("internal")),
+	SendFunc:      toFuncID("uuid_send", toInternal("uuid")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("uuid_cmp", oid.T_uuid, oid.T_uuid),
+	CompareFunc:   toFuncID("uuid_cmp", toInternal("uuid"), toInternal("uuid")),
 }

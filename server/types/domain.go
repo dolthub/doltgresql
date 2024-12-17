@@ -17,8 +17,9 @@ package types
 import (
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
 )
 
 // ErrDomainDoesNotAllowNullValues is returned when given value is NULL and a domain is non-nullable.
@@ -30,17 +31,14 @@ var ErrDomainValueViolatesCheckConstraint = errors.NewKind(`value for domain %s 
 // NewDomainType creates new instance of domain DoltgresType.
 func NewDomainType(
 	ctx *sql.Context,
-	schema, name string,
 	asType *DoltgresType,
 	defaultExpr string,
 	notNull bool,
 	checks []*sql.CheckDefinition,
-	arrayOid, typOid uint32,
+	arrayID, internalID id.Internal,
 ) *DoltgresType {
 	return &DoltgresType{
-		OID:           typOid,
-		Name:          name,
-		Schema:        schema,
+		ID:            internalID,
 		TypLength:     asType.TypLength,
 		PassedByVal:   asType.PassedByVal,
 		TypType:       TypeType_Domain,
@@ -48,13 +46,13 @@ func NewDomainType(
 		IsPreferred:   asType.IsPreferred,
 		IsDefined:     true,
 		Delimiter:     ",",
-		RelID:         0,
+		RelID:         id.Null,
 		SubscriptFunc: toFuncID("-"),
-		Elem:          0,
-		Array:         arrayOid,
-		InputFunc:     toFuncID("domain_in", oid.T_cstring, oid.T_oid, oid.T_int4),
+		Elem:          id.Null,
+		Array:         arrayID,
+		InputFunc:     toFuncID("domain_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
 		OutputFunc:    asType.OutputFunc,
-		ReceiveFunc:   toFuncID("domain_recv", oid.T_internal, oid.T_oid, oid.T_int4),
+		ReceiveFunc:   toFuncID("domain_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
 		SendFunc:      asType.SendFunc,
 		ModInFunc:     asType.ModInFunc,
 		ModOutFunc:    asType.ModOutFunc,
@@ -62,10 +60,10 @@ func NewDomainType(
 		Align:         asType.Align,
 		Storage:       asType.Storage,
 		NotNull:       notNull,
-		BaseTypeOID:   asType.OID,
+		BaseTypeID:    asType.ID,
 		TypMod:        -1,
 		NDims:         0,
-		TypCollation:  0,
+		TypCollation:  id.Null,
 		DefaulBin:     "",
 		Default:       defaultExpr,
 		Acl:           nil,

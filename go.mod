@@ -24,6 +24,7 @@ require (
 	github.com/jackc/pgx/v5 v5.6.1-0.20240826124046-97d20ccfadaa
 	github.com/lib/pq v1.10.9
 	github.com/madflojo/testcerts v1.1.1
+	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/pierrre/geohash v1.0.0
 	github.com/pkg/profile v1.5.0

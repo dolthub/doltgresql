@@ -22,8 +22,8 @@ import (
 
 // TestSerializationConsistency checks that all types serialization and deserialization.
 func TestSerializationConsistency(t *testing.T) {
-	for _, typ := range typesFromOID {
-		t.Run(typ.Name, func(t *testing.T) {
+	for _, typ := range GetAllBuitInTypes() {
+		t.Run(typ.Name(), func(t *testing.T) {
 			serializedType := typ.Serialize()
 			dt, err := DeserializeType(serializedType)
 			require.NoError(t, err)

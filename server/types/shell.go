@@ -16,19 +16,18 @@ package types
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // ErrTypeIsOnlyAShell is returned when given shell type is attempted to be used.
 var ErrTypeIsOnlyAShell = errors.NewKind(`type "%s" is only a shell`)
 
 // NewShellType creates new instance of shell DoltgresType.
-func NewShellType(ctx *sql.Context, schema, name string, typOid uint32) *DoltgresType {
+func NewShellType(ctx *sql.Context, internalID id.Internal) *DoltgresType {
 	return &DoltgresType{
-		OID:           typOid,
-		Name:          name,
-		Schema:        schema,
+		ID:            internalID,
 		TypLength:     4,
 		PassedByVal:   true,
 		TypType:       TypeType_Pseudo,
@@ -36,12 +35,12 @@ func NewShellType(ctx *sql.Context, schema, name string, typOid uint32) *Doltgre
 		IsPreferred:   false,
 		IsDefined:     false,
 		Delimiter:     ",",
-		RelID:         0,
+		RelID:         id.Null,
 		SubscriptFunc: toFuncID("-"),
-		Elem:          0,
-		Array:         0,
-		InputFunc:     toFuncID("shell_in", oid.T_cstring),
-		OutputFunc:    toFuncID("shell_out", oid.T_void),
+		Elem:          id.Null,
+		Array:         id.Null,
+		InputFunc:     toFuncID("shell_in", toInternal("cstring")),
+		OutputFunc:    toFuncID("shell_out", toInternal("void")),
 		ReceiveFunc:   toFuncID("-"),
 		SendFunc:      toFuncID("-"),
 		ModInFunc:     toFuncID("-"),
@@ -50,10 +49,10 @@ func NewShellType(ctx *sql.Context, schema, name string, typOid uint32) *Doltgre
 		Align:         TypeAlignment_Int,
 		Storage:       TypeStorage_Plain,
 		NotNull:       false,
-		BaseTypeOID:   0,
+		BaseTypeID:    id.Null,
 		TypMod:        -1,
 		NDims:         0,
-		TypCollation:  0,
+		TypCollation:  id.Null,
 		DefaulBin:     "",
 		Default:       "",
 		Acl:           nil,

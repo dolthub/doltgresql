@@ -37,6 +37,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/sirupsen/logrus"
 
+	"github.com/dolthub/doltgresql/core/id"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -150,7 +151,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 		fields = []pgproto3.FieldDescription{
 			{
 				Name:         []byte("Rows"),
-				DataTypeOID:  pgtypes.Int32.OID,
+				DataTypeOID:  id.Cache().ToOID(pgtypes.Int32.ID),
 				DataTypeSize: int16(pgtypes.Int32.MaxTextResponseByteLength(nil)),
 			},
 		}
@@ -223,7 +224,7 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 			return nil, err
 		}
 
-		pgTyp, ok := pgtypes.OidToBuiltInDoltgresType[typ]
+		pgTyp, ok := pgtypes.InternalToBuiltInDoltgresType[id.Cache().ToInternal(typ)]
 		if !ok {
 			return nil, fmt.Errorf("unhandled oid type: %v", typ)
 		}
@@ -364,7 +365,11 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 		var typmod = int32(-1)
 		var err error
 		if doltgresType, ok := c.Type.(*pgtypes.DoltgresType); ok {
-			oid = doltgresType.OID
+			if doltgresType.TypType == pgtypes.TypeType_Domain {
+				oid = id.Cache().ToOID(doltgresType.BaseTypeID)
+			} else {
+				oid = id.Cache().ToOID(doltgresType.ID)
+			}
 			typmod = doltgresType.GetAttTypMod() // pg_attribute.atttypmod
 		} else {
 			oid, err = VitessTypeToObjectID(c.Type.Type())

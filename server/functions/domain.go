@@ -17,6 +17,8 @@ package functions
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -34,8 +36,8 @@ var domain_in = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		str := val1.(string)
-		baseTypeOid := val2.(uint32)
-		t := pgtypes.OidToBuiltInDoltgresType[baseTypeOid]
+		baseTypeOid := val2.(id.Internal)
+		t := pgtypes.InternalToBuiltInDoltgresType[baseTypeOid]
 		typmod := val3.(int32)
 		t = t.WithAttTypMod(typmod)
 		return t.IoInput(ctx, str)
@@ -49,8 +51,8 @@ var domain_recv = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
-		baseTypeOid := val2.(uint32)
-		t := pgtypes.OidToBuiltInDoltgresType[baseTypeOid]
+		baseTypeOid := val2.(id.Internal)
+		t := pgtypes.InternalToBuiltInDoltgresType[baseTypeOid]
 		typmod := val3.(int32)
 		t = t.WithAttTypMod(typmod)
 		return t.DeserializeValue(data)

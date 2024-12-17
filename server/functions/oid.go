@@ -15,12 +15,14 @@
 package functions
 
 import (
-	"encoding/binary"
+	"cmp"
+	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -42,15 +44,19 @@ var oidin = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
-		uVal, err := strconv.ParseInt(strings.TrimSpace(input), 10, 64)
+		iVal, err := strconv.ParseInt(strings.TrimSpace(input), 10, 64)
 		if err != nil {
-			return nil, pgtypes.ErrInvalidSyntaxForType.New("oid", input)
+			return id.Null, pgtypes.ErrInvalidSyntaxForType.New("oid", input)
 		}
 		// Note: This minimum is different (-4294967295) for Postgres 15.4 compiled by Visual C++
-		if uVal > pgtypes.MaxUint32 || uVal < pgtypes.MinInt32 {
-			return nil, pgtypes.ErrValueIsOutOfRangeForType.New(input, "oid")
+		if iVal > pgtypes.MaxUint32 || iVal < pgtypes.MinInt32 {
+			return id.Null, pgtypes.ErrValueIsOutOfRangeForType.New(input, "oid")
 		}
-		return uint32(uVal), nil
+		uVal := uint32(iVal)
+		if internalID := id.Cache().ToInternal(uVal); internalID.IsValid() {
+			return internalID, nil
+		}
+		return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(uVal), 10)), nil
 	},
 }
 
@@ -61,7 +67,7 @@ var oidout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return strconv.FormatUint(uint64(val.(uint32)), 10), nil
+		return fmt.Sprintf("%d", id.Cache().ToOID(val.(id.Internal))), nil
 	},
 }
 
@@ -76,7 +82,7 @@ var oidrecv = framework.Function1{
 		if len(data) == 0 {
 			return nil, nil
 		}
-		return binary.BigEndian.Uint32(data), nil
+		return id.Internal(data), nil
 	},
 }
 
@@ -87,9 +93,7 @@ var oidsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		retVal := make([]byte, 4)
-		binary.BigEndian.PutUint32(retVal, val.(uint32))
-		return retVal, nil
+		return []byte(val.(id.Internal)), nil
 	},
 }
 
@@ -100,14 +104,6 @@ var btoidcmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(uint32)
-		bb := val2.(uint32)
-		if ab == bb {
-			return int32(0), nil
-		} else if ab < bb {
-			return int32(-1), nil
-		} else {
-			return int32(1), nil
-		}
+		return int32(cmp.Compare(val1.(id.Internal), val2.(id.Internal))), nil
 	},
 }

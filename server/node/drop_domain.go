@@ -108,7 +108,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		if ok {
 			for _, col := range t.Schema() {
 				if dt, isDoltgresType := col.Type.(*types.DoltgresType); isDoltgresType && dt.TypType == types.TypeType_Domain {
-					if dt.Name == domain.Name {
+					if dt.Name() == domain.Name() {
 						// TODO: issue a detail (list of all columns and tables that uses this domain)
 						//  and a hint (when we support CASCADE)
 						return nil, fmt.Errorf(`cannot drop type %s because other objects depend on it - column %s of table %s depends on type %s'`, c.domain, col.Name, t.Name(), c.domain)

@@ -16,19 +16,18 @@ package types
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // ErrInvalidInputValueForEnum is returned when the input value does not match given enum type's labels.
 var ErrInvalidInputValueForEnum = errors.NewKind(`invalid input value for enum %s: "%s"`)
 
 // NewEnumType creates new instance of enum DoltgresType.
-func NewEnumType(ctx *sql.Context, schema, name string, arrayOid, typOid uint32, labels map[string]EnumLabel) *DoltgresType {
+func NewEnumType(ctx *sql.Context, arrayID, typeID id.Internal, labels map[string]EnumLabel) *DoltgresType {
 	return &DoltgresType{
-		OID:           typOid,
-		Name:          name,
-		Schema:        schema,
+		ID:            typeID,
 		TypLength:     4,
 		PassedByVal:   true,
 		TypType:       TypeType_Enum,
@@ -36,30 +35,30 @@ func NewEnumType(ctx *sql.Context, schema, name string, arrayOid, typOid uint32,
 		IsPreferred:   false,
 		IsDefined:     true,
 		Delimiter:     ",",
-		RelID:         0,
+		RelID:         id.Null,
 		SubscriptFunc: toFuncID("-"),
-		Elem:          0,
-		Array:         arrayOid,
-		InputFunc:     toFuncID("enum_in", oid.T_cstring, oid.T_oid),
-		OutputFunc:    toFuncID("enum_out", oid.T_anyenum),
-		ReceiveFunc:   toFuncID("enum_recv", oid.T_internal, oid.T_oid),
-		SendFunc:      toFuncID("enum_send", oid.T_anyenum),
+		Elem:          id.Null,
+		Array:         arrayID,
+		InputFunc:     toFuncID("enum_in", toInternal("cstring"), toInternal("oid")),
+		OutputFunc:    toFuncID("enum_out", toInternal("anyenum")),
+		ReceiveFunc:   toFuncID("enum_recv", toInternal("internal"), toInternal("oid")),
+		SendFunc:      toFuncID("enum_send", toInternal("anyenum")),
 		ModInFunc:     toFuncID("-"),
 		ModOutFunc:    toFuncID("-"),
 		AnalyzeFunc:   toFuncID("-"),
 		Align:         TypeAlignment_Int,
 		Storage:       TypeStorage_Plain,
 		NotNull:       false,
-		BaseTypeOID:   0,
+		BaseTypeID:    id.Null,
 		TypMod:        -1,
 		NDims:         0,
-		TypCollation:  0,
+		TypCollation:  id.Null,
 		DefaulBin:     "",
 		Default:       "",
 		Acl:           nil,
 		Checks:        nil,
 		attTypMod:     -1,
-		CompareFunc:   toFuncID("enum_cmp", oid.T_anyenum, oid.T_anyenum),
+		CompareFunc:   toFuncID("enum_cmp", toInternal("anyenum"), toInternal("anyenum")),
 		EnumLabels:    labels,
 	}
 }
@@ -67,18 +66,14 @@ func NewEnumType(ctx *sql.Context, schema, name string, arrayOid, typOid uint32,
 // EnumLabel represents an enum type label.
 // This is a pg_enum row entry.
 type EnumLabel struct {
-	OID        uint32 // unique OID for each label
-	EnumTypOid uint32 // OID of DoltgresType
-	SortOrder  float32
-	Label      string
+	ID        id.Internal // First segment is the ENUM parent's Internal ID, second segment is the label
+	SortOrder float32
 }
 
 // NewEnumLabel creates new instance of enum type label.
-func NewEnumLabel(ctx *sql.Context, oid, enumTypeOid uint32, so float32, label string) EnumLabel {
+func NewEnumLabel(ctx *sql.Context, typeID id.Internal, so float32) EnumLabel {
 	return EnumLabel{
-		OID:        oid,
-		EnumTypOid: enumTypeOid,
-		SortOrder:  so,
-		Label:      label,
+		ID:        typeID,
+		SortOrder: so,
 	}
 }
