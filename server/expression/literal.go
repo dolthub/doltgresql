@@ -125,11 +125,35 @@ func NewRawLiteralBool(val bool) *Literal {
 	}
 }
 
+// NewRawLiteralInt16 returns a new *Literal containing an int16 value.
+func NewRawLiteralInt16(val int16) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Int16,
+	}
+}
+
+// NewRawLiteralInt32 returns a new *Literal containing an int32 value.
+func NewRawLiteralInt32(val int32) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Int32,
+	}
+}
+
 // NewRawLiteralInt64 returns a new *Literal containing an int64 value.
 func NewRawLiteralInt64(val int64) *Literal {
 	return &Literal{
 		value: val,
 		typ:   pgtypes.Int64,
+	}
+}
+
+// NewRawLiteralFloat32 returns a new *Literal containing a float32 value.
+func NewRawLiteralFloat32(val float32) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Float32,
 	}
 }
 

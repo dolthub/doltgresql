@@ -2050,3 +2050,62 @@ func TestUnknownFunctions(t *testing.T) {
 		},
 	})
 }
+
+func TestSelectFromFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "select * FROM functions",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')`,
+					Expected: []sql.Row{{"1,2,3,*,5"}},
+				},
+				{
+					Query:    `SELECT * FROM array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')`,
+					Expected: []sql.Row{{"1,2,3,*,5"}},
+				},
+				{
+					Query:    `SELECT * FROM array_to_string(ARRAY[37.89, 1.2], '_');`,
+					Expected: []sql.Row{{"37.89_1.2"}},
+				},
+				{
+					Query:    `SELECT format_type(874938247, 20);`,
+					Expected: []sql.Row{{"???"}},
+				},
+				{
+					Query:    `SELECT * from format_type(874938247, 20);`,
+					Expected: []sql.Row{{"???"}},
+				},
+				{
+					Query: `SELECT * FROM to_char(timestamp '2021-09-15 21:43:56.123456789', 'IW iw');`,
+					Expected: []sql.Row{
+						{"37 37"},
+					},
+				},
+				{
+					Query: `SELECT * from format_type('text'::regtype, -1);`,
+					Expected: []sql.Row{
+						{"text"},
+					},
+				},
+				{
+					Query:    `SELECT "left" FROM left('name'::name, 2);`,
+					Expected: []sql.Row{{"na"}},
+				},
+				{
+					Query:    "SELECT length FROM length('name'::name);",
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:    "SELECT lower FROM lower('naMe'::name);",
+					Expected: []sql.Row{{"name"}},
+				},
+				{
+					Query:    "SELECT * FROM lpad('name'::name, 7, '*');",
+					Expected: []sql.Row{{"***name"}},
+				},
+			},
+		},
+	})
+}

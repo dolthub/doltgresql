@@ -64,13 +64,7 @@ func newCompiledFunctionInternal(
 	fnOverloads []Overload,
 	isOperator bool,
 ) *CompiledFunction {
-	c := &CompiledFunction{
-		Name:        name,
-		Arguments:   args,
-		IsOperator:  isOperator,
-		overloads:   overloads,
-		fnOverloads: fnOverloads,
-	}
+	c := &CompiledFunction{Name: name, Arguments: args, IsOperator: isOperator, overloads: overloads, fnOverloads: fnOverloads}
 	// First we'll analyze all the parameters.
 	originalTypes, err := c.analyzeParameters()
 	if err != nil {
