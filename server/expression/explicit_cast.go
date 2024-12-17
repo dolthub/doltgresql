@@ -16,6 +16,7 @@ package expression
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -148,7 +149,14 @@ func (c *ExplicitCast) Resolved() bool {
 
 // String implements the sql.Expression interface.
 func (c *ExplicitCast) String() string {
-	return c.sqlChild.String() + "::" + c.castToType.String()
+	var sqlChild string
+	if c.sqlChild == nil {
+		sqlChild = "unresolved"
+	} else {
+		sqlChild = c.sqlChild.String()
+	}
+	// type needs to be upper-case to match InputExpression in AliasExpr
+	return fmt.Sprintf("%s::%s", sqlChild, strings.ToUpper(c.castToType.String()))
 }
 
 // Type implements the sql.Expression interface.

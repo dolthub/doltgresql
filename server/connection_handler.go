@@ -393,13 +393,6 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		return true, err
 	}
 
-	// TODO: Remove this once we support `SELECT * FROM function()` syntax
-	// Github issue: https://github.com/dolthub/doltgresql/issues/464
-	handled, err = h.handledWorkbenchCommands(message.String)
-	if handled || err != nil {
-		return true, err
-	}
-
 	query, err := h.convertQuery(message.String)
 	if err != nil {
 		return true, err
@@ -943,24 +936,6 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 		// We don't support users yet, so we'll just return nothing for now
 		return true, h.query(ConvertedQuery{
 			String:       `SELECT '' FROM dual LIMIT 0;`,
-			StatementTag: "SELECT",
-		})
-	}
-	return false, nil
-}
-
-// handledWorkbenchCommands handles commands used by some workbenches, such as dolt-workbench.
-func (h *ConnectionHandler) handledWorkbenchCommands(statement string) (bool, error) {
-	lower := strings.ToLower(statement)
-	if lower == "select * from current_schema()" || lower == "select * from current_schema();" {
-		return true, h.query(ConvertedQuery{
-			String:       `SELECT search_path AS "current_schema";`,
-			StatementTag: "SELECT",
-		})
-	}
-	if lower == "select * from current_database()" || lower == "select * from current_database();" {
-		return true, h.query(ConvertedQuery{
-			String:       `SELECT DATABASE() AS "current_database";`,
 			StatementTag: "SELECT",
 		})
 	}

@@ -6,11 +6,11 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20241215023219-584a9fa81bae
+	github.com/dolthub/dolt/go v0.40.5-0.20241217005141-463005ab59d2
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20241215010122-db690dd53c90
-	github.com/dolthub/go-mysql-server v0.18.2-0.20241215013221-68ab2c34608f
+	github.com/dolthub/go-mysql-server v0.18.2-0.20241217004611-eca5bf76f8f0
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20241211024425-b00987f7ba54
 	github.com/fatih/color v1.13.0
