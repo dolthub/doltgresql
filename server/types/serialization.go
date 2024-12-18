@@ -15,7 +15,10 @@
 package types
 
 import (
+	"cmp"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -51,10 +54,7 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 		return nil, fmt.Errorf("version %d of types is not supported, please upgrade the server", version)
 	}
 
-	typ.OID = reader.Uint32()
-	typ.Name = reader.String()
-	typ.Schema = reader.String()
-	typ.Owner = reader.String()
+	typ.ID = reader.Internal()
 	typ.TypLength = reader.Int16()
 	typ.PassedByVal = reader.Bool()
 	typ.TypType = TypeType(reader.String())
@@ -62,24 +62,24 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 	typ.IsPreferred = reader.Bool()
 	typ.IsDefined = reader.Bool()
 	typ.Delimiter = reader.String()
-	typ.RelID = reader.Uint32()
-	typ.SubscriptFunc = globalFunctionRegistry.StringToID(reader.String())
-	typ.Elem = reader.Uint32()
-	typ.Array = reader.Uint32()
-	typ.InputFunc = globalFunctionRegistry.StringToID(reader.String())
-	typ.OutputFunc = globalFunctionRegistry.StringToID(reader.String())
-	typ.ReceiveFunc = globalFunctionRegistry.StringToID(reader.String())
-	typ.SendFunc = globalFunctionRegistry.StringToID(reader.String())
-	typ.ModInFunc = globalFunctionRegistry.StringToID(reader.String())
-	typ.ModOutFunc = globalFunctionRegistry.StringToID(reader.String())
-	typ.AnalyzeFunc = globalFunctionRegistry.StringToID(reader.String())
+	typ.RelID = reader.Internal()
+	typ.SubscriptFunc = globalFunctionRegistry.InternalToRegistryID(reader.Internal())
+	typ.Elem = reader.Internal()
+	typ.Array = reader.Internal()
+	typ.InputFunc = globalFunctionRegistry.InternalToRegistryID(reader.Internal())
+	typ.OutputFunc = globalFunctionRegistry.InternalToRegistryID(reader.Internal())
+	typ.ReceiveFunc = globalFunctionRegistry.InternalToRegistryID(reader.Internal())
+	typ.SendFunc = globalFunctionRegistry.InternalToRegistryID(reader.Internal())
+	typ.ModInFunc = globalFunctionRegistry.InternalToRegistryID(reader.Internal())
+	typ.ModOutFunc = globalFunctionRegistry.InternalToRegistryID(reader.Internal())
+	typ.AnalyzeFunc = globalFunctionRegistry.InternalToRegistryID(reader.Internal())
 	typ.Align = TypeAlignment(reader.String())
 	typ.Storage = TypeStorage(reader.String())
 	typ.NotNull = reader.Bool()
-	typ.BaseTypeOID = reader.Uint32()
+	typ.BaseTypeID = reader.Internal()
 	typ.TypMod = reader.Int32()
 	typ.NDims = reader.Int32()
-	typ.TypCollation = reader.Uint32()
+	typ.TypCollation = reader.Internal()
 	typ.DefaulBin = reader.String()
 	typ.Default = reader.String()
 	numOfAcl := reader.VariableUint()
@@ -98,10 +98,40 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 		})
 	}
 	typ.attTypMod = reader.Int32()
-	typ.CompareFunc = globalFunctionRegistry.StringToID(reader.String())
+	typ.CompareFunc = globalFunctionRegistry.InternalToRegistryID(reader.Internal())
+	numOfEnumLabels := reader.VariableUint()
+	if numOfEnumLabels > 0 {
+		typ.EnumLabels = make(map[string]EnumLabel)
+		for k := uint64(0); k < numOfEnumLabels; k++ {
+			typeID := reader.Internal()
+			sortOrder := reader.Float32()
+			typ.EnumLabels[typeID.Segment(1)] = EnumLabel{
+				ID:        typeID,
+				SortOrder: sortOrder,
+			}
+		}
+	}
+	numOfCompAttrs := reader.VariableUint()
+	if numOfCompAttrs > 0 {
+		typ.CompositeAttrs = make([]CompositeAttribute, numOfCompAttrs)
+		for k := uint64(0); k < numOfCompAttrs; k++ {
+			relID := reader.Internal()
+			name := reader.String()
+			typeID := reader.Internal()
+			num := reader.Int16()
+			collation := reader.String()
+			typ.CompositeAttrs[k] = CompositeAttribute{
+				relID:     relID,
+				name:      name,
+				typeID:    typeID,
+				num:       num,
+				collation: collation,
+			}
+		}
+	}
 	typ.InternalName = reader.String()
 	if !reader.IsEmpty() {
-		return nil, fmt.Errorf("extra data found while deserializing type %s", typ.Name)
+		return nil, fmt.Errorf("extra data found while deserializing type %s", typ.Name())
 	}
 
 	// Return the deserialized object
@@ -113,10 +143,7 @@ func (t *DoltgresType) Serialize() []byte {
 	writer := utils.NewWriter(256)
 	writer.VariableUint(0) // Version
 	// Write the type to the writer
-	writer.Uint32(t.OID)
-	writer.String(t.Name)
-	writer.String(t.Schema)
-	writer.String(t.Owner)
+	writer.Internal(t.ID)
 	writer.Int16(t.TypLength)
 	writer.Bool(t.PassedByVal)
 	writer.String(string(t.TypType))
@@ -124,24 +151,24 @@ func (t *DoltgresType) Serialize() []byte {
 	writer.Bool(t.IsPreferred)
 	writer.Bool(t.IsDefined)
 	writer.String(t.Delimiter)
-	writer.Uint32(t.RelID)
-	writer.String(globalFunctionRegistry.GetFullString(t.SubscriptFunc))
-	writer.Uint32(t.Elem)
-	writer.Uint32(t.Array)
-	writer.String(globalFunctionRegistry.GetFullString(t.InputFunc))
-	writer.String(globalFunctionRegistry.GetFullString(t.OutputFunc))
-	writer.String(globalFunctionRegistry.GetFullString(t.ReceiveFunc))
-	writer.String(globalFunctionRegistry.GetFullString(t.SendFunc))
-	writer.String(globalFunctionRegistry.GetFullString(t.ModInFunc))
-	writer.String(globalFunctionRegistry.GetFullString(t.ModOutFunc))
-	writer.String(globalFunctionRegistry.GetFullString(t.AnalyzeFunc))
+	writer.Internal(t.RelID)
+	writer.Internal(globalFunctionRegistry.GetInternalID(t.SubscriptFunc))
+	writer.Internal(t.Elem)
+	writer.Internal(t.Array)
+	writer.Internal(globalFunctionRegistry.GetInternalID(t.InputFunc))
+	writer.Internal(globalFunctionRegistry.GetInternalID(t.OutputFunc))
+	writer.Internal(globalFunctionRegistry.GetInternalID(t.ReceiveFunc))
+	writer.Internal(globalFunctionRegistry.GetInternalID(t.SendFunc))
+	writer.Internal(globalFunctionRegistry.GetInternalID(t.ModInFunc))
+	writer.Internal(globalFunctionRegistry.GetInternalID(t.ModOutFunc))
+	writer.Internal(globalFunctionRegistry.GetInternalID(t.AnalyzeFunc))
 	writer.String(string(t.Align))
 	writer.String(string(t.Storage))
 	writer.Bool(t.NotNull)
-	writer.Uint32(t.BaseTypeOID)
+	writer.Internal(t.BaseTypeID)
 	writer.Int32(t.TypMod)
 	writer.Int32(t.NDims)
-	writer.Uint32(t.TypCollation)
+	writer.Internal(t.TypCollation)
 	writer.String(t.DefaulBin)
 	writer.String(t.Default)
 	writer.VariableUint(uint64(len(t.Acl)))
@@ -154,7 +181,27 @@ func (t *DoltgresType) Serialize() []byte {
 		writer.String(check.CheckExpression)
 	}
 	writer.Int32(t.attTypMod)
-	writer.String(globalFunctionRegistry.GetFullString(t.CompareFunc))
+	writer.Internal(globalFunctionRegistry.GetInternalID(t.CompareFunc))
+	writer.VariableUint(uint64(len(t.EnumLabels)))
+	if len(t.EnumLabels) > 0 {
+		labels := slices.SortedFunc(maps.Values(t.EnumLabels), func(v1 EnumLabel, v2 EnumLabel) int {
+			return cmp.Compare(v1.ID, v2.ID)
+		})
+		for _, l := range labels {
+			writer.Internal(l.ID)
+			writer.Float32(l.SortOrder)
+		}
+	}
+	writer.VariableUint(uint64(len(t.CompositeAttrs)))
+	if len(t.CompositeAttrs) > 0 {
+		for _, l := range t.CompositeAttrs {
+			writer.Internal(l.relID)
+			writer.String(l.name)
+			writer.Internal(l.typeID)
+			writer.Int16(l.num)
+			writer.String(l.collation)
+		}
+	}
 	writer.String(t.InternalName)
 	return writer.Data()
 }

@@ -23,6 +23,9 @@ import (
 // compiledCatalog contains all of PostgreSQL functions in their compiled forms.
 var compiledCatalog = map[string]sql.CreateFuncNArgs{}
 
+// namedCatalog contains the definitions of every PostgreSQL function associated with the given name.
+var namedCatalog = map[string][]FunctionInterface{}
+
 // GetFunction returns the compiled function with the given name and parameters. Returns false if the function could not
 // be found.
 func GetFunction(functionName string, params ...sql.Expression) (*CompiledFunction, bool, error) {

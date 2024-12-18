@@ -62,11 +62,7 @@ func AddTablePrivilege(key TablePrivilegeKey, privilege GrantedPrivilege, withGr
 
 // HasTablePrivilege checks whether the user has the given privilege on the associated table.
 func HasTablePrivilege(key TablePrivilegeKey, privilege Privilege) bool {
-	if IsSuperUser(key.Role) || IsOwner(OwnershipKey{
-		PrivilegeObject: PrivilegeObject_TABLE,
-		Schema:          key.Table.Schema,
-		Name:            key.Table.Name,
-	}, key.Role) {
+	if IsSuperUser(key.Role) {
 		return true
 	}
 	// If a table name was provided, then we also want to search for privileges provided to all tables in the schema
@@ -98,21 +94,7 @@ func HasTablePrivilege(key TablePrivilegeKey, privilege Privilege) bool {
 // HasTablePrivilegeGrantOption checks whether the user has WITH GRANT OPTION for the given privilege on the associated
 // table. Returns the role that has WITH GRANT OPTION, or an invalid role if WITH GRANT OPTION is not available.
 func HasTablePrivilegeGrantOption(key TablePrivilegeKey, privilege Privilege) RoleID {
-	ownershipKey := OwnershipKey{
-		PrivilegeObject: PrivilegeObject_TABLE,
-		Schema:          key.Table.Schema,
-		Name:            key.Table.Name,
-	}
 	if IsSuperUser(key.Role) {
-		owners := GetOwners(ownershipKey)
-		if len(owners) == 0 {
-			// This may happen if the privilege file is deleted
-			return key.Role
-		}
-		// Although there may be multiple owners, we'll only return the first one.
-		// Postgres already allows for non-determinism with multiple membership paths, so this is fine.
-		return owners[0]
-	} else if IsOwner(ownershipKey, key.Role) {
 		return key.Role
 	}
 	// If a table name was provided, then we also want to search for privileges provided to all tables in the schema

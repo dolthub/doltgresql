@@ -18,7 +18,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/information_schema"
 
-	"github.com/dolthub/doltgresql/server/types/oid"
+	"github.com/dolthub/doltgresql/server/functions"
 )
 
 // newTablesTable returns a InformationSchemaTable for MySQL.
@@ -50,8 +50,8 @@ var tablesSchema = sql.Schema{
 func tablesRowIter(ctx *sql.Context, cat sql.Catalog) (sql.RowIter, error) {
 	var rows []sql.Row
 
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		Table: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 			// TODO: Foreign and temporary tables.
 			rows = append(rows, sql.Row{
 				schema.Item.Name(),       // table_catalog
@@ -69,7 +69,7 @@ func tablesRowIter(ctx *sql.Context, cat sql.Catalog) (sql.RowIter, error) {
 			})
 			return true, nil
 		},
-		View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+		View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
 			// TODO: Fill out the rest of the columns.
 			rows = append(rows, sql.Row{
 				schema.Item.Name(),       // table_catalog

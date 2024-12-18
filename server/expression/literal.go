@@ -22,9 +22,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/lib/pq/oid"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -125,11 +125,35 @@ func NewRawLiteralBool(val bool) *Literal {
 	}
 }
 
+// NewRawLiteralInt16 returns a new *Literal containing an int16 value.
+func NewRawLiteralInt16(val int16) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Int16,
+	}
+}
+
+// NewRawLiteralInt32 returns a new *Literal containing an int32 value.
+func NewRawLiteralInt32(val int32) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Int32,
+	}
+}
+
 // NewRawLiteralInt64 returns a new *Literal containing an int64 value.
 func NewRawLiteralInt64(val int64) *Literal {
 	return &Literal{
 		value: val,
 		typ:   pgtypes.Int64,
+	}
+}
+
+// NewRawLiteralFloat32 returns a new *Literal containing a float32 value.
+func NewRawLiteralFloat32(val float32) *Literal {
+	return &Literal{
+		value: val,
+		typ:   pgtypes.Float32,
 	}
 }
 
@@ -198,7 +222,7 @@ func NewRawLiteralJSON(val string) *Literal {
 }
 
 // NewRawLiteralOid returns a new *Literal containing a OID value.
-func NewRawLiteralOid(val uint32) *Literal {
+func NewRawLiteralOid(val id.Internal) *Literal {
 	return &Literal{
 		value: val,
 		typ:   pgtypes.Oid,
@@ -260,8 +284,8 @@ func (l *Literal) String() string {
 	if err != nil {
 		panic(fmt.Sprintf("attempted to get string output for Literal: %s", err.Error()))
 	}
-	switch oid.Oid(l.typ.OID) {
-	case oid.T_char, oid.T_bpchar, oid.T_name, oid.T_text, oid.T_varchar, oid.T_unknown:
+	switch l.typ.ID {
+	case pgtypes.InternalChar.ID, pgtypes.BpChar.ID, pgtypes.Name.ID, pgtypes.Text.ID, pgtypes.VarChar.ID, pgtypes.Unknown.ID:
 		return `'` + strings.ReplaceAll(str, `'`, `''`) + `'`
 	default:
 		return str
@@ -272,22 +296,22 @@ func (l *Literal) String() string {
 // expect a Vitess literal. This should only be used as a temporary measure, as the GMS code needs to be updated, or the
 // equivalent functionality should be built into Doltgres (recommend the second approach).
 func (l *Literal) ToVitessLiteral() *vitess.SQLVal {
-	switch oid.Oid(l.typ.OID) {
-	case oid.T_bool:
+	switch l.typ.ID {
+	case pgtypes.Bool.ID:
 		if l.value.(bool) {
 			return vitess.NewIntVal([]byte("1"))
 		} else {
 			return vitess.NewIntVal([]byte("0"))
 		}
-	case oid.T_int4:
+	case pgtypes.Int32.ID:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(int64(l.value.(int32)), 10)))
-	case oid.T_int8:
+	case pgtypes.Int64.ID:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(l.value.(int64), 10)))
-	case oid.T_numeric:
+	case pgtypes.Numeric.ID:
 		return vitess.NewFloatVal([]byte(l.value.(decimal.Decimal).String()))
-	case oid.T_text:
+	case pgtypes.Text.ID:
 		return vitess.NewStrVal([]byte(l.value.(string)))
-	case oid.T_unknown:
+	case pgtypes.Unknown.ID:
 		if l.value == nil {
 			return nil
 		} else if str, ok := l.value.(string); ok {

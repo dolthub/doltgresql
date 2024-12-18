@@ -20,9 +20,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // initPgGetConstraintdef registers the functions to the catalog.
@@ -38,7 +38,7 @@ var pg_get_constraintdef_oid = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		oidVal := val1.(uint32)
+		oidVal := val1.(id.Internal)
 		def, err := getConstraintDef(ctx, oidVal)
 		return def, err
 	},
@@ -51,7 +51,7 @@ var pg_get_constraintdef_oid_bool = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Bool},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		oidVal := val1.(uint32)
+		oidVal := val1.(id.Internal)
 		pretty := val2.(bool)
 		if pretty {
 			return "", fmt.Errorf("pretty printing is not yet supported")
@@ -65,10 +65,10 @@ var pg_get_constraintdef_oid_bool = framework.Function2{
 }
 
 // getConstraintDef returns the definition of the constraint for the given OID.
-func getConstraintDef(ctx *sql.Context, oidVal uint32) (string, error) {
+func getConstraintDef(ctx *sql.Context, oidVal id.Internal) (string, error) {
 	var result string
-	err := oid.RunCallback(ctx, oidVal, oid.Callbacks{
-		Check: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, check oid.ItemCheck) (cont bool, err error) {
+	err := RunCallback(ctx, oidVal, Callbacks{
+		Check: func(ctx *sql.Context, schema ItemSchema, table ItemTable, check ItemCheck) (cont bool, err error) {
 			name := check.Item.Name
 			if len(name) > 0 {
 				name += " "
@@ -80,7 +80,7 @@ func getConstraintDef(ctx *sql.Context, oidVal uint32) (string, error) {
 			result = fmt.Sprintf("%sCHECK %s %sENFORCED", name, check.Item.CheckExpression, not)
 			return false, nil
 		},
-		ForeignKey: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, fk oid.ItemForeignKey) (cont bool, err error) {
+		ForeignKey: func(ctx *sql.Context, schema ItemSchema, table ItemTable, fk ItemForeignKey) (cont bool, err error) {
 			result = fmt.Sprintf(
 				"FOREIGN KEY %s (%s) REFERENCES %s (%s)",
 				fk.Item.Name,
@@ -90,7 +90,7 @@ func getConstraintDef(ctx *sql.Context, oidVal uint32) (string, error) {
 			)
 			return false, nil
 		},
-		Index: func(ctx *sql.Context, schema oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+		Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
 			colsStr := getColumnNamesString(index.Item.Expressions())
 			if strings.ToLower(index.Item.ID()) == "primary" {
 				result = fmt.Sprintf("PRIMARY KEY (%s)", colsStr)

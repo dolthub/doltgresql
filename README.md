@@ -127,10 +127,10 @@ getting_started=> select * from dolt.status;
  public.teams           | f      | new table
 (3 rows)
 
-getting_started=> call dolt_add('teams', 'employees', 'employees_teams');
- status
---------
-      0
+getting_started=> select dolt_add('teams', 'employees', 'employees_teams');
+ dolt_add
+----------
+ {0}
 (1 row)
 getting_started=> select * from dolt.status;
    table_name          | staged |  status
@@ -140,16 +140,16 @@ public.employees_teams | t      | new table
 public.teams           | t      | new table
 (3 rows)
 
-getting_started=> call dolt_commit('-m', 'Created initial schema');
-               hash
-----------------------------------
- peqq98e2dl5gscvfvic71e7j6ne34533
+getting_started=> select dolt_commit('-m', 'Created initial schema');
+            dolt_commit
+------------------------------------
+ {peqq98e2dl5gscvfvic71e7j6ne34533}
 (1 row)
 ```
 
 8. View the Dolt log.
 
-```
+```sql
 getting_started=> select * from dolt.log;
            commit_hash            | committer |       email        |        date         |          message
 ----------------------------------+-----------+--------------------+---------------------+----------------------------

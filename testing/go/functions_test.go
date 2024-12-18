@@ -895,15 +895,67 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
 					Cols:     []string{"indexrelid", "pg_get_expr"},
-					Expected: []sql.Row{{1613758464, nil}},
+					Expected: []sql.Row{{3757635986, nil}},
 				},
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, true) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
-					Expected: []sql.Row{{1613758464, nil}},
+					Expected: []sql.Row{{3757635986, nil}},
 				},
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, NULL) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
-					Expected: []sql.Row{{1613758464, nil}},
+					Expected: []sql.Row{{3757635986, nil}},
+				},
+			},
+		},
+		{
+			Name: "pg_get_serial_sequence",
+			SetUpScript: []string{
+				`create table t0 (id INTEGER NOT NULL PRIMARY KEY);`,
+				`create table t1 (id SERIAL PRIMARY KEY);`,
+				`create sequence t2_id_seq START 1 INCREMENT 3;`,
+				`create table t2 (id INTEGER NOT NULL DEFAULT nextval('t2_id_seq'));`,
+				// TODO: ALTER SEQUENCE OWNED BY is not supported yet. When the sequence is created
+				//       explicitly, separate from the column, the owner must be udpated before
+				//       pg_get_serial_sequence() will identify it.
+				//`ALTER SEQUENCE t2_id_seq OWNED BY t2.id;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT pg_get_serial_sequence('doesnotexist.t1', 'id');`,
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:       `SELECT pg_get_serial_sequence('doesnotexist', 'id');`,
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:       `SELECT pg_get_serial_sequence('t0', 'doesnotexist');`,
+					ExpectedErr: "does not exist",
+				},
+				{
+					// No sequence for column returns null
+					Query:    `SELECT pg_get_serial_sequence('t0', 'id');`,
+					Cols:     []string{"pg_get_serial_sequence"},
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_get_serial_sequence('public.t1', 'id');`,
+					Cols:     []string{"pg_get_serial_sequence"},
+					Expected: []sql.Row{{"public.t1_id_seq"}},
+				},
+				{
+					// Test with no schema specified
+					Query:    `SELECT pg_get_serial_sequence('t1', 'id');`,
+					Cols:     []string{"pg_get_serial_sequence"},
+					Expected: []sql.Row{{"public.t1_id_seq"}},
+				},
+				{
+					// TODO: This test shouldn't pass until we're able to use
+					//       ALTER SEQUENCE OWNED BY to set the owning column.
+					Skip:     true,
+					Query:    `SELECT pg_get_serial_sequence('t2', 'id');`,
+					Cols:     []string{"pg_get_serial_sequence"},
+					Expected: []sql.Row{{"public.t2_id_seq"}},
 				},
 			},
 		},
@@ -999,13 +1051,13 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='testschema';`,
 					Expected: []sql.Row{
-						{2954887168, "myview", "myschema"},
-						{2686451712, "mytable", "myschema"},
-						{2421161984, "test_seq", "testschema"},
-						{1615855616, "test_table_pkey", "testschema"},
-						{1615855617, "test_index", "testschema"},
-						{1615855618, "v1", "testschema"},
-						{2689597440, "test_table", "testschema"},
+						{3983475213, "myview", "myschema"},
+						{3905781870, "mytable", "myschema"},
+						{3582964517, "test_seq", "testschema"},
+						{3508950454, "test_table_pkey", "testschema"},
+						{3057657334, "test_index", "testschema"},
+						{521883837, "v1", "testschema"},
+						{1952237395, "test_table", "testschema"},
 					},
 				},
 				{
@@ -1013,19 +1065,19 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					Expected: []sql.Row{{"testschema"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(1615855617);`, // index from testschema
+					Query:    `select pg_table_is_visible(3057657334);`, // index from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2689597440);`, // table from testschema
+					Query:    `select pg_table_is_visible(1952237395);`, // table from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2421161984);`, // sequence from testschema
+					Query:    `select pg_table_is_visible(3582964517);`, // sequence from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2954887168);`, // view from myschema
+					Query:    `select pg_table_is_visible(3983475213);`, // view from myschema
 					Expected: []sql.Row{{"f"}},
 				},
 				{
@@ -1037,11 +1089,11 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					Expected: []sql.Row{{"myschema"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2954887168);`, // view from myschema
+					Query:    `select pg_table_is_visible(3983475213);`, // view from myschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(2686451712);`, // table from myschema
+					Query:    `select pg_table_is_visible(3905781870);`, // table from myschema
 					Expected: []sql.Row{{"t"}},
 				},
 			},
@@ -1113,12 +1165,12 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 				{
 					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='public';`,
 					Expected: []sql.Row{
-						{2955935744, "test_view", "public"},
-						{2687500288, "test", "public"},
+						{2707638987, "test_view", "public"},
+						{1397286223, "test", "public"},
 					},
 				},
 				{
-					Query:    `select pg_get_viewdef(2955935744);`,
+					Query:    `select pg_get_viewdef(2707638987);`,
 					Expected: []sql.Row{{"SELECT name FROM test"}},
 				},
 			},
@@ -1993,6 +2045,65 @@ func TestUnknownFunctions(t *testing.T) {
 				{
 					Query:       `SELECT group_concat(pk ORDER BY pk) FROM x;`,
 					ExpectedErr: "is not yet supported", // error message is kind of nonsensical, we just want to make sure there isn't a panic
+				},
+			},
+		},
+	})
+}
+
+func TestSelectFromFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "select * FROM functions",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')`,
+					Expected: []sql.Row{{"1,2,3,*,5"}},
+				},
+				{
+					Query:    `SELECT * FROM array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')`,
+					Expected: []sql.Row{{"1,2,3,*,5"}},
+				},
+				{
+					Query:    `SELECT * FROM array_to_string(ARRAY[37.89, 1.2], '_');`,
+					Expected: []sql.Row{{"37.89_1.2"}},
+				},
+				{
+					Query:    `SELECT * FROM format_type('text'::regtype, 4);`,
+					Expected: []sql.Row{{"text(4)"}},
+				},
+				{
+					Query:    `SELECT * from format_type(874938247, 20);`,
+					Expected: []sql.Row{{"???"}},
+				},
+				{
+					Query: `SELECT * FROM to_char(timestamp '2021-09-15 21:43:56.123456789', 'IW iw');`,
+					Expected: []sql.Row{
+						{"37 37"},
+					},
+				},
+				{
+					Query: `SELECT * from format_type('text'::regtype, -1);`,
+					Expected: []sql.Row{
+						{"text"},
+					},
+				},
+				{
+					Query:    `SELECT "left" FROM left('name'::name, 2);`,
+					Expected: []sql.Row{{"na"}},
+				},
+				{
+					Query:    "SELECT length FROM length('name'::name);",
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:    "SELECT lower FROM lower('naMe'::name);",
+					Expected: []sql.Row{{"name"}},
+				},
+				{
+					Query:    "SELECT * FROM lpad('name'::name, 7, '*');",
+					Expected: []sql.Row{{"***name"}},
 				},
 			},
 		},

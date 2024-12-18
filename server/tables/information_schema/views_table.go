@@ -18,9 +18,10 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/information_schema"
 
+	"github.com/dolthub/doltgresql/server/functions"
+
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // newViewsTable creates a new information_schema.VIEWS table.
@@ -50,8 +51,8 @@ var viewsSchema = sql.Schema{
 func viewsRowIter(ctx *sql.Context, catalog sql.Catalog) (sql.RowIter, error) {
 	var rows []sql.Row
 
-	err := oid.IterateCurrentDatabase(ctx, oid.Callbacks{
-		View: func(ctx *sql.Context, schema oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
 			stmts, err := parser.Parse(view.Item.CreateViewStatement)
 			if err != nil {
 				return false, err

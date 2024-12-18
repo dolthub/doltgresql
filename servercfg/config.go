@@ -141,8 +141,8 @@ type DoltgresRemotesapiConfig struct {
 }
 
 type DoltgresUserSessionVars struct {
-	Name string            `yaml:"name"`
-	Vars map[string]string `yaml:"vars,omitempty"`
+	Name string                 `yaml:"name"`
+	Vars map[string]interface{} `yaml:"vars,omitempty"`
 }
 
 type DoltgresConfig struct {

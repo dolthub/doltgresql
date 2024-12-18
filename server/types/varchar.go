@@ -15,8 +15,9 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
 	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 const (
@@ -37,9 +38,7 @@ var ErrLengthCannotExceed = errors.NewKind(`length for type %s cannot exceed 104
 
 // VarChar is a varchar that has an unbounded length.
 var VarChar = &DoltgresType{
-	OID:           uint32(oid.T_varchar),
-	Name:          "varchar",
-	Schema:        "pg_catalog",
+	ID:            toInternal("varchar"),
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -47,30 +46,30 @@ var VarChar = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__varchar),
-	InputFunc:     toFuncID("varcharin", oid.T_cstring, oid.T_oid, oid.T_int4),
-	OutputFunc:    toFuncID("varcharout", oid.T_varchar),
-	ReceiveFunc:   toFuncID("varcharrecv", oid.T_internal, oid.T_oid, oid.T_int4),
-	SendFunc:      toFuncID("varcharsend", oid.T_varchar),
-	ModInFunc:     toFuncID("varchartypmodin", oid.T__cstring),
-	ModOutFunc:    toFuncID("varchartypmodout", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_varchar"),
+	InputFunc:     toFuncID("varcharin", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:    toFuncID("varcharout", toInternal("varchar")),
+	ReceiveFunc:   toFuncID("varcharrecv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:      toFuncID("varcharsend", toInternal("varchar")),
+	ModInFunc:     toFuncID("varchartypmodin", toInternal("_cstring")),
+	ModOutFunc:    toFuncID("varchartypmodout", toInternal("int4")),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  100,
+	TypCollation:  id.NewInternal(id.Section_Collation, "pg_catalog", "default"),
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("bttextcmp", oid.T_text, oid.T_text), // TODO: temporarily added
+	CompareFunc:   toFuncID("bttextcmp", toInternal("text"), toInternal("text")), // TODO: temporarily added
 }
 
 // NewVarCharType returns VarChar type with type modifier set

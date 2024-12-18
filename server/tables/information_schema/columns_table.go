@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"github.com/lib/pq/oid"
 
+	"github.com/dolthub/doltgresql/core/id"
 	partypes "github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -302,8 +303,8 @@ func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 	dataType := ""
 	dgType, ok := colType.(*pgtypes.DoltgresType)
 	if ok {
-		udtName = dgType.Name
-		if t, ok := partypes.OidToType[oid.Oid(dgType.OID)]; ok {
+		udtName = dgType.Name()
+		if t, ok := partypes.OidToType[oid.Oid(id.Cache().ToOID(dgType.ID))]; ok {
 			dataType = t.SQLStandardName()
 		}
 	} else {
@@ -322,13 +323,13 @@ func getDataAndUdtType(colType sql.Type, colName string) (string, string) {
 func getColumnPrecisionAndScale(colType sql.Type) (interface{}, interface{}, interface{}) {
 	dgt, ok := colType.(*pgtypes.DoltgresType)
 	if ok {
-		switch oid.Oid(dgt.OID) {
+		switch dgt.ID {
 		// TODO: BitType
-		case oid.T_float4, oid.T_float8:
+		case pgtypes.Float32.ID, pgtypes.Float64.ID:
 			return typeToNumericPrecision[colType.Type()], int32(2), nil
-		case oid.T_int2, oid.T_int4, oid.T_int8:
+		case pgtypes.Int16.ID, pgtypes.Int32.ID, pgtypes.Int64.ID:
 			return typeToNumericPrecision[colType.Type()], int32(2), int32(0)
-		case oid.T_numeric:
+		case pgtypes.Numeric.ID:
 			var precision interface{}
 			var scale interface{}
 			tm := dgt.GetAttTypMod()
@@ -382,10 +383,10 @@ func getCharAndCollNamesAndCharMaxAndOctetLens(ctx *sql.Context, colType sql.Typ
 
 func getDatetimePrecision(colType sql.Type) interface{} {
 	if dgType, ok := colType.(*pgtypes.DoltgresType); ok {
-		switch oid.Oid(dgType.OID) {
-		case oid.T_date:
+		switch dgType.ID {
+		case pgtypes.Date.ID:
 			return int32(0)
-		case oid.T_time, oid.T_timetz, oid.T_timestamp, oid.T_timestamptz:
+		case pgtypes.Time.ID, pgtypes.TimeTZ.ID, pgtypes.Timestamp.ID, pgtypes.TimestampTZ.ID:
 			// TODO: TIME length not yet supported
 			return int32(6)
 		default:

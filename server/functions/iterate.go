@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package oid
+package functions
 
 import (
 	"sort"
@@ -21,11 +21,10 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/expression/function"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Callbacks are a set of callbacks that are used to simplify and coalesce all iteration involving database elements and
@@ -38,8 +37,6 @@ type Callbacks struct {
 	ColumnDefault func(ctx *sql.Context, schema ItemSchema, table ItemTable, check ItemColumnDefault) (cont bool, err error)
 	// ForeignKey is the callback for foreign keys.
 	ForeignKey func(ctx *sql.Context, schema ItemSchema, table ItemTable, foreignKey ItemForeignKey) (cont bool, err error)
-	// Function is the callback for functions.
-	Function func(ctx *sql.Context, function ItemFunction) (cont bool, err error)
 	// Index is the callback for indexes.
 	Index func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error)
 	// Schema is the callback for schemas/namespaces.
@@ -48,8 +45,6 @@ type Callbacks struct {
 	Sequence func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error)
 	// Table is the callback for tables.
 	Table func(ctx *sql.Context, schema ItemSchema, table ItemTable) (cont bool, err error)
-	// Types is the callback for types.
-	Type func(ctx *sql.Context, typ ItemType) (cont bool, err error)
 	// View is the callback for views.
 	View func(ctx *sql.Context, schema ItemSchema, view ItemView) (cont bool, err error)
 	// SearchSchemas represents the search path. If left empty, then all schemas are iterated over. If supplied, then
@@ -59,9 +54,8 @@ type Callbacks struct {
 
 // ItemCheck contains the relevant information to pass to the Check callback.
 type ItemCheck struct {
-	Index int
-	OID   uint32
-	Item  sql.CheckDefinition
+	OID  id.Internal
+	Item sql.CheckDefinition
 }
 
 // ColumnWithIndex is a helper struct to pass the column and its index to the ColumnDefault callback.
@@ -72,37 +66,26 @@ type ColumnWithIndex struct {
 
 // ItemColumnDefault contains the relevant information to pass to the ColumnDefault callback.
 type ItemColumnDefault struct {
-	Index int
-	OID   uint32
-	Item  ColumnWithIndex
+	OID  id.Internal
+	Item ColumnWithIndex
 }
 
 // ItemForeignKey contains the relevant information to pass to the ForeignKey callback.
 type ItemForeignKey struct {
-	Index int
-	OID   uint32
-	Item  sql.ForeignKeyConstraint
-}
-
-// ItemFunction contains the relevant information to pass to the Function callback.
-type ItemFunction struct {
-	Index int
-	OID   uint32
-	Item  sql.Function
+	OID  id.Internal
+	Item sql.ForeignKeyConstraint
 }
 
 // ItemIndex contains the relevant information to pass to the Index callback.
 type ItemIndex struct {
-	Index int
-	OID   uint32
-	Item  sql.Index
+	OID  id.Internal
+	Item sql.Index
 }
 
 // ItemSchema contains the relevant information to pass to the Schema callback.
 type ItemSchema struct {
-	Index int
-	OID   uint32
-	Item  sql.DatabaseSchema
+	OID  id.Internal
+	Item sql.DatabaseSchema
 }
 
 func (is ItemSchema) IsSystemSchema() bool {
@@ -111,48 +94,26 @@ func (is ItemSchema) IsSystemSchema() bool {
 
 // ItemSequence contains the relevant information to pass to the Sequence callback.
 type ItemSequence struct {
-	Index int
-	OID   uint32
-	Item  *sequences.Sequence
+	OID  id.Internal
+	Item *sequences.Sequence
 }
 
 // ItemTable contains the relevant information to pass to the Table callback.
 type ItemTable struct {
-	Index int
-	OID   uint32
-	Item  sql.Table
-}
-
-// ItemType contains the relevant information to pass to the DoltgresType callback.
-type ItemType struct {
-	// TODO: add Index when we add custom types
-	OID  uint32
-	Item *pgtypes.DoltgresType
+	OID  id.Internal
+	Item sql.Table
 }
 
 // ItemView contains the relevant information to pass to the View callback.
 type ItemView struct {
-	Index int
-	OID   uint32
-	Item  sql.ViewDefinition
+	OID  id.Internal
+	Item sql.ViewDefinition
 }
 
 // IterateDatabase iterates over the provided database, calling each callback as the relevant items are iterated
 // over. This is a central function that homogenizes all iteration, since OIDs depend on a deterministic iteration over
 // items. This function should be expanded as we add more items to iterate over.
 func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) error {
-	// Functions and types aren't contained within a schema for now, so we'll iterate over those separately
-	if callbacks.Function != nil {
-		if err := iterateFunctions(ctx, callbacks); err != nil {
-			return err
-		}
-	}
-	if callbacks.Type != nil {
-		if err := iterateTypes(ctx, callbacks); err != nil {
-			return err
-		}
-	}
-
 	cat := sqlserver.GetRunningServer().Engine.Analyzer.Catalog
 	currentDatabase, err := cat.Database(ctx, database)
 	if err != nil {
@@ -194,66 +155,14 @@ func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
 	return IterateDatabase(ctx, ctx.GetCurrentDatabase(), callbacks)
 }
 
-// iterateFunctions is called by IterateCurrentDatabase to handle functions.
-func iterateFunctions(ctx *sql.Context, callbacks Callbacks) error {
-	for functionIndex, f := range function.BuiltIns {
-		itemFunction := ItemFunction{
-			Index: functionIndex,
-			OID:   CreateOID(Section_Function, 0, functionIndex),
-			Item:  f,
-		}
-		if cont, err := callbacks.Function(ctx, itemFunction); err != nil {
-			return err
-		} else if !cont {
-			return nil
-		}
-	}
-	return nil
-}
-
-// iterateTypes is called by IterateCurrentDatabase to handle types
-func iterateTypes(ctx *sql.Context, callbacks Callbacks) error {
-	// We only iterate over the types that are present in the pg_type table.
-	// This means that we ignore the schema if one is given and not equal to "pg_catalog".
-	// If no schemas were given, then we'll automatically look for the types in "pg_catalog".
-	if len(callbacks.SearchSchemas) > 0 {
-		containsPgCatalog := false
-		for _, schema := range callbacks.SearchSchemas {
-			if schema == "pg_catalog" {
-				containsPgCatalog = true
-				break
-			}
-		}
-		if !containsPgCatalog {
-			return nil
-		}
-	}
-	// this gets all built-in types
-	for _, t := range pgtypes.GetAllTypes() {
-		cont, err := callbacks.Type(ctx, ItemType{
-			OID:  t.OID,
-			Item: t,
-		})
-		if err != nil {
-			return err
-		}
-		if !cont {
-			return nil
-		}
-	}
-	// TODO: add domain and custom types when supported
-	return nil
-}
-
 // iterateSchemas is called by IterateCurrentDatabase to handle schemas and elements contained within schemas.
 func iterateSchemas(ctx *sql.Context, callbacks Callbacks, sortedSchemas []sql.DatabaseSchema, sequenceMap map[string][]*sequences.Sequence) error {
 	// Iterate over the sorted schemas by the iteration order
 	for _, schemaIndex := range callbacks.schemaIterationOrder(sortedSchemas) {
 		schema := sortedSchemas[schemaIndex]
 		itemSchema := ItemSchema{
-			Index: schemaIndex,
-			OID:   CreateOID(Section_Namespace, 0, schemaIndex),
-			Item:  schema,
+			OID:  id.NewInternal(id.Section_Namespace, schema.SchemaName()),
+			Item: schema,
 		}
 		// Check for a schema callback
 		if callbacks.Schema != nil {
@@ -270,11 +179,10 @@ func iterateSchemas(ctx *sql.Context, callbacks Callbacks, sortedSchemas []sql.D
 			}
 		}
 		// Iterate over sequences. The map will only be populated if the sequence callback exists.
-		for sequenceIndex, sequence := range sequenceMap[schema.SchemaName()] {
+		for _, sequence := range sequenceMap[schema.SchemaName()] {
 			itemSequence := ItemSequence{
-				Index: sequenceIndex,
-				OID:   CreateOID(Section_Sequence, schemaIndex, sequenceIndex),
-				Item:  sequence,
+				OID:  id.NewInternal(id.Section_Sequence, schema.SchemaName(), sequence.OwnerTable, sequence.Name),
+				Item: sequence,
 			}
 			if cont, err := callbacks.Sequence(ctx, itemSchema, itemSequence); err != nil {
 				return err
@@ -309,11 +217,10 @@ func iterateViews(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema) 
 		sort.Slice(views, func(i, j int) bool {
 			return views[i].Name < views[j].Name
 		})
-		for viewIndex, view := range views {
+		for _, view := range views {
 			itemView := ItemView{
-				Index: viewIndex,
-				OID:   CreateOID(Section_View, itemSchema.Index, viewIndex),
-				Item:  view,
+				OID:  id.NewInternal(id.Section_View, itemSchema.Item.SchemaName(), view.Name),
+				Item: view,
 			}
 			if cont, err := callbacks.View(ctx, itemSchema, itemView); err != nil {
 				return err
@@ -334,7 +241,7 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 	indexCount := -1
 
 	// Iterate over the sorted table names
-	for tableIndex, tableName := range sortedTableNames {
+	for _, tableName := range sortedTableNames {
 		table, ok, err := itemSchema.Item.GetTableInsensitive(ctx, tableName)
 		if err != nil {
 			return err
@@ -342,9 +249,8 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 			return sql.ErrTableNotFound.New(tableName)
 		}
 		itemTable := ItemTable{
-			Index: tableIndex,
-			OID:   CreateOID(Section_Table, itemSchema.Index, tableIndex),
-			Item:  table,
+			OID:  id.NewInternal(id.Section_Table, itemSchema.Item.SchemaName(), table.Name()),
+			Item: table,
 		}
 
 		// Check for a check constraint callback
@@ -404,9 +310,8 @@ func iterateChecks(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		for _, check := range checks {
 			*checkCount++
 			itemCheck := ItemCheck{
-				Index: *checkCount,
-				OID:   CreateOID(Section_Check, itemSchema.Index, *checkCount),
-				Item:  check,
+				OID:  id.NewInternal(id.Section_Check, itemSchema.Item.SchemaName(), itemTable.Item.Name(), check.Name),
+				Item: check,
 			}
 			if cont, err := callbacks.Check(ctx, itemSchema, itemTable, itemCheck); err != nil {
 				return err
@@ -425,9 +330,8 @@ func iterateColumnDefaults(ctx *sql.Context, callbacks Callbacks, itemSchema Ite
 		if col.Default != nil {
 			*columnDefaultCount++
 			itemColDefault := ItemColumnDefault{
-				Index: *columnDefaultCount,
-				OID:   CreateOID(Section_ColumnDefault, itemSchema.Index, *columnDefaultCount),
-				Item:  ColumnWithIndex{col, i},
+				OID:  id.NewInternal(id.Section_ColumnDefault, itemSchema.Item.SchemaName(), itemTable.Item.Name(), col.Name),
+				Item: ColumnWithIndex{col, i},
 			}
 			if cont, err := callbacks.ColumnDefault(ctx, itemSchema, itemTable, itemColDefault); err != nil {
 				return err
@@ -453,9 +357,8 @@ func iterateForeignKeys(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSc
 		for _, foreignKey := range foreignKeys {
 			*foreignKeyCount++
 			itemForeignKey := ItemForeignKey{
-				Index: *foreignKeyCount,
-				OID:   CreateOID(Section_ForeignKey, itemSchema.Index, *foreignKeyCount),
-				Item:  foreignKey,
+				OID:  id.NewInternal(id.Section_ForeignKey, itemSchema.Item.SchemaName(), itemTable.Item.Name(), foreignKey.Name),
+				Item: foreignKey,
 			}
 			if cont, err := callbacks.ForeignKey(ctx, itemSchema, itemTable, itemForeignKey); err != nil {
 				return err
@@ -480,9 +383,8 @@ func iterateIndexes(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema
 		for _, index := range indexes {
 			*indexCount++
 			itemIndex := ItemIndex{
-				Index: *indexCount,
-				OID:   CreateOID(Section_Index, itemSchema.Index, *indexCount),
-				Item:  index,
+				OID:  id.NewInternal(id.Section_Index, itemSchema.Item.SchemaName(), itemTable.Item.Name(), index.ID()),
+				Item: index,
 			}
 			if cont, err := callbacks.Index(ctx, itemSchema, itemTable, itemIndex); err != nil {
 				return err
@@ -497,17 +399,9 @@ func iterateIndexes(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema
 // RunCallback iterates over schemas, etc. to find the item that the given oid points to. Once the item has been found,
 // the relevant callback is called with the item. This means that, at most, only one callback will be called. If the
 // item cannot be found, then no callbacks are called.
-func RunCallback(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
-	section, schemaIndex, dataIndex := ParseOID(oid)
-	if ok := runCallbackValidation(ctx, oid, callbacks); !ok {
+func RunCallback(ctx *sql.Context, internalID id.Internal, callbacks Callbacks) error {
+	if ok := runCallbackValidation(ctx, internalID, callbacks); !ok {
 		return nil
-	}
-	// Functions and types aren't contained within a schema for now, so we'll iterate over those here
-	if section == Section_Function {
-		return runFunction(ctx, oid, callbacks)
-	}
-	if section == Section_BuiltIn {
-		return runType(ctx, oid, callbacks)
 	}
 	// We know we have the relevant callback for the given section, so we'll grab the schema
 	doltSession := dsess.DSessFromSess(ctx.Session)
@@ -524,25 +418,29 @@ func RunCallback(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
 			return schemas[i].SchemaName() < schemas[j].SchemaName()
 		})
 		// First check if we're only looking for the schema
-		if section == Section_Namespace {
-			return runNamespace(ctx, oid, callbacks, schemas)
+		if internalID.Section() == id.Section_Namespace {
+			return runNamespace(ctx, internalID, callbacks, schemas)
 		}
 		// We're not looking for the schema, so we'll just select the target schema containing what we're looking for
-		if schemaIndex >= len(schemas) {
+		var itemSchema ItemSchema
+		for _, schema := range schemas {
+			if schema.SchemaName() == internalID.Segment(0) {
+				itemSchema = ItemSchema{
+					OID:  id.NewInternal(id.Section_Namespace, schema.SchemaName()),
+					Item: schema,
+				}
+			}
+		}
+		if !itemSchema.OID.IsValid() {
 			return nil
 		}
-		itemSchema := ItemSchema{
-			Index: schemaIndex,
-			OID:   oid,
-			Item:  schemas[schemaIndex],
-		}
 		// Check if we're looking for a sequence
-		if section == Section_Sequence {
-			return runSequence(ctx, oid, callbacks, itemSchema)
+		if internalID.Section() == id.Section_Sequence {
+			return runSequence(ctx, internalID, callbacks, itemSchema)
 		}
 		// Check if we're looking for a view
-		if section == Section_View {
-			return runView(ctx, oid, callbacks, itemSchema)
+		if internalID.Section() == id.Section_View {
+			return runView(ctx, internalID, callbacks, itemSchema)
 		}
 		// Before diving inside of tables, we'll check if we're looking for a table
 		tableNames, err := itemSchema.Item.GetTableNames(ctx)
@@ -552,8 +450,8 @@ func RunCallback(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
 		sort.Slice(tableNames, func(i, j int) bool {
 			return tableNames[i] < tableNames[j]
 		})
-		if section == Section_Table {
-			return runTable(ctx, oid, callbacks, itemSchema, tableNames)
+		if internalID.Section() == id.Section_Table {
+			return runTable(ctx, internalID, callbacks, itemSchema, tableNames)
 		}
 		// All other sections are items on tables, so we'll iterate over those now.
 		// We hold the count here since it increments across tables.
@@ -566,34 +464,33 @@ func RunCallback(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
 				return sql.ErrTableNotFound.New(tableName)
 			}
 			itemTable := ItemTable{
-				Index: dataIndex,
-				OID:   oid,
-				Item:  table,
+				OID:  id.NewInternal(id.Section_Table, itemSchema.Item.SchemaName(), table.Name()),
+				Item: table,
 			}
-			switch section {
-			case Section_Check:
-				if ok, err := runCheck(ctx, oid, callbacks, itemSchema, itemTable, &countedIndex); err != nil {
+			switch internalID.Section() {
+			case id.Section_Check:
+				if ok, err := runCheck(ctx, internalID, callbacks, itemSchema, itemTable, &countedIndex); err != nil {
 					return err
 				} else if ok {
 					continue
 				}
 				return nil
-			case Section_ColumnDefault:
-				if ok, err := runColumnDefault(ctx, oid, callbacks, itemSchema, itemTable, &countedIndex); err != nil {
+			case id.Section_ColumnDefault:
+				if ok, err := runColumnDefault(ctx, internalID, callbacks, itemSchema, itemTable, &countedIndex); err != nil {
 					return err
 				} else if ok {
 					continue
 				}
 				return nil
-			case Section_ForeignKey:
-				if ok, err := runForeignKey(ctx, oid, callbacks, itemSchema, itemTable, &countedIndex); err != nil {
+			case id.Section_ForeignKey:
+				if ok, err := runForeignKey(ctx, internalID, callbacks, itemSchema, itemTable, &countedIndex); err != nil {
 					return err
 				} else if ok {
 					continue
 				}
 				return nil
-			case Section_Index:
-				if ok, err := runIndex(ctx, oid, callbacks, itemSchema, itemTable, &countedIndex); err != nil {
+			case id.Section_Index:
+				if ok, err := runIndex(ctx, internalID, callbacks, itemSchema, itemTable); err != nil {
 					return err
 				} else if ok {
 					continue
@@ -608,267 +505,208 @@ func RunCallback(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
 }
 
 // runCheck is called by RunCallback to handle Section_Check.
-func runCheck(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
-	_, _, dataIndex := ParseOID(oid)
+func runCheck(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
+	if itemSchema.Item.SchemaName() != internalID.Segment(0) && itemTable.Item.Name() != internalID.Segment(1) {
+		return true, nil
+	}
 	if checkTable, ok := itemTable.Item.(sql.CheckTable); ok {
 		checks, err := checkTable.GetChecks(ctx)
 		if err != nil {
 			return false, err
 		}
-		if dataIndex >= *countedIndex+len(checks) {
-			*countedIndex += len(checks)
-			return true, nil
+		for _, check := range checks {
+			if check.Name == internalID.Segment(2) {
+				itemCheck := ItemCheck{
+					OID:  internalID,
+					Item: check,
+				}
+				_, err = callbacks.Check(ctx, itemSchema, itemTable, itemCheck)
+				return false, err
+			}
 		}
-		sort.Slice(checks, func(i, j int) bool {
-			return checks[i].Name < checks[j].Name
-		})
-		itemCheck := ItemCheck{
-			Index: dataIndex,
-			OID:   oid,
-			Item:  checks[dataIndex-(*countedIndex)],
-		}
-		_, err = callbacks.Check(ctx, itemSchema, itemTable, itemCheck)
-		return false, err
 	}
 	return true, nil
 }
 
 // runColumnDefault is called by RunCallback to handle Section_ColumnDefault.
-func runColumnDefault(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
-	_, _, dataIndex := ParseOID(oid)
+func runColumnDefault(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
+	if itemSchema.Item.SchemaName() != internalID.Segment(0) && itemTable.Item.Name() != internalID.Segment(1) {
+		return true, nil
+	}
 	columns := itemTable.Item.Schema()
-
 	var colDefaults []ColumnWithIndex
 	for i, col := range columns {
 		if col.Default != nil {
 			colDefaults = append(colDefaults, ColumnWithIndex{col, i})
 		}
 	}
-	if dataIndex >= *countedIndex+len(colDefaults) {
-		*countedIndex += len(colDefaults)
-		return true, nil
-	}
-
-	itemColDefault := ItemColumnDefault{
-		Index: dataIndex,
-		OID:   oid,
-		Item:  colDefaults[dataIndex-(*countedIndex)],
-	}
-	_, err = callbacks.ColumnDefault(ctx, itemSchema, itemTable, itemColDefault)
-	if err != nil {
-		return false, err
+	for _, col := range colDefaults {
+		if col.Column.Name == internalID.Segment(2) {
+			itemColDefault := ItemColumnDefault{
+				OID:  internalID,
+				Item: col,
+			}
+			_, err = callbacks.ColumnDefault(ctx, itemSchema, itemTable, itemColDefault)
+			if err != nil {
+				return false, err
+			}
+		}
 	}
 	return true, nil
 }
 
 // runForeignKey is called by RunCallback to handle Section_ForeignKey.
-func runForeignKey(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
-	_, _, dataIndex := ParseOID(oid)
-	if fkTable, ok := itemTable.Item.(sql.ForeignKeyTable); ok {
+func runForeignKey(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
+	if fkTable, ok := itemTable.Item.(sql.ForeignKeyTable); ok && itemSchema.Item.SchemaName() == internalID.Segment(0) && itemTable.Item.Name() == internalID.Segment(1) {
 		foreignKeys, err := fkTable.GetDeclaredForeignKeys(ctx)
 		if err != nil {
 			return false, err
 		}
-		if dataIndex >= *countedIndex+len(foreignKeys) {
-			*countedIndex += len(foreignKeys)
-			return true, nil
+		for _, foreignKey := range foreignKeys {
+			if foreignKey.Name == internalID.Segment(2) {
+				itemForeignKey := ItemForeignKey{
+					OID:  internalID,
+					Item: foreignKey,
+				}
+				_, err = callbacks.ForeignKey(ctx, itemSchema, itemTable, itemForeignKey)
+				return false, err
+			}
 		}
-		sort.Slice(foreignKeys, func(i, j int) bool {
-			return foreignKeys[i].Name < foreignKeys[j].Name
-		})
-		itemForeignKey := ItemForeignKey{
-			Index: dataIndex,
-			OID:   oid,
-			Item:  foreignKeys[dataIndex-(*countedIndex)],
-		}
-		_, err = callbacks.ForeignKey(ctx, itemSchema, itemTable, itemForeignKey)
-		return false, err
 	}
 	return true, nil
 }
 
-// runFunction is called by RunCallback to handle Section_Function.
-func runFunction(ctx *sql.Context, oid uint32, callbacks Callbacks) error {
-	_, _, dataIndex := ParseOID(oid)
-	if dataIndex >= len(function.BuiltIns) {
-		return nil
-	}
-	itemFunction := ItemFunction{
-		Index: dataIndex,
-		OID:   oid,
-		Item:  function.BuiltIns[dataIndex],
-	}
-	_, err := callbacks.Function(ctx, itemFunction)
-	return err
-}
-
 // runIndex is called by RunCallback to handle Section_Index.
-func runIndex(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
-	_, _, dataIndex := ParseOID(oid)
-	if indexedTable, ok := itemTable.Item.(sql.IndexAddressable); ok {
+func runIndex(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable) (cont bool, err error) {
+	if indexedTable, ok := itemTable.Item.(sql.IndexAddressable); ok && itemSchema.Item.SchemaName() == internalID.Segment(0) && itemTable.Item.Name() == internalID.Segment(1) {
 		indexes, err := indexedTable.GetIndexes(ctx)
 		if err != nil {
 			return false, err
 		}
-		if dataIndex >= *countedIndex+len(indexes) {
-			*countedIndex += len(indexes)
-			return true, nil
+		for _, index := range indexes {
+			if index.ID() == internalID.Segment(2) && itemTable.Item.Name() == index.Table() {
+				_, err = callbacks.Index(ctx, itemSchema, itemTable, ItemIndex{
+					OID:  internalID,
+					Item: index,
+				})
+				return false, err
+			}
 		}
-		sort.Slice(indexes, func(i, j int) bool {
-			return indexes[i].ID() < indexes[j].ID()
-		})
-		itemIndex := ItemIndex{
-			Index: dataIndex,
-			OID:   oid,
-			Item:  indexes[dataIndex-*countedIndex],
-		}
-		_, err = callbacks.Index(ctx, itemSchema, itemTable, itemIndex)
-		return false, err
+		return true, nil
 	}
 	return true, nil
 }
 
 // runNamespace is called by RunCallback to handle Section_Namespace.
-func runNamespace(ctx *sql.Context, oid uint32, callbacks Callbacks, sortedSchemas []sql.DatabaseSchema) error {
-	_, _, dataIndex := ParseOID(oid)
-	if dataIndex >= len(sortedSchemas) {
-		return nil
+func runNamespace(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, sortedSchemas []sql.DatabaseSchema) error {
+	for _, schema := range sortedSchemas {
+		if schema.SchemaName() == internalID.Segment(0) {
+			itemSchema := ItemSchema{
+				OID:  internalID,
+				Item: schema,
+			}
+			_, err := callbacks.Schema(ctx, itemSchema)
+			return err
+		}
 	}
-	itemSchema := ItemSchema{
-		Index: dataIndex,
-		OID:   oid,
-		Item:  sortedSchemas[dataIndex],
-	}
-	_, err := callbacks.Schema(ctx, itemSchema)
-	return err
+	return nil
 }
 
 // runSequence is called by RunCallback to handle Section_Sequence.
-func runSequence(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema) error {
-	_, _, dataIndex := ParseOID(oid)
+func runSequence(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, itemSchema ItemSchema) error {
 	collection, err := core.GetSequencesCollectionFromContext(ctx)
 	if err != nil {
 		return err
 	}
 	sequenceMap, _, _ := collection.GetAllSequences()
 	sequencesInSchema, ok := sequenceMap[itemSchema.Item.SchemaName()]
-	if !ok || dataIndex >= len(sequencesInSchema) {
+	if !ok {
 		return nil
 	}
-	itemSequence := ItemSequence{
-		Index: dataIndex,
-		OID:   oid,
-		Item:  sequencesInSchema[dataIndex],
+	for _, seq := range sequencesInSchema {
+		if seq.Name == internalID.Segment(2) {
+			_, err = callbacks.Sequence(ctx, itemSchema, ItemSequence{
+				OID:  internalID,
+				Item: seq,
+			})
+			return err
+		}
 	}
-	_, err = callbacks.Sequence(ctx, itemSchema, itemSequence)
-	return err
+	return nil
 }
 
 // runTable is called by RunCallback to handle Section_Table.
-func runTable(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema, sortedTableNames []string) error {
-	_, _, dataIndex := ParseOID(oid)
-	if dataIndex >= len(sortedTableNames) {
-		return nil
-	}
-	table, ok, err := itemSchema.Item.GetTableInsensitive(ctx, sortedTableNames[dataIndex])
+func runTable(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, itemSchema ItemSchema, sortedTableNames []string) error {
+	table, ok, err := itemSchema.Item.GetTableInsensitive(ctx, internalID.Segment(1))
 	if err != nil {
 		return err
 	} else if !ok {
-		return sql.ErrTableNotFound.New(sortedTableNames[dataIndex])
+		return sql.ErrTableNotFound.New(internalID.Segment(1))
 	}
 	itemTable := ItemTable{
-		Index: dataIndex,
-		OID:   oid,
-		Item:  table,
+		OID:  internalID,
+		Item: table,
 	}
 	_, err = callbacks.Table(ctx, itemSchema, itemTable)
 	return err
 }
 
-// runType is called by RunCallback to handle types within Section_BuiltIn.
-func runType(ctx *sql.Context, toid uint32, callbacks Callbacks) error {
-	if t := pgtypes.GetTypeByOID(toid); !t.IsEmptyType() {
-		itemType := ItemType{
-			OID:  toid,
-			Item: t,
-		}
-		_, err := callbacks.Type(ctx, itemType)
-		return err
-	}
-	return nil
-}
-
 // runView is called by RunCallback to handle Section_View.
-func runView(ctx *sql.Context, oid uint32, callbacks Callbacks, itemSchema ItemSchema) error {
-	_, _, dataIndex := ParseOID(oid)
-	if viewDatabase, ok := itemSchema.Item.(sql.ViewDatabase); ok {
+func runView(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, itemSchema ItemSchema) error {
+	if viewDatabase, ok := itemSchema.Item.(sql.ViewDatabase); ok && itemSchema.Item.SchemaName() == internalID.Segment(0) {
 		views, err := viewDatabase.AllViews(ctx)
 		if err != nil {
 			return err
 		}
-		sort.Slice(views, func(i, j int) bool {
-			return views[i].Name < views[j].Name
-		})
-		if dataIndex >= len(views) {
-			return nil
+		for _, view := range views {
+			if view.Name == internalID.Segment(1) {
+				_, err = callbacks.View(ctx, itemSchema, ItemView{
+					OID:  internalID,
+					Item: view,
+				})
+				return err
+			}
 		}
-		itemView := ItemView{
-			Index: dataIndex,
-			OID:   oid,
-			Item:  views[dataIndex],
-		}
-		_, err = callbacks.View(ctx, itemSchema, itemView)
-		return err
 	}
 	return nil
 }
 
 // runCallbackValidation ensures that the callbacks match the given oid.
-func runCallbackValidation(ctx *sql.Context, oid uint32, callbacks Callbacks) bool {
-	section, _, _ := ParseOID(oid)
+func runCallbackValidation(ctx *sql.Context, internalID id.Internal, callbacks Callbacks) bool {
 	// Check that we have the relevant callback, and return early if we do not
-	switch section {
-	case Section_BuiltIn:
-		// For now, only the built-in types are checked in the built-in section
-		if callbacks.Type == nil {
-			return false
-		}
-	case Section_Check:
+	switch internalID.Section() {
+	case id.Section_Check:
 		if callbacks.Check == nil {
 			return false
 		}
-	case Section_ColumnDefault:
+	case id.Section_ColumnDefault:
 		if callbacks.ColumnDefault == nil {
 			return false
 		}
-	case Section_Database:
+	case id.Section_Database:
 		// TODO: we inject information_schema, so we need to figure out how to model that here
 		return false
-	case Section_ForeignKey:
+	case id.Section_ForeignKey:
 		if callbacks.ForeignKey == nil {
 			return false
 		}
-	case Section_Function:
-		if callbacks.Function == nil {
-			return false
-		}
-	case Section_Index:
+	case id.Section_Index:
 		if callbacks.Index == nil {
 			return false
 		}
-	case Section_Namespace:
+	case id.Section_Namespace:
 		if callbacks.Schema == nil {
 			return false
 		}
-	case Section_Sequence:
+	case id.Section_Sequence:
 		if callbacks.Sequence == nil {
 			return false
 		}
-	case Section_Table:
+	case id.Section_Table:
 		if callbacks.Table == nil {
 			return false
 		}
-	case Section_View:
+	case id.Section_View:
 		if callbacks.View == nil {
 			return false
 		}

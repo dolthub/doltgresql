@@ -44,7 +44,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
 			if doltgresType.IsSerial {
 				var maxValue int64
-				switch doltgresType.Name {
+				switch doltgresType.Name() {
 				case "smallserial":
 					col.Type = pgtypes.Int16
 					maxValue = 32767
@@ -101,7 +101,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				}
 				ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", &sequences.Sequence{
 					Name:        sequenceName,
-					DataTypeOID: col.Type.(*pgtypes.DoltgresType).OID,
+					DataTypeID:  col.Type.(*pgtypes.DoltgresType).ID,
 					Persistence: sequences.Persistence_Permanent,
 					Start:       1,
 					Current:     1,
@@ -111,7 +111,6 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					Cache:       1,
 					Cycle:       false,
 					IsAtEnd:     false,
-					OwnerUser:   "",
 					OwnerTable:  createTable.Name(),
 					OwnerColumn: col.Name,
 				}))

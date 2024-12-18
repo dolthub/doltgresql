@@ -23,7 +23,6 @@ import (
 // IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
 // Comments are to match the Stringer formatting rules in the original rule definition file, but we can't generate
 // human-readable strings for these extended types because they are in another package.
-// We could move these into the main GMS package to fix this deficit, if we wanted.
 const (
 	ruleId_TypeSanitizer        analyzer.RuleId = iota + 1000 // typeSanitizer
 	ruleId_AddDomainConstraints                               // addDomainConstraints
@@ -32,7 +31,6 @@ const (
 	ruleId_AssignUpdateCasts            // assignUpdateCasts
 	ruleId_ReplaceIndexedTables         // replaceIndexedTables
 	ruleId_ReplaceSerial                // replaceSerial
-	ruleId_ReplaceDropTable             // replaceDropTable
 	ruleId_AddImplicitPrefixLengths     // addImplicitPrefixLengths
 	ruleId_InsertContextRootFinalizer   // insertContextRootFinalizer
 	ruleId_ResolveType                  // resolveType
@@ -64,7 +62,6 @@ func Init() {
 
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},
-		analyzer.Rule{Id: ruleId_ReplaceDropTable, Apply: ReplaceDropTable},
 		analyzer.Rule{Id: ruleId_ReplaceArithmeticExpressions, Apply: ReplaceArithmeticExpressions},
 	)
 

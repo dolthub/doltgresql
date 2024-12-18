@@ -16,6 +16,7 @@ package types
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"math"
 	"reflect"
@@ -25,9 +26,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/lib/pq/oid"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/utils"
@@ -35,10 +36,7 @@ import (
 
 // DoltgresType represents a single type.
 type DoltgresType struct {
-	OID           uint32
-	Name          string
-	Schema        string // TODO: should be `uint32`.
-	Owner         string // TODO: should be `uint32`.
+	ID            id.Internal
 	TypLength     int16
 	PassedByVal   bool
 	TypType       TypeType
@@ -46,10 +44,10 @@ type DoltgresType struct {
 	IsPreferred   bool
 	IsDefined     bool
 	Delimiter     string
-	RelID         uint32 // for Composite types
+	RelID         id.Internal // for Composite types
 	SubscriptFunc uint32
-	Elem          uint32
-	Array         uint32
+	Elem          id.Internal
+	Array         id.Internal
 	InputFunc     uint32
 	OutputFunc    uint32
 	ReceiveFunc   uint32
@@ -59,35 +57,37 @@ type DoltgresType struct {
 	AnalyzeFunc   uint32
 	Align         TypeAlignment
 	Storage       TypeStorage
-	NotNull       bool   // for Domain types
-	BaseTypeOID   uint32 // for Domain types
-	TypMod        int32  // for Domain types
-	NDims         int32  // for Domain types
-	TypCollation  uint32
+	NotNull       bool        // for Domain types
+	BaseTypeID    id.Internal // for Domain types
+	TypMod        int32       // for Domain types
+	NDims         int32       // for Domain types
+	TypCollation  id.Internal
 	DefaulBin     string // for Domain types
 	Default       string
 	Acl           []string // TODO: list of privileges
 
 	// Below are not part of pg_type fields
-	Checks       []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
-	attTypMod    int32                  // TODO: should be in `pg_attribute.atttypmod`
-	CompareFunc  uint32                 // TODO: should be in `pg_amproc`
-	InternalName string                 // Name and InternalName differ for some types. e.g.: "int2" vs "smallint"
+	Checks         []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
+	attTypMod      int32                  // TODO: should be in `pg_attribute.atttypmod`
+	CompareFunc    uint32                 // TODO: should be in `pg_amproc`
+	InternalName   string                 // Name() and InternalName differ for some types. e.g.: "int2" vs "smallint"
+	EnumLabels     map[string]EnumLabel   // TODO: should be in `pg_enum`
+	CompositeAttrs []CompositeAttribute   // TODO: should be in `pg_attribute`
 
 	// Below are not stored
-	IsSerial            bool   // used for serial types only (e.g.: smallserial)
-	BaseTypeForInternal uint32 // used for INTERNAL type only
+	IsSerial            bool        // used for serial types only (e.g.: smallserial)
+	IsUnresolved        bool        // used internally to know if a type has been resolved
+	BaseTypeForInternal id.Internal // used for INTERNAL type only
 }
 
 var _ types.ExtendedType = &DoltgresType{}
 
 // NewUnresolvedDoltgresType returns DoltgresType that is not resolved.
-// The type will have 0 as OID and the schema and name defined with given values.
+// The type will have the schema and name defined with given values, with IsUnresolved == true.
 func NewUnresolvedDoltgresType(sch, name string) *DoltgresType {
 	return &DoltgresType{
-		OID:    0,
-		Name:   name,
-		Schema: sch,
+		ID:           id.NewInternal(id.Section_Type, sch, name),
+		IsUnresolved: true,
 	}
 }
 
@@ -102,9 +102,9 @@ func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 	if !t.IsArrayType() {
 		return t
 	}
-	elem, ok := OidToBuiltInDoltgresType[t.Elem]
+	elem, ok := InternalToBuiltInDoltgresType[t.Elem]
 	if !ok {
-		panic(fmt.Sprintf("cannot get base type from: %s", t.Name))
+		panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
 	}
 	newElem := *elem.WithAttTypMod(t.attTypMod)
 	return &newElem
@@ -112,8 +112,8 @@ func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 
 // CharacterSet implements the sql.StringType interface.
 func (t *DoltgresType) CharacterSet() sql.CharacterSetID {
-	switch oid.Oid(t.OID) {
-	case oid.T_varchar, oid.T_text, oid.T_name:
+	switch t.ID.Segment(1) {
+	case "varchar", "text", "name":
 		return sql.CharacterSet_binary
 	default:
 		return sql.CharacterSet_Unspecified
@@ -122,8 +122,8 @@ func (t *DoltgresType) CharacterSet() sql.CharacterSetID {
 
 // Collation implements the sql.StringType interface.
 func (t *DoltgresType) Collation() sql.CollationID {
-	switch oid.Oid(t.OID) {
-	case oid.T_varchar, oid.T_text, oid.T_name:
+	switch t.ID.Segment(1) {
+	case "varchar", "text", "name":
 		return sql.Collation_Default
 	default:
 		return sql.Collation_Unspecified
@@ -144,6 +144,18 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 		return 1, nil
 	} else if v1 == nil && v2 != nil {
 		return -1, nil
+	}
+
+	if t.TypType == TypeType_Enum {
+		// TODO: temporary solution to getting the enum type (which has label info) into the 'enum_cmp' function
+		qf := globalFunctionRegistry.GetFunction(t.CompareFunc)
+		resTypes := qf.ResolvedTypes()
+		newFunc := qf.WithResolvedTypes([]*DoltgresType{t, t, resTypes[len(resTypes)-1]})
+		i, err := newFunc.(QuickFunction).CallVariadic(nil, v1, v2)
+		if err != nil {
+			return 0, err
+		}
+		return int(i.(int32)), nil
 	}
 
 	switch ab := v1.(type) {
@@ -237,6 +249,8 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 	case uuid.UUID:
 		bb := v2.(uuid.UUID)
 		return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
+	case id.Internal:
+		return cmp.Compare(id.Cache().ToOID(ab), id.Cache().ToOID(v2.(id.Internal))), nil
 	case []any:
 		if !t.IsArrayType() {
 			return 0, fmt.Errorf("array value received in Compare for non array type")
@@ -269,56 +283,60 @@ func (t *DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, 
 	if v == nil {
 		return nil, sql.InRange, nil
 	}
-	switch oid.Oid(t.OID) {
-	case oid.T_bool:
+	switch t.ID.Segment(1) {
+	case "bool":
 		if _, ok := v.(bool); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_bytea:
+	case "bytea":
 		if _, ok := v.([]byte); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_bpchar, oid.T_char, oid.T_json, oid.T_name, oid.T_text, oid.T_unknown, oid.T_varchar:
+	case "bpchar", "char", "json", "name", "text", "unknown", "varchar":
 		if _, ok := v.(string); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_date, oid.T_time, oid.T_timestamp, oid.T_timestamptz, oid.T_timetz:
+	case "date", "time", "timestamp", "timestamptz", "timetz":
 		if _, ok := v.(time.Time); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_float4:
+	case "float4":
 		if _, ok := v.(float32); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_float8:
+	case "float8":
 		if _, ok := v.(float64); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_int2:
+	case "int2":
 		if _, ok := v.(int16); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_int4:
+	case "int4":
 		if _, ok := v.(int32); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_int8:
+	case "int8":
 		if _, ok := v.(int64); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_interval:
+	case "interval":
 		if _, ok := v.(duration.Duration); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_jsonb:
+	case "jsonb":
 		if _, ok := v.(JsonDocument); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_oid, oid.T_regclass, oid.T_regproc, oid.T_regtype, oid.T_xid:
+	case "oid", "regclass", "regproc", "regtype":
+		if _, ok := v.(id.Internal); ok {
+			return v, sql.InRange, nil
+		}
+	case "xid":
 		if _, ok := v.(uint32); ok {
 			return v, sql.InRange, nil
 		}
-	case oid.T_uuid:
+	case "uuid":
 		if _, ok := v.(uuid.UUID); ok {
 			return v, sql.InRange, nil
 		}
@@ -332,9 +350,9 @@ func (t *DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, 
 // It can be a nested domain type, so it recursively searches for a valid base type.
 func (t *DoltgresType) DomainUnderlyingBaseType() *DoltgresType {
 	// TODO: handle user-defined type
-	bt, ok := OidToBuiltInDoltgresType[t.BaseTypeOID]
+	bt, ok := InternalToBuiltInDoltgresType[t.BaseTypeID]
 	if !ok {
-		panic(fmt.Sprintf("unable to get DoltgresType from OID: %v", t.BaseTypeOID))
+		panic(fmt.Sprintf("unable to get DoltgresType from ID: %s", t.BaseTypeID.String()))
 	}
 	if bt.TypType == TypeType_Domain {
 		return bt.DomainUnderlyingBaseType()
@@ -372,12 +390,16 @@ func (t *DoltgresType) InputFuncName() string {
 
 // IoInput converts input string value to given type value.
 func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
-	if t.ModInFunc != 0 || t.TypType == TypeType_Domain || t.IsArrayType() {
-		if t.Elem != 0 {
+	if t.TypType == TypeType_Domain {
+		return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.BaseTypeID, t.attTypMod)
+	} else if t.ModInFunc != 0 || t.IsArrayType() {
+		if t.Elem != id.Null {
 			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.Elem, t.attTypMod)
 		} else {
-			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.OID, t.attTypMod)
+			return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.ID, t.attTypMod)
 		}
+	} else if t.TypType == TypeType_Enum {
+		return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input, t.ID)
 	} else {
 		return globalFunctionRegistry.GetFunction(t.InputFunc).CallVariadic(ctx, input)
 	}
@@ -403,10 +425,10 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 
 // IsArrayType returns true if the type is of 'array' category
 func (t *DoltgresType) IsArrayType() bool {
-	return t.TypCategory == TypeCategory_ArrayTypes && t.Elem != 0
+	return t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.Null
 }
 
-// IsEmptyType returns true if the type has no valid OID or Name.
+// IsEmptyType returns true if the type is not valid.
 func (t *DoltgresType) IsEmptyType() bool {
 	return t == nil
 }
@@ -417,8 +439,8 @@ func (t *DoltgresType) IsEmptyType() bool {
 // All polymorphic types have "any" as a prefix.
 // The exception is the "any" type, which is not a polymorphic type.
 func (t *DoltgresType) IsPolymorphicType() bool {
-	switch oid.Oid(t.OID) {
-	case oid.T_anyelement, oid.T_anyarray, oid.T_anynonarray:
+	switch t.ID.Segment(1) {
+	case "anyelement", "anyarray", "anynonarray", "anyenum", "anyrange":
 		// TODO: add other polymorphic types
 		// https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC-TABLE
 		return true
@@ -430,19 +452,22 @@ func (t *DoltgresType) IsPolymorphicType() bool {
 // IsResolvedType whether the type is resolved and has complete information.
 // This is used to resolve types during analyzing when non-built-in type is used.
 func (t *DoltgresType) IsResolvedType() bool {
-	// temporary serial types have 0 OID but are resolved.
-	return t.OID != 0 || t.IsSerial
+	return !t.IsUnresolved
 }
 
 // IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
 func (t *DoltgresType) IsValidForPolymorphicType(target *DoltgresType) bool {
-	switch oid.Oid(t.OID) {
-	case oid.T_anyelement:
+	switch t.ID.Segment(1) {
+	case "anyelement":
 		return true
-	case oid.T_anyarray:
+	case "anyarray":
 		return target.TypCategory == TypeCategory_ArrayTypes
-	case oid.T_anynonarray:
+	case "anynonarray":
 		return target.TypCategory != TypeCategory_ArrayTypes
+	case "anyenum":
+		return target.TypCategory == TypeCategory_EnumTypes
+	case "anyrange":
+		return target.TypCategory == TypeCategory_RangeTypes
 	default:
 		// TODO: add other polymorphic types
 		// https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC-TABLE
@@ -452,16 +477,16 @@ func (t *DoltgresType) IsValidForPolymorphicType(target *DoltgresType) bool {
 
 // Length implements the sql.StringType interface.
 func (t *DoltgresType) Length() int64 {
-	switch oid.Oid(t.OID) {
-	case oid.T_varchar:
+	switch t.ID.Segment(1) {
+	case "varchar":
 		if t.attTypMod == -1 {
 			return StringUnbounded
 		} else {
 			return int64(GetCharLengthFromTypmod(t.attTypMod))
 		}
-	case oid.T_text:
+	case "text":
 		return StringUnbounded
-	case oid.T_name:
+	case "name":
 		return int64(t.TypLength)
 	default:
 		return int64(0)
@@ -470,7 +495,7 @@ func (t *DoltgresType) Length() int64 {
 
 // MaxByteLength implements the sql.StringType interface.
 func (t *DoltgresType) MaxByteLength() int64 {
-	if t.OID == uint32(oid.T_varchar) {
+	if t.ID == VarChar.ID {
 		return t.Length() * 4
 	} else if t.TypLength == -1 {
 		return StringUnbounded
@@ -481,7 +506,7 @@ func (t *DoltgresType) MaxByteLength() int64 {
 
 // MaxCharacterLength implements the sql.StringType interface.
 func (t *DoltgresType) MaxCharacterLength() int64 {
-	if t.OID == uint32(oid.T_varchar) {
+	if t.ID == VarChar.ID {
 		return t.Length()
 	} else if t.TypLength == -1 {
 		return StringUnbounded
@@ -507,7 +532,7 @@ func (t *DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	case TypeCategory_NumericTypes:
 		return types.ExtendedTypeSerializedWidth_64K
 	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
-		if t.OID == uint32(oid.T_varchar) {
+		if t.ID == VarChar.ID {
 			l := t.Length()
 			if l != StringUnbounded && l <= stringInline {
 				return types.ExtendedTypeSerializedWidth_64K
@@ -524,7 +549,7 @@ func (t *DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 
 // MaxTextResponseByteLength implements the types.ExtendedType interface.
 func (t *DoltgresType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
-	if t.OID == uint32(oid.T_varchar) {
+	if t.ID == VarChar.ID {
 		l := t.Length()
 		if l == StringUnbounded {
 			return math.MaxUint32
@@ -548,6 +573,11 @@ func (t *DoltgresType) ModOutFuncName() string {
 	return globalFunctionRegistry.GetString(t.ModOutFunc)
 }
 
+// Name returns the name of the type.
+func (t *DoltgresType) Name() string {
+	return t.ID.Segment(1)
+}
+
 // OutputFuncName returns the name that would be displayed in pg_type for the `typoutput` field.
 func (t *DoltgresType) OutputFuncName() string {
 	return globalFunctionRegistry.GetString(t.OutputFunc)
@@ -561,6 +591,11 @@ func (t *DoltgresType) Promote() sql.Type {
 // ReceiveFuncName returns the name that would be displayed in pg_type for the `typreceive` field.
 func (t *DoltgresType) ReceiveFuncName() string {
 	return globalFunctionRegistry.GetString(t.ReceiveFunc)
+}
+
+// Schema returns the schema that the type is contained in.
+func (t *DoltgresType) Schema() string {
+	return t.ID.Segment(0)
 }
 
 // SendFuncName returns the name that would be displayed in pg_type for the `typsend` field.
@@ -602,7 +637,7 @@ func (t *DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltyp
 func (t *DoltgresType) String() string {
 	str := t.InternalName
 	if t.InternalName == "" {
-		str = t.Name
+		str = t.Name()
 	}
 	if t.attTypMod != -1 {
 		// TODO: need valid sql.Context
@@ -624,9 +659,9 @@ func (t *DoltgresType) ToArrayType() *DoltgresType {
 	if t.IsArrayType() {
 		return t
 	}
-	arr, ok := OidToBuiltInDoltgresType[t.Array]
+	arr, ok := InternalToBuiltInDoltgresType[t.Array]
 	if !ok {
-		panic(fmt.Sprintf("cannot get array type from: %s", t.Name))
+		panic(fmt.Sprintf("cannot get array type from: %s", t.Name()))
 	}
 	newArr := *arr.WithAttTypMod(t.attTypMod)
 	newArr.InternalName = fmt.Sprintf("%s[]", t.String())
@@ -646,38 +681,38 @@ func (t *DoltgresType) Type() query.Type {
 		TypeCategory_InternalUseTypes:
 		return sqltypes.Text
 	case TypeCategory_DateTimeTypes:
-		switch oid.Oid(t.OID) {
-		case oid.T_date:
+		switch t.ID.Segment(1) {
+		case "date":
 			return sqltypes.Date
-		case oid.T_time:
+		case "time":
 			return sqltypes.Time
 		default:
 			return sqltypes.Timestamp
 		}
 	case TypeCategory_NumericTypes:
-		switch oid.Oid(t.OID) {
-		case oid.T_float4:
+		switch t.ID.Segment(1) {
+		case "float4":
 			return sqltypes.Float32
-		case oid.T_float8:
+		case "float8":
 			return sqltypes.Float64
-		case oid.T_int2:
+		case "int2":
 			return sqltypes.Int16
-		case oid.T_int4:
+		case "int4":
 			return sqltypes.Int32
-		case oid.T_int8:
+		case "int8":
 			return sqltypes.Int64
-		case oid.T_numeric:
+		case "numeric":
 			return sqltypes.Decimal
-		case oid.T_oid:
-			return sqltypes.Uint32
-		case oid.T_regclass, oid.T_regproc, oid.T_regtype:
+		case "oid":
+			return sqltypes.VarChar
+		case "regclass", "regproc", "regtype":
 			return sqltypes.Text
 		default:
 			// TODO
 			return sqltypes.Int64
 		}
 	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
-		if t.OID == uint32(oid.T_varchar) {
+		if t.ID.Segment(1) == "varchar" {
 			return sqltypes.VarChar
 		}
 		return sqltypes.Text
@@ -692,7 +727,7 @@ func (t *DoltgresType) Type() query.Type {
 // TypModIn encodes given text array value to type modifier in int32 format.
 func (t *DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
 	if t.ModInFunc == 0 {
-		return 0, fmt.Errorf("typmodin function for type '%s' doesn't exist", t.Name)
+		return 0, fmt.Errorf("typmodin function for type '%s' doesn't exist", t.Name())
 	}
 	o, err := globalFunctionRegistry.GetFunction(t.ModInFunc).CallVariadic(ctx, val)
 	if err != nil {
@@ -708,7 +743,7 @@ func (t *DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
 // TypModOut decodes type modifier in int32 format to string representation of it.
 func (t *DoltgresType) TypModOut(ctx *sql.Context, val int32) (string, error) {
 	if t.ModOutFunc == 0 {
-		return "", fmt.Errorf("typmodout function for type '%s' doesn't exist", t.Name)
+		return "", fmt.Errorf("typmodout function for type '%s' doesn't exist", t.Name())
 	}
 	o, err := globalFunctionRegistry.GetFunction(t.ModOutFunc).CallVariadic(ctx, val)
 	if err != nil {
@@ -751,21 +786,21 @@ func (t *DoltgresType) Zero() interface{} {
 	case TypeCategory_DateTimeTypes:
 		return time.Time{}
 	case TypeCategory_NumericTypes:
-		switch oid.Oid(t.OID) {
-		case oid.T_float4:
+		switch t.ID.Segment(1) {
+		case "float4":
 			return float32(0)
-		case oid.T_float8:
+		case "float8":
 			return float64(0)
-		case oid.T_int2:
+		case "int2":
 			return int16(0)
-		case oid.T_int4:
+		case "int4":
 			return int32(0)
-		case oid.T_int8:
+		case "int8":
 			return int64(0)
-		case oid.T_numeric:
+		case "numeric":
 			return decimal.Zero
-		case oid.T_oid, oid.T_regclass, oid.T_regproc, oid.T_regtype:
-			return uint32(0)
+		case "oid", "regclass", "regproc", "regtype":
+			return id.Null
 		default:
 			// TODO
 			return int64(0)
@@ -806,12 +841,16 @@ func (t *DoltgresType) DeserializeValue(val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
-	if t.ModInFunc != 0 || t.TypType == TypeType_Domain || t.IsArrayType() {
-		if t.Elem != 0 {
+	if t.TypType == TypeType_Domain {
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.BaseTypeID, t.attTypMod)
+	} else if t.ModInFunc != 0 || t.IsArrayType() {
+		if t.Elem != id.Null {
 			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.Elem, t.attTypMod)
 		} else {
-			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.OID, t.attTypMod)
+			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.ID, t.attTypMod)
 		}
+	} else if t.TypType == TypeType_Enum {
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.ID)
 	} else {
 		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val)
 	}

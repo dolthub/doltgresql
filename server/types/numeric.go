@@ -18,8 +18,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lib/pq/oid"
 	"github.com/shopspring/decimal"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 const (
@@ -39,9 +40,7 @@ var (
 
 // Numeric is a precise and unbounded decimal value.
 var Numeric = &DoltgresType{
-	OID:           uint32(oid.T_numeric),
-	Name:          "numeric",
-	Schema:        "pg_catalog",
+	ID:            toInternal("numeric"),
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -49,30 +48,30 @@ var Numeric = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__numeric),
-	InputFunc:     toFuncID("numeric_in", oid.T_cstring, oid.T_oid, oid.T_int4),
-	OutputFunc:    toFuncID("numeric_out", oid.T_numeric),
-	ReceiveFunc:   toFuncID("numeric_recv", oid.T_internal, oid.T_oid, oid.T_int4),
-	SendFunc:      toFuncID("numeric_send", oid.T_numeric),
-	ModInFunc:     toFuncID("numerictypmodin", oid.T__cstring),
-	ModOutFunc:    toFuncID("numerictypmodout", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_numeric"),
+	InputFunc:     toFuncID("numeric_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:    toFuncID("numeric_out", toInternal("numeric")),
+	ReceiveFunc:   toFuncID("numeric_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:      toFuncID("numeric_send", toInternal("numeric")),
+	ModInFunc:     toFuncID("numerictypmodin", toInternal("_cstring")),
+	ModOutFunc:    toFuncID("numerictypmodout", toInternal("int4")),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Main,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("numeric_cmp", oid.T_numeric, oid.T_numeric),
+	CompareFunc:   toFuncID("numeric_cmp", toInternal("numeric"), toInternal("numeric")),
 }
 
 // NewNumericTypeWithPrecisionAndScale returns Numeric type with typmod set.

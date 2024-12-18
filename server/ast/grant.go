@@ -125,6 +125,8 @@ func convertPrivilegeKinds(object auth.PrivilegeObject, kinds []privilege.Kind) 
 			privileges[i] = auth.Privilege_CREATE
 		case privilege.DELETE:
 			privileges[i] = auth.Privilege_DELETE
+		case privilege.DROP:
+			privileges[i] = auth.Privilege_DROP
 		case privilege.EXECUTE:
 			privileges[i] = auth.Privilege_EXECUTE
 		case privilege.INSERT:

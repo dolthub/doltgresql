@@ -22,7 +22,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/server/auth"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -59,28 +59,6 @@ func (c *CreateDomain) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	var userRole auth.Role
-	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
-	})
-	if !userRole.IsValid() {
-		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
-	}
-
-	// TODO: create array type with this type as base type
-	var defExpr string
-	if c.DefaultExpr != nil {
-		defExpr = c.DefaultExpr.String()
-	}
-	checkDefs := make([]*sql.CheckDefinition, len(c.CheckConstraints))
-	var err error
-	for i, check := range c.CheckConstraints {
-		checkDefs[i], err = plan.NewCheckDefinition(ctx, check)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	schema, err := core.GetSchemaName(ctx, nil, c.SchemaName)
 	if err != nil {
 		return nil, err
@@ -90,23 +68,39 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		return nil, err
 	}
 
-	newType := types.NewDomainType(ctx, c.SchemaName, c.Name, c.AsType, defExpr, c.IsNotNull, checkDefs, "")
+	if collection.HasType(c.SchemaName, c.Name) {
+		return nil, types.ErrTypeAlreadyExists.New(c.Name)
+	}
+
+	internalID := id.NewInternal(id.Section_Type, c.SchemaName, c.Name)
+	arrayID := id.NewInternal(id.Section_Type, c.SchemaName, "_"+c.Name)
+
+	var defExpr string
+	if c.DefaultExpr != nil {
+		defExpr = c.DefaultExpr.String()
+	}
+
+	checkDefs := make([]*sql.CheckDefinition, len(c.CheckConstraints))
+	for i, check := range c.CheckConstraints {
+		checkDefs[i], err = plan.NewCheckDefinition(ctx, check)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	newType := types.NewDomainType(ctx, c.AsType, defExpr, c.IsNotNull, checkDefs, arrayID, internalID)
 	err = collection.CreateType(schema, newType)
 	if err != nil {
 		return nil, err
 	}
 
-	auth.LockWrite(func() {
-		auth.AddOwner(auth.OwnershipKey{
-			PrivilegeObject: auth.PrivilegeObject_DOMAIN,
-			Schema:          schema,
-			Name:            c.Name,
-		}, userRole.ID())
-		err = auth.PersistChanges()
-	})
+	// create array type of this type
+	arrayType := types.CreateArrayTypeFromBaseType(newType)
+	err = collection.CreateType(schema, arrayType)
 	if err != nil {
 		return nil, err
 	}
+
 	return sql.RowsToRowIter(), nil
 }
 

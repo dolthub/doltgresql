@@ -15,15 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Bool is the bool type.
 var Bool = &DoltgresType{
-	OID:           uint32(oid.T_bool),
-	Name:          "bool",
-	Schema:        "pg_catalog",
-	Owner:         "doltgres",
+	ID:            toInternal("bool"),
 	TypLength:     int16(1),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -31,29 +28,29 @@ var Bool = &DoltgresType{
 	IsPreferred:   true,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__bool),
-	InputFunc:     toFuncID("boolin", oid.T_cstring),
-	OutputFunc:    toFuncID("boolout", oid.T_bool),
-	ReceiveFunc:   toFuncID("boolrecv", oid.T_internal),
-	SendFunc:      toFuncID("boolsend", oid.T_bool),
+	Elem:          id.Null,
+	Array:         toInternal("_bool"),
+	InputFunc:     toFuncID("boolin", toInternal("cstring")),
+	OutputFunc:    toFuncID("boolout", toInternal("bool")),
+	ReceiveFunc:   toFuncID("boolrecv", toInternal("internal")),
+	SendFunc:      toFuncID("boolsend", toInternal("bool")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Char,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("btboolcmp", oid.T_bool, oid.T_bool),
+	CompareFunc:   toFuncID("btboolcmp", toInternal("bool"), toInternal("bool")),
 	InternalName:  "boolean",
 }

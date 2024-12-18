@@ -18,9 +18,10 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/server/types/oid"
 )
 
 // initPgTableIsVisible registers the functions to the catalog.
@@ -36,7 +37,7 @@ var pg_table_is_visible_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		oidVal := val.(uint32)
+		oidVal := val.(id.Internal)
 		paths, err := resolve.SearchPath(ctx)
 		if err != nil {
 			return false, err
@@ -47,20 +48,20 @@ var pg_table_is_visible_oid = framework.Function1{
 		}
 
 		var isVisible bool
-		err = oid.RunCallback(ctx, oidVal, oid.Callbacks{
-			Table: func(ctx *sql.Context, sch oid.ItemSchema, table oid.ItemTable) (cont bool, err error) {
+		err = RunCallback(ctx, oidVal, Callbacks{
+			Table: func(ctx *sql.Context, sch ItemSchema, table ItemTable) (cont bool, err error) {
 				_, isVisible = lookUpPaths[sch.Item.SchemaName()]
 				return false, nil
 			},
-			View: func(ctx *sql.Context, sch oid.ItemSchema, view oid.ItemView) (cont bool, err error) {
+			View: func(ctx *sql.Context, sch ItemSchema, view ItemView) (cont bool, err error) {
 				_, isVisible = lookUpPaths[sch.Item.SchemaName()]
 				return false, nil
 			},
-			Index: func(ctx *sql.Context, sch oid.ItemSchema, table oid.ItemTable, index oid.ItemIndex) (cont bool, err error) {
+			Index: func(ctx *sql.Context, sch ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
 				_, isVisible = lookUpPaths[sch.Item.SchemaName()]
 				return false, nil
 			},
-			Sequence: func(ctx *sql.Context, sch oid.ItemSchema, sequence oid.ItemSequence) (cont bool, err error) {
+			Sequence: func(ctx *sql.Context, sch ItemSchema, sequence ItemSequence) (cont bool, err error) {
 				_, isVisible = lookUpPaths[sch.Item.SchemaName()]
 				return false, nil
 			},

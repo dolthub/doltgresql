@@ -16,16 +16,12 @@ package types
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/lib/pq/oid"
-)
 
-// functionNameSplitter is used to delineate the parameter OIDs in a function string.
-const functionNameSplitter = ";"
+	"github.com/dolthub/doltgresql/core/id"
+)
 
 // QuickFunction is an interface redefinition of the one defined in the `server/functions/framework` package to avoid cycles.
 type QuickFunction interface {
@@ -48,8 +44,8 @@ var LoadFunctionFromCatalog func(funcName string, parameterTypes []*DoltgresType
 type functionRegistry struct {
 	mutex      *sync.Mutex
 	counter    uint32
-	mapping    map[string]uint32
-	revMapping map[uint32]string
+	mapping    map[id.Internal]uint32
+	revMapping map[uint32]id.Internal
 	functions  [256]QuickFunction // Arbitrary number, big enough for now to fit every function in it
 }
 
@@ -58,22 +54,22 @@ type functionRegistry struct {
 var globalFunctionRegistry = functionRegistry{
 	mutex:      &sync.Mutex{},
 	counter:    1,
-	mapping:    map[string]uint32{"-": 0},
-	revMapping: map[uint32]string{0: "-"},
+	mapping:    map[id.Internal]uint32{id.Null: 0},
+	revMapping: map[uint32]id.Internal{0: id.Null},
 }
 
-// StringToID returns an ID for the given function string.
-func (r *functionRegistry) StringToID(functionString string) uint32 {
+// InternalToRegistryID returns an ID for the given Internal ID.
+func (r *functionRegistry) InternalToRegistryID(functionID id.Internal) uint32 {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	if id, ok := r.mapping[functionString]; ok {
-		return id
+	if registryID, ok := r.mapping[functionID]; ok {
+		return registryID
 	}
 	if r.counter >= uint32(len(r.functions)) {
 		panic("max function count reached in static array")
 	}
-	r.mapping[functionString] = r.counter
-	r.revMapping[r.counter] = functionString
+	r.mapping[functionID] = r.counter
+	r.revMapping[r.counter] = functionID
 	r.counter++
 	return r.counter - 1
 }
@@ -97,11 +93,11 @@ func (r *functionRegistry) GetFunction(id uint32) QuickFunction {
 	return f
 }
 
-// GetFullString returns the function string associated with the given ID.
-func (r *functionRegistry) GetFullString(id uint32) string {
+// GetInternalID returns the function's Internal ID associated with the given registry ID.
+func (r *functionRegistry) GetInternalID(registryID uint32) id.Internal {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	return r.revMapping[id]
+	return r.revMapping[registryID]
 }
 
 // GetString returns the extracted function name from the function string associated with the given ID.
@@ -122,12 +118,12 @@ func (r *functionRegistry) loadFunction(id uint32) QuickFunction {
 	if LoadFunctionFromCatalog == nil {
 		return nil
 	}
-	functionString := r.revMapping[id]
-	name, params, ok := r.nameWithParams(functionString)
-	if !ok {
+	functionID := r.revMapping[id]
+	if !functionID.IsValid() {
 		return nil
 	}
-	potentialFunction := LoadFunctionFromCatalog(name, params)
+	funcName, types := r.toFuncSignature(functionID)
+	potentialFunction := LoadFunctionFromCatalog(funcName, types)
 	if potentialFunction == nil {
 		return nil
 	}
@@ -137,44 +133,36 @@ func (r *functionRegistry) loadFunction(id uint32) QuickFunction {
 }
 
 // nameWithoutParams returns the name only from the given function string.
-func (*functionRegistry) nameWithoutParams(funcString string) string {
-	return strings.Split(funcString, functionNameSplitter)[0]
+func (*functionRegistry) nameWithoutParams(functionID id.Internal) string {
+	if !functionID.IsValid() {
+		return "-"
+	}
+	return functionID.Segment(1)
 }
 
-// nameWithParams returns the name and parameter types from the given function string. Return false if there were issues
-// with the OID parameters.
-func (*functionRegistry) nameWithParams(funcString string) (string, []*DoltgresType, bool) {
-	parts := strings.Split(funcString, functionNameSplitter)
-	if len(parts) == 1 {
-		return parts[0], nil, true
+// toFuncSignature returns a function signature for the given Internal ID.
+func (*functionRegistry) toFuncSignature(functionID id.Internal) (string, []*DoltgresType) {
+	data := functionID.Data()
+	params := make([]*DoltgresType, len(data)-2)
+	for i := 2; i < len(data); i++ {
+		typeID := id.Internal(data[i])
+		params[i-2] = InternalToBuiltInDoltgresType[typeID]
 	}
-	dTypes := make([]*DoltgresType, len(parts)-1)
-	for i := 1; i < len(parts); i++ {
-		oidVal, err := strconv.Atoi(parts[i])
-		if err != nil {
-			return parts[0], nil, false
-		}
-		typ, ok := OidToBuiltInDoltgresType[uint32(oidVal)]
-		if !ok {
-			return parts[0], nil, false
-		}
-		dTypes[i-1] = typ
-	}
-	return parts[0], dTypes, true
+	return data[1], params
 }
 
 // toFuncID creates a valid function string for the given name and parameters, then registers the name with the
 // global functionRegistry. The ID from the registry is returned.
-func toFuncID(functionName string, params ...oid.Oid) uint32 {
-	if functionName == "-" {
+func toFuncID(functionName string, params ...id.Internal) uint32 {
+	if functionName == "-" || len(functionName) == 0 {
 		return 0
 	}
-	if len(params) > 0 {
-		paramStrs := make([]string, len(params))
-		for i := range params {
-			paramStrs[i] = strconv.Itoa(int(params[i]))
-		}
-		functionName = fmt.Sprintf("%s%s%s", functionName, functionNameSplitter, strings.Join(paramStrs, functionNameSplitter))
+	data := make([]string, len(params)+2)
+	data[0] = "pg_catalog"
+	data[1] = functionName
+	for i := range params {
+		data[2+i] = string(params[i])
 	}
-	return globalFunctionRegistry.StringToID(functionName)
+	functionID := id.NewInternal(id.Section_Function, data...)
+	return globalFunctionRegistry.InternalToRegistryID(functionID)
 }

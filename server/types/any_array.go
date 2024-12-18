@@ -15,15 +15,13 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // AnyArray is a pseudo-type that can represent any type
 // that is an array type that may contain elements of any type.
 var AnyArray = &DoltgresType{
-	OID:           uint32(oid.T_anyarray),
-	Name:          "anyarray",
-	Schema:        "pg_catalog",
+	ID:            toInternal("anyarray"),
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Pseudo,
@@ -31,28 +29,28 @@ var AnyArray = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         0,
-	InputFunc:     toFuncID("anyarray_in", oid.T_cstring),
-	OutputFunc:    toFuncID("anyarray_out", oid.T_anyarray),
-	ReceiveFunc:   toFuncID("anyarray_recv", oid.T_internal),
-	SendFunc:      toFuncID("anyarray_send", oid.T_anyarray),
+	Elem:          id.Null,
+	Array:         id.Null,
+	InputFunc:     toFuncID("anyarray_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("anyarray_out", toInternal("anyarray")),
+	ReceiveFunc:   toFuncID("anyarray_recv", toInternal("internal")),
+	SendFunc:      toFuncID("anyarray_send", toInternal("anyarray")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("btarraycmp", oid.T_anyarray, oid.T_anyarray),
+	CompareFunc:   toFuncID("btarraycmp", toInternal("anyarray"), toInternal("anyarray")),
 }

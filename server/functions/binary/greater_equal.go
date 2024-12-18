@@ -15,11 +15,13 @@
 package binary
 
 import (
+	"cmp"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -38,6 +40,7 @@ func initBinaryGreaterOrEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, date_ge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, date_ge_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, date_ge_timestamptz)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, enum_ge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, float4ge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, float48ge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, float84ge)
@@ -151,6 +154,18 @@ var date_ge_timestamptz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res >= 0, nil
+	},
+}
+
+// enum_ge represents the PostgreSQL function of the same name, taking the same parameters.
+var enum_ge = framework.Function2{
+	Name:       "enum_ge",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyEnum, pgtypes.AnyEnum},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := t[0].Compare(val1, val2)
+		return res >= 0, err
 	},
 }
 
@@ -377,8 +392,8 @@ var oidge = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Oid.Compare(val1.(uint32), val2.(uint32))
-		return res >= 0, err
+		res := cmp.Compare(id.Cache().ToOID(val1.(id.Internal)), id.Cache().ToOID(val2.(id.Internal)))
+		return res >= 0, nil
 	},
 }
 

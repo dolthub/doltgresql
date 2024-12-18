@@ -353,6 +353,7 @@ func TestAuthTests(t *testing.T) {
 				`CREATE USER user2 PASSWORD 'b';`,
 				`GRANT ALL PRIVILEGES ON SCHEMA public TO user1;`,
 				`GRANT ALL PRIVILEGES ON SCHEMA public TO user2;`,
+				`GRANT ALL PRIVILEGES ON test TO user1 WITH GRANT OPTION;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{

@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -38,6 +39,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, date_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, date_eq_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, date_eq_timestamptz)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, enum_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, float4eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, float48eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, float84eq)
@@ -153,6 +155,19 @@ var date_eq_timestamptz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := val1.(time.Time).Compare(val2.(time.Time))
 		return res == 0, nil
+	},
+}
+
+// enum_eq represents the PostgreSQL function of the same name, taking the same parameters.
+var enum_eq = framework.Function2{
+	Name:       "enum_eq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyEnum, pgtypes.AnyEnum},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		// TODO: if given types are not the same enum type, it cannot compare
+		res, err := t[0].Compare(val1, val2)
+		return res == 0, err
 	},
 }
 
@@ -379,7 +394,7 @@ var oideq = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Oid.Compare(val1.(uint32), val2.(uint32))
+		res, err := pgtypes.Oid.Compare(val1.(id.Internal), val2.(id.Internal))
 		return res == 0, err
 	},
 }

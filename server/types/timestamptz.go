@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // TimestampTZ is the timestamp with a time zone. Precision is unbounded.
 var TimestampTZ = &DoltgresType{
-	OID:           uint32(oid.T_timestamptz),
-	Name:          "timestamptz",
-	Schema:        "pg_catalog",
+	ID:            toInternal("timestamptz"),
 	TypLength:     int16(8),
 	PassedByVal:   true,
 	TypType:       TypeType_Base,
@@ -30,30 +28,30 @@ var TimestampTZ = &DoltgresType{
 	IsPreferred:   true,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__timestamptz),
-	InputFunc:     toFuncID("timestamptz_in", oid.T_cstring, oid.T_oid, oid.T_int4),
-	OutputFunc:    toFuncID("timestamptz_out", oid.T_timestamptz),
-	ReceiveFunc:   toFuncID("timestamptz_recv", oid.T_internal, oid.T_oid, oid.T_int4),
-	SendFunc:      toFuncID("timestamptz_send", oid.T_timestamptz),
-	ModInFunc:     toFuncID("timestamptztypmodin", oid.T__cstring),
-	ModOutFunc:    toFuncID("timestamptztypmodout", oid.T_int4),
+	Elem:          id.Null,
+	Array:         toInternal("_timestamptz"),
+	InputFunc:     toFuncID("timestamptz_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:    toFuncID("timestamptz_out", toInternal("timestamptz")),
+	ReceiveFunc:   toFuncID("timestamptz_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:      toFuncID("timestamptz_send", toInternal("timestamptz")),
+	ModInFunc:     toFuncID("timestamptztypmodin", toInternal("_cstring")),
+	ModOutFunc:    toFuncID("timestamptztypmodout", toInternal("int4")),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("timestamptz_cmp", oid.T_timestamptz, oid.T_timestamptz),
+	CompareFunc:   toFuncID("timestamptz_cmp", toInternal("timestamptz"), toInternal("timestamptz")),
 }
 
 // NewTimestampTZType returns TimestampTZ type with typmod set. // TODO: implement precision

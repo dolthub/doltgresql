@@ -18,16 +18,16 @@ import "testing"
 
 func TestDropType(t *testing.T) {
 	tests := []QueryParses{
-		Parses("DROP TYPE name"),
-		Parses("DROP TYPE IF EXISTS name"),
+		Converts("DROP TYPE name"),
+		Converts("DROP TYPE IF EXISTS name"),
 		Parses("DROP TYPE name , name"),
 		Parses("DROP TYPE IF EXISTS name , name"),
-		Parses("DROP TYPE name CASCADE"),
-		Parses("DROP TYPE IF EXISTS name CASCADE"),
+		Converts("DROP TYPE name CASCADE"),
+		Converts("DROP TYPE IF EXISTS name CASCADE"),
 		Parses("DROP TYPE name , name CASCADE"),
 		Parses("DROP TYPE IF EXISTS name , name CASCADE"),
-		Parses("DROP TYPE name RESTRICT"),
-		Parses("DROP TYPE IF EXISTS name RESTRICT"),
+		Converts("DROP TYPE name RESTRICT"),
+		Converts("DROP TYPE IF EXISTS name RESTRICT"),
 		Parses("DROP TYPE name , name RESTRICT"),
 		Parses("DROP TYPE IF EXISTS name , name RESTRICT"),
 	}

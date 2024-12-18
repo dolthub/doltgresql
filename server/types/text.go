@@ -15,14 +15,12 @@
 package types
 
 import (
-	"github.com/lib/pq/oid"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Text is the text type.
 var Text = &DoltgresType{
-	OID:           uint32(oid.T_text),
-	Name:          "text",
-	Schema:        "pg_catalog",
+	ID:            toInternal("text"),
 	TypLength:     int16(-1),
 	PassedByVal:   false,
 	TypType:       TypeType_Base,
@@ -30,28 +28,28 @@ var Text = &DoltgresType{
 	IsPreferred:   true,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         uint32(oid.T__text),
-	InputFunc:     toFuncID("textin", oid.T_cstring),
-	OutputFunc:    toFuncID("textout", oid.T_text),
-	ReceiveFunc:   toFuncID("textrecv", oid.T_internal),
-	SendFunc:      toFuncID("textsend", oid.T_text),
+	Elem:          id.Null,
+	Array:         toInternal("_text"),
+	InputFunc:     toFuncID("textin", toInternal("cstring")),
+	OutputFunc:    toFuncID("textout", toInternal("text")),
+	ReceiveFunc:   toFuncID("textrecv", toInternal("internal")),
+	SendFunc:      toFuncID("textsend", toInternal("text")),
 	ModInFunc:     toFuncID("-"),
 	ModOutFunc:    toFuncID("-"),
 	AnalyzeFunc:   toFuncID("-"),
 	Align:         TypeAlignment_Int,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  100,
+	TypCollation:  id.NewInternal(id.Section_Collation, "pg_catalog", "default"),
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("bttextcmp", oid.T_text, oid.T_text),
+	CompareFunc:   toFuncID("bttextcmp", toInternal("text"), toInternal("text")),
 }

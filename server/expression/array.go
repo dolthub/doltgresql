@@ -20,7 +20,6 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -83,7 +82,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		// We always cast the element, as there may be parameter restrictions in place
 		castFunc := framework.GetImplicitCast(doltgresType, resultTyp)
 		if castFunc == nil {
-			if doltgresType.OID == uint32(oid.T_unknown) {
+			if doltgresType.ID == pgtypes.Unknown.ID {
 				castFunc = framework.UnknownLiteralCast
 			} else {
 				return nil, fmt.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())

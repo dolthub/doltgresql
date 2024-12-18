@@ -17,7 +17,7 @@ package functions
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/server/types/oid"
+	"github.com/dolthub/doltgresql/core/id"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -36,17 +36,7 @@ var pg_function_is_visible_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		var found bool
-		err := oid.RunCallback(ctx, val.(uint32), oid.Callbacks{
-			Function: func(ctx *sql.Context, function oid.ItemFunction) (cont bool, err error) {
-				// TODO: Functions are not contained within a schema for now, so will be true if function is found
-				found = true
-				return false, nil
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
-		return found, nil
+		// TODO: Functions are not contained within a schema for now, so will be true if function is found
+		return id.Cache().Exists(val.(id.Internal)), nil
 	},
 }

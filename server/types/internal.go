@@ -14,13 +14,11 @@
 
 package types
 
-import "github.com/lib/pq/oid"
+import "github.com/dolthub/doltgresql/core/id"
 
 // Internal is an internal type, which means `external binary` type.
 var Internal = &DoltgresType{
-	OID:           uint32(oid.T_internal),
-	Name:          "internal",
-	Schema:        "pg_catalog",
+	ID:            toInternal("internal"),
 	TypLength:     int16(8),
 	PassedByVal:   true,
 	TypType:       TypeType_Pseudo,
@@ -28,12 +26,12 @@ var Internal = &DoltgresType{
 	IsPreferred:   false,
 	IsDefined:     true,
 	Delimiter:     ",",
-	RelID:         0,
+	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          0,
-	Array:         0,
-	InputFunc:     toFuncID("internal_in", oid.T_cstring),
-	OutputFunc:    toFuncID("internal_out", oid.T_internal),
+	Elem:          id.Null,
+	Array:         id.Null,
+	InputFunc:     toFuncID("internal_in", toInternal("cstring")),
+	OutputFunc:    toFuncID("internal_out", toInternal("internal")),
 	ReceiveFunc:   toFuncID("-"),
 	SendFunc:      toFuncID("-"),
 	ModInFunc:     toFuncID("-"),
@@ -42,10 +40,10 @@ var Internal = &DoltgresType{
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeOID:   0,
+	BaseTypeID:    id.Null,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  0,
+	TypCollation:  id.Null,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
@@ -56,8 +54,8 @@ var Internal = &DoltgresType{
 
 // NewInternalTypeWithBaseType returns Internal type with
 // internal base type set with given type.
-func NewInternalTypeWithBaseType(t uint32) *DoltgresType {
+func NewInternalTypeWithBaseType(internalID id.Internal) *DoltgresType {
 	it := Internal
-	it.BaseTypeForInternal = t
+	it.BaseTypeForInternal = internalID
 	return it
 }

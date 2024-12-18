@@ -84,7 +84,7 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 				return nil, err
 			}
 			dt := typ.(*types.DoltgresType)
-			nameMap[dt.Name] = dt
+			nameMap[dt.Name()] = dt
 		}
 		schemaMap[schemaName] = nameMap
 	}

@@ -260,10 +260,18 @@ func TestAuthQuick(t *testing.T) {
 		{
 			Queries: []string{
 				"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA mysch TO tester;",
+				"REVOKE DROP ON ALL TABLES IN SCHEMA mysch FROM tester;",
 				"CREATE TABLE mysch.new_table (pk BIGINT PRIMARY KEY);",
 				"DROP TABLE mysch.new_table;",
 			},
 			ExpectedErr: "permission denied for table",
+		},
+		{
+			Queries: []string{
+				"CREATE TABLE mysch.new_table (pk BIGINT PRIMARY KEY);",
+				"GRANT DROP ON mysch.new_table TO tester;",
+				"DROP TABLE mysch.new_table;",
+			},
 		},
 		{
 			Queries: []string{

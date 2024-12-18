@@ -40,8 +40,6 @@ func (db *Database) serialize() []byte {
 	for _, role := range db.rolesByID {
 		role.serialize(writer)
 	}
-	// Write the ownership
-	db.ownership.serialize(writer)
 	// Write the database privileges
 	db.databasePrivileges.serialize(writer)
 	// Write the schema privileges
@@ -80,8 +78,6 @@ func (db *Database) deserializeV0(reader *utils.Reader) error {
 		db.rolesByName[r.Name] = r.id
 		db.rolesByID[r.id] = r
 	}
-	// Read the ownership
-	db.ownership.deserialize(0, reader)
 	// Read the database privileges
 	db.databasePrivileges.deserialize(0, reader)
 	// Read the schema privileges

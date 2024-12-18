@@ -99,6 +99,11 @@ func TestGettingStartedGuide(t *testing.T) {
 						{"Aaron", "Son", "Engineering"},
 					},
 				},
+				{
+					Skip:     true, // This returns no rows for some reason. See https://github.com/dolthub/doltgresql/issues/1063
+					Query:    "select * from employees_teams where employee_id='0' and team_id='1';",
+					Expected: []sql.Row{{1, 0}},
+				},
 
 				// Examine the Diff
 				{
@@ -214,11 +219,13 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{{0, "Sehn", "Timothy"}, {1, "Hendriks", "Brian"}, {2, "Son", "Aaron"}, {3, "Fitzgerald", "Brian"}, {4, "Wilkins", "Daylon"}},
 				},
 				{
-					// TODO: This query panics: runtime error: slice bounds out of range [:1233] with capacity 260
-					//       https://github.com/dolthub/doltgresql/issues/735
-					Skip:     true,
-					Query:    "select * from dolt_diff('main', 'modifications', 'employees');",
-					Expected: []sql.Row{},
+					Query: `select to_id, to_last_name, to_first_name, to_commit, 
+							from_id, from_last_name, from_first_name, from_commit, diff_type
+							from dolt_diff('main', 'modifications', 'employees');`,
+					Expected: []sql.Row{
+						{0, "Sehn", "Timothy", "modifications", 0, "Sehn", "Tim", "main", "modified"},
+						{4, "Wilkins", "Daylon", "modifications", nil, nil, nil, "main", "added"},
+					},
 				},
 
 				// Make a schema change on another branch

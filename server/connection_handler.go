@@ -35,6 +35,7 @@ import (
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/mitchellh/go-ps"
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core"
@@ -69,6 +70,20 @@ var HandlePanics = true
 func init() {
 	if _, ok := os.LookupEnv(disablePanicHandlingEnvVar); ok {
 		HandlePanics = false
+	} else {
+		// This checks if the Go debugger is attached, so that we can disable panic catching automatically
+		pid := os.Getppid()
+		for pid != 0 {
+			p, err := ps.FindProcess(pid)
+			if err != nil || p == nil {
+				break
+			} else if strings.HasPrefix(p.Executable(), "dlv") {
+				HandlePanics = false
+				break
+			} else {
+				pid = p.PPid()
+			}
+		}
 	}
 }
 
@@ -390,13 +405,6 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMess
 // that it can send its next query.
 func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages bool, err error) {
 	handled, err := h.handledPSQLCommands(message.String)
-	if handled || err != nil {
-		return true, err
-	}
-
-	// TODO: Remove this once we support `SELECT * FROM function()` syntax
-	// Github issue: https://github.com/dolthub/doltgresql/issues/464
-	handled, err = h.handledWorkbenchCommands(message.String)
 	if handled || err != nil {
 		return true, err
 	}
@@ -953,24 +961,6 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 		// We don't support users yet, so we'll just return nothing for now
 		return true, h.query(ConvertedQuery{
 			String:       `SELECT '' FROM dual LIMIT 0;`,
-			StatementTag: "SELECT",
-		})
-	}
-	return false, nil
-}
-
-// handledWorkbenchCommands handles commands used by some workbenches, such as dolt-workbench.
-func (h *ConnectionHandler) handledWorkbenchCommands(statement string) (bool, error) {
-	lower := strings.ToLower(statement)
-	if lower == "select * from current_schema()" || lower == "select * from current_schema();" {
-		return true, h.query(ConvertedQuery{
-			String:       `SELECT search_path AS "current_schema";`,
-			StatementTag: "SELECT",
-		})
-	}
-	if lower == "select * from current_database()" || lower == "select * from current_database();" {
-		return true, h.query(ConvertedQuery{
-			String:       `SELECT DATABASE() AS "current_database";`,
 			StatementTag: "SELECT",
 		})
 	}
