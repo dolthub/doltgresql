@@ -2070,6 +2070,10 @@ func TestSelectFromFunctions(t *testing.T) {
 					Expected: []sql.Row{{"37.89_1.2"}},
 				},
 				{
+					Query:    `SELECT * FROM format_type('text'::regtype, 4);`,
+					Expected: []sql.Row{{"text(4)"}},
+				},
+				{
 					Query:    `SELECT * from format_type(874938247, 20);`,
 					Expected: []sql.Row{{"???"}},
 				},
