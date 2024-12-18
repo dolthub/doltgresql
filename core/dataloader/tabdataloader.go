@@ -43,7 +43,7 @@ type TabularDataLoader struct {
 
 var _ DataLoader = (*TabularDataLoader)(nil)
 
-// NewTabularDataLoader creates a new TabularDataLoader to insert into the specifeid |table| using the specified
+// NewTabularDataLoader creates a new TabularDataLoader to insert into the specified |table| using the specified
 // |delimiterChar| and |nullChar|. If |header| is true, the first line of the data will be treated as a header and
 // ignored.
 func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {

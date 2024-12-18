@@ -230,16 +230,18 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 	sendStandbyStatusUpdate := func(state *replicationState) error {
 		// The StatusUpdate message wants us to respond with the current position in the WAL + 1:
 		// https://www.postgresql.org/docs/current/protocol-replication.html
-		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, pglogrepl.StandbyStatusUpdate{
+		standbyMessage := pglogrepl.StandbyStatusUpdate{
 			WALWritePosition: state.lastWrittenLSN + 1,
 			WALFlushPosition: state.lastWrittenLSN + 1,
-			WALApplyPosition: state.lastReceivedLSN + 1,
-		})
+			// WALApplyPosition: state.lastReceivedLSN + 1,
+			WALApplyPosition: state.lastWrittenLSN + 1,
+		}
+		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, standbyMessage)
 		if err != nil {
 			return handleErrWithRetry(err, false)
 		}
 
-		log.Printf("Sent Standby status message with WALWritePosition = %s, WALApplyPosition = %s\n", state.lastWrittenLSN+1, state.lastReceivedLSN+1)
+		log.Printf("Sent standby message %v\n", standbyMessage)
 		nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 		return nil
 	}

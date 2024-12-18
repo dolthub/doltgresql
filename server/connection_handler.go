@@ -30,6 +30,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -640,7 +641,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 	if err != nil {
 		return false, false, err
 	}
-	if err = startTransaction(sqlCtx); err != nil {
+	if err = startTransactionIfNecessary(sqlCtx); err != nil {
 		return false, false, err
 	}
 
@@ -681,6 +682,15 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 		}
 
 		h.copyFromStdinState.dataLoader = dataLoader
+		
+		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil, nil)
+		node, flags, err := builder.BindOnly(copyFromStdinNode.InsertStub, "", nil)
+		if err != nil {
+			return false, false, err
+		}
+		
+		fmt.Sprintf("node: %v", node)
+		fmt.Sprintf("flags: %v", flags)
 	}
 
 	byteReader := bytes.NewReader(message.Data)
@@ -769,10 +779,10 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 	return false, true, nil
 }
 
-// startTransaction checks to see if the current session has a transaction started yet or not, and if not,
+// startTransactionIfNecessary checks to see if the current session has a transaction started yet or not, and if not,
 // creates a read/write transaction for the session to use. This is necessary for handling commands that alter
 // data without going through the GMS engine.
-func startTransaction(ctx *sql.Context) error {
+func startTransactionIfNecessary(ctx *sql.Context) error {
 	doltSession, ok := ctx.Session.(*dsess.DoltSession)
 	if !ok {
 		return fmt.Errorf("unexpected session type: %T", ctx.Session)

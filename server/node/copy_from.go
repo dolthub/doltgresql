@@ -18,7 +18,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -40,13 +39,22 @@ type CopyFrom struct {
 	Stdin        bool
 	Columns      tree.NameList
 	CopyOptions  tree.CopyOptions
+	InsertStub   *vitess.Insert
 }
 
 var _ vitess.Injectable = (*CopyFrom)(nil)
 var _ sql.ExecSourceRel = (*CopyFrom)(nil)
 
 // NewCopyFrom returns a new *CopyFrom.
-func NewCopyFrom(databaseName string, tableName doltdb.TableName, options tree.CopyOptions, fileName string, stdin bool, columns tree.NameList) *CopyFrom {
+func NewCopyFrom(
+		databaseName string,
+		tableName doltdb.TableName,
+		options tree.CopyOptions,
+		fileName string,
+		stdin bool,
+		columns tree.NameList,
+		insertStub *vitess.Insert,
+) *CopyFrom {
 	switch options.CopyFormat {
 	case tree.CopyFormatCsv, tree.CopyFormatText:
 		// no-op
@@ -99,15 +107,10 @@ func (cf *CopyFrom) Validate(ctx *sql.Context) error {
 
 	// If a set of columns was explicitly specified, validate them
 	if len(cf.Columns) > 0 {
-		if len(table.Schema()) != len(cf.Columns) {
-			return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
-		}
-
-		for i, col := range table.Schema() {
-			name := cf.Columns[i]
-			nameString := strings.Trim(name.String(), `"`)
-			if nameString != col.Name {
-				return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
+		sch := table.Schema()
+		for _, col := range cf.Columns {
+			if sch.IndexOfColName(col.String()) < 0 {
+				return fmt.Errorf("invalid column %s for table %s", col.String(), table.Name())
 			}
 		}
 	}
