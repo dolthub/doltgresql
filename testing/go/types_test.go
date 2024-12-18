@@ -3292,6 +3292,10 @@ var enumTypeTests = []ScriptTest{
 				Query:    `SELECT * FROM person WHERE current_mood > 'sad' ORDER BY current_mood;`,
 				Expected: []sql.Row{{"Curly", "ok"}, {"Moe", "happy"}},
 			},
+			{
+				Query:       `INSERT INTO person VALUES ('Joey', 'invalid');`,
+				ExpectedErr: `invalid input value for enum mood: "invalid"`,
+			},
 		},
 	},
 	{
@@ -3324,7 +3328,6 @@ var enumTypeTests = []ScriptTest{
 		},
 	},
 	{
-		Skip: true,
 		Name: "enum type cast",
 		SetUpScript: []string{
 			`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')`,

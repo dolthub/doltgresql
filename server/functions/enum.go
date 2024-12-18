@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -40,10 +42,20 @@ var enum_in = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// typOid := val2.(id.Internal)
-		// TODO: get type using given OID, which should give access to enum labels.
-		//  should return the index of label?
-		return val1.(string), nil
+		typ, err := getDoltgresTypeFromInternal(ctx, val2.(id.Internal))
+		if err != nil {
+			return nil, err
+		}
+		if typ.TypCategory != pgtypes.TypeCategory_EnumTypes {
+			return nil, fmt.Errorf(`"%s" is not an enum type`, typ.Name())
+		}
+
+		value := val1.(string)
+		if _, exists := typ.EnumLabels[value]; !exists {
+			return nil, pgtypes.ErrInvalidInputValueForEnum.New(typ.Name(), value)
+		}
+		// TODO: should return the index instead of label?
+		return value, nil
 	},
 }
 
@@ -54,7 +66,7 @@ var enum_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyEnum},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: should return the index of label?
+		// TODO: should receive the index instead of label?
 		return val.(string), nil
 	},
 }
@@ -66,15 +78,28 @@ var enum_recv = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// typOid := val2.(id.Internal)
-		// TODO: get type using given OID, which should give access to enum labels.
-		//  should return the index of label?
+		// TODO: should return the index instead of label?
 		data := val1.([]byte)
 		if len(data) == 0 {
 			return nil, nil
 		}
 		reader := utils.NewReader(data)
-		return reader.String(), nil
+		value := reader.String()
+		if ctx == nil {
+			// TODO: currently, in some places we use nil context, should fix it.
+			return value, nil
+		}
+		typ, err := getDoltgresTypeFromInternal(ctx, val2.(id.Internal))
+		if err != nil {
+			return nil, err
+		}
+		if typ.TypCategory != pgtypes.TypeCategory_EnumTypes {
+			return nil, fmt.Errorf(`"%s" is not an enum type`, typ.Name())
+		}
+		if _, exists := typ.EnumLabels[value]; !exists {
+			return nil, pgtypes.ErrInvalidInputValueForEnum.New(typ.Name(), value)
+		}
+		return value, nil
 	},
 }
 
@@ -85,7 +110,7 @@ var enum_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyEnum},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: should return the index of label?
+		// TODO: should return the index instead of label?
 		str := val.(string)
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)
@@ -122,4 +147,29 @@ var enum_cmp = framework.Function2{
 			return int32(1), nil
 		}
 	},
+}
+
+// getDoltgresTypeFromInternal takes internal ID and returns DoltgresType associated to it.
+// It allows retrieving user-defined type and requires valid sql.Context.
+func getDoltgresTypeFromInternal(ctx *sql.Context, typID id.Internal) (*pgtypes.DoltgresType, error) {
+	typCol, err := core.GetTypesCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	schName := typID.Segment(0)
+	sch, err := core.GetCurrentSchema(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if schName == "" {
+		schName = sch
+	}
+
+	typName := typID.Segment(1)
+	typ, found := typCol.GetType(schName, typName)
+	if !found {
+		return nil, pgtypes.ErrTypeDoesNotExist.New(typName)
+	}
+	return typ, nil
 }
