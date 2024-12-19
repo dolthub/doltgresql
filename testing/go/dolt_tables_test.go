@@ -1962,6 +1962,11 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					SkipResultsCheck: true,
 				},
 				{
+					Skip:             true, // TODO: ERROR: at or near "status": syntax error
+					Query:            `DESCRIBE dolt.status`,
+					SkipResultsCheck: true,
+				},
+				{
 					Query:            `DESCRIBE dolt_status`,
 					SkipResultsCheck: true,
 				},

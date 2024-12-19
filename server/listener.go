@@ -35,6 +35,7 @@ var (
 type Listener struct {
 	listener net.Listener
 	cfg      mysql.ListenerConfig
+	sel      server.ServerEventListener
 }
 
 var _ server.ProtocolListener = (*Listener)(nil)
@@ -48,14 +49,15 @@ func WithCertificate(cert tls.Certificate) ListenerOpt {
 }
 
 // NewListener creates a new Listener.
-func NewListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, error) {
-	return NewListenerWithOpts(listenerCfg)
+func NewListener(listenerCfg mysql.ListenerConfig, sel server.ServerEventListener) (server.ProtocolListener, error) {
+	return NewListenerWithOpts(listenerCfg, sel)
 }
 
-func NewListenerWithOpts(listenerCfg mysql.ListenerConfig, opts ...ListenerOpt) (server.ProtocolListener, error) {
+func NewListenerWithOpts(listenerCfg mysql.ListenerConfig, sel server.ServerEventListener, opts ...ListenerOpt) (server.ProtocolListener, error) {
 	l := &Listener{
 		listener: listenerCfg.Listener,
 		cfg:      listenerCfg,
+		sel:      sel,
 	}
 
 	for _, opt := range opts {
@@ -83,7 +85,7 @@ func (l *Listener) Accept() {
 			conn = netutil.NewConnWithTimeouts(conn, l.cfg.ConnReadTimeout, l.cfg.ConnWriteTimeout)
 		}
 
-		connectionHandler := NewConnectionHandler(conn, l.cfg.Handler)
+		connectionHandler := NewConnectionHandler(conn, l.cfg.Handler, l.sel)
 		go connectionHandler.HandleConnection()
 	}
 }
