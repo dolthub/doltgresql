@@ -31,7 +31,7 @@ func TestCopy(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "COPY test_info FROM STDIN WITH (HEADER);",
+					Query:             "COPY test_info FROM STDIN WITH (HEADER);",
 					CopyFromStdInFile: "tab-load-with-header.sql",
 				},
 				{
@@ -56,7 +56,7 @@ func TestCopy(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "COPY regions (\"Id\", \"Code\", \"Capital\", \"Name\") FROM stdin;\n",
+					Query:             "COPY regions (\"Id\", \"Code\", \"Capital\", \"Name\") FROM stdin;\n",
 					CopyFromStdInFile: "tab-load-with-quoted-column-names.sql",
 				},
 			},
@@ -68,7 +68,7 @@ func TestCopy(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "COPY tbl1 FROM STDIN (FORMAT CSV)",
+					Query:             "COPY tbl1 FROM STDIN (FORMAT CSV)",
 					CopyFromStdInFile: "csv-load-basic-cases.sql",
 				},
 				{
@@ -94,7 +94,7 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: " COPY tbl1 FROM STDIN (FORMAT CSV, HEADER TRUE);",
+					Query:             " COPY tbl1 FROM STDIN (FORMAT CSV, HEADER TRUE);",
 					CopyFromStdInFile: "csv-load-with-header.sql",
 				},
 				{
@@ -114,7 +114,7 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "COPY tbl1 FROM STDIN (FORMAT CSV);",
+					Query:             "COPY tbl1 FROM STDIN (FORMAT CSV);",
 					CopyFromStdInFile: "csv-load-multi-chunk.sql",
 				},
 				{
@@ -134,7 +134,7 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "COPY test_info FROM STDIN (FORMAT CSV, HEADER TRUE, DELIMITER '|');",
+					Query:             "COPY test_info FROM STDIN (FORMAT CSV, HEADER TRUE, DELIMITER '|');",
 					CopyFromStdInFile: "psv-load.sql",
 				},
 				{

@@ -106,7 +106,7 @@ type ScriptTestAssertion struct {
 
 	// Cols is used to check the column names returned from the server.
 	Cols []string
-	
+
 	// CopyFromSTDIN is used to test the COPY FROM STDIN command.
 	CopyFromStdInFile string
 }
@@ -235,7 +235,7 @@ func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) 
 		t.Fatalf("Failed to open file: %v", err)
 	}
 	defer file.Close()
-	
+
 	reader := bufio.NewReader(file)
 	_, err = conn.PgConn().CopyFrom(context.Background(), reader, query)
 	require.NoError(t, err)
