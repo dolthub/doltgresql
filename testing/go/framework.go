@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -104,6 +106,9 @@ type ScriptTestAssertion struct {
 
 	// Cols is used to check the column names returned from the server.
 	Cols []string
+	
+	// CopyFromSTDIN is used to test the COPY FROM STDIN command.
+	CopyFromStdInFile string
 }
 
 // Connection contains the default and current connections.
@@ -182,7 +187,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 				return
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-			if assertion.SkipResultsCheck || assertion.ExpectedErr != "" {
+			if assertion.CopyFromStdInFile != "" {
+				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile)
+			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
@@ -218,6 +225,20 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			}
 		})
 	}
+}
+
+func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) {
+	filePath := filepath.Join("testdata", filename)
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer file.Close()
+	
+	reader := bufio.NewReader(file)
+	_, err = conn.PgConn().CopyFrom(context.Background(), reader, query)
+	require.NoError(t, err)
 }
 
 // RunScripts runs the given collection of scripts. This normalizes all rows before comparing them.
