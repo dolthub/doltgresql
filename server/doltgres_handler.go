@@ -121,6 +121,7 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 		return fmt.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
 	}
 
+	// TODO: This technically isn't query start and underestimates query execution time
 	start := time.Now()
 	if h.sel != nil {
 		h.sel.QueryStarted()
@@ -173,6 +174,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 
 // ComQuery implements the Handler interface.
 func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error {
+	// TODO: This technically isn't query start and underestimates query execution time
 	start := time.Now()
 	if h.sel != nil {
 		h.sel.QueryStarted()
