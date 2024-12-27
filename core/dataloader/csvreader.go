@@ -295,7 +295,10 @@ func (csvr *csvReader) parseQuotedField(rs *recordState) (kontinue bool, err err
 	const quoteLen = len(`"`)
 	dl := len(csvr.delim)
 	recordStartLine := csvr.numLine
-	fullField := rs.line
+	// full copy needed here because we append rs.line to fullField, and this can result in buffer corruption in
+	// some cases (namely when windows line endings are present)
+	fullField := make([]byte, len(rs.line))
+	copy(fullField, rs.line)
 
 	// Quoted string field
 	rs.line = rs.line[quoteLen:]

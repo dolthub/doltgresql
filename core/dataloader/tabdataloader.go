@@ -111,9 +111,9 @@ func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) er
 			tdl.partialLine = ""
 		}
 
-		// If we see the end of data marker, then jump out of the loop
+		// If we see the end of data marker, return early
 		if line == "\\." {
-			break
+			return nil
 		}
 
 		// Skip over empty lines

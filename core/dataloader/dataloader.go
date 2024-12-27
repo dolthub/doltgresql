@@ -29,7 +29,7 @@ import (
 // with the incomplete record.
 type DataLoader interface {
 	// LoadChunk reads the records from |data| and inserts them into the previously configured table. Data records
-	// are not guaranteed to stard and end cleanly on chunk boundaries, so implementations must recognize incomplete
+	// are not guaranteed to start and end cleanly on chunk boundaries, so implementations must recognize incomplete
 	// records and save them to prepend on the next processed chunk.
 	LoadChunk(ctx *sql.Context, data *bufio.Reader) error
 
