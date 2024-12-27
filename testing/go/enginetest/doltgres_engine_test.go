@@ -1735,12 +1735,12 @@ func TestStatsHistograms(t *testing.T) {
 	denginetest.RunStatsHistogramTests(t, h)
 }
 
-// TestStatsIO force a provider reload in-between setup and assertions that
+// TestStatsStorage force a provider reload in-between setup and assertions that
 // forces a round trip of the statistics table before inspecting values.
-func TestStatsIO(t *testing.T) {
+func TestStatsStorage(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
-	denginetest.RunStatsIOTests(t, h)
+	denginetest.RunStatsStorageTests(t, h)
 }
 
 func TestJoinStats(t *testing.T) {
