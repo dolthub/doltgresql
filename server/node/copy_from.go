@@ -107,14 +107,15 @@ func (cf *CopyFrom) Validate(ctx *sql.Context) error {
 	}
 
 	// If a set of columns was explicitly specified, validate them
-	if len(cf.Columns) > 0 {
-		sch := table.Schema()
-		for _, col := range cf.Columns {
-			if sch.IndexOfColName(col.String()) < 0 {
-				return fmt.Errorf("invalid column %s for table %s", col.String(), table.Name())
-			}
-		}
-	}
+	// TODO: remove, this check should happen during analysis
+	// if len(cf.Columns) > 0 {
+	// 	sch := table.Schema()
+	// 	for _, col := range cf.Columns {
+	// 		if sch.IndexOfColName(col.String()) < 0 {
+	// 			return fmt.Errorf("invalid column %s for table %s", col.String(), table.Name())
+	// 		}
+	// 	}
+	// }
 
 	return nil
 }

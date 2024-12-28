@@ -46,7 +46,6 @@ func TestCopy(t *testing.T) {
 		},
 		{
 			Name: "tab delimited with quoted column names",
-			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE Regions (
    "Id" SERIAL UNIQUE NOT NULL,
