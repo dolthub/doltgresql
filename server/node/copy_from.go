@@ -71,6 +71,7 @@ func NewCopyFrom(
 		Stdin:        stdin,
 		Columns:      columns,
 		CopyOptions:  options,
+		InsertStub: insertStub,
 	}
 }
 

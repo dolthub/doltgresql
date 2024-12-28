@@ -24,6 +24,7 @@ func TestCopy(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "tab delimited with header",
+			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE test (pk int primary key);",
 				"INSERT INTO test VALUES (0), (1);",

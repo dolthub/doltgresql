@@ -70,7 +70,9 @@ func nodeCopyFrom(ctx *Context, node *tree.CopyFrom) (vitess.Statement, error) {
 				Action:  vitess.InsertStr,
 				Table:   tableName,
 				Columns: columns,
-				Rows:    stubValues,
+				Rows:    &vitess.AliasedValues{
+					Values:  stubValues,
+				},
 			},
 		),
 		Children: nil,
