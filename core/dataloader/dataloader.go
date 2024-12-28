@@ -28,6 +28,8 @@ import (
 // incomplete records, and saving that partial record until the next call to LoadChunk, so that it may be prefixed
 // with the incomplete record.
 type DataLoader interface {
+	sql.Node
+	sql.ExecSourceRel
 	// LoadChunk reads the records from |data| and inserts them into the previously configured table. Data records
 	// are not guaranteed to start and end cleanly on chunk boundaries, so implementations must recognize incomplete
 	// records and save them to prepend on the next processed chunk.

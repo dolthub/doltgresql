@@ -631,7 +631,7 @@ func makeCommandComplete(tag string, rows int32) *pgproto3.CommandComplete {
 // any error that occurred while processing the COPY DATA message.
 func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
 	helper, messages, err := h.handleCopyDataHelper(message)
-	if err != nil {
+	if err != nil && h.copyFromStdinState != nil {
 		h.copyFromStdinState.copyErr = err
 	}
 	return helper, messages, err

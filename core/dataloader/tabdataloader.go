@@ -181,3 +181,38 @@ func (tdl *TabularDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error)
 
 	return &tdl.results, nil
 }
+
+func (tdl *TabularDataLoader) Resolved() bool {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (tdl *TabularDataLoader) String() string {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (tdl *TabularDataLoader) Schema() sql.Schema {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (tdl *TabularDataLoader) Children() []sql.Node {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (tdl *TabularDataLoader) WithChildren(children ...sql.Node) (sql.Node, error) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (tdl *TabularDataLoader) IsReadOnly() bool {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (tdl *TabularDataLoader) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	// TODO implement me
+	panic("implement me")
+}
