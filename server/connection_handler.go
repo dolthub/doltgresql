@@ -30,6 +30,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
@@ -690,15 +691,28 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 		}
 
 		h.copyFromStdinState.dataLoader = dataLoader
-		
+
 		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil, nil)
 		node, flags, err := builder.BindOnly(copyFromStdinNode.InsertStub, "", nil)
 		if err != nil {
 			return false, false, err
 		}
-		
-		fmt.Sprintf("node: %v", node)
-		fmt.Sprintf("flags: %v", flags)
+
+		insertNode, ok := node.(*plan.InsertInto)
+		if !ok {
+			return false, false, fmt.Errorf("expected plan.InsertInto, got %T", node)
+		}
+
+		node = insertNode.WithSource(copyFromStdinNode)
+
+		analyze, err := h.doltgresHandler.e.Analyzer.Analyze(sqlCtx, node, nil, flags)
+		if err != nil {
+			return false, false, err
+		}
+
+		logrus.Infof("node: %v", node)
+		logrus.Infof("node: %v", analyze)
+		logrus.Infof("flags: %v", flags)
 	}
 
 	byteReader := bytes.NewReader(message.Data)
