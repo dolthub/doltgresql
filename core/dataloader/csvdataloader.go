@@ -84,7 +84,7 @@ func (cdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error 
 		}
 		
 		if !ok {
-			continue
+			break
 		}
 
 		// Insert the row
@@ -160,7 +160,7 @@ func (cdl *CsvDataLoader) nextRow(ctx *sql.Context, reader *csvReader) (sql.Row,
 			}
 		}
 	}
-	
+
 	return row, true, nil
 }
 
