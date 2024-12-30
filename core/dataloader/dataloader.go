@@ -34,6 +34,9 @@ type DataLoader interface {
 	// are not guaranteed to start and end cleanly on chunk boundaries, so implementations must recognize incomplete
 	// records and save them to prepend on the next processed chunk.
 	LoadChunk(ctx *sql.Context, data *bufio.Reader) error
+	
+	// SetNextDataChunk sets the next data chunk to be processed by the DataLoader. This will replace LoadChunk when we're done with the refactor.
+	SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error
 
 	// Abort aborts the current load operation and releases all used resources.
 	Abort(ctx *sql.Context) error

@@ -705,18 +705,24 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 
 		node = insertNode.WithSource(copyFromStdinNode)
 
-		analyze, err := h.doltgresHandler.e.Analyzer.Analyze(sqlCtx, node, nil, flags)
+		h.doltgresHandler.e.Analyzer.Debug = true
+		h.doltgresHandler.e.Analyzer.Verbose = true
+		analyzedNode, err := h.doltgresHandler.e.Analyzer.Analyze(sqlCtx, node, nil, flags)
 		if err != nil {
 			return false, false, err
 		}
 
 		logrus.Infof("node: %v", node)
-		logrus.Infof("node: %v", analyze)
+		logrus.Infof("node: %v", analyzedNode)
 		logrus.Infof("flags: %v", flags)
 	}
 
-	byteReader := bytes.NewReader(message.Data)
-	reader := bufio.NewReader(byteReader)
+	reader := bufio.NewReader(bytes.NewReader(message.Data))
+	if err = dataLoader.SetNextDataChunk(sqlCtx, reader); err != nil {
+		return false, false, err
+	}
+	
+	// TODO: instead of this, we need to run the analyzed plan above
 	if err = dataLoader.LoadChunk(sqlCtx, reader); err != nil {
 		return false, false, err
 	}

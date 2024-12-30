@@ -31,11 +31,17 @@ import (
 type CsvDataLoader struct {
 	results       LoadDataResults
 	partialRecord string
+	nextDataChunk *bufio.Reader
 	rowInserter   sql.RowInserter
 	colTypes      []*types.DoltgresType
 	sch           sql.Schema
 	removeHeader  bool
 	delimiter     string
+}
+
+func (cdl *CsvDataLoader) SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error {
+	cdl.nextDataChunk = data
+	return nil
 }
 
 var _ DataLoader = (*CsvDataLoader)(nil)
@@ -224,7 +230,38 @@ func (cdl *CsvDataLoader) IsReadOnly() bool {
 	return true
 }
 
+type csvRowIter struct {
+	cdl *CsvDataLoader
+	reader *csvReader
+}
+
+func (c csvRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	row, hasNext, err := c.cdl.nextRow(ctx, c.reader)
+	if err != nil {
+		return nil, err
+	}
+	
+	if !hasNext {
+		return nil, io.EOF
+	}
+	
+	return row, nil
+}
+
+func (c csvRowIter) Close(context *sql.Context) error {
+	return nil
+}
+
+var _ sql.RowIter = (*csvRowIter)(nil)
+
 func (cdl *CsvDataLoader) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	// TODO implement me
-	panic("implement me")
+	combinedReader := NewStringPrefixReader(cdl.partialRecord, cdl.nextDataChunk)
+	cdl.partialRecord = ""
+
+	csvReader, err := newCsvReaderWithDelimiter(combinedReader, cdl.delimiter)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &csvRowIter{cdl: cdl, reader: csvReader}, nil
 }

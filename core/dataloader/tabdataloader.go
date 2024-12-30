@@ -216,3 +216,8 @@ func (tdl *TabularDataLoader) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter,
 	// TODO implement me
 	panic("implement me")
 }
+
+func (tdl *TabularDataLoader) SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error {
+	// TODO implement me
+	panic("implement me")
+}
