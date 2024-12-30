@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -35,6 +36,12 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	if !ok {
 		return node, transform.SameTree, nil
 	}
+	
+	// We have some sources that are already postgres native, so skip them
+	if isDoltgresNativeSource(insertInto.Source) {
+		return insertInto, transform.SameTree, nil
+	}
+	
 	// First we'll make a map for each column, so that it's easier to match a name to a type. We also ensure that the
 	// types use Doltgres types, as casts rely on them. At this point, we shouldn't have any GMS types floating around
 	// anymore, so no need to include a lot of additional code to handle them.
@@ -116,4 +123,13 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	}
 
 	return insertInto, transform.NewTree, nil
+}
+
+func isDoltgresNativeSource(source sql.Node) bool {
+	switch source.(type) {
+	case *node.CopyFrom:
+		return true
+	default:
+		return false
+	}
 }
