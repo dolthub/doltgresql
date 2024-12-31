@@ -31,7 +31,6 @@ type CsvDataLoader struct {
 	results       LoadDataResults
 	partialRecord string
 	nextDataChunk *bufio.Reader
-	rowInserter   sql.RowInserter
 	colTypes      []*types.DoltgresType
 	sch           sql.Schema
 	removeHeader  bool
@@ -50,23 +49,19 @@ const defaultCsvDelimiter = ","
 // NewCsvDataLoader creates a new DataLoader instance that will insert records from chunks of CSV data into |table|. If
 // |header| is true, the first line of the data will be treated as a header and ignored. If |delimiter| is not the empty
 // string, it will be used as the delimiter separating value.
-func NewCsvDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter string, header bool) (*CsvDataLoader, error) {
-	colTypes, err := getColumnTypes(table.Schema())
+func NewCsvDataLoader(ctx *sql.Context, sch sql.Schema, delimiter string, header bool) (*CsvDataLoader, error) {
+	colTypes, err := getColumnTypes(sch)
 	if err != nil {
 		return nil, err
 	}
-
-	rowInserter := table.Inserter(ctx)
-	rowInserter.StatementBegin(ctx)
 
 	if delimiter == "" {
 		delimiter = defaultCsvDelimiter
 	}
 
 	return &CsvDataLoader{
-		rowInserter:  rowInserter,
 		colTypes:     colTypes,
-		sch:          table.Schema(),
+		sch:          sch,
 		removeHeader: header,
 		delimiter:    delimiter,
 	}, nil

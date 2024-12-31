@@ -32,7 +32,6 @@ type TabularDataLoader struct {
 	results       LoadDataResults
 	partialLine   string
 	nextDataChunk *bufio.Reader
-	rowInserter   sql.RowInserter
 	colTypes      []*types.DoltgresType
 	sch           sql.Schema
 	delimiterChar string
@@ -45,15 +44,12 @@ var _ DataLoader = (*TabularDataLoader)(nil)
 // NewTabularDataLoader creates a new TabularDataLoader to insert into the specified |table| using the specified
 // |delimiterChar| and |nullChar|. If |header| is true, the first line of the data will be treated as a header and
 // ignored.
-func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {
-	colTypes, err := getColumnTypes(table.Schema())
+func NewTabularDataLoader(ctx *sql.Context, sch sql.Schema, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {
+	colTypes, err := getColumnTypes(sch)
 	if err != nil {
 		return nil, err
 	}
-
-	rowInserter := table.Inserter(ctx)
-	rowInserter.StatementBegin(ctx)
-
+	
 	if delimiterChar == "" {
 		delimiterChar = defaultTextDelimiter
 	}
@@ -63,9 +59,8 @@ func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter
 	}
 
 	return &TabularDataLoader{
-		rowInserter:   rowInserter,
 		colTypes:      colTypes,
-		sch:           table.Schema(),
+		sch:           sch,
 		delimiterChar: delimiterChar,
 		nullChar:      nullChar,
 		removeHeader:  header,

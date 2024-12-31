@@ -29,10 +29,13 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
+	"github.com/dolthub/doltgresql/core/dataloader"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
+	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -40,10 +43,7 @@ import (
 	"github.com/mitchellh/go-ps"
 	"github.com/sirupsen/logrus"
 
-	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/node"
 )
@@ -664,40 +664,8 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 		if copyFromStdinNode == nil {
 			return false, false, fmt.Errorf("no COPY FROM STDIN node found")
 		}
-
-		// TODO: It would be better to get the table from the copyFromStdinNode – not by calling core.GetSqlTableFromContext
-		table, err := core.GetSqlTableFromContext(sqlCtx, copyFromStdinNode.DatabaseName, copyFromStdinNode.TableName)
-		if err != nil {
-			return false, true, err
-		}
-		if table == nil {
-			return false, true, fmt.Errorf(`relation "%s" does not exist`, copyFromStdinNode.TableName.String())
-		}
-		insertableTable, ok := table.(sql.InsertableTable)
-		if !ok {
-			return false, true, fmt.Errorf(`table "%s" is read-only`, copyFromStdinNode.TableName.String())
-		}
-
-		switch copyFromStdinNode.CopyOptions.CopyFormat {
-		case tree.CopyFormatText:
-			dataLoader, err = dataloader.NewTabularDataLoader(sqlCtx, insertableTable, copyFromStdinNode.CopyOptions.Delimiter, "", copyFromStdinNode.CopyOptions.Header)
-		case tree.CopyFormatCsv:
-			dataLoader, err = dataloader.NewCsvDataLoader(sqlCtx, insertableTable, copyFromStdinNode.CopyOptions.Delimiter, copyFromStdinNode.CopyOptions.Header)
-		case tree.CopyFormatBinary:
-			err = fmt.Errorf("BINARY format is not supported for COPY FROM")
-		default:
-			err = fmt.Errorf("unknown format specified for COPY FROM: %v",
-				copyFromStdinNode.CopyOptions.CopyFormat)
-		}
-
-		if err != nil {
-			return false, false, err
-		}
-
-		h.copyFromStdinState.dataLoader = dataLoader
-		h.copyFromStdinState.copyFromStdinNode.DataLoader = dataLoader
-
-		// now we build an insert node to use for the full insert plan
+		
+		// we build an insert node to use for the full insert plan, for which the copy from node will be the row source
 		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil, nil)
 		node, flags, err := builder.BindOnly(copyFromStdinNode.InsertStub, "", nil)
 		if err != nil {
@@ -717,6 +685,32 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 		}
 		
 		h.copyFromStdinState.insertNode = analyzedNode
+		
+		// now that we have our insert node, we can build the data loader
+		tbl := getInsertableTable(insertNode.Destination)
+		if tbl == nil {
+			// this should be impossible, enforced by analyzer above
+			return false, false, fmt.Errorf("no insertable table found in %v", insertNode.Destination)
+		}
+		
+		switch copyFromStdinNode.CopyOptions.CopyFormat {
+		case tree.CopyFormatText:
+			dataLoader, err = dataloader.NewTabularDataLoader(sqlCtx, tbl.Schema(), copyFromStdinNode.CopyOptions.Delimiter, "", copyFromStdinNode.CopyOptions.Header)
+		case tree.CopyFormatCsv:
+			dataLoader, err = dataloader.NewCsvDataLoader(sqlCtx, tbl.Schema(), copyFromStdinNode.CopyOptions.Delimiter, copyFromStdinNode.CopyOptions.Header)
+		case tree.CopyFormatBinary:
+			err = fmt.Errorf("BINARY format is not supported for COPY FROM")
+		default:
+			err = fmt.Errorf("unknown format specified for COPY FROM: %v",
+				copyFromStdinNode.CopyOptions.CopyFormat)
+		}
+
+		if err != nil {
+			return false, false, err
+		}
+
+		h.copyFromStdinState.dataLoader = dataLoader
+		h.copyFromStdinState.copyFromStdinNode.DataLoader = dataLoader
 	}
 
 	reader := bufio.NewReader(bytes.NewReader(message.Data))
@@ -733,6 +727,22 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 	// We expect to see more CopyData messages until we see either a CopyDone or CopyFail message, so
 	// return false for endOfMessages
 	return false, false, nil
+}
+
+// Returns the first sql.InsertableTable node found in the tree provided, or nil if none is found.
+func getInsertableTable(node sql.Node) sql.InsertableTable {
+	var tbl sql.InsertableTable
+	transform.Inspect(node, func(node sql.Node) bool {
+		if rt, ok := node.(*plan.ResolvedTable); ok {
+			if insertable, ok := rt.Table.(sql.InsertableTable); ok {
+				tbl = insertable
+				return false
+			}
+		}
+		return true
+	})
+	
+	return tbl
 }
 
 // handleCopyDone handles a COPY DONE message by finalizing the in-progress COPY DATA operation and committing the
