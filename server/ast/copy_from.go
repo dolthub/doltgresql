@@ -51,7 +51,6 @@ func nodeCopyFrom(ctx *Context, node *tree.CopyFrom) (vitess.Statement, error) {
 	stubValues := make(vitess.Values, 1)
 	stubValues[0] = make(vitess.ValTuple, len(columns))
 	for i := range columns {
-		// TODO: does this actually work? A select might be better
 		stubValues[0][i] = &vitess.NullVal{}
 	}
 	
