@@ -691,7 +691,9 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 		}
 
 		h.copyFromStdinState.dataLoader = dataLoader
+		h.copyFromStdinState.copyFromStdinNode.DataLoader = dataLoader
 
+		// now we build an insert node to use for the full insert plan
 		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil, nil)
 		node, flags, err := builder.BindOnly(copyFromStdinNode.InsertStub, "", nil)
 		if err != nil {
@@ -703,30 +705,27 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 			return false, false, fmt.Errorf("expected plan.InsertInto, got %T", node)
 		}
 
+		// After building out stub insert node, swap out the source node with the COPY node, then analyze the entire thing
 		node = insertNode.WithSource(copyFromStdinNode)
-
-		h.doltgresHandler.e.Analyzer.Debug = true
-		h.doltgresHandler.e.Analyzer.Verbose = true
 		analyzedNode, err := h.doltgresHandler.e.Analyzer.Analyze(sqlCtx, node, nil, flags)
 		if err != nil {
 			return false, false, err
 		}
-
-		logrus.Infof("node: %v", node)
-		logrus.Infof("node: %v", analyzedNode)
-		logrus.Infof("flags: %v", flags)
+		
+		h.copyFromStdinState.insertNode = analyzedNode
 	}
 
 	reader := bufio.NewReader(bytes.NewReader(message.Data))
 	if err = dataLoader.SetNextDataChunk(sqlCtx, reader); err != nil {
 		return false, false, err
 	}
-	
-	// TODO: instead of this, we need to run the analyzed plan above
-	if err = dataLoader.LoadChunk(sqlCtx, reader); err != nil {
+
+	callback := func(res *Result) error { return nil }
+	err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY FROM", h.copyFromStdinState.insertNode, callback)
+	if err != nil {
 		return false, false, err
 	}
-
+	
 	// We expect to see more CopyData messages until we see either a CopyDone or CopyFail message, so
 	// return false for endOfMessages
 	return false, false, nil

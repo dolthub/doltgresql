@@ -15,18 +15,14 @@
 package node
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/go-mysql-server/sql"
-	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/sirupsen/logrus"
-
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/go-mysql-server/sql"
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 )
 
 // TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
@@ -40,6 +36,7 @@ type CopyFrom struct {
 	Columns      tree.NameList
 	CopyOptions  tree.CopyOptions
 	InsertStub   *vitess.Insert
+	DataLoader   dataloader.DataLoader
 }
 
 var _ vitess.Injectable = (*CopyFrom)(nil)
@@ -121,57 +118,22 @@ func (cf *CopyFrom) Validate(ctx *sql.Context) error {
 }
 
 // RowIter implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) RowIter(ctx *sql.Context, _ sql.Row) (_ sql.RowIter, err error) {
-	if err := cf.Validate(ctx); err != nil {
-		return nil, err
-	}
+func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err error) {
+	// TODO: implement file support
+	// // Open the file
+	// openFile, err := os.Open(cf.File)
+	// if openFile == nil || err != nil {
+	// 	return nil, fmt.Errorf(`could not open file "%s" for reading: No such file or directory`, cf.File)
+	// }
+	// defer func() {
+	// 	nErr := openFile.Close()
+	// 	if err == nil {
+	// 		err = nErr
+	// 	}
+	// }()
+	// reader := bufio.NewReader(openFile)
 
-	table, err := core.GetSqlTableFromContext(ctx, cf.DatabaseName, cf.TableName)
-	if err != nil {
-		return nil, err
-	}
-	if table == nil {
-		return nil, fmt.Errorf(`relation "%s" does not exist`, cf.TableName.String())
-	}
-	insertable, ok := table.(sql.InsertableTable)
-	if !ok {
-		return nil, fmt.Errorf(`table "%s" is read-only`, cf.TableName.String())
-	}
-
-	// Open the file
-	openFile, err := os.Open(cf.File)
-	if openFile == nil || err != nil {
-		return nil, fmt.Errorf(`could not open file "%s" for reading: No such file or directory`, cf.File)
-	}
-	defer func() {
-		nErr := openFile.Close()
-		if err == nil {
-			err = nErr
-		}
-	}()
-	reader := bufio.NewReader(openFile)
-
-	dataLoader, err := dataloader.NewTabularDataLoader(ctx, insertable, cf.CopyOptions.Delimiter, "", cf.CopyOptions.Header)
-	if err != nil {
-		return nil, err
-	}
-
-	// NOTE: when loading data from a specified file, there is only one chunk for the entire file
-	if err = dataLoader.LoadChunk(ctx, reader); err != nil {
-		if abortError := dataLoader.Abort(ctx); abortError != nil {
-			logrus.Warnf("unable to cleanly abort data loader: %s", abortError.Error())
-		}
-		return nil, err
-	}
-
-	if _, err = dataLoader.Finish(ctx); err != nil {
-		if abortError := dataLoader.Abort(ctx); err != nil {
-			logrus.Warnf("unable to cleanly abort data loader: %s", abortError.Error())
-		}
-		return nil, err
-	}
-
-	return sql.RowsToRowIter(), nil
+	return cf.DataLoader.RowIter(ctx, r)
 }
 
 // Schema implements the interface sql.ExecSourceRel.
