@@ -48,9 +48,15 @@ type LoadDataResults struct {
 
 // getColumnTypes examines |sch| and returns a slice of DoltgresTypes in the order of the schema's columns. If any
 // columns in the schema are not DoltgresType instances, an error is returned.
-func getColumnTypes(sch sql.Schema) ([]*types.DoltgresType, error) {
-	colTypes := make([]*types.DoltgresType, len(sch))
-	for i, col := range sch {
+func getColumnTypes(colNames []string, sch sql.Schema) ([]*types.DoltgresType, error) {
+	colTypes := make([]*types.DoltgresType, len(colNames))
+	for i, colName := range colNames {
+		colIdx := sch.IndexOfColName(colName)
+		if colIdx < 0 {
+			// should be impossible
+			return nil, fmt.Errorf("column %s not found in schema", colName)
+		}
+		col := sch[colIdx]
 		var ok bool
 		colTypes[i], ok = col.Type.(*types.DoltgresType)
 		if !ok {

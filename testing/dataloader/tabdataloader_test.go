@@ -46,7 +46,7 @@ func TestTabDataLoader(t *testing.T) {
 	// Tests that a basic tab delimited doc can be loaded as a single chunk.
 	t.Run("basic case", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(ctx, table, "\t", "\\N", false)
+		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", false)
 		require.NoError(t, err)
 
 		// Load all the data as a single chunk
@@ -68,7 +68,7 @@ func TestTabDataLoader(t *testing.T) {
 	// partial record must be buffered and prepended to the next chunk.
 	t.Run("record split across two chunks", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(ctx, table, "\t", "\\N", false)
+		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -97,7 +97,7 @@ func TestTabDataLoader(t *testing.T) {
 	// header row is present.
 	t.Run("record split across two chunks, with header", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(ctx, table, "\t", "\\N", true)
+		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", true)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -126,7 +126,7 @@ func TestTabDataLoader(t *testing.T) {
 	// across two chunks.
 	t.Run("quoted newlines across two chunks", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(ctx, table, "\t", "\\N", false)
+		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -155,7 +155,7 @@ func TestTabDataLoader(t *testing.T) {
 	// header row is present.
 	t.Run("delimiter='|', record split across two chunks, with header", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(ctx, table, "|", "\\N", true)
+		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "|", "\\N", true)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -183,7 +183,7 @@ func TestTabDataLoader(t *testing.T) {
 	// Test that calling Abort() does not insert any data into the table.
 	t.Run("abort cancels data load", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(ctx, table, "\t", "\\N", false)
+		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", false)
 		require.NoError(t, err)
 
 		// Load the first chunk

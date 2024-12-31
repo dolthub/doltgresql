@@ -69,7 +69,6 @@ func TestCopy(t *testing.T) {
 		},
 		{
 			Name: "basic csv",
-			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
 			},

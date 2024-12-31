@@ -50,7 +50,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// Tests that a basic CSV document can be loaded as a single chunk.
 	t.Run("basic case", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", false)
 		require.NoError(t, err)
 
 		// Load all the data as a single chunk
@@ -72,7 +72,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// partial record must be buffered and prepended to the next chunk.
 	t.Run("record split across two chunks", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -101,7 +101,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// header row is present.
 	t.Run("record split across two chunks, with header", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", true)
+		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", true)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -130,7 +130,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// across two chunks.
 	t.Run("quoted newlines across two chunks", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -158,7 +158,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// Test that calling Abort() does not insert any data into the table.
 	t.Run("abort cancels data load", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
@@ -183,7 +183,7 @@ func TestCsvDataLoader(t *testing.T) {
 	// and a header row is present.
 	t.Run("delimiter='|', record split across two chunks, with header", func(t *testing.T) {
 		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(ctx, table, "|", true)
+		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, "|", true)
 		require.NoError(t, err)
 
 		// Load the first chunk

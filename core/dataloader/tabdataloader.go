@@ -44,8 +44,8 @@ var _ DataLoader = (*TabularDataLoader)(nil)
 // NewTabularDataLoader creates a new TabularDataLoader to insert into the specified |table| using the specified
 // |delimiterChar| and |nullChar|. If |header| is true, the first line of the data will be treated as a header and
 // ignored.
-func NewTabularDataLoader(ctx *sql.Context, sch sql.Schema, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {
-	colTypes, err := getColumnTypes(sch)
+func NewTabularDataLoader(colNames []string, sch sql.Schema, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {
+	colTypes, err := getColumnTypes(colNames, sch)
 	if err != nil {
 		return nil, err
 	}

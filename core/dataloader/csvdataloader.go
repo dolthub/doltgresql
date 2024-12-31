@@ -46,11 +46,11 @@ var _ DataLoader = (*CsvDataLoader)(nil)
 
 const defaultCsvDelimiter = ","
 
-// NewCsvDataLoader creates a new DataLoader instance that will insert records from chunks of CSV data into |table|. If
+// NewCsvDataLoader creates a new DataLoader instance that will produce rows for the schema provided.
 // |header| is true, the first line of the data will be treated as a header and ignored. If |delimiter| is not the empty
 // string, it will be used as the delimiter separating value.
-func NewCsvDataLoader(ctx *sql.Context, sch sql.Schema, delimiter string, header bool) (*CsvDataLoader, error) {
-	colTypes, err := getColumnTypes(sch)
+func NewCsvDataLoader(colNames []string, sch sql.Schema, delimiter string, header bool) (*CsvDataLoader, error) {
+	colTypes, err := getColumnTypes(colNames, sch)
 	if err != nil {
 		return nil, err
 	}
