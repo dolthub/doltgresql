@@ -822,6 +822,9 @@ func startTransactionIfNecessary(ctx *sql.Context) error {
 		if _, err := doltSession.StartTransaction(ctx, sql.ReadWrite); err != nil {
 			return err
 		}
+		
+		// We also need to mark this session as not auto-committing, since we are managing the transaction boundaries ourselves
+		ctx.SetIgnoreAutoCommit(true)
 	}
 
 	return nil
