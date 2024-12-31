@@ -72,36 +72,6 @@ func NewCsvDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter str
 	}, nil
 }
 
-// LoadChunk implements the DataLoader interface
-func (cdl *CsvDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error {
-	combinedReader := NewStringPrefixReader(cdl.partialRecord, data)
-	cdl.partialRecord = ""
-
-	reader, err := newCsvReaderWithDelimiter(combinedReader, cdl.delimiter)
-	if err != nil {
-		return err
-	}
-
-	for {
-		row, ok, err := cdl.nextRow(ctx, reader)
-		if err != nil {
-			return err
-		}
-		
-		if !ok {
-			break
-		}
-
-		// Insert the row
-		if err = cdl.rowInserter.Insert(ctx, row); err != nil {
-			return err
-		}
-		cdl.results.RowsLoaded += 1
-	}
-
-	return nil
-}
-
 // nextRow attempts to read the next row from the data and return it, and returns true if a row was read
 func (cdl *CsvDataLoader) nextRow(ctx *sql.Context, reader *csvReader) (sql.Row, bool, error) {
 	if cdl.removeHeader {
@@ -167,12 +137,6 @@ func (cdl *CsvDataLoader) nextRow(ctx *sql.Context, reader *csvReader) (sql.Row,
 	}
 
 	return row, true, nil
-}
-
-// Abort implements the DataLoader interface
-func (cdl *CsvDataLoader) Abort(ctx *sql.Context) error {
-	// TODO: remove
-	return nil
 }
 
 // Finish implements the DataLoader interface

@@ -72,14 +72,8 @@ func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter
 	}, nil
 }
 
-// LoadChunk loads a chunk of data from the specified |data| reader into the table for this data loader. Note that
-// the chunk does not need to end on a line boundary – the loader will handle partial lines at the end of the chunk
-// by saving them for the next chunk.
-func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error {
-	// todo: remove me
-	return nil
-}
-
+// nextRow returns the next SQL row from the reader provided, using any previously saved partial line. Returns true if
+// there was another row.
 func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql.Row, bool, error) {
 	if tdl.removeHeader {
 		_, err := data.ReadString('\n')
@@ -152,12 +146,6 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 
 func (tdl *TabularDataLoader) SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error {
 	tdl.nextDataChunk = data
-	return nil
-}
-
-// Abort ends the current load data operation and discards any changes that have been made.
-func (tdl *TabularDataLoader) Abort(ctx *sql.Context) error {
-	// todo: remove
 	return nil
 }
 
