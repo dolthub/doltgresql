@@ -23,7 +23,7 @@ type SSLListener struct {
 	*dserver.Listener
 }
 
-func NewSslListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, error) {
+func NewSslListener(listenerCfg mysql.ListenerConfig, sel server.ServerEventListener) (server.ProtocolListener, error) {
 	// Since this is intended for testing, we'll configure a test certificate so that we can test for SSL support
 	cert, key, err := testcerts.GenerateCerts()
 	if err != nil {
@@ -35,7 +35,7 @@ func NewSslListener(listenerCfg mysql.ListenerConfig) (server.ProtocolListener, 
 		panic(err)
 	}
 
-	listener, err := dserver.NewListenerWithOpts(listenerCfg, dserver.WithCertificate(certificate))
+	listener, err := dserver.NewListenerWithOpts(listenerCfg, sel, dserver.WithCertificate(certificate))
 	if err != nil {
 		return nil, err
 	}

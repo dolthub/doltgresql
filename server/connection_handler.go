@@ -29,6 +29,7 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
+	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
@@ -89,7 +90,7 @@ func init() {
 }
 
 // NewConnectionHandler returns a new ConnectionHandler for the connection provided
-func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandler {
+func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.ServerEventListener) *ConnectionHandler {
 	mysqlConn := &mysql.Conn{
 		Conn:        conn,
 		PrepareData: make(map[uint32]*mysql.PrepareData),
@@ -112,6 +113,9 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler) *ConnectionHandl
 		readTimeout:       0,     // cfg.ConnReadTimeout,
 		encodeLoggedQuery: false, // cfg.EncodeLoggedQuery,
 		pgTypeMap:         pgtype.NewMap(),
+	}
+	if sel != nil {
+		doltgresHandler.sel = sel
 	}
 
 	return &ConnectionHandler{

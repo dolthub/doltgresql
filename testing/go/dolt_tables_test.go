@@ -1886,6 +1886,31 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"public.t", "f", "new table"}},
 				},
 				{
+					Query: `DESCRIBE dolt."status"`,
+					Expected: []sql.Row{
+						{"table_name", "text", "NO", "PRI", nil, ""},
+						{"staged", "boolean", "NO", "PRI", nil, ""},
+						{"status", "text", "NO", "PRI", nil, ""},
+					},
+				},
+				{
+					Skip:  true, // TODO: ERROR: at or near "status": syntax error
+					Query: `DESCRIBE dolt.status`,
+					Expected: []sql.Row{
+						{"table_name", "text", "NO", "PRI", nil, ""},
+						{"staged", "boolean", "NO", "PRI", nil, ""},
+						{"status", "text", "NO", "PRI", nil, ""},
+					},
+				},
+				{
+					Query: `DESCRIBE dolt_status`,
+					Expected: []sql.Row{
+						{"table_name", "text", "NO", "PRI", nil, ""},
+						{"staged", "boolean", "NO", "PRI", nil, ""},
+						{"status", "text", "NO", "PRI", nil, ""},
+					},
+				},
+				{
 					Query:    `SELECT * FROM dolt.status WHERE staged=true`,
 					Expected: []sql.Row{},
 				},
