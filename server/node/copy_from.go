@@ -24,8 +24,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 )
 
-// TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
-
 // CopyFrom handles the COPY ... FROM ... statement.
 type CopyFrom struct {
 	DatabaseName string
@@ -88,20 +86,6 @@ func (cf *CopyFrom) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err error) {
-	// TODO: implement file support
-	// // Open the file
-	// openFile, err := os.Open(cf.File)
-	// if openFile == nil || err != nil {
-	// 	return nil, fmt.Errorf(`could not open file "%s" for reading: No such file or directory`, cf.File)
-	// }
-	// defer func() {
-	// 	nErr := openFile.Close()
-	// 	if err == nil {
-	// 		err = nErr
-	// 	}
-	// }()
-	// reader := bufio.NewReader(openFile)
-
 	return cf.DataLoader.RowIter(ctx, r)
 }
 

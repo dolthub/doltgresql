@@ -451,6 +451,9 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 			// be ready for more queries util COPY DATA mode is completed.
 			if injectedStmt.Stdin {
 				return true, false, h.handleCopyFromStdinQuery(injectedStmt, h.Conn())
+			} else {
+				// copying from a file is handled in a single message
+				return true, true, h.copyFromFileQuery(injectedStmt)
 			}
 		}
 	}
@@ -634,23 +637,49 @@ func makeCommandComplete(tag string, rows int32) *pgproto3.CommandComplete {
 // messages are expected, and the server should tell the client that it is ready for the next query, and |err| contains
 // any error that occurred while processing the COPY DATA message.
 func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
-	helper, messages, err := h.handleCopyDataHelper(message)
+	copyFromData := bytes.NewReader(message.Data)
+	stop, endOfMessages, err = h.handleCopyDataHelper(h.copyFromStdinState, copyFromData)
 	if err != nil && h.copyFromStdinState != nil {
 		h.copyFromStdinState.copyErr = err
 	}
-	return helper, messages, err
+	return stop, endOfMessages, err
+}
+
+// copyFromFileQuery handles a COPY FROM message that is reading from a file, returning any error that occurs
+func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
+	copyState := &copyFromStdinState{
+		copyFromStdinNode: stmt,
+	}
+	
+	// TODO: security check for file path
+	// TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
+	f, err := os.Open(stmt.File)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	
+	_, _, err = h.handleCopyDataHelper(copyState, f)
+	if err != nil {
+		return err
+	}
+
+	return h.send(&pgproto3.CommandComplete{
+		// probably wrong
+		CommandTag: []byte("COPY"),
+	})
 }
 
 // handleCopyDataHelper is a helper function that should only be invoked by handleCopyData. handleCopyData wraps this
 // function so that it can capture any returned error message and store it in the saved state.
-func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
-	if h.copyFromStdinState == nil {
+func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, copyFromData io.Reader) (stop bool, endOfMessages bool, err error) {
+	if copyState == nil {
 		return false, true, fmt.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
 	}
 
 	// Grab a sql.Context and ensure the session has a transaction started, otherwise the copied data
 	// won't get committed correctly.
-	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "COPY FROM STDIN")
 	if err != nil {
 		return false, false, err
 	}
@@ -658,9 +687,9 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 		return false, false, err
 	}
 
-	dataLoader := h.copyFromStdinState.dataLoader
+	dataLoader := copyState.dataLoader
 	if dataLoader == nil {
-		copyFromStdinNode := h.copyFromStdinState.copyFromStdinNode
+		copyFromStdinNode := copyState.copyFromStdinNode
 		if copyFromStdinNode == nil {
 			return false, false, fmt.Errorf("no COPY FROM STDIN node found")
 		}
@@ -684,7 +713,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 			return false, false, err
 		}
 		
-		h.copyFromStdinState.insertNode = analyzedNode
+		copyState.insertNode = analyzedNode
 		
 		// now that we have our insert node, we can build the data loader
 		tbl := getInsertableTable(insertNode.Destination)
@@ -709,17 +738,17 @@ func (h *ConnectionHandler) handleCopyDataHelper(message *pgproto3.CopyData) (st
 			return false, false, err
 		}
 
-		h.copyFromStdinState.dataLoader = dataLoader
-		h.copyFromStdinState.copyFromStdinNode.DataLoader = dataLoader
+		copyState.dataLoader = dataLoader
+		copyState.copyFromStdinNode.DataLoader = dataLoader
 	}
 
-	reader := bufio.NewReader(bytes.NewReader(message.Data))
+	reader := bufio.NewReader(copyFromData)
 	if err = dataLoader.SetNextDataChunk(sqlCtx, reader); err != nil {
 		return false, false, err
 	}
 
 	callback := func(res *Result) error { return nil }
-	err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY FROM", h.copyFromStdinState.insertNode, callback)
+	err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY FROM", copyState.insertNode, callback)
 	if err != nil {
 		return false, false, err
 	}
