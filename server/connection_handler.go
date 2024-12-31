@@ -1069,15 +1069,6 @@ func (h *ConnectionHandler) discardAll(query ConvertedQuery) error {
 // COPY FROM STDIN can't be handled directly by the GMS engine, since COPY FROM STDIN relies on multiple messages sent
 // over the wire.
 func (h *ConnectionHandler) handleCopyFromStdinQuery(copyFrom *node.CopyFrom, conn net.Conn) error {
-	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
-	if err != nil {
-		return err
-	}
-
-	if err := copyFrom.Validate(sqlCtx); err != nil {
-		return err
-	}
-
 	h.copyFromStdinState = &copyFromStdinState{
 		copyFromStdinNode: copyFrom,
 	}
