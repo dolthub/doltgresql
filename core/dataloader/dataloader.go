@@ -29,6 +29,7 @@ import (
 // with the incomplete record.
 type DataLoader interface {
 	sql.ExecSourceRel
+	
 	// SetNextDataChunk sets the next data chunk to be processed by the DataLoader.  Data records
 	// are not guaranteed to start and end cleanly on chunk boundaries, so implementations must recognize incomplete
 	// records and save them to prepend on the next processed chunk.

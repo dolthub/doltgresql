@@ -51,6 +51,28 @@ func TestCopy(t *testing.T) {
 			},
 		},
 		{
+			Name: "tab delimited with header and column names",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk int primary key);",
+				"INSERT INTO test VALUES (0), (1);",
+				"CREATE TABLE test_info (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references test(pk));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:             "COPY test_info (id, info, test_pk) FROM STDIN WITH (HEADER);",
+					CopyFromStdInFile: "tab-load-with-header.sql",
+				},
+				{
+					Query: "SELECT * FROM test_info order by 1;",
+					Expected: []sql.Row{
+						{4, "string for 4", 1},
+						{5, "string for 5", 0},
+						{6, "string for 6", 0},
+					},
+				},
+			},
+		},
+		{
 			Name: "tab delimited with quoted column names",
 			SetUpScript: []string{
 				`CREATE TABLE Regions (
@@ -155,13 +177,38 @@ bar`, "baz"},
 		},
 		{
 			Name: "csv from file",
-			Skip: true, // hard-coded to use tab separated files right now
 			SetUpScript: []string{
 				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: fmt.Sprintf("COPY tbl1 FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "select * from tbl1 where pk = 6 order by pk;",
+					Expected: []sql.Row{
+						{6, `foo
+\\.
+bar`, "baz"},
+					},
+				},
+				{
+					Query: "select * from tbl1 where pk = 9;",
+					Expected: []sql.Row{
+						{9, nil, "''"},
+					},
+				},
+			},
+		},
+		{
+			Name: "csv from file with column names",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					SkipResultsCheck: true,
 				},
 				{
@@ -198,6 +245,36 @@ bar`, "baz"},
 						{5, "string for 5", 0},
 						{6, "string for 6", 0},
 					},
+				},
+			},
+		},
+		{
+			Name: "tab delimited with header from file, file not found",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk int primary key);",
+				"INSERT INTO test VALUES (0), (1);",
+				"CREATE TABLE test_info (id int, info varchar(255), test_pk int, primary key(id), foreign key (test_pk) references test(pk));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:             fmt.Sprintf("COPY test_info FROM '%s' WITH (HEADER)", filepath.Join(absTestDataDir, "file-not-found.sql")),
+					ExpectedErr:       "cannot find the file specified",
+				},
+			},
+		},
+		{
+			Name: "csv from file, wrong columns",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: fmt.Sprintf("COPY tbl1 (pk, c1) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					ExpectedErr: "extra data after last expected column",
+				},
+				{
+					Query: fmt.Sprintf("COPY tbl1 (pk, c1, c3) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					ExpectedErr: "Unknown column",
 				},
 			},
 		},

@@ -665,7 +665,6 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 	}
 
 	return h.send(&pgproto3.CommandComplete{
-		// probably wrong
 		CommandTag: []byte("COPY"),
 	})
 }
