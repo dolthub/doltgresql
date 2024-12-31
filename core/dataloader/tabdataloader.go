@@ -20,10 +20,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/sirupsen/logrus"
-
 	"github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 const defaultTextDelimiter = "\t"
@@ -33,6 +31,7 @@ const defaultNullChar = "\\N"
 type TabularDataLoader struct {
 	results       LoadDataResults
 	partialLine   string
+	nextDataChunk *bufio.Reader
 	rowInserter   sql.RowInserter
 	colTypes      []*types.DoltgresType
 	sch           sql.Schema
@@ -77,14 +76,25 @@ func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter
 // the chunk does not need to end on a line boundary – the loader will handle partial lines at the end of the chunk
 // by saving them for the next chunk.
 func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error {
-	for {
-		row := make(sql.Row, len(tdl.colTypes))
+	// todo: remove me
+	return nil
+}
 
+func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql.Row, bool, error) {
+	if tdl.removeHeader {
+		_, err := data.ReadString('\n')
+		tdl.removeHeader = false
+		if err != nil {
+			return nil, false, err
+		}
+	}
+
+	for {
 		// Read the next line from the file
 		line, err := data.ReadString('\n')
 		if err != nil {
 			if err != io.EOF {
-				return err
+				return nil, false, err
 			}
 
 			// bufio.Reader.ReadString will return an error AND a line
@@ -92,13 +102,7 @@ func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) er
 			// delimiter. In this case, that means that we need to save
 			// the partial line and use it in the next chunk.
 			tdl.partialLine = line
-			break
-		}
-
-		if tdl.removeHeader {
-			// Skip the first line if it is a header
-			tdl.removeHeader = false
-			continue
+			return nil, false, nil
 		}
 
 		// If we've not reached EOF, then there will be a newline appended to the end that we must remove.
@@ -113,111 +117,109 @@ func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) er
 
 		// If we see the end of data marker, return early
 		if line == "\\." {
-			return nil
+			return nil, false, nil
 		}
 
 		// Skip over empty lines
 		if len(line) == 0 {
 			continue
 		}
+		
 		// Split the values by the delimiter, ensuring the correct number of values have been read
 		values := strings.Split(line, tdl.delimiterChar)
 		if len(values) > len(tdl.colTypes) {
-			return fmt.Errorf("extra data after last expected column")
+			return nil, false, fmt.Errorf("extra data after last expected column")
 		} else if len(values) < len(tdl.colTypes) {
-			return fmt.Errorf(`missing data for column "%s"`, tdl.sch[len(values)].Name)
+			return nil, false, fmt.Errorf(`missing data for column "%s"`, tdl.sch[len(values)].Name)
 		}
+		
 		// Cast the values using I/O input
+		row := make(sql.Row, len(tdl.colTypes))
 		for i := range tdl.colTypes {
 			if values[i] == tdl.nullChar {
 				row[i] = nil
 			} else {
 				row[i], err = tdl.colTypes[i].IoInput(ctx, values[i])
 				if err != nil {
-					return err
+					return nil, false, err
 				}
 			}
 		}
-		// Insert the read row
-		err = tdl.rowInserter.Insert(ctx, row)
-		if err != nil {
-			return err
-		}
-		tdl.results.RowsLoaded += 1
+		
+		return row, true, nil
 	}
+}
 
+func (tdl *TabularDataLoader) SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error {
+	tdl.nextDataChunk = data
 	return nil
 }
 
 // Abort ends the current load data operation and discards any changes that have been made.
 func (tdl *TabularDataLoader) Abort(ctx *sql.Context) error {
-	defer func() {
-		if closeErr := tdl.rowInserter.Close(ctx); closeErr != nil {
-			logrus.Warnf("error closing rowInserter: %v", closeErr)
-		}
-	}()
-
-	return tdl.rowInserter.DiscardChanges(ctx, nil)
+	// todo: remove
+	return nil
 }
 
 // Finish completes the current load data operation and finalizes the data that has been inserted.
 func (tdl *TabularDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error) {
-	defer func() {
-		if closeErr := tdl.rowInserter.Close(ctx); closeErr != nil {
-			logrus.Warnf("error closing rowInserter: %v", closeErr)
-		}
-	}()
-
 	// If there is partial data from the last chunk that hasn't been inserted, return an error.
 	if tdl.partialLine != "" {
 		return nil, fmt.Errorf("partial line found at end of data load")
-	}
-
-	err := tdl.rowInserter.StatementComplete(ctx)
-	if err != nil {
-		err = tdl.rowInserter.DiscardChanges(ctx, err)
-		return nil, err
 	}
 
 	return &tdl.results, nil
 }
 
 func (tdl *TabularDataLoader) Resolved() bool {
-	// TODO implement me
-	panic("implement me")
+	return true
 }
 
 func (tdl *TabularDataLoader) String() string {
-	// TODO implement me
-	panic("implement me")
+	return "TabularDataLoader"
 }
 
 func (tdl *TabularDataLoader) Schema() sql.Schema {
-	// TODO implement me
-	panic("implement me")
+	return nil
 }
 
 func (tdl *TabularDataLoader) Children() []sql.Node {
-	// TODO implement me
-	panic("implement me")
+	return nil
 }
 
 func (tdl *TabularDataLoader) WithChildren(children ...sql.Node) (sql.Node, error) {
-	// TODO implement me
-	panic("implement me")
+	if len(children) != 0 {
+		return nil, sql.ErrInvalidChildrenNumber.New(tdl, len(children), 0)
+	}
+	return tdl, nil
 }
 
 func (tdl *TabularDataLoader) IsReadOnly() bool {
-	// TODO implement me
-	panic("implement me")
+	return true
+}
+
+type tabularRowIter struct {
+	tdl *TabularDataLoader
+	reader *bufio.Reader
+}
+
+func (t tabularRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	row, hasNext, err := t.tdl.nextRow(ctx, t.reader)
+	if err != nil {
+		return nil, err
+	}
+
+	if !hasNext {
+		return nil, io.EOF
+	}
+
+	return row, nil
+}
+
+func (t tabularRowIter) Close(context *sql.Context) error {
+	return nil
 }
 
 func (tdl *TabularDataLoader) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (tdl *TabularDataLoader) SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error {
-	// TODO implement me
-	panic("implement me")
+	return &tabularRowIter{tdl: tdl, reader: tdl.nextDataChunk}, nil
 }

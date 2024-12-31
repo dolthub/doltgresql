@@ -22,7 +22,6 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/table"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/server/types"
 )
@@ -172,32 +171,15 @@ func (cdl *CsvDataLoader) nextRow(ctx *sql.Context, reader *csvReader) (sql.Row,
 
 // Abort implements the DataLoader interface
 func (cdl *CsvDataLoader) Abort(ctx *sql.Context) error {
-	defer func() {
-		if closeErr := cdl.rowInserter.Close(ctx); closeErr != nil {
-			logrus.Warnf("error closing rowInserter: %v", closeErr)
-		}
-	}()
-
-	return cdl.rowInserter.DiscardChanges(ctx, nil)
+	// TODO: remove
+	return nil
 }
 
 // Finish implements the DataLoader interface
 func (cdl *CsvDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error) {
-	defer func() {
-		if closeErr := cdl.rowInserter.Close(ctx); closeErr != nil {
-			logrus.Warnf("error closing rowInserter: %v", closeErr)
-		}
-	}()
-
 	// If there is partial data from the last chunk that hasn't been inserted, return an error.
 	if cdl.partialRecord != "" {
 		return nil, fmt.Errorf("partial record (%s) found at end of data load", cdl.partialRecord)
-	}
-
-	err := cdl.rowInserter.StatementComplete(ctx)
-	if err != nil {
-		err = cdl.rowInserter.DiscardChanges(ctx, err)
-		return nil, err
 	}
 
 	return &cdl.results, nil
