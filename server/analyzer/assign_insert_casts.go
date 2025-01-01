@@ -38,7 +38,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	}
 	
 	// We have some sources that are already postgres native, so skip them
-	if isDoltgresNativeSource(insertInto.Source) {
+	if isDoltgresNativeSource(insertInto.Destination, insertInto.Source) {
 		return insertInto, transform.SameTree, nil
 	}
 	
@@ -53,6 +53,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		}
 		destinationNameToType[strings.ToLower(col.Name)] = colType
 	}
+	
 	// Create the destination type slice that will match each inserted column
 	destinationTypes := make([]*pgtypes.DoltgresType, len(insertInto.ColumnNames))
 	for i, colName := range insertInto.ColumnNames {
@@ -61,6 +62,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			return nil, transform.NewTree, fmt.Errorf("INSERT: cannot find destination column with name `%s`", colName)
 		}
 	}
+	
 	// Replace expressions with casts as needed
 	if values, ok := insertInto.Source.(*plan.Values); ok {
 		// Values do not return the correct Schema since each row may contain different types, so we must handle it differently
@@ -125,7 +127,14 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	return insertInto, transform.NewTree, nil
 }
 
-func isDoltgresNativeSource(source sql.Node) bool {
+func isDoltgresNativeSource(dest sql.Node, source sql.Node) bool {
+	// we still need this transformation if our destination has generated columns
+	for _, col := range dest.Schema() {
+		if col.Generated != nil {
+			return false
+		}
+	}
+	
 	switch source.(type) {
 	case *node.CopyFrom:
 		return true

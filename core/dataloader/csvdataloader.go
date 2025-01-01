@@ -50,7 +50,7 @@ const defaultCsvDelimiter = ","
 // |header| is true, the first line of the data will be treated as a header and ignored. If |delimiter| is not the empty
 // string, it will be used as the delimiter separating value.
 func NewCsvDataLoader(colNames []string, sch sql.Schema, delimiter string, header bool) (*CsvDataLoader, error) {
-	colTypes, err := getColumnTypes(colNames, sch)
+	colTypes, reducedSch, err := getColumnTypes(colNames, sch)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func NewCsvDataLoader(colNames []string, sch sql.Schema, delimiter string, heade
 
 	return &CsvDataLoader{
 		colTypes:     colTypes,
-		sch:          sch,
+		sch:          reducedSch,
 		removeHeader: header,
 		delimiter:    delimiter,
 	}, nil

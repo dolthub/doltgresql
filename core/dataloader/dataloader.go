@@ -49,21 +49,24 @@ type LoadDataResults struct {
 
 // getColumnTypes examines |sch| and returns a slice of DoltgresTypes in the order of the schema's columns. If any
 // columns in the schema are not DoltgresType instances, an error is returned.
-func getColumnTypes(colNames []string, sch sql.Schema) ([]*types.DoltgresType, error) {
+func getColumnTypes(colNames []string, sch sql.Schema) ([]*types.DoltgresType, sql.Schema, error) {
 	colTypes := make([]*types.DoltgresType, len(colNames))
+	reducedSch := make(sql.Schema, len(colNames))
 	for i, colName := range colNames {
 		colIdx := sch.IndexOfColName(colName)
 		if colIdx < 0 {
 			// should be impossible
-			return nil, fmt.Errorf("column %s not found in schema", colName)
+			return nil, nil, fmt.Errorf("column %s not found in schema", colName)
 		}
 		col := sch[colIdx]
 		var ok bool
 		colTypes[i], ok = col.Type.(*types.DoltgresType)
 		if !ok {
-			return nil, fmt.Errorf("unsupported column type: name: %s, type: %T", col.Name, col.Type)
+			return nil, nil, fmt.Errorf("unsupported column type: name: %s, type: %T", col.Name, col.Type)
 		}
+		
+		reducedSch[i] = col
 	}
 
-	return colTypes, nil
+	return colTypes, reducedSch, nil
 }

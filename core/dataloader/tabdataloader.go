@@ -44,8 +44,8 @@ var _ DataLoader = (*TabularDataLoader)(nil)
 // NewTabularDataLoader creates a new TabularDataLoader to insert into the specified |table| using the specified
 // |delimiterChar| and |nullChar|. If |header| is true, the first line of the data will be treated as a header and
 // ignored.
-func NewTabularDataLoader(colNames []string, sch sql.Schema, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {
-	colTypes, err := getColumnTypes(colNames, sch)
+func NewTabularDataLoader(colNames []string, tableSch sql.Schema, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {
+	colTypes, reducedSch, err := getColumnTypes(colNames, tableSch)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func NewTabularDataLoader(colNames []string, sch sql.Schema, delimiterChar, null
 
 	return &TabularDataLoader{
 		colTypes:      colTypes,
-		sch:           sch,
+		sch:           reducedSch,
 		delimiterChar: delimiterChar,
 		nullChar:      nullChar,
 		removeHeader:  header,
@@ -163,7 +163,7 @@ func (tdl *TabularDataLoader) String() string {
 }
 
 func (tdl *TabularDataLoader) Schema() sql.Schema {
-	return nil
+	return tdl.sch
 }
 
 func (tdl *TabularDataLoader) Children() []sql.Node {

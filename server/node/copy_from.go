@@ -91,7 +91,7 @@ func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err err
 
 // Schema implements the interface sql.ExecSourceRel.
 func (cf *CopyFrom) Schema() sql.Schema {
-	return nil
+	return cf.DataLoader.Schema()
 }
 
 // String implements the interface sql.ExecSourceRel.
