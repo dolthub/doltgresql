@@ -136,6 +136,33 @@ bar`, "baz"},
 			},
 		},
 		{
+			Name: "generated column",
+			Skip: true,
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250), c3 varchar(350) generated always as (concat(c1, c2)) stored);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:             "COPY tbl1 FROM STDIN (FORMAT CSV)",
+					CopyFromStdInFile: "csv-load-basic-cases.sql",
+				},
+				{
+					Query: "select * from tbl1 where pk = 6 order by pk;",
+					Expected: []sql.Row{
+						{6, `foo
+\\.
+bar`, "baz"},
+					},
+				},
+				{
+					Query: "select * from tbl1 where pk = 9;",
+					Expected: []sql.Row{
+						{9, nil, "''"},
+					},
+				},
+			},
+		},
+		{
 			Name: "load multiple chunks",
 			SetUpScript: []string{
 				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
