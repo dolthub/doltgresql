@@ -170,6 +170,20 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "create table with default value",
+			Focus: true,
+			SetUpScript: []string{
+				"create table t1 (a varchar(10) primary key, b varchar(10) default (concat('foo', 'bar')));",
+				"insert into t1 (a) values ('abc');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select * from t1;",
+					Expected: []sql.Row{{"abc", "foobar"}},
+				},
+			},
+		},
 	})
 }
 
