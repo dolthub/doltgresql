@@ -157,6 +157,19 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "create table with generated column",
+			SetUpScript: []string{
+				"create table t1 (a int primary key, b int, c int generated always as (a + b) stored);",
+				"insert into t1 (a, b) values (1, 2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select * from t1;",
+					Expected: []sql.Row{{1, 2, 3}},
+				},
+			},
+		},
 	})
 }
 
