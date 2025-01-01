@@ -159,20 +159,26 @@ func TestCreateTable(t *testing.T) {
 		},
 		{
 			Name: "create table with generated column",
+			Focus: true,
 			SetUpScript: []string{
 				"create table t1 (a int primary key, b int, c int generated always as (a + b) stored);",
 				"insert into t1 (a, b) values (1, 2);",
+				"create table t2 (a int primary key, b int, c int generated always as (b * 10) stored);",
+				"insert into t2 (a, b) values (1, 2);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "select * from t1;",
 					Expected: []sql.Row{{1, 2, 3}},
 				},
+				{
+					Query:    "select * from t2;",
+					Expected: []sql.Row{{1, 2, 20}},
+				},
 			},
 		},
 		{
 			Name: "create table with default value",
-			Focus: true,
 			SetUpScript: []string{
 				"create table t1 (a varchar(10) primary key, b varchar(10) default (concat('foo', 'bar')));",
 				"insert into t1 (a) values ('abc');",

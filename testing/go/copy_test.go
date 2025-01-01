@@ -137,13 +137,13 @@ bar`, "baz"},
 		},
 		{
 			Name: "generated column",
-			Skip: true,
+			Focus: true,
 			SetUpScript: []string{
-				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250), c3 varchar(350) generated always as (concat(c1, c2)) stored);",
+				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250), c3 int generated always as (pk * 10) stored);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             "COPY tbl1 FROM STDIN (FORMAT CSV)",
+					Query:             "COPY tbl1 (pk, c1, c2) FROM STDIN (FORMAT CSV)",
 					CopyFromStdInFile: "csv-load-basic-cases.sql",
 				},
 				{
