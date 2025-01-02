@@ -91,6 +91,10 @@ func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err err
 
 // Schema implements the interface sql.ExecSourceRel.
 func (cf *CopyFrom) Schema() sql.Schema {
+	// For Parse calls, we need access to the schema before we have a DataLoader created, so return a stub schema. 
+	if cf.DataLoader == nil {
+		return nil
+	}
 	return cf.DataLoader.Schema()
 }
 
