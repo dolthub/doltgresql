@@ -159,7 +159,6 @@ func TestCreateTable(t *testing.T) {
 		},
 		{
 			Name: "create table with generated column",
-			Focus: true,
 			SetUpScript: []string{
 				"create table t1 (a int primary key, b int, c int generated always as (a + b) stored);",
 				"insert into t1 (a, b) values (1, 2);",
@@ -174,6 +173,22 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:    "select * from t2;",
 					Expected: []sql.Row{{1, 2, 20}},
+				},
+			},
+		},
+		{
+			Name: "create table with function in generated column",
+			Skip: true, // ERROR: column default function expressions must be enclosed in parentheses
+			SetUpScript: []string{
+				"create table t1 (a varchar(10) primary key, b varchar(10), c varchar(20) generated always as (concat(a,b)) stored);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "insert into t1 (a, b) values ('foo', 'bar');",
+				},
+				{
+					Query:    "select * from t1;",
+					Expected: []sql.Row{{"foo", "bar", "foobar"}},
 				},
 			},
 		},

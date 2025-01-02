@@ -72,6 +72,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					return nil, transform.NewTree, fmt.Errorf("default values must have a non-GMS OutType: `%s`", expr.OutType.String())
 				}
 				if !outType.Equals(defaultExprType) {
+					// TODO (next): this 
 					defaultExpr = pgexprs.NewAssignmentCast(defaultExpr, defaultExprType, outType)
 				}
 				newDefault, err := sql.NewColumnDefaultValue(defaultExpr, outType, expr.Literal, expr.Parenthesized, expr.ReturnNil)

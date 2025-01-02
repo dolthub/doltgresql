@@ -137,9 +137,8 @@ bar`, "baz"},
 		},
 		{
 			Name: "generated column",
-			Focus: true,
 			SetUpScript: []string{
-				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250), c3 int generated always as (pk * 10) stored);",
+				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250), c3 int generated always as (pk + 10) stored);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -151,13 +150,13 @@ bar`, "baz"},
 					Expected: []sql.Row{
 						{6, `foo
 \\.
-bar`, "baz"},
+bar`, "baz", 16},
 					},
 				},
 				{
 					Query: "select * from tbl1 where pk = 9;",
 					Expected: []sql.Row{
-						{9, nil, "''"},
+						{9, nil, "''", 19},
 					},
 				},
 			},

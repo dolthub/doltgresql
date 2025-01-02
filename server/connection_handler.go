@@ -30,6 +30,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/doltgresql/core/dataloader"
+	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -694,7 +695,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		}
 		
 		// we build an insert node to use for the full insert plan, for which the copy from node will be the row source
-		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil, nil)
+		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil, psql.NewPostgresParser())
 		node, flags, err := builder.BindOnly(copyFromStdinNode.InsertStub, "", nil)
 		if err != nil {
 			return false, false, err
@@ -705,22 +706,13 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 			return false, false, fmt.Errorf("expected plan.InsertInto, got %T", node)
 		}
 
-		// After building out stub insert node, swap out the source node with the COPY node, then analyze the entire thing
-		node = insertNode.WithSource(copyFromStdinNode)
-		analyzedNode, err := h.doltgresHandler.e.Analyzer.Analyze(sqlCtx, node, nil, flags)
-		if err != nil {
-			return false, false, err
-		}
-		
-		copyState.insertNode = analyzedNode
-		
 		// now that we have our insert node, we can build the data loader
 		tbl := getInsertableTable(insertNode.Destination)
 		if tbl == nil {
 			// this should be impossible, enforced by analyzer above
 			return false, false, fmt.Errorf("no insertable table found in %v", insertNode.Destination)
 		}
-		
+
 		switch copyFromStdinNode.CopyOptions.CopyFormat {
 		case tree.CopyFormatText:
 			dataLoader, err = dataloader.NewTabularDataLoader(insertNode.ColumnNames, tbl.Schema(), copyFromStdinNode.CopyOptions.Delimiter, "", copyFromStdinNode.CopyOptions.Header)
@@ -737,8 +729,19 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 			return false, false, err
 		}
 
-		copyState.dataLoader = dataLoader
+		// we have to set the data loader on the copyFrom node before we analyze it, because we need the loader's 
+		// schema to analyze
 		copyState.copyFromStdinNode.DataLoader = dataLoader
+
+		// After building out stub insert node, swap out the source node with the COPY node, then analyze the entire thing
+		node = insertNode.WithSource(copyFromStdinNode)
+		analyzedNode, err := h.doltgresHandler.e.Analyzer.Analyze(sqlCtx, node, nil, flags)
+		if err != nil {
+			return false, false, err
+		}
+		
+		copyState.insertNode = analyzedNode
+		copyState.dataLoader = dataLoader
 	}
 
 	reader := bufio.NewReader(copyFromData)
