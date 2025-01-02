@@ -257,4 +257,8 @@ func (c configCliContext) QueryEngine(ctx context.Context) (cli.Queryist, *sql.C
 	return nil, nil, nil, fmt.Errorf("ConfigCliContext does not support QueryEngine()")
 }
 
+func (c configCliContext) WorkingDir() filesys.Filesys {
+	panic("runtime error:ConfigCliContext does not support WorkingDir() in this context")
+}
+
 var _ cli.CliContext = configCliContext{}
