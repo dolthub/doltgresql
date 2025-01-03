@@ -162,7 +162,7 @@ bar`, "baz", 16},
 			},
 		},
 		{
-			Name:  "load multiple chunks",
+			Name: "load multiple chunks",
 			SetUpScript: []string{
 				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
 			},
@@ -332,27 +332,27 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:            fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "missing-columns.sql")),
+					Query:       fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "missing-columns.sql")),
 					ExpectedErr: "record on line 2: wrong number of fields",
 				},
 				{
-					Query: "select count(*) from tbl1;",
+					Query:    "select count(*) from tbl1;",
 					Expected: []sql.Row{{0}},
 				},
 				{
-					Query:            fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "too-many-columns.sql")),
+					Query:       fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "too-many-columns.sql")),
 					ExpectedErr: "record on line 6: wrong number of fields",
 				},
 				{
-					Query: "select count(*) from tbl1;",
+					Query:    "select count(*) from tbl1;",
 					Expected: []sql.Row{{0}},
 				},
 				{
-					Query:            fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "wrong-types.sql")),
+					Query:       fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "wrong-types.sql")),
 					ExpectedErr: "invalid input syntax for type int4",
 				},
 				{
-					Query: "select count(*) from tbl1;",
+					Query:    "select count(*) from tbl1;",
 					Expected: []sql.Row{{0}},
 				},
 			},
