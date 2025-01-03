@@ -23,6 +23,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/memory"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/core/dataloader"
@@ -41,6 +42,7 @@ func TestCsvDataLoader(t *testing.T) {
 		Session: memory.NewSession(sql.NewBaseSession(), provider),
 	}
 
+	pkCols := []string{"pk", "c1", "c2"}
 	pkSchema := sql.NewPrimaryKeySchema(sql.Schema{
 		{Name: "pk", Type: types.Int64, Source: "source1"},
 		{Name: "c1", Type: types.Int64, Source: "source1"},
@@ -49,151 +51,136 @@ func TestCsvDataLoader(t *testing.T) {
 
 	// Tests that a basic CSV document can be loaded as a single chunk.
 	t.Run("basic case", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(pkCols, pkSchema.Schema, ",", false)
 		require.NoError(t, err)
 
 		// Load all the data as a single chunk
 		reader := bytes.NewReader([]byte("1,100,bar\n2,200,bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
+		rows := loadAllRows(ctx, t, dataLoader)
 		results, err := dataLoader.Finish(ctx)
 		require.NoError(t, err)
 		require.EqualValues(t, 2, results.RowsLoaded)
 
 		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "bar"},
 			{int64(2), int64(200), "bash"},
-		})
+		}, rows)
 	})
 
 	// Tests when a CSV record is split across two chunks of data, and the
 	// partial record must be buffered and prepended to the next chunk.
 	t.Run("record split across two chunks", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(pkCols, pkSchema.Schema, ",", false)
 		require.NoError(t, err)
+
+		var rows []sql.Row
 
 		// Load the first chunk
 		reader := bytes.NewReader([]byte("1,100,ba"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
+		rows = append(rows, loadAllRows(ctx, t, dataLoader)...)
 		require.NoError(t, err)
 
 		// Load the second chunk
 		reader = bytes.NewReader([]byte("r\n2,200,bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
+		rows = append(rows, loadAllRows(ctx, t, dataLoader)...)
 
 		// Finish
 		results, err := dataLoader.Finish(ctx)
 		require.NoError(t, err)
 		require.EqualValues(t, 2, results.RowsLoaded)
 
-		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "bar"},
 			{int64(2), int64(200), "bash"},
-		})
+		}, rows)
 	})
 
 	// Tests when a CSV record is split across two chunks of data, and a
 	// header row is present.
 	t.Run("record split across two chunks, with header", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", true)
+		dataLoader, err := dataloader.NewCsvDataLoader(pkCols, pkSchema.Schema, ",", true)
 		require.NoError(t, err)
+
+		var rows []sql.Row
 
 		// Load the first chunk
 		reader := bytes.NewReader([]byte("pk,c1,c2\n1,100,ba"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
+		rows = append(rows, loadAllRows(ctx, t, dataLoader)...)
 
 		// Load the second chunk
 		reader = bytes.NewReader([]byte("r\n2,200,bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
+		rows = append(rows, loadAllRows(ctx, t, dataLoader)...)
 
 		// Finish
 		results, err := dataLoader.Finish(ctx)
 		require.NoError(t, err)
 		require.EqualValues(t, 2, results.RowsLoaded)
 
-		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "bar"},
 			{int64(2), int64(200), "bash"},
-		})
+		}, rows)
 	})
 
 	// Tests a CSV record that contains a quoted newline character and is split
 	// across two chunks.
 	t.Run("quoted newlines across two chunks", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", false)
+		dataLoader, err := dataloader.NewCsvDataLoader(pkCols, pkSchema.Schema, ",", false)
 		require.NoError(t, err)
+
+		var rows []sql.Row
 
 		// Load the first chunk
 		reader := bytes.NewReader([]byte("1,100,\"baz\nbar\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
+		rows = append(rows, loadAllRows(ctx, t, dataLoader)...)
 
 		// Load the second chunk
 		reader = bytes.NewReader([]byte("bash\"\n2,200,bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
+		rows = append(rows, loadAllRows(ctx, t, dataLoader)...)
 
 		// Finish
 		results, err := dataLoader.Finish(ctx)
 		require.NoError(t, err)
 		require.EqualValues(t, 2, results.RowsLoaded)
 
-		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "baz\nbar\nbash"},
 			{int64(2), int64(200), "bash"},
-		})
+		}, rows)
 	})
-
-	// Test that calling Abort() does not insert any data into the table.
-	t.Run("abort cancels data load", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, ",", false)
-		require.NoError(t, err)
-
-		// Load the first chunk
-		reader := bytes.NewReader([]byte("1,100,bazbar\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
-		require.NoError(t, err)
-
-		// Load the second chunk
-		reader = bytes.NewReader([]byte("2,200,bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
-		require.NoError(t, err)
-
-		// Abort
-		err = dataLoader.Abort(ctx)
-		require.NoError(t, err)
-
-		// Assert that the table does not contain any of the data from the CSV load
-		assertRows(t, ctx, table, [][]any{})
-	})
-
+	
 	// Tests when a PSV (i.e. delimiter='|') record is split across two chunks of data,
 	// and a header row is present.
 	t.Run("delimiter='|', record split across two chunks, with header", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewCsvDataLoader(nil, table, "|", true)
+		dataLoader, err := dataloader.NewCsvDataLoader(pkCols, pkSchema.Schema, "|", true)
 		require.NoError(t, err)
+
+		var rows []sql.Row
 
 		// Load the first chunk
 		reader := bytes.NewReader([]byte("pk|c1|c2\n1|100|ba"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
+		rows = append(rows, loadAllRows(ctx, t, dataLoader)...)
 		require.NoError(t, err)
 
 		// Load the second chunk
 		reader = bytes.NewReader([]byte("r\n2|200|bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
+		rows = append(rows, loadAllRows(ctx, t, dataLoader)...)
 		require.NoError(t, err)
 
 		// Finish
@@ -201,50 +188,25 @@ func TestCsvDataLoader(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, 2, results.RowsLoaded)
 
-		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "bar"},
 			{int64(2), int64(200), "bash"},
-		})
+		}, rows)
 	})
 }
 
-// assertRows asserts that the rows in |table| match |expectedRows| and fails the test if the
-// rows do not exactly match.
-func assertRows(t *testing.T, ctx *sql.Context, table *memory.Table, expectedRows [][]any) {
-	partitions, err := table.Partitions(ctx)
+// loadAllRows loads all rows from the given DataLoader and returns them, failing the test if there are any errors.
+func loadAllRows(ctx *sql.Context, t *testing.T, d dataloader.DataLoader) []sql.Row {
+	var rows []sql.Row
+	iter, err := d.RowIter(ctx, nil)
 	require.NoError(t, err)
-
-	expectedRowsIdx := 0
-
 	for {
-		partition, err := partitions.Next(ctx)
+		row, err := iter.Next(ctx)
 		if err == io.EOF {
 			break
 		}
 		require.NoError(t, err)
-		rows := table.GetPartition(string(partition.Key()))
-		for _, row := range rows {
-			if len(expectedRows) <= expectedRowsIdx {
-				t.Fatalf("Expected %d rows, got more", len(expectedRows))
-			}
-
-			if len(expectedRows[expectedRowsIdx]) != len(row) {
-				t.Fatalf("Expected row length %d, got %d. expectedRows: %v, rows: %v",
-					len(expectedRows), len(row), expectedRows, rows)
-			}
-			for i := range len(row) {
-				if expectedRows[expectedRowsIdx][i] != row[i] {
-					t.Fatalf("Expected row %v, got %v. expectedRows: %v, rows: %v",
-						expectedRows[expectedRowsIdx], row, expectedRows, rows)
-				}
-			}
-
-			expectedRowsIdx += 1
-		}
+		rows = append(rows, row)
 	}
-
-	if len(expectedRows) != expectedRowsIdx {
-		t.Fatalf("Expected %d rows, got %d", len(expectedRows), expectedRowsIdx)
-	}
+	return rows
 }

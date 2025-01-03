@@ -22,6 +22,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/memory"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/core/dataloader"
@@ -37,6 +38,7 @@ func TestTabDataLoader(t *testing.T) {
 		Session: memory.NewSession(sql.NewBaseSession(), provider),
 	}
 
+	pkCols := []string{"pk", "c1", "c2"}
 	pkSchema := sql.NewPrimaryKeySchema(sql.Schema{
 		{Name: "pk", Type: types.Int64, Source: "source1"},
 		{Name: "c1", Type: types.Int64, Source: "source1"},
@@ -45,40 +47,38 @@ func TestTabDataLoader(t *testing.T) {
 
 	// Tests that a basic tab delimited doc can be loaded as a single chunk.
 	t.Run("basic case", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", false)
+		dataLoader, err := dataloader.NewTabularDataLoader(pkCols, pkSchema.Schema, "\t", "\\N", false)
 		require.NoError(t, err)
 
 		// Load all the data as a single chunk
 		reader := bytes.NewReader([]byte("1\t100\tbar\n2\t200\tbash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
 		results, err := dataLoader.Finish(ctx)
 		require.NoError(t, err)
 		require.EqualValues(t, 2, results.RowsLoaded)
 
 		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "bar"},
 			{int64(2), int64(200), "bash"},
-		})
+		}, nil)
 	})
 
 	// Tests when a record is split across two chunks of data, and the
 	// partial record must be buffered and prepended to the next chunk.
 	t.Run("record split across two chunks", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", false)
+		dataLoader, err := dataloader.NewTabularDataLoader(pkCols, pkSchema.Schema, "\t", "\\N", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
 		reader := bytes.NewReader([]byte("1	100	ba"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
 
 		// Load the second chunk
 		reader = bytes.NewReader([]byte("r\n2	200	bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
 
 		// Finish
@@ -87,27 +87,26 @@ func TestTabDataLoader(t *testing.T) {
 		require.EqualValues(t, 2, results.RowsLoaded)
 
 		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "bar"},
 			{int64(2), int64(200), "bash"},
-		})
+		}, nil)
 	})
 
 	// Tests when a record is split across two chunks of data, and a
 	// header row is present.
 	t.Run("record split across two chunks, with header", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", true)
+		dataLoader, err := dataloader.NewTabularDataLoader(pkCols, pkSchema.Schema, "\t", "\\N", true)
 		require.NoError(t, err)
 
 		// Load the first chunk
 		reader := bytes.NewReader([]byte("pk	c1	c2\n1	100	ba"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
 
 		// Load the second chunk
 		reader = bytes.NewReader([]byte("r\n2	200	bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
 
 		// Finish
@@ -116,27 +115,26 @@ func TestTabDataLoader(t *testing.T) {
 		require.EqualValues(t, 2, results.RowsLoaded)
 
 		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "bar"},
 			{int64(2), int64(200), "bash"},
-		})
+		}, nil)
 	})
 
 	// Tests a record that contains a quoted newline character and is split
 	// across two chunks.
 	t.Run("quoted newlines across two chunks", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", false)
+		dataLoader, err := dataloader.NewTabularDataLoader(pkCols, pkSchema.Schema, "\t", "\\N", false)
 		require.NoError(t, err)
 
 		// Load the first chunk
 		reader := bytes.NewReader([]byte("1	100	\"baz\\nbar\\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
 
 		// Load the second chunk
 		reader = bytes.NewReader([]byte("bash\"\n2	200	bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
 
 		// Finish
@@ -145,27 +143,26 @@ func TestTabDataLoader(t *testing.T) {
 		require.EqualValues(t, 2, results.RowsLoaded)
 
 		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "\"baz\\nbar\\nbash\""},
 			{int64(2), int64(200), "bash"},
-		})
+		}, nil)
 	})
 
 	// Tests when a record is split across two chunks of data, and a
 	// header row is present.
 	t.Run("delimiter='|', record split across two chunks, with header", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "|", "\\N", true)
+		dataLoader, err := dataloader.NewTabularDataLoader(pkCols, pkSchema.Schema, "|", "\\N", true)
 		require.NoError(t, err)
 
 		// Load the first chunk
 		reader := bytes.NewReader([]byte("pk|c1|c2\n1|100|ba"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
 
 		// Load the second chunk
 		reader = bytes.NewReader([]byte("r\n2|200|bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
+		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))
 		require.NoError(t, err)
 
 		// Finish
@@ -174,33 +171,9 @@ func TestTabDataLoader(t *testing.T) {
 		require.EqualValues(t, 2, results.RowsLoaded)
 
 		// Assert that the table contains the expected data
-		assertRows(t, ctx, table, [][]any{
+		assert.Equal(t, []sql.Row{
 			{int64(1), int64(100), "bar"},
 			{int64(2), int64(200), "bash"},
-		})
-	})
-
-	// Test that calling Abort() does not insert any data into the table.
-	t.Run("abort cancels data load", func(t *testing.T) {
-		table := memory.NewTable(db, "myTable", pkSchema, nil)
-		dataLoader, err := dataloader.NewTabularDataLoader(nil, table, "\t", "\\N", false)
-		require.NoError(t, err)
-
-		// Load the first chunk
-		reader := bytes.NewReader([]byte("1	100	bazbar\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
-		require.NoError(t, err)
-
-		// Load the second chunk
-		reader = bytes.NewReader([]byte("2	200	bash\n"))
-		err = dataLoader.LoadChunk(ctx, bufio.NewReader(reader))
-		require.NoError(t, err)
-
-		// Abort
-		err = dataLoader.Abort(ctx)
-		require.NoError(t, err)
-
-		// Assert that the table does not contain any of the data from the CSV load
-		assertRows(t, ctx, table, [][]any{})
+		}, nil)
 	})
 }

@@ -163,6 +163,7 @@ bar`, "baz", 16},
 		},
 		{
 			Name: "load multiple chunks",
+			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
 			},

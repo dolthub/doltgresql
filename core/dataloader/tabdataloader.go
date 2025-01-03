@@ -192,7 +192,10 @@ func (t tabularRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		return nil, err
 	}
 
-	if !hasNext {
+	// TODO: this isn't the best way to handle the count of rows, something like a RowUpdateAccumulator would be better
+	if hasNext {
+		t.tdl.results.RowsLoaded++
+	} else {
 		return nil, io.EOF
 	}
 
