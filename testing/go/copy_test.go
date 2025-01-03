@@ -163,7 +163,6 @@ bar`, "baz", 16},
 		},
 		{
 			Name:  "load multiple chunks",
-			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
 			},
@@ -276,7 +275,7 @@ bar`, "baz"},
 			},
 		},
 		{
-			Name: "tab delimited with header from file, file not found",
+			Name: "file not found",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk int primary key);",
 				"INSERT INTO test VALUES (0), (1);",
@@ -290,7 +289,7 @@ bar`, "baz"},
 			},
 		},
 		{
-			Name: "csv from file, wrong columns",
+			Name: "wrong columns",
 			SetUpScript: []string{
 				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
 			},
@@ -302,6 +301,59 @@ bar`, "baz"},
 				{
 					Query:       fmt.Sprintf("COPY tbl1 (pk, c1, c3) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					ExpectedErr: "Unknown column",
+				},
+			},
+		},
+		{
+			Name: "table not found",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       fmt.Sprintf("COPY tbl2 (pk, c1) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					ExpectedErr: "table not found: tbl2",
+				},
+			},
+		},
+		{
+			Name: "read only table",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       fmt.Sprintf("COPY dolt_log FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					ExpectedErr: "table doesn't support INSERT INTO",
+				},
+			},
+		},
+		{
+			Name: "bad data rows",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "missing-columns.sql")),
+					ExpectedErr: "record on line 2: wrong number of fields",
+				},
+				{
+					Query: "select count(*) from tbl1;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:            fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "too-many-columns.sql")),
+					ExpectedErr: "record on line 6: wrong number of fields",
+				},
+				{
+					Query: "select count(*) from tbl1;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:            fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "wrong-types.sql")),
+					ExpectedErr: "invalid input syntax for type int4",
+				},
+				{
+					Query: "select count(*) from tbl1;",
+					Expected: []sql.Row{{0}},
 				},
 			},
 		},
