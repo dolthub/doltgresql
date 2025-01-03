@@ -233,8 +233,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 		standbyMessage := pglogrepl.StandbyStatusUpdate{
 			WALWritePosition: state.lastWrittenLSN + 1,
 			WALFlushPosition: state.lastWrittenLSN + 1,
-			// WALApplyPosition: state.lastReceivedLSN + 1,
-			WALApplyPosition: state.lastWrittenLSN + 1,
+			WALApplyPosition: state.lastReceivedLSN + 1,
 		}
 		err := pglogrepl.SendStandbyStatusUpdate(context.Background(), primaryConn, standbyMessage)
 		if err != nil {

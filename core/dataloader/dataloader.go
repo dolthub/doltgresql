@@ -47,8 +47,9 @@ type LoadDataResults struct {
 	RowsLoaded int32
 }
 
-// getColumnTypes examines |sch| and returns a slice of DoltgresTypes in the order of the schema's columns. If any
-// columns in the schema are not DoltgresType instances, an error is returned.
+// getColumnTypes returns the types of the columns in the schema that match the provided column names, in the order
+// they are provided. If a subset of column names are provided, the returned types will only contain those columns. 
+// If the column names are not found in the schema, an error is returned.
 func getColumnTypes(colNames []string, sch sql.Schema) ([]*types.DoltgresType, sql.Schema, error) {
 	colTypes := make([]*types.DoltgresType, len(colNames))
 	reducedSch := make(sql.Schema, len(colNames))
