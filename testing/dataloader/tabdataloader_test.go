@@ -20,13 +20,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/go-mysql-server/memory"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/core/dataloader"
+	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -138,9 +138,9 @@ func TestTabDataLoader(t *testing.T) {
 	t.Run("quoted newlines across two chunks", func(t *testing.T) {
 		dataLoader, err := dataloader.NewTabularDataLoader(pkCols, pkSchema.Schema, "\t", "\\N", false)
 		require.NoError(t, err)
-		
+
 		var rows []sql.Row
-		
+
 		// Load the first chunk
 		reader := bytes.NewReader([]byte("1	100	\"baz\\nbar\\n"))
 		err = dataLoader.SetNextDataChunk(ctx, bufio.NewReader(reader))

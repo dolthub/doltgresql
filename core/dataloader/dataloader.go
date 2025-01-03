@@ -29,13 +29,13 @@ import (
 // with the incomplete record.
 type DataLoader interface {
 	sql.ExecSourceRel
-	
+
 	// SetNextDataChunk sets the next data chunk to be processed by the DataLoader.  Data records
 	// are not guaranteed to start and end cleanly on chunk boundaries, so implementations must recognize incomplete
 	// records and save them to prepend on the next processed chunk.
 	SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error
 
-	// Finish finalizes the current load operation and cleans up any resources used. Implementations should check that 
+	// Finish finalizes the current load operation and cleans up any resources used. Implementations should check that
 	// the last call to LoadChunk did not end with an incomplete record and return an error to the caller if so. The
 	// returned LoadDataResults describe the load operation, including how many rows were inserted.
 	Finish(ctx *sql.Context) (*LoadDataResults, error)
@@ -64,7 +64,7 @@ func getColumnTypes(colNames []string, sch sql.Schema) ([]*types.DoltgresType, s
 		if !ok {
 			return nil, nil, fmt.Errorf("unsupported column type: name: %s, type: %T", col.Name, col.Type)
 		}
-		
+
 		reducedSch[i] = col
 	}
 

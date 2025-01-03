@@ -33,8 +33,8 @@ func nodeCopyFrom(ctx *Context, node *tree.CopyFrom) (vitess.Statement, error) {
 		return nil, fmt.Errorf("COPY FROM does not support format BINARY")
 	}
 
-	// We start by creating a stub insert statement for the COPY FROM statement, which we will use to build a basic 
-	// INSERT plan for. At runtime we will swap out the bogus row values for our actual data read from STDIN. 
+	// We start by creating a stub insert statement for the COPY FROM statement, which we will use to build a basic
+	// INSERT plan for. At runtime we will swap out the bogus row values for our actual data read from STDIN.
 	var columns []vitess.ColIdent
 	if len(node.Columns) > 0 {
 		columns = make([]vitess.ColIdent, len(node.Columns))
@@ -53,7 +53,7 @@ func nodeCopyFrom(ctx *Context, node *tree.CopyFrom) (vitess.Statement, error) {
 	for i := range columns {
 		stubValues[0][i] = &vitess.NullVal{}
 	}
-	
+
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCopyFrom(
 			node.Table.Catalog(),
@@ -69,8 +69,8 @@ func nodeCopyFrom(ctx *Context, node *tree.CopyFrom) (vitess.Statement, error) {
 				Action:  vitess.InsertStr,
 				Table:   tableName,
 				Columns: columns,
-				Rows:    &vitess.AliasedValues{
-					Values:  stubValues,
+				Rows: &vitess.AliasedValues{
+					Values: stubValues,
 				},
 			},
 		),

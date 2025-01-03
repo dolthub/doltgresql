@@ -26,7 +26,7 @@ import (
 func TestCopy(t *testing.T) {
 	absTestDataDir, err := filepath.Abs("testdata")
 	require.NoError(t, err)
-	
+
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "tab delimited with header",
@@ -162,7 +162,7 @@ bar`, "baz", 16},
 			},
 		},
 		{
-			Name: "load multiple chunks",
+			Name:  "load multiple chunks",
 			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
@@ -209,7 +209,7 @@ bar`, "baz", 16},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: fmt.Sprintf("COPY tbl1 FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					Query:            fmt.Sprintf("COPY tbl1 FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					SkipResultsCheck: true,
 				},
 				{
@@ -235,7 +235,7 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					Query:            fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					SkipResultsCheck: true,
 				},
 				{
@@ -263,7 +263,7 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             fmt.Sprintf("COPY test_info FROM '%s' WITH (HEADER)", filepath.Join(absTestDataDir, "tab-load-with-header.sql")),
+					Query: fmt.Sprintf("COPY test_info FROM '%s' WITH (HEADER)", filepath.Join(absTestDataDir, "tab-load-with-header.sql")),
 				},
 				{
 					Query: "SELECT * FROM test_info order by 1;",
@@ -284,8 +284,8 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             fmt.Sprintf("COPY test_info FROM '%s' WITH (HEADER)", filepath.Join(absTestDataDir, "file-not-found.sql")),
-					ExpectedErr:       "cannot find the file specified",
+					Query:       fmt.Sprintf("COPY test_info FROM '%s' WITH (HEADER)", filepath.Join(absTestDataDir, "file-not-found.sql")),
+					ExpectedErr: "cannot find the file specified",
 				},
 			},
 		},
@@ -296,11 +296,11 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: fmt.Sprintf("COPY tbl1 (pk, c1) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					Query:       fmt.Sprintf("COPY tbl1 (pk, c1) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					ExpectedErr: "extra data after last expected column",
 				},
 				{
-					Query: fmt.Sprintf("COPY tbl1 (pk, c1, c3) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					Query:       fmt.Sprintf("COPY tbl1 (pk, c1, c3) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					ExpectedErr: "Unknown column",
 				},
 			},

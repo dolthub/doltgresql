@@ -18,10 +18,11 @@ import (
 	"fmt"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/doltgresql/core/dataloader"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/core/dataloader"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
 // CopyFrom handles the COPY ... FROM ... statement.
@@ -41,13 +42,13 @@ var _ sql.ExecSourceRel = (*CopyFrom)(nil)
 
 // NewCopyFrom returns a new *CopyFrom.
 func NewCopyFrom(
-		databaseName string,
-		tableName doltdb.TableName,
-		options tree.CopyOptions,
-		fileName string,
-		stdin bool,
-		columns tree.NameList,
-		insertStub *vitess.Insert,
+	databaseName string,
+	tableName doltdb.TableName,
+	options tree.CopyOptions,
+	fileName string,
+	stdin bool,
+	columns tree.NameList,
+	insertStub *vitess.Insert,
 ) *CopyFrom {
 	switch options.CopyFormat {
 	case tree.CopyFormatCsv, tree.CopyFormatText:
@@ -65,7 +66,7 @@ func NewCopyFrom(
 		Stdin:        stdin,
 		Columns:      columns,
 		CopyOptions:  options,
-		InsertStub: insertStub,
+		InsertStub:   insertStub,
 	}
 }
 
@@ -91,7 +92,7 @@ func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err err
 
 // Schema implements the interface sql.ExecSourceRel.
 func (cf *CopyFrom) Schema() sql.Schema {
-	// For Parse calls, we need access to the schema before we have a DataLoader created, so return a stub schema. 
+	// For Parse calls, we need access to the schema before we have a DataLoader created, so return a stub schema.
 	if cf.DataLoader == nil {
 		return nil
 	}

@@ -162,7 +162,7 @@ func TestCsvDataLoader(t *testing.T) {
 			{int64(2), int64(200), "bash"},
 		}, rows)
 	})
-	
+
 	// Tests when a PSV (i.e. delimiter='|') record is split across two chunks of data,
 	// and a header row is present.
 	t.Run("delimiter='|', record split across two chunks, with header", func(t *testing.T) {

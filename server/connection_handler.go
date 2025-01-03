@@ -29,9 +29,6 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
-	"github.com/dolthub/doltgresql/core/dataloader"
-	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -44,7 +41,10 @@ import (
 	"github.com/mitchellh/go-ps"
 	"github.com/sirupsen/logrus"
 
+	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/node"
 )
@@ -651,7 +651,7 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 	copyState := &copyFromStdinState{
 		copyFromStdinNode: stmt,
 	}
-	
+
 	// TODO: security check for file path
 	// TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
 	f, err := os.Open(stmt.File)
@@ -659,7 +659,7 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 		return err
 	}
 	defer f.Close()
-	
+
 	_, _, err = h.handleCopyDataHelper(copyState, f)
 	if err != nil {
 		return err
@@ -693,7 +693,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		if copyFromStdinNode == nil {
 			return false, false, fmt.Errorf("no COPY FROM STDIN node found")
 		}
-		
+
 		// we build an insert node to use for the full insert plan, for which the copy from node will be the row source
 		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil, psql.NewPostgresParser())
 		node, flags, err := builder.BindOnly(copyFromStdinNode.InsertStub, "", nil)
@@ -729,7 +729,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 			return false, false, err
 		}
 
-		// we have to set the data loader on the copyFrom node before we analyze it, because we need the loader's 
+		// we have to set the data loader on the copyFrom node before we analyze it, because we need the loader's
 		// schema to analyze
 		copyState.copyFromStdinNode.DataLoader = dataLoader
 
@@ -739,7 +739,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		if err != nil {
 			return false, false, err
 		}
-		
+
 		copyState.insertNode = analyzedNode
 		copyState.dataLoader = dataLoader
 	}
@@ -754,7 +754,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 	if err != nil {
 		return false, false, err
 	}
-	
+
 	// We expect to see more CopyData messages until we see either a CopyDone or CopyFail message, so
 	// return false for endOfMessages
 	return false, false, nil
@@ -772,7 +772,7 @@ func getInsertableTable(node sql.Node) sql.InsertableTable {
 		}
 		return true
 	})
-	
+
 	return tbl
 }
 
@@ -863,7 +863,7 @@ func startTransactionIfNecessary(ctx *sql.Context) error {
 		if _, err := doltSession.StartTransaction(ctx, sql.ReadWrite); err != nil {
 			return err
 		}
-		
+
 		// When we start a transaction ourselves, we must ignore auto-commit settings for transaction
 		ctx.SetIgnoreAutoCommit(true)
 	}

@@ -20,8 +20,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 const defaultTextDelimiter = "\t"
@@ -49,7 +50,7 @@ func NewTabularDataLoader(colNames []string, tableSch sql.Schema, delimiterChar,
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if delimiterChar == "" {
 		delimiterChar = defaultTextDelimiter
 	}
@@ -113,7 +114,7 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 		if len(line) == 0 {
 			continue
 		}
-		
+
 		// Split the values by the delimiter, ensuring the correct number of values have been read
 		values := strings.Split(line, tdl.delimiterChar)
 		if len(values) > len(tdl.colTypes) {
@@ -121,7 +122,7 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 		} else if len(values) < len(tdl.colTypes) {
 			return nil, false, fmt.Errorf(`missing data for column "%s"`, tdl.sch[len(values)].Name)
 		}
-		
+
 		// Cast the values using I/O input
 		row := make(sql.Row, len(tdl.colTypes))
 		for i := range tdl.colTypes {
@@ -134,7 +135,7 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 				}
 			}
 		}
-		
+
 		return row, true, nil
 	}
 }
@@ -182,7 +183,7 @@ func (tdl *TabularDataLoader) IsReadOnly() bool {
 }
 
 type tabularRowIter struct {
-	tdl *TabularDataLoader
+	tdl    *TabularDataLoader
 	reader *bufio.Reader
 }
 

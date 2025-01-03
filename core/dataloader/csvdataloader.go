@@ -172,7 +172,7 @@ func (cdl *CsvDataLoader) IsReadOnly() bool {
 }
 
 type csvRowIter struct {
-	cdl *CsvDataLoader
+	cdl    *CsvDataLoader
 	reader *csvReader
 }
 
@@ -181,14 +181,14 @@ func (c csvRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// TODO: this isn't the best way to handle the count of rows, something like a RowUpdateAccumulator would be better
 	if hasNext {
 		c.cdl.results.RowsLoaded++
 	} else {
 		return nil, io.EOF
 	}
-	
+
 	return row, nil
 }
 
@@ -206,6 +206,6 @@ func (cdl *CsvDataLoader) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &csvRowIter{cdl: cdl, reader: csvReader}, nil
 }
