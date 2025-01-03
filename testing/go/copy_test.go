@@ -284,7 +284,7 @@ bar`, "baz"},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:       fmt.Sprintf("COPY test_info FROM '%s' WITH (HEADER)", filepath.Join(absTestDataDir, "file-not-found.sql")),
-					ExpectedErr: "cannot find the file specified",
+					ExpectedErr: "file", // exact error message varies by platform
 				},
 			},
 		},
