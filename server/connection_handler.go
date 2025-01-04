@@ -664,7 +664,7 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 	if err != nil {
 		return err
 	}
-	
+
 	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
 		return err
