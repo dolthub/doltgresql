@@ -664,9 +664,31 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 	if err != nil {
 		return err
 	}
+	
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return err
+	}
+
+	loadDataResults, err := copyState.dataLoader.Finish(sqlCtx)
+	if err != nil {
+		return err
+	}
+
+	// TODO: rather than always committing the transaction here, we should respect whether a transaction was
+	//  expliclitly started and not commit if not. In order to do that, we need to not always set
+	//  ctx.GetIgnoreAutoCommit(), and instead conditionally *not* insert a transaction closing iterator during chunk
+	//  processing. We need a new query flag to effectively do the latter though.
+	txSession, ok := sqlCtx.Session.(sql.TransactionSession)
+	if !ok {
+		return fmt.Errorf("session does not implement sql.TransactionSession")
+	}
+	if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
+		return err
+	}
 
 	return h.send(&pgproto3.CommandComplete{
-		CommandTag: []byte("COPY"),
+		CommandTag: []byte(fmt.Sprintf("COPY %d", loadDataResults.RowsLoaded)),
 	})
 }
 
