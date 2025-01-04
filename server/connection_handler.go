@@ -810,10 +810,10 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 		return false, false, err
 	}
 
-	// TODO: rather than always committing the transaction here, we should respect whether a transaction was 
-	//  expliclitly started and not commit if not. In order to do that, we need to not always set 
+	// TODO: rather than always committing the transaction here, we should respect whether a transaction was
+	//  expliclitly started and not commit if not. In order to do that, we need to not always set
 	//  ctx.GetIgnoreAutoCommit(), and instead conditionally *not* insert a transaction closing iterator during chunk
-	//  processing. We need a new query flag to effectively do the latter though. 
+	//  processing. We need a new query flag to effectively do the latter though.
 	txSession, ok := sqlCtx.Session.(sql.TransactionSession)
 	if !ok {
 		return false, false, fmt.Errorf("session does not implement sql.TransactionSession")
