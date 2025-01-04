@@ -675,16 +675,14 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 		return err
 	}
 
-	// TODO: rather than always committing the transaction here, we should respect whether a transaction was
-	//  expliclitly started and not commit if not. In order to do that, we need to not always set
-	//  ctx.GetIgnoreAutoCommit(), and instead conditionally *not* insert a transaction closing iterator during chunk
-	//  processing. We need a new query flag to effectively do the latter though.
-	txSession, ok := sqlCtx.Session.(sql.TransactionSession)
-	if !ok {
-		return fmt.Errorf("session does not implement sql.TransactionSession")
-	}
-	if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
-		return err
+	if sqlCtx.GetTransaction() != nil && !sqlCtx.GetIgnoreAutoCommit() {
+		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
+		if !ok {
+			return fmt.Errorf("session does not implement sql.TransactionSession")
+		}
+		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
+			return err
+		}
 	}
 
 	return h.send(&pgproto3.CommandComplete{
