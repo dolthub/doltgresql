@@ -675,7 +675,7 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 		return err
 	}
 
-	if sqlCtx.GetTransaction() != nil && !sqlCtx.GetIgnoreAutoCommit() {
+	if sqlCtx.GetTransaction() != nil && sqlCtx.GetIgnoreAutoCommit() {
 		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
 		if !ok {
 			return fmt.Errorf("session does not implement sql.TransactionSession")
