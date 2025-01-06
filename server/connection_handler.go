@@ -683,6 +683,7 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
 			return err
 		}
+		sqlCtx.SetIgnoreAutoCommit(false)
 	}
 
 	return h.send(&pgproto3.CommandComplete{
@@ -841,6 +842,7 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 	if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
 		return false, false, err
 	}
+	sqlCtx.SetIgnoreAutoCommit(false)
 
 	h.copyFromStdinState = nil
 	// We send back endOfMessage=true, since the COPY DONE message ends the COPY DATA flow and the server is ready
