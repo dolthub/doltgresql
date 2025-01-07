@@ -75,4 +75,3 @@ func (n noOpRowIter) Close(ctx *sql.Context) error {
 func (n NoOp) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	return noOpRowIter{warnings: n.Warnings}, nil
 }
-

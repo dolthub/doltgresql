@@ -43,12 +43,12 @@ func nodeAlterTable(ctx *Context, node *tree.AlterTable) (vitess.Statement, erro
 	if len(noOps) > 0 && len(statements) == 0 {
 		return NewNoOp(noOps), nil
 	}
-	
+
 	// Otherwise emit warnings now, then return an AlterTable statement
 	if len(noOps) > 0 {
 		// TODO: we need a sql context here to emit warnings
 	}
-	
+
 	return &vitess.AlterTable{
 		Table:      tableName,
 		Statements: statements,

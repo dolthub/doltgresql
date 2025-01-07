@@ -15,8 +15,9 @@
 package ast
 
 import (
-	pgnodes "github.com/dolthub/doltgresql/server/node"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 func NewNoOp(warnings []string) vitess.InjectedStatement {
