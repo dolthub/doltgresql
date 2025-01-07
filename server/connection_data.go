@@ -74,6 +74,9 @@ type copyFromStdinState struct {
 	// node is used to look at what parameters were specified, such as which table to load data into, file format,
 	// delimiters, etc.
 	copyFromStdinNode *node.CopyFrom
+	// insertNode stores the analyzed insert node that will be used to load the data into the target table. This node
+	// only needs to be built once, and can be reused with updates to its underlying data loader.
+	insertNode sql.Node
 	// dataLoader is the implementation of DataLoader that is used to load each individual CopyData chunk into the
 	// target table.
 	dataLoader dataloader.DataLoader

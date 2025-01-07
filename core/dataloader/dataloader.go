@@ -28,18 +28,16 @@ import (
 // incomplete records, and saving that partial record until the next call to LoadChunk, so that it may be prefixed
 // with the incomplete record.
 type DataLoader interface {
-	// LoadChunk reads the records from |data| and inserts them into the previously configured table. Data records
+	sql.ExecSourceRel
+
+	// SetNextDataChunk sets the next data chunk to be processed by the DataLoader.  Data records
 	// are not guaranteed to start and end cleanly on chunk boundaries, so implementations must recognize incomplete
 	// records and save them to prepend on the next processed chunk.
-	LoadChunk(ctx *sql.Context, data *bufio.Reader) error
+	SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error
 
-	// Abort aborts the current load operation and releases all used resources.
-	Abort(ctx *sql.Context) error
-
-	// Finish finalizes the current load operation and commits the inserted rows so that the data becomes visibile
-	// to clients. Implementations should check that the last call to LoadChunk did not end with an incomplete
-	// record and return an error to the caller if so. The returned LoadDataResults describe the load operation,
-	// including how many rows were inserted.
+	// Finish finalizes the current load operation and cleans up any resources used. Implementations should check that
+	// the last call to LoadChunk did not end with an incomplete record and return an error to the caller if so. The
+	// returned LoadDataResults describe the load operation, including how many rows were inserted.
 	Finish(ctx *sql.Context) (*LoadDataResults, error)
 }
 
@@ -49,17 +47,27 @@ type LoadDataResults struct {
 	RowsLoaded int32
 }
 
-// getColumnTypes examines |sch| and returns a slice of DoltgresTypes in the order of the schema's columns. If any
-// columns in the schema are not DoltgresType instances, an error is returned.
-func getColumnTypes(sch sql.Schema) ([]*types.DoltgresType, error) {
-	colTypes := make([]*types.DoltgresType, len(sch))
-	for i, col := range sch {
+// getColumnTypes returns the types of the columns in the schema that match the provided column names, in the order
+// they are provided. If a subset of column names are provided, the returned types will only contain those columns.
+// If the column names are not found in the schema, an error is returned.
+func getColumnTypes(colNames []string, sch sql.Schema) ([]*types.DoltgresType, sql.Schema, error) {
+	colTypes := make([]*types.DoltgresType, len(colNames))
+	reducedSch := make(sql.Schema, len(colNames))
+	for i, colName := range colNames {
+		colIdx := sch.IndexOfColName(colName)
+		if colIdx < 0 {
+			// should be impossible
+			return nil, nil, fmt.Errorf("column %s not found in schema", colName)
+		}
+		col := sch[colIdx]
 		var ok bool
 		colTypes[i], ok = col.Type.(*types.DoltgresType)
 		if !ok {
-			return nil, fmt.Errorf("unsupported column type: name: %s, type: %T", col.Name, col.Type)
+			return nil, nil, fmt.Errorf("unsupported column type: name: %s, type: %T", col.Name, col.Type)
 		}
+
+		reducedSch[i] = col
 	}
 
-	return colTypes, nil
+	return colTypes, reducedSch, nil
 }

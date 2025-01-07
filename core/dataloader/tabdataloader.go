@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/server/types"
 )
@@ -33,7 +32,7 @@ const defaultNullChar = "\\N"
 type TabularDataLoader struct {
 	results       LoadDataResults
 	partialLine   string
-	rowInserter   sql.RowInserter
+	nextDataChunk *bufio.Reader
 	colTypes      []*types.DoltgresType
 	sch           sql.Schema
 	delimiterChar string
@@ -43,17 +42,14 @@ type TabularDataLoader struct {
 
 var _ DataLoader = (*TabularDataLoader)(nil)
 
-// NewTabularDataLoader creates a new TabularDataLoader to insert into the specifeid |table| using the specified
+// NewTabularDataLoader creates a new TabularDataLoader to insert into the specified |table| using the specified
 // |delimiterChar| and |nullChar|. If |header| is true, the first line of the data will be treated as a header and
 // ignored.
-func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {
-	colTypes, err := getColumnTypes(table.Schema())
+func NewTabularDataLoader(colNames []string, tableSch sql.Schema, delimiterChar, nullChar string, header bool) (*TabularDataLoader, error) {
+	colTypes, reducedSch, err := getColumnTypes(colNames, tableSch)
 	if err != nil {
 		return nil, err
 	}
-
-	rowInserter := table.Inserter(ctx)
-	rowInserter.StatementBegin(ctx)
 
 	if delimiterChar == "" {
 		delimiterChar = defaultTextDelimiter
@@ -64,27 +60,31 @@ func NewTabularDataLoader(ctx *sql.Context, table sql.InsertableTable, delimiter
 	}
 
 	return &TabularDataLoader{
-		rowInserter:   rowInserter,
 		colTypes:      colTypes,
-		sch:           table.Schema(),
+		sch:           reducedSch,
 		delimiterChar: delimiterChar,
 		nullChar:      nullChar,
 		removeHeader:  header,
 	}, nil
 }
 
-// LoadChunk loads a chunk of data from the specified |data| reader into the table for this data loader. Note that
-// the chunk does not need to end on a line boundary – the loader will handle partial lines at the end of the chunk
-// by saving them for the next chunk.
-func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) error {
-	for {
-		row := make(sql.Row, len(tdl.colTypes))
+// nextRow returns the next SQL row from the reader provided, using any previously saved partial line. Returns true if
+// there was another row.
+func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql.Row, bool, error) {
+	if tdl.removeHeader {
+		_, err := data.ReadString('\n')
+		tdl.removeHeader = false
+		if err != nil {
+			return nil, false, err
+		}
+	}
 
+	for {
 		// Read the next line from the file
 		line, err := data.ReadString('\n')
 		if err != nil {
 			if err != io.EOF {
-				return err
+				return nil, false, err
 			}
 
 			// bufio.Reader.ReadString will return an error AND a line
@@ -92,13 +92,7 @@ func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) er
 			// delimiter. In this case, that means that we need to save
 			// the partial line and use it in the next chunk.
 			tdl.partialLine = line
-			break
-		}
-
-		if tdl.removeHeader {
-			// Skip the first line if it is a header
-			tdl.removeHeader = false
-			continue
+			return nil, false, nil
 		}
 
 		// If we've not reached EOF, then there will be a newline appended to the end that we must remove.
@@ -113,71 +107,106 @@ func (tdl *TabularDataLoader) LoadChunk(ctx *sql.Context, data *bufio.Reader) er
 
 		// If we see the end of data marker, return early
 		if line == "\\." {
-			return nil
+			return nil, false, nil
 		}
 
 		// Skip over empty lines
 		if len(line) == 0 {
 			continue
 		}
+
 		// Split the values by the delimiter, ensuring the correct number of values have been read
 		values := strings.Split(line, tdl.delimiterChar)
 		if len(values) > len(tdl.colTypes) {
-			return fmt.Errorf("extra data after last expected column")
+			return nil, false, fmt.Errorf("extra data after last expected column")
 		} else if len(values) < len(tdl.colTypes) {
-			return fmt.Errorf(`missing data for column "%s"`, tdl.sch[len(values)].Name)
+			return nil, false, fmt.Errorf(`missing data for column "%s"`, tdl.sch[len(values)].Name)
 		}
+
 		// Cast the values using I/O input
+		row := make(sql.Row, len(tdl.colTypes))
 		for i := range tdl.colTypes {
 			if values[i] == tdl.nullChar {
 				row[i] = nil
 			} else {
 				row[i], err = tdl.colTypes[i].IoInput(ctx, values[i])
 				if err != nil {
-					return err
+					return nil, false, err
 				}
 			}
 		}
-		// Insert the read row
-		err = tdl.rowInserter.Insert(ctx, row)
-		if err != nil {
-			return err
-		}
-		tdl.results.RowsLoaded += 1
-	}
 
-	return nil
+		return row, true, nil
+	}
 }
 
-// Abort ends the current load data operation and discards any changes that have been made.
-func (tdl *TabularDataLoader) Abort(ctx *sql.Context) error {
-	defer func() {
-		if closeErr := tdl.rowInserter.Close(ctx); closeErr != nil {
-			logrus.Warnf("error closing rowInserter: %v", closeErr)
-		}
-	}()
-
-	return tdl.rowInserter.DiscardChanges(ctx, nil)
+func (tdl *TabularDataLoader) SetNextDataChunk(ctx *sql.Context, data *bufio.Reader) error {
+	tdl.nextDataChunk = data
+	return nil
 }
 
 // Finish completes the current load data operation and finalizes the data that has been inserted.
 func (tdl *TabularDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error) {
-	defer func() {
-		if closeErr := tdl.rowInserter.Close(ctx); closeErr != nil {
-			logrus.Warnf("error closing rowInserter: %v", closeErr)
-		}
-	}()
-
 	// If there is partial data from the last chunk that hasn't been inserted, return an error.
 	if tdl.partialLine != "" {
 		return nil, fmt.Errorf("partial line found at end of data load")
 	}
 
-	err := tdl.rowInserter.StatementComplete(ctx)
+	return &tdl.results, nil
+}
+
+func (tdl *TabularDataLoader) Resolved() bool {
+	return true
+}
+
+func (tdl *TabularDataLoader) String() string {
+	return "TabularDataLoader"
+}
+
+func (tdl *TabularDataLoader) Schema() sql.Schema {
+	return tdl.sch
+}
+
+func (tdl *TabularDataLoader) Children() []sql.Node {
+	return nil
+}
+
+func (tdl *TabularDataLoader) WithChildren(children ...sql.Node) (sql.Node, error) {
+	if len(children) != 0 {
+		return nil, sql.ErrInvalidChildrenNumber.New(tdl, len(children), 0)
+	}
+	return tdl, nil
+}
+
+func (tdl *TabularDataLoader) IsReadOnly() bool {
+	return true
+}
+
+type tabularRowIter struct {
+	tdl    *TabularDataLoader
+	reader *bufio.Reader
+}
+
+func (t tabularRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	row, hasNext, err := t.tdl.nextRow(ctx, t.reader)
 	if err != nil {
-		err = tdl.rowInserter.DiscardChanges(ctx, err)
 		return nil, err
 	}
 
-	return &tdl.results, nil
+	// TODO: this isn't the best way to handle the count of rows, something like a RowUpdateAccumulator would be better
+	if hasNext {
+		t.tdl.results.RowsLoaded++
+	} else {
+		return nil, io.EOF
+	}
+
+	return row, nil
+}
+
+func (t tabularRowIter) Close(context *sql.Context) error {
+	return nil
+}
+
+func (tdl *TabularDataLoader) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	return &tabularRowIter{tdl: tdl, reader: tdl.nextDataChunk}, nil
 }

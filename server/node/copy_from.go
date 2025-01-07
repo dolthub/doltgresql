@@ -15,22 +15,15 @@
 package node
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/sirupsen/logrus"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
-
-// TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
 
 // CopyFrom handles the COPY ... FROM ... statement.
 type CopyFrom struct {
@@ -40,13 +33,23 @@ type CopyFrom struct {
 	Stdin        bool
 	Columns      tree.NameList
 	CopyOptions  tree.CopyOptions
+	InsertStub   *vitess.Insert
+	DataLoader   dataloader.DataLoader
 }
 
 var _ vitess.Injectable = (*CopyFrom)(nil)
 var _ sql.ExecSourceRel = (*CopyFrom)(nil)
 
 // NewCopyFrom returns a new *CopyFrom.
-func NewCopyFrom(databaseName string, tableName doltdb.TableName, options tree.CopyOptions, fileName string, stdin bool, columns tree.NameList) *CopyFrom {
+func NewCopyFrom(
+	databaseName string,
+	tableName doltdb.TableName,
+	options tree.CopyOptions,
+	fileName string,
+	stdin bool,
+	columns tree.NameList,
+	insertStub *vitess.Insert,
+) *CopyFrom {
 	switch options.CopyFormat {
 	case tree.CopyFormatCsv, tree.CopyFormatText:
 		// no-op
@@ -63,6 +66,7 @@ func NewCopyFrom(databaseName string, tableName doltdb.TableName, options tree.C
 		Stdin:        stdin,
 		Columns:      columns,
 		CopyOptions:  options,
+		InsertStub:   insertStub,
 	}
 }
 
@@ -81,102 +85,27 @@ func (cf *CopyFrom) Resolved() bool {
 	return true
 }
 
-// Validate returns an error if the CopyFrom node is invalid, for example if it contains columns that
-// are not in the table schema.
-//
-// TODO: This validation logic should be hooked into the analyzer so that it can be run in a consistent way.
-func (cf *CopyFrom) Validate(ctx *sql.Context) error {
-	table, err := core.GetSqlTableFromContext(ctx, cf.DatabaseName, cf.TableName)
-	if err != nil {
-		return err
-	}
-	if table == nil {
-		return fmt.Errorf(`relation "%s" does not exist`, cf.TableName.String())
-	}
-	if _, ok := table.(sql.InsertableTable); !ok {
-		return fmt.Errorf(`table "%s" is read-only`, cf.TableName.String())
-	}
-
-	// If a set of columns was explicitly specified, validate them
-	if len(cf.Columns) > 0 {
-		if len(table.Schema()) != len(cf.Columns) {
-			return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
-		}
-
-		for i, col := range table.Schema() {
-			name := cf.Columns[i]
-			nameString := strings.Trim(name.String(), `"`)
-			if nameString != col.Name {
-				return fmt.Errorf("invalid column name list for table %s: %v", table.Name(), cf.Columns)
-			}
-		}
-	}
-
-	return nil
-}
-
 // RowIter implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) RowIter(ctx *sql.Context, _ sql.Row) (_ sql.RowIter, err error) {
-	if err := cf.Validate(ctx); err != nil {
-		return nil, err
-	}
-
-	table, err := core.GetSqlTableFromContext(ctx, cf.DatabaseName, cf.TableName)
-	if err != nil {
-		return nil, err
-	}
-	if table == nil {
-		return nil, fmt.Errorf(`relation "%s" does not exist`, cf.TableName.String())
-	}
-	insertable, ok := table.(sql.InsertableTable)
-	if !ok {
-		return nil, fmt.Errorf(`table "%s" is read-only`, cf.TableName.String())
-	}
-
-	// Open the file
-	openFile, err := os.Open(cf.File)
-	if openFile == nil || err != nil {
-		return nil, fmt.Errorf(`could not open file "%s" for reading: No such file or directory`, cf.File)
-	}
-	defer func() {
-		nErr := openFile.Close()
-		if err == nil {
-			err = nErr
-		}
-	}()
-	reader := bufio.NewReader(openFile)
-
-	dataLoader, err := dataloader.NewTabularDataLoader(ctx, insertable, cf.CopyOptions.Delimiter, "", cf.CopyOptions.Header)
-	if err != nil {
-		return nil, err
-	}
-
-	// NOTE: when loading data from a specified file, there is only one chunk for the entire file
-	if err = dataLoader.LoadChunk(ctx, reader); err != nil {
-		if abortError := dataLoader.Abort(ctx); abortError != nil {
-			logrus.Warnf("unable to cleanly abort data loader: %s", abortError.Error())
-		}
-		return nil, err
-	}
-
-	if _, err = dataLoader.Finish(ctx); err != nil {
-		if abortError := dataLoader.Abort(ctx); err != nil {
-			logrus.Warnf("unable to cleanly abort data loader: %s", abortError.Error())
-		}
-		return nil, err
-	}
-
-	return sql.RowsToRowIter(), nil
+func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err error) {
+	return cf.DataLoader.RowIter(ctx, r)
 }
 
 // Schema implements the interface sql.ExecSourceRel.
 func (cf *CopyFrom) Schema() sql.Schema {
-	return nil
+	// For Parse calls, we need access to the schema before we have a DataLoader created, so return a stub schema.
+	if cf.DataLoader == nil {
+		return nil
+	}
+	return cf.DataLoader.Schema()
 }
 
 // String implements the interface sql.ExecSourceRel.
 func (cf *CopyFrom) String() string {
-	return "COPY FROM"
+	source := "STDIN"
+	if cf.File != "" {
+		source = fmt.Sprintf("'%s'", cf.File)
+	}
+	return fmt.Sprintf("COPY FROM %s", source)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
