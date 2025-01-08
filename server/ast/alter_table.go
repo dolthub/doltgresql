@@ -23,7 +23,7 @@ import (
 )
 
 // nodeAlterTable handles *tree.AlterTable nodes.
-func nodeAlterTable(ctx *Context, node *tree.AlterTable) (*vitess.AlterTable, error) {
+func nodeAlterTable(ctx *Context, node *tree.AlterTable) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -34,10 +34,23 @@ func nodeAlterTable(ctx *Context, node *tree.AlterTable) (*vitess.AlterTable, er
 		return nil, err
 	}
 
-	statements, err := nodeAlterTableCmds(ctx, node.Cmds, tableName, node.IfExists)
+	statements, noOps, err := nodeAlterTableCmds(ctx, node.Cmds, tableName, node.IfExists)
 	if err != nil {
 		return nil, err
 	}
+
+	// If there are no valid statements return a no-op statement
+	if len(noOps) > 0 && len(statements) == 0 {
+		return NewNoOp(noOps), nil
+	}
+
+	// Otherwise emit warnings now, then return an AlterTable statement
+	// TODO: we don't have a way to send or store the warnings alongside a valid AlterTable statement. We could either
+	//  get a *sql.Context here and emit warnings, or we could store the warnings in the Context and make the caller
+	//  emit them before it sends |ReadyForQuery|
+	// if len(noOps) > 0 {
+	//  emit warnings
+	// }
 
 	return &vitess.AlterTable{
 		Table:      tableName,
@@ -53,54 +66,87 @@ func nodeAlterTableSetSchema(ctx *Context, node *tree.AlterTableSetSchema) (vite
 	return nil, fmt.Errorf("ALTER TABLE SET SCHEMA is not yet supported")
 }
 
-// nodeAlterTableCmds converts tree.AlterTableCmds into a slice of vitess.DDL
-// instances that can be executed by GMS. |tableName| identifies the table
-// being altered, and |ifExists| indicates whether the IF EXISTS clause was
-// specified.
+// nodeAlterTableCmds converts tree.AlterTableCmds into a slice of vitess.DDL instances that can be executed by GMS.
+// |tableName| identifies the table being altered, and |ifExists| indicates whether the IF EXISTS clause was specified.
+// A second slice of unsupported but safely ignored statements is return as well.
 func nodeAlterTableCmds(
 	ctx *Context,
 	node tree.AlterTableCmds,
 	tableName vitess.TableName,
-	ifExists bool) ([]*vitess.DDL, error) {
+	ifExists bool) ([]*vitess.DDL, []string, error) {
 
 	if len(node) == 0 {
-		return nil, fmt.Errorf("no commands specified for ALTER TABLE statement")
+		return nil, nil, fmt.Errorf("no commands specified for ALTER TABLE statement")
 	}
 
 	vitessDdlCmds := make([]*vitess.DDL, 0, len(node))
+	var unsupportedWarnings []string
 	for _, cmd := range node {
 		var err error
 		var statement *vitess.DDL
 		switch cmd := cmd.(type) {
 		case *tree.AlterTableAddConstraint:
 			statement, err = nodeAlterTableAddConstraint(ctx, cmd, tableName, ifExists)
+			if err != nil {
+				return nil, nil, err
+			}
+			vitessDdlCmds = append(vitessDdlCmds, statement)
 		case *tree.AlterTableAddColumn:
 			statement, err = nodeAlterTableAddColumn(ctx, cmd, tableName, ifExists)
+			if err != nil {
+				return nil, nil, err
+			}
+			vitessDdlCmds = append(vitessDdlCmds, statement)
 		case *tree.AlterTableDropColumn:
 			statement, err = nodeAlterTableDropColumn(ctx, cmd, tableName, ifExists)
+			if err != nil {
+				return nil, nil, err
+			}
+			vitessDdlCmds = append(vitessDdlCmds, statement)
 		case *tree.AlterTableDropConstraint:
 			statement, err = nodeAlterTableDropConstraint(ctx, cmd, tableName, ifExists)
+			if err != nil {
+				return nil, nil, err
+			}
+			vitessDdlCmds = append(vitessDdlCmds, statement)
 		case *tree.AlterTableRenameColumn:
 			statement, err = nodeAlterTableRenameColumn(ctx, cmd, tableName, ifExists)
+			if err != nil {
+				return nil, nil, err
+			}
+			vitessDdlCmds = append(vitessDdlCmds, statement)
 		case *tree.AlterTableSetDefault:
 			statement, err = nodeAlterTableSetDefault(ctx, cmd, tableName, ifExists)
+			if err != nil {
+				return nil, nil, err
+			}
+			vitessDdlCmds = append(vitessDdlCmds, statement)
 		case *tree.AlterTableDropNotNull:
 			statement, err = nodeAlterTableDropNotNull(ctx, cmd, tableName, ifExists)
+			if err != nil {
+				return nil, nil, err
+			}
+			vitessDdlCmds = append(vitessDdlCmds, statement)
 		case *tree.AlterTableSetNotNull:
 			statement, err = nodeAlterTableSetNotNull(ctx, cmd, tableName, ifExists)
+			if err != nil {
+				return nil, nil, err
+			}
+			vitessDdlCmds = append(vitessDdlCmds, statement)
 		case *tree.AlterTableAlterColumnType:
 			statement, err = nodeAlterTableAlterColumnType(ctx, cmd, tableName, ifExists)
+			if err != nil {
+				return nil, nil, err
+			}
+			vitessDdlCmds = append(vitessDdlCmds, statement)
+		case *tree.AlterTableOwner:
+			unsupportedWarnings = append(unsupportedWarnings, fmt.Sprintf("ALTER TABLE %s OWNER TO %s", tableName.String(), cmd.Owner))
 		default:
-			return nil, fmt.Errorf("ALTER TABLE with unsupported command type %T", cmd)
+			return nil, nil, fmt.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
-
-		if err != nil {
-			return nil, err
-		}
-		vitessDdlCmds = append(vitessDdlCmds, statement)
 	}
 
-	return vitessDdlCmds, nil
+	return vitessDdlCmds, unsupportedWarnings, nil
 }
 
 // nodeAlterTableAddConstraint converts a tree.AlterTableAddConstraint instance

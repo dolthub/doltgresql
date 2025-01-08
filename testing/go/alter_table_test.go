@@ -417,5 +417,16 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "alter table owner",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (a INT, b INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE t1 OWNER TO new_owner;", // no error is all we expect here
+				},
+			},
+		},
 	})
 }
