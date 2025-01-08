@@ -47,8 +47,8 @@ func nodeAlterTable(ctx *Context, node *tree.AlterTable) (vitess.Statement, erro
 	// Otherwise emit warnings now, then return an AlterTable statement
 	//lint:ignore SA9003 For future use
 	if len(noOps) > 0 {
-		// TODO: we don't have a way to send or store the warnings alongside a valid AlterTable statement. We could either 
-		//  get a *sql.Context here and emit warnings, or we could store the warnings in the Context and make the caller 
+		// TODO: we don't have a way to send or store the warnings alongside a valid AlterTable statement. We could either
+		//  get a *sql.Context here and emit warnings, or we could store the warnings in the Context and make the caller
 		//  emit them before it sends |ReadyForQuery|
 	}
 
