@@ -20,6 +20,8 @@ import (
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
+// NewNoOp returns a new NoOp statement which does nothing and issues zero or more warnings when run.
+// Used for statements that aren't directly supported but which we don't want to cause errors.
 func NewNoOp(warnings []string) vitess.InjectedStatement {
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NoOp{

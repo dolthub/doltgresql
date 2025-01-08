@@ -25,6 +25,8 @@ import (
 var _ vitess.Injectable = (*NoOp)(nil)
 var _ sql.ExecSourceRel = (*NoOp)(nil)
 
+// NoOp is a node that does nothing and issues zero or more warnings when run.
+// Used when a statement should parse but isn't expected to do anything, for compatibility with Postgres dumps / tools.
 type NoOp struct {
 	Warnings []string
 }
