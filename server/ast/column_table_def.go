@@ -94,6 +94,12 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		if err != nil {
 			return nil, err
 		}
+
+		// GMS requires the AST to wrap function expressions in parens
+		if _, ok := generated.(*vitess.FuncExpr); ok {
+			generated = &vitess.ParenExpr{Expr: generated}
+		}
+
 		//TODO: need to add support for VIRTUAL in the parser
 		generatedStored = true
 	}
