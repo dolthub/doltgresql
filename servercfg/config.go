@@ -169,6 +169,8 @@ type DoltgresConfig struct {
 	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"0.7.4"`
 }
 
+var _ servercfg.ServerConfig = (*DoltgresConfig)(nil)
+
 // Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
 // a const value without assigning to an intermediate variable.
 func Ptr[T any](v T) *T {
@@ -225,6 +227,10 @@ func (cfg *DoltgresConfig) User() string {
 	}
 
 	return *cfg.UserConfig.Name
+}
+
+func (cfg *DoltgresConfig) UserIsSpecified() bool {
+	return cfg.UserConfig != nil && cfg.UserConfig.Name != nil
 }
 
 func (cfg *DoltgresConfig) Password() string {

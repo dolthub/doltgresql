@@ -156,7 +156,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		}
 	}()
 
-	sqlserver.ConfigureServices(ssCfg, controller, Version, dEnv)
+	sqlserver.ConfigureServices(ssCfg, controller, Version, dEnv, false)
 	go controller.Start(newCtx)
 
 	err = controller.WaitForStart()
