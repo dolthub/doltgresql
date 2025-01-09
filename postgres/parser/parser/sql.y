@@ -1044,8 +1044,9 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.Statement> reindex_stmt
 
 %type <tree.Statement> vacuum_stmt
-%type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list
 %type <*tree.VacuumOption> vacuum_option
+%type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list
+%type <*tree.VacuumNameAndCols> opt_vacuum_table_and_cols
 %type <string> auto_on_off
 %type <bool> opt_boolean_value_default_true
 
@@ -1186,7 +1187,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <[]*tree.Order> sortby_list
 %type <tree.IndexParams> constraint_index_params
 %type <tree.IndexElemList> index_params index_params_name_only opt_index_params_name_only opt_include_index_cols partition_index_params exclude_elems
-%type <tree.NameList> name_list privilege_list opt_name_list
+%type <tree.NameList> name_list privilege_list
 %type <[]int32> opt_array_bounds
 %type <tree.From> from_clause
 %type <tree.TableExprs> from_list rowsfrom_list opt_from_list
@@ -6326,12 +6327,18 @@ reindex_stmt:
   }
 
 vacuum_stmt:
-  VACUUM opt_vacuum_option_list opt_name opt_name_list
+  VACUUM opt_vacuum_option_list opt_vacuum_table_and_cols
   {
+     var tblName *tree.UnresolvedName
+     var colNames tree.NameList
+     if $3 != nil {
+       tblName = $3.vacuum_table_and_cols().Name
+       colNames = $3.vacuum_table_and_cols().Cols
+     }
      $$.val = &tree.Vacuum{
        Options: $2.vacuumOptions(),
-       Table:   $3.name(),
-       Columns: $4.nameList(),
+       Table:   tblName,
+       Columns: colNames,
      }
   }
 
@@ -6464,6 +6471,20 @@ auto_on_off:
 | OFF
   {
     $$.val = "OFF"
+  }
+  
+opt_vacuum_table_and_cols:
+  /* EMPTY */
+  {
+    $$.val = (*tree.VacuumTableAndCols{})(nil)
+  }
+| name 
+  {
+    $$.val = &tree.VacuumTableAndCols{Table: $1}
+  }
+| name name_list
+  {
+     $$.val = &tree.VacuumTableAndCols{Table: $1, Columns: $2}
   }
     
 // %Help: SHOW SESSION - display session variables
@@ -13906,13 +13927,6 @@ name_list:
     $$.val = append($1.nameList(), tree.Name($3))
   }
   
-opt_name_list:
-  /* EMPTY */
-  {
-    $$.val = tree.NameList(nil)
-  }
-| name_list
-
 // Constants
 numeric_only:
   signed_iconst
