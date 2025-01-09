@@ -1043,6 +1043,13 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.Statement> declare_cursor_stmt
 %type <tree.Statement> reindex_stmt
 
+%type <tree.Statement> vacuum_stmt
+%type <tree.VacuumOptions> opt_vaccum_option_list
+%type <tree.VacuumOptions> vaccum_option_list
+%type <*tree.VacuumOption> vacuum_option
+%type <string> auto_on_off
+%type <boolean> opt_boolean_value
+
 %type <[]string> opt_incremental
 %type <tree.KVOption> kv_option
 %type <[]tree.KVOption> kv_option_list opt_with_options opt_with_schedule_options
@@ -1469,6 +1476,7 @@ non_transaction_stmt:
 | close_cursor_stmt
 | declare_cursor_stmt
 | reindex_stmt
+| vacuum_stmt
 
 stmt_list:
   non_transaction_stmt
@@ -5667,6 +5675,13 @@ boolean_value:
     $$.val = $1.int64() != 0
   }
 
+opt_boolean_value:
+  /* EMPTY */
+  {
+    $$.val = false
+  }
+| boolean_value
+
 option_true_false:
   OPTION
 | TRUE
@@ -6311,6 +6326,147 @@ reindex_stmt:
     return purposelyUnimplemented(sqllex, "reindex system", "CockroachDB does not require reindexing.")
   }
 
+vacuum_stmt:
+  VACUUM opt_vaccum_option_list opt_name opt_name_list
+  {
+     $$.val = &tree.Vacuum{
+       Options: $2.vacuumOptions(),
+       Table:   $3.name(),
+       Columns: $4.nameList(),
+     }
+  }
+
+opt_vaccum_option_list:
+  vaccum_option_list
+| /* EMPTY */
+  {
+    $$.val = tree.TableDefs(nil)
+  }
+  
+vaccum_option_list:
+  vacuum_option
+  {
+    $$.val = tree.VacuumOptions{$1.vacuumOption()}
+  }
+| vacuum_option_list ',' vacuum_option
+  {
+    $$.val = append($1.vacuumOptions(), $3.vacuumOption())
+  }
+
+vacuum_option:
+  FULL opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FULL",
+    	Value:  $2,
+    }
+  }
+| FREEZE opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FREEZE",
+    	Value:  $2,
+    }
+  }
+| VERBOSE opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "VERBOSE",
+    	Value:  $2,
+    }
+  }
+| ANALYZE opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "ANALYZE",
+    	Value:  $2,
+    }
+  }
+| DISABLE_PAGE_SKIPPING opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "DISABLE_PAGE_SKIPPING",
+    	Value:  $2,
+    }
+  }
+| SKIP_LOCKED opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "SKIP_LOCKED",
+    	Value:  $2,
+    }
+  }
+| INDEX_CLEANUP auto_on_off
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "INDEX_CLEANUP",
+    	Value:  $2,
+    }
+  }
+| PROCESS_MAIN opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "PROCESS_MAIN",
+    	Value:  $2,
+    }
+  }
+| PROCESS_TOAST opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "PROCESS_TOAST",
+    	Value:  $2,
+    }
+  }
+| TRUNCATE opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "TRUNCATE",
+    	Value:  $2,
+    }
+  }
+| PARALLEL ICONST
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "PARALLEL",
+    	Value:  $2,
+    }
+  }
+| SKIP_DATABASE_STATS opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "SKIP_DATABASE_STATS",
+    	Value:  $2,
+    }
+  }
+| ONLY_DATABASE_STATS opt_boolean_value
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "ONLY_DATABASE_STATS",
+    	Value:  $2,
+    }
+  }
+| BUFFER_USAGE_LIMIT ICONST
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "BUFFER_USAGE_LIMIT",
+    	Value:  $2,
+    }
+  }
+
+auto_on_off:
+  AUTO
+  {
+    $$.val = "AUTO"
+  }
+| ON
+  {
+    $$.val = "ON"
+  }
+| OFF
+  {
+    $$.val = "OFF"
+  }
+    
 // %Help: SHOW SESSION - display session variables
 // %Category: Cfg
 // %Text: SHOW [SESSION] { <var> | ALL }
@@ -13750,6 +13906,13 @@ name_list:
   {
     $$.val = append($1.nameList(), tree.Name($3))
   }
+  
+opt_name_list:
+  /* EMPTY */
+  {
+    $$.val = tree.NameList(nil)
+  }
+| name_list
 
 // Constants
 numeric_only:
