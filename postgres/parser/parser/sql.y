@@ -697,12 +697,12 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACCESS ACTION ADD ADMIN AFTER AGGREGATE
 %token <str> ALIGNMENT ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
-%token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTOMATIC
+%token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTO AUTOMATIC
 
 %token <str> BACKUP BACKUPS BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> FORMAT CSV HEADER
-%token <str> BUCKET_COUNT
-%token <str> BOOLEAN BOTH BOX2D BUNDLE BY BYPASSRLS
+%token <str> BUCKET_COUNT 
+%token <str> BOOLEAN BOTH BOX2D BUFFER_USAGE_LIMIT BUNDLE BY BYPASSRLS
 
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
 %token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
@@ -716,7 +716,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
 %token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESCRIBE DESERIALFUNC DESTINATION
-%token <str> DETACH DETACHED DICTIONARY DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
+%token <str> DETACH DETACHED DICTIONARY DISABLE DISABLE_PAGE_SKIPPING DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
 %token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE ENCRYPTED END ENUM ENUMS ESCAPE EVENT
 %token <str> EXCEPT EXCLUDE EXCLUDING EXISTS EXECUTE EXECUTION EXPERIMENTAL
@@ -726,7 +726,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH
 %token <str> FILES FILTER FINALFUNC FINALFUNC_EXTRA FINALFUNC_MODIFY FINALIZE FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
-%token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
+%token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FREEZE FROM FULL FUNCTION FUNCTIONS
 
 %token <str> GENERATED GEOGRAPHY GEOMETRY GEOMETRYM GEOMETRYZ GEOMETRYZM
 %token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
@@ -737,7 +737,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> ICU_LOCALE ICU_RULES IDENTITY
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMMUTABLE IMPORT
 %token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
-%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INHERITS INITCOND INJECT INLINE INPUT INTERLEAVE INITIALLY
+%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEX_CLEANUP INDEXES INHERIT INHERITS INITCOND INJECT INLINE INPUT INTERLEAVE INITIALLY
 %token <str> INNER INOUT INSERT INSTEAD INT INTEGER INTERNALLENGTH
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
@@ -759,13 +759,13 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> NOBYPASSRLS NOCREATEDB NOCREATELOGIN NOCREATEROLE NOINHERIT NOLOGIN NOMODIFYCLUSTERSETTING NOREPLICATION NOSUPERUSER NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC YES
 
-%token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY OPT OPTION OPTIONS OR
+%token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY ONLY_DATABASE_STATS OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OUTPUT OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
 %token <str> PARALLEL PARAMETER PARENT PARSER PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSWORD PAUSE PAUSED PHYSICAL
 %token <str> PLACING PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLICY POLYGON POLYGONM POLYGONZ POLYGONZM
 %token <str> POSITION PRECEDING PRECISION PREFERRED PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
-%token <str> PROCEDURAL PROCEDURE PROCEDURES PUBLIC PUBLICATION
+%token <str> PROCEDURAL PROCEDURE PROCEDURES PROCESS_MAIN PROCESS_TOAST PUBLIC PUBLICATION
 
 %token <str> QUERIES QUERY
 
@@ -778,7 +778,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY
 %token <str> SECURITY_BARRIER SECURITY_INVOKER SEED SELECT SEND
 %token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETOF SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
-%token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
+%token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_LOCKED SKIP_DATABASE_STATS SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
 %token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING
 %token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS
@@ -792,7 +792,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> UNBOUNDED UNCOMMITTED UNION UNIQUE UNKNOWN UNLOGGED UNSAFE UNSPLIT
 %token <str> UPDATE UPSERT UNTIL USAGE USE USER USERS USING UUID
 
-%token <str> VALID VALIDATE VALIDATOR VALUE VALUES
+%token <str> VACUUM VALID VALIDATE VALIDATOR VALUE VALUES VERBOSE
 %token <str> VARBIT VARCHAR VARIABLE VARIADIC VARYING VERSION VIEW VIEWACTIVITY VIRTUAL VOLATILE
 
 %token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
@@ -1044,11 +1044,10 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.Statement> reindex_stmt
 
 %type <tree.Statement> vacuum_stmt
-%type <tree.VacuumOptions> opt_vaccum_option_list
-%type <tree.VacuumOptions> vaccum_option_list
+%type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list
 %type <*tree.VacuumOption> vacuum_option
 %type <string> auto_on_off
-%type <boolean> opt_boolean_value
+%type <bool> opt_boolean_value_default_true
 
 %type <[]string> opt_incremental
 %type <tree.KVOption> kv_option
@@ -1187,7 +1186,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <[]*tree.Order> sortby_list
 %type <tree.IndexParams> constraint_index_params
 %type <tree.IndexElemList> index_params index_params_name_only opt_index_params_name_only opt_include_index_cols partition_index_params exclude_elems
-%type <tree.NameList> name_list privilege_list
+%type <tree.NameList> name_list privilege_list opt_name_list
 %type <[]int32> opt_array_bounds
 %type <tree.From> from_clause
 %type <tree.TableExprs> from_list rowsfrom_list opt_from_list
@@ -5675,12 +5674,12 @@ boolean_value:
     $$.val = $1.int64() != 0
   }
 
-opt_boolean_value:
+opt_boolean_value_default_true:
+  boolean_value
   /* EMPTY */
-  {
-    $$.val = false
+| {
+    $$.val = true
   }
-| boolean_value
 
 option_true_false:
   OPTION
@@ -6327,7 +6326,7 @@ reindex_stmt:
   }
 
 vacuum_stmt:
-  VACUUM opt_vaccum_option_list opt_name opt_name_list
+  VACUUM opt_vacuum_option_list opt_name opt_name_list
   {
      $$.val = &tree.Vacuum{
        Options: $2.vacuumOptions(),
@@ -6336,14 +6335,14 @@ vacuum_stmt:
      }
   }
 
-opt_vaccum_option_list:
-  vaccum_option_list
+opt_vacuum_option_list:
+  vacuum_option_list
 | /* EMPTY */
   {
     $$.val = tree.TableDefs(nil)
   }
   
-vaccum_option_list:
+vacuum_option_list:
   vacuum_option
   {
     $$.val = tree.VacuumOptions{$1.vacuumOption()}
@@ -6354,42 +6353,42 @@ vaccum_option_list:
   }
 
 vacuum_option:
-  FULL opt_boolean_value
+  FULL opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "FULL",
     	Value:  $2,
     }
   }
-| FREEZE opt_boolean_value
+| FREEZE opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "FREEZE",
     	Value:  $2,
     }
   }
-| VERBOSE opt_boolean_value
+| VERBOSE opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "VERBOSE",
     	Value:  $2,
     }
   }
-| ANALYZE opt_boolean_value
+| ANALYZE opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "ANALYZE",
     	Value:  $2,
     }
   }
-| DISABLE_PAGE_SKIPPING opt_boolean_value
+| DISABLE_PAGE_SKIPPING opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "DISABLE_PAGE_SKIPPING",
     	Value:  $2,
     }
   }
-| SKIP_LOCKED opt_boolean_value
+| SKIP_LOCKED opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "SKIP_LOCKED",
@@ -6403,21 +6402,21 @@ vacuum_option:
     	Value:  $2,
     }
   }
-| PROCESS_MAIN opt_boolean_value
+| PROCESS_MAIN opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "PROCESS_MAIN",
     	Value:  $2,
     }
   }
-| PROCESS_TOAST opt_boolean_value
+| PROCESS_TOAST opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "PROCESS_TOAST",
     	Value:  $2,
     }
   }
-| TRUNCATE opt_boolean_value
+| TRUNCATE opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "TRUNCATE",
@@ -6431,14 +6430,14 @@ vacuum_option:
     	Value:  $2,
     }
   }
-| SKIP_DATABASE_STATS opt_boolean_value
+| SKIP_DATABASE_STATS opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "SKIP_DATABASE_STATS",
     	Value:  $2,
     }
   }
-| ONLY_DATABASE_STATS opt_boolean_value
+| ONLY_DATABASE_STATS opt_boolean_value_default_true
   {
     $$.val = &tree.VacuumOption{
     	Option: "ONLY_DATABASE_STATS",
@@ -14352,6 +14351,7 @@ unreserved_keyword:
 | ATOMIC
 | ATTACH
 | ATTRIBUTE
+| AUTO
 | AUTOMATIC
 | BACKUP
 | BACKUPS
@@ -14360,6 +14360,7 @@ unreserved_keyword:
 | BEGIN
 | BINARY
 | BUCKET_COUNT
+| BUFFER_USAGE_LIMIT
 | BUNDLE
 | BY
 | BYPASSRLS
@@ -14426,6 +14427,7 @@ unreserved_keyword:
 | DETACHED
 | DICTIONARY
 | DISABLE
+| DISABLE_PAGE_SKIPPING
 | DISCARD
 | DOMAIN
 | DOUBLE
@@ -14466,6 +14468,7 @@ unreserved_keyword:
 | FORCE
 | FORCE_INDEX
 | FORMAT
+| FREEZE
 | FUNCTION
 | FUNCTIONS
 | GENERATED
@@ -14497,6 +14500,7 @@ unreserved_keyword:
 | INCLUDING
 | INCREMENT
 | INCREMENTAL
+| INDEX_CLEANUP
 | INDEXES
 | INHERIT
 | INHERITS
@@ -14603,6 +14607,7 @@ unreserved_keyword:
 | OID
 | OIDS
 | OLD
+| ONLY_DATABASE_STATS
 | OPERATOR
 | OPT
 | OPTION
@@ -14644,6 +14649,8 @@ unreserved_keyword:
 | PROCEDURAL
 | PROCEDURE
 | PROCEDURES
+| PROCESS_MAIN
+| PROCESS_TOAST
 | PUBLIC
 | PUBLICATION
 | QUERIES
@@ -14718,6 +14725,8 @@ unreserved_keyword:
 | SHOW
 | SIMPLE
 | SKIP
+| SKIP_DATABASE_STATS
+| SKIP_LOCKED
 | SKIP_MISSING_FOREIGN_KEYS
 | SKIP_MISSING_SEQUENCES
 | SKIP_MISSING_SEQUENCE_OWNERS
@@ -14780,12 +14789,14 @@ unreserved_keyword:
 | USAGE
 | USE
 | USERS
+| VACUUM
 | VALID
 | VALIDATE
 | VALIDATOR
 | VALUE
 | VARIABLE
 | VARYING
+| VERBOSE
 | VERSION
 | VIEW
 | VIEWACTIVITY
