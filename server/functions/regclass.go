@@ -48,7 +48,7 @@ var regclassin = framework.Function1{
 			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternal(id.Section_OID, strconv.FormatUint(parsedOid, 10)), nil
+			return id.NewInternalOID(uint32(parsedOid)).Internal(), nil
 		}
 		sections, err := ioInputSections(input)
 		if err != nil {
@@ -93,28 +93,28 @@ var regclassin = framework.Function1{
 					idxName = fmt.Sprintf("%s_pkey", index.Item.Table())
 				}
 				if relationName == idxName {
-					resultOid = index.OID
+					resultOid = index.OID.Internal()
 					return false, nil
 				}
 				return true, nil
 			},
 			Sequence: func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error) {
-				if sequence.Item.Name == relationName {
-					resultOid = sequence.OID
+				if sequence.Item.Name.SequenceName() == relationName {
+					resultOid = sequence.OID.Internal()
 					return false, nil
 				}
 				return true, nil
 			},
 			Table: func(ctx *sql.Context, schema ItemSchema, table ItemTable) (cont bool, err error) {
 				if table.Item.Name() == relationName {
-					resultOid = table.OID
+					resultOid = table.OID.Internal()
 					return false, nil
 				}
 				return true, nil
 			},
 			View: func(ctx *sql.Context, schema ItemSchema, view ItemView) (cont bool, err error) {
 				if view.Item.Name == relationName {
-					resultOid = view.OID
+					resultOid = view.OID.Internal()
 					return false, nil
 				}
 				return true, nil
@@ -167,9 +167,9 @@ var regclassout = framework.Function1{
 			Sequence: func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error) {
 				schemaName := schema.Item.SchemaName()
 				if _, ok := schemasMap[schemaName]; ok {
-					output = sequence.Item.Name
+					output = sequence.Item.Name.SequenceName()
 				} else {
-					output = fmt.Sprintf("%s.%s", schemaName, sequence.Item.Name)
+					output = fmt.Sprintf("%s.%s", schemaName, sequence.Item.Name.SequenceName())
 				}
 				return false, nil
 			},

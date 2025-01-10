@@ -20,6 +20,7 @@ import (
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
@@ -178,7 +179,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	// Returns the stored procedure call with all options
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), &sequences.Sequence{
-			Name:        name.Name.String(),
+			Name:        id.NewInternalSequence("", name.Name.String()),
 			DataTypeID:  dataType.ID,
 			Persistence: sequences.Persistence_Permanent,
 			Start:       start,
@@ -189,7 +190,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 			Cache:       1,
 			Cycle:       cycle,
 			IsAtEnd:     false,
-			OwnerTable:  ownerTableName,
+			OwnerTable:  id.NewInternalTable("", ownerTableName),
 			OwnerColumn: ownerColumnName,
 		}),
 		Children: nil,

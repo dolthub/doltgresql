@@ -57,7 +57,7 @@ func (p PgAttrdefHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			ColumnDefault: func(ctx *sql.Context, _ functions.ItemSchema, table functions.ItemTable, col functions.ItemColumnDefault) (cont bool, err error) {
 				attrdefCols = append(attrdefCols, col)
-				attrdefTableOIDs = append(attrdefTableOIDs, table.OID)
+				attrdefTableOIDs = append(attrdefTableOIDs, table.OID.Internal())
 				return true, nil
 			},
 		})
@@ -111,7 +111,7 @@ func (iter *pgAttrdefRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// TODO: Implement adbin when pg_node_tree exists
 	return sql.Row{
-		col.OID,                         // oid
+		col.OID.Internal(),              // oid
 		tableOid,                        // adrelid
 		int16(col.Item.ColumnIndex + 1), // adnum
 		nil,                             // adbin

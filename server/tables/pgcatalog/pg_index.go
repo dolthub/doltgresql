@@ -163,8 +163,8 @@ func cacheIndexMetadata(ctx *sql.Context, cache *pgCatalogCache) error {
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			indexes = append(indexes, index.Item)
 			indexSchemas = append(indexSchemas, schema.Item.SchemaName())
-			indexOIDs = append(indexOIDs, index.OID)
-			tableOIDs = append(tableOIDs, table.OID)
+			indexOIDs = append(indexOIDs, index.OID.Internal())
+			tableOIDs = append(tableOIDs, table.OID.Internal())
 			return true, nil
 		},
 	})

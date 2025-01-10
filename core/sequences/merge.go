@@ -17,8 +17,6 @@ package sequences
 import (
 	"context"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -26,14 +24,14 @@ import (
 // Merge handles merging sequences on our root and their root.
 func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *Collection) (*Collection, error) {
 	mergedCollection := ourCollection.Clone()
-	err := theirCollection.IterateSequences(func(schema string, theirSeq *Sequence) error {
+	err := theirCollection.IterateSequences(func(theirSeq *Sequence) error {
 		// If we don't have the sequence, then we simply add it
-		if !mergedCollection.HasSequence(doltdb.TableName{Name: theirSeq.Name, Schema: schema}) {
+		if !mergedCollection.HasSequence(theirSeq.Name) {
 			newSeq := *theirSeq
-			return mergedCollection.CreateSequence(schema, &newSeq)
+			return mergedCollection.CreateSequence(theirSeq.Name.SchemaName(), &newSeq)
 		}
 		// Take the min/max of fields that aren't dependent on the increment direction
-		mergedSeq := mergedCollection.GetSequence(doltdb.TableName{Name: theirSeq.Name, Schema: schema})
+		mergedSeq := mergedCollection.GetSequence(theirSeq.Name)
 		mergedSeq.Minimum = utils.Min(mergedSeq.Minimum, theirSeq.Minimum)
 		mergedSeq.Maximum = utils.Max(mergedSeq.Maximum, theirSeq.Maximum)
 		mergedSeq.Cache = utils.Min(mergedSeq.Cache, theirSeq.Cache)

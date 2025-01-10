@@ -57,14 +57,14 @@ const (
 // unaryFunction represents the signature for a unary function.
 type unaryFunction struct {
 	Operator Operator
-	TypeID   id.Internal
+	TypeID   id.InternalType
 }
 
 // binaryFunction represents the signature for a binary function.
 type binaryFunction struct {
 	Operator Operator
-	Left     id.Internal
-	Right    id.Internal
+	Left     id.InternalType
+	Right    id.InternalType
 }
 
 var (

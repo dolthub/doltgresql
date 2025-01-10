@@ -54,7 +54,7 @@ type Callbacks struct {
 
 // ItemCheck contains the relevant information to pass to the Check callback.
 type ItemCheck struct {
-	OID  id.Internal
+	OID  id.InternalCheck
 	Item sql.CheckDefinition
 }
 
@@ -66,25 +66,25 @@ type ColumnWithIndex struct {
 
 // ItemColumnDefault contains the relevant information to pass to the ColumnDefault callback.
 type ItemColumnDefault struct {
-	OID  id.Internal
+	OID  id.InternalColumnDefault
 	Item ColumnWithIndex
 }
 
 // ItemForeignKey contains the relevant information to pass to the ForeignKey callback.
 type ItemForeignKey struct {
-	OID  id.Internal
+	OID  id.InternalForeignKey
 	Item sql.ForeignKeyConstraint
 }
 
 // ItemIndex contains the relevant information to pass to the Index callback.
 type ItemIndex struct {
-	OID  id.Internal
+	OID  id.InternalIndex
 	Item sql.Index
 }
 
 // ItemSchema contains the relevant information to pass to the Schema callback.
 type ItemSchema struct {
-	OID  id.Internal
+	OID  id.InternalNamespace
 	Item sql.DatabaseSchema
 }
 
@@ -94,19 +94,19 @@ func (is ItemSchema) IsSystemSchema() bool {
 
 // ItemSequence contains the relevant information to pass to the Sequence callback.
 type ItemSequence struct {
-	OID  id.Internal
+	OID  id.InternalSequence
 	Item *sequences.Sequence
 }
 
 // ItemTable contains the relevant information to pass to the Table callback.
 type ItemTable struct {
-	OID  id.Internal
+	OID  id.InternalTable
 	Item sql.Table
 }
 
 // ItemView contains the relevant information to pass to the View callback.
 type ItemView struct {
-	OID  id.Internal
+	OID  id.InternalView
 	Item sql.ViewDefinition
 }
 
@@ -161,7 +161,7 @@ func iterateSchemas(ctx *sql.Context, callbacks Callbacks, sortedSchemas []sql.D
 	for _, schemaIndex := range callbacks.schemaIterationOrder(sortedSchemas) {
 		schema := sortedSchemas[schemaIndex]
 		itemSchema := ItemSchema{
-			OID:  id.NewInternal(id.Section_Namespace, schema.SchemaName()),
+			OID:  id.NewInternalNamespace(schema.SchemaName()),
 			Item: schema,
 		}
 		// Check for a schema callback
@@ -181,7 +181,7 @@ func iterateSchemas(ctx *sql.Context, callbacks Callbacks, sortedSchemas []sql.D
 		// Iterate over sequences. The map will only be populated if the sequence callback exists.
 		for _, sequence := range sequenceMap[schema.SchemaName()] {
 			itemSequence := ItemSequence{
-				OID:  id.NewInternal(id.Section_Sequence, schema.SchemaName(), sequence.OwnerTable, sequence.Name),
+				OID:  sequence.Name,
 				Item: sequence,
 			}
 			if cont, err := callbacks.Sequence(ctx, itemSchema, itemSequence); err != nil {
@@ -219,7 +219,7 @@ func iterateViews(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema) 
 		})
 		for _, view := range views {
 			itemView := ItemView{
-				OID:  id.NewInternal(id.Section_View, itemSchema.Item.SchemaName(), view.Name),
+				OID:  id.NewInternalView(itemSchema.Item.SchemaName(), view.Name),
 				Item: view,
 			}
 			if cont, err := callbacks.View(ctx, itemSchema, itemView); err != nil {
@@ -249,7 +249,7 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 			return sql.ErrTableNotFound.New(tableName)
 		}
 		itemTable := ItemTable{
-			OID:  id.NewInternal(id.Section_Table, itemSchema.Item.SchemaName(), table.Name()),
+			OID:  id.NewInternalTable(itemSchema.Item.SchemaName(), table.Name()),
 			Item: table,
 		}
 
@@ -310,7 +310,7 @@ func iterateChecks(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 		for _, check := range checks {
 			*checkCount++
 			itemCheck := ItemCheck{
-				OID:  id.NewInternal(id.Section_Check, itemSchema.Item.SchemaName(), itemTable.Item.Name(), check.Name),
+				OID:  id.NewInternalCheck(itemSchema.Item.SchemaName(), itemTable.Item.Name(), check.Name),
 				Item: check,
 			}
 			if cont, err := callbacks.Check(ctx, itemSchema, itemTable, itemCheck); err != nil {
@@ -330,7 +330,7 @@ func iterateColumnDefaults(ctx *sql.Context, callbacks Callbacks, itemSchema Ite
 		if col.Default != nil {
 			*columnDefaultCount++
 			itemColDefault := ItemColumnDefault{
-				OID:  id.NewInternal(id.Section_ColumnDefault, itemSchema.Item.SchemaName(), itemTable.Item.Name(), col.Name),
+				OID:  id.NewInternalColumnDefault(itemSchema.Item.SchemaName(), itemTable.Item.Name(), col.Name),
 				Item: ColumnWithIndex{col, i},
 			}
 			if cont, err := callbacks.ColumnDefault(ctx, itemSchema, itemTable, itemColDefault); err != nil {
@@ -341,7 +341,6 @@ func iterateColumnDefaults(ctx *sql.Context, callbacks Callbacks, itemSchema Ite
 		}
 	}
 	return nil
-
 }
 
 // iterateForeignKeys is called by iterateTables to handle foreign keys.
@@ -357,7 +356,7 @@ func iterateForeignKeys(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSc
 		for _, foreignKey := range foreignKeys {
 			*foreignKeyCount++
 			itemForeignKey := ItemForeignKey{
-				OID:  id.NewInternal(id.Section_ForeignKey, itemSchema.Item.SchemaName(), itemTable.Item.Name(), foreignKey.Name),
+				OID:  id.NewInternalForeignKey(itemSchema.Item.SchemaName(), itemTable.Item.Name(), foreignKey.Name),
 				Item: foreignKey,
 			}
 			if cont, err := callbacks.ForeignKey(ctx, itemSchema, itemTable, itemForeignKey); err != nil {
@@ -383,7 +382,7 @@ func iterateIndexes(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema
 		for _, index := range indexes {
 			*indexCount++
 			itemIndex := ItemIndex{
-				OID:  id.NewInternal(id.Section_Index, itemSchema.Item.SchemaName(), itemTable.Item.Name(), index.ID()),
+				OID:  id.NewInternalIndex(itemSchema.Item.SchemaName(), itemTable.Item.Name(), index.ID()),
 				Item: index,
 			}
 			if cont, err := callbacks.Index(ctx, itemSchema, itemTable, itemIndex); err != nil {
@@ -426,7 +425,7 @@ func RunCallback(ctx *sql.Context, internalID id.Internal, callbacks Callbacks) 
 		for _, schema := range schemas {
 			if schema.SchemaName() == internalID.Segment(0) {
 				itemSchema = ItemSchema{
-					OID:  id.NewInternal(id.Section_Namespace, schema.SchemaName()),
+					OID:  id.NewInternalNamespace(schema.SchemaName()),
 					Item: schema,
 				}
 			}
@@ -464,7 +463,7 @@ func RunCallback(ctx *sql.Context, internalID id.Internal, callbacks Callbacks) 
 				return sql.ErrTableNotFound.New(tableName)
 			}
 			itemTable := ItemTable{
-				OID:  id.NewInternal(id.Section_Table, itemSchema.Item.SchemaName(), table.Name()),
+				OID:  id.NewInternalTable(itemSchema.Item.SchemaName(), table.Name()),
 				Item: table,
 			}
 			switch internalID.Section() {
@@ -517,7 +516,7 @@ func runCheck(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, ite
 		for _, check := range checks {
 			if check.Name == internalID.Segment(2) {
 				itemCheck := ItemCheck{
-					OID:  internalID,
+					OID:  id.InternalCheck(internalID),
 					Item: check,
 				}
 				_, err = callbacks.Check(ctx, itemSchema, itemTable, itemCheck)
@@ -528,7 +527,7 @@ func runCheck(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, ite
 	return true, nil
 }
 
-// runColumnDefault is called by RunCallback to handle Section_ColumnDefault.
+// runColumnDefault is called by RunCallback to handle Section_Column.
 func runColumnDefault(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, countedIndex *int) (cont bool, err error) {
 	if itemSchema.Item.SchemaName() != internalID.Segment(0) && itemTable.Item.Name() != internalID.Segment(1) {
 		return true, nil
@@ -543,7 +542,7 @@ func runColumnDefault(ctx *sql.Context, internalID id.Internal, callbacks Callba
 	for _, col := range colDefaults {
 		if col.Column.Name == internalID.Segment(2) {
 			itemColDefault := ItemColumnDefault{
-				OID:  internalID,
+				OID:  id.InternalColumnDefault(internalID),
 				Item: col,
 			}
 			_, err = callbacks.ColumnDefault(ctx, itemSchema, itemTable, itemColDefault)
@@ -565,7 +564,7 @@ func runForeignKey(ctx *sql.Context, internalID id.Internal, callbacks Callbacks
 		for _, foreignKey := range foreignKeys {
 			if foreignKey.Name == internalID.Segment(2) {
 				itemForeignKey := ItemForeignKey{
-					OID:  internalID,
+					OID:  id.InternalForeignKey(internalID),
 					Item: foreignKey,
 				}
 				_, err = callbacks.ForeignKey(ctx, itemSchema, itemTable, itemForeignKey)
@@ -586,7 +585,7 @@ func runIndex(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, ite
 		for _, index := range indexes {
 			if index.ID() == internalID.Segment(2) && itemTable.Item.Name() == index.Table() {
 				_, err = callbacks.Index(ctx, itemSchema, itemTable, ItemIndex{
-					OID:  internalID,
+					OID:  id.InternalIndex(internalID),
 					Item: index,
 				})
 				return false, err
@@ -602,7 +601,7 @@ func runNamespace(ctx *sql.Context, internalID id.Internal, callbacks Callbacks,
 	for _, schema := range sortedSchemas {
 		if schema.SchemaName() == internalID.Segment(0) {
 			itemSchema := ItemSchema{
-				OID:  internalID,
+				OID:  id.InternalNamespace(internalID),
 				Item: schema,
 			}
 			_, err := callbacks.Schema(ctx, itemSchema)
@@ -624,9 +623,9 @@ func runSequence(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, 
 		return nil
 	}
 	for _, seq := range sequencesInSchema {
-		if seq.Name == internalID.Segment(2) {
+		if id.Internal(seq.Name) == internalID {
 			_, err = callbacks.Sequence(ctx, itemSchema, ItemSequence{
-				OID:  internalID,
+				OID:  id.InternalSequence(internalID),
 				Item: seq,
 			})
 			return err
@@ -644,7 +643,7 @@ func runTable(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, ite
 		return sql.ErrTableNotFound.New(internalID.Segment(1))
 	}
 	itemTable := ItemTable{
-		OID:  internalID,
+		OID:  id.InternalTable(internalID),
 		Item: table,
 	}
 	_, err = callbacks.Table(ctx, itemSchema, itemTable)
@@ -661,7 +660,7 @@ func runView(ctx *sql.Context, internalID id.Internal, callbacks Callbacks, item
 		for _, view := range views {
 			if view.Name == internalID.Segment(1) {
 				_, err = callbacks.View(ctx, itemSchema, ItemView{
-					OID:  internalID,
+					OID:  id.InternalView(internalID),
 					Item: view,
 				})
 				return err

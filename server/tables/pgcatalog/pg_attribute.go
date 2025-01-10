@@ -61,7 +61,7 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				for i, col := range table.Item.Schema() {
 					cols = append(cols, col)
 					colIdxs = append(colIdxs, i)
-					tableOIDs = append(tableOIDs, table.OID)
+					tableOIDs = append(tableOIDs, table.OID.Internal())
 				}
 				return true, nil
 			},
@@ -154,11 +154,11 @@ func (iter *pgAttributeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	typeOid := id.Null
 	if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
-		typeOid = doltgresType.ID
+		typeOid = doltgresType.ID.Internal()
 	} else {
 		// TODO: Remove once all information_schema tables are converted to use DoltgresType
 		dt := pgtypes.FromGmsType(col.Type)
-		typeOid = dt.ID
+		typeOid = dt.ID.Internal()
 	}
 
 	// TODO: Fill in the rest of the pg_attribute columns

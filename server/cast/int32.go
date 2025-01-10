@@ -16,7 +16,6 @@ package cast
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
@@ -95,7 +94,7 @@ func int32Implicit() {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(val.(int32)), 10)), nil
+			return id.NewInternalOID(uint32(val.(int32))).Internal(), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
@@ -105,7 +104,7 @@ func int32Implicit() {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(val.(int32)), 10)), nil
+			return id.NewInternalOID(uint32(val.(int32))).Internal(), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
@@ -115,7 +114,7 @@ func int32Implicit() {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(val.(int32)), 10)), nil
+			return id.NewInternalOID(uint32(val.(int32))).Internal(), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
@@ -125,7 +124,7 @@ func int32Implicit() {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(val.(int32)), 10)), nil
+			return id.NewInternalOID(uint32(val.(int32))).Internal(), nil
 		},
 	})
 }

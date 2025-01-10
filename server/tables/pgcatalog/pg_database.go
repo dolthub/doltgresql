@@ -114,7 +114,7 @@ func (iter *pgDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	db := iter.dbs[iter.idx-1]
-	dbOid := id.NewInternal(id.Section_Database, db.Name())
+	dbOid := id.NewInternalDatabase(db.Name()).Internal()
 
 	// TODO: Add the rest of the pg_database columns
 	return sql.Row{

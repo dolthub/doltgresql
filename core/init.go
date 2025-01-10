@@ -17,6 +17,8 @@ package core
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/types"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Init initializes this package.
@@ -25,4 +27,6 @@ func Init() {
 	doltdb.NewRootValue = newRootValue
 	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
 	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
+	id.RegisterPerformer(sequenceIDPerformer, id.Section_Table)
+	id.RegisterValidator(sequenceIDValidator, id.Section_Table)
 }

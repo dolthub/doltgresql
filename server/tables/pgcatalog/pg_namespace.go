@@ -57,7 +57,7 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
 				schemaNames = append(schemaNames, schema.Item.SchemaName())
-				schemaOids = append(schemaOids, schema.OID)
+				schemaOids = append(schemaOids, schema.OID.Internal())
 				return true, nil
 			},
 		})

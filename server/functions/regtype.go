@@ -49,7 +49,7 @@ var regtypein = framework.Function1{
 			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternal(id.Section_OID, strconv.FormatUint(parsedOid, 10)), nil
+			return id.NewInternalOID(uint32(parsedOid)).Internal(), nil
 		}
 		sections, err := ioInputSections(input)
 		if err != nil {
@@ -78,10 +78,10 @@ var regtypein = framework.Function1{
 		typeName = strings.Split(typeName, "(")[0]
 
 		if typeName == "char" && schema == "" {
-			return id.NewInternal(id.Section_Type, "pg_catalog", "bpchar"), nil
+			return id.NewInternalType("pg_catalog", "bpchar").Internal(), nil
 		}
-		if internalID, ok := pgtypes.NameToInternalID[typeName]; ok && (internalID.Segment(0) == schema || schema == "") {
-			return internalID, nil
+		if internalID, ok := pgtypes.NameToInternalID[typeName]; ok && (internalID.SchemaName() == schema || schema == "") {
+			return internalID.Internal(), nil
 		}
 		return id.Null, pgtypes.ErrTypeDoesNotExist.New(input)
 	},

@@ -104,11 +104,11 @@ type accessMethod struct {
 
 // defaultPostgresAms is the list of default access methods available in Postgres.
 var defaultPostgresAms = []accessMethod{
-	{oid: id.NewInternal(id.Section_AccessMethod, "heap"), name: "heap", handler: "heap_tableam_handler", typ: "t"},
-	{oid: id.NewInternal(id.Section_AccessMethod, "btree"), name: "btree", handler: "bthandler", typ: "i"},
-	{oid: id.NewInternal(id.Section_AccessMethod, "hash"), name: "hash", handler: "hashhandler", typ: "i"},
-	{oid: id.NewInternal(id.Section_AccessMethod, "gist"), name: "gist", handler: "gisthandler", typ: "i"},
-	{oid: id.NewInternal(id.Section_AccessMethod, "gin"), name: "gin", handler: "ginhandler", typ: "i"},
-	{oid: id.NewInternal(id.Section_AccessMethod, "spgist"), name: "spgist", handler: "spghandler", typ: "i"},
-	{oid: id.NewInternal(id.Section_AccessMethod, "brin"), name: "brin", handler: "brinhandler", typ: "i"},
+	{oid: id.NewInternalAccessMethod("heap").Internal(), name: "heap", handler: "heap_tableam_handler", typ: "t"},
+	{oid: id.NewInternalAccessMethod("btree").Internal(), name: "btree", handler: "bthandler", typ: "i"},
+	{oid: id.NewInternalAccessMethod("hash").Internal(), name: "hash", handler: "hashhandler", typ: "i"},
+	{oid: id.NewInternalAccessMethod("gist").Internal(), name: "gist", handler: "gisthandler", typ: "i"},
+	{oid: id.NewInternalAccessMethod("gin").Internal(), name: "gin", handler: "ginhandler", typ: "i"},
+	{oid: id.NewInternalAccessMethod("spgist").Internal(), name: "spgist", handler: "spghandler", typ: "i"},
+	{oid: id.NewInternalAccessMethod("brin").Internal(), name: "brin", handler: "brinhandler", typ: "i"},
 }

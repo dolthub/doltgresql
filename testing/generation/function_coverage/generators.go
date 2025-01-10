@@ -167,7 +167,7 @@ var uuidValueGenerators = utils.Or(
 )
 
 // valueMappings contains the value generators for the given type.
-var valueMappings = map[id.Internal]utils.StatementGenerator{
+var valueMappings = map[id.InternalType]utils.StatementGenerator{
 	pgtypes.Bool.ID:    booleanValueGenerators,
 	pgtypes.Float32.ID: float32ValueGenerators,
 	pgtypes.Float64.ID: float64ValueGenerators,

@@ -60,12 +60,12 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		// We iterate over all tables first to obtain their OIDs, which we'll need to reference for foreign keys
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
-				inner, ok := tableOIDs[schema.OID]
+				inner, ok := tableOIDs[schema.OID.Internal()]
 				if !ok {
 					inner = make(map[string]id.Internal)
-					tableOIDs[schema.OID] = inner
+					tableOIDs[schema.OID.Internal()] = inner
 				}
-				inner[table.Item.Name()] = table.OID
+				inner[table.Item.Name()] = table.OID.Internal()
 
 				for i, col := range table.Item.Schema() {
 					tableColToIdxMap[fmt.Sprintf("%s.%s", table.Item.Name(), col.Name)] = int16(i + 1)
@@ -81,11 +81,11 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		err = functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Check: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, check functions.ItemCheck) (cont bool, err error) {
 				constraints = append(constraints, pgConstraint{
-					oid:         check.OID,
+					oid:         check.OID.Internal(),
 					name:        check.Item.Name,
-					schemaOid:   schema.OID,
+					schemaOid:   schema.OID.Internal(),
 					conType:     "c",
-					tableOid:    table.OID,
+					tableOid:    table.OID.Internal(),
 					idxOid:      id.Null,
 					tableRefOid: id.Null,
 				})
@@ -113,13 +113,13 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				}
 
 				constraints = append(constraints, pgConstraint{
-					oid:          foreignKey.OID,
+					oid:          foreignKey.OID.Internal(),
 					name:         foreignKey.Item.Name,
-					schemaOid:    schema.OID,
+					schemaOid:    schema.OID.Internal(),
 					conType:      "f",
-					tableOid:     tableOIDs[schema.OID][foreignKey.Item.Table],
-					idxOid:       foreignKey.OID,
-					tableRefOid:  tableOIDs[schema.OID][foreignKey.Item.ParentTable],
+					tableOid:     tableOIDs[schema.OID.Internal()][foreignKey.Item.Table],
+					idxOid:       foreignKey.OID.Internal(),
+					tableRefOid:  tableOIDs[schema.OID.Internal()][foreignKey.Item.ParentTable],
 					fkUpdateType: getFKAction(foreignKey.Item.OnUpdate),
 					fkDeleteType: getFKAction(foreignKey.Item.OnDelete),
 					fkMatchType:  "s",
@@ -144,12 +144,12 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				}
 
 				constraints = append(constraints, pgConstraint{
-					oid:         index.OID,
+					oid:         index.OID.Internal(),
 					name:        getIndexName(index.Item),
-					schemaOid:   schema.OID,
+					schemaOid:   schema.OID.Internal(),
 					conType:     conType,
-					tableOid:    table.OID,
-					idxOid:      index.OID,
+					tableOid:    table.OID.Internal(),
+					idxOid:      index.OID.Internal(),
 					tableRefOid: id.Null,
 					conKey:      conKey,
 					conFkey:     nil,

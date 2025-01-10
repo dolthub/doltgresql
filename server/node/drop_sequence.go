@@ -17,12 +17,12 @@ package node
 import (
 	"fmt"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // DropSequence handles the DROP SEQUENCE statement.
@@ -82,15 +82,17 @@ func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	if err != nil {
 		return nil, err
 	}
-	if sequence := collection.GetSequence(doltdb.TableName{Name: c.sequence, Schema: schema}); len(sequence.OwnerTable) > 0 {
+	sequenceID := id.NewInternalSequence(schema, c.sequence)
+	if sequence := collection.GetSequence(sequenceID); sequence.OwnerTable.IsValid() {
 		if c.cascade {
-			// TODO: handle cascade
+			// TODO: if the sequence is referenced by the column's default value, then we also need to delete the default
 			return nil, fmt.Errorf(`cascading sequence drops are not yet supported`)
 		} else {
+			// TODO: this error is only true if the sequence is referenced by the column's default value
 			return nil, fmt.Errorf(`cannot drop sequence %s because other objects depend on it`, c.sequence)
 		}
 	}
-	if err = collection.DropSequence(doltdb.TableName{Name: c.sequence, Schema: schema}); err != nil {
+	if err = collection.DropSequence(sequenceID); err != nil {
 		return nil, err
 	}
 	return sql.RowsToRowIter(), nil

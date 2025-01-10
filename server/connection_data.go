@@ -121,7 +121,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 		case *expression.BindVar:
 			var typOid uint32
 			if doltgresType, ok := e.Type().(*pgtypes.DoltgresType); ok {
-				typOid = id.Cache().ToOID(doltgresType.ID)
+				typOid = id.Cache().ToOID(doltgresType.ID.Internal())
 			} else {
 				// TODO: should remove usage non doltgres type
 				typOid, err = VitessTypeToObjectID(e.Type().Type())
@@ -135,7 +135,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 			if bindVar, ok := e.Child().(*expression.BindVar); ok {
 				var typOid uint32
 				if doltgresType, ok := bindVar.Type().(*pgtypes.DoltgresType); ok {
-					typOid = id.Cache().ToOID(doltgresType.ID)
+					typOid = id.Cache().ToOID(doltgresType.ID.Internal())
 				} else {
 					typOid, err = VitessTypeToObjectID(e.Type().Type())
 					if err != nil {

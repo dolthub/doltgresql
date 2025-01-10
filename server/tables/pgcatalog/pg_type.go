@@ -56,7 +56,7 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
 				if schema.Item.SchemaName() == PgCatalogName {
-					pgCatalogOid = schema.OID
+					pgCatalogOid = schema.OID.Internal()
 					return false, nil
 				}
 				return true, nil
@@ -142,38 +142,38 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	typAcl := []any(nil)
 
 	return sql.Row{
-		typ.ID,                  //oid
-		typ.Name(),              //typname
-		iter.pgCatalogOid,       //typnamespace
-		id.Null,                 //typowner
-		typ.TypLength,           //typlen
-		typ.PassedByVal,         //typbyval
-		string(typ.TypType),     //typtype
-		string(typ.TypCategory), //typcategory
-		typ.IsPreferred,         //typispreferred
-		typ.IsDefined,           //typisdefined
-		typ.Delimiter,           //typdelim
-		typ.RelID,               //typrelid
-		typ.SubscriptFuncName(), //typsubscript
-		typ.Elem,                //typelem
-		typ.Array,               //typarray
-		typ.InputFuncName(),     //typinput
-		typ.OutputFuncName(),    //typoutput
-		typ.ReceiveFuncName(),   //typreceive
-		typ.SendFuncName(),      //typsend
-		typ.ModInFuncName(),     //typmodin
-		typ.ModOutFuncName(),    //typmodout
-		typ.AnalyzeFuncName(),   //typanalyze
-		string(typ.Align),       //typalign
-		string(typ.Storage),     //typstorage
-		typ.NotNull,             //typnotnull
-		typ.BaseTypeID,          //typbasetype
-		typ.TypMod,              //typtypmod
-		typ.NDims,               //typndims
-		typ.TypCollation,        //typcollation
-		typ.DefaulBin,           //typdefaultbin
-		typ.Default,             //typdefault
-		typAcl,                  //typacl
+		typ.ID.Internal(),           //oid
+		typ.Name(),                  //typname
+		iter.pgCatalogOid,           //typnamespace
+		id.Null,                     //typowner
+		typ.TypLength,               //typlen
+		typ.PassedByVal,             //typbyval
+		string(typ.TypType),         //typtype
+		string(typ.TypCategory),     //typcategory
+		typ.IsPreferred,             //typispreferred
+		typ.IsDefined,               //typisdefined
+		typ.Delimiter,               //typdelim
+		typ.RelID,                   //typrelid
+		typ.SubscriptFuncName(),     //typsubscript
+		typ.Elem.Internal(),         //typelem
+		typ.Array.Internal(),        //typarray
+		typ.InputFuncName(),         //typinput
+		typ.OutputFuncName(),        //typoutput
+		typ.ReceiveFuncName(),       //typreceive
+		typ.SendFuncName(),          //typsend
+		typ.ModInFuncName(),         //typmodin
+		typ.ModOutFuncName(),        //typmodout
+		typ.AnalyzeFuncName(),       //typanalyze
+		string(typ.Align),           //typalign
+		string(typ.Storage),         //typstorage
+		typ.NotNull,                 //typnotnull
+		typ.BaseTypeID.Internal(),   //typbasetype
+		typ.TypMod,                  //typtypmod
+		typ.NDims,                   //typndims
+		typ.TypCollation.Internal(), //typcollation
+		typ.DefaulBin,               //typdefaultbin
+		typ.Default,                 //typdefault
+		typAcl,                      //typacl
 	}, nil
 }
 

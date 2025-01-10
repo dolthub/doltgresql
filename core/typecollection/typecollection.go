@@ -149,7 +149,7 @@ func (pgs *TypeCollection) GetTypeByID(internalID id.Internal) (*types.DoltgresT
 	pgs.addSupportedBuiltInTypes()
 	for _, nameMap := range pgs.schemaMap {
 		for _, typ := range nameMap {
-			if typ.ID == internalID {
+			if typ.ID.Internal() == internalID {
 				return typ, true
 			}
 		}

@@ -82,7 +82,7 @@ const (
 
 // GetTypeByID returns the DoltgresType matching the given Internal ID.
 // If the Internal ID does not match a type, then nil is returned.
-func GetTypeByID(internalID id.Internal) *DoltgresType {
+func GetTypeByID(internalID id.InternalType) *DoltgresType {
 	t, ok := InternalToBuiltInDoltgresType[internalID]
 	if !ok {
 		// TODO: return UNKNOWN?
@@ -96,7 +96,7 @@ func GetTypeByID(internalID id.Internal) *DoltgresType {
 func GetAllBuitInTypes() []*DoltgresType {
 	pgTypes := make([]*DoltgresType, 0, len(InternalToBuiltInDoltgresType))
 	for internalID, typ := range InternalToBuiltInDoltgresType {
-		if typ.ID == Unknown.ID && internalID.Segment(1) != "unknown" {
+		if typ.ID == Unknown.ID && internalID.TypeName() != "unknown" {
 			continue
 		}
 		pgTypes = append(pgTypes, typ)
@@ -108,7 +108,7 @@ func GetAllBuitInTypes() []*DoltgresType {
 }
 
 // InternalToBuiltInDoltgresType is a map of id.Internal to Doltgres' built-in type.
-var InternalToBuiltInDoltgresType = map[id.Internal]*DoltgresType{
+var InternalToBuiltInDoltgresType = map[id.InternalType]*DoltgresType{
 	toInternal("_abstime"):         Unknown,
 	toInternal("_aclitem"):         Unknown,
 	toInternal("_bit"):             Unknown,
@@ -279,14 +279,14 @@ var InternalToBuiltInDoltgresType = map[id.Internal]*DoltgresType{
 }
 
 // NameToInternalID is a mapping from a given name to its respective Internal ID.
-var NameToInternalID = map[string]id.Internal{}
+var NameToInternalID = map[string]id.InternalType{}
 
 // init, for now, fills the contents of NameToInternalID, so that we may search for types using regtype. This should be
 // replaced with a better abstraction at some point.
 func init() {
 	for _, t := range GetAllBuitInTypes() {
 		NameToInternalID[t.Name()] = t.ID
-		pt, ok := types.OidToType[oid.Oid(id.Cache().ToOID(t.ID))]
+		pt, ok := types.OidToType[oid.Oid(id.Cache().ToOID(t.ID.Internal()))]
 		if ok {
 			NameToInternalID[pt.SQLStandardName()] = t.ID
 		}

@@ -21,7 +21,7 @@ import (
 )
 
 // NewCompositeType creates new instance of composite DoltgresType.
-func NewCompositeType(ctx *sql.Context, relID, arrayID, typeID id.Internal, attrs []CompositeAttribute) *DoltgresType {
+func NewCompositeType(ctx *sql.Context, relID id.Internal, arrayID, typeID id.InternalType, attrs []CompositeAttribute) *DoltgresType {
 	return &DoltgresType{
 		ID:             typeID,
 		TypLength:      -1,
@@ -33,7 +33,7 @@ func NewCompositeType(ctx *sql.Context, relID, arrayID, typeID id.Internal, attr
 		Delimiter:      ",",
 		RelID:          relID,
 		SubscriptFunc:  toFuncID("-"),
-		Elem:           id.Null,
+		Elem:           id.NullType,
 		Array:          arrayID,
 		InputFunc:      toFuncID("record_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
 		OutputFunc:     toFuncID("record_out", toInternal("record")),
@@ -45,10 +45,10 @@ func NewCompositeType(ctx *sql.Context, relID, arrayID, typeID id.Internal, attr
 		Align:          TypeAlignment_Double,
 		Storage:        TypeStorage_Extended,
 		NotNull:        false,
-		BaseTypeID:     id.Null,
+		BaseTypeID:     id.NullType,
 		TypMod:         -1,
 		NDims:          0,
-		TypCollation:   id.Null,
+		TypCollation:   id.NullCollation,
 		DefaulBin:      "",
 		Default:        "",
 		Acl:            nil,
@@ -64,13 +64,13 @@ func NewCompositeType(ctx *sql.Context, relID, arrayID, typeID id.Internal, attr
 type CompositeAttribute struct {
 	relID     id.Internal // ID of the relation it belongs to
 	name      string
-	typeID    id.Internal // ID of DoltgresType
-	num       int16       // number of the column in relation
+	typeID    id.InternalType // ID of DoltgresType
+	num       int16           // number of the column in relation
 	collation string
 }
 
 // NewCompositeAttribute creates new instance of composite type attribute.
-func NewCompositeAttribute(ctx *sql.Context, relID id.Internal, name string, typeID id.Internal, num int16, collation string) CompositeAttribute {
+func NewCompositeAttribute(ctx *sql.Context, relID id.Internal, name string, typeID id.InternalType, num int16, collation string) CompositeAttribute {
 	return CompositeAttribute{
 		relID:     relID,
 		name:      name,

@@ -16,7 +16,6 @@ package id
 
 import (
 	"hash/crc32"
-	"strconv"
 	"sync"
 )
 
@@ -59,8 +58,7 @@ func (cache *cacheStruct) ToOID(id Internal) uint32 {
 	}
 	cache.mutex.RUnlock()
 	if id.Section() == Section_OID {
-		oid, _ := strconv.ParseUint(id.Segment(0), 10, 32)
-		return uint32(oid)
+		return InternalOID(id).OID()
 	}
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()

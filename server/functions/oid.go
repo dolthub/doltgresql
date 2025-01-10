@@ -56,7 +56,7 @@ var oidin = framework.Function1{
 		if internalID := id.Cache().ToInternal(uVal); internalID.IsValid() {
 			return internalID, nil
 		}
-		return id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(uVal), 10)), nil
+		return id.NewInternalOID(uVal).Internal(), nil
 	},
 }
 

@@ -46,7 +46,7 @@ var regprocin = framework.Function1{
 			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternal(id.Section_OID, strconv.FormatUint(parsedOid, 10)), nil
+			return id.NewInternalOID(uint32(parsedOid)).Internal(), nil
 		}
 		sections, err := ioInputSections(input)
 		if err != nil {

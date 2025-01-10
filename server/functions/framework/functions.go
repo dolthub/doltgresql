@@ -135,7 +135,7 @@ func (f Function0) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
 func (f Function0) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name)
+	return id.NewInternalFunction("pg_catalog", f.Name).Internal()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -170,7 +170,7 @@ func (f Function1) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
 func (f Function1) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name, string(f.Parameters[0].ID))
+	return id.NewInternalFunction("pg_catalog", f.Name, f.Parameters[0].ID).Internal()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -205,7 +205,7 @@ func (f Function2) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
 func (f Function2) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name, string(f.Parameters[0].ID), string(f.Parameters[1].ID))
+	return id.NewInternalFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID).Internal()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -240,7 +240,7 @@ func (f Function3) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
 func (f Function3) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name, string(f.Parameters[0].ID), string(f.Parameters[1].ID), string(f.Parameters[2].ID))
+	return id.NewInternalFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID, f.Parameters[2].ID).Internal()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -275,7 +275,7 @@ func (f Function4) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
 func (f Function4) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name, string(f.Parameters[0].ID), string(f.Parameters[1].ID), string(f.Parameters[2].ID), string(f.Parameters[3].ID))
+	return id.NewInternalFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID, f.Parameters[2].ID, f.Parameters[3].ID).Internal()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.

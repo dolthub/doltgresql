@@ -25,7 +25,7 @@ import (
 var ErrTypeIsOnlyAShell = errors.NewKind(`type "%s" is only a shell`)
 
 // NewShellType creates new instance of shell DoltgresType.
-func NewShellType(ctx *sql.Context, internalID id.Internal) *DoltgresType {
+func NewShellType(ctx *sql.Context, internalID id.InternalType) *DoltgresType {
 	return &DoltgresType{
 		ID:            internalID,
 		TypLength:     4,
@@ -37,8 +37,8 @@ func NewShellType(ctx *sql.Context, internalID id.Internal) *DoltgresType {
 		Delimiter:     ",",
 		RelID:         id.Null,
 		SubscriptFunc: toFuncID("-"),
-		Elem:          id.Null,
-		Array:         id.Null,
+		Elem:          id.NullType,
+		Array:         id.NullType,
 		InputFunc:     toFuncID("shell_in", toInternal("cstring")),
 		OutputFunc:    toFuncID("shell_out", toInternal("void")),
 		ReceiveFunc:   toFuncID("-"),
@@ -49,10 +49,10 @@ func NewShellType(ctx *sql.Context, internalID id.Internal) *DoltgresType {
 		Align:         TypeAlignment_Int,
 		Storage:       TypeStorage_Plain,
 		NotNull:       false,
-		BaseTypeID:    id.Null,
+		BaseTypeID:    id.NullType,
 		TypMod:        -1,
 		NDims:         0,
-		TypCollation:  id.Null,
+		TypCollation:  id.NullCollation,
 		DefaulBin:     "",
 		Default:       "",
 		Acl:           nil,

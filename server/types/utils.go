@@ -173,6 +173,6 @@ func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool b
 
 // toInternal returns an Internal ID for the given type. This is only used for the built-in types, since they all share
 // the same schema (pg_catalog).
-func toInternal(typeName string) id.Internal {
-	return id.NewInternal(id.Section_Type, "pg_catalog", typeName)
+func toInternal(typeName string) id.InternalType {
+	return id.NewInternalType("pg_catalog", typeName)
 }

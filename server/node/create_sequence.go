@@ -24,6 +24,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 )
 
@@ -63,16 +64,18 @@ func (c *CreateSequence) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	if strings.HasPrefix(strings.ToLower(c.sequence.Name), "dolt") {
+	if strings.HasPrefix(strings.ToLower(c.sequence.Name.SequenceName()), "dolt") {
 		return nil, fmt.Errorf("sequences cannot be prefixed with 'dolt'")
 	}
 	schema, err := core.GetSchemaName(ctx, nil, c.schema)
 	if err != nil {
 		return nil, err
 	}
+	// The sequence won't have the schema filled in, so we have to do that now
+	c.sequence.Name = id.NewInternalSequence(schema, c.sequence.Name.SequenceName())
 
 	// Check that the sequence name is free
-	relationType, err := core.GetRelationType(ctx, schema, c.sequence.Name)
+	relationType, err := core.GetRelationType(ctx, schema, c.sequence.Name.SequenceName())
 	if err != nil {
 		return nil, err
 	}
@@ -84,23 +87,25 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		return nil, fmt.Errorf(`relation "%s" already exists`, c.sequence.Name)
 	}
 	// Check that the OWNED BY is valid, if it exists
-	if len(c.sequence.OwnerTable) > 0 {
-		relationType, err = core.GetRelationType(ctx, schema, c.sequence.OwnerTable)
+	if c.sequence.OwnerTable.IsValid() {
+		// The table will only have its name set, so we need to fill in the schema as well
+		c.sequence.OwnerTable = id.NewInternalTable(schema, c.sequence.OwnerTable.TableName())
+		relationType, err = core.GetRelationType(ctx, schema, c.sequence.OwnerTable.TableName())
 		if err != nil {
 			return nil, err
 		}
 		if relationType == core.RelationType_DoesNotExist {
-			return nil, fmt.Errorf(`relation "%s" does not exist`, c.sequence.OwnerTable)
+			return nil, fmt.Errorf(`relation "%s" does not exist`, c.sequence.OwnerTable.TableName())
 		} else if relationType != core.RelationType_Table {
-			return nil, fmt.Errorf(`sequence cannot be owned by relation "%s"`, c.sequence.OwnerTable)
+			return nil, fmt.Errorf(`sequence cannot be owned by relation "%s"`, c.sequence.OwnerTable.TableName())
 		}
 
-		table, err := core.GetDoltTableFromContext(ctx, doltdb.TableName{Name: c.sequence.OwnerTable, Schema: schema})
+		table, err := core.GetDoltTableFromContext(ctx, doltdb.TableName{Name: c.sequence.OwnerTable.TableName(), Schema: schema})
 		if err != nil {
 			return nil, err
 		}
 		if table == nil {
-			return nil, fmt.Errorf(`table "%s" cannot be found but says it exists`, c.sequence.OwnerTable)
+			return nil, fmt.Errorf(`table "%s" cannot be found but says it exists`, c.sequence.OwnerTable.TableName())
 		}
 		tableSch, err := table.GetSchema(ctx)
 		if err != nil {
@@ -114,7 +119,8 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			}
 		}
 		if !colFound {
-			return nil, fmt.Errorf(`column "%s" of relation "%s" does not exist`, c.sequence.OwnerColumn, c.sequence.OwnerTable)
+			return nil, fmt.Errorf(`column "%s" of relation "%s" does not exist`,
+				c.sequence.OwnerColumn, c.sequence.OwnerTable.TableName())
 		}
 	}
 	// Create the sequence since we know it's completely valid

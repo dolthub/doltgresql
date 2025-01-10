@@ -47,6 +47,34 @@ const (
 	formatMask = uint8(0x80)
 	// Null is an empty, invalid ID.
 	Null Internal = ""
+	// NullAccessMethod is an empty, invalid ID. This is exactly equivalent to Null.
+	NullAccessMethod InternalAccessMethod = ""
+	// NullCheck is an empty, invalid ID. This is exactly equivalent to Null.
+	NullCheck InternalCheck = ""
+	// NullCollation is an empty, invalid ID. This is exactly equivalent to Null.
+	NullCollation InternalCollation = ""
+	// NullColumnDefault is an empty, invalid ID. This is exactly equivalent to Null.
+	NullColumnDefault InternalColumnDefault = ""
+	// NullDatabase is an empty, invalid ID. This is exactly equivalent to Null.
+	NullDatabase InternalDatabase = ""
+	// NullEnumLabel is an empty, invalid ID. This is exactly equivalent to Null.
+	NullEnumLabel InternalEnumLabel = ""
+	// NullForeignKey is an empty, invalid ID. This is exactly equivalent to Null.
+	NullForeignKey InternalForeignKey = ""
+	// NullFunction is an empty, invalid ID. This is exactly equivalent to Null.
+	NullFunction InternalFunction = ""
+	// NullIndex is an empty, invalid ID. This is exactly equivalent to Null.
+	NullIndex InternalIndex = ""
+	// NullNamespace is an empty, invalid ID. This is exactly equivalent to Null.
+	NullNamespace InternalNamespace = ""
+	// NullSequence is an empty, invalid ID. This is exactly equivalent to Null.
+	NullSequence InternalSequence = ""
+	// NullTable is an empty, invalid ID. This is exactly equivalent to Null.
+	NullTable InternalTable = ""
+	// NullType is an empty, invalid ID. This is exactly equivalent to Null.
+	NullType InternalType = ""
+	// NullView is an empty, invalid ID. This is exactly equivalent to Null.
+	NullView InternalView = ""
 )
 
 // Internal is an ID that is used within Doltgres. This ID is never exposed to clients through any normal means, and
