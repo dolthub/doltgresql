@@ -681,6 +681,9 @@ func (u *sqlSymUnion) vacuumOptions() tree.VacuumOptions {
 func (u *sqlSymUnion) vacuumOption() *tree.VacuumOption {
     return u.val.(*tree.VacuumOption)
 }
+func (u *sqlSymUnion) vacuumTableAndCols() *tree.VacuumTableAndCols {
+    return u.val.(*tree.VacuumTableAndCols)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -1052,7 +1055,7 @@ func (u *sqlSymUnion) vacuumOption() *tree.VacuumOption {
 %type <tree.Statement> vacuum_stmt
 %type <*tree.VacuumOption> vacuum_option
 %type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list
-//%type <*tree.VacuumNameAndCols> opt_vacuum_table_and_cols
+%type <*tree.VacuumTableAndCols> opt_vacuum_table_and_cols
 %type <string> auto_on_off
 %type <bool> opt_boolean_value_default_true
 
@@ -1219,7 +1222,7 @@ func (u *sqlSymUnion) vacuumOption() *tree.VacuumOption {
 
 %type <bool> all_or_distinct opt_cascade opt_if_exists opt_restrict opt_trusted opt_procedural
 %type <bool> with_comment opt_with_force opt_create_as_with_data
-%type <bool> boolean_value
+%type <bool> boolean_value boolean_value_for_vacuum_opt
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
 %type <str> join_type
@@ -6333,31 +6336,21 @@ reindex_stmt:
   }
 
 vacuum_stmt:
-//  VACUUM opt_vacuum_option_list // opt_vacuum_table_and_cols
-//  {
-//     var tblName *tree.UnresolvedName
-//     var colNames tree.NameList
-//     if $3 != nil {
-//       tblName = $3.vacuum_table_and_cols().Name
-//       colNames = $3.vacuum_table_and_cols().Cols
-//     }
-//     $$.val = &tree.Vacuum{
-//       Options: $2.vacuumOptions(),
-//       Table:   tblName,
-//       Columns: colNames,
-//     }
-//  }
-  VACUUM opt_vacuum_option_list
+  VACUUM opt_vacuum_option_list opt_vacuum_table_and_cols
   {
      var tblName *tree.UnresolvedName
      var colNames tree.NameList
+     var tableAndCols = $3.vacuumTableAndCols()
+     if tableAndCols != nil {
+       tblName = tableAndCols.Name
+       colNames = tableAndCols.Cols
+     }
      $$.val = &tree.Vacuum{
        Options: $2.vacuumOptions(),
        Table:   tblName,
        Columns: colNames,
      }
   }
-
 
 opt_vacuum_option_list:
   vacuum_option_list
@@ -6387,7 +6380,7 @@ vacuum_option:
     	Value:  true,
     }
   }
-| FULL boolean_value
+| FULL boolean_value_for_vacuum_opt
   {
     $$.val = &tree.VacuumOption{
     	Option: "FULL",
@@ -6486,6 +6479,37 @@ vacuum_option:
 //    }
 //  }
 
+// boolean constants for vacuum options. we can't use `boolean_value` because of conflicts with names 
+boolean_value_for_vacuum_opt:
+  TRUE
+  {
+    $$.val = true
+  }
+| FALSE
+  {
+    $$.val = false
+  }
+| 't'
+  {
+    $$.val = true
+  }
+| 'f'
+  {
+    $$.val = false
+  }
+| 'y'
+  {
+    $$.val = true
+  }
+| 'n'
+  {
+    $$.val = false
+  }
+| ICONST
+  {
+    $$.val = $1.int64() != 0
+  }
+
 auto_on_off:
   AUTO
   {
@@ -6500,19 +6524,19 @@ auto_on_off:
     $$.val = "OFF"
   }
   
-//opt_vacuum_table_and_cols:
-//  /* EMPTY */
-//  {
-//    $$.val = nil
-//  }
-//| name 
-//  {
-//    $$.val = &tree.VacuumTableAndCols{Table: $1}
-//  }
-//| name name_list
-//  {
-//     $$.val = &tree.VacuumTableAndCols{Table: $1, Columns: $2}
-//  }
+opt_vacuum_table_and_cols:
+  /* EMPTY */
+  {
+    $$.val = (*tree.VacuumTableAndCols)(nil)
+  }
+| name 
+  {
+    $$.val = &tree.VacuumTableAndCols{Table: $1}
+  }
+| name name_list
+  {
+     $$.val = &tree.VacuumTableAndCols{Table: $1, Columns: $2}
+  }
     
 // %Help: SHOW SESSION - display session variables
 // %Category: Cfg
