@@ -1057,7 +1057,6 @@ func (u *sqlSymUnion) vacuumTableAndCols() *tree.VacuumTableAndCols {
 %type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list
 %type <*tree.VacuumTableAndCols> opt_vacuum_table_and_cols
 %type <string> auto_on_off
-%type <bool> opt_boolean_value_default_true
 
 %type <[]string> opt_incremental
 %type <tree.KVOption> kv_option
@@ -5684,13 +5683,6 @@ boolean_value:
     $$.val = $1.int64() != 0
   }
 
-opt_boolean_value_default_true:
-  boolean_value
-  /* EMPTY */
-| {
-    $$.val = true
-  }
-
 option_true_false:
   OPTION
 | TRUE
@@ -6373,49 +6365,42 @@ vacuum_option_list:
   }
 
 vacuum_option:
-  FULL
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "FULL",
-    	Value:  true,
-    }
-  }
-| FULL boolean_value_for_vacuum_opt
+  FULL boolean_value_for_vacuum_opt
   {
     $$.val = &tree.VacuumOption{
     	Option: "FULL",
     	Value:  $2,
     }
   }
-//| FREEZE opt_boolean_value_default_true
+//| FREEZE // boolean_value_for_vacuum_opt
 //  {
 //    $$.val = &tree.VacuumOption{
 //    	Option: "FREEZE",
-//    	Value:  $2,
+//    	Value:  true,
 //    }
 //  }
-//| VERBOSE opt_boolean_value_default_true
+//| VERBOSE boolean_value_for_vacuum_opt
 //  {
 //    $$.val = &tree.VacuumOption{
 //    	Option: "VERBOSE",
 //    	Value:  $2,
 //    }
 //  }
-//| ANALYZE opt_boolean_value_default_true
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "ANALYZE",
-//    	Value:  $2,
-//    }
-//  }
-//| DISABLE_PAGE_SKIPPING opt_boolean_value_default_true
+| ANALYZE boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "ANALYZE",
+    	Value:  $2,
+    }
+  }
+//| DISABLE_PAGE_SKIPPING boolean_value_for_vacuum_opt
 //  {
 //    $$.val = &tree.VacuumOption{
 //    	Option: "DISABLE_PAGE_SKIPPING",
 //    	Value:  $2,
 //    }
 //  }
-//| SKIP_LOCKED opt_boolean_value_default_true
+//| SKIP_LOCKED boolean_value_for_vacuum_opt
 //  {
 //    $$.val = &tree.VacuumOption{
 //    	Option: "SKIP_LOCKED",
@@ -6429,27 +6414,27 @@ vacuum_option:
 //    	Value:  $2,
 //    }
 //  }
-//| PROCESS_MAIN opt_boolean_value_default_true
+//| PROCESS_MAIN boolean_value_for_vacuum_opt
 //  {
 //    $$.val = &tree.VacuumOption{
 //    	Option: "PROCESS_MAIN",
 //    	Value:  $2,
 //    }
 //  }
-//| PROCESS_TOAST opt_boolean_value_default_true
+//| PROCESS_TOAST boolean_value_for_vacuum_opt
 //  {
 //    $$.val = &tree.VacuumOption{
 //    	Option: "PROCESS_TOAST",
 //    	Value:  $2,
 //    }
 //  }
-//| TRUNCATE opt_boolean_value_default_true
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "TRUNCATE",
-//    	Value:  $2,
-//    }
-//  }
+| TRUNCATE boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "TRUNCATE",
+    	Value:  $2,
+    }
+  }
 //| PARALLEL ICONST
 //  {
 //    $$.val = &tree.VacuumOption{
@@ -6457,14 +6442,14 @@ vacuum_option:
 //    	Value:  $2,
 //    }
 //  }
-//| SKIP_DATABASE_STATS opt_boolean_value_default_true
+//| SKIP_DATABASE_STATS boolean_value_for_vacuum_opt
 //  {
 //    $$.val = &tree.VacuumOption{
 //    	Option: "SKIP_DATABASE_STATS",
 //    	Value:  $2,
 //    }
 //  }
-//| ONLY_DATABASE_STATS opt_boolean_value_default_true
+//| ONLY_DATABASE_STATS boolean_value_for_vacuum_opt
 //  {
 //    $$.val = &tree.VacuumOption{
 //    	Option: "ONLY_DATABASE_STATS",
@@ -6479,9 +6464,14 @@ vacuum_option:
 //    }
 //  }
 
-// boolean constants for vacuum options. we can't use `boolean_value` because of conflicts with names 
+// Boolean constants for vacuum options. we can't use `boolean_value` because of conflicts with names
+// An empty value here is considered true
 boolean_value_for_vacuum_opt:
-  TRUE
+  /* EMPTY */
+  {
+    $$.val = true
+  }
+| TRUE
   {
     $$.val = true
   }
