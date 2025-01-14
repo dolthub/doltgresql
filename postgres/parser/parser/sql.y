@@ -675,6 +675,12 @@ func (u *sqlSymUnion) createAggOptions() []tree.CreateAggOption {
 func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
     return u.val.([]tree.AggregateToDrop)
 }
+func (u *sqlSymUnion) vacuumOptions() tree.VacuumOptions {
+    return u.val.(tree.VacuumOptions)
+}
+func (u *sqlSymUnion) vacuumOption() *tree.VacuumOption {
+    return u.val.(*tree.VacuumOption)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -1046,7 +1052,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.Statement> vacuum_stmt
 %type <*tree.VacuumOption> vacuum_option
 %type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list
-%type <*tree.VacuumNameAndCols> opt_vacuum_table_and_cols
+//%type <*tree.VacuumNameAndCols> opt_vacuum_table_and_cols
 %type <string> auto_on_off
 %type <bool> opt_boolean_value_default_true
 
@@ -6327,14 +6333,24 @@ reindex_stmt:
   }
 
 vacuum_stmt:
-  VACUUM opt_vacuum_option_list opt_vacuum_table_and_cols
+//  VACUUM opt_vacuum_option_list // opt_vacuum_table_and_cols
+//  {
+//     var tblName *tree.UnresolvedName
+//     var colNames tree.NameList
+//     if $3 != nil {
+//       tblName = $3.vacuum_table_and_cols().Name
+//       colNames = $3.vacuum_table_and_cols().Cols
+//     }
+//     $$.val = &tree.Vacuum{
+//       Options: $2.vacuumOptions(),
+//       Table:   tblName,
+//       Columns: colNames,
+//     }
+//  }
+  VACUUM opt_vacuum_option_list
   {
      var tblName *tree.UnresolvedName
      var colNames tree.NameList
-     if $3 != nil {
-       tblName = $3.vacuum_table_and_cols().Name
-       colNames = $3.vacuum_table_and_cols().Cols
-     }
      $$.val = &tree.Vacuum{
        Options: $2.vacuumOptions(),
        Table:   tblName,
@@ -6342,11 +6358,15 @@ vacuum_stmt:
      }
   }
 
+
 opt_vacuum_option_list:
   vacuum_option_list
+  {
+    $$.val = $1
+  }
 | /* EMPTY */
   {
-    $$.val = tree.TableDefs(nil)
+    $$.val = tree.VacuumOptions(nil)
   }
   
 vacuum_option_list:
@@ -6360,104 +6380,111 @@ vacuum_option_list:
   }
 
 vacuum_option:
-  FULL opt_boolean_value_default_true
+  FULL
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FULL",
+    	Value:  true,
+    }
+  }
+| FULL boolean_value
   {
     $$.val = &tree.VacuumOption{
     	Option: "FULL",
     	Value:  $2,
     }
   }
-| FREEZE opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "FREEZE",
-    	Value:  $2,
-    }
-  }
-| VERBOSE opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "VERBOSE",
-    	Value:  $2,
-    }
-  }
-| ANALYZE opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "ANALYZE",
-    	Value:  $2,
-    }
-  }
-| DISABLE_PAGE_SKIPPING opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "DISABLE_PAGE_SKIPPING",
-    	Value:  $2,
-    }
-  }
-| SKIP_LOCKED opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "SKIP_LOCKED",
-    	Value:  $2,
-    }
-  }
-| INDEX_CLEANUP auto_on_off
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "INDEX_CLEANUP",
-    	Value:  $2,
-    }
-  }
-| PROCESS_MAIN opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "PROCESS_MAIN",
-    	Value:  $2,
-    }
-  }
-| PROCESS_TOAST opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "PROCESS_TOAST",
-    	Value:  $2,
-    }
-  }
-| TRUNCATE opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "TRUNCATE",
-    	Value:  $2,
-    }
-  }
-| PARALLEL ICONST
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "PARALLEL",
-    	Value:  $2,
-    }
-  }
-| SKIP_DATABASE_STATS opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "SKIP_DATABASE_STATS",
-    	Value:  $2,
-    }
-  }
-| ONLY_DATABASE_STATS opt_boolean_value_default_true
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "ONLY_DATABASE_STATS",
-    	Value:  $2,
-    }
-  }
-| BUFFER_USAGE_LIMIT ICONST
-  {
-    $$.val = &tree.VacuumOption{
-    	Option: "BUFFER_USAGE_LIMIT",
-    	Value:  $2,
-    }
-  }
+//| FREEZE opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "FREEZE",
+//    	Value:  $2,
+//    }
+//  }
+//| VERBOSE opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "VERBOSE",
+//    	Value:  $2,
+//    }
+//  }
+//| ANALYZE opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "ANALYZE",
+//    	Value:  $2,
+//    }
+//  }
+//| DISABLE_PAGE_SKIPPING opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "DISABLE_PAGE_SKIPPING",
+//    	Value:  $2,
+//    }
+//  }
+//| SKIP_LOCKED opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "SKIP_LOCKED",
+//    	Value:  $2,
+//    }
+//  }
+//| INDEX_CLEANUP auto_on_off
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "INDEX_CLEANUP",
+//    	Value:  $2,
+//    }
+//  }
+//| PROCESS_MAIN opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "PROCESS_MAIN",
+//    	Value:  $2,
+//    }
+//  }
+//| PROCESS_TOAST opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "PROCESS_TOAST",
+//    	Value:  $2,
+//    }
+//  }
+//| TRUNCATE opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "TRUNCATE",
+//    	Value:  $2,
+//    }
+//  }
+//| PARALLEL ICONST
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "PARALLEL",
+//    	Value:  $2,
+//    }
+//  }
+//| SKIP_DATABASE_STATS opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "SKIP_DATABASE_STATS",
+//    	Value:  $2,
+//    }
+//  }
+//| ONLY_DATABASE_STATS opt_boolean_value_default_true
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "ONLY_DATABASE_STATS",
+//    	Value:  $2,
+//    }
+//  }
+//| BUFFER_USAGE_LIMIT ICONST
+//  {
+//    $$.val = &tree.VacuumOption{
+//    	Option: "BUFFER_USAGE_LIMIT",
+//    	Value:  $2,
+//    }
+//  }
 
 auto_on_off:
   AUTO
@@ -6473,19 +6500,19 @@ auto_on_off:
     $$.val = "OFF"
   }
   
-opt_vacuum_table_and_cols:
-  /* EMPTY */
-  {
-    $$.val = (*tree.VacuumTableAndCols{})(nil)
-  }
-| name 
-  {
-    $$.val = &tree.VacuumTableAndCols{Table: $1}
-  }
-| name name_list
-  {
-     $$.val = &tree.VacuumTableAndCols{Table: $1, Columns: $2}
-  }
+//opt_vacuum_table_and_cols:
+//  /* EMPTY */
+//  {
+//    $$.val = nil
+//  }
+//| name 
+//  {
+//    $$.val = &tree.VacuumTableAndCols{Table: $1}
+//  }
+//| name name_list
+//  {
+//     $$.val = &tree.VacuumTableAndCols{Table: $1, Columns: $2}
+//  }
     
 // %Help: SHOW SESSION - display session variables
 // %Category: Cfg
