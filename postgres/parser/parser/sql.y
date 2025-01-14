@@ -6372,20 +6372,20 @@ vacuum_option:
     	Value:  $2,
     }
   }
-//| FREEZE // boolean_value_for_vacuum_opt
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "FREEZE",
-//    	Value:  true,
-//    }
-//  }
-//| VERBOSE boolean_value_for_vacuum_opt
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "VERBOSE",
-//    	Value:  $2,
-//    }
-//  }
+| FREEZE boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FREEZE",
+    	Value:  $2,
+    }
+  }
+| VERBOSE boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "VERBOSE",
+    	Value:  $2,
+    }
+  }
 | ANALYZE boolean_value_for_vacuum_opt
   {
     $$.val = &tree.VacuumOption{
@@ -6393,41 +6393,41 @@ vacuum_option:
     	Value:  $2,
     }
   }
-//| DISABLE_PAGE_SKIPPING boolean_value_for_vacuum_opt
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "DISABLE_PAGE_SKIPPING",
-//    	Value:  $2,
-//    }
-//  }
-//| SKIP_LOCKED boolean_value_for_vacuum_opt
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "SKIP_LOCKED",
-//    	Value:  $2,
-//    }
-//  }
-//| INDEX_CLEANUP auto_on_off
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "INDEX_CLEANUP",
-//    	Value:  $2,
-//    }
-//  }
-//| PROCESS_MAIN boolean_value_for_vacuum_opt
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "PROCESS_MAIN",
-//    	Value:  $2,
-//    }
-//  }
-//| PROCESS_TOAST boolean_value_for_vacuum_opt
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "PROCESS_TOAST",
-//    	Value:  $2,
-//    }
-//  }
+| DISABLE_PAGE_SKIPPING boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "DISABLE_PAGE_SKIPPING",
+    	Value:  $2,
+    }
+  }
+| SKIP_LOCKED boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "SKIP_LOCKED",
+    	Value:  $2,
+    }
+  }
+| INDEX_CLEANUP auto_on_off
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "INDEX_CLEANUP",
+    	Value:  $2,
+    }
+  }
+| PROCESS_MAIN boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "PROCESS_MAIN",
+    	Value:  $2,
+    }
+  }
+| PROCESS_TOAST boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "PROCESS_TOAST",
+    	Value:  $2,
+    }
+  }
 | TRUNCATE boolean_value_for_vacuum_opt
   {
     $$.val = &tree.VacuumOption{
@@ -6435,34 +6435,34 @@ vacuum_option:
     	Value:  $2,
     }
   }
-//| PARALLEL ICONST
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "PARALLEL",
-//    	Value:  $2,
-//    }
-//  }
-//| SKIP_DATABASE_STATS boolean_value_for_vacuum_opt
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "SKIP_DATABASE_STATS",
-//    	Value:  $2,
-//    }
-//  }
-//| ONLY_DATABASE_STATS boolean_value_for_vacuum_opt
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "ONLY_DATABASE_STATS",
-//    	Value:  $2,
-//    }
-//  }
-//| BUFFER_USAGE_LIMIT ICONST
-//  {
-//    $$.val = &tree.VacuumOption{
-//    	Option: "BUFFER_USAGE_LIMIT",
-//    	Value:  $2,
-//    }
-//  }
+| PARALLEL ICONST
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "PARALLEL",
+    	Value:  $2,
+    }
+  }
+| SKIP_DATABASE_STATS boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "SKIP_DATABASE_STATS",
+    	Value:  $2,
+    }
+  }
+| ONLY_DATABASE_STATS boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "ONLY_DATABASE_STATS",
+    	Value:  $2,
+    }
+  }
+| BUFFER_USAGE_LIMIT ICONST
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "BUFFER_USAGE_LIMIT",
+    	Value:  $2,
+    }
+  }
 
 // Boolean constants for vacuum options. we can't use `boolean_value` because of conflicts with names
 // An empty value here is considered true
@@ -6519,11 +6519,11 @@ opt_vacuum_table_and_cols:
   {
     $$.val = (*tree.VacuumTableAndCols)(nil)
   }
-| name 
+| table_name 
   {
     $$.val = &tree.VacuumTableAndCols{Table: $1}
   }
-| name name_list
+| table_name name_list
   {
      $$.val = &tree.VacuumTableAndCols{Table: $1, Columns: $2}
   }
@@ -14415,7 +14415,6 @@ unreserved_keyword:
 | BEGIN
 | BINARY
 | BUCKET_COUNT
-| BUFFER_USAGE_LIMIT
 | BUNDLE
 | BY
 | BYPASSRLS
@@ -14482,7 +14481,6 @@ unreserved_keyword:
 | DETACHED
 | DICTIONARY
 | DISABLE
-| DISABLE_PAGE_SKIPPING
 | DISCARD
 | DOMAIN
 | DOUBLE
@@ -14523,7 +14521,6 @@ unreserved_keyword:
 | FORCE
 | FORCE_INDEX
 | FORMAT
-| FREEZE
 | FUNCTION
 | FUNCTIONS
 | GENERATED
@@ -14555,7 +14552,6 @@ unreserved_keyword:
 | INCLUDING
 | INCREMENT
 | INCREMENTAL
-| INDEX_CLEANUP
 | INDEXES
 | INHERIT
 | INHERITS
@@ -14662,7 +14658,6 @@ unreserved_keyword:
 | OID
 | OIDS
 | OLD
-| ONLY_DATABASE_STATS
 | OPERATOR
 | OPT
 | OPTION
@@ -14673,7 +14668,6 @@ unreserved_keyword:
 | OVER
 | OWNED
 | OWNER
-| PARALLEL
 | PARAMETER
 | PARENT
 | PARSER
@@ -14704,8 +14698,6 @@ unreserved_keyword:
 | PROCEDURAL
 | PROCEDURE
 | PROCEDURES
-| PROCESS_MAIN
-| PROCESS_TOAST
 | PUBLIC
 | PUBLICATION
 | QUERIES
@@ -14780,8 +14772,6 @@ unreserved_keyword:
 | SHOW
 | SIMPLE
 | SKIP
-| SKIP_DATABASE_STATS
-| SKIP_LOCKED
 | SKIP_MISSING_FOREIGN_KEYS
 | SKIP_MISSING_SEQUENCES
 | SKIP_MISSING_SEQUENCE_OWNERS
@@ -14825,7 +14815,6 @@ unreserved_keyword:
 | TRANSACTIONS
 | TRANSFORM
 | TRIGGER
-| TRUNCATE
 | TRUSTED
 | TYPE
 | TYPES
@@ -14851,7 +14840,6 @@ unreserved_keyword:
 | VALUE
 | VARIABLE
 | VARYING
-| VERBOSE
 | VERSION
 | VIEW
 | VIEWACTIVITY
@@ -14986,6 +14974,7 @@ reserved_keyword:
 | ASC
 | ASYMMETRIC
 | BOTH
+| BUFFER_USAGE_LIMIT
 | CASE
 | CAST
 | CHECK
@@ -15006,6 +14995,7 @@ reserved_keyword:
 | DEFERRABLE
 | DESC
 | DESCRIBE
+| DISABLE_PAGE_SKIPPING
 | DISTINCT
 | DO
 | ELEMENT
@@ -15016,11 +15006,13 @@ reserved_keyword:
 | FETCH
 | FOR
 | FOREIGN
+| FREEZE
 | FROM
 | GRANT
 | GROUP
 | HAVING
 | IN
+| INDEX_CLEANUP
 | INITIALLY
 | INTERSECT
 | INTO
@@ -15034,14 +15026,20 @@ reserved_keyword:
 | OFFSET
 | ON
 | ONLY
+| ONLY_DATABASE_STATS
 | OR
 | ORDER
+| PARALLEL
 | PLACING
 | PRIMARY
+| PROCESS_MAIN
+| PROCESS_TOAST
 | REFERENCES
 | RETURNING
 | SELECT
 | SESSION_USER
+| SKIP_DATABASE_STATS
+| SKIP_LOCKED
 | SOME
 | SYMMETRIC
 | TABLE
@@ -15049,11 +15047,13 @@ reserved_keyword:
 | TO
 | TRAILING
 | TRUE
+| TRUNCATE
 | UNION
 | UNIQUE
 | USER
 | USING
 | VARIADIC
+| VERBOSE
 | WHEN
 | WHERE
 | WINDOW
