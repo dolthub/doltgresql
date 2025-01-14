@@ -1060,7 +1060,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list
 %type <*tree.VacuumTableAndCols> vacuum_table_and_cols
 %type <tree.VacuumTableAndColsList> opt_vacuum_table_and_cols_list
-%type <string> auto_on_off
+%type <str> auto_on_off
 
 %type <[]string> opt_incremental
 %type <tree.KVOption> kv_option
@@ -6528,11 +6528,14 @@ opt_vacuum_table_and_cols_list:
 vacuum_table_and_cols:
   table_name 
   {
-    $$.val = &tree.VacuumTableAndCols{Name: $1}
+    $$.val = &tree.VacuumTableAndCols{Name: $1.unresolvedName()}
   }
 | table_name '(' name_list ')'
   {
-     $$.val = &tree.VacuumTableAndCols{Name: $1, Columns: $3}
+     $$.val = &tree.VacuumTableAndCols{
+     	Name: $1.unresolvedName(),
+     	Cols: $3.nameList(),
+     }
   }
     
 // %Help: SHOW SESSION - display session variables
