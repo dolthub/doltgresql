@@ -39,8 +39,8 @@ type FunctionInterface interface {
 	// IsStrict returns whether the function is STRICT, which means if any parameter is NULL, then it returns NULL.
 	// Otherwise, if it's not, the NULL input must be handled by user.
 	IsStrict() bool
-	// InternalID returns the Internal ID associated with this function.
-	InternalID() id.Internal
+	// InternalID returns the ID associated with this function.
+	InternalID() id.Id
 	// enforceInterfaceInheritance is a special function that ensures only the expected types inherit this interface.
 	enforceInterfaceInheritance(error)
 }
@@ -134,8 +134,8 @@ func (f Function0) NonDeterministic() bool { return f.IsNonDeterministic }
 func (f Function0) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
-func (f Function0) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name)
+func (f Function0) InternalID() id.Id {
+	return id.NewFunction("pg_catalog", f.Name).AsId()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -169,8 +169,8 @@ func (f Function1) NonDeterministic() bool { return f.IsNonDeterministic }
 func (f Function1) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
-func (f Function1) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name, string(f.Parameters[0].ID))
+func (f Function1) InternalID() id.Id {
+	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID).AsId()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -204,8 +204,8 @@ func (f Function2) NonDeterministic() bool { return f.IsNonDeterministic }
 func (f Function2) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
-func (f Function2) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name, string(f.Parameters[0].ID), string(f.Parameters[1].ID))
+func (f Function2) InternalID() id.Id {
+	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID).AsId()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -239,8 +239,8 @@ func (f Function3) NonDeterministic() bool { return f.IsNonDeterministic }
 func (f Function3) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
-func (f Function3) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name, string(f.Parameters[0].ID), string(f.Parameters[1].ID), string(f.Parameters[2].ID))
+func (f Function3) InternalID() id.Id {
+	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID, f.Parameters[2].ID).AsId()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
@@ -274,8 +274,8 @@ func (f Function4) NonDeterministic() bool { return f.IsNonDeterministic }
 func (f Function4) IsStrict() bool { return f.Strict }
 
 // InternalID implements the FunctionInterface interface.
-func (f Function4) InternalID() id.Internal {
-	return id.NewInternal(id.Section_Function, "pg_catalog", f.Name, string(f.Parameters[0].ID), string(f.Parameters[1].ID), string(f.Parameters[2].ID), string(f.Parameters[3].ID))
+func (f Function4) InternalID() id.Id {
+	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID, f.Parameters[2].ID, f.Parameters[3].ID).AsId()
 }
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.

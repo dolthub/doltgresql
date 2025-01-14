@@ -35,7 +35,7 @@ func NewDomainType(
 	defaultExpr string,
 	notNull bool,
 	checks []*sql.CheckDefinition,
-	arrayID, internalID id.Internal,
+	arrayID, internalID id.Type,
 ) *DoltgresType {
 	return &DoltgresType{
 		ID:            internalID,
@@ -48,7 +48,7 @@ func NewDomainType(
 		Delimiter:     ",",
 		RelID:         id.Null,
 		SubscriptFunc: toFuncID("-"),
-		Elem:          id.Null,
+		Elem:          id.NullType,
 		Array:         arrayID,
 		InputFunc:     toFuncID("domain_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
 		OutputFunc:    asType.OutputFunc,
@@ -63,7 +63,7 @@ func NewDomainType(
 		BaseTypeID:    asType.ID,
 		TypMod:        -1,
 		NDims:         0,
-		TypCollation:  id.Null,
+		TypCollation:  id.NullCollation,
 		DefaulBin:     "",
 		Default:       defaultExpr,
 		Acl:           nil,

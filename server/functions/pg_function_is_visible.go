@@ -37,6 +37,6 @@ var pg_function_is_visible_oid = framework.Function1{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: Functions are not contained within a schema for now, so will be true if function is found
-		return id.Cache().Exists(val.(id.Internal)), nil
+		return id.Cache().Exists(val.(id.Id)), nil
 	},
 }

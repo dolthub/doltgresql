@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -42,8 +43,8 @@ func (pgs *Collection) Serialize(ctx context.Context) ([]byte, error) {
 		writer.VariableUint(uint64(len(nameMapKeys)))
 		for _, nameMapKey := range nameMapKeys {
 			sequence := nameMap[nameMapKey]
-			writer.String(sequence.Name)
-			writer.Internal(sequence.DataTypeID)
+			writer.Id(sequence.Id.AsId())
+			writer.Id(sequence.DataTypeID.AsId())
 			writer.Uint8(uint8(sequence.Persistence))
 			writer.Int64(sequence.Start)
 			writer.Int64(sequence.Current)
@@ -53,7 +54,7 @@ func (pgs *Collection) Serialize(ctx context.Context) ([]byte, error) {
 			writer.Int64(sequence.Cache)
 			writer.Bool(sequence.Cycle)
 			writer.Bool(sequence.IsAtEnd)
-			writer.String(sequence.OwnerTable)
+			writer.Id(sequence.OwnerTable.AsId())
 			writer.String(sequence.OwnerColumn)
 		}
 	}
@@ -85,8 +86,8 @@ func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
 		nameMap := make(map[string]*Sequence)
 		for j := uint64(0); j < numOfSequences; j++ {
 			sequence := &Sequence{}
-			sequence.Name = reader.String()
-			sequence.DataTypeID = reader.Internal()
+			sequence.Id = id.Sequence(reader.Id())
+			sequence.DataTypeID = id.Type(reader.Id())
 			sequence.Persistence = Persistence(reader.Uint8())
 			sequence.Start = reader.Int64()
 			sequence.Current = reader.Int64()
@@ -96,9 +97,9 @@ func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
 			sequence.Cache = reader.Int64()
 			sequence.Cycle = reader.Bool()
 			sequence.IsAtEnd = reader.Bool()
-			sequence.OwnerTable = reader.String()
+			sequence.OwnerTable = id.Table(reader.Id())
 			sequence.OwnerColumn = reader.String()
-			nameMap[sequence.Name] = sequence
+			nameMap[sequence.Id.SequenceName()] = sequence
 		}
 		schemaMap[schemaName] = nameMap
 	}

@@ -1053,7 +1053,7 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{3983475213, "myview", "myschema"},
 						{3905781870, "mytable", "myschema"},
-						{3582964517, "test_seq", "testschema"},
+						{1539973141, "test_seq", "testschema"},
 						{3508950454, "test_table_pkey", "testschema"},
 						{3057657334, "test_index", "testschema"},
 						{521883837, "v1", "testschema"},
@@ -1073,7 +1073,7 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `select pg_table_is_visible(3582964517);`, // sequence from testschema
+					Query:    `select pg_table_is_visible(1539973141);`, // sequence from testschema
 					Expected: []sql.Row{{"t"}},
 				},
 				{

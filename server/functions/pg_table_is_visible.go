@@ -37,7 +37,7 @@ var pg_table_is_visible_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		oidVal := val.(id.Internal)
+		oidVal := val.(id.Id)
 		paths, err := resolve.SearchPath(ctx)
 		if err != nil {
 			return false, err

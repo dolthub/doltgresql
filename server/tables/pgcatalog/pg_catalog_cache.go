@@ -44,26 +44,26 @@ type pgCatalogCache struct {
 
 	// pg_namespace
 	schemaNames []string
-	schemaOids  []id.Internal
+	schemaOids  []id.Id
 
 	// pg_attribute
 	attributeCols      []*sql.Column
-	attributeTableOIDs []id.Internal
+	attributeTableOIDs []id.Id
 	attributeColIdxs   []int
 
 	// pg_index / pg_indexes
 	indexes        []sql.Index
-	indexOIDs      []id.Internal
-	indexTableOIDs []id.Internal
+	indexOIDs      []id.Id
+	indexTableOIDs []id.Id
 	indexSchemas   []string
 
 	// pg_sequence
 	sequences    []*sequences.Sequence
-	sequenceOids []id.Internal
+	sequenceOids []id.Id
 
 	// pg_attrdef
 	attrdefCols      []functions.ItemColumnDefault
-	attrdefTableOIDs []id.Internal
+	attrdefTableOIDs []id.Id
 
 	// pg_views
 	views       []sql.ViewDefinition
@@ -71,7 +71,7 @@ type pgCatalogCache struct {
 
 	// pg_types
 	types        []*pgtypes.DoltgresType
-	pgCatalogOid id.Internal
+	pgCatalogOid id.Id
 
 	// pg_tables
 	tables       []sql.Table

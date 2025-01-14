@@ -28,8 +28,8 @@ var Internal = &DoltgresType{
 	Delimiter:     ",",
 	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          id.Null,
-	Array:         id.Null,
+	Elem:          id.NullType,
+	Array:         id.NullType,
 	InputFunc:     toFuncID("internal_in", toInternal("cstring")),
 	OutputFunc:    toFuncID("internal_out", toInternal("internal")),
 	ReceiveFunc:   toFuncID("-"),
@@ -40,10 +40,10 @@ var Internal = &DoltgresType{
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Plain,
 	NotNull:       false,
-	BaseTypeID:    id.Null,
+	BaseTypeID:    id.NullType,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  id.Null,
+	TypCollation:  id.NullCollation,
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,
@@ -54,7 +54,7 @@ var Internal = &DoltgresType{
 
 // NewInternalTypeWithBaseType returns Internal type with
 // internal base type set with given type.
-func NewInternalTypeWithBaseType(internalID id.Internal) *DoltgresType {
+func NewInternalTypeWithBaseType(internalID id.Type) *DoltgresType {
 	it := Internal
 	it.BaseTypeForInternal = internalID
 	return it

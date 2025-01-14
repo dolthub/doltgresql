@@ -780,27 +780,27 @@ func TestSequences(t *testing.T) {
 				{
 					Query: "SELECT * FROM pg_catalog.pg_sequence ORDER BY seqrelid;",
 					Expected: []sql.Row{
-						{1417287970, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
-						{2181375797, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
+						{2795592127, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
+						{3473123643, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
 					},
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT * FROM PG_catalog.pg_SEQUENCE ORDER BY seqrelid;",
 					Expected: []sql.Row{
-						{1417287970, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
-						{2181375797, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
+						{2795592127, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
+						{3473123643, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
 					},
 				},
 				{
 					Query: "SELECT * FROM pg_catalog.pg_sequence WHERE seqrelid = 'some_sequence'::regclass;",
 					Expected: []sql.Row{
-						{1417287970, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
+						{2795592127, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
 					},
 				},
 				{
 					Query: "SELECT * FROM pg_catalog.pg_sequence WHERE seqrelid = 'another_sequence'::regclass;",
 					Expected: []sql.Row{
-						{2181375797, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
+						{3473123643, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
 					},
 				},
 				{
@@ -814,6 +814,39 @@ func TestSequences(t *testing.T) {
 					Expected: []sql.Row{
 						{4},
 					},
+				},
+			},
+		},
+		{
+			Name: "DROP TABLE",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk SERIAL PRIMARY KEY, v1 INTEGER);",
+				"INSERT INTO test (v1) VALUES (2), (3), (5), (7), (11);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{1, 2},
+						{2, 3},
+						{3, 5},
+						{4, 7},
+						{5, 11},
+					},
+				},
+				{
+					Query: "SELECT * FROM pg_catalog.pg_sequence;",
+					Expected: []sql.Row{
+						{3822699147, 23, 1, 1, 2147483647, 1, 1, "f"},
+					},
+				},
+				{
+					Query:    "DROP TABLE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM pg_catalog.pg_sequence;",
+					Expected: []sql.Row{},
 				},
 			},
 		},

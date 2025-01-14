@@ -16,8 +16,8 @@ package id
 
 // This adds all of the built-in schemas to the cache.
 func init() {
-	globalCache.setBuiltIn(NewInternal(Section_Namespace, "pg_catalog"), 11)
-	globalCache.setBuiltIn(NewInternal(Section_Namespace, "pg_toast"), 99)
-	globalCache.setBuiltIn(NewInternal(Section_Namespace, "public"), 2200)
-	globalCache.setBuiltIn(NewInternal(Section_Namespace, "information_schema"), 13183)
+	globalCache.setBuiltIn(NewId(Section_Namespace, "pg_catalog"), 11)
+	globalCache.setBuiltIn(NewId(Section_Namespace, "pg_toast"), 99)
+	globalCache.setBuiltIn(NewId(Section_Namespace, "public"), 2200)
+	globalCache.setBuiltIn(NewId(Section_Namespace, "information_schema"), 13183)
 }

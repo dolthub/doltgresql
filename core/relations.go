@@ -18,9 +18,10 @@ import (
 	"fmt"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // RelationType states the type of the relation.
@@ -72,7 +73,7 @@ func GetRelationTypeFromRoot(ctx *sql.Context, schema string, relation string, r
 	if err != nil {
 		return RelationType_DoesNotExist, err
 	}
-	if collection.HasSequence(doltdb.TableName{Name: relation, Schema: schema}) {
+	if collection.HasSequence(id.NewSequence(schema, relation)) {
 		return RelationType_Sequence, nil
 	}
 	// TODO: the rest of the relations
