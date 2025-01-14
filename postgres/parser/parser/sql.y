@@ -684,6 +684,9 @@ func (u *sqlSymUnion) vacuumOption() *tree.VacuumOption {
 func (u *sqlSymUnion) vacuumTableAndCols() *tree.VacuumTableAndCols {
     return u.val.(*tree.VacuumTableAndCols)
 }
+func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
+    return u.val.(tree.VacuumTableAndColsList)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -1055,7 +1058,8 @@ func (u *sqlSymUnion) vacuumTableAndCols() *tree.VacuumTableAndCols {
 %type <tree.Statement> vacuum_stmt
 %type <*tree.VacuumOption> vacuum_option
 %type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list
-%type <*tree.VacuumTableAndCols> opt_vacuum_table_and_cols
+%type <*tree.VacuumTableAndCols> vacuum_table_and_cols
+%type <tree.VacuumTableAndColsList> opt_vacuum_table_and_cols_list
 %type <string> auto_on_off
 
 %type <[]string> opt_incremental
@@ -6328,26 +6332,18 @@ reindex_stmt:
   }
 
 vacuum_stmt:
-  VACUUM opt_vacuum_option_list opt_vacuum_table_and_cols
+  VACUUM opt_vacuum_option_list opt_vacuum_table_and_cols_list
   {
-     var tblName *tree.UnresolvedName
-     var colNames tree.NameList
-     var tableAndCols = $3.vacuumTableAndCols()
-     if tableAndCols != nil {
-       tblName = tableAndCols.Name
-       colNames = tableAndCols.Cols
-     }
      $$.val = &tree.Vacuum{
        Options: $2.vacuumOptions(),
-       Table:   tblName,
-       Columns: colNames,
+       TablesAndCols: $3.vacuumTableAndColsList(),
      }
   }
 
 opt_vacuum_option_list:
-  vacuum_option_list
+  '(' vacuum_option_list ')' 
   {
-    $$.val = $1
+    $$.val = $2
   }
 | /* EMPTY */
   {
@@ -6503,29 +6499,40 @@ boolean_value_for_vacuum_opt:
 auto_on_off:
   AUTO
   {
-    $$.val = "AUTO"
+    $$ = "AUTO"
   }
 | ON
   {
-    $$.val = "ON"
+    $$ = "ON"
   }
 | OFF
   {
-    $$.val = "OFF"
+    $$ = "OFF"
   }
-  
-opt_vacuum_table_and_cols:
+
+opt_vacuum_table_and_cols_list:
   /* EMPTY */
   {
-    $$.val = (*tree.VacuumTableAndCols)(nil)
+    $$.val = (tree.VacuumTableAndColsList)(nil)
   }
-| table_name 
+| vacuum_table_and_cols 
   {
-    $$.val = &tree.VacuumTableAndCols{Table: $1}
+    $$.val = tree.VacuumTableAndColsList{$1.vacuumTableAndCols()}
   }
-| table_name name_list
+| vacuum_table_and_cols ',' opt_vacuum_table_and_cols_list
   {
-     $$.val = &tree.VacuumTableAndCols{Table: $1, Columns: $2}
+    list := $3.vacuumTableAndColsList()
+    $$.val = append(list, $1.vacuumTableAndCols())
+  }
+  
+vacuum_table_and_cols:
+  table_name 
+  {
+    $$.val = &tree.VacuumTableAndCols{Name: $1}
+  }
+| table_name '(' name_list ')'
+  {
+     $$.val = &tree.VacuumTableAndCols{Name: $1, Columns: $3}
   }
     
 // %Help: SHOW SESSION - display session variables
