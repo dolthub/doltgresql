@@ -53,11 +53,11 @@ func (p PgAttrdefHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	if pgCatalogCache.attrdefCols == nil {
 		var attrdefCols []functions.ItemColumnDefault
-		var attrdefTableOIDs []id.Internal
+		var attrdefTableOIDs []id.Id
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			ColumnDefault: func(ctx *sql.Context, _ functions.ItemSchema, table functions.ItemTable, col functions.ItemColumnDefault) (cont bool, err error) {
 				attrdefCols = append(attrdefCols, col)
-				attrdefTableOIDs = append(attrdefTableOIDs, table.OID)
+				attrdefTableOIDs = append(attrdefTableOIDs, table.OID.AsId())
 				return true, nil
 			},
 		})
@@ -94,7 +94,7 @@ var pgAttrdefSchema = sql.Schema{
 // pgAttrdefRowIter is the sql.RowIter for the pg_attrdef table.
 type pgAttrdefRowIter struct {
 	cols      []functions.ItemColumnDefault
-	tableOIDs []id.Internal
+	tableOIDs []id.Id
 	idx       int
 }
 
@@ -111,7 +111,7 @@ func (iter *pgAttrdefRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// TODO: Implement adbin when pg_node_tree exists
 	return sql.Row{
-		col.OID,                         // oid
+		col.OID.AsId(),                  // oid
 		tableOid,                        // adrelid
 		int16(col.Item.ColumnIndex + 1), // adnum
 		nil,                             // adbin

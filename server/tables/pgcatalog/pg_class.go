@@ -58,44 +58,44 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
-				tableHasIndexes[id.Cache().ToOID(table.OID)] = struct{}{}
+				tableHasIndexes[id.Cache().ToOID(table.OID.AsId())] = struct{}{}
 				classes = append(classes, pgClass{
-					oid:        index.OID,
+					oid:        index.OID.AsId(),
 					name:       getIndexName(index.Item),
 					hasIndexes: false,
 					kind:       "i",
-					schemaOid:  schema.OID,
+					schemaOid:  schema.OID.AsId(),
 				})
 				return true, nil
 			},
 			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
-				_, hasIndexes := tableHasIndexes[id.Cache().ToOID(table.OID)]
+				_, hasIndexes := tableHasIndexes[id.Cache().ToOID(table.OID.AsId())]
 				classes = append(classes, pgClass{
-					oid:        table.OID,
+					oid:        table.OID.AsId(),
 					name:       table.Item.Name(),
 					hasIndexes: hasIndexes,
 					kind:       "r",
-					schemaOid:  schema.OID,
+					schemaOid:  schema.OID.AsId(),
 				})
 				return true, nil
 			},
 			View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
 				classes = append(classes, pgClass{
-					oid:        view.OID,
+					oid:        view.OID.AsId(),
 					name:       view.Item.Name,
 					hasIndexes: false,
 					kind:       "v",
-					schemaOid:  schema.OID,
+					schemaOid:  schema.OID.AsId(),
 				})
 				return true, nil
 			},
 			Sequence: func(ctx *sql.Context, schema functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
 				classes = append(classes, pgClass{
-					oid:        sequence.OID,
-					name:       sequence.Item.Name,
+					oid:        sequence.OID.AsId(),
+					name:       sequence.Item.Id.SequenceName(),
 					hasIndexes: false,
 					kind:       "S",
-					schemaOid:  schema.OID,
+					schemaOid:  schema.OID.AsId(),
 				})
 				return true, nil
 			},
@@ -169,9 +169,9 @@ var pgClassSchema = sql.Schema{
 
 // pgClass represents a row in the pg_class table.
 type pgClass struct {
-	oid        id.Internal
+	oid        id.Id
 	name       string
-	schemaOid  id.Internal
+	schemaOid  id.Id
 	hasIndexes bool
 	kind       string // r = ordinary table, i = index, S = sequence, t = TOAST table, v = view, m = materialized view, c = composite type, f = foreign table, p = partitioned table, I = partitioned index
 }
@@ -195,9 +195,9 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	// TODO: this is temporary definition of 'relam' field
 	var relam = id.Null
 	if class.kind == "i" {
-		relam = id.NewInternal(id.Section_AccessMethod, "btree")
+		relam = id.NewAccessMethod("btree").AsId()
 	} else if class.kind == "r" || class.kind == "t" {
-		relam = id.NewInternal(id.Section_AccessMethod, "heap")
+		relam = id.NewAccessMethod("heap").AsId()
 	}
 
 	// TODO: Fill in the rest of the pg_class columns

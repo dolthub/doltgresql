@@ -178,7 +178,6 @@ func TestCreateTable(t *testing.T) {
 		},
 		{
 			Name: "create table with function in generated column",
-			Skip: true, // ERROR: column default function expressions must be enclosed in parentheses
 			SetUpScript: []string{
 				"create table t1 (a varchar(10) primary key, b varchar(10), c varchar(20) generated always as (concat(a,b)) stored);",
 			},

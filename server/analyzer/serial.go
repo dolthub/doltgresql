@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -100,7 +101,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					Parenthesized: false,
 				}
 				ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", &sequences.Sequence{
-					Name:        sequenceName,
+					Id:          id.NewSequence("", sequenceName),
 					DataTypeID:  col.Type.(*pgtypes.DoltgresType).ID,
 					Persistence: sequences.Persistence_Permanent,
 					Start:       1,
@@ -111,7 +112,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					Cache:       1,
 					Cycle:       false,
 					IsAtEnd:     false,
-					OwnerTable:  createTable.Name(),
+					OwnerTable:  id.NewTable("", createTable.Name()),
 					OwnerColumn: col.Name,
 				}))
 			}

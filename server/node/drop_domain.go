@@ -22,6 +22,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -77,7 +78,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	domain, exists := collection.GetDomainType(schema, c.domain)
+	domain, exists := collection.GetDomainType(id.NewType(schema, c.domain))
 	if !exists {
 		if c.ifExists {
 			// TODO: issue a notice

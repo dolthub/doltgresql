@@ -21,12 +21,12 @@ import (
 	"unsafe"
 )
 
-// Internal uses one of two formats. Which format is being used is marked by the upper Section bit being either 0 or 1.
+// Id uses one of two formats. Which format is being used is marked by the upper Section bit being either 0 or 1.
 // Often, an ID contains information that will commonly be accessed by the item, so the first format is tailored for
 // efficient retrieval of specific segments. If an item is larger than the size limit (255, size is stored as an uint8),
-// then we use the second format, which inserts a separator between items. This allows Internal to hold any data in case
+// then we use the second format, which inserts a separator between items. This allows Id to hold any data in case
 // the need arises in the future, but in practice we'll only see the first format (since data will usually be
-// identifiers or smaller embedded IDs). Internal IDs will be accessed far more often than they'll be created, hence the
+// identifiers or smaller embedded IDs). Id IDs will be accessed far more often than they'll be created, hence the
 // focus on efficient retrieval rather than simplicity of storage.
 //
 // First format (upper bit is 0):
@@ -39,30 +39,60 @@ import (
 //     The remaining bytes are the original string data, stored with the separator between each segment
 
 const (
-	// idSeparator marks the different data sections in an Internal ID. This is the null byte since that byte is invalid in
+	// idSeparator marks the different data sections in an Id. This is the null byte since that byte is invalid in
 	// all identifiers, so we can guarantee that it's safe to use as a separator. This is used when an individual data
 	// segment is larger than 254 bytes.
 	idSeparator = "\x00"
 	// formatMask is the upper bit that determines whether we're using the first or second format.
 	formatMask = uint8(0x80)
 	// Null is an empty, invalid ID.
-	Null Internal = ""
+	Null Id = ""
+	// NullAccessMethod is an empty, invalid ID. This is exactly equivalent to Null.
+	NullAccessMethod AccessMethod = ""
+	// NullCheck is an empty, invalid ID. This is exactly equivalent to Null.
+	NullCheck Check = ""
+	// NullCollation is an empty, invalid ID. This is exactly equivalent to Null.
+	NullCollation Collation = ""
+	// NullColumnDefault is an empty, invalid ID. This is exactly equivalent to Null.
+	NullColumnDefault ColumnDefault = ""
+	// NullDatabase is an empty, invalid ID. This is exactly equivalent to Null.
+	NullDatabase Database = ""
+	// NullEnumLabel is an empty, invalid ID. This is exactly equivalent to Null.
+	NullEnumLabel EnumLabel = ""
+	// NullForeignKey is an empty, invalid ID. This is exactly equivalent to Null.
+	NullForeignKey ForeignKey = ""
+	// NullFunction is an empty, invalid ID. This is exactly equivalent to Null.
+	NullFunction Function = ""
+	// NullIndex is an empty, invalid ID. This is exactly equivalent to Null.
+	NullIndex Index = ""
+	// NullNamespace is an empty, invalid ID. This is exactly equivalent to Null.
+	NullNamespace Namespace = ""
+	// NullSequence is an empty, invalid ID. This is exactly equivalent to Null.
+	NullSequence Sequence = ""
+	// NullTable is an empty, invalid ID. This is exactly equivalent to Null.
+	NullTable Table = ""
+	// NullType is an empty, invalid ID. This is exactly equivalent to Null.
+	NullType Type = ""
+	// NullView is an empty, invalid ID. This is exactly equivalent to Null.
+	NullView View = ""
 )
 
-// Internal is an ID that is used within Doltgres. This ID is never exposed to clients through any normal means, and
+// Id is an ID that is used within Doltgres. This ID is never exposed to clients through any normal means, and
 // exists solely for internal operations to be able to identify specific items. This functions as an internal
 // replacement for Postgres' OIDs.
-type Internal string
+type Id string
 
-// NewInternal constructs an Internal ID using the given section and data.
-func NewInternal(section Section, data ...string) Internal {
+// NewId constructs an Id using the given section and data. In general, you should prefer to use the `NewIDTYPE` that
+// matches the Section that's being created, and then convert that to an Id for returning or storage. You almost never
+// want to call this function directly.
+func NewId(section Section, data ...string) Id {
 	if section == Section_Null {
 		// It's easier if there's only one canonical way to represent a null ID, so we'll return our constant instead of
 		// creating a new string
 		return Null
 	}
 	if len(data) > 255 {
-		return newInternalSecondFormat(section, data)
+		return newIdSecondFormat(section, data)
 	}
 	buf := bytes.Buffer{}
 	buf.WriteByte(uint8(section))
@@ -70,19 +100,19 @@ func NewInternal(section Section, data ...string) Internal {
 	for _, segment := range data {
 		segmentLength := len(segment)
 		if segmentLength > 255 {
-			return newInternalSecondFormat(section, data)
+			return newIdSecondFormat(section, data)
 		}
 		buf.WriteByte(uint8(segmentLength))
 	}
 	for _, segment := range data {
 		buf.WriteString(segment)
 	}
-	return Internal(buf.Bytes())
+	return Id(buf.Bytes())
 }
 
-// newInternalSecondFormat constructs an Internal ID using the given section and data. This always returns the second
-// format (using the separator).
-func newInternalSecondFormat(section Section, data []string) Internal {
+// newIdSecondFormat constructs an Id using the given section and data. This always returns the second format (using the
+// separator).
+func newIdSecondFormat(section Section, data []string) Id {
 	buf := bytes.Buffer{}
 	buf.WriteByte(uint8(section) | formatMask)
 	for i, segment := range data {
@@ -91,25 +121,25 @@ func newInternalSecondFormat(section Section, data []string) Internal {
 		}
 		buf.WriteString(segment)
 	}
-	return Internal(buf.Bytes())
+	return Id(buf.Bytes())
 }
 
-// IsValid returns whether the Internal ID is valid.
-func (id Internal) IsValid() bool {
+// IsValid returns whether the Id is valid.
+func (id Id) IsValid() bool {
 	// We don't allow setting the section to Section_Null, so we can do a simple length check
 	return len(id) > 0
 }
 
-// Section returns the Section for this Internal ID.
-func (id Internal) Section() Section {
+// Section returns the Section for this Id.
+func (id Id) Section() Section {
 	if len(id) == 0 {
 		return Section_Null
 	}
 	return Section(id[0] & (^formatMask))
 }
 
-// Data returns the original data used to create this Internal ID.
-func (id Internal) Data() []string {
+// Data returns the original data used to create this Id.
+func (id Id) Data() []string {
 	if len(id) <= 1 {
 		return nil
 	}
@@ -132,7 +162,7 @@ func (id Internal) Data() []string {
 }
 
 // SegmentCount returns the number of segments that were in the original data.
-func (id Internal) SegmentCount() int {
+func (id Id) SegmentCount() int {
 	if len(id) <= 1 {
 		return 0
 	}
@@ -146,7 +176,7 @@ func (id Internal) SegmentCount() int {
 }
 
 // Segment returns the segment from the given index. An empty string is returned for an index not contained by the ID.
-func (id Internal) Segment(index int) string {
+func (id Id) Segment(index int) string {
 	if index < 0 || len(id) <= 1 {
 		return ""
 	}
@@ -176,7 +206,7 @@ func (id Internal) Segment(index int) string {
 
 // String returns a display-suitable version of the ID. Although the ID is implemented as a string, it should not be
 // treated as a string except for the purposes of storage and retrieval.
-func (id Internal) String() string {
+func (id Id) String() string {
 	data := id.Data()
 	if len(data) == 0 {
 		return fmt.Sprintf(`{%s:[]}`, id.Section().String())
@@ -185,7 +215,7 @@ func (id Internal) String() string {
 }
 
 // CaseString returns a quoted string that may be used to represent this ID in a switch-case.
-func (id Internal) CaseString() string {
+func (id Id) CaseString() string {
 	if len(id) == 0 {
 		return `""`
 	}
@@ -212,11 +242,11 @@ func (id Internal) CaseString() string {
 
 // UnderlyingBytes returns the underlying bytes for the ID. These must not be modified, as this is intended solely for
 // efficient usage of operations that require byte slices.
-func (id Internal) UnderlyingBytes() []byte {
+func (id Id) UnderlyingBytes() []byte {
 	return unsafe.Slice(unsafe.StringData(string(id)), len(id))
 }
 
 // usesSecondFormat returns whether the separator is used, which is the second format.
-func (id Internal) usesSecondFormat() bool {
+func (id Id) usesSecondFormat() bool {
 	return len(id) > 0 && id[0]&formatMask == formatMask
 }

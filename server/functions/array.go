@@ -46,8 +46,8 @@ var array_in = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
-		baseTypeOid := val2.(id.Internal)
-		baseType := pgtypes.InternalToBuiltInDoltgresType[baseTypeOid]
+		baseTypeOid := val2.(id.Id)
+		baseType := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
 		typmod := val3.(int32)
 		baseType = baseType.WithAttTypMod(typmod)
 		if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
@@ -165,8 +165,8 @@ var array_recv = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
-		baseTypeOid := val2.(id.Internal)
-		baseType := pgtypes.InternalToBuiltInDoltgresType[baseTypeOid]
+		baseTypeOid := val2.(id.Id)
+		baseType := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
 		typmod := val3.(int32)
 		baseType = baseType.WithAttTypMod(typmod)
 		// Check for the nil value, then ensure the minimum length of the slice

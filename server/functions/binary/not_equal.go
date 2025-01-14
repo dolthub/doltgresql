@@ -393,7 +393,7 @@ var oidne = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Oid.Compare(val1.(id.Internal), val2.(id.Internal))
+		res, err := pgtypes.Oid.Compare(val1.(id.Id), val2.(id.Id))
 		return res != 0, err
 	},
 }

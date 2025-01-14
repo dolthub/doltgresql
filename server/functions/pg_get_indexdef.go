@@ -38,7 +38,7 @@ var pg_get_indexdef_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		oidVal := val.(id.Internal)
+		oidVal := val.(id.Id)
 		err := RunCallback(ctx, oidVal, Callbacks{
 			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
 				// TODO: make `create index` statement
@@ -60,7 +60,7 @@ var pg_get_indexdef_oid_integer_bool = framework.Function3{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		oidVal := val1.(id.Internal)
+		oidVal := val1.(id.Id)
 		colNo := val2.(int32)
 		pretty := val3.(bool)
 		if pretty {

@@ -72,8 +72,8 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		return nil, types.ErrTypeAlreadyExists.New(c.Name)
 	}
 
-	internalID := id.NewInternal(id.Section_Type, c.SchemaName, c.Name)
-	arrayID := id.NewInternal(id.Section_Type, c.SchemaName, "_"+c.Name)
+	internalID := id.NewType(c.SchemaName, c.Name)
+	arrayID := id.NewType(c.SchemaName, "_"+c.Name)
 
 	var defExpr string
 	if c.DefaultExpr != nil {

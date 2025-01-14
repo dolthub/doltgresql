@@ -42,7 +42,7 @@ var enum_in = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		typ, err := getDoltgresTypeFromInternal(ctx, val2.(id.Internal))
+		typ, err := getDoltgresTypeFromId(ctx, val2.(id.Id))
 		if err != nil {
 			return nil, err
 		}
@@ -89,7 +89,7 @@ var enum_recv = framework.Function2{
 			// TODO: currently, in some places we use nil context, should fix it.
 			return value, nil
 		}
-		typ, err := getDoltgresTypeFromInternal(ctx, val2.(id.Internal))
+		typ, err := getDoltgresTypeFromId(ctx, val2.(id.Id))
 		if err != nil {
 			return nil, err
 		}
@@ -149,15 +149,16 @@ var enum_cmp = framework.Function2{
 	},
 }
 
-// getDoltgresTypeFromInternal takes internal ID and returns DoltgresType associated to it.
-// It allows retrieving user-defined type and requires valid sql.Context.
-func getDoltgresTypeFromInternal(ctx *sql.Context, typID id.Internal) (*pgtypes.DoltgresType, error) {
+// getDoltgresTypeFromId takes internal ID and returns the DoltgresType associated to it. It allows retrieving a
+// user-defined type, and it requires a valid sql.Context.
+func getDoltgresTypeFromId(ctx *sql.Context, rawId id.Id) (*pgtypes.DoltgresType, error) {
 	typCol, err := core.GetTypesCollectionFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
+	typID := id.Type(rawId)
 
-	schName := typID.Segment(0)
+	schName := typID.SchemaName()
 	sch, err := core.GetCurrentSchema(ctx)
 	if err != nil {
 		return nil, err
@@ -166,8 +167,8 @@ func getDoltgresTypeFromInternal(ctx *sql.Context, typID id.Internal) (*pgtypes.
 		schName = sch
 	}
 
-	typName := typID.Segment(1)
-	typ, found := typCol.GetType(schName, typName)
+	typName := typID.TypeName()
+	typ, found := typCol.GetType(id.NewType(schName, typName))
 	if !found {
 		return nil, pgtypes.ErrTypeDoesNotExist.New(typName)
 	}

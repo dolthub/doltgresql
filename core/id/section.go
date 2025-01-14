@@ -59,8 +59,10 @@ const (
 	Section_Trigger              Section = 34 // Refers to triggers on tables and views
 	Section_Type                 Section = 35 // Refers to types
 	Section_UniqueKey            Section = 36 // Refers to unique keys on tables
-	Section_User                 Section = 37 // Refers to user
+	Section_User                 Section = 37 // Refers to users
 	Section_View                 Section = 38 // Refers to views
+
+	section_count uint8 = 39 // This is the number of sections, and should ALWAYS be kept up-to-date
 )
 
 // String returns the name of the Section.

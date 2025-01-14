@@ -667,7 +667,7 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 		if firstPolymorphicType.IsArrayType() {
 			return firstPolymorphicType
 		} else if firstPolymorphicType.ID == pgtypes.Internal.ID {
-			return pgtypes.InternalToBuiltInDoltgresType[firstPolymorphicType.BaseTypeForInternal]
+			return pgtypes.IDToBuiltInDoltgresType[firstPolymorphicType.BaseTypeForInternal]
 		} else {
 			return firstPolymorphicType.ToArrayType()
 		}

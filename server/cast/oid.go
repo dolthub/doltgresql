@@ -35,14 +35,14 @@ func oidAssignment() {
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return int32(id.Cache().ToOID(val.(id.Internal))), nil
+			return int32(id.Cache().ToOID(val.(id.Id))), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
 		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return int64(id.Cache().ToOID(val.(id.Internal))), nil
+			return int64(id.Cache().ToOID(val.(id.Id))), nil
 		},
 	})
 }

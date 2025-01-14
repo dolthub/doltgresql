@@ -39,7 +39,7 @@ func TestInternal(t *testing.T) {
 	}
 	for testIdx, test := range tests {
 		t.Run(fmt.Sprintf("%d", testIdx), func(t *testing.T) {
-			id := NewInternal(test.section, test.data...)
+			id := NewId(test.section, test.data...)
 			for {
 				require.True(t, id.IsValid())
 				require.Equal(t, test.section, id.Section())
@@ -51,7 +51,7 @@ func TestInternal(t *testing.T) {
 				}
 				// If this is using the first format, then we'll rerun the test using a variant forced to the second format
 				if !id.usesSecondFormat() {
-					id = newInternalSecondFormat(test.section, test.data)
+					id = newIdSecondFormat(test.section, test.data)
 					continue
 				}
 				break

@@ -108,7 +108,7 @@ var pg_get_serial_sequence_text_text = framework.Function2{
 		for _, sequence := range sequences {
 			if sequence.OwnerColumn == column.Name {
 				// pg_get_serial_sequence() always includes the schema name in its output
-				return schemaName + "." + sequence.Name, nil
+				return schemaName + "." + sequence.Id.SequenceName(), nil
 			}
 		}
 

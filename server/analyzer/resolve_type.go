@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/expression"
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -123,7 +124,7 @@ func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.Doltgres
 	if err != nil {
 		return nil, err
 	}
-	resolvedTyp, exists := typs.GetType(schema, typ.Name())
+	resolvedTyp, exists := typs.GetType(id.NewType(schema, typ.Name()))
 	if !exists {
 		return nil, pgtypes.ErrTypeDoesNotExist.New(typ.Name())
 	}
