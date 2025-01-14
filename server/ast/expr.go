@@ -505,7 +505,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.DOid:
 		internalID := id.Cache().ToInternal(uint32(node.DInt))
 		if !internalID.IsValid() {
-			internalID = id.NewInternalOID(uint32(node.DInt)).Internal()
+			internalID = id.NewOID(uint32(node.DInt)).AsId()
 		}
 		return vitess.InjectedExpr{
 			Expression: pgexprs.NewRawLiteralOid(internalID),

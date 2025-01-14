@@ -21,7 +21,7 @@ import (
 )
 
 // NewCompositeType creates new instance of composite DoltgresType.
-func NewCompositeType(ctx *sql.Context, relID id.Internal, arrayID, typeID id.InternalType, attrs []CompositeAttribute) *DoltgresType {
+func NewCompositeType(ctx *sql.Context, relID id.Id, arrayID, typeID id.Type, attrs []CompositeAttribute) *DoltgresType {
 	return &DoltgresType{
 		ID:             typeID,
 		TypLength:      -1,
@@ -62,15 +62,15 @@ func NewCompositeType(ctx *sql.Context, relID id.Internal, arrayID, typeID id.In
 // CompositeAttribute represents a composite type attribute.
 // This is a partial pg_attribute row entry.
 type CompositeAttribute struct {
-	relID     id.Internal // ID of the relation it belongs to
+	relID     id.Id // ID of the relation it belongs to
 	name      string
-	typeID    id.InternalType // ID of DoltgresType
-	num       int16           // number of the column in relation
+	typeID    id.Type // ID of DoltgresType
+	num       int16   // number of the column in relation
 	collation string
 }
 
 // NewCompositeAttribute creates new instance of composite type attribute.
-func NewCompositeAttribute(ctx *sql.Context, relID id.Internal, name string, typeID id.InternalType, num int16, collation string) CompositeAttribute {
+func NewCompositeAttribute(ctx *sql.Context, relID id.Id, name string, typeID id.Type, num int16, collation string) CompositeAttribute {
 	return CompositeAttribute{
 		relID:     relID,
 		name:      name,

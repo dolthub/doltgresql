@@ -199,9 +199,9 @@ func (reader *Reader) String() string {
 	return string(reader.buf[reader.offset-length : reader.offset])
 }
 
-// Internal reads an Internal ID.
-func (reader *Reader) Internal() id.Internal {
-	return id.Internal(reader.String())
+// Id reads an internal ID.
+func (reader *Reader) Id() id.Id {
+	return id.Id(reader.String())
 }
 
 // BoolSlice reads a bool slice.

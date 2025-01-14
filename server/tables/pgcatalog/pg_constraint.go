@@ -54,18 +54,18 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	if pgCatalogCache.pgConstraints == nil {
 		var constraints []pgConstraint
-		tableOIDs := make(map[id.Internal]map[string]id.Internal)
+		tableOIDs := make(map[id.Id]map[string]id.Id)
 		tableColToIdxMap := make(map[string]int16)
 
 		// We iterate over all tables first to obtain their OIDs, which we'll need to reference for foreign keys
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
-				inner, ok := tableOIDs[schema.OID.Internal()]
+				inner, ok := tableOIDs[schema.OID.AsId()]
 				if !ok {
-					inner = make(map[string]id.Internal)
-					tableOIDs[schema.OID.Internal()] = inner
+					inner = make(map[string]id.Id)
+					tableOIDs[schema.OID.AsId()] = inner
 				}
-				inner[table.Item.Name()] = table.OID.Internal()
+				inner[table.Item.Name()] = table.OID.AsId()
 
 				for i, col := range table.Item.Schema() {
 					tableColToIdxMap[fmt.Sprintf("%s.%s", table.Item.Name(), col.Name)] = int16(i + 1)
@@ -81,11 +81,11 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		err = functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Check: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, check functions.ItemCheck) (cont bool, err error) {
 				constraints = append(constraints, pgConstraint{
-					oid:         check.OID.Internal(),
+					oid:         check.OID.AsId(),
 					name:        check.Item.Name,
-					schemaOid:   schema.OID.Internal(),
+					schemaOid:   schema.OID.AsId(),
 					conType:     "c",
-					tableOid:    table.OID.Internal(),
+					tableOid:    table.OID.AsId(),
 					idxOid:      id.Null,
 					tableRefOid: id.Null,
 				})
@@ -113,13 +113,13 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				}
 
 				constraints = append(constraints, pgConstraint{
-					oid:          foreignKey.OID.Internal(),
+					oid:          foreignKey.OID.AsId(),
 					name:         foreignKey.Item.Name,
-					schemaOid:    schema.OID.Internal(),
+					schemaOid:    schema.OID.AsId(),
 					conType:      "f",
-					tableOid:     tableOIDs[schema.OID.Internal()][foreignKey.Item.Table],
-					idxOid:       foreignKey.OID.Internal(),
-					tableRefOid:  tableOIDs[schema.OID.Internal()][foreignKey.Item.ParentTable],
+					tableOid:     tableOIDs[schema.OID.AsId()][foreignKey.Item.Table],
+					idxOid:       foreignKey.OID.AsId(),
+					tableRefOid:  tableOIDs[schema.OID.AsId()][foreignKey.Item.ParentTable],
 					fkUpdateType: getFKAction(foreignKey.Item.OnUpdate),
 					fkDeleteType: getFKAction(foreignKey.Item.OnDelete),
 					fkMatchType:  "s",
@@ -144,12 +144,12 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 				}
 
 				constraints = append(constraints, pgConstraint{
-					oid:         index.OID.Internal(),
+					oid:         index.OID.AsId(),
 					name:        getIndexName(index.Item),
-					schemaOid:   schema.OID.Internal(),
+					schemaOid:   schema.OID.AsId(),
 					conType:     conType,
-					tableOid:    table.OID.Internal(),
-					idxOid:      index.OID.Internal(),
+					tableOid:    table.OID.AsId(),
+					idxOid:      index.OID.AsId(),
 					tableRefOid: id.Null,
 					conKey:      conKey,
 					conFkey:     nil,
@@ -226,14 +226,14 @@ var PgConstraintSchema = sql.Schema{
 
 // pgConstraint is the struct for the pg_constraint table.
 type pgConstraint struct {
-	oid       id.Internal
+	oid       id.Id
 	name      string
-	schemaOid id.Internal
+	schemaOid id.Id
 	conType   string // c = check constraint, f = foreign key constraint, p = primary key constraint, u = unique constraint, t = constraint trigger, x = exclusion constraint
-	tableOid  id.Internal
-	// typeOid      id.Internal
-	idxOid       id.Internal
-	tableRefOid  id.Internal
+	tableOid  id.Id
+	// typeOid      id.Id
+	idxOid       id.Id
+	tableRefOid  id.Id
 	fkUpdateType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
 	fkDeleteType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
 	fkMatchType  string // f = full, p = partial, s = simple

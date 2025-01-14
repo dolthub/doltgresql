@@ -49,7 +49,7 @@ var regtypein = framework.Function1{
 			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternalOID(uint32(parsedOid)).Internal(), nil
+			return id.NewOID(uint32(parsedOid)).AsId(), nil
 		}
 		sections, err := ioInputSections(input)
 		if err != nil {
@@ -78,10 +78,10 @@ var regtypein = framework.Function1{
 		typeName = strings.Split(typeName, "(")[0]
 
 		if typeName == "char" && schema == "" {
-			return id.NewInternalType("pg_catalog", "bpchar").Internal(), nil
+			return id.NewType("pg_catalog", "bpchar").AsId(), nil
 		}
 		if internalID, ok := pgtypes.NameToInternalID[typeName]; ok && (internalID.SchemaName() == schema || schema == "") {
-			return internalID.Internal(), nil
+			return internalID.AsId(), nil
 		}
 		return id.Null, pgtypes.ErrTypeDoesNotExist.New(input)
 	},
@@ -94,7 +94,7 @@ var regtypeout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regtype},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		internalID := val.(id.Internal)
+		internalID := val.(id.Id)
 		if internalID.Section() == id.Section_OID {
 			return internalID.Segment(0), nil
 		}
@@ -118,7 +118,7 @@ var regtyperecv = framework.Function1{
 		if len(data) == 0 {
 			return nil, nil
 		}
-		return id.Internal(data), nil
+		return id.Id(data), nil
 	},
 }
 
@@ -129,7 +129,7 @@ var regtypesend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regtype},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(id.Internal)), nil
+		return []byte(val.(id.Id)), nil
 	},
 }
 

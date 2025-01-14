@@ -102,8 +102,8 @@ var pgIndexSchema = sql.Schema{
 // pgIndexRowIter is the sql.RowIter for the pg_index table.
 type pgIndexRowIter struct {
 	indexes []sql.Index
-	idxOIDs []id.Internal
-	tblOIDs []id.Internal
+	idxOIDs []id.Id
+	tblOIDs []id.Id
 	idx     int
 }
 
@@ -156,15 +156,15 @@ func (iter *pgIndexRowIter) Close(ctx *sql.Context) error {
 func cacheIndexMetadata(ctx *sql.Context, cache *pgCatalogCache) error {
 	var indexes []sql.Index
 	var indexSchemas []string
-	var indexOIDs []id.Internal
-	var tableOIDs []id.Internal
+	var indexOIDs []id.Id
+	var tableOIDs []id.Id
 
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			indexes = append(indexes, index.Item)
 			indexSchemas = append(indexSchemas, schema.Item.SchemaName())
-			indexOIDs = append(indexOIDs, index.OID.Internal())
-			tableOIDs = append(tableOIDs, table.OID.Internal())
+			indexOIDs = append(indexOIDs, index.OID.AsId())
+			tableOIDs = append(tableOIDs, table.OID.AsId())
 			return true, nil
 		},
 	})

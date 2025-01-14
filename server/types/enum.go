@@ -25,7 +25,7 @@ import (
 var ErrInvalidInputValueForEnum = errors.NewKind(`invalid input value for enum %s: "%s"`)
 
 // NewEnumType creates new instance of enum DoltgresType.
-func NewEnumType(ctx *sql.Context, arrayID, typeID id.InternalType, labels map[string]EnumLabel) *DoltgresType {
+func NewEnumType(ctx *sql.Context, arrayID, typeID id.Type, labels map[string]EnumLabel) *DoltgresType {
 	return &DoltgresType{
 		ID:            typeID,
 		TypLength:     4,
@@ -66,12 +66,12 @@ func NewEnumType(ctx *sql.Context, arrayID, typeID id.InternalType, labels map[s
 // EnumLabel represents an enum type label.
 // This is a pg_enum row entry.
 type EnumLabel struct {
-	ID        id.InternalEnumLabel
+	ID        id.EnumLabel
 	SortOrder float32
 }
 
 // NewEnumLabel creates new instance of enum type label.
-func NewEnumLabel(ctx *sql.Context, labelID id.InternalEnumLabel, so float32) EnumLabel {
+func NewEnumLabel(ctx *sql.Context, labelID id.EnumLabel, so float32) EnumLabel {
 	return EnumLabel{
 		ID:        labelID,
 		SortOrder: so,

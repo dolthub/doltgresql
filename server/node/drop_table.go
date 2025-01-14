@@ -75,7 +75,7 @@ func (c *DropTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			return nil, fmt.Errorf("encountered unexpected table type `%T` during DROP TABLE", table)
 		}
 
-		tableID := id.NewInternalTable(schemaName, tableName).Internal()
+		tableID := id.NewTable(schemaName, tableName).AsId()
 		if err = id.ValidateOperation(ctx, id.Section_Table, id.Operation_Delete, tableID, id.Null); err != nil {
 			return nil, err
 		}

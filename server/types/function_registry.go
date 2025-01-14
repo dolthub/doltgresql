@@ -44,8 +44,8 @@ var LoadFunctionFromCatalog func(funcName string, parameterTypes []*DoltgresType
 type functionRegistry struct {
 	mutex      *sync.Mutex
 	counter    uint32
-	mapping    map[id.InternalFunction]uint32
-	revMapping map[uint32]id.InternalFunction
+	mapping    map[id.Function]uint32
+	revMapping map[uint32]id.Function
 	functions  [256]QuickFunction // Arbitrary number, big enough for now to fit every function in it
 }
 
@@ -54,12 +54,12 @@ type functionRegistry struct {
 var globalFunctionRegistry = functionRegistry{
 	mutex:      &sync.Mutex{},
 	counter:    1,
-	mapping:    map[id.InternalFunction]uint32{id.NullFunction: 0},
-	revMapping: map[uint32]id.InternalFunction{0: id.NullFunction},
+	mapping:    map[id.Function]uint32{id.NullFunction: 0},
+	revMapping: map[uint32]id.Function{0: id.NullFunction},
 }
 
 // InternalToRegistryID returns an ID for the given Internal ID.
-func (r *functionRegistry) InternalToRegistryID(functionID id.InternalFunction) uint32 {
+func (r *functionRegistry) InternalToRegistryID(functionID id.Function) uint32 {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	if registryID, ok := r.mapping[functionID]; ok {
@@ -94,7 +94,7 @@ func (r *functionRegistry) GetFunction(id uint32) QuickFunction {
 }
 
 // GetInternalID returns the function's Internal ID associated with the given registry ID.
-func (r *functionRegistry) GetInternalID(registryID uint32) id.InternalFunction {
+func (r *functionRegistry) GetInternalID(registryID uint32) id.Function {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	return r.revMapping[registryID]
@@ -133,7 +133,7 @@ func (r *functionRegistry) loadFunction(id uint32) QuickFunction {
 }
 
 // nameWithoutParams returns the name only from the given function string.
-func (*functionRegistry) nameWithoutParams(functionID id.InternalFunction) string {
+func (*functionRegistry) nameWithoutParams(functionID id.Function) string {
 	if !functionID.IsValid() {
 		return "-"
 	}
@@ -141,21 +141,21 @@ func (*functionRegistry) nameWithoutParams(functionID id.InternalFunction) strin
 }
 
 // toFuncSignature returns a function signature for the given Internal ID.
-func (*functionRegistry) toFuncSignature(functionID id.InternalFunction) (string, []*DoltgresType) {
+func (*functionRegistry) toFuncSignature(functionID id.Function) (string, []*DoltgresType) {
 	internalParams := functionID.Parameters()
 	params := make([]*DoltgresType, len(internalParams))
 	for i, internalParam := range internalParams {
-		params[i] = InternalToBuiltInDoltgresType[internalParam]
+		params[i] = IDToBuiltInDoltgresType[internalParam]
 	}
 	return functionID.FunctionName(), params
 }
 
 // toFuncID creates a valid function string for the given name and parameters, then registers the name with the
 // global functionRegistry. The ID from the registry is returned.
-func toFuncID(functionName string, params ...id.InternalType) uint32 {
+func toFuncID(functionName string, params ...id.Type) uint32 {
 	if functionName == "-" || len(functionName) == 0 {
 		return 0
 	}
-	functionID := id.NewInternalFunction("pg_catalog", functionName, params...)
+	functionID := id.NewFunction("pg_catalog", functionName, params...)
 	return globalFunctionRegistry.InternalToRegistryID(functionID)
 }

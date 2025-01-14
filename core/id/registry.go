@@ -28,27 +28,26 @@ const (
 // registry is the implementation of the global registry. This holds all functions that operate or validate a change on
 // an ID.
 type registry struct {
-	performers [][]InternalPerformer
-	validators [][]InternalValidator
+	listeners [][]Listener
 }
 
 // globalRegistry is the variable that is referenced for the registry.
 var globalRegistry = &registry{
-	performers: make([][]InternalPerformer, section_count),
-	validators: make([][]InternalValidator, section_count),
+	listeners: make([][]Listener, section_count),
 }
 
-// InternalPerformer is a function that performs the given operation on the original ID. Some operations, such as
-// renames, will use the new ID.
-type InternalPerformer func(ctx *sql.Context, operation Operation, originalID Internal, newID Internal) error
+type Listener interface {
+	// OperationPerformer is a function that performs the given operation on the original ID. Some operations, such as
+	// renames, will use the new ID.
+	OperationPerformer(ctx *sql.Context, operation Operation, originalID Id, newID Id) error
+	// OperationValidator is a function that validates the given operation on the original ID. Some operations, such as
+	// renames, will use the new ID. A validator is not required, and is intended for operations that may be relatively
+	// expensive to perform, but able to check quickly for failures. In addition, validators should not perform any
+	// modifications. If a validator is not required, then this should just return nil.
+	OperationValidator(ctx *sql.Context, operation Operation, originalID Id, newID Id) error
+}
 
-// InternalValidator is a function that validates the given operation on the original ID. Some operations, such as
-// renames, will use the new ID. A validator is not required, and is intended for operations that may be relatively
-// expensive to perform, but able to check quickly for failures. In addition, validators should not perform any
-// modifications.
-type InternalValidator func(ctx *sql.Context, operation Operation, originalID Internal, newID Internal) error
-
-// RegisterPerformer registers the given performer for the given sections.
+// RegisterListener registers the given listener for the given sections.
 //
 // For example, sequences are related to tables. Whenever a table operation is performed that changes its ID, sequences
 // will also need to update their IDs that reference the table. This is accomplished by registering a performer that
@@ -57,31 +56,20 @@ type InternalValidator func(ctx *sql.Context, operation Operation, originalID In
 // Performers should not register sections that are directly related to themselves. For example, a sequence performer
 // should not register itself under the sequence section, as it will be the one broadcasting that section, and therefore
 // could cause a loop.
-func RegisterPerformer(performer InternalPerformer, sections ...Section) {
+func RegisterListener(listener Listener, sections ...Section) {
 	for _, section := range sections {
 		if section == Section_Null {
 			continue
 		}
-		globalRegistry.performers[section] = append(globalRegistry.performers[section], performer)
-	}
-}
-
-// RegisterValidator registers the given validator for the given sections. Please reference both InternalValidator and
-// RegisterPerformer for context.
-func RegisterValidator(validator InternalValidator, sections ...Section) {
-	for _, section := range sections {
-		if section == Section_Null {
-			continue
-		}
-		globalRegistry.validators[section] = append(globalRegistry.validators[section], validator)
+		globalRegistry.listeners[section] = append(globalRegistry.listeners[section], listener)
 	}
 }
 
 // PerformOperation calls all registered performers that are associated with the given section. This does not call any
 // validators, which should be done using ValidateOperation. This returns the first error that is encountered.
-func PerformOperation(ctx *sql.Context, targetSection Section, operation Operation, originalID Internal, newID Internal) error {
-	for _, performer := range globalRegistry.performers[targetSection] {
-		if err := performer(ctx, operation, originalID, newID); err != nil {
+func PerformOperation(ctx *sql.Context, targetSection Section, operation Operation, originalID Id, newID Id) error {
+	for _, listener := range globalRegistry.listeners[targetSection] {
+		if err := listener.OperationPerformer(ctx, operation, originalID, newID); err != nil {
 			return err
 		}
 	}
@@ -91,9 +79,9 @@ func PerformOperation(ctx *sql.Context, targetSection Section, operation Operati
 }
 
 // ValidateOperation calls all registered validators that are associated with the given section.
-func ValidateOperation(ctx *sql.Context, targetSection Section, operation Operation, originalID Internal, newID Internal) error {
-	for _, validator := range globalRegistry.validators[targetSection] {
-		if err := validator(ctx, operation, originalID, newID); err != nil {
+func ValidateOperation(ctx *sql.Context, targetSection Section, operation Operation, originalID Id, newID Id) error {
+	for _, listener := range globalRegistry.listeners[targetSection] {
+		if err := listener.OperationValidator(ctx, operation, originalID, newID); err != nil {
 			return err
 		}
 	}

@@ -46,7 +46,7 @@ var regprocin = framework.Function1{
 			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternalOID(uint32(parsedOid)).Internal(), nil
+			return id.NewOID(uint32(parsedOid)).AsId(), nil
 		}
 		sections, err := ioInputSections(input)
 		if err != nil {
@@ -77,11 +77,11 @@ var regprocout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regproc},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(id.Internal)
+		input := val.(id.Id)
 		if input.Section() == id.Section_OID {
 			return input.Segment(0), nil
 		}
-		return val.(id.Internal).Segment(1), nil
+		return val.(id.Id).Segment(1), nil
 	},
 }
 
@@ -96,7 +96,7 @@ var regprocrecv = framework.Function1{
 		if len(data) == 0 {
 			return nil, nil
 		}
-		return id.Internal(data), nil
+		return id.Id(data), nil
 	},
 }
 
@@ -107,7 +107,7 @@ var regprocsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regproc},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(id.Internal)), nil
+		return []byte(val.(id.Id)), nil
 	},
 }
 

@@ -27,6 +27,5 @@ func Init() {
 	doltdb.NewRootValue = newRootValue
 	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
 	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
-	id.RegisterPerformer(sequenceIDPerformer, id.Section_Table)
-	id.RegisterValidator(sequenceIDValidator, id.Section_Table)
+	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
 }

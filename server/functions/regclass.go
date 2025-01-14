@@ -48,7 +48,7 @@ var regclassin = framework.Function1{
 			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternalOID(uint32(parsedOid)).Internal(), nil
+			return id.NewOID(uint32(parsedOid)).AsId(), nil
 		}
 		sections, err := ioInputSections(input)
 		if err != nil {
@@ -85,7 +85,7 @@ var regclassin = framework.Function1{
 		// Postgres does not need to worry about name conflicts since everything is created in the same naming space, but
 		// GMS and Dolt use different naming spaces, so for now we just ignore potential name conflicts and return the first
 		// match found.
-		var resultOid id.Internal
+		var resultOid id.Id
 		err = IterateDatabase(ctx, database, Callbacks{
 			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
 				idxName := index.Item.ID()
@@ -93,28 +93,28 @@ var regclassin = framework.Function1{
 					idxName = fmt.Sprintf("%s_pkey", index.Item.Table())
 				}
 				if relationName == idxName {
-					resultOid = index.OID.Internal()
+					resultOid = index.OID.AsId()
 					return false, nil
 				}
 				return true, nil
 			},
 			Sequence: func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error) {
-				if sequence.Item.Name.SequenceName() == relationName {
-					resultOid = sequence.OID.Internal()
+				if sequence.Item.Id.SequenceName() == relationName {
+					resultOid = sequence.OID.AsId()
 					return false, nil
 				}
 				return true, nil
 			},
 			Table: func(ctx *sql.Context, schema ItemSchema, table ItemTable) (cont bool, err error) {
 				if table.Item.Name() == relationName {
-					resultOid = table.OID.Internal()
+					resultOid = table.OID.AsId()
 					return false, nil
 				}
 				return true, nil
 			},
 			View: func(ctx *sql.Context, schema ItemSchema, view ItemView) (cont bool, err error) {
 				if view.Item.Name == relationName {
-					resultOid = view.OID.Internal()
+					resultOid = view.OID.AsId()
 					return false, nil
 				}
 				return true, nil
@@ -146,7 +146,7 @@ var regclassout = framework.Function1{
 		// https://www.postgresql.org/docs/current/ddl-schemas.html#DDL-SCHEMAS-CATALOG
 		schemasMap["pg_catalog"] = struct{}{}
 
-		input := val.(id.Internal)
+		input := val.(id.Id)
 		if input.Section() == id.Section_OID {
 			return input.Segment(0), nil
 		}
@@ -167,9 +167,9 @@ var regclassout = framework.Function1{
 			Sequence: func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error) {
 				schemaName := schema.Item.SchemaName()
 				if _, ok := schemasMap[schemaName]; ok {
-					output = sequence.Item.Name.SequenceName()
+					output = sequence.Item.Id.SequenceName()
 				} else {
-					output = fmt.Sprintf("%s.%s", schemaName, sequence.Item.Name.SequenceName())
+					output = fmt.Sprintf("%s.%s", schemaName, sequence.Item.Id.SequenceName())
 				}
 				return false, nil
 			},
@@ -207,7 +207,7 @@ var regclassrecv = framework.Function1{
 		if len(data) == 0 {
 			return nil, nil
 		}
-		return id.Internal(data), nil
+		return id.Id(data), nil
 	},
 }
 
@@ -218,7 +218,7 @@ var regclasssend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regclass},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(id.Internal)), nil
+		return []byte(val.(id.Id)), nil
 	},
 }
 

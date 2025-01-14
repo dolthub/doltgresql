@@ -378,7 +378,7 @@ func NormalizeRow(fds []pgconn.FieldDescription, row sql.Row, normalize bool) sq
 	}
 	newRow := make(sql.Row, len(row))
 	for i := range row {
-		dt, ok := types.InternalToBuiltInDoltgresType[id.InternalType(id.Cache().ToInternal(fds[i].DataTypeOID))]
+		dt, ok := types.IDToBuiltInDoltgresType[id.Type(id.Cache().ToInternal(fds[i].DataTypeOID))]
 		if !ok {
 			// try using text type
 			dt = types.Text
@@ -403,7 +403,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 		} else {
 			newRow := make(sql.Row, len(row))
 			for i := range row {
-				dt, ok := types.InternalToBuiltInDoltgresType[id.InternalType(id.Cache().ToInternal(fds[i].DataTypeOID))]
+				dt, ok := types.IDToBuiltInDoltgresType[id.Type(id.Cache().ToInternal(fds[i].DataTypeOID))]
 				if !ok {
 					// try using text type
 					dt = types.Text
@@ -589,7 +589,7 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 			if internalID := id.Cache().ToInternal(uval); internalID.IsValid() {
 				return internalID
 			}
-			return id.NewInternalOID(uval).Internal()
+			return id.NewOID(uval).AsId()
 		}
 	}
 

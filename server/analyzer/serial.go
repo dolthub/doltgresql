@@ -101,7 +101,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					Parenthesized: false,
 				}
 				ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", &sequences.Sequence{
-					Name:        id.NewInternalSequence("", sequenceName),
+					Id:          id.NewSequence("", sequenceName),
 					DataTypeID:  col.Type.(*pgtypes.DoltgresType).ID,
 					Persistence: sequences.Persistence_Permanent,
 					Start:       1,
@@ -112,7 +112,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					Cache:       1,
 					Cycle:       false,
 					IsAtEnd:     false,
-					OwnerTable:  id.NewInternalTable("", createTable.Name()),
+					OwnerTable:  id.NewTable("", createTable.Name()),
 					OwnerColumn: col.Name,
 				}))
 			}

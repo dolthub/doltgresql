@@ -39,7 +39,7 @@ var format_type = framework.Function2{
 		if val1 == nil {
 			return nil, nil
 		}
-		toid := id.Cache().ToOID(val1.(id.Internal))
+		toid := id.Cache().ToOID(val1.(id.Id))
 		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
 			if val2 == nil {
 				return t.SQLStandardName(), nil

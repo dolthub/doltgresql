@@ -73,7 +73,7 @@ func GetRelationTypeFromRoot(ctx *sql.Context, schema string, relation string, r
 	if err != nil {
 		return RelationType_DoesNotExist, err
 	}
-	if collection.HasSequence(id.NewInternalSequence(schema, relation)) {
+	if collection.HasSequence(id.NewSequence(schema, relation)) {
 		return RelationType_Sequence, nil
 	}
 	// TODO: the rest of the relations

@@ -64,7 +64,7 @@ func (c *CreateSequence) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	if strings.HasPrefix(strings.ToLower(c.sequence.Name.SequenceName()), "dolt") {
+	if strings.HasPrefix(strings.ToLower(c.sequence.Id.SequenceName()), "dolt") {
 		return nil, fmt.Errorf("sequences cannot be prefixed with 'dolt'")
 	}
 	schema, err := core.GetSchemaName(ctx, nil, c.schema)
@@ -72,10 +72,10 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		return nil, err
 	}
 	// The sequence won't have the schema filled in, so we have to do that now
-	c.sequence.Name = id.NewInternalSequence(schema, c.sequence.Name.SequenceName())
+	c.sequence.Id = id.NewSequence(schema, c.sequence.Id.SequenceName())
 
 	// Check that the sequence name is free
-	relationType, err := core.GetRelationType(ctx, schema, c.sequence.Name.SequenceName())
+	relationType, err := core.GetRelationType(ctx, schema, c.sequence.Id.SequenceName())
 	if err != nil {
 		return nil, err
 	}
@@ -84,12 +84,12 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			// TODO: issue a notice
 			return sql.RowsToRowIter(), nil
 		}
-		return nil, fmt.Errorf(`relation "%s" already exists`, c.sequence.Name)
+		return nil, fmt.Errorf(`relation "%s" already exists`, c.sequence.Id)
 	}
 	// Check that the OWNED BY is valid, if it exists
 	if c.sequence.OwnerTable.IsValid() {
 		// The table will only have its name set, so we need to fill in the schema as well
-		c.sequence.OwnerTable = id.NewInternalTable(schema, c.sequence.OwnerTable.TableName())
+		c.sequence.OwnerTable = id.NewTable(schema, c.sequence.OwnerTable.TableName())
 		relationType, err = core.GetRelationType(ctx, schema, c.sequence.OwnerTable.TableName())
 		if err != nil {
 			return nil, err

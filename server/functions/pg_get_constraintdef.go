@@ -38,7 +38,7 @@ var pg_get_constraintdef_oid = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		oidVal := val1.(id.Internal)
+		oidVal := val1.(id.Id)
 		def, err := getConstraintDef(ctx, oidVal)
 		return def, err
 	},
@@ -51,7 +51,7 @@ var pg_get_constraintdef_oid_bool = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Bool},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		oidVal := val1.(id.Internal)
+		oidVal := val1.(id.Id)
 		pretty := val2.(bool)
 		if pretty {
 			return "", fmt.Errorf("pretty printing is not yet supported")
@@ -65,7 +65,7 @@ var pg_get_constraintdef_oid_bool = framework.Function2{
 }
 
 // getConstraintDef returns the definition of the constraint for the given OID.
-func getConstraintDef(ctx *sql.Context, oidVal id.Internal) (string, error) {
+func getConstraintDef(ctx *sql.Context, oidVal id.Id) (string, error) {
 	var result string
 	err := RunCallback(ctx, oidVal, Callbacks{
 		Check: func(ctx *sql.Context, schema ItemSchema, table ItemTable, check ItemCheck) (cont bool, err error) {

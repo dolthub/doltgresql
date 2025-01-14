@@ -94,7 +94,7 @@ func int32Implicit() {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternalOID(uint32(val.(int32))).Internal(), nil
+			return id.NewOID(uint32(val.(int32))).AsId(), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
@@ -104,7 +104,7 @@ func int32Implicit() {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternalOID(uint32(val.(int32))).Internal(), nil
+			return id.NewOID(uint32(val.(int32))).AsId(), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
@@ -114,7 +114,7 @@ func int32Implicit() {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternalOID(uint32(val.(int32))).Internal(), nil
+			return id.NewOID(uint32(val.(int32))).AsId(), nil
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
@@ -124,7 +124,7 @@ func int32Implicit() {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
-			return id.NewInternalOID(uint32(val.(int32))).Internal(), nil
+			return id.NewOID(uint32(val.(int32))).AsId(), nil
 		},
 	})
 }

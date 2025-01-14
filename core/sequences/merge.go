@@ -26,12 +26,12 @@ func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *C
 	mergedCollection := ourCollection.Clone()
 	err := theirCollection.IterateSequences(func(theirSeq *Sequence) error {
 		// If we don't have the sequence, then we simply add it
-		if !mergedCollection.HasSequence(theirSeq.Name) {
+		if !mergedCollection.HasSequence(theirSeq.Id) {
 			newSeq := *theirSeq
-			return mergedCollection.CreateSequence(theirSeq.Name.SchemaName(), &newSeq)
+			return mergedCollection.CreateSequence(theirSeq.Id.SchemaName(), &newSeq)
 		}
 		// Take the min/max of fields that aren't dependent on the increment direction
-		mergedSeq := mergedCollection.GetSequence(theirSeq.Name)
+		mergedSeq := mergedCollection.GetSequence(theirSeq.Id)
 		mergedSeq.Minimum = utils.Min(mergedSeq.Minimum, theirSeq.Minimum)
 		mergedSeq.Maximum = utils.Max(mergedSeq.Maximum, theirSeq.Maximum)
 		mergedSeq.Cache = utils.Min(mergedSeq.Cache, theirSeq.Cache)

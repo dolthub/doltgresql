@@ -16,11 +16,11 @@ package id
 
 // This adds all of the built-in schemas to the cache.
 func init() {
-	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "heap"), 2)
-	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "btree"), 403)
-	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "hash"), 405)
-	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "gist"), 783)
-	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "gin"), 2742)
-	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "brin"), 3580)
-	globalCache.setBuiltIn(NewInternal(Section_AccessMethod, "spgist"), 4000)
+	globalCache.setBuiltIn(NewId(Section_AccessMethod, "heap"), 2)
+	globalCache.setBuiltIn(NewId(Section_AccessMethod, "btree"), 403)
+	globalCache.setBuiltIn(NewId(Section_AccessMethod, "hash"), 405)
+	globalCache.setBuiltIn(NewId(Section_AccessMethod, "gist"), 783)
+	globalCache.setBuiltIn(NewId(Section_AccessMethod, "gin"), 2742)
+	globalCache.setBuiltIn(NewId(Section_AccessMethod, "brin"), 3580)
+	globalCache.setBuiltIn(NewId(Section_AccessMethod, "spgist"), 4000)
 }

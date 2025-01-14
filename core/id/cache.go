@@ -29,18 +29,18 @@ var (
 	// globalCache is the cache structure that is used for the server session.
 	globalCache = &cacheStruct{
 		mutex:      &sync.RWMutex{},
-		toOID:      map[Internal]uint32{Null: 0},
-		toInternal: map[uint32]Internal{0: Null},
+		toOID:      map[Id]uint32{Null: 0},
+		toInternal: map[uint32]Id{0: Null},
 	}
 )
 
-// cacheStruct is the cache structure that holds mappings between the Internal ID and external OID (used by Postgres).
+// cacheStruct is the cache structure that holds mappings between the internal ID and external OID (used by Postgres).
 // The mappings are temporary, and exist only within a server session. We must discourage users from storing converted
-// OIDs, and to use the actual OID type, since the type uses Internal IDs so long as it's not returned to the user.
+// OIDs, and to use the actual OID type, since the type uses internal IDs so long as it's not returned to the user.
 type cacheStruct struct {
 	mutex      *sync.RWMutex
-	toOID      map[Internal]uint32
-	toInternal map[uint32]Internal
+	toOID      map[Id]uint32
+	toInternal map[uint32]Id
 }
 
 // Cache returns the global cache that is used for the server session.
@@ -48,8 +48,8 @@ func Cache() *cacheStruct {
 	return globalCache
 }
 
-// ToOID returns the OID associated with the given Internal ID.
-func (cache *cacheStruct) ToOID(id Internal) uint32 {
+// ToOID returns the OID associated with the given internal ID.
+func (cache *cacheStruct) ToOID(id Id) uint32 {
 	// If the ID is in the cache, then we can just return its associated OID
 	cache.mutex.RLock()
 	if oid, ok := cache.toOID[id]; ok {
@@ -58,7 +58,7 @@ func (cache *cacheStruct) ToOID(id Internal) uint32 {
 	}
 	cache.mutex.RUnlock()
 	if id.Section() == Section_OID {
-		return InternalOID(id).OID()
+		return Oid(id).OID()
 	}
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
@@ -95,8 +95,8 @@ func (cache *cacheStruct) ToOID(id Internal) uint32 {
 	panic("all OIDs have been taken")
 }
 
-// ToInternal returns the Internal ID associated with the given OID.
-func (cache *cacheStruct) ToInternal(oid uint32) Internal {
+// ToInternal returns the internal ID associated with the given OID.
+func (cache *cacheStruct) ToInternal(oid uint32) Id {
 	cache.mutex.RLock()
 	defer cache.mutex.RUnlock()
 	if id, ok := cache.toInternal[oid]; ok {
@@ -106,9 +106,9 @@ func (cache *cacheStruct) ToInternal(oid uint32) Internal {
 	return ""
 }
 
-// Exists returns whether the given Internal ID exists within the cache. This should primarily be used for the default
+// Exists returns whether the given internal ID exists within the cache. This should primarily be used for the default
 // functions, as it's not guaranteed that user functions will be in the cache, especially after a server restart.
-func (cache *cacheStruct) Exists(id Internal) bool {
+func (cache *cacheStruct) Exists(id Id) bool {
 	cache.mutex.RLock()
 	defer cache.mutex.RUnlock()
 	_, ok := cache.toOID[id]
@@ -116,7 +116,7 @@ func (cache *cacheStruct) Exists(id Internal) bool {
 }
 
 // setBuiltIn sets the given ID to the OID. This should only be used for the built-in items.
-func (cache *cacheStruct) setBuiltIn(id Internal, oid uint32) {
+func (cache *cacheStruct) setBuiltIn(id Id, oid uint32) {
 	if oid > builtinOidLimit {
 		panic("oid is not a built-in")
 	}
@@ -124,11 +124,11 @@ func (cache *cacheStruct) setBuiltIn(id Internal, oid uint32) {
 	cache.toInternal[oid] = id
 }
 
-// update is used to change the OID mapping of an existing Internal ID that has been changed (where the Internal ID
+// update is used to change the OID mapping of an existing internal ID that has been changed (where the internal ID
 // points to the same logical item).
 //
 //lint:ignore U1000 For future use
-func (cache *cacheStruct) update(old Internal, new Internal) {
+func (cache *cacheStruct) update(old Id, new Id) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 	// If the old ID doesn't exist in the cache, then we don't have anything to update

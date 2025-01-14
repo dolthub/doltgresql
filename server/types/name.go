@@ -48,7 +48,7 @@ var Name = &DoltgresType{
 	BaseTypeID:    id.NullType,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  id.NewInternalCollation("pg_catalog", "C"),
+	TypCollation:  id.NewCollation("pg_catalog", "C"),
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

@@ -54,7 +54,7 @@ var Internal = &DoltgresType{
 
 // NewInternalTypeWithBaseType returns Internal type with
 // internal base type set with given type.
-func NewInternalTypeWithBaseType(internalID id.InternalType) *DoltgresType {
+func NewInternalTypeWithBaseType(internalID id.Type) *DoltgresType {
 	it := Internal
 	it.BaseTypeForInternal = internalID
 	return it

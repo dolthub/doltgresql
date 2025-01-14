@@ -148,8 +148,8 @@ func (writer *Writer) String(val string) {
 	writer.buf.WriteString(val)
 }
 
-// Internal writes an Internal ID.
-func (writer *Writer) Internal(val id.Internal) {
+// Id writes an internal ID.
+func (writer *Writer) Id(val id.Id) {
 	writer.String(string(val))
 }
 

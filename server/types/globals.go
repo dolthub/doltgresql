@@ -82,8 +82,8 @@ const (
 
 // GetTypeByID returns the DoltgresType matching the given Internal ID.
 // If the Internal ID does not match a type, then nil is returned.
-func GetTypeByID(internalID id.InternalType) *DoltgresType {
-	t, ok := InternalToBuiltInDoltgresType[internalID]
+func GetTypeByID(internalID id.Type) *DoltgresType {
+	t, ok := IDToBuiltInDoltgresType[internalID]
 	if !ok {
 		// TODO: return UNKNOWN?
 		return nil
@@ -94,8 +94,8 @@ func GetTypeByID(internalID id.InternalType) *DoltgresType {
 // GetAllBuitInTypes returns a slice containing all registered types.
 // The slice is sorted by each type's ID.
 func GetAllBuitInTypes() []*DoltgresType {
-	pgTypes := make([]*DoltgresType, 0, len(InternalToBuiltInDoltgresType))
-	for internalID, typ := range InternalToBuiltInDoltgresType {
+	pgTypes := make([]*DoltgresType, 0, len(IDToBuiltInDoltgresType))
+	for internalID, typ := range IDToBuiltInDoltgresType {
 		if typ.ID == Unknown.ID && internalID.TypeName() != "unknown" {
 			continue
 		}
@@ -107,8 +107,8 @@ func GetAllBuitInTypes() []*DoltgresType {
 	return pgTypes
 }
 
-// InternalToBuiltInDoltgresType is a map of id.Internal to Doltgres' built-in type.
-var InternalToBuiltInDoltgresType = map[id.InternalType]*DoltgresType{
+// IDToBuiltInDoltgresType is a map of id.Id to Doltgres' built-in type.
+var IDToBuiltInDoltgresType = map[id.Type]*DoltgresType{
 	toInternal("_abstime"):         Unknown,
 	toInternal("_aclitem"):         Unknown,
 	toInternal("_bit"):             Unknown,
@@ -279,14 +279,14 @@ var InternalToBuiltInDoltgresType = map[id.InternalType]*DoltgresType{
 }
 
 // NameToInternalID is a mapping from a given name to its respective Internal ID.
-var NameToInternalID = map[string]id.InternalType{}
+var NameToInternalID = map[string]id.Type{}
 
 // init, for now, fills the contents of NameToInternalID, so that we may search for types using regtype. This should be
 // replaced with a better abstraction at some point.
 func init() {
 	for _, t := range GetAllBuitInTypes() {
 		NameToInternalID[t.Name()] = t.ID
-		pt, ok := types.OidToType[oid.Oid(id.Cache().ToOID(t.ID.Internal()))]
+		pt, ok := types.OidToType[oid.Oid(id.Cache().ToOID(t.ID.AsId()))]
 		if ok {
 			NameToInternalID[pt.SQLStandardName()] = t.ID
 		}

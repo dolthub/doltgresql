@@ -23,27 +23,32 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 )
 
-// sequenceIDValidator is the internal ID validator for sequences.
-func sequenceIDValidator(ctx *sql.Context, operation id.Operation, originalID id.Internal, newID id.Internal) error {
+// sequenceIDListener implements the performer and validator functions for sequences.
+type sequenceIDListener struct{}
+
+var _ id.Listener = sequenceIDListener{}
+
+// OperationValidator is the internal ID validator for sequences.
+func (sequenceIDListener) OperationValidator(ctx *sql.Context, operation id.Operation, originalID id.Id, newID id.Id) error {
 	switch originalID.Section() {
 	case id.Section_ColumnDefault, id.Section_Table:
 		switch operation {
 		case id.Operation_Rename, id.Operation_Delete, id.Operation_Delete_Cascade:
 			return nil
 		default:
-			return fmt.Errorf("sequence performer received unexpected operation `%s`", operation.String())
+			return fmt.Errorf("sequence validator received unexpected operation `%s`", operation.String())
 		}
 	default:
-		return fmt.Errorf("sequence performer received unexpected section `%s`", originalID.Section().String())
+		return fmt.Errorf("sequence validator received unexpected section `%s`", originalID.Section().String())
 	}
 }
 
-// sequenceIDValidator is the internal ID performer for sequences, which modifies the sequence collection in response to
+// OperationPerformer is the internal ID performer for sequences, which modifies the sequence collection in response to
 // the given operation and section of the original ID.
-func sequenceIDPerformer(ctx *sql.Context, operation id.Operation, originalID id.Internal, newID id.Internal) error {
+func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Operation, originalID id.Id, newID id.Id) error {
 	switch originalID.Section() {
 	case id.Section_ColumnDefault:
-		originalIDCol := id.InternalColumnDefault(originalID)
+		originalIDCol := id.ColumnDefault(originalID)
 		switch operation {
 		case id.Operation_Rename:
 			return nil
@@ -58,7 +63,7 @@ func sequenceIDPerformer(ctx *sql.Context, operation id.Operation, originalID id
 			})
 			for _, sequence := range sequences {
 				if sequence.OwnerColumn == originalIDCol.ColumnName() {
-					if err = collection.DropSequence(sequence.Name); err != nil {
+					if err = collection.DropSequence(sequence.Id); err != nil {
 						return err
 					}
 				}
@@ -68,7 +73,7 @@ func sequenceIDPerformer(ctx *sql.Context, operation id.Operation, originalID id
 			return fmt.Errorf("sequence performer received unexpected operation `%s`", operation.String())
 		}
 	case id.Section_Table:
-		originalIDTable := id.InternalTable(originalID)
+		originalIDTable := id.Table(originalID)
 		switch operation {
 		case id.Operation_Rename, id.Operation_Delete, id.Operation_Delete_Cascade:
 			collection, err := GetSequencesCollectionFromContext(ctx)
@@ -80,12 +85,12 @@ func sequenceIDPerformer(ctx *sql.Context, operation id.Operation, originalID id
 				Schema: originalIDTable.SchemaName(),
 			})
 			for _, sequence := range sequences {
-				if err = collection.DropSequence(sequence.Name); err != nil {
+				if err = collection.DropSequence(sequence.Id); err != nil {
 					return err
 				}
 				if operation == id.Operation_Rename {
-					sequence.OwnerTable = id.InternalTable(newID)
-					if err = collection.CreateSequence(sequence.Name.SchemaName(), sequence); err != nil {
+					sequence.OwnerTable = id.Table(newID)
+					if err = collection.CreateSequence(sequence.Id.SchemaName(), sequence); err != nil {
 						return err
 					}
 				}

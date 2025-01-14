@@ -35,7 +35,7 @@ func NewDomainType(
 	defaultExpr string,
 	notNull bool,
 	checks []*sql.CheckDefinition,
-	arrayID, internalID id.InternalType,
+	arrayID, internalID id.Type,
 ) *DoltgresType {
 	return &DoltgresType{
 		ID:            internalID,

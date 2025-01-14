@@ -82,7 +82,7 @@ func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	if err != nil {
 		return nil, err
 	}
-	sequenceID := id.NewInternalSequence(schema, c.sequence)
+	sequenceID := id.NewSequence(schema, c.sequence)
 	if sequence := collection.GetSequence(sequenceID); sequence.OwnerTable.IsValid() {
 		if c.cascade {
 			// TODO: if the sequence is referenced by the column's default value, then we also need to delete the default

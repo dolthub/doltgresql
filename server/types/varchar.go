@@ -63,7 +63,7 @@ var VarChar = &DoltgresType{
 	BaseTypeID:    id.NullType,
 	TypMod:        -1,
 	NDims:         0,
-	TypCollation:  id.NewInternalCollation("pg_catalog", "default"),
+	TypCollation:  id.NewCollation("pg_catalog", "default"),
 	DefaulBin:     "",
 	Default:       "",
 	Acl:           nil,

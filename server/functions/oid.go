@@ -56,7 +56,7 @@ var oidin = framework.Function1{
 		if internalID := id.Cache().ToInternal(uVal); internalID.IsValid() {
 			return internalID, nil
 		}
-		return id.NewInternalOID(uVal).Internal(), nil
+		return id.NewOID(uVal).AsId(), nil
 	},
 }
 
@@ -67,7 +67,7 @@ var oidout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return fmt.Sprintf("%d", id.Cache().ToOID(val.(id.Internal))), nil
+		return fmt.Sprintf("%d", id.Cache().ToOID(val.(id.Id))), nil
 	},
 }
 
@@ -82,7 +82,7 @@ var oidrecv = framework.Function1{
 		if len(data) == 0 {
 			return nil, nil
 		}
-		return id.Internal(data), nil
+		return id.Id(data), nil
 	},
 }
 
@@ -93,7 +93,7 @@ var oidsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(id.Internal)), nil
+		return []byte(val.(id.Id)), nil
 	},
 }
 
@@ -104,6 +104,6 @@ var btoidcmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		return int32(cmp.Compare(val1.(id.Internal), val2.(id.Internal))), nil
+		return int32(cmp.Compare(val1.(id.Id), val2.(id.Id))), nil
 	},
 }

@@ -53,11 +53,11 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	if pgCatalogCache.schemaOids == nil {
 		var schemaNames []string
-		var schemaOids []id.Internal
+		var schemaOids []id.Id
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
 				schemaNames = append(schemaNames, schema.Item.SchemaName())
-				schemaOids = append(schemaOids, schema.OID.Internal())
+				schemaOids = append(schemaOids, schema.OID.AsId())
 				return true, nil
 			},
 		})
@@ -95,7 +95,7 @@ var pgNamespaceSchema = sql.Schema{
 // pgNamespaceRowIter is the sql.RowIter for the pg_namespace table.
 type pgNamespaceRowIter struct {
 	schemas []string
-	oids    []id.Internal
+	oids    []id.Id
 	idx     int
 }
 

@@ -16,7 +16,7 @@ package id
 
 // This adds all of the built-in databases to the cache.
 func init() {
-	globalCache.setBuiltIn(NewInternal(Section_Database, "template1"), 1)
-	globalCache.setBuiltIn(NewInternal(Section_Database, "template0"), 4)
-	globalCache.setBuiltIn(NewInternal(Section_Database, "postgres"), 5)
+	globalCache.setBuiltIn(NewId(Section_Database, "template1"), 1)
+	globalCache.setBuiltIn(NewId(Section_Database, "template0"), 4)
+	globalCache.setBuiltIn(NewId(Section_Database, "postgres"), 5)
 }
