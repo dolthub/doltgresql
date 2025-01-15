@@ -15,8 +15,9 @@
 package ast
 
 import (
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
 func nodeVacuum(_ *Context, _ *tree.Vacuum) (vitess.Statement, error) {

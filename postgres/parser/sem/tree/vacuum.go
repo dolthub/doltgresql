@@ -16,7 +16,7 @@ package tree
 
 // Vacuum represents a VACUUM statement.
 type Vacuum struct {
-	Options VacuumOptions
+	Options       VacuumOptions
 	TablesAndCols VacuumTableAndColsList
 }
 
@@ -25,7 +25,7 @@ var _ Statement = &Vacuum{}
 func (node *Vacuum) String() string {
 	return "VACUUM" // TODO
 }
- 
+
 func (node *Vacuum) StatementType() StatementType {
 	return Ack
 }
@@ -42,7 +42,7 @@ func (node *Vacuum) Format(ctx *FmtCtx) {
 // VacuumOption represents a VACUUM option such as FREEZE, which has a (usually) boolean value attached.
 type VacuumOption struct {
 	Option string
-	Value any
+	Value  any
 }
 
 type VacuumOptions []*VacuumOption
