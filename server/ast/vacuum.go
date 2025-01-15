@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
+// nodeVacuum handles *tree.Vacuum nodes, returning a NoOp statement that issues an unimplemented warning
 func nodeVacuum(_ *Context, _ *tree.Vacuum) (vitess.Statement, error) {
 	return NewNoOp([]string{"VACUUM is not supported"}), nil
 }
