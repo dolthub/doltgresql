@@ -47,7 +47,7 @@ type VacuumOption struct {
 type VacuumOptions []*VacuumOption
 
 type VacuumTableAndCols struct {
-	Name *UnresolvedName
+	Name *UnresolvedObjectName
 	Cols NameList
 }
 

@@ -6528,12 +6528,12 @@ opt_vacuum_table_and_cols_list:
 vacuum_table_and_cols:
   table_name 
   {
-    $$.val = &tree.VacuumTableAndCols{Name: $1.unresolvedName()}
+    $$.val = &tree.VacuumTableAndCols{Name: $1.unresolvedObjectName()}
   }
 | table_name '(' name_list ')'
   {
      $$.val = &tree.VacuumTableAndCols{
-     	Name: $1.unresolvedName(),
+     	Name: $1.unresolvedObjectName(),
      	Cols: $3.nameList(),
      }
   }
