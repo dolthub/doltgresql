@@ -6343,7 +6343,7 @@ vacuum_stmt:
 opt_vacuum_option_list:
   '(' vacuum_option_list ')' 
   {
-    $$.val = $2
+    $$.val = $2.vacuumOptions()
   }
 | /* EMPTY */
   {
