@@ -6468,42 +6468,17 @@ vacuum_option:
     }
   }
 
-// Boolean constants for vacuum options. we can't use `boolean_value` because of conflicts with names
-// An empty value here is considered true
+// Boolean constants for vacuum options. An empty value here is considered true
 boolean_value_for_vacuum_opt:
   /* EMPTY */
   {
     $$.val = true
   }
-| TRUE
+| boolean_value
   {
-    $$.val = true
+    $$.val = $1
   }
-| FALSE
-  {
-    $$.val = false
-  }
-| 't'
-  {
-    $$.val = true
-  }
-| 'f'
-  {
-    $$.val = false
-  }
-| 'y'
-  {
-    $$.val = true
-  }
-| 'n'
-  {
-    $$.val = false
-  }
-| ICONST
-  {
-    $$.val = $1.int64() != 0
-  }
-
+  
 auto_on_off:
   AUTO
   {
