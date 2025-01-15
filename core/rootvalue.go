@@ -30,6 +30,7 @@ import (
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/typecollection"
 )
@@ -552,7 +553,7 @@ func (root *RootValue) RemoveTables(
 	}
 	for _, tableName := range tables {
 		for _, seq := range collection.GetSequencesWithTable(tableName) {
-			if err = collection.DropSequence(doltdb.TableName{Name: seq.Name, Schema: tableName.Schema}); err != nil {
+			if err = collection.DropSequence(seq.Id); err != nil {
 				return nil, err
 			}
 		}
@@ -594,7 +595,7 @@ func (root *RootValue) RenameTable(ctx context.Context, oldName, newName doltdb.
 		return nil, err
 	}
 	for _, seq := range collection.GetSequencesWithTable(oldName) {
-		seq.OwnerTable = newName.Name
+		seq.OwnerTable = id.NewTable(seq.OwnerTable.SchemaName(), newName.Name)
 	}
 	newRoot, err = newRoot.PutSequences(ctx, collection)
 	if err != nil {

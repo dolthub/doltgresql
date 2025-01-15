@@ -42,8 +42,8 @@ const (
 
 // Sequence represents a single sequence within the pg_sequence table.
 type Sequence struct {
-	Name        string
-	DataTypeID  id.Internal
+	Id          id.Sequence
+	DataTypeID  id.Type
 	Persistence Persistence
 	Start       int64
 	Current     int64
@@ -53,17 +53,17 @@ type Sequence struct {
 	Cache       int64
 	Cycle       bool
 	IsAtEnd     bool
-	OwnerTable  string
+	OwnerTable  id.Table
 	OwnerColumn string
 }
 
 // GetSequence returns the sequence with the given schema and name. Returns nil if the sequence cannot be found.
-func (pgs *Collection) GetSequence(name doltdb.TableName) *Sequence {
+func (pgs *Collection) GetSequence(name id.Sequence) *Sequence {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	if nameMap, ok := pgs.schemaMap[name.Schema]; ok {
-		if seq, ok := nameMap[name.Name]; ok {
+	if nameMap, ok := pgs.schemaMap[name.SchemaName()]; ok {
+		if seq, ok := nameMap[name.SequenceName()]; ok {
 			return seq
 		}
 	}
@@ -78,7 +78,7 @@ func (pgs *Collection) GetSequencesWithTable(name doltdb.TableName) []*Sequence 
 	if nameMap, ok := pgs.schemaMap[name.Schema]; ok {
 		var seqs []*Sequence
 		for _, seq := range nameMap {
-			if seq.OwnerTable == name.Name {
+			if seq.OwnerTable.TableName() == name.Name {
 				seqs = append(seqs, seq)
 			}
 		}
@@ -99,7 +99,7 @@ func (pgs *Collection) GetAllSequences() (sequences map[string][]*Sequence, sche
 		}
 		totalCount += len(seqs)
 		sort.Slice(seqs, func(i, j int) bool {
-			return seqs[i].Name < seqs[j].Name
+			return seqs[i].Id < seqs[j].Id
 		})
 		sequences[schemaName] = seqs
 	}
@@ -110,7 +110,7 @@ func (pgs *Collection) GetAllSequences() (sequences map[string][]*Sequence, sche
 }
 
 // HasSequence returns whether the sequence is present.
-func (pgs *Collection) HasSequence(name doltdb.TableName) bool {
+func (pgs *Collection) HasSequence(name id.Sequence) bool {
 	return pgs.GetSequence(name) != nil
 }
 
@@ -124,21 +124,21 @@ func (pgs *Collection) CreateSequence(schema string, seq *Sequence) error {
 		nameMap = make(map[string]*Sequence)
 		pgs.schemaMap[schema] = nameMap
 	}
-	if _, ok = nameMap[seq.Name]; ok {
-		return fmt.Errorf(`relation "%s" already exists`, seq.Name)
+	if _, ok = nameMap[seq.Id.SequenceName()]; ok {
+		return fmt.Errorf(`relation "%s" already exists`, seq.Id)
 	}
-	nameMap[seq.Name] = seq
+	nameMap[seq.Id.SequenceName()] = seq
 	return nil
 }
 
 // DropSequence drops an existing sequence.
-func (pgs *Collection) DropSequence(name doltdb.TableName) error {
+func (pgs *Collection) DropSequence(name id.Sequence) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	if nameMap, ok := pgs.schemaMap[name.Schema]; ok {
-		if _, ok = nameMap[name.Name]; ok {
-			delete(nameMap, name.Name)
+	if nameMap, ok := pgs.schemaMap[name.SchemaName()]; ok {
+		if _, ok = nameMap[name.SequenceName()]; ok {
+			delete(nameMap, name.SequenceName())
 			return nil
 		}
 	}
@@ -146,13 +146,13 @@ func (pgs *Collection) DropSequence(name doltdb.TableName) error {
 }
 
 // IterateSequences iterates over all sequences in the collection.
-func (pgs *Collection) IterateSequences(f func(schema string, seq *Sequence) error) error {
+func (pgs *Collection) IterateSequences(f func(seq *Sequence) error) error {
 	pgs.mutex.Lock()
 	defer pgs.mutex.Unlock()
 
-	for schema, nameMap := range pgs.schemaMap {
+	for _, nameMap := range pgs.schemaMap {
 		for _, seq := range nameMap {
-			if err := f(schema, seq); err != nil {
+			if err := f(seq); err != nil {
 				return err
 			}
 		}
@@ -225,9 +225,9 @@ func (sequence *Sequence) nextValForSequence() (int64, error) {
 	if sequence.IsAtEnd {
 		if !sequence.Cycle {
 			if sequence.Increment > 0 {
-				return 0, fmt.Errorf(`nextval: reached maximum value of sequence "%s" (%d)`, sequence.Name, sequence.Maximum)
+				return 0, fmt.Errorf(`nextval: reached maximum value of sequence "%s" (%d)`, sequence.Id, sequence.Maximum)
 			} else {
-				return 0, fmt.Errorf(`nextval: reached minimum value of sequence "%s" (%d)`, sequence.Name, sequence.Minimum)
+				return 0, fmt.Errorf(`nextval: reached minimum value of sequence "%s" (%d)`, sequence.Id, sequence.Minimum)
 			}
 		}
 		sequence.IsAtEnd = false

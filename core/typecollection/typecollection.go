@@ -114,8 +114,8 @@ func (pgs *TypeCollection) GetAllTypes() (typesMap map[string][]*types.DoltgresT
 
 // GetDomainType returns a domain type with the given schema and name.
 // Returns nil if the type cannot be found. It checks for domain type.
-func (pgs *TypeCollection) GetDomainType(schName, typName string) (*types.DoltgresType, bool) {
-	t, exists := pgs.GetType(schName, typName)
+func (pgs *TypeCollection) GetDomainType(internalID id.Type) (*types.DoltgresType, bool) {
+	t, exists := pgs.GetType(internalID)
 	if !exists {
 		return nil, exists
 	}
@@ -127,13 +127,13 @@ func (pgs *TypeCollection) GetDomainType(schName, typName string) (*types.Doltgr
 
 // GetType returns the type with the given schema and name.
 // Returns nil if the type cannot be found.
-func (pgs *TypeCollection) GetType(schName, typName string) (*types.DoltgresType, bool) {
+func (pgs *TypeCollection) GetType(internalID id.Type) (*types.DoltgresType, bool) {
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
 	pgs.addSupportedBuiltInTypes()
-	if nameMap, ok := pgs.schemaMap[schName]; ok {
-		if typ, ok := nameMap[typName]; ok {
+	if nameMap, ok := pgs.schemaMap[internalID.SchemaName()]; ok {
+		if typ, ok := nameMap[internalID.TypeName()]; ok {
 			return typ, true
 		}
 	}
@@ -142,14 +142,14 @@ func (pgs *TypeCollection) GetType(schName, typName string) (*types.DoltgresType
 }
 
 // GetTypeByID returns the type matching given ID.
-func (pgs *TypeCollection) GetTypeByID(internalID id.Internal) (*types.DoltgresType, bool) {
+func (pgs *TypeCollection) GetTypeByID(internalID id.Id) (*types.DoltgresType, bool) {
 	pgs.mutex.RLock()
 	defer pgs.mutex.RUnlock()
 
 	pgs.addSupportedBuiltInTypes()
 	for _, nameMap := range pgs.schemaMap {
 		for _, typ := range nameMap {
-			if typ.ID == internalID {
+			if typ.ID.AsId() == internalID {
 				return typ, true
 			}
 		}

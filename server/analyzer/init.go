@@ -24,18 +24,19 @@ import (
 // Comments are to match the Stringer formatting rules in the original rule definition file, but we can't generate
 // human-readable strings for these extended types because they are in another package.
 const (
-	ruleId_TypeSanitizer        analyzer.RuleId = iota + 1000 // typeSanitizer
-	ruleId_AddDomainConstraints                               // addDomainConstraints
-	ruleId_AddDomainConstraintsToCasts
-	ruleId_AssignInsertCasts            // assignInsertCasts
-	ruleId_AssignUpdateCasts            // assignUpdateCasts
-	ruleId_ReplaceIndexedTables         // replaceIndexedTables
-	ruleId_ReplaceSerial                // replaceSerial
-	ruleId_AddImplicitPrefixLengths     // addImplicitPrefixLengths
-	ruleId_InsertContextRootFinalizer   // insertContextRootFinalizer
-	ruleId_ResolveType                  // resolveType
-	ruleId_ReplaceArithmeticExpressions // replaceArithmeticExpressions
-	ruleId_OptimizeFunctions            // optimizeFunctions
+	ruleId_TypeSanitizer                analyzer.RuleId = iota + 1000 // typeSanitizer
+	ruleId_AddDomainConstraints                                       // addDomainConstraints
+	ruleId_AddDomainConstraintsToCasts                                // addDomainConstraintsToCasts
+	ruleId_AssignInsertCasts                                          // assignInsertCasts
+	ruleId_AssignUpdateCasts                                          // assignUpdateCasts
+	ruleId_ReplaceIndexedTables                                       // replaceIndexedTables
+	ruleId_ReplaceNode                                                // replaceNode
+	ruleId_ReplaceSerial                                              // replaceSerial
+	ruleId_AddImplicitPrefixLengths                                   // addImplicitPrefixLengths
+	ruleId_InsertContextRootFinalizer                                 // insertContextRootFinalizer
+	ruleId_ResolveType                                                // resolveType
+	ruleId_ReplaceArithmeticExpressions                               // replaceArithmeticExpressions
+	ruleId_OptimizeFunctions                                          // optimizeFunctions
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -71,6 +72,7 @@ func Init() {
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
 		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
+		analyzer.Rule{Id: ruleId_ReplaceNode, Apply: ReplaceNode},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
 }
 

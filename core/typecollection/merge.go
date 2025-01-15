@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -26,7 +27,7 @@ func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *T
 	mergedCollection := ourCollection.Clone()
 	err := theirCollection.IterateTypes(func(schema string, theirType *types.DoltgresType) error {
 		// If we don't have the type, then we simply add it
-		mergedType, exists := mergedCollection.GetType(schema, theirType.Name())
+		mergedType, exists := mergedCollection.GetType(id.NewType(schema, theirType.Name()))
 		if !exists {
 			return mergedCollection.CreateType(schema, theirType)
 		}

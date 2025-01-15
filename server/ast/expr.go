@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"go/constant"
-	"strconv"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -506,7 +505,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.DOid:
 		internalID := id.Cache().ToInternal(uint32(node.DInt))
 		if !internalID.IsValid() {
-			internalID = id.NewInternal(id.Section_OID, strconv.FormatUint(uint64(node.DInt), 10))
+			internalID = id.NewOID(uint32(node.DInt)).AsId()
 		}
 		return vitess.InjectedExpr{
 			Expression: pgexprs.NewRawLiteralOid(internalID),

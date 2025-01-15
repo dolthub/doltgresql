@@ -25,7 +25,7 @@ import (
 var ErrInvalidInputValueForEnum = errors.NewKind(`invalid input value for enum %s: "%s"`)
 
 // NewEnumType creates new instance of enum DoltgresType.
-func NewEnumType(ctx *sql.Context, arrayID, typeID id.Internal, labels map[string]EnumLabel) *DoltgresType {
+func NewEnumType(ctx *sql.Context, arrayID, typeID id.Type, labels map[string]EnumLabel) *DoltgresType {
 	return &DoltgresType{
 		ID:            typeID,
 		TypLength:     4,
@@ -37,7 +37,7 @@ func NewEnumType(ctx *sql.Context, arrayID, typeID id.Internal, labels map[strin
 		Delimiter:     ",",
 		RelID:         id.Null,
 		SubscriptFunc: toFuncID("-"),
-		Elem:          id.Null,
+		Elem:          id.NullType,
 		Array:         arrayID,
 		InputFunc:     toFuncID("enum_in", toInternal("cstring"), toInternal("oid")),
 		OutputFunc:    toFuncID("enum_out", toInternal("anyenum")),
@@ -49,10 +49,10 @@ func NewEnumType(ctx *sql.Context, arrayID, typeID id.Internal, labels map[strin
 		Align:         TypeAlignment_Int,
 		Storage:       TypeStorage_Plain,
 		NotNull:       false,
-		BaseTypeID:    id.Null,
+		BaseTypeID:    id.NullType,
 		TypMod:        -1,
 		NDims:         0,
-		TypCollation:  id.Null,
+		TypCollation:  id.NullCollation,
 		DefaulBin:     "",
 		Default:       "",
 		Acl:           nil,
@@ -66,14 +66,14 @@ func NewEnumType(ctx *sql.Context, arrayID, typeID id.Internal, labels map[strin
 // EnumLabel represents an enum type label.
 // This is a pg_enum row entry.
 type EnumLabel struct {
-	ID        id.Internal // First segment is the ENUM parent's Internal ID, second segment is the label
+	ID        id.EnumLabel
 	SortOrder float32
 }
 
 // NewEnumLabel creates new instance of enum type label.
-func NewEnumLabel(ctx *sql.Context, typeID id.Internal, so float32) EnumLabel {
+func NewEnumLabel(ctx *sql.Context, labelID id.EnumLabel, so float32) EnumLabel {
 	return EnumLabel{
-		ID:        typeID,
+		ID:        labelID,
 		SortOrder: so,
 	}
 }

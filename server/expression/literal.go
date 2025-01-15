@@ -222,7 +222,7 @@ func NewRawLiteralJSON(val string) *Literal {
 }
 
 // NewRawLiteralOid returns a new *Literal containing a OID value.
-func NewRawLiteralOid(val id.Internal) *Literal {
+func NewRawLiteralOid(val id.Id) *Literal {
 	return &Literal{
 		value: val,
 		typ:   pgtypes.Oid,

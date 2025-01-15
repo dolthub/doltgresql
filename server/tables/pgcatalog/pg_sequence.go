@@ -54,11 +54,11 @@ func (p PgSequenceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	if pgCatalogCache.sequences == nil {
 		var sequences []*sequences.Sequence
-		var sequenceOids []id.Internal
+		var sequenceOids []id.Id
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Sequence: func(ctx *sql.Context, _ functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
 				sequences = append(sequences, sequence.Item)
-				sequenceOids = append(sequenceOids, sequence.OID)
+				sequenceOids = append(sequenceOids, sequence.OID.AsId())
 				return true, nil
 			},
 		})
@@ -99,7 +99,7 @@ var pgSequenceSchema = sql.Schema{
 // pgSequenceRowIter is the sql.RowIter for the pg_sequence table.
 type pgSequenceRowIter struct {
 	sequences []*sequences.Sequence
-	oids      []id.Internal
+	oids      []id.Id
 	idx       int
 }
 
@@ -114,14 +114,14 @@ func (iter *pgSequenceRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	sequence := iter.sequences[iter.idx-1]
 	oid := iter.oids[iter.idx-1]
 	return sql.Row{
-		oid,                       // seqrelid
-		sequence.DataTypeID,       // seqtypid
-		int64(sequence.Start),     // seqstart
-		int64(sequence.Increment), // seqincrement
-		int64(sequence.Maximum),   // seqmax
-		int64(sequence.Minimum),   // seqmin
-		int64(sequence.Cache),     // seqcache
-		bool(sequence.Cycle),      // seqcycle
+		oid,                        // seqrelid
+		sequence.DataTypeID.AsId(), // seqtypid
+		int64(sequence.Start),      // seqstart
+		int64(sequence.Increment),  // seqincrement
+		int64(sequence.Maximum),    // seqmax
+		int64(sequence.Minimum),    // seqmin
+		int64(sequence.Cache),      // seqcache
+		bool(sequence.Cycle),       // seqcycle
 	}, nil
 }
 

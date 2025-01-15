@@ -52,11 +52,11 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	}
 
 	if pgCatalogCache.types == nil {
-		var pgCatalogOid id.Internal
+		var pgCatalogOid id.Id
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
 				if schema.Item.SchemaName() == PgCatalogName {
-					pgCatalogOid = schema.OID
+					pgCatalogOid = schema.OID.AsId()
 					return false, nil
 				}
 				return true, nil
@@ -124,7 +124,7 @@ var pgTypeSchema = sql.Schema{
 
 // pgTypeRowIter is the sql.RowIter for the pg_type table.
 type pgTypeRowIter struct {
-	pgCatalogOid id.Internal
+	pgCatalogOid id.Id
 	types        []*pgtypes.DoltgresType
 	idx          int
 }
@@ -142,7 +142,7 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	typAcl := []any(nil)
 
 	return sql.Row{
-		typ.ID,                  //oid
+		typ.ID.AsId(),           //oid
 		typ.Name(),              //typname
 		iter.pgCatalogOid,       //typnamespace
 		id.Null,                 //typowner
@@ -155,8 +155,8 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		typ.Delimiter,           //typdelim
 		typ.RelID,               //typrelid
 		typ.SubscriptFuncName(), //typsubscript
-		typ.Elem,                //typelem
-		typ.Array,               //typarray
+		typ.Elem.AsId(),         //typelem
+		typ.Array.AsId(),        //typarray
 		typ.InputFuncName(),     //typinput
 		typ.OutputFuncName(),    //typoutput
 		typ.ReceiveFuncName(),   //typreceive
@@ -167,10 +167,10 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		string(typ.Align),       //typalign
 		string(typ.Storage),     //typstorage
 		typ.NotNull,             //typnotnull
-		typ.BaseTypeID,          //typbasetype
+		typ.BaseTypeID.AsId(),   //typbasetype
 		typ.TypMod,              //typtypmod
 		typ.NDims,               //typndims
-		typ.TypCollation,        //typcollation
+		typ.TypCollation.AsId(), //typcollation
 		typ.DefaulBin,           //typdefaultbin
 		typ.Default,             //typdefault
 		typAcl,                  //typacl

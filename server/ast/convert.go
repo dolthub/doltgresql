@@ -275,6 +275,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeUpdate(ctx, stmt)
 	case *tree.ValuesClause:
 		return nodeValuesClause(ctx, stmt)
+	case *tree.Vacuum:
+		return nodeVacuum(ctx, stmt)
 	case nil:
 		return nil, nil
 	default:

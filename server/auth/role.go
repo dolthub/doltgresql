@@ -40,6 +40,7 @@ type Role struct {
 // process. IDs are useful for referencing a specific role without using their name, since names can change. This is
 // basically a special OID specific to roles. Eventually, we'll have a proper OID system, but this is a placeholder for
 // now.
+// TODO: need to replace with id.InternalUser
 type RoleID uint64
 
 // CreateDefaultRole creates the given role object with all default values set.

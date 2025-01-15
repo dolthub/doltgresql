@@ -292,7 +292,7 @@ func TestAnalyze(t *testing.T) {
 		Unimplemented("ANALYZE ( SKIP_LOCKED , SKIP_LOCKED true ) table_name ( column_name , column_name ) , table_name ( column_name , column_name )"),
 		Unimplemented("ANALYZE ( SKIP_LOCKED true , SKIP_LOCKED true ) table_name ( column_name , column_name ) , table_name ( column_name , column_name )"),
 		Unimplemented("ANALYZE"),
-		Converts("ANALYZE VERBOSE"),
+		Unimplemented("ANALYZE VERBOSE"),
 		Converts("ANALYZE table_name"),
 		Unimplemented("ANALYZE VERBOSE table_name"),
 		Unimplemented("ANALYZE table_name ( column_name )"),

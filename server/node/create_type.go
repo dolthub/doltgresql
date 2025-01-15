@@ -110,25 +110,25 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var newType *types.DoltgresType
 	switch c.typType {
 	case types.TypeType_Pseudo:
-		newType = types.NewShellType(ctx, id.NewInternal(id.Section_Type, c.SchemaName, c.Name))
+		newType = types.NewShellType(ctx, id.NewType(c.SchemaName, c.Name))
 	case types.TypeType_Enum:
-		typeID := id.NewInternal(id.Section_Type, c.SchemaName, c.Name)
-		arrayID := id.NewInternal(id.Section_Type, c.SchemaName, "_"+c.Name)
+		typeID := id.NewType(c.SchemaName, c.Name)
+		arrayID := id.NewType(c.SchemaName, "_"+c.Name)
 		enumLabelMap := make(map[string]types.EnumLabel)
 		for i, l := range c.Labels {
 			if _, ok := enumLabelMap[l]; ok {
 				// DETAIL:  Key (enumtypid, enumlabel)=(16702, ok) already exists.
 				return nil, fmt.Errorf(`duplicate key value violates unique constraint "pg_enum_typid_label_index"`)
 			}
-			labelID := id.NewInternal(id.Section_EnumLabel, string(typeID), l)
+			labelID := id.NewEnumLabel(typeID, l)
 			el := types.NewEnumLabel(ctx, labelID, float32(i+1))
 			enumLabelMap[l] = el
 		}
 		newType = types.NewEnumType(ctx, arrayID, typeID, enumLabelMap)
 		// TODO: store labels somewhere
 	case types.TypeType_Composite:
-		typeID := id.NewInternal(id.Section_Type, c.SchemaName, c.Name)
-		arrayID := id.NewInternal(id.Section_Type, c.SchemaName, "_"+c.Name)
+		typeID := id.NewType(c.SchemaName, c.Name)
+		arrayID := id.NewType(c.SchemaName, "_"+c.Name)
 
 		relID := id.Null // TODO: create relation with c.AsTypes
 		attrs := make([]types.CompositeAttribute, len(c.AsTypes))

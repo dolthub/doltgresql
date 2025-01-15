@@ -23,6 +23,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/types"
 )
@@ -87,7 +88,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	typ, exists := collection.GetType(schema, c.typName)
+	typ, exists := collection.GetType(id.NewType(schema, c.typName))
 	if !exists {
 		if c.ifExists {
 			// TODO: issue a notice
@@ -101,7 +102,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, fmt.Errorf(`cascading type drops are not yet supported`)
 	}
 
-	if _, ok := types.InternalToBuiltInDoltgresType[typ.ID]; ok {
+	if _, ok := types.IDToBuiltInDoltgresType[typ.ID]; ok {
 		return nil, types.ErrCannotDropSystemType.New(typ.String())
 	}
 

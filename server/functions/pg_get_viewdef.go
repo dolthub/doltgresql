@@ -41,7 +41,7 @@ var pg_get_viewdef_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		oidVal := val.(id.Internal)
+		oidVal := val.(id.Id)
 		return getViewDef(ctx, oidVal)
 	},
 }
@@ -54,7 +54,7 @@ var pg_get_viewdef_oid_bool = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		oidVal := val1.(id.Internal)
+		oidVal := val1.(id.Id)
 		// TODO: pretty printing is not yet supported
 		return getViewDef(ctx, oidVal)
 	},
@@ -75,7 +75,7 @@ var pg_get_viewdef_oid_int = framework.Function2{
 }
 
 // getViewDef takes oid of view and returns the text definition of underlying SELECT statement.
-func getViewDef(ctx *sql.Context, oidVal id.Internal) (string, error) {
+func getViewDef(ctx *sql.Context, oidVal id.Id) (string, error) {
 	var result string
 	err := RunCallback(ctx, oidVal, Callbacks{
 		View: func(ctx *sql.Context, sch ItemSchema, view ItemView) (cont bool, err error) {

@@ -44,7 +44,7 @@ var time_in = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
-		//oid := val2.(id.Internal)
+		//oid := val2.(id.Id)
 		//typmod := val3.(int32)
 		// TODO: decode typmod to precision
 		p := 6
@@ -78,7 +78,7 @@ var time_recv = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
-		//oid := val2.(id.Internal)
+		//oid := val2.(id.Id)
 		//typmod := val3.(int32)
 		// TODO: decode typmod to precision
 		if len(data) == 0 {

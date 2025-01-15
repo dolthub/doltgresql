@@ -392,7 +392,7 @@ var oidlt = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res := cmp.Compare(id.Cache().ToOID(val1.(id.Internal)), id.Cache().ToOID(val2.(id.Internal)))
+		res := cmp.Compare(id.Cache().ToOID(val1.(id.Id)), id.Cache().ToOID(val2.(id.Id)))
 		return res == -1, nil
 	},
 }
