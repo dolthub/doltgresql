@@ -675,6 +675,18 @@ func (u *sqlSymUnion) createAggOptions() []tree.CreateAggOption {
 func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
     return u.val.([]tree.AggregateToDrop)
 }
+func (u *sqlSymUnion) vacuumOptions() tree.VacuumOptions {
+    return u.val.(tree.VacuumOptions)
+}
+func (u *sqlSymUnion) vacuumOption() *tree.VacuumOption {
+    return u.val.(*tree.VacuumOption)
+}
+func (u *sqlSymUnion) vacuumTableAndCols() *tree.VacuumTableAndCols {
+    return u.val.(*tree.VacuumTableAndCols)
+}
+func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
+    return u.val.(tree.VacuumTableAndColsList)
+}
 %}
 
 // NB: the %token definitions must come before the %type definitions in this
@@ -697,12 +709,12 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACCESS ACTION ADD ADMIN AFTER AGGREGATE
 %token <str> ALIGNMENT ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
-%token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTOMATIC
+%token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTO AUTOMATIC
 
 %token <str> BACKUP BACKUPS BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> FORMAT CSV HEADER
-%token <str> BUCKET_COUNT
-%token <str> BOOLEAN BOTH BOX2D BUNDLE BY BYPASSRLS
+%token <str> BUCKET_COUNT 
+%token <str> BOOLEAN BOTH BOX2D BUFFER_USAGE_LIMIT BUNDLE BY BYPASSRLS
 
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
 %token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
@@ -716,7 +728,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
 %token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESCRIBE DESERIALFUNC DESTINATION
-%token <str> DETACH DETACHED DICTIONARY DISABLE DISCARD DISTINCT DO DOMAIN DOUBLE DROP
+%token <str> DETACH DETACHED DICTIONARY DISABLE DISABLE_PAGE_SKIPPING DISCARD DISTINCT DO DOMAIN DOUBLE DROP
 
 %token <str> EACH ELEMENT ELSE ENABLE ENCODING ENCRYPTION_PASSPHRASE ENCRYPTED END ENUM ENUMS ESCAPE EVENT
 %token <str> EXCEPT EXCLUDE EXCLUDING EXISTS EXECUTE EXECUTION EXPERIMENTAL
@@ -726,7 +738,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH
 %token <str> FILES FILTER FINALFUNC FINALFUNC_EXTRA FINALFUNC_MODIFY FINALIZE FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
-%token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
+%token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FREEZE FROM FULL FUNCTION FUNCTIONS
 
 %token <str> GENERATED GEOGRAPHY GEOMETRY GEOMETRYM GEOMETRYZ GEOMETRYZM
 %token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
@@ -737,7 +749,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> ICU_LOCALE ICU_RULES IDENTITY
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMMUTABLE IMPORT
 %token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
-%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEXES INHERIT INHERITS INITCOND INJECT INLINE INPUT INTERLEAVE INITIALLY
+%token <str> INET_CONTAINS_OR_EQUALS INDEX INDEX_CLEANUP INDEXES INHERIT INHERITS INITCOND INJECT INLINE INPUT INTERLEAVE INITIALLY
 %token <str> INNER INOUT INSERT INSTEAD INT INTEGER INTERNALLENGTH
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
@@ -759,13 +771,13 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> NOBYPASSRLS NOCREATEDB NOCREATELOGIN NOCREATEROLE NOINHERIT NOLOGIN NOMODIFYCLUSTERSETTING NOREPLICATION NOSUPERUSER NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC YES
 
-%token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY OPT OPTION OPTIONS OR
+%token <str> OBJECT OF OFF OFFSET OID OIDS OIDVECTOR OLD ON ONLY ONLY_DATABASE_STATS OPT OPTION OPTIONS OR
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OUTPUT OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
 %token <str> PARALLEL PARAMETER PARENT PARSER PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSWORD PAUSE PAUSED PHYSICAL
 %token <str> PLACING PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLICY POLYGON POLYGONM POLYGONZ POLYGONZM
 %token <str> POSITION PRECEDING PRECISION PREFERRED PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
-%token <str> PROCEDURAL PROCEDURE PROCEDURES PUBLIC PUBLICATION
+%token <str> PROCEDURAL PROCEDURE PROCEDURES PROCESS_MAIN PROCESS_TOAST PUBLIC PUBLICATION
 
 %token <str> QUERIES QUERY
 
@@ -778,7 +790,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY
 %token <str> SECURITY_BARRIER SECURITY_INVOKER SEED SELECT SEND
 %token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETOF SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
-%token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_MISSING_FOREIGN_KEYS
+%token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_LOCKED SKIP_DATABASE_STATS SKIP_MISSING_FOREIGN_KEYS
 %token <str> SKIP_MISSING_SEQUENCES SKIP_MISSING_SEQUENCE_OWNERS SKIP_MISSING_VIEWS SMALLINT SMALLSERIAL SNAPSHOT SOME
 %token <str> SORTOP SPLIT SQL SQRT SSPACE STABLE START STATEMENT STATISTICS STATUS STDIN STRATEGY STRICT STRING
 %token <str> STORAGE STORE STORED STYPE SUBSCRIPT SUBSCRIPTION SUBSTRING SUBTYPE SUBTYPE_DIFF SUBTYPE_OPCLASS
@@ -792,7 +804,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %token <str> UNBOUNDED UNCOMMITTED UNION UNIQUE UNKNOWN UNLOGGED UNSAFE UNSPLIT
 %token <str> UPDATE UPSERT UNTIL USAGE USE USER USERS USING UUID
 
-%token <str> VALID VALIDATE VALIDATOR VALUE VALUES
+%token <str> VACUUM VALID VALIDATE VALIDATOR VALUE VALUES VERBOSE
 %token <str> VARBIT VARCHAR VARIABLE VARIADIC VARYING VERSION VIEW VIEWACTIVITY VIRTUAL VOLATILE
 
 %token <str> WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRAPPER WRITE
@@ -1043,6 +1055,13 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 %type <tree.Statement> declare_cursor_stmt
 %type <tree.Statement> reindex_stmt
 
+%type <tree.Statement> vacuum_stmt
+%type <*tree.VacuumOption> vacuum_option legacy_vacuum_option
+%type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list legacy_vacuum_option_list
+%type <*tree.VacuumTableAndCols> vacuum_table_and_cols 
+%type <tree.VacuumTableAndColsList> opt_vacuum_table_and_cols_list
+%type <str> auto_on_off
+
 %type <[]string> opt_incremental
 %type <tree.KVOption> kv_option
 %type <[]tree.KVOption> kv_option_list opt_with_options opt_with_schedule_options
@@ -1206,7 +1225,7 @@ func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
 
 %type <bool> all_or_distinct opt_cascade opt_if_exists opt_restrict opt_trusted opt_procedural
 %type <bool> with_comment opt_with_force opt_create_as_with_data
-%type <bool> boolean_value
+%type <bool> boolean_value boolean_value_for_vacuum_opt
 %type <empty> join_outer
 %type <tree.JoinCond> join_qual
 %type <str> join_type
@@ -1469,6 +1488,7 @@ non_transaction_stmt:
 | close_cursor_stmt
 | declare_cursor_stmt
 | reindex_stmt
+| vacuum_stmt
 
 stmt_list:
   non_transaction_stmt
@@ -6311,6 +6331,237 @@ reindex_stmt:
     return purposelyUnimplemented(sqllex, "reindex system", "CockroachDB does not require reindexing.")
   }
 
+vacuum_stmt:
+  VACUUM opt_vacuum_option_list opt_vacuum_table_and_cols_list
+  {
+     $$.val = &tree.Vacuum{
+       Options: $2.vacuumOptions(),
+       TablesAndCols: $3.vacuumTableAndColsList(),
+     }
+  }
+| VACUUM legacy_vacuum_option_list opt_vacuum_table_and_cols_list
+  {
+     $$.val = &tree.Vacuum{
+       Options: $2.vacuumOptions(),
+       TablesAndCols: $3.vacuumTableAndColsList(),
+     }
+  }
+ 
+
+opt_vacuum_option_list:
+  '(' vacuum_option_list ')' 
+  {
+    $$.val = $2.vacuumOptions()
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.VacuumOptions(nil)
+  }
+  
+vacuum_option_list:
+  vacuum_option
+  {
+    $$.val = tree.VacuumOptions{$1.vacuumOption()}
+  }
+| vacuum_option_list ',' vacuum_option
+  {
+    $$.val = append($1.vacuumOptions(), $3.vacuumOption())
+  }
+
+vacuum_option:
+  FULL boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FULL",
+    	Value:  $2,
+    }
+  }
+| FREEZE boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FREEZE",
+    	Value:  $2,
+    }
+  }
+| VERBOSE boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "VERBOSE",
+    	Value:  $2,
+    }
+  }
+| ANALYZE boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "ANALYZE",
+    	Value:  $2,
+    }
+  }
+| DISABLE_PAGE_SKIPPING boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "DISABLE_PAGE_SKIPPING",
+    	Value:  $2,
+    }
+  }
+| SKIP_LOCKED boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "SKIP_LOCKED",
+    	Value:  $2,
+    }
+  }
+| INDEX_CLEANUP auto_on_off
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "INDEX_CLEANUP",
+    	Value:  $2,
+    }
+  }
+| PROCESS_MAIN boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "PROCESS_MAIN",
+    	Value:  $2,
+    }
+  }
+| PROCESS_TOAST boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "PROCESS_TOAST",
+    	Value:  $2,
+    }
+  }
+| TRUNCATE boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "TRUNCATE",
+    	Value:  $2,
+    }
+  }
+| PARALLEL ICONST
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "PARALLEL",
+    	Value:  $2,
+    }
+  }
+| SKIP_DATABASE_STATS boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "SKIP_DATABASE_STATS",
+    	Value:  $2,
+    }
+  }
+| ONLY_DATABASE_STATS boolean_value_for_vacuum_opt
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "ONLY_DATABASE_STATS",
+    	Value:  $2,
+    }
+  }
+| BUFFER_USAGE_LIMIT ICONST
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "BUFFER_USAGE_LIMIT",
+    	Value:  $2,
+    }
+  }
+
+// Boolean constants for vacuum options. An empty value here is considered true
+boolean_value_for_vacuum_opt:
+  /* EMPTY */
+  {
+    $$.val = true
+  }
+| boolean_value
+  {
+    $$.val = $1
+  }
+  
+auto_on_off:
+  AUTO
+  {
+    $$ = "AUTO"
+  }
+| ON
+  {
+    $$ = "ON"
+  }
+| OFF
+  {
+    $$ = "OFF"
+  }
+
+legacy_vacuum_option_list:
+  legacy_vacuum_option
+  {
+    $$.val = tree.VacuumOptions{$1.vacuumOption()}
+  }
+| legacy_vacuum_option_list legacy_vacuum_option
+  {
+    $$.val = append($1.vacuumOptions(), $2.vacuumOption())
+  }
+  
+// this rule is actually more lenient than postgres: we can parse these four terms in any order
+legacy_vacuum_option:
+  FULL
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FULL",
+    	Value:  true,
+    }
+  }
+| FREEZE
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FREEZE",
+    	Value:  true,
+    }
+  }
+| VERBOSE
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "VERBOSE",
+    	Value:  true,
+    }
+  }
+| ANALYZE
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "ANALYZE",
+    	Value:  true,
+    }
+  }  
+
+opt_vacuum_table_and_cols_list:
+  /* EMPTY */
+  {
+    $$.val = (tree.VacuumTableAndColsList)(nil)
+  }
+| vacuum_table_and_cols 
+  {
+    $$.val = tree.VacuumTableAndColsList{$1.vacuumTableAndCols()}
+  }
+| vacuum_table_and_cols ',' opt_vacuum_table_and_cols_list
+  {
+    list := $3.vacuumTableAndColsList()
+    $$.val = append(list, $1.vacuumTableAndCols())
+  }
+  
+vacuum_table_and_cols:
+  table_name 
+  {
+    $$.val = &tree.VacuumTableAndCols{Name: $1.unresolvedObjectName()}
+  }
+| table_name '(' name_list ')'
+  {
+     $$.val = &tree.VacuumTableAndCols{
+     	Name: $1.unresolvedObjectName(),
+     	Cols: $3.nameList(),
+     }
+  }
+    
 // %Help: SHOW SESSION - display session variables
 // %Category: Cfg
 // %Text: SHOW [SESSION] { <var> | ALL }
@@ -13750,7 +14001,7 @@ name_list:
   {
     $$.val = append($1.nameList(), tree.Name($3))
   }
-
+  
 // Constants
 numeric_only:
   signed_iconst
@@ -13933,6 +14184,7 @@ standalone_index_name: db_object_name
 explain_option_name:
   non_reserved_word
 | ANALYZE
+| VERBOSE
 
 cursor_name:           name
 
@@ -14189,6 +14441,7 @@ unreserved_keyword:
 | ATOMIC
 | ATTACH
 | ATTRIBUTE
+| AUTO
 | AUTOMATIC
 | BACKUP
 | BACKUPS
@@ -14197,12 +14450,11 @@ unreserved_keyword:
 | BEGIN
 | BINARY
 | BUCKET_COUNT
+| BUFFER_USAGE_LIMIT
 | BUNDLE
 | BY
 | BYPASSRLS
 | CACHE
-| CHAIN
-| CHECK_OPTION
 | CALL
 | CALLED
 | CANCEL
@@ -14211,7 +14463,9 @@ unreserved_keyword:
 | CASCADE
 | CASCADED
 | CATEGORY
+| CHAIN
 | CHANGEFEED
+| CHECK_OPTION
 | CLASS
 | CLOSE
 | CLUSTER
@@ -14226,10 +14480,10 @@ unreserved_keyword:
 | COMPACT
 | COMPLETE
 | COMPRESSION
-| CONFLICT
 | CONFIGURATION
 | CONFIGURATIONS
 | CONFIGURE
+| CONFLICT
 | CONNECTION
 | CONSTRAINTS
 | CONTROLCHANGEFEED
@@ -14263,6 +14517,7 @@ unreserved_keyword:
 | DETACHED
 | DICTIONARY
 | DISABLE
+| DISABLE_PAGE_SKIPPING
 | DISCARD
 | DOMAIN
 | DOUBLE
@@ -14306,13 +14561,13 @@ unreserved_keyword:
 | FUNCTION
 | FUNCTIONS
 | GENERATED
-| GEOMETRYM
-| GEOMETRYZ
-| GEOMETRYZM
 | GEOMETRYCOLLECTION
 | GEOMETRYCOLLECTIONM
 | GEOMETRYCOLLECTIONZ
 | GEOMETRYCOLLECTIONZM
+| GEOMETRYM
+| GEOMETRYZ
+| GEOMETRYZM
 | GLOBAL
 | GRANTED
 | GRANTS
@@ -14327,6 +14582,7 @@ unreserved_keyword:
 | ICU_LOCALE
 | ICU_RULES
 | IDENTITY
+| IGNORE_FOREIGN_KEYS
 | IMMEDIATE
 | IMMUTABLE
 | IMPORT
@@ -14335,6 +14591,7 @@ unreserved_keyword:
 | INCREMENT
 | INCREMENTAL
 | INDEXES
+| INDEX_CLEANUP
 | INHERIT
 | INHERITS
 | INITCOND
@@ -14416,30 +14673,30 @@ unreserved_keyword:
 | NEW
 | NEXT
 | NO
-| NORMAL
-| NO_INDEX_JOIN
 | NOBYPASSRLS
-| NOCREATEDB
-| NOCREATELOGIN
 | NOCANCELQUERY
-| NOCREATEROLE
 | NOCONTROLCHANGEFEED
 | NOCONTROLJOB
+| NOCREATEDB
+| NOCREATELOGIN
+| NOCREATEROLE
 | NOINHERIT
 | NOLOGIN
 | NOMODIFYCLUSTERSETTING
 | NOREPLICATION
+| NORMAL
 | NOSUPERUSER
 | NOVIEWACTIVITY
 | NOWAIT
+| NO_INDEX_JOIN
 | NULLS
-| IGNORE_FOREIGN_KEYS
 | OBJECT
 | OF
 | OFF
 | OID
 | OIDS
 | OLD
+| ONLY_DATABASE_STATS
 | OPERATOR
 | OPT
 | OPTION
@@ -14481,6 +14738,8 @@ unreserved_keyword:
 | PROCEDURAL
 | PROCEDURE
 | PROCEDURES
+| PROCESS_MAIN
+| PROCESS_TOAST
 | PUBLIC
 | PUBLICATION
 | QUERIES
@@ -14539,10 +14798,10 @@ unreserved_keyword:
 | SECURITY_INVOKER
 | SEED
 | SEND
-| SERIALFUNC
-| SERIALIZABLE
 | SEQUENCE
 | SEQUENCES
+| SERIALFUNC
+| SERIALIZABLE
 | SERVER
 | SESSION
 | SESSIONS
@@ -14555,6 +14814,8 @@ unreserved_keyword:
 | SHOW
 | SIMPLE
 | SKIP
+| SKIP_DATABASE_STATS
+| SKIP_LOCKED
 | SKIP_MISSING_FOREIGN_KEYS
 | SKIP_MISSING_SEQUENCES
 | SKIP_MISSING_SEQUENCE_OWNERS
@@ -14592,6 +14853,7 @@ unreserved_keyword:
 | TEMPLATE
 | TEMPORARY
 | TEXT
+| THROTTLING
 | TIES
 | TRACE
 | TRANSACTION
@@ -14604,19 +14866,19 @@ unreserved_keyword:
 | TYPES
 | TYPMOD_IN
 | TYPMOD_OUT
-| THROTTLING
 | UNBOUNDED
 | UNCOMMITTED
 | UNKNOWN
 | UNLOGGED
+| UNSAFE
 | UNSPLIT
 | UNTIL
-| UNSAFE
 | UPDATE
 | UPSERT
 | USAGE
 | USE
 | USERS
+| VACUUM
 | VALID
 | VALIDATE
 | VALIDATOR
@@ -14629,9 +14891,9 @@ unreserved_keyword:
 | WITHIN
 | WITHOUT
 | WRITE
-| YEAR
 | XML
 | YAML
+| YEAR
 | YES
 | ZONE
 
@@ -14787,6 +15049,7 @@ reserved_keyword:
 | FETCH
 | FOR
 | FOREIGN
+| FREEZE
 | FROM
 | GRANT
 | GROUP
@@ -14825,6 +15088,7 @@ reserved_keyword:
 | USER
 | USING
 | VARIADIC
+| VERBOSE
 | WHEN
 | WHERE
 | WINDOW
