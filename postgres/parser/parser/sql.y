@@ -14184,6 +14184,7 @@ standalone_index_name: db_object_name
 explain_option_name:
   non_reserved_word
 | ANALYZE
+| VERBOSE
 
 cursor_name:           name
 
