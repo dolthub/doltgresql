@@ -1056,9 +1056,9 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> reindex_stmt
 
 %type <tree.Statement> vacuum_stmt
-%type <*tree.VacuumOption> vacuum_option
-%type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list
-%type <*tree.VacuumTableAndCols> vacuum_table_and_cols
+%type <*tree.VacuumOption> vacuum_option legacy_vacuum_option
+%type <tree.VacuumOptions> opt_vacuum_option_list vacuum_option_list legacy_vacuum_option_list
+%type <*tree.VacuumTableAndCols> vacuum_table_and_cols 
 %type <tree.VacuumTableAndColsList> opt_vacuum_table_and_cols_list
 %type <str> auto_on_off
 
@@ -6339,6 +6339,14 @@ vacuum_stmt:
        TablesAndCols: $3.vacuumTableAndColsList(),
      }
   }
+| VACUUM legacy_vacuum_option_list opt_vacuum_table_and_cols_list
+  {
+     $$.val = &tree.Vacuum{
+       Options: $2.vacuumOptions(),
+       TablesAndCols: $3.vacuumTableAndColsList(),
+     }
+  }
+ 
 
 opt_vacuum_option_list:
   '(' vacuum_option_list ')' 
@@ -6509,6 +6517,47 @@ auto_on_off:
   {
     $$ = "OFF"
   }
+
+legacy_vacuum_option_list:
+  legacy_vacuum_option
+  {
+    $$.val = tree.VacuumOptions{$1.vacuumOption()}
+  }
+| legacy_vacuum_option_list legacy_vacuum_option
+  {
+    $$.val = append($1.vacuumOptions(), $2.vacuumOption())
+  }
+  
+// this rule is actually more lenient than postgres: we can parse these four terms in any order
+legacy_vacuum_option:
+  FULL
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FULL",
+    	Value:  true,
+    }
+  }
+| FREEZE
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "FREEZE",
+    	Value:  true,
+    }
+  }
+| VERBOSE
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "VERBOSE",
+    	Value:  true,
+    }
+  }
+| ANALYZE
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "ANALYZE",
+    	Value:  true,
+    }
+  }  
 
 opt_vacuum_table_and_cols_list:
   /* EMPTY */
