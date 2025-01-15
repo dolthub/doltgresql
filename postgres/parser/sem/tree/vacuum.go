@@ -23,7 +23,7 @@ type Vacuum struct {
 var _ Statement = &Vacuum{}
 
 func (node *Vacuum) String() string {
-	return "Vacuum" // TODO
+	return "VACUUM" // TODO
 }
  
 func (node *Vacuum) StatementType() StatementType {
@@ -39,6 +39,7 @@ func (node *Vacuum) Format(ctx *FmtCtx) {
 	ctx.WriteString("VACUUM") // TODO
 }
 
+// VacuumOption represents a VACUUM option such as FREEZE, which has a (usually) boolean value attached.
 type VacuumOption struct {
 	Option string
 	Value any
@@ -46,6 +47,7 @@ type VacuumOption struct {
 
 type VacuumOptions []*VacuumOption
 
+// VacuumTableAndCols is a table name and an optional list of columns to vacuum.
 type VacuumTableAndCols struct {
 	Name *UnresolvedObjectName
 	Cols NameList
