@@ -121,10 +121,13 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		config.UserEmailKey: DefUserEmail,
 	})
 
+	// Reload the dolt environment with the correct data dir that was specified in the configuration.
+	// This initial dEnv instance is loaded for the current working directory.
 	dataDirFs, err := dEnv.FS.WithWorkingDir(ssCfg.DataDir())
 	if err != nil {
 		return nil, err
 	}
+	dEnv = env.Load(ctx, dEnv.GetUserHomeDir, dataDirFs, doltdb.LocalDirDoltDB, dEnv.Version)
 
 	// Automatically initialize a doltgres database if necessary
 	// TODO: probably should only do this if there are no databases in the data dir already
@@ -156,7 +159,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		}
 	}()
 
-	sqlserver.ConfigureServices(ssCfg, controller, Version, dEnv)
+	sqlserver.ConfigureServices(ssCfg, controller, Version, dEnv, false)
 	go controller.Start(newCtx)
 
 	err = controller.WaitForStart()
