@@ -2768,6 +2768,27 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Uuid default value",
+		Focus: true,
+		SetUpScript: []string{
+			"CREATE TABLE t_uuid (id INTEGER primary key, v1 UUID default 'a1eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid);",
+			"INSERT INTO t_uuid VALUES (1, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), (2, 'f47ac10b58cc4372a567-0e02b2c3d479');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_uuid ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
+					{2, "f47ac10b-58cc-4372-a567-0e02b2c3d479"},
+				},
+			},
+			{
+				Query:    "select uuid 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';",
+				Expected: []sql.Row{{"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}},
+			},
+		},
+	},
+	{
 		Name: "Uuid key",
 		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
