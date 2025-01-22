@@ -374,7 +374,8 @@ func (t *DoltgresType) FormatValue(val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	// TODO: need valid sql.Context
+	// TODO: need valid sql.Context. This panics on certain types, regclass
+	//  https://github.com/dolthub/doltgresql/issues/1142
 	return t.IoOutput(nil, val)
 }
 
