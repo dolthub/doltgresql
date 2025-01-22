@@ -275,7 +275,7 @@ bar`, "baz"},
 			},
 		},
 		{
-			Name: "tab delimited with uuid values",
+			Name:  "tab delimited with uuid values",
 			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE public.uuid_table (
@@ -285,7 +285,7 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: fmt.Sprintf("COPY uuid_table (id, name, second_uuid) FROM STDIN"),
+					Query:             fmt.Sprintf("COPY uuid_table (id, name, second_uuid) FROM STDIN"),
 					CopyFromStdInFile: "uuid-table.sql",
 				},
 			},
