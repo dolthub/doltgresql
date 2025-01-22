@@ -275,6 +275,22 @@ bar`, "baz"},
 			},
 		},
 		{
+			Name: "tab delimited with uuid values",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE TABLE public.uuid_table (
+    id uuid NOT NULL,
+    name character varying NOT NULL,
+    second_uuid uuid DEFAULT '428d0815-d95b-4cfc-89af-9fca38585dcc'::uuid);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: fmt.Sprintf("COPY uuid_table (id, name, second_uuid) FROM STDIN"),
+					CopyFromStdInFile: "uuid-table.sql",
+				},
+			},
+		},
+		{
 			Name: "file not found",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk int primary key);",
