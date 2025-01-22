@@ -276,7 +276,6 @@ bar`, "baz"},
 		},
 		{
 			Name:  "tab delimited with uuid values",
-			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE public.uuid_table (
     id uuid NOT NULL,
@@ -287,6 +286,13 @@ bar`, "baz"},
 				{
 					Query:             fmt.Sprintf("COPY uuid_table (id, name, second_uuid) FROM STDIN"),
 					CopyFromStdInFile: "uuid-table.sql",
+				},
+				{
+					Query: "SELECT * FROM uuid_table order by id;",
+					Expected: []sql.Row{
+						{"1077f506-a6fc-4cb2-aed2-9dea9351ed9c", "Company A", "428d0815-d95b-4cfc-89af-9fca38585dcc"},
+						{"5e080b3a-361f-4e16-b7a4-70d4f175e283", "Company B", "428d0815-d95b-4cfc-89af-9fca38585dcc"},
+					},
 				},
 			},
 		},
