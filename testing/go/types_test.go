@@ -1025,6 +1025,23 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "JSON column default",
+		SetUpScript: []string{
+			`CREATE TABLE t_json (id INTEGER primary key, v1 JSON DEFAULT '{"num": 42}'::JSON);`,
+			`INSERT INTO t_json VALUES (1, '{"key1": {"key": "value"}}');`,
+			`INSERT INTO t_json (id) VALUES (2);`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_json ORDER BY 1;",
+				Expected: []sql.Row{
+					{1, `{"key1": {"key": "value"}}`},
+					{2, `{"num":42}`},
+				},
+			},
+		},
+	},
+	{
 		Name: "JSONB type",
 		SetUpScript: []string{
 			"CREATE TABLE t_jsonb (id INTEGER primary key, v1 JSONB);",
@@ -1060,6 +1077,23 @@ var typesTests = []ScriptTest{
 				Query: `SELECT jsonb '{"a":null, "b":"qq"}' ? 'a';`,
 				Expected: []sql.Row{
 					{"t"},
+				},
+			},
+		},
+	},
+	{
+		Name: "JSONB column default",
+		SetUpScript: []string{
+			`CREATE TABLE t_json (id INTEGER primary key, v1 JSONB DEFAULT '{"num": 42}'::JSONB);`,
+			`INSERT INTO t_json VALUES (1, '{"key1": {"key": "value"}}');`,
+			`INSERT INTO t_json (id) VALUES (2);`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_json ORDER BY 1;",
+				Expected: []sql.Row{
+					{1, `{"key1": {"key": "value"}}`},
+					{2, `{"num": 42}`},
 				},
 			},
 		},
@@ -2769,22 +2803,18 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Uuid default value",
-		Focus: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_uuid (id INTEGER primary key, v1 UUID default 'a1eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid);",
-			"INSERT INTO t_uuid VALUES (1, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), (2, 'f47ac10b58cc4372a567-0e02b2c3d479');",
+			"INSERT INTO t_uuid VALUES (1, 'f47ac10b58cc4372a567-0e02b2c3d479');",
+			"INSERT INTO t_uuid (id) VALUES (2);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_uuid ORDER BY id;",
 				Expected: []sql.Row{
-					{1, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
-					{2, "f47ac10b-58cc-4372-a567-0e02b2c3d479"},
+					{1, "f47ac10b-58cc-4372-a567-0e02b2c3d479"},
+					{2, "a1eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
 				},
-			},
-			{
-				Query:    "select uuid 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';",
-				Expected: []sql.Row{{"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"}},
 			},
 		},
 	},
