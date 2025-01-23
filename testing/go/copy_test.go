@@ -284,7 +284,7 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             fmt.Sprintf("COPY uuid_table (id, name, second_uuid) FROM STDIN"),
+					Query:             "COPY uuid_table (id, name, second_uuid) FROM STDIN",
 					CopyFromStdInFile: "uuid-table.sql",
 				},
 				{
