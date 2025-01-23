@@ -275,7 +275,7 @@ bar`, "baz"},
 			},
 		},
 		{
-			Name:  "tab delimited with uuid values",
+			Name: "tab delimited with uuid values",
 			SetUpScript: []string{
 				`CREATE TABLE public.uuid_table (
     id uuid NOT NULL,
