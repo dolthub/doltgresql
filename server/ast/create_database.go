@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -25,59 +25,59 @@ import (
 // nodeCreateDatabase handles *tree.CreateDatabase nodes.
 func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL, error) {
 	if len(node.Owner) > 0 {
-		return nil, fmt.Errorf("OWNER clause is not yet supported")
+		return nil, errors.Errorf("OWNER clause is not yet supported")
 	}
 	if len(node.Template) > 0 {
 		// TODO: special casing "template0", as some tests make use of it and we need them to pass for now
 		if node.Template != "template0" {
-			return nil, fmt.Errorf("TEMPLATE clause is not yet supported")
+			return nil, errors.Errorf("TEMPLATE clause is not yet supported")
 		}
 	}
 	if len(node.Encoding) > 0 {
-		return nil, fmt.Errorf("ENCODING clause is not yet supported")
+		return nil, errors.Errorf("ENCODING clause is not yet supported")
 	}
 	if len(node.Strategy) > 0 {
-		return nil, fmt.Errorf("STRATEGY clause is not yet supported")
+		return nil, errors.Errorf("STRATEGY clause is not yet supported")
 	}
 	if len(node.Locale) > 0 {
-		return nil, fmt.Errorf("LOCALE clause is not yet supported")
+		return nil, errors.Errorf("LOCALE clause is not yet supported")
 	}
 	if len(node.Collate) > 0 {
-		return nil, fmt.Errorf("LC_COLLATE clause is not yet supported")
+		return nil, errors.Errorf("LC_COLLATE clause is not yet supported")
 	}
 	if len(node.CType) > 0 {
-		return nil, fmt.Errorf("LC_CTYPE clause is not yet supported")
+		return nil, errors.Errorf("LC_CTYPE clause is not yet supported")
 	}
 	if len(node.IcuLocale) > 0 {
-		return nil, fmt.Errorf("ICU_LOCALE clause is not yet supported")
+		return nil, errors.Errorf("ICU_LOCALE clause is not yet supported")
 	}
 	if len(node.IcuRules) > 0 {
-		return nil, fmt.Errorf("TEMPLATE clause is not yet supported")
+		return nil, errors.Errorf("TEMPLATE clause is not yet supported")
 	}
 	if len(node.LocaleProvider) > 0 {
-		return nil, fmt.Errorf("LOCALE_PROVIDER clause is not yet supported")
+		return nil, errors.Errorf("LOCALE_PROVIDER clause is not yet supported")
 	}
 	if len(node.CollationVersion) > 0 {
-		return nil, fmt.Errorf("COLLATION_VERSION clause is not yet supported")
+		return nil, errors.Errorf("COLLATION_VERSION clause is not yet supported")
 	}
 	if len(node.Tablespace) > 0 {
-		return nil, fmt.Errorf("TABLESPACE clause is not yet supported")
+		return nil, errors.Errorf("TABLESPACE clause is not yet supported")
 	}
 	// TODO: some clauses have default values in case of not being defined.
 	// ALLOW_CONNECTIONS defaults to TRUE
 	if node.AllowConnections != nil {
-		return nil, fmt.Errorf("ALLOW_CONNECTIONS clause is not yet supported")
+		return nil, errors.Errorf("ALLOW_CONNECTIONS clause is not yet supported")
 	}
 	// CONNECTION LIMIT defaults to -1
 	if node.ConnectionLimit != nil {
-		return nil, fmt.Errorf("CONNECTION LIMIT clause is not yet supported")
+		return nil, errors.Errorf("CONNECTION LIMIT clause is not yet supported")
 	}
 	// IS_TEMPLATE defaults to FALSE
 	if node.IsTemplate != nil {
-		return nil, fmt.Errorf("IS_TEMPLATE clause is not yet supported")
+		return nil, errors.Errorf("IS_TEMPLATE clause is not yet supported")
 	}
 	if node.Oid != nil {
-		return nil, fmt.Errorf("OID clause is not yet supported")
+		return nil, errors.Errorf("OID clause is not yet supported")
 	}
 
 	return &vitess.DBDDL{

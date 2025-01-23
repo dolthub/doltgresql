@@ -16,8 +16,8 @@ package dataloader
 
 import (
 	"bufio"
-	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/types"
@@ -57,13 +57,13 @@ func getColumnTypes(colNames []string, sch sql.Schema) ([]*types.DoltgresType, s
 		colIdx := sch.IndexOfColName(colName)
 		if colIdx < 0 {
 			// should be impossible
-			return nil, nil, fmt.Errorf("column %s not found in schema", colName)
+			return nil, nil, errors.Errorf("column %s not found in schema", colName)
 		}
 		col := sch[colIdx]
 		var ok bool
 		colTypes[i], ok = col.Type.(*types.DoltgresType)
 		if !ok {
-			return nil, nil, fmt.Errorf("unsupported column type: name: %s, type: %T", col.Name, col.Type)
+			return nil, nil, errors.Errorf("unsupported column type: name: %s, type: %T", col.Name, col.Type)
 		}
 
 		reducedSch[i] = col

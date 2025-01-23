@@ -15,9 +15,9 @@
 package types
 
 import (
-	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -88,7 +88,7 @@ func (r *functionRegistry) GetFunction(id uint32) QuickFunction {
 	f = r.loadFunction(id)
 	if f == nil {
 		// If we hit this panic, then we're missing a test that uses this function (and we should add that test)
-		panic(fmt.Errorf("cannot find function: `%s`", r.revMapping[id]))
+		panic(errors.Errorf("cannot find function: `%s`", r.revMapping[id]))
 	}
 	return f
 }

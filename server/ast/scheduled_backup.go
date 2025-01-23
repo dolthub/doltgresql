@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeScheduledBackup(ctx *Context, node *tree.ScheduledBackup) (vitess.State
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("scheduled backups are not yet supported")
+	return nil, errors.Errorf("scheduled backups are not yet supported")
 }

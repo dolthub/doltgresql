@@ -15,9 +15,9 @@
 package expression
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -43,10 +43,10 @@ func NewArray(coercedType sql.Type) (*Array, error) {
 		} else if dt.IsArrayType() {
 			arrayCoercedType = dt
 		} else if !dt.IsEmptyType() {
-			return nil, fmt.Errorf("cannot cast array to %s", coercedType.String())
+			return nil, errors.Errorf("cannot cast array to %s", coercedType.String())
 		}
 	} else if coercedType != nil {
-		return nil, fmt.Errorf("cannot cast array to %s", coercedType.String())
+		return nil, errors.Errorf("cannot cast array to %s", coercedType.String())
 	}
 	return &Array{
 		children:    nil,
@@ -76,7 +76,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 		doltgresType, ok := expr.Type().(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, fmt.Errorf("expected DoltgresType, but got %s", expr.Type().String())
+			return nil, errors.Errorf("expected DoltgresType, but got %s", expr.Type().String())
 		}
 
 		// We always cast the element, as there may be parameter restrictions in place
@@ -85,7 +85,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			if doltgresType.ID == pgtypes.Unknown.ID {
 				castFunc = framework.UnknownLiteralCast
 			} else {
-				return nil, fmt.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
+				return nil, errors.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
 			}
 		}
 
@@ -154,7 +154,7 @@ func (array *Array) WithResolvedChildren(children []any) (any, error) {
 	for i, resolvedChild := range children {
 		resolvedExpression, ok := resolvedChild.(sql.Expression)
 		if !ok {
-			return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", resolvedChild)
+			return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", resolvedChild)
 		}
 		newExpressions[i] = resolvedExpression
 	}
@@ -177,7 +177,7 @@ func (array *Array) getTargetType(children ...sql.Expression) (*pgtypes.Doltgres
 	}
 	targetType, err := framework.FindCommonType(childrenTypes)
 	if err != nil {
-		return nil, fmt.Errorf("ARRAY %s", err.Error())
+		return nil, errors.Errorf("ARRAY %s", err.Error())
 	}
 	return targetType.ToArrayType(), nil
 }

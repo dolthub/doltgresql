@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -29,7 +29,7 @@ func nodeDropDomain(ctx *Context, node *tree.DropDomain) (vitess.Statement, erro
 		return nil, nil
 	}
 	if len(node.Names) != 1 {
-		return nil, fmt.Errorf("dropping multiple domains in DROP DOMAIN is not yet supported")
+		return nil, errors.Errorf("dropping multiple domains in DROP DOMAIN is not yet supported")
 	}
 	name, err := nodeTableName(ctx, &node.Names[0])
 	if err != nil {

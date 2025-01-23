@@ -15,9 +15,9 @@
 package ast
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -29,13 +29,13 @@ func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, 
 		return nil, nil
 	}
 	if node.Concurrently {
-		return nil, fmt.Errorf("concurrent indexes are not yet supported")
+		return nil, errors.Errorf("concurrent indexes are not yet supported")
 	}
 	if node.Using != "" && strings.ToLower(node.Using) != "btree" {
-		return nil, fmt.Errorf("index tablespace is not yet supported")
+		return nil, errors.Errorf("index tablespace is not yet supported")
 	}
 	if node.Predicate != nil {
-		return nil, fmt.Errorf("WHERE is not yet supported")
+		return nil, errors.Errorf("WHERE is not yet supported")
 	}
 	indexDef, err := nodeIndexTableDef(ctx, &tree.IndexTableDef{
 		Name:        node.Name,

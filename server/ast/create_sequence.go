@@ -15,9 +15,9 @@
 package ast
 
 import (
-	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -33,17 +33,17 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 		return nil, nil
 	}
 	if node.Persistence.IsTemporary() {
-		return nil, fmt.Errorf("temporary sequences are not yet supported")
+		return nil, errors.Errorf("temporary sequences are not yet supported")
 	}
 	if node.Persistence.IsUnlogged() {
-		return nil, fmt.Errorf("unlogged sequences are not yet supported")
+		return nil, errors.Errorf("unlogged sequences are not yet supported")
 	}
 	name, err := nodeTableName(ctx, &node.Name)
 	if err != nil {
 		return nil, err
 	}
 	if len(name.DbQualifier.String()) > 0 {
-		return nil, fmt.Errorf("CREATE SEQUENCE is currently only supported for the current database")
+		return nil, errors.Errorf("CREATE SEQUENCE is currently only supported for the current database")
 	}
 	// Read all options and check whether they've been set (if not, we'll use the defaults)
 	minValueLimit := int64(math.MinInt64)
@@ -64,7 +64,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 		switch option.Name {
 		case tree.SeqOptAs:
 			if !dataType.IsEmptyType() {
-				return nil, fmt.Errorf("conflicting or redundant options")
+				return nil, errors.Errorf("conflicting or redundant options")
 			}
 			_, dataType, err = nodeResolvableTypeReference(ctx, option.AsType)
 			if err != nil {
@@ -81,7 +81,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 				minValueLimit = int64(math.MinInt64)
 				maxValueLimit = int64(math.MaxInt64)
 			default:
-				return nil, fmt.Errorf("sequence type must be smallint, integer, or bigint")
+				return nil, errors.Errorf("sequence type must be smallint, integer, or bigint")
 			}
 		case tree.SeqOptCycle:
 			cycle = true
@@ -94,32 +94,32 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 			}
 			colName, ok := expr.(*vitess.ColName)
 			if !ok {
-				return nil, fmt.Errorf("expected sequence owner to be a table and column name")
+				return nil, errors.Errorf("expected sequence owner to be a table and column name")
 			}
 			if len(colName.Qualifier.SchemaQualifier.String()) > 0 || len(colName.Qualifier.DbQualifier.String()) > 0 {
-				return nil, fmt.Errorf("sequence owner must be in the same schema as the sequence")
+				return nil, errors.Errorf("sequence owner must be in the same schema as the sequence")
 			}
 			ownerTableName = colName.Qualifier.Name.String()
 			ownerColumnName = colName.Name.String()
 		case tree.SeqOptCache:
 			// TODO: implement caching
 			if *option.IntVal != 1 {
-				return nil, fmt.Errorf("sequence caching for values other than 1 are not yet supported")
+				return nil, errors.Errorf("sequence caching for values other than 1 are not yet supported")
 			}
 		case tree.SeqOptIncrement:
 			increment = *option.IntVal
 			if incrementSet {
-				return nil, fmt.Errorf("conflicting or redundant options")
+				return nil, errors.Errorf("conflicting or redundant options")
 			}
 			if increment == 0 {
-				return nil, fmt.Errorf("INCREMENT must not be zero")
+				return nil, errors.Errorf("INCREMENT must not be zero")
 			}
 			incrementSet = true
 		case tree.SeqOptMinValue:
 			if option.IntVal != nil {
 				minValue = *option.IntVal
 				if minValueSet {
-					return nil, fmt.Errorf("conflicting or redundant options")
+					return nil, errors.Errorf("conflicting or redundant options")
 				}
 				minValueSet = true
 			}
@@ -127,25 +127,25 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 			if option.IntVal != nil {
 				maxValue = *option.IntVal
 				if maxValueSet {
-					return nil, fmt.Errorf("conflicting or redundant options")
+					return nil, errors.Errorf("conflicting or redundant options")
 				}
 				maxValueSet = true
 			}
 		case tree.SeqOptStart:
 			start = *option.IntVal
 			if startSet {
-				return nil, fmt.Errorf("conflicting or redundant options")
+				return nil, errors.Errorf("conflicting or redundant options")
 			}
 			startSet = true
 		default:
-			return nil, fmt.Errorf("unknown CREATE SEQUENCE option")
+			return nil, errors.Errorf("unknown CREATE SEQUENCE option")
 		}
 	}
 	// Determine what all values should be based on what was set and what is inferred, as well as perform
 	// validation for options that make sense
 	if minValueSet {
 		if minValue < minValueLimit || minValue > maxValueLimit {
-			return nil, fmt.Errorf("MINVALUE (%d) is out of range for sequence data type %s", minValue, dataType.String())
+			return nil, errors.Errorf("MINVALUE (%d) is out of range for sequence data type %s", minValue, dataType.String())
 		}
 	} else if increment > 0 {
 		minValue = 1
@@ -154,7 +154,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	}
 	if maxValueSet {
 		if maxValue < minValueLimit || maxValue > maxValueLimit {
-			return nil, fmt.Errorf("MAXVALUE (%d) is out of range for sequence data type %s", maxValue, dataType.String())
+			return nil, errors.Errorf("MAXVALUE (%d) is out of range for sequence data type %s", maxValue, dataType.String())
 		}
 	} else if increment > 0 {
 		maxValue = maxValueLimit
@@ -163,10 +163,10 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	}
 	if startSet {
 		if start < minValue {
-			return nil, fmt.Errorf("START value (%d) cannot be less than MINVALUE (%d))", start, minValue)
+			return nil, errors.Errorf("START value (%d) cannot be less than MINVALUE (%d))", start, minValue)
 		}
 		if start > maxValue {
-			return nil, fmt.Errorf("START value (%d) cannot be greater than MAXVALUE (%d)", start, maxValue)
+			return nil, errors.Errorf("START value (%d) cannot be greater than MAXVALUE (%d)", start, maxValue)
 		}
 	} else if increment > 0 {
 		start = minValue

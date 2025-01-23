@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	doltserial "github.com/dolthub/dolt/go/gen/fb/serial"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
@@ -77,7 +78,7 @@ func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeSt
 	var storage rootStorage
 
 	if !vrw.Format().UsesFlatbuffers() {
-		return nil, fmt.Errorf("unsupported vrw")
+		return nil, errors.Errorf("unsupported vrw")
 	}
 	srv, err := serial.TryGetRootAsRootValue([]byte(v.(types.SerialMessage)), doltserial.MessagePrefixSz)
 	if err != nil {

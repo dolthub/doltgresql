@@ -16,7 +16,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -26,6 +25,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
@@ -158,7 +158,7 @@ func main() {
 			case profilePath:
 				profilingOptions.Path = os.Args[2]
 				if _, err := os.Stat(profilingOptions.Path); errors.Is(err, os.ErrNotExist) {
-					panic(fmt.Errorf("profile path does not exist: %s", profilingOptions.Path))
+					panic(errors.Errorf("profile path does not exist: %s", profilingOptions.Path))
 				}
 				os.Args = append([]string{os.Args[0]}, os.Args[3:]...)
 			case profFlag:
@@ -262,10 +262,10 @@ func setupDataDir(params map[string]*string, cfg *servercfg.DoltgresConfig, cfgL
 	dataDirExists, isDir := fs.Exists(dataDirPath)
 	if !dataDirExists {
 		if err := fs.MkDirs(dataDirPath); err != nil {
-			return fmt.Errorf("failed to make dir '%s': %w", dataDirPath, err)
+			return errors.Errorf("failed to make dir '%s': %w", dataDirPath, err)
 		}
 	} else if !isDir {
-		return fmt.Errorf("cannot use file %s as doltgres data directory", dataDirPath)
+		return errors.Errorf("cannot use file %s as doltgres data directory", dataDirPath)
 	}
 
 	return nil
@@ -283,9 +283,9 @@ func loadServerConfig(params map[string]*string, fs filesys.Filesys) (*servercfg
 	if configFilePathSpecified {
 		cfgPathExists, isDir := fs.Exists(configFilePath)
 		if !cfgPathExists {
-			return nil, false, fmt.Errorf("config file not found at %s", configFilePath)
+			return nil, false, errors.Errorf("config file not found at %s", configFilePath)
 		} else if isDir {
-			return nil, false, fmt.Errorf("cannot use directory %s for config file", configFilePath)
+			return nil, false, errors.Errorf("cannot use directory %s for config file", configFilePath)
 		}
 
 		cfg, err := servercfg.ReadConfigFromYamlFile(fs, configFilePath)
@@ -320,7 +320,7 @@ func getDataDirFromParams(params map[string]*string) (string, dataDirType, error
 	} else {
 		homeDir, err := env.GetCurrentUserHomeDir()
 		if err != nil {
-			return "", dataDirDefault, fmt.Errorf("failed to get current user's home directory: %w", err)
+			return "", dataDirDefault, errors.Errorf("failed to get current user's home directory: %w", err)
 		}
 
 		dbDir := filepath.Join(homeDir, servercfg.DOLTGRES_DATA_DIR_DEFAULT)
@@ -373,7 +373,7 @@ func redirectStdio(params map[string]*string) error {
 
 		f, err := os.Open(stdInFile)
 		if err != nil {
-			return fmt.Errorf("Failed to open %s: %w", stdInFile, err)
+			return errors.Errorf("Failed to open %s: %w", stdInFile, err)
 		}
 
 		os.Stdin = f
@@ -382,7 +382,7 @@ func redirectStdio(params map[string]*string) error {
 	if filename, ok := paramVal(params, stdOutParam); ok {
 		f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
 		if err != nil {
-			return fmt.Errorf("Failed to open %s for writing: %w", filename, err)
+			return errors.Errorf("Failed to open %s for writing: %w", filename, err)
 		}
 		cli.Println("Stdout being written to", filename)
 		cli.CliOut = f
@@ -392,7 +392,7 @@ func redirectStdio(params map[string]*string) error {
 	if filename, ok := paramVal(params, stdErrParam); ok {
 		f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
 		if err != nil {
-			return fmt.Errorf("Failed to open %s for writing: %w", filename, err)
+			return errors.Errorf("Failed to open %s for writing: %w", filename, err)
 		}
 		cli.Println("Stderr being written to", filename)
 		cli.CliErr = f
@@ -402,7 +402,7 @@ func redirectStdio(params map[string]*string) error {
 	if filename, ok := paramVal(params, stdOutAndErrParam); ok {
 		f, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, os.ModePerm)
 		if err != nil {
-			return fmt.Errorf("Failed to open %s for writing: %w", filename, err)
+			return errors.Errorf("Failed to open %s for writing: %w", filename, err)
 		}
 		cli.Println("Stdout and Stderr being written to", filename)
 		cli.CliOut = f

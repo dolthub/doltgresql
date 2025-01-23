@@ -15,7 +15,7 @@
 package dtables
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/val"
@@ -39,11 +39,11 @@ func convertTupleToIgnoreBoolean(valueDesc val.TupleDesc, valueTuple val.Tuple) 
 		val.Type{Enc: val.ExtendedEnc, Nullable: false},
 	)
 	if !valueDesc.Equals(extendedTuple) {
-		return false, fmt.Errorf("dolt_ignore had unexpected value type, this should never happen")
+		return false, errors.Errorf("dolt_ignore had unexpected value type, this should never happen")
 	}
 	extended, ok := valueDesc.GetExtended(0, valueTuple)
 	if !ok {
-		return false, fmt.Errorf("could not read boolean")
+		return false, errors.Errorf("could not read boolean")
 	}
 	val, err := valueDesc.Handlers[0].DeserializeValue(extended)
 	if err != nil {
@@ -51,7 +51,7 @@ func convertTupleToIgnoreBoolean(valueDesc val.TupleDesc, valueTuple val.Tuple) 
 	}
 	ignore, ok := val.(bool)
 	if !ok {
-		return false, fmt.Errorf("could not read boolean")
+		return false, errors.Errorf("could not read boolean")
 	}
 	return ignore, nil
 }

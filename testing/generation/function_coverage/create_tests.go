@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -120,7 +121,7 @@ func GenerateTests(parentFolder utils.RootFolderLocation, functionName string, a
 					case nil:
 						sb.WriteString("nil")
 					default:
-						return fmt.Errorf("%T does not have a switch case", result)
+						return errors.Errorf("%T does not have a switch case", result)
 					}
 				}
 				sb.WriteRune('}')

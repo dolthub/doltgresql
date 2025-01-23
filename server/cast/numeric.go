@@ -15,7 +15,7 @@
 package cast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
@@ -38,7 +38,7 @@ func numericAssignment() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(decimal.Decimal)
 			if d.LessThan(pgtypes.NumericValueMinInt16) || d.GreaterThan(pgtypes.NumericValueMaxInt16) {
-				return nil, fmt.Errorf("smallint out of range")
+				return nil, errors.Errorf("smallint out of range")
 			}
 			return int16(d.IntPart()), nil
 		},
@@ -49,7 +49,7 @@ func numericAssignment() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(decimal.Decimal)
 			if d.LessThan(pgtypes.NumericValueMinInt32) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
-				return nil, fmt.Errorf("integer out of range")
+				return nil, errors.Errorf("integer out of range")
 			}
 			return int32(d.IntPart()), nil
 		},
@@ -60,7 +60,7 @@ func numericAssignment() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(decimal.Decimal)
 			if d.LessThan(pgtypes.NumericValueMinInt64) || d.GreaterThan(pgtypes.NumericValueMaxInt64) {
-				return nil, fmt.Errorf("bigint out of range")
+				return nil, errors.Errorf("bigint out of range")
 			}
 			return int64(d.IntPart()), nil
 		},

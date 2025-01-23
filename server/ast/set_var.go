@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -38,17 +39,17 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 		return &vitess.Use{DBName: vitess.NewTableIdent(dbName)}, nil
 	}
 	if node.Namespace == "" && !config.IsValidPostgresConfigParameter(node.Name) && !config.IsValidDoltConfigParameter(node.Name) {
-		return nil, fmt.Errorf(`ERROR: unrecognized configuration parameter "%s"`, node.Name)
+		return nil, errors.Errorf(`ERROR: unrecognized configuration parameter "%s"`, node.Name)
 	}
 	if node.IsLocal {
 		// TODO: takes effect for only the current transaction rather than the current session.
-		return nil, fmt.Errorf("SET LOCAL is not yet supported")
+		return nil, errors.Errorf("SET LOCAL is not yet supported")
 	}
 	var expr vitess.Expr
 	var err error
 	if len(node.Values) == 0 {
 		// sanity check
-		return nil, fmt.Errorf(`ERROR: syntax error at or near ";"'`)
+		return nil, errors.Errorf(`ERROR: syntax error at or near ";"'`)
 	} else if len(node.Values) > 1 {
 		vals := make([]string, len(node.Values))
 		for i, val := range node.Values {

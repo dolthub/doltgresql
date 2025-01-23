@@ -15,13 +15,13 @@
 package framework
 
 import (
-	"fmt"
 	"strings"
 
-	pgtypes "github.com/dolthub/doltgresql/server/types"
-
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Catalog contains all of the PostgreSQL functions.
@@ -96,7 +96,7 @@ func validateFunctions() {
 		for _, functionOverload := range overloads {
 			if functionOverload.GetExpectedParameterCount() >= 0 &&
 				len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {
-				panic(fmt.Errorf("function `%s` should have %d arguments but has %d arguments",
+				panic(errors.Errorf("function `%s` should have %d arguments but has %d arguments",
 					funcName, functionOverload.GetExpectedParameterCount(), len(functionOverload.GetParameters())))
 			}
 		}
@@ -113,7 +113,7 @@ func validateFunctions() {
 					}
 				}
 				if sameCount == f1.GetExpectedParameterCount() && f1.GetExpectedParameterCount() > 0 {
-					panic(fmt.Errorf("duplicate function overloads on `%s`", funcName))
+					panic(errors.Errorf("duplicate function overloads on `%s`", funcName))
 				}
 			}
 		}

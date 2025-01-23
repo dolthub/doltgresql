@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -30,5 +30,5 @@ func nodeAlterAggregate(ctx *Context, node *tree.AlterAggregate) (vitess.Stateme
 	if err := validateAggArgMode(ctx, node.AggSig.Args, node.AggSig.OrderByArgs); err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("ALTER AGGREGATE is not yet supported")
+	return nil, errors.Errorf("ALTER AGGREGATE is not yet supported")
 }

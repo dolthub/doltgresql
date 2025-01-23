@@ -15,8 +15,9 @@
 package framework
 
 import (
-	"fmt"
 	"strings"
+
+	"github.com/cockroachdb/errors"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -42,13 +43,13 @@ func NewOverloads() *Overloads {
 func (o *Overloads) Add(function FunctionInterface) error {
 	key := keyForParamTypes(function.GetParameters())
 	if _, ok := o.ByParamType[key]; ok {
-		return fmt.Errorf("duplicate function overload for `%s`", function.GetName())
+		return errors.Errorf("duplicate function overload for `%s`", function.GetName())
 	}
 
 	if function.VariadicIndex() >= 0 {
 		varArgsType := function.GetParameters()[function.VariadicIndex()]
 		if !varArgsType.IsArrayType() {
-			return fmt.Errorf("variadic parameter must be an array type for function `%s`", function.GetName())
+			return errors.Errorf("variadic parameter must be an array type for function `%s`", function.GetName())
 		}
 	}
 

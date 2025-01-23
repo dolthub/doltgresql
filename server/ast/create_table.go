@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -29,10 +29,10 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 		return nil, nil
 	}
 	if len(node.StorageParams) > 0 {
-		return nil, fmt.Errorf("storage parameters are not yet supported")
+		return nil, errors.Errorf("storage parameters are not yet supported")
 	}
 	if node.OnCommit != tree.CreateTableOnCommitUnset {
-		return nil, fmt.Errorf("ON COMMIT is not yet supported")
+		return nil, errors.Errorf("ON COMMIT is not yet supported")
 	}
 	tableName, err := nodeTableName(ctx, &node.Table)
 	if err != nil {
@@ -45,16 +45,16 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 	case tree.PersistenceTemporary:
 		isTemporary = true
 	case tree.PersistenceUnlogged:
-		return nil, fmt.Errorf("UNLOGGED is not yet supported")
+		return nil, errors.Errorf("UNLOGGED is not yet supported")
 	default:
-		return nil, fmt.Errorf("unknown persistence strategy encountered")
+		return nil, errors.Errorf("unknown persistence strategy encountered")
 	}
 	var optSelect *vitess.OptSelect
 	if node.Using != "" {
-		return nil, fmt.Errorf("USING is not yet supported")
+		return nil, errors.Errorf("USING is not yet supported")
 	}
 	if node.Tablespace != "" {
-		return nil, fmt.Errorf("TABLESPACE is not yet supported")
+		return nil, errors.Errorf("TABLESPACE is not yet supported")
 	}
 	if node.AsSource != nil {
 		selectStmt, err := nodeSelect(ctx, node.AsSource)
@@ -79,7 +79,7 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 		}
 	}
 	if node.WithNoData {
-		return nil, fmt.Errorf("WITH NO DATA is not yet supported")
+		return nil, errors.Errorf("WITH NO DATA is not yet supported")
 	}
 	ddl := &vitess.DDL{
 		Action:      vitess.CreateStr,
@@ -102,7 +102,7 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 		switch node.PartitionBy.Type {
 		case tree.PartitionByList:
 			if len(node.PartitionBy.Elems) != 1 {
-				return nil, fmt.Errorf("PARTITION BY LIST must have a single column or expression")
+				return nil, errors.Errorf("PARTITION BY LIST must have a single column or expression")
 			}
 		}
 
@@ -115,7 +115,7 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 		}
 	}
 	if node.PartitionOf.Table() != "" {
-		return nil, fmt.Errorf("PARTITION OF is not yet supported")
+		return nil, errors.Errorf("PARTITION OF is not yet supported")
 	}
 	return ddl, nil
 }

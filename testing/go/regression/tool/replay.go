@@ -16,11 +16,12 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 )
@@ -48,10 +49,10 @@ ListenerLoop:
 		}
 		startupMessage, ok := reader.Next().(*pgproto3.StartupMessage)
 		if !ok {
-			return nil, fmt.Errorf("%s: first message is not StartupMessage (%T)", options.File, reader.Previous())
+			return nil, errors.Errorf("%s: first message is not StartupMessage (%T)", options.File, reader.Previous())
 		}
 		if _, ok = reader.Next().(*pgproto3.ReadyForQuery); !ok {
-			return nil, fmt.Errorf("expected message after StartupMessage to be ReadyForQuery (%T)", reader.Previous())
+			return nil, errors.Errorf("expected message after StartupMessage to be ReadyForQuery (%T)", reader.Previous())
 		}
 		if err = connection.SendNoSync(startupMessage); err != nil {
 			return nil, err
@@ -71,7 +72,7 @@ ListenerLoop:
 			case *pgproto3.ReadyForQuery:
 				break StartupLoop
 			default:
-				return nil, fmt.Errorf("unknown StartupMessage response type: %T", response)
+				return nil, errors.Errorf("unknown StartupMessage response type: %T", response)
 			}
 		}
 	MessageLoop:
@@ -108,7 +109,7 @@ ListenerLoop:
 					case *pgproto3.RowDescription:
 						expectedRowDesc = queryMessage
 					default:
-						return nil, fmt.Errorf("unable to determine what to do with %T", queryMessage)
+						return nil, errors.Errorf("unable to determine what to do with %T", queryMessage)
 					}
 				}
 				var responseError *pgproto3.ErrorResponse
@@ -137,7 +138,7 @@ ListenerLoop:
 					case *pgproto3.RowDescription:
 						responseRowDesc = response
 					default:
-						return nil, fmt.Errorf("unable to determine what to do with %T", message)
+						return nil, errors.Errorf("unable to determine what to do with %T", message)
 					}
 				}
 				if err = connection.EmptyReceiveBuffer(); err != nil {
@@ -240,7 +241,7 @@ ListenerLoop:
 					case *pgproto3.ReadyForQuery:
 						break FunctionLoop
 					default:
-						return nil, fmt.Errorf("unable to determine what to do with %T", queryMessage)
+						return nil, errors.Errorf("unable to determine what to do with %T", queryMessage)
 					}
 				}
 				var responseError *pgproto3.ErrorResponse
@@ -267,7 +268,7 @@ ListenerLoop:
 					case *pgproto3.ReadyForQuery:
 						break FunctionResponseLoop
 					default:
-						return nil, fmt.Errorf("unable to determine what to do with %T", message)
+						return nil, errors.Errorf("unable to determine what to do with %T", message)
 					}
 				}
 				if err = connection.EmptyReceiveBuffer(); err != nil {
@@ -366,7 +367,7 @@ ListenerLoop:
 					case *pgproto3.ReadyForQuery:
 						break ParseLoop
 					default:
-						return nil, fmt.Errorf("unable to determine what to do with %T", queryMessage)
+						return nil, errors.Errorf("unable to determine what to do with %T", queryMessage)
 					}
 				}
 				var responseError *pgproto3.ErrorResponse
@@ -392,7 +393,7 @@ ListenerLoop:
 					case *pgproto3.ReadyForQuery:
 						break ParseResponseLoop
 					default:
-						return nil, fmt.Errorf("unable to determine what to do with %T", message)
+						return nil, errors.Errorf("unable to determine what to do with %T", message)
 					}
 				}
 				if err = connection.EmptyReceiveBuffer(); err != nil {
@@ -495,7 +496,7 @@ ListenerLoop:
 					case *pgproto3.RowDescription:
 						expectedRowDesc = queryMessage
 					default:
-						return nil, fmt.Errorf("unable to determine what to do with %T", queryMessage)
+						return nil, errors.Errorf("unable to determine what to do with %T", queryMessage)
 					}
 				}
 				var responseError *pgproto3.ErrorResponse
@@ -538,7 +539,7 @@ ListenerLoop:
 					case *pgproto3.RowDescription:
 						responseRowDesc = response
 					default:
-						return nil, fmt.Errorf("unable to determine what to do with %T", message)
+						return nil, errors.Errorf("unable to determine what to do with %T", message)
 					}
 				}
 				if err = connection.EmptyReceiveBuffer(); err != nil {
@@ -665,7 +666,7 @@ ListenerLoop:
 				}
 				break MessageLoop
 			default:
-				return nil, fmt.Errorf("unable to determine what to do with %T", message)
+				return nil, errors.Errorf("unable to determine what to do with %T", message)
 			}
 		}
 		connection.Close()

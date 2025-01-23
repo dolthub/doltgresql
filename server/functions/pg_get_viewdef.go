@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -70,7 +70,7 @@ var pg_get_viewdef_oid_int = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// TODO: prettyprint is implied, not yet supported
 		// TODO: lines with fields are wrapped to specified number of columns
-		return "", fmt.Errorf("not yet supported")
+		return "", errors.Errorf("not yet supported")
 	},
 }
 
@@ -86,11 +86,11 @@ func getViewDef(ctx *sql.Context, oidVal id.Id) (string, error) {
 					return false, err
 				}
 				if len(stmts) == 0 {
-					return false, fmt.Errorf("expected CREATE VIEW statement, got none")
+					return false, errors.Errorf("expected CREATE VIEW statement, got none")
 				}
 				cv, ok := stmts[0].AST.(*tree.CreateView)
 				if !ok {
-					return false, fmt.Errorf("expected CREATE VIEW statement, got %s", stmts[0].SQL)
+					return false, errors.Errorf("expected CREATE VIEW statement, got %s", stmts[0].SQL)
 				}
 				result = cv.AsSource.String()
 			}

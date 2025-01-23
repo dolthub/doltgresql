@@ -17,6 +17,7 @@ package framework
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -135,7 +136,7 @@ func (q *QuickFunction1) Children() []sql.Expression {
 
 // WithChildren implements the interface sql.Expression.
 func (q *QuickFunction1) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	return nil, fmt.Errorf("cannot change the children for `%T`", q)
+	return nil, errors.Errorf("cannot change the children for `%T`", q)
 }
 
 // specificFuncImpl implements the interface sql.Expression.
@@ -243,7 +244,7 @@ func (q *QuickFunction2) Children() []sql.Expression {
 
 // WithChildren implements the interface sql.Expression.
 func (q *QuickFunction2) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	return nil, fmt.Errorf("cannot change the children for `%T`", q)
+	return nil, errors.Errorf("cannot change the children for `%T`", q)
 }
 
 // specificFuncImpl implements the interface sql.Expression.
@@ -351,7 +352,7 @@ func (q *QuickFunction3) Children() []sql.Expression {
 
 // WithChildren implements the interface sql.Expression.
 func (q *QuickFunction3) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	return nil, fmt.Errorf("cannot change the children for `%T`", q)
+	return nil, errors.Errorf("cannot change the children for `%T`", q)
 }
 
 // specificFuncImpl implements the interface sql.Expression.

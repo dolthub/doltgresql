@@ -15,10 +15,10 @@
 package analyzer
 
 import (
-	"fmt"
 	"strconv"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -69,7 +69,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				defaultExprType := defaultExpr.Type().(*pgtypes.DoltgresType)
 				outType, ok := expr.OutType.(*pgtypes.DoltgresType)
 				if !ok {
-					return nil, transform.NewTree, fmt.Errorf("default values must have a non-GMS OutType: `%s`", expr.OutType.String())
+					return nil, transform.NewTree, errors.Errorf("default values must have a non-GMS OutType: `%s`", expr.OutType.String())
 				}
 				if !outType.Equals(defaultExprType) {
 					defaultExpr = pgexprs.NewAssignmentCast(defaultExpr, defaultExprType, outType)
@@ -156,7 +156,7 @@ func typeSanitizerLiterals(gmsLiteral *expression.Literal) (sql.Expression, tran
 	case query.Type_DECIMAL:
 		dec, ok := gmsLiteral.Value().(decimal.Decimal)
 		if !ok {
-			return nil, transform.NewTree, fmt.Errorf("SANITIZER: expected decimal type: %T", gmsLiteral.Value())
+			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected decimal type: %T", gmsLiteral.Value())
 		}
 		return pgexprs.NewRawLiteralNumeric(dec), transform.NewTree, nil
 	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
@@ -171,7 +171,7 @@ func typeSanitizerLiterals(gmsLiteral *expression.Literal) (sql.Expression, tran
 	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
 		str, ok := gmsLiteral.Value().(string)
 		if !ok {
-			return nil, transform.NewTree, fmt.Errorf("SANITIZER: expected string type: %T", gmsLiteral.Value())
+			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected string type: %T", gmsLiteral.Value())
 		}
 		return pgexprs.NewUnknownLiteral(str), transform.NewTree, nil
 	case query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
@@ -183,7 +183,7 @@ func typeSanitizerLiterals(gmsLiteral *expression.Literal) (sql.Expression, tran
 		} else if b, ok := newVal.([]byte); ok {
 			return pgexprs.NewUnknownLiteral(string(b)), transform.NewTree, nil
 		}
-		return nil, transform.NewTree, fmt.Errorf("SANITIZER: invalid binary type: %T", gmsLiteral.Value())
+		return nil, transform.NewTree, errors.Errorf("SANITIZER: invalid binary type: %T", gmsLiteral.Value())
 	case query.Type_JSON:
 		newVal := gmsLiteral.Value()
 		if newVal == nil {
@@ -191,12 +191,12 @@ func typeSanitizerLiterals(gmsLiteral *expression.Literal) (sql.Expression, tran
 		}
 		str, ok := newVal.(string)
 		if !ok {
-			return nil, transform.NewTree, fmt.Errorf("SANITIZER: expected string type: %T", gmsLiteral.Value())
+			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected string type: %T", gmsLiteral.Value())
 		}
 		return pgexprs.NewUnknownLiteral(str), transform.NewTree, nil
 	case query.Type_NULL_TYPE:
 		return pgexprs.NewNullLiteral(), transform.NewTree, nil
 	default:
-		return nil, transform.NewTree, fmt.Errorf("SANITIZER: encountered a GMS type that cannot be handled: %s", gmsLiteral.Type().String())
+		return nil, transform.NewTree, errors.Errorf("SANITIZER: encountered a GMS type that cannot be handled: %s", gmsLiteral.Type().String())
 	}
 }

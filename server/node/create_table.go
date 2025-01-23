@@ -85,6 +85,11 @@ func (c *CreateTable) String() string {
 	return c.gmsCreateTable.String()
 }
 
+// DebugString implements the sql.DebugStringer interface
+func (c *CreateTable) DebugString() string {
+	return sql.DebugString(c.gmsCreateTable)
+}
+
 // WithChildren implements the interface sql.ExecSourceRel.
 func (c *CreateTable) WithChildren(children ...sql.Node) (sql.Node, error) {
 	gmsCreateTable, err := c.gmsCreateTable.WithChildren(children...)

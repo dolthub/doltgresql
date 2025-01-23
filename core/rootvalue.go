@@ -17,12 +17,12 @@ package core
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb/durable"
 	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
@@ -73,7 +73,7 @@ func (root *RootValue) CreateDatabaseSchema(ctx context.Context, dbSchema schema
 
 	for _, s := range existingSchemas {
 		if strings.EqualFold(s.Name, dbSchema.Name) {
-			return nil, fmt.Errorf("A schema with the name %s already exists", dbSchema.Name)
+			return nil, errors.Errorf("A schema with the name %s already exists", dbSchema.Name)
 		}
 	}
 
@@ -224,7 +224,7 @@ func (root *RootValue) GetSequences(ctx context.Context) (*sequences.Collection,
 		return nil, err
 	}
 	if uint64(n) != dataBlobLength {
-		return nil, fmt.Errorf("wanted %d bytes from blob for sequences, got %d", dataBlobLength, n)
+		return nil, errors.Errorf("wanted %d bytes from blob for sequences, got %d", dataBlobLength, n)
 	}
 	return sequences.Deserialize(ctx, data)
 }
@@ -247,7 +247,7 @@ func (root *RootValue) GetTypes(ctx context.Context) (*typecollection.TypeCollec
 		return nil, err
 	}
 	if uint64(n) != dataBlobLength {
-		return nil, fmt.Errorf("wanted %d bytes from blob for types, got %d", dataBlobLength, n)
+		return nil, errors.Errorf("wanted %d bytes from blob for types, got %d", dataBlobLength, n)
 	}
 	return typecollection.Deserialize(ctx, data)
 }
@@ -536,7 +536,7 @@ func (root *RootValue) RemoveTables(
 			return nil, err
 		}
 		if a.IsEmpty() {
-			return nil, fmt.Errorf("%w: '%s'", doltdb.ErrTableNotFound, name)
+			return nil, errors.Errorf("%w: '%s'", doltdb.ErrTableNotFound, name)
 		}
 		edits[i].name = name
 	}

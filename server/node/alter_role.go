@@ -15,13 +15,13 @@
 package node
 
 import (
-	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"gopkg.in/src-d/go-errors.v1"
+	gmserrors "gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/server/auth"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -34,7 +34,7 @@ type AlterRole struct {
 }
 
 // ErrVitessChildCount is returned by WithResolvedChildren to indicate that the expected child count is incorrect.
-var ErrVitessChildCount = errors.NewKind("invalid vitess child count, expected `%d` but got `%d`")
+var ErrVitessChildCount = gmserrors.NewKind("invalid vitess child count, expected `%d` but got `%d`")
 
 var _ sql.ExecSourceRel = (*AlterRole)(nil)
 var _ vitess.Injectable = (*AlterRole)(nil)
@@ -63,27 +63,27 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		role = auth.GetRole(c.Name)
 	})
 	if !userRole.IsValid() {
-		return nil, fmt.Errorf(`role "%s" does not exist`, userRole.Name)
+		return nil, errors.Errorf(`role "%s" does not exist`, userRole.Name)
 	}
 	if !role.IsValid() {
-		return nil, fmt.Errorf(`role "%s" does not exist`, c.Name)
+		return nil, errors.Errorf(`role "%s" does not exist`, c.Name)
 	}
 
 	if role.IsSuperUser && !userRole.IsSuperUser {
 		// Only superusers can modify other superusers
 		// TODO: grab the actual error message
-		return nil, fmt.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
+		return nil, errors.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
 	} else if !userRole.IsSuperUser && !userRole.CanCreateRoles && role.ID() != userRole.ID() {
 		// A role may only modify itself if it doesn't have the ability to create roles
 		// TODO: allow non-role-creating roles to only modify their own password, and grab actual error message
-		return nil, fmt.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
+		return nil, errors.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
 	}
 	for optionName, optionValue := range c.Options {
 		switch optionName {
 		case "BYPASSRLS":
 			if !userRole.IsSuperUser {
 				// TODO: grab the actual error message
-				return nil, fmt.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
+				return nil, errors.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
 			}
 			role.CanBypassRowLevelSecurity = true
 		case "CONNECTION_LIMIT":
@@ -99,7 +99,7 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		case "NOBYPASSRLS":
 			if !userRole.IsSuperUser {
 				// TODO: grab the actual error message
-				return nil, fmt.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
+				return nil, errors.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
 			}
 			role.CanBypassRowLevelSecurity = false
 		case "NOCREATEDB":
@@ -113,13 +113,13 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		case "NOREPLICATION":
 			if !userRole.IsSuperUser {
 				// TODO: grab the actual error message
-				return nil, fmt.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
+				return nil, errors.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
 			}
 			role.IsReplicationRole = false
 		case "NOSUPERUSER":
 			if !userRole.IsSuperUser {
 				// TODO: grab the actual error message
-				return nil, fmt.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
+				return nil, errors.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
 			}
 			role.IsSuperUser = false
 		case "PASSWORD":
@@ -136,13 +136,13 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		case "REPLICATION":
 			if !userRole.IsSuperUser {
 				// TODO: grab the actual error message
-				return nil, fmt.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
+				return nil, errors.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
 			}
 			role.IsReplicationRole = true
 		case "SUPERUSER":
 			if !userRole.IsSuperUser {
 				// TODO: grab the actual error message
-				return nil, fmt.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
+				return nil, errors.Errorf(`role "%s" does not have permission to alter role "%s"`, userRole.Name, role.Name)
 			}
 			role.IsSuperUser = true
 		case "VALID_UNTIL":
@@ -158,7 +158,7 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 				role.ValidUntil = &validUntilTime
 			}
 		default:
-			return nil, fmt.Errorf(`unknown role option "%s"`, optionName)
+			return nil, errors.Errorf(`unknown role option "%s"`, optionName)
 		}
 	}
 	var err error

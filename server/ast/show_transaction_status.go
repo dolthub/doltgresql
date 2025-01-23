@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeShowTransactionStatus(ctx *Context, node *tree.ShowTransactionStatus) (
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("SHOW TRANSACTION STATUS is not yet supported")
+	return nil, errors.Errorf("SHOW TRANSACTION STATUS is not yet supported")
 }

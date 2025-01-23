@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -32,5 +32,5 @@ func nodeDropAggregate(ctx *Context, node *tree.DropAggregate) (vitess.Statement
 			return nil, err
 		}
 	}
-	return nil, fmt.Errorf("DROP AGGREGATE is not yet supported")
+	return nil, errors.Errorf("DROP AGGREGATE is not yet supported")
 }

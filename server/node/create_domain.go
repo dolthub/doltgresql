@@ -15,7 +15,7 @@
 package node
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -126,7 +126,7 @@ func (c *CreateDomain) WithResolvedChildren(children []any) (any, error) {
 	if c.HasDefault {
 		expr, ok := children[0].(sql.Expression)
 		if !ok {
-			return nil, fmt.Errorf("invalid vitess child, expected sql.Expression for Default value but got %t", children[0])
+			return nil, errors.Errorf("invalid vitess child, expected sql.Expression for Default value but got %t", children[0])
 		}
 		defExpr = expr
 		checksStartAt = 1
@@ -135,7 +135,7 @@ func (c *CreateDomain) WithResolvedChildren(children []any) (any, error) {
 	for i, child := range children[checksStartAt:] {
 		expr, ok := child.(sql.Expression)
 		if !ok {
-			return nil, fmt.Errorf("invalid vitess child, expected sql.Expression for Check constraint value but got %t", children[0])
+			return nil, errors.Errorf("invalid vitess child, expected sql.Expression for Check constraint value but got %t", children[0])
 		}
 		checks = append(checks, &sql.CheckConstraint{
 			Name:     c.CheckConstraintNames[i],
@@ -210,7 +210,7 @@ func (d *DomainColumn) WithChildren(children ...sql.Expression) (sql.Expression,
 // WithResolvedChildren implements the interface vitess.Injectable.
 func (d *DomainColumn) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 0 {
-		return nil, fmt.Errorf("invalid vitess child count, expected `0` but got `%d`", len(children))
+		return nil, errors.Errorf("invalid vitess child count, expected `0` but got `%d`", len(children))
 	}
 	return d, nil
 }

@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeExecute(ctx *Context, node *tree.Execute) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("EXECUTE is not yet supported")
+	return nil, errors.Errorf("EXECUTE is not yet supported")
 }

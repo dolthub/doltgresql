@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -31,15 +31,15 @@ func nodeDropIndex(ctx *Context, node *tree.DropIndex) (*vitess.AlterTable, erro
 	case tree.DropDefault:
 		// Default behavior, nothing to do
 	case tree.DropRestrict:
-		return nil, fmt.Errorf("RESTRICT is not yet supported")
+		return nil, errors.Errorf("RESTRICT is not yet supported")
 	case tree.DropCascade:
-		return nil, fmt.Errorf("CASCADE is not yet supported")
+		return nil, errors.Errorf("CASCADE is not yet supported")
 	}
 	if len(node.IndexList) > 1 {
-		return nil, fmt.Errorf("multi-index dropping is not yet supported")
+		return nil, errors.Errorf("multi-index dropping is not yet supported")
 	}
 	if node.Concurrently {
-		return nil, fmt.Errorf("concurrent indexes are not yet supported")
+		return nil, errors.Errorf("concurrent indexes are not yet supported")
 	}
 	var tableName vitess.TableName
 	ddls := make([]*vitess.DDL, len(node.IndexList))
@@ -49,7 +49,7 @@ func nodeDropIndex(ctx *Context, node *tree.DropIndex) (*vitess.AlterTable, erro
 			return nil, err
 		}
 		if !tableName.Name.IsEmpty() && tableName.String() != newTableName.String() {
-			return nil, fmt.Errorf("only dropping indexes from the same table is currently supported")
+			return nil, errors.Errorf("only dropping indexes from the same table is currently supported")
 		}
 		tableName = newTableName
 		ddls[i] = &vitess.DDL{

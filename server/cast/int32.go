@@ -15,7 +15,7 @@
 package cast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
@@ -50,7 +50,7 @@ func int32Assignment() {
 		ToType:   pgtypes.Int16,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int32) > 32767 || val.(int32) < -32768 {
-				return nil, fmt.Errorf("smallint out of range")
+				return nil, errors.Errorf("smallint out of range")
 			}
 			return int16(val.(int32)), nil
 		},

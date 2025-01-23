@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -64,13 +64,13 @@ var pg_get_indexdef_oid_integer_bool = framework.Function3{
 		colNo := val2.(int32)
 		pretty := val3.(bool)
 		if pretty {
-			return "", fmt.Errorf("pretty printing is not yet supported")
+			return "", errors.Errorf("pretty printing is not yet supported")
 		}
 		err := RunCallback(ctx, oidVal, Callbacks{
 			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
 				exprs := index.Item.Expressions()
 				if int(colNo) >= len(exprs) {
-					return false, fmt.Errorf("column not found")
+					return false, errors.Errorf("column not found")
 				}
 				// TODO: make `create index` statement
 				return false, nil

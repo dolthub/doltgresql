@@ -20,6 +20,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/table"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -113,9 +114,9 @@ func (cdl *CsvDataLoader) nextRow(ctx *sql.Context, reader *csvReader) (sql.Row,
 	}
 
 	if len(record) > len(cdl.colTypes) {
-		return nil, false, fmt.Errorf("extra data after last expected column")
+		return nil, false, errors.Errorf("extra data after last expected column")
 	} else if len(record) < len(cdl.colTypes) {
-		return nil, false, fmt.Errorf(`missing data for column "%s"`, cdl.sch[len(record)].Name)
+		return nil, false, errors.Errorf(`missing data for column "%s"`, cdl.sch[len(record)].Name)
 	}
 
 	// Cast the values using I/O input
@@ -138,7 +139,7 @@ func (cdl *CsvDataLoader) nextRow(ctx *sql.Context, reader *csvReader) (sql.Row,
 func (cdl *CsvDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error) {
 	// If there is partial data from the last chunk that hasn't been inserted, return an error.
 	if cdl.partialRecord != "" {
-		return nil, fmt.Errorf("partial record (%s) found at end of data load", cdl.partialRecord)
+		return nil, errors.Errorf("partial record (%s) found at end of data load", cdl.partialRecord)
 	}
 
 	return &cdl.results, nil

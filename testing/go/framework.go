@@ -18,7 +18,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
+	goerrors "errors"
 	"fmt"
 	"math"
 	"net"
@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
@@ -347,7 +348,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 // will be normalized such that all integers are int64, etc.
 func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, err error) {
 	defer func() {
-		err = errors.Join(err, rows.Err())
+		err = goerrors.Join(err, rows.Err())
 	}()
 	var slice []sql.Row
 	for rows.Next() {

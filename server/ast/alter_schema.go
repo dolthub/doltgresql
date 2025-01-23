@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeAlterSchema(ctx *Context, node *tree.AlterSchema) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("ALTER SCHEMA is not yet supported")
+	return nil, errors.Errorf("ALTER SCHEMA is not yet supported")
 }

@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
@@ -64,14 +64,14 @@ var pg_get_serial_sequence_text_text = framework.Function2{
 			doltSession := dsess.DSessFromSess(ctx.Session)
 			roots, ok := doltSession.GetRoots(ctx, ctx.GetCurrentDatabase())
 			if !ok {
-				return nil, fmt.Errorf("unable to get roots")
+				return nil, errors.Errorf("unable to get roots")
 			}
 			foundTableName, _, ok, err := resolve.TableWithSearchPath(ctx, roots.Working, tableName)
 			if err != nil {
 				return nil, err
 			}
 			if !ok {
-				return nil, fmt.Errorf(`relation "%s" does not exist`, tableName)
+				return nil, errors.Errorf(`relation "%s" does not exist`, tableName)
 			}
 			schemaName = foundTableName.Schema
 		}
@@ -85,14 +85,14 @@ var pg_get_serial_sequence_text_text = framework.Function2{
 			return nil, err
 		}
 		if table == nil {
-			return nil, fmt.Errorf(`relation "%s" does not exist`, tableName)
+			return nil, errors.Errorf(`relation "%s" does not exist`, tableName)
 		}
 		tableSchema := table.Schema()
 
 		// Find the column in the table's schema
 		columnIndex := tableSchema.IndexOfColName(columnName)
 		if columnIndex < 0 {
-			return nil, fmt.Errorf(`column "%s" of relation "%s" does not exist`, columnName, tableName)
+			return nil, errors.Errorf(`column "%s" of relation "%s" does not exist`, columnName, tableName)
 		}
 		column := tableSchema[columnIndex]
 

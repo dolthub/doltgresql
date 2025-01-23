@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -41,7 +42,7 @@ var _ sql.Expression = (*ExplicitCast)(nil)
 func NewExplicitCastInjectable(castToType sql.Type) (*ExplicitCast, error) {
 	pgtype, ok := castToType.(*pgtypes.DoltgresType)
 	if !ok {
-		return nil, fmt.Errorf("cast expects a Doltgres type as the target type")
+		return nil, errors.Errorf("cast expects a Doltgres type as the target type")
 	}
 	return &ExplicitCast{
 		sqlChild:   nil,
@@ -98,7 +99,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if fromType.ID == pgtypes.Unknown.ID {
 			castFunction = framework.UnknownLiteralCast
 		} else {
-			return nil, fmt.Errorf("EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
+			return nil, errors.Errorf("EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
 				fromType.String(), c.castToType.String(), c.sqlChild.String())
 		}
 	}
@@ -179,11 +180,11 @@ func (c *ExplicitCast) WithChildren(children ...sql.Expression) (sql.Expression,
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
 func (c *ExplicitCast) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 1 {
-		return nil, fmt.Errorf("invalid vitess child count, expected `1` but got `%d`", len(children))
+		return nil, errors.Errorf("invalid vitess child count, expected `1` but got `%d`", len(children))
 	}
 	resolvedExpression, ok := children[0].(sql.Expression)
 	if !ok {
-		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
+		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
 	return &ExplicitCast{
 		sqlChild:       resolvedExpression,

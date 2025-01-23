@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeExport(ctx *Context, node *tree.Export) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("EXPORT is not yet supported")
+	return nil, errors.Errorf("EXPORT is not yet supported")
 }

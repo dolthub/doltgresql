@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -32,9 +32,9 @@ func nodeDropTable(ctx *Context, node *tree.DropTable) (*vitess.DDL, error) {
 	case tree.DropDefault:
 		// Default behavior, nothing to do
 	case tree.DropRestrict:
-		return nil, fmt.Errorf("RESTRICT is not yet supported")
+		return nil, errors.Errorf("RESTRICT is not yet supported")
 	case tree.DropCascade:
-		return nil, fmt.Errorf("CASCADE is not yet supported")
+		return nil, errors.Errorf("CASCADE is not yet supported")
 	}
 	tableNames := make([]vitess.TableName, len(node.Names))
 	authTableNames := make([]string, 0, len(node.Names)*3)

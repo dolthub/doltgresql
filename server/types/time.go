@@ -15,7 +15,7 @@
 package types
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
@@ -70,7 +70,7 @@ func NewTimeType(precision int32) (*DoltgresType, error) {
 func GetTypmodFromTimePrecision(precision int32) (int32, error) {
 	if precision < 0 {
 		// TIME(-1) precision must not be negative
-		return 0, fmt.Errorf("TIME(%v) precision must be not be negative", precision)
+		return 0, errors.Errorf("TIME(%v) precision must be not be negative", precision)
 	}
 	if precision > 6 {
 		precision = 6

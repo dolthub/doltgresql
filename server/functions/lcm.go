@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -52,7 +52,7 @@ var lcm_int64_int64 = framework.Function2{
 		// Check for overflow
 		result := val1 * val2
 		if val2 != 0 && result/val2 != val1 {
-			return nil, fmt.Errorf("bigint out of range")
+			return nil, errors.Errorf("bigint out of range")
 		}
 		return utils.Abs(result / gcdResult), nil
 	},

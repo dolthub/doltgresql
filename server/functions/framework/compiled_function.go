@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"gopkg.in/src-d/go-errors.v1"
@@ -114,7 +115,7 @@ func newCompiledFunctionInternal(
 			// TODO: Possible that the oid type has a special property with polymorphic return types,
 			//  in that perhaps their value will set the return type in the absence of another polymorphic type in the parameter list
 		} else {
-			c.stashedErr = fmt.Errorf("A result of type %s requires at least one input of type anyelement, anyarray, anynonarray, anyenum, anyrange, or anymultirange.", returnType.String())
+			c.stashedErr = cerrors.Errorf("A result of type %s requires at least one input of type anyelement, anyarray, anynonarray, anyenum, anyrange, or anymultirange.", returnType.String())
 			return c
 		}
 	}
@@ -259,7 +260,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 				targetType = targetParamTypes[c.overload.params.variadic]
 				if !targetType.IsArrayType() {
 					// should be impossible, we check this at function compile time
-					return nil, fmt.Errorf("variadic arguments must be array types, was %T", targetType)
+					return nil, cerrors.Errorf("variadic arguments must be array types, was %T", targetType)
 				}
 				targetType = targetType.ArrayBaseType()
 			} else {
@@ -272,7 +273,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 					return nil, err
 				}
 			} else {
-				return nil, fmt.Errorf("function %s is missing the appropriate implicit cast", c.OverloadString(c.originalTypes))
+				return nil, cerrors.Errorf("function %s is missing the appropriate implicit cast", c.OverloadString(c.originalTypes))
 			}
 		}
 	}
@@ -292,7 +293,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	case Function4:
 		return f.Callable(ctx, ([5]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3])
 	default:
-		return nil, fmt.Errorf("unknown function type in CompiledFunction::Eval")
+		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval")
 	}
 }
 
@@ -672,7 +673,7 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 			return firstPolymorphicType.ToArrayType()
 		}
 	default:
-		panic(fmt.Errorf("`%s` is not yet handled during function compilation", returnType.String()))
+		panic(cerrors.Errorf("`%s` is not yet handled during function compilation", returnType.String()))
 	}
 }
 

@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -42,6 +42,6 @@ var unnest = framework.Function1{
 		if len(valArr) == 1 {
 			return valArr[0], nil
 		}
-		return nil, fmt.Errorf("unnest() only supports single-element arrays")
+		return nil, errors.Errorf("unnest() only supports single-element arrays")
 	},
 }

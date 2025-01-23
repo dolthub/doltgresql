@@ -15,7 +15,7 @@
 package node
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -76,7 +76,7 @@ func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 			// TODO: issue a notice
 			return sql.RowsToRowIter(), nil
 		}
-		return nil, fmt.Errorf(`sequence "%s" does not exist`, c.sequence)
+		return nil, errors.Errorf(`sequence "%s" does not exist`, c.sequence)
 	}
 	collection, err := core.GetSequencesCollectionFromContext(ctx)
 	if err != nil {
@@ -86,10 +86,10 @@ func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	if sequence := collection.GetSequence(sequenceID); sequence.OwnerTable.IsValid() {
 		if c.cascade {
 			// TODO: if the sequence is referenced by the column's default value, then we also need to delete the default
-			return nil, fmt.Errorf(`cascading sequence drops are not yet supported`)
+			return nil, errors.Errorf(`cascading sequence drops are not yet supported`)
 		} else {
 			// TODO: this error is only true if the sequence is referenced by the column's default value
-			return nil, fmt.Errorf(`cannot drop sequence %s because other objects depend on it`, c.sequence)
+			return nil, errors.Errorf(`cannot drop sequence %s because other objects depend on it`, c.sequence)
 		}
 	}
 	if err = collection.DropSequence(sequenceID); err != nil {

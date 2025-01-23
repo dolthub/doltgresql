@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeControlSchedules(ctx *Context, node *tree.ControlSchedules) (vitess.Sta
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("PAUSE/RESUME SCHEDULE is not yet supported")
+	return nil, errors.Errorf("PAUSE/RESUME SCHEDULE is not yet supported")
 }

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -73,12 +74,12 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		userRole = auth.GetRole(ctx.Client().User)
 	})
 	if !userRole.IsValid() {
-		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+		return nil, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
 	}
 
 	currentDb := ctx.GetCurrentDatabase()
 	if len(c.database) > 0 && c.database != currentDb {
-		return nil, fmt.Errorf("DROP TYPE is currently only supported for the current database")
+		return nil, errors.Errorf("DROP TYPE is currently only supported for the current database")
 	}
 	schema, err := core.GetSchemaName(ctx, nil, c.schName)
 	if err != nil {
@@ -99,7 +100,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 	if c.cascade {
 		// TODO: handle cascade
-		return nil, fmt.Errorf(`cascading type drops are not yet supported`)
+		return nil, errors.Errorf(`cascading type drops are not yet supported`)
 	}
 
 	if _, ok := types.IDToBuiltInDoltgresType[typ.ID]; ok {
@@ -134,7 +135,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 					if dt.Name() == typ.Name() {
 						// TODO: issue a detail (list of all columns and tables that uses this type)
 						//  and a hint (when we support CASCADE)
-						return nil, fmt.Errorf(`cannot drop type %s because other objects depend on it - column %s of table %s depends on type %s'`, c.typName, col.Name, t.Name(), c.typName)
+						return nil, errors.Errorf(`cannot drop type %s because other objects depend on it - column %s of table %s depends on type %s'`, c.typName, col.Name, t.Name(), c.typName)
 					}
 				}
 			}

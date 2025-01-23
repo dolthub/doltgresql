@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,7 +28,7 @@ func nodeDropDatabase(ctx *Context, node *tree.DropDatabase) (*vitess.DBDDL, err
 		return nil, nil
 	}
 	if node.Force {
-		return nil, fmt.Errorf("WITH ( FORCE ) is not yet supported")
+		return nil, errors.Errorf("WITH ( FORCE ) is not yet supported")
 	}
 	return &vitess.DBDDL{
 		Action:   vitess.DropStr,

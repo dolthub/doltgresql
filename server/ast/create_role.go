@@ -15,10 +15,9 @@
 package ast
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -38,7 +37,7 @@ func nodeCreateRole(ctx *Context, node *tree.CreateRole) (vitess.Statement, erro
 	case `public`:
 		return nil, errors.New(`role name "public" is reserved`)
 	case `current_role`, `current_user`, `session_user`:
-		return nil, fmt.Errorf(`%s cannot be used as a role name here`, strings.ToUpper(node.Name))
+		return nil, errors.Errorf(`%s cannot be used as a role name here`, strings.ToUpper(node.Name))
 	}
 	createRole := &pgnodes.CreateRole{
 		Name:                      node.Name,
@@ -75,7 +74,7 @@ func nodeCreateRole(ctx *Context, node *tree.CreateRole) (vitess.Statement, erro
 			case tree.NullLiteral:
 				createRole.ConnectionLimit = -1
 			default:
-				return nil, fmt.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
+				return nil, errors.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
 			}
 		case "CREATEDB":
 			createRole.CanCreateDB = true
@@ -113,7 +112,7 @@ func nodeCreateRole(ctx *Context, node *tree.CreateRole) (vitess.Statement, erro
 				createRole.Password = ""
 				createRole.IsPasswordNull = true
 			default:
-				return nil, fmt.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
+				return nil, errors.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
 			}
 		case "REPLICATION":
 			createRole.IsReplicationRole = true
@@ -124,7 +123,7 @@ func nodeCreateRole(ctx *Context, node *tree.CreateRole) (vitess.Statement, erro
 		case "VALID_UNTIL":
 			strVal, ok := kvOption.Value.(*tree.DString)
 			if !ok {
-				return nil, fmt.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
+				return nil, errors.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
 			}
 			if strVal == nil {
 				createRole.ValidUntil = ""
@@ -134,7 +133,7 @@ func nodeCreateRole(ctx *Context, node *tree.CreateRole) (vitess.Statement, erro
 				createRole.IsValidUntilSet = true
 			}
 		default:
-			return nil, fmt.Errorf(`unknown role option "%s"`, kvOption.Key)
+			return nil, errors.Errorf(`unknown role option "%s"`, kvOption.Key)
 		}
 	}
 	return vitess.InjectedStatement{

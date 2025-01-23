@@ -15,8 +15,7 @@
 package node
 
 import (
-	"errors"
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -101,7 +100,7 @@ func (g *Grant) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 				return
 			}
 		default:
-			err = fmt.Errorf("GRANT statement is not yet supported")
+			err = errors.Errorf("GRANT statement is not yet supported")
 			return
 		}
 		err = auth.PersistChanges()
@@ -148,18 +147,18 @@ func (g *Grant) common(ctx *sql.Context) (roles []auth.Role, userRole auth.Role,
 	for i, roleName := range g.ToRoles {
 		roles[i] = auth.GetRole(roleName)
 		if !roles[i].IsValid() {
-			return nil, auth.Role{}, fmt.Errorf(`role "%s" does not exist`, roleName)
+			return nil, auth.Role{}, errors.Errorf(`role "%s" does not exist`, roleName)
 		}
 	}
 	// Then we'll check that the role that is granting the privileges exists
 	userRole = auth.GetRole(ctx.Client().User)
 	if !userRole.IsValid() {
-		return nil, auth.Role{}, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+		return nil, auth.Role{}, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
 	}
 	if len(g.GrantedBy) != 0 {
 		grantedByRole := auth.GetRole(g.GrantedBy)
 		if !grantedByRole.IsValid() {
-			return nil, auth.Role{}, fmt.Errorf(`role "%s" does not exist`, g.GrantedBy)
+			return nil, auth.Role{}, errors.Errorf(`role "%s" does not exist`, g.GrantedBy)
 		}
 		if userRole.ID() != grantedByRole.ID() {
 			// TODO: grab the actual error message
@@ -189,7 +188,7 @@ func (g *Grant) grantTable(ctx *sql.Context) error {
 				grantedBy := auth.HasTablePrivilegeGrantOption(key, privilege)
 				if !grantedBy.IsValid() {
 					// TODO: grab the actual error message
-					return fmt.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
+					return errors.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
 				}
 				auth.AddTablePrivilege(auth.TablePrivilegeKey{
 					Role:  role.ID(),
@@ -220,7 +219,7 @@ func (g *Grant) grantSchema(ctx *sql.Context) error {
 				grantedBy := auth.HasSchemaPrivilegeGrantOption(key, privilege)
 				if !grantedBy.IsValid() {
 					// TODO: grab the actual error message
-					return fmt.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
+					return errors.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
 				}
 				auth.AddSchemaPrivilege(auth.SchemaPrivilegeKey{
 					Role:   role.ID(),
@@ -251,7 +250,7 @@ func (g *Grant) grantDatabase(ctx *sql.Context) error {
 				grantedBy := auth.HasDatabasePrivilegeGrantOption(key, privilege)
 				if !grantedBy.IsValid() {
 					// TODO: grab the actual error message
-					return fmt.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
+					return errors.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
 				}
 				auth.AddDatabasePrivilege(auth.DatabasePrivilegeKey{
 					Role: role.ID(),
@@ -276,7 +275,7 @@ func (g *Grant) grantRole(ctx *sql.Context) error {
 	for i, groupName := range g.GrantRole.Groups {
 		groups[i] = auth.GetRole(groupName)
 		if !groups[i].IsValid() {
-			return fmt.Errorf(`role "%s" does not exist`, groupName)
+			return errors.Errorf(`role "%s" does not exist`, groupName)
 		}
 	}
 	for _, member := range members {
@@ -284,7 +283,7 @@ func (g *Grant) grantRole(ctx *sql.Context) error {
 			memberGroupID, _, withAdminOption := auth.IsRoleAMember(userRole.ID(), group.ID())
 			if !memberGroupID.IsValid() || !withAdminOption {
 				// TODO: grab the actual error message
-				return fmt.Errorf(`role "%s" does not have permission to grant role "%s"`, userRole.Name, group.Name)
+				return errors.Errorf(`role "%s" does not have permission to grant role "%s"`, userRole.Name, group.Name)
 			}
 			auth.AddMemberToGroup(member.ID(), group.ID(), g.WithGrantOption, memberGroupID)
 		}

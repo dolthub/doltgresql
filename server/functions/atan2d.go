@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -38,7 +38,7 @@ var atan2d_float64 = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, y any, x any) (any, error) {
 		r := math.Atan2(y.(float64), x.(float64))
 		if math.IsNaN(r) {
-			return nil, fmt.Errorf("input is out of range")
+			return nil, errors.Errorf("input is out of range")
 		}
 		return toDegrees(r), nil
 	},

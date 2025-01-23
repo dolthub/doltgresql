@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/sirupsen/logrus"
@@ -28,16 +28,16 @@ func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexCo
 	vitessIndexColumns := make([]*vitess.IndexColumn, 0, len(node))
 	for _, inputColumn := range node {
 		if inputColumn.Expr != nil {
-			return nil, fmt.Errorf("expression index attribute is not yet supported")
+			return nil, errors.Errorf("expression index attribute is not yet supported")
 		}
 		if inputColumn.Collation != "" {
-			return nil, fmt.Errorf("index attribute collation is not yet supported")
+			return nil, errors.Errorf("index attribute collation is not yet supported")
 		}
 		if inputColumn.OpClass != nil {
-			return nil, fmt.Errorf("index attribute operator class is not yet supported")
+			return nil, errors.Errorf("index attribute operator class is not yet supported")
 		}
 		if inputColumn.ExcludeOp != nil {
-			return nil, fmt.Errorf("index attribute exclude operator is not yet supported")
+			return nil, errors.Errorf("index attribute exclude operator is not yet supported")
 		}
 
 		switch inputColumn.Direction {
@@ -48,7 +48,7 @@ func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexCo
 		case tree.Descending:
 			logrus.Warn("descending indexes are not yet supported, ignoring sort order")
 		default:
-			return nil, fmt.Errorf("unknown index sorting direction encountered")
+			return nil, errors.Errorf("unknown index sorting direction encountered")
 		}
 
 		switch inputColumn.NullsOrder {
@@ -58,9 +58,9 @@ func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexCo
 		case tree.NullsFirst:
 			// The only form supported in GMS for now
 		case tree.NullsLast:
-			return nil, fmt.Errorf("NULLS LAST for indexes is not yet supported")
+			return nil, errors.Errorf("NULLS LAST for indexes is not yet supported")
 		default:
-			return nil, fmt.Errorf("unknown NULL ordering for index")
+			return nil, errors.Errorf("unknown NULL ordering for index")
 		}
 
 		vitessIndexColumns = append(vitessIndexColumns, &vitess.IndexColumn{

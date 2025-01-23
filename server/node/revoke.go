@@ -15,8 +15,7 @@
 package node
 
 import (
-	"errors"
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -106,7 +105,7 @@ func (r *Revoke) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
 				return
 			}
 		default:
-			err = fmt.Errorf("REVOKE statement is not yet supported")
+			err = errors.Errorf("REVOKE statement is not yet supported")
 			return
 		}
 		err = auth.PersistChanges()
@@ -153,22 +152,22 @@ func (r *Revoke) common(ctx *sql.Context) (roles []auth.Role, userRole auth.Role
 	for i, roleName := range r.FromRoles {
 		roles[i] = auth.GetRole(roleName)
 		if !roles[i].IsValid() {
-			return nil, auth.Role{}, 0, fmt.Errorf(`role "%s" does not exist`, roleName)
+			return nil, auth.Role{}, 0, errors.Errorf(`role "%s" does not exist`, roleName)
 		}
 	}
 	// Then we'll check that the role that is revoking the privileges exists
 	userRole = auth.GetRole(ctx.Client().User)
 	if !userRole.IsValid() {
-		return nil, auth.Role{}, 0, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+		return nil, auth.Role{}, 0, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
 	}
 	if len(r.GrantedBy) != 0 {
 		grantedByRole := auth.GetRole(r.GrantedBy)
 		if !grantedByRole.IsValid() {
-			return nil, auth.Role{}, 0, fmt.Errorf(`role "%s" does not exist`, r.GrantedBy)
+			return nil, auth.Role{}, 0, errors.Errorf(`role "%s" does not exist`, r.GrantedBy)
 		}
 		if groupID, _, _ := auth.IsRoleAMember(userRole.ID(), grantedByRole.ID()); !groupID.IsValid() {
 			// TODO: grab the actual error message
-			return nil, auth.Role{}, 0, fmt.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
+			return nil, auth.Role{}, 0, errors.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
 		}
 	} else {
 		grantedByID = userRole.ID()
@@ -195,7 +194,7 @@ func (r *Revoke) revokeTable(ctx *sql.Context) error {
 			for _, privilege := range r.RevokeTable.Privileges {
 				if id := auth.HasTablePrivilegeGrantOption(key, privilege); !id.IsValid() {
 					// TODO: grab the actual error message
-					return fmt.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
+					return errors.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
 				}
 				auth.RemoveTablePrivilege(auth.TablePrivilegeKey{
 					Role:  role.ID(),
@@ -225,7 +224,7 @@ func (r *Revoke) revokeSchema(ctx *sql.Context) error {
 			for _, privilege := range r.RevokeTable.Privileges {
 				if id := auth.HasSchemaPrivilegeGrantOption(key, privilege); !id.IsValid() {
 					// TODO: grab the actual error message
-					return fmt.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
+					return errors.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
 				}
 				auth.RemoveSchemaPrivilege(auth.SchemaPrivilegeKey{
 					Role:   role.ID(),
@@ -255,7 +254,7 @@ func (r *Revoke) revokeDatabase(ctx *sql.Context) error {
 			for _, privilege := range r.RevokeDatabase.Privileges {
 				if id := auth.HasDatabasePrivilegeGrantOption(key, privilege); !id.IsValid() {
 					// TODO: grab the actual error message
-					return fmt.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
+					return errors.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
 				}
 				auth.RemoveDatabasePrivilege(auth.DatabasePrivilegeKey{
 					Role: role.ID(),
@@ -280,7 +279,7 @@ func (r *Revoke) revokeRole(ctx *sql.Context) error {
 	for i, groupName := range r.RevokeRole.Groups {
 		groups[i] = auth.GetRole(groupName)
 		if !groups[i].IsValid() {
-			return fmt.Errorf(`role "%s" does not exist`, groupName)
+			return errors.Errorf(`role "%s" does not exist`, groupName)
 		}
 	}
 	for _, member := range members {
@@ -288,7 +287,7 @@ func (r *Revoke) revokeRole(ctx *sql.Context) error {
 			memberGroupID, _, withAdminOption := auth.IsRoleAMember(userRole.ID(), group.ID())
 			if !memberGroupID.IsValid() || !withAdminOption {
 				// TODO: grab the actual error message
-				return fmt.Errorf(`role "%s" does not have permission to revoke role "%s"`, userRole.Name, group.Name)
+				return errors.Errorf(`role "%s" does not have permission to revoke role "%s"`, userRole.Name, group.Name)
 			}
 			auth.RemoveMemberFromGroup(member.ID(), group.ID(), r.GrantOptionFor)
 		}

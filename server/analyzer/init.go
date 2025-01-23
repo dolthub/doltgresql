@@ -15,7 +15,7 @@
 package analyzer
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 )
@@ -84,7 +84,7 @@ func getAnalyzerRule(rules []analyzer.Rule, id analyzer.RuleId) analyzer.Rule {
 		}
 	}
 	// This will only occur if GMS has been changed
-	panic(fmt.Errorf("rule not found: %d", id))
+	panic(errors.Errorf("rule not found: %d", id))
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.

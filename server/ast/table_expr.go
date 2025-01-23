@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -55,7 +55,7 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 		case nil:
 			// cross join (no join condition)
 		default:
-			return nil, fmt.Errorf("unknown JOIN condition: `%T`", treeCondition)
+			return nil, errors.Errorf("unknown JOIN condition: `%T`", treeCondition)
 		}
 		var joinType string
 		switch node.JoinType {
@@ -82,7 +82,7 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 				joinType = vitess.JoinStr
 			}
 		default:
-			return nil, fmt.Errorf("unknown JOIN type: `%s`", node.JoinType)
+			return nil, errors.Errorf("unknown JOIN type: `%s`", node.JoinType)
 		}
 		return &vitess.JoinTableExpr{
 			LeftExpr:  left,
@@ -113,7 +113,7 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 			Rows: rows,
 		}, nil
 	case *tree.StatementSource:
-		return nil, fmt.Errorf("this statement is not yet supported")
+		return nil, errors.Errorf("this statement is not yet supported")
 	case *tree.Subquery:
 		return nodeSubqueryToTableExpr(ctx, node)
 	case *tree.TableName:
@@ -130,7 +130,7 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 			},
 		}, nil
 	case *tree.TableRef:
-		return nil, fmt.Errorf("table refs are not yet supported")
+		return nil, errors.Errorf("table refs are not yet supported")
 	case *tree.UnresolvedObjectName:
 		tableName, err := nodeUnresolvedObjectName(ctx, node)
 		if err != nil {
@@ -145,7 +145,7 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 			},
 		}, nil
 	default:
-		return nil, fmt.Errorf("unknown table expression: `%T`", node)
+		return nil, errors.Errorf("unknown table expression: `%T`", node)
 	}
 }
 

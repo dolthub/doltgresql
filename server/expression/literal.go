@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/shopspring/decimal"
@@ -345,7 +346,7 @@ func (l *Literal) WithChildren(children ...sql.Expression) (sql.Expression, erro
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
 func (l *Literal) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 0 {
-		return nil, fmt.Errorf("invalid vitess child count, expected `0` but got `%d`", len(children))
+		return nil, errors.Errorf("invalid vitess child count, expected `0` but got `%d`", len(children))
 	}
 	return l, nil
 }

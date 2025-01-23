@@ -15,9 +15,9 @@
 package index
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/index"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -60,7 +60,7 @@ func NewIndexBuilder(ctx *sql.Context, indexes []sql.Index) (*IndexBuilder, erro
 			var ok bool
 			columns[columnIndex].typ, ok = columnType.Type.(*pgtypes.DoltgresType)
 			if !ok {
-				return nil, fmt.Errorf("encountered a GMS type in the index `%s` on table `%s`", index.ID(), index.Table())
+				return nil, errors.Errorf("encountered a GMS type in the index `%s` on table `%s`", index.ID(), index.Table())
 			}
 		}
 		elements[elementsIndex] = &indexBuilderElement{

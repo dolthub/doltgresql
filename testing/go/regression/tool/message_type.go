@@ -15,7 +15,7 @@
 package main
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 )
@@ -178,7 +178,7 @@ func ToMessageType(message pgproto3.Message) (MessageType, error) {
 	case *pgproto3.Terminate:
 		return MessageType_Terminate, nil
 	default:
-		return 0, fmt.Errorf("unknown message type: %T", message)
+		return 0, errors.Errorf("unknown message type: %T", message)
 	}
 }
 
@@ -284,7 +284,7 @@ func FromMessageType(messageType MessageType) (pgproto3.Message, error) {
 	case MessageType_Terminate:
 		return &pgproto3.Terminate{}, nil
 	default:
-		return nil, fmt.Errorf("unknown message type: %d", uint16(messageType))
+		return nil, errors.Errorf("unknown message type: %d", uint16(messageType))
 	}
 }
 

@@ -15,7 +15,7 @@
 package analyzer
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
@@ -47,7 +47,7 @@ func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	case *plan.ForeignKeyHandler:
 		updateSource, ok := child.OriginalNode.(*plan.UpdateSource)
 		if !ok {
-			return nil, transform.NewTree, fmt.Errorf("UPDATE: assumption that Foreign Key child is always UpdateSource is incorrect: %T", child.OriginalNode)
+			return nil, transform.NewTree, errors.Errorf("UPDATE: assumption that Foreign Key child is always UpdateSource is incorrect: %T", child.OriginalNode)
 		}
 		newUpdateSource, err := assignUpdateCastsHandleSource(updateSource)
 		if err != nil {
@@ -62,7 +62,7 @@ func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			return nil, transform.NewTree, err
 		}
 	default:
-		return nil, transform.NewTree, fmt.Errorf("UPDATE: unknown source type: %T", child)
+		return nil, transform.NewTree, errors.Errorf("UPDATE: unknown source type: %T", child)
 	}
 	return newUpdate, transform.NewTree, nil
 }
@@ -86,15 +86,15 @@ func assignUpdateFieldCasts(updateExprs []sql.Expression) ([]sql.Expression, err
 	for i, updateExpr := range updateExprs {
 		setField, ok := updateExpr.(*expression.SetField)
 		if !ok {
-			return nil, fmt.Errorf("UPDATE: assumption that expression is always SetField is incorrect: %T", updateExpr)
+			return nil, errors.Errorf("UPDATE: assumption that expression is always SetField is incorrect: %T", updateExpr)
 		}
 		fromType, ok := setField.RightChild.Type().(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, fmt.Errorf("UPDATE: non-Doltgres type found in source: %s", setField.RightChild.String())
+			return nil, errors.Errorf("UPDATE: non-Doltgres type found in source: %s", setField.RightChild.String())
 		}
 		toType, ok := setField.LeftChild.Type().(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, fmt.Errorf("UPDATE: non-Doltgres type found in destination: %s", setField.LeftChild.String())
+			return nil, errors.Errorf("UPDATE: non-Doltgres type found in destination: %s", setField.LeftChild.String())
 		}
 		// We only assign the existing expression if the types perfectly match (same parameters), otherwise we'll cast
 		if fromType.Equals(toType) {

@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeShowRoleGrants(ctx *Context, node *tree.ShowRoleGrants) (vitess.Stateme
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("SHOW GRANTS ON ROLE is not yet supported")
+	return nil, errors.Errorf("SHOW GRANTS ON ROLE is not yet supported")
 }

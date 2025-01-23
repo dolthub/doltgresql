@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -30,11 +30,11 @@ func nodeAnalyze(ctx *Context, node *tree.Analyze) (vitess.Statement, error) {
 
 	objectName, ok := node.Table.(*tree.UnresolvedObjectName)
 	if !ok {
-		return nil, fmt.Errorf("unsupported table type in Analyze node: %T", node.Table)
+		return nil, errors.Errorf("unsupported table type in Analyze node: %T", node.Table)
 	}
 
 	if objectName.Object() == "" && objectName.Schema() == "" && objectName.Catalog() == "" {
-		return nil, fmt.Errorf("ANALYZE all tables not supported; must specify a table")
+		return nil, errors.Errorf("ANALYZE all tables not supported; must specify a table")
 	}
 
 	return &vitess.Analyze{Tables: []vitess.TableName{

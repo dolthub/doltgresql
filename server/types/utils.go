@@ -16,9 +16,9 @@ package types
 
 import (
 	"bytes"
-	"fmt"
 	"strings"
 
+	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
@@ -106,7 +106,7 @@ func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 	case query.Type_NULL_TYPE, query.Type_GEOMETRY:
 		return Unknown, nil
 	default:
-		return nil, fmt.Errorf("encountered a GMS type that cannot be handled")
+		return nil, cerrors.Errorf("encountered a GMS type that cannot be handled")
 	}
 }
 

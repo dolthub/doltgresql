@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,10 +28,10 @@ func nodeRenameTable(ctx *Context, node *tree.RenameTable) (*vitess.DDL, error) 
 		return nil, nil
 	}
 	if node.IsSequence {
-		return nil, fmt.Errorf("RENAME SEQUENCE is not yet supported")
+		return nil, errors.Errorf("RENAME SEQUENCE is not yet supported")
 	}
 	if node.IsMaterialized {
-		return nil, fmt.Errorf("RENAME MATERIALIZED VIEW is not yet supported")
+		return nil, errors.Errorf("RENAME MATERIALIZED VIEW is not yet supported")
 	}
 	fromName, err := nodeUnresolvedObjectName(ctx, node.Name)
 	if err != nil {

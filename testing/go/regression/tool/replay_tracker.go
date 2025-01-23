@@ -15,10 +15,11 @@
 package main
 
 import (
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -96,7 +97,7 @@ func DeserializeTrackers(data []byte) ([]*ReplayTracker, error) {
 	reader := utils.NewReader(data)
 	version := reader.Uint32()
 	if version != 2 {
-		return nil, fmt.Errorf("version %d is not supported by this branch", version)
+		return nil, errors.Errorf("version %d is not supported by this branch", version)
 	}
 	trackers := make([]*ReplayTracker, reader.Uint32())
 	for trackerIdx := 0; trackerIdx < len(trackers); trackerIdx++ {
@@ -121,7 +122,7 @@ func DeserializeTrackers(data []byte) ([]*ReplayTracker, error) {
 		return trackers[i].File < trackers[j].File
 	})
 	if !reader.IsEmpty() {
-		return trackers, fmt.Errorf("additional data remaining after all trackers have been read")
+		return trackers, errors.Errorf("additional data remaining after all trackers have been read")
 	}
 	return trackers, nil
 }

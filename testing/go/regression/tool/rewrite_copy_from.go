@@ -15,10 +15,11 @@
 package main
 
 import (
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 )
@@ -37,7 +38,7 @@ func RewriteCopyToLocal(query *pgproto3.Query) (*pgproto3.Query, error) {
 	if ok, err := regressionFolder.Exists(relativeFileName); err != nil {
 		return query, err
 	} else if !ok {
-		return query, fmt.Errorf("file does not exist: '%s'", regressionFolder.GetAbsolutePath(relativeFileName))
+		return query, errors.Errorf("file does not exist: '%s'", regressionFolder.GetAbsolutePath(relativeFileName))
 	}
 	return &pgproto3.Query{
 		String: strings.ReplaceAll(query.String, matches[1], regressionFolder.GetAbsolutePath(relativeFileName)),

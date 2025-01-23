@@ -15,8 +15,7 @@
 package core
 
 import (
-	"errors"
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -45,7 +44,7 @@ func getContextValues(ctx *sql.Context) (*contextValues, error) {
 	}
 	cv, ok := sess.DoltgresSessObj.(*contextValues)
 	if !ok {
-		return nil, fmt.Errorf("context contains an unknown values struct of type: %T", sess.DoltgresSessObj)
+		return nil, errors.Errorf("context contains an unknown values struct of type: %T", sess.DoltgresSessObj)
 	}
 	return cv, nil
 }
@@ -59,7 +58,7 @@ func getRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error
 		return nil, nil, err
 	}
 	if !ok {
-		return nil, nil, fmt.Errorf("cannot find the database while fetching root from context")
+		return nil, nil, errors.Errorf("cannot find the database while fetching root from context")
 	}
 	return session, state.WorkingRoot().(*RootValue), nil
 }

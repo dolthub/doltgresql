@@ -15,10 +15,9 @@
 package node
 
 import (
-	"errors"
-	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -75,18 +74,18 @@ func (c *CreateRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		userRole = auth.GetRole(ctx.Client().User)
 	})
 	if !userRole.IsValid() {
-		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+		return nil, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
 	}
 	if roleExists {
 		if c.IfNotExists {
 			return sql.RowsToRowIter(), nil
 		}
-		return nil, fmt.Errorf(`role "%s" already exists`, c.Name)
+		return nil, errors.Errorf(`role "%s" already exists`, c.Name)
 	}
 
 	if !userRole.IsSuperUser && (!userRole.CanCreateRoles || c.IsSuperUser) {
 		// TODO: grab the actual error message
-		return nil, fmt.Errorf(`role "%s" does not have permission to create the role`, userRole.Name)
+		return nil, errors.Errorf(`role "%s" does not have permission to create the role`, userRole.Name)
 	}
 	var role auth.Role
 	auth.LockWrite(func() {

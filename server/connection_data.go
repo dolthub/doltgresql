@@ -15,7 +15,7 @@
 package server
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -126,7 +126,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				// TODO: should remove usage non doltgres type
 				typOid, err = VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
-					err = fmt.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
+					err = errors.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
 					return false
 				}
 			}
@@ -139,7 +139,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				} else {
 					typOid, err = VitessTypeToObjectID(e.Type().Type())
 					if err != nil {
-						err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+						err = errors.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
 						return false
 					}
 				}
@@ -152,7 +152,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				var typOid uint32
 				typOid, err = VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
-					err = fmt.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+					err = errors.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
 					return false
 				}
 				types = append(types, typOid)
@@ -226,6 +226,6 @@ func VitessTypeToObjectID(typ query.Type) (uint32, error) {
 	case query.Type_ENUM:
 		return uint32(oid.T_text), nil // TODO: temporary solution until we support CREATE TYPE
 	default:
-		return 0, fmt.Errorf("unsupported type: %s", typ)
+		return 0, errors.Errorf("unsupported type: %s", typ)
 	}
 }

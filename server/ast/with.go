@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 
@@ -36,7 +36,7 @@ func nodeCTE(ctx *Context, node *tree.CTE) (*vitess.CommonTableExpr, error) {
 
 	subSelect, ok := node.Stmt.(*tree.Select)
 	if !ok {
-		return nil, fmt.Errorf("unsupported CTE statement type: %T", node.Stmt)
+		return nil, errors.Errorf("unsupported CTE statement type: %T", node.Stmt)
 	}
 
 	selectStmt, err := nodeSelect(ctx, subSelect)

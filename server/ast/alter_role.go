@@ -15,10 +15,9 @@
 package ast
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -54,7 +53,7 @@ func nodeAlterRole(ctx *Context, node *tree.AlterRole) (vitess.Statement, error)
 			case tree.NullLiteral:
 				options["CONNECTION_LIMIT"] = int32(-1)
 			default:
-				return nil, fmt.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
+				return nil, errors.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
 			}
 		case "CREATEDB":
 			options["CREATEDB"] = nil
@@ -89,7 +88,7 @@ func nodeAlterRole(ctx *Context, node *tree.AlterRole) (vitess.Statement, error)
 			case tree.NullLiteral:
 				options["PASSWORD"] = nil
 			default:
-				return nil, fmt.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
+				return nil, errors.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
 			}
 		case "REPLICATION":
 			options["REPLICATION"] = nil
@@ -100,7 +99,7 @@ func nodeAlterRole(ctx *Context, node *tree.AlterRole) (vitess.Statement, error)
 		case "VALID_UNTIL":
 			strVal, ok := kvOption.Value.(*tree.DString)
 			if !ok {
-				return nil, fmt.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
+				return nil, errors.Errorf(`unknown role option value (%T) for option "%s"`, kvOption.Value, kvOption.Key)
 			}
 			if strVal == nil {
 				options["VALID_UNTIL"] = nil
@@ -108,7 +107,7 @@ func nodeAlterRole(ctx *Context, node *tree.AlterRole) (vitess.Statement, error)
 				options["VALID_UNTIL"] = (*string)(strVal)
 			}
 		default:
-			return nil, fmt.Errorf(`unknown role option "%s"`, kvOption.Key)
+			return nil, errors.Errorf(`unknown role option "%s"`, kvOption.Key)
 		}
 	}
 	return vitess.InjectedStatement{

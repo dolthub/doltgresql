@@ -15,11 +15,11 @@
 package functions
 
 import (
-	"fmt"
 	"math"
 	"strings"
 	"time"
 
+	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 	"gopkg.in/src-d/go-errors.v1"
@@ -218,7 +218,7 @@ var extract_text_interval = framework.Function2{
 		case "dow", "doy", "isodow", "isoyear", "julian", "timezone", "timezone_hour", "timezone_minute", "week":
 			return nil, ErrUnitNotSupported.New(field, "interval")
 		default:
-			return nil, fmt.Errorf("unknown field given: %s", field)
+			return nil, cerrors.Errorf("unknown field given: %s", field)
 		}
 	},
 }
@@ -254,7 +254,7 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 		year, _ := tVal.ISOWeek()
 		return decimal.NewFromInt(int64(year)), nil
 	case "julian":
-		return decimal.Decimal{}, fmt.Errorf("'julian' field extraction not supported yet")
+		return decimal.Decimal{}, cerrors.Errorf("'julian' field extraction not supported yet")
 	case "microsecond", "microseconds":
 		w := float64(tVal.Second() * 1000000)
 		f := float64(tVal.Nanosecond()) / float64(1000)
@@ -282,6 +282,6 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 	case "year", "years":
 		return decimal.NewFromInt(int64(tVal.Year())), nil
 	default:
-		return decimal.Decimal{}, fmt.Errorf("unknown field given: %s", field)
+		return decimal.Decimal{}, cerrors.Errorf("unknown field given: %s", field)
 	}
 }

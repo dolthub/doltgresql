@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeCancelSessions(ctx *Context, node *tree.CancelSessions) (vitess.Stateme
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("CANCEL SESSIONS is not yet supported")
+	return nil, errors.Errorf("CANCEL SESSIONS is not yet supported")
 }

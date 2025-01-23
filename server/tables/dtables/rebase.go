@@ -15,9 +15,9 @@
 package dtables
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/rebase"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -40,7 +40,7 @@ func getRebaseSchema() sql.Schema {
 func convertRebasePlanStepToRow(planMember rebase.RebasePlanStep) (sql.Row, error) {
 	actionEnumValue := dprocedures.RebaseActionEnumType.IndexOf(strings.ToLower(planMember.Action))
 	if actionEnumValue == -1 {
-		return nil, fmt.Errorf("invalid rebase action: %s", planMember.Action)
+		return nil, errors.Errorf("invalid rebase action: %s", planMember.Action)
 	}
 
 	return sql.Row{
@@ -55,17 +55,17 @@ func convertRebasePlanStepToRow(planMember rebase.RebasePlanStep) (sql.Row, erro
 func convertRowToRebasePlanStep(row sql.Row) (rebase.RebasePlanStep, error) {
 	order, ok := row[0].(float32)
 	if !ok {
-		return rebase.RebasePlanStep{}, fmt.Errorf("invalid order value in rebase plan: %v (%T)", row[0], row[0])
+		return rebase.RebasePlanStep{}, errors.Errorf("invalid order value in rebase plan: %v (%T)", row[0], row[0])
 	}
 
 	rebaseAction, ok := row[1].(string)
 	if !ok {
-		return rebase.RebasePlanStep{}, fmt.Errorf("invalid enum value in rebase plan: %v (%T)", row[1], row[1])
+		return rebase.RebasePlanStep{}, errors.Errorf("invalid enum value in rebase plan: %v (%T)", row[1], row[1])
 	}
 
 	rebaseIdx := dprocedures.RebaseActionEnumType.IndexOf(rebaseAction)
 	if rebaseIdx < 0 {
-		return rebase.RebasePlanStep{}, fmt.Errorf("invalid enum value in rebase plan: %v (%T)", row[1], row[1])
+		return rebase.RebasePlanStep{}, errors.Errorf("invalid enum value in rebase plan: %v (%T)", row[1], row[1])
 	}
 
 	return rebase.RebasePlanStep{

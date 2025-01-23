@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"strconv"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -63,9 +63,9 @@ var regprocin = framework.Function1{
 			if len(funcInterfaces) == 1 {
 				return funcInterfaces[0].InternalID(), nil
 			}
-			return id.Null, fmt.Errorf(`"function "%s" does not exist"`, input)
+			return id.Null, errors.Errorf(`"function "%s" does not exist"`, input)
 		default:
-			return id.Null, fmt.Errorf("regproc failed validation")
+			return id.Null, errors.Errorf("regproc failed validation")
 		}
 	},
 }
@@ -118,20 +118,20 @@ func regproc_IoInputValidation(ctx *sql.Context, input string, sections []string
 		return nil
 	case 3:
 		if sections[1] != "." {
-			return fmt.Errorf("invalid name syntax")
+			return errors.Errorf("invalid name syntax")
 		}
-		return fmt.Errorf("functions are not yet implemented in terms of the schema")
+		return errors.Errorf("functions are not yet implemented in terms of the schema")
 	case 5:
 		if sections[1] != "." || sections[3] != "." {
-			return fmt.Errorf("invalid name syntax")
+			return errors.Errorf("invalid name syntax")
 		}
-		return fmt.Errorf("cross-database references are not implemented: %s", input)
+		return errors.Errorf("cross-database references are not implemented: %s", input)
 	case 7:
 		if sections[1] != "." || sections[3] != "." || sections[5] != "." {
-			return fmt.Errorf("invalid name syntax")
+			return errors.Errorf("invalid name syntax")
 		}
-		return fmt.Errorf("improper qualified name (too many dotted names): %s", input)
+		return errors.Errorf("improper qualified name (too many dotted names): %s", input)
 	default:
-		return fmt.Errorf("invalid name syntax")
+		return errors.Errorf("invalid name syntax")
 	}
 }

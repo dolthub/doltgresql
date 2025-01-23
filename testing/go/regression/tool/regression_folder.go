@@ -15,11 +15,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 
+	"github.com/cockroachdb/errors"
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/utils"
@@ -37,7 +37,7 @@ type RegressionFolderLocation struct {
 func GetRegressionFolder() (RegressionFolderLocation, error) {
 	_, currentFileLocation, _, ok := runtime.Caller(0)
 	if !ok {
-		return RegressionFolderLocation{}, fmt.Errorf("failed to fetch the location of the current file")
+		return RegressionFolderLocation{}, errors.Errorf("failed to fetch the location of the current file")
 	}
 	regressionFolder = RegressionFolderLocation{filepath.Clean(filepath.Join(filepath.Dir(currentFileLocation), ".."))}
 	return regressionFolder, nil
@@ -103,7 +103,7 @@ func (root RegressionFolderLocation) ReadMessages(relativePath string) ([]pgprot
 		}
 	}
 	if !reader.IsEmpty() {
-		return nil, fmt.Errorf("file has additional data")
+		return nil, errors.Errorf("file has additional data")
 	}
 	return messages, nil
 }

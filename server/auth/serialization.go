@@ -15,8 +15,7 @@
 package auth
 
 import (
-	"errors"
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -62,7 +61,7 @@ func (db *Database) deserialize(data []byte) error {
 	case 0:
 		return db.deserializeV0(reader)
 	default:
-		return fmt.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
+		return errors.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
 	}
 }
 

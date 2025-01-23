@@ -15,9 +15,9 @@
 package types
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -87,10 +87,10 @@ func NewNumericTypeWithPrecisionAndScale(precision, scale int32) (*DoltgresType,
 // GetTypmodFromNumericPrecisionAndScale takes Numeric type precision and scale and returns the type modifier value.
 func GetTypmodFromNumericPrecisionAndScale(precision, scale int32) (int32, error) {
 	if precision < 1 || precision > 1000 {
-		return 0, fmt.Errorf("NUMERIC precision %v must be between 1 and 1000", precision)
+		return 0, errors.Errorf("NUMERIC precision %v must be between 1 and 1000", precision)
 	}
 	if scale < -1000 || scale > 1000 {
-		return 0, fmt.Errorf("NUMERIC scale 20000 must be between -1000 and 1000")
+		return 0, errors.Errorf("NUMERIC scale 20000 must be between -1000 and 1000")
 	}
 	return (precision << 16) | scale, nil
 }
@@ -113,7 +113,7 @@ func GetNumericValueWithTypmod(val decimal.Decimal, typmod int32) (decimal.Decim
 	parts := strings.Split(str, ".")
 	if int32(len(parts[0])) > precision-scale && val.IntPart() != 0 {
 		// TODO: split error message to ERROR and DETAIL
-		return decimal.Decimal{}, fmt.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
+		return decimal.Decimal{}, errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
 	}
 	return decimal.NewFromString(str)
 }

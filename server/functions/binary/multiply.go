@@ -15,9 +15,9 @@
 package binary
 
 import (
-	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
@@ -101,7 +101,7 @@ var int2mul = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) * int64(val2.(int16))
 		if result > math.MaxInt16 || result < math.MinInt16 {
-			return nil, fmt.Errorf("smallint out of range")
+			return nil, errors.Errorf("smallint out of range")
 		}
 		return int16(result), nil
 	},
@@ -116,7 +116,7 @@ var int24mul = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) * int64(val2.(int32))
 		if result > math.MaxInt16 || result < math.MinInt16 {
-			return nil, fmt.Errorf("integer out of range")
+			return nil, errors.Errorf("integer out of range")
 		}
 		return int32(result), nil
 	},
@@ -142,7 +142,7 @@ var int4mul = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) * int64(val2.(int32))
 		if result > math.MaxInt32 || result < math.MinInt32 {
-			return nil, fmt.Errorf("integer out of range")
+			return nil, errors.Errorf("integer out of range")
 		}
 		return int32(result), nil
 	},
@@ -157,7 +157,7 @@ var int42mul = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) * int64(val2.(int16))
 		if result > math.MaxInt32 || result < math.MinInt32 {
-			return nil, fmt.Errorf("integer out of range")
+			return nil, errors.Errorf("integer out of range")
 		}
 		return int32(result), nil
 	},
@@ -233,7 +233,7 @@ var numeric_mul = framework.Function2{
 func multiplyOverflow(val1 int64, val2 int64) (any, error) {
 	result := val1 * val2
 	if val2 != 0 && result/val2 != val1 {
-		return nil, fmt.Errorf("bigint out of range")
+		return nil, errors.Errorf("bigint out of range")
 	}
 	return result, nil
 }

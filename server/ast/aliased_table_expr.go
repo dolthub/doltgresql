@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -26,10 +26,10 @@ import (
 // nodeAliasedTableExpr handles *tree.AliasedTableExpr nodes.
 func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr, error) {
 	if node.Ordinality {
-		return nil, fmt.Errorf("ordinality is not yet supported")
+		return nil, errors.Errorf("ordinality is not yet supported")
 	}
 	if node.IndexFlags != nil {
-		return nil, fmt.Errorf("index flags are not yet supported")
+		return nil, errors.Errorf("index flags are not yet supported")
 	}
 	var aliasExpr vitess.SimpleTableExpr
 	var authInfo vitess.AuthInformation
@@ -54,7 +54,7 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 
 		ate, ok := tableExpr.(*vitess.AliasedTableExpr)
 		if !ok {
-			return nil, fmt.Errorf("expected *vitess.AliasedTableExpr, found %T", tableExpr)
+			return nil, errors.Errorf("expected *vitess.AliasedTableExpr, found %T", tableExpr)
 		}
 
 		var selectStmt vitess.SelectStatement
@@ -62,7 +62,7 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 		case *vitess.Subquery:
 			selectStmt = ate.Expr.(*vitess.Subquery).Select
 		default:
-			return nil, fmt.Errorf("unhandled subquery table expression: `%T`", tableExpr)
+			return nil, errors.Errorf("unhandled subquery table expression: `%T`", tableExpr)
 		}
 
 		// If the subquery is a VALUES statement, it should be represented more directly
@@ -122,7 +122,7 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 		}
 		aliasExpr = subquery
 	default:
-		return nil, fmt.Errorf("unhandled table expression: `%T`", expr)
+		return nil, errors.Errorf("unhandled table expression: `%T`", expr)
 	}
 	alias := string(node.As.Alias)
 

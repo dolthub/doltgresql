@@ -17,6 +17,7 @@ package expression
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -129,20 +130,20 @@ func (b *BinaryOperator) WithChildren(children ...sql.Expression) (sql.Expressio
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
 func (b *BinaryOperator) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 2 {
-		return nil, fmt.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
+		return nil, errors.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
 	}
 	left, ok := children[0].(sql.Expression)
 	if !ok {
-		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
+		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
 	right, ok := children[1].(sql.Expression)
 	if !ok {
-		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
+		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
 	}
 	funcName := "internal_binary_operator_func_" + b.operator.String()
 	compiledFunc := framework.GetBinaryFunction(b.operator).Compile(funcName, left, right)
 	if compiledFunc == nil {
-		return nil, fmt.Errorf("operator does not exist: %s %s %s",
+		return nil, errors.Errorf("operator does not exist: %s %s %s",
 			left.Type().String(), b.operator.String(), right.Type().String())
 	}
 	return &BinaryOperator{

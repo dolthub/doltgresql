@@ -15,7 +15,7 @@
 package expression
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -59,7 +59,7 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if ac.fromType.ID == pgtypes.Unknown.ID {
 			castFunc = framework.UnknownLiteralCast
 		} else {
-			return nil, fmt.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
+			return nil, errors.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
 				ac.toType.String(), ac.fromType.String(), ac.expr.String())
 		}
 	}

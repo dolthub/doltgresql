@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -98,7 +99,7 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 
 	stmt, ok := parsedQuery.(sqlparser.Statement)
 	if !ok {
-		return nil, nil, fmt.Errorf("parsedQuery must be a sqlparser.Statement, but got %T", parsedQuery)
+		return nil, nil, errors.Errorf("parsedQuery must be a sqlparser.Statement, but got %T", parsedQuery)
 	}
 
 	bvs, err := h.convertBindParameters(sqlCtx, bindVars.varTypes, bindVars.formatCodes, bindVars.parameters)
@@ -118,7 +119,7 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error {
 	analyzedPlan, ok := boundQuery.(sql.Node)
 	if !ok {
-		return fmt.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
+		return errors.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
 	}
 
 	// TODO: This technically isn't query start and underestimates query execution time
@@ -258,7 +259,7 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 
 		pgTyp, ok := pgtypes.IDToBuiltInDoltgresType[id.Type(id.Cache().ToInternal(typ))]
 		if !ok {
-			return nil, fmt.Errorf("unhandled oid type: %v", typ)
+			return nil, errors.Errorf("unhandled oid type: %v", typ)
 		}
 		v, err := pgTyp.IoInput(ctx, bindVarString)
 		if err != nil {
@@ -439,7 +440,7 @@ func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 	}
 	_, err = iter.Next(ctx)
 	if err != io.EOF {
-		return nil, fmt.Errorf("result schema iterator returned more than one row")
+		return nil, errors.Errorf("result schema iterator returned more than one row")
 	}
 	if err := iter.Close(ctx); err != nil {
 		return nil, err
@@ -454,7 +455,7 @@ func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 func resultForEmptyIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForEmptyIter").End()
 	if _, err := iter.Next(ctx); err != io.EOF {
-		return nil, fmt.Errorf("result schema iterator returned more than zero rows")
+		return nil, errors.Errorf("result schema iterator returned more than zero rows")
 	}
 	if err := iter.Close(ctx); err != nil {
 		return nil, err
@@ -473,7 +474,7 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 	}
 
 	if _, err = iter.Next(ctx); err != io.EOF {
-		return nil, fmt.Errorf("result max1Row iterator returned more than one row")
+		return nil, errors.Errorf("result max1Row iterator returned more than one row")
 	}
 	if err := iter.Close(ctx); err != nil {
 		return nil, err
@@ -501,7 +502,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	pan2err := func() {
 		if HandlePanics {
 			if recoveredPanic := recover(); recoveredPanic != nil {
-				returnErr = fmt.Errorf("DoltgresHandler caught panic: %v", recoveredPanic)
+				returnErr = errors.Errorf("DoltgresHandler caught panic: %v", recoveredPanic)
 			}
 		}
 	}
@@ -594,7 +595,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 				if h.readTimeout != 0 {
 					// Cancel and return so Vitess can call the CloseConnection callback
 					ctx.GetLogger().Tracef("connection timeout")
-					return fmt.Errorf("row read wait bigger than connection timeout")
+					return errors.Errorf("row read wait bigger than connection timeout")
 				}
 			}
 			if !timer.Stop() {
@@ -627,7 +628,7 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row) ([][]byte, error) {
 	}
 	if len(s) == 0 {
 		// should not happen
-		return nil, fmt.Errorf("received empty schema")
+		return nil, errors.Errorf("received empty schema")
 	}
 	o := make([][]byte, len(row))
 	for i, v := range row {

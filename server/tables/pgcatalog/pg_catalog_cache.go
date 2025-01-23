@@ -15,7 +15,7 @@
 package pgcatalog
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -101,7 +101,7 @@ func getPgCatalogCache(ctx *sql.Context) (*pgCatalogCache, error) {
 
 	cache, ok := untypedPgCatalogCache.(*pgCatalogCache)
 	if !ok {
-		return nil, fmt.Errorf("unexpected type %T for pg_catalog cache", untypedPgCatalogCache)
+		return nil, errors.Errorf("unexpected type %T for pg_catalog cache", untypedPgCatalogCache)
 	}
 	if cache.pid != ctx.Pid() {
 		return initializeNewPgCatalogCache(ctx)

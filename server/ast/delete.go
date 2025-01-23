@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -32,7 +32,7 @@ func nodeDelete(ctx *Context, node *tree.Delete) (*vitess.Delete, error) {
 	defer ctx.Auth().PopAuthType()
 
 	if _, ok := node.Returning.(*tree.NoReturningClause); !ok {
-		return nil, fmt.Errorf("RETURNING is not yet supported")
+		return nil, errors.Errorf("RETURNING is not yet supported")
 	}
 	with, err := nodeWith(ctx, node.With)
 	if err != nil {

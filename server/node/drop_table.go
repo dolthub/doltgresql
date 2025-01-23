@@ -15,7 +15,7 @@
 package node
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -72,7 +72,7 @@ func (c *DropTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			}
 			tableName = table.Name()
 		default:
-			return nil, fmt.Errorf("encountered unexpected table type `%T` during DROP TABLE", table)
+			return nil, errors.Errorf("encountered unexpected table type `%T` during DROP TABLE", table)
 		}
 
 		tableID := id.NewTable(schemaName, tableName).AsId()

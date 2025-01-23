@@ -15,9 +15,9 @@
 package analyzer
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -49,7 +49,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	for _, col := range insertInto.Destination.Schema() {
 		colType, ok := col.Type.(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, transform.NewTree, fmt.Errorf("INSERT: non-Doltgres type found in destination: %s", col.Type.String())
+			return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in destination: %s", col.Type.String())
 		}
 		destinationNameToType[strings.ToLower(col.Name)] = colType
 	}
@@ -59,7 +59,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	for i, colName := range insertInto.ColumnNames {
 		destinationTypes[i], ok = destinationNameToType[strings.ToLower(colName)]
 		if !ok {
-			return nil, transform.NewTree, fmt.Errorf("INSERT: cannot find destination column with name `%s`", colName)
+			return nil, transform.NewTree, errors.Errorf("INSERT: cannot find destination column with name `%s`", colName)
 		}
 	}
 
@@ -77,7 +77,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				}
 				fromColType, ok := colExprType.(*pgtypes.DoltgresType)
 				if !ok {
-					return nil, transform.NewTree, fmt.Errorf("INSERT: non-Doltgres type found in values source: %s", fromColType.String())
+					return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in values source: %s", fromColType.String())
 				}
 				toColType := destinationTypes[columnIndex]
 				// We only assign the existing expression if the types perfectly match (same parameters), otherwise we'll cast
@@ -95,7 +95,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		for i, col := range sourceSchema {
 			fromColType, ok := col.Type.(*pgtypes.DoltgresType)
 			if !ok {
-				return nil, transform.NewTree, fmt.Errorf("INSERT: non-Doltgres type found in source: %s", fromColType.String())
+				return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", fromColType.String())
 			}
 			toColType := destinationTypes[i]
 			getField := expression.NewGetField(i, fromColType, col.Name, true)

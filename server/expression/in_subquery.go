@@ -17,6 +17,7 @@ package expression
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -59,7 +60,7 @@ func (in *InSubquery) Children() []sql.Expression {
 // Eval implements the sql.Expression interface.
 func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if len(in.compFuncs) == 0 {
-		return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", in)
+		return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", in)
 	}
 
 	left, err := in.leftExpr.Eval(ctx, row)
@@ -181,7 +182,7 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 	}
 	sq, ok := children[1].(*plan.Subquery)
 	if !ok {
-		return nil, fmt.Errorf("%T: expected right child to be `%T` but has type `%T`", in, &plan.Subquery{}, children[1])
+		return nil, errors.Errorf("%T: expected right child to be `%T` but has type `%T`", in, &plan.Subquery{}, children[1])
 	}
 	// We'll only resolve the comparison functions once we have all Doltgres types.
 	// We may see GMS types during some analyzer steps, so we should wait until those are done.
@@ -210,11 +211,11 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 			rightLiterals[i] = &Literal{typ: rightType}
 			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", leftLiteral, rightLiterals[i])
 			if compFuncs[i] == nil {
-				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
+				return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
 			if compFuncs[i].Type().(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
 				// This should never happen, but this is just to be safe
-				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", in)
+				return nil, errors.Errorf("%T: found equality comparison that does not return a bool", in)
 			}
 		}
 		if allValidChildren {
@@ -236,15 +237,15 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
 func (in *InSubquery) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 2 {
-		return nil, fmt.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
+		return nil, errors.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
 	}
 	left, ok := children[0].(sql.Expression)
 	if !ok {
-		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
+		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
 	right, ok := children[1].(*plan.Subquery)
 	if !ok {
-		return nil, fmt.Errorf("expected vitess child to be a *plan.Subquery but has type `%T`", children[1])
+		return nil, errors.Errorf("expected vitess child to be a *plan.Subquery but has type `%T`", children[1])
 	}
 	return in.WithChildren(left, right)
 }

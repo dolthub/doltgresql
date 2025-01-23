@@ -15,7 +15,7 @@
 package framework
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
@@ -97,7 +97,7 @@ func RegisterUnaryFunction(operator Operator, f Function1) {
 		TypeID:   f.Parameters[0].ID,
 	}
 	if existingFunction, ok := unaryFunctions[sig]; ok {
-		panic(fmt.Errorf("duplicate unary function for `%s`: `%s` and `%s`",
+		panic(errors.Errorf("duplicate unary function for `%s`: `%s` and `%s`",
 			operator.String(), existingFunction.Name, f.Name))
 	}
 	unaryFunctions[sig] = f
@@ -117,7 +117,7 @@ func RegisterBinaryFunction(operator Operator, f Function2) {
 		Right:    f.Parameters[1].ID,
 	}
 	if existingFunction, ok := binaryFunctions[sig]; ok {
-		panic(fmt.Errorf("duplicate binary function for `%s`: `%s` and `%s`",
+		panic(errors.Errorf("duplicate binary function for `%s`: `%s` and `%s`",
 			operator.String(), existingFunction.Name, f.Name))
 	}
 	binaryFunctions[sig] = f
@@ -216,6 +216,6 @@ func GetOperatorFromString(op string) (Operator, error) {
 	case ">=":
 		return Operator_BinaryGreaterOrEqual, nil
 	default:
-		return 0, fmt.Errorf("unhandled Operator `%s`", op)
+		return 0, errors.Errorf("unhandled Operator `%s`", op)
 	}
 }

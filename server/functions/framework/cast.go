@@ -15,9 +15,9 @@
 package framework
 
 import (
-	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -226,7 +226,7 @@ func addTypeCast(mutex *sync.RWMutex,
 	}
 	if _, ok := toMap[cast.ToType.ID]; ok {
 		// TODO: return the actual Postgres error
-		return fmt.Errorf("cast from `%s` to `%s` already exists", cast.FromType.String(), cast.ToType.String())
+		return errors.Errorf("cast from `%s` to `%s` already exists", cast.FromType.String(), cast.ToType.String())
 	}
 	toMap[cast.ToType.ID] = cast.Function
 	castArray[cast.FromType.ID] = append(castArray[cast.FromType.ID], cast.ToType)

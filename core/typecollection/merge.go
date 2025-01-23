@@ -16,7 +16,8 @@ package typecollection
 
 import (
 	"context"
-	"fmt"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/types"
@@ -34,19 +35,19 @@ func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *T
 
 		// Different types with the same name cannot be merged. (e.g.: 'domain' type and 'base' type with the same name)
 		if mergedType.TypType != theirType.TypType {
-			return fmt.Errorf(`cannot merge type "%s" because type types do not match: '%s' and '%s'"`, theirType.Name(), mergedType.TypType, theirType.TypType)
+			return errors.Errorf(`cannot merge type "%s" because type types do not match: '%s' and '%s'"`, theirType.Name(), mergedType.TypType, theirType.TypType)
 		}
 
 		switch theirType.TypType {
 		case types.TypeType_Domain:
 			if mergedType.BaseTypeID != theirType.BaseTypeID {
 				// TODO: we can extend on this in the future (e.g.: maybe uses preferred type?)
-				return fmt.Errorf(`base types of domain type "%s" do not match`, theirType.Name())
+				return errors.Errorf(`base types of domain type "%s" do not match`, theirType.Name())
 			}
 			if mergedType.Default == "" {
 				mergedType.Default = theirType.Default
 			} else if theirType.Default != "" && mergedType.Default != theirType.Default {
-				return fmt.Errorf(`default values of domain type "%s" do not match`, theirType.Name())
+				return errors.Errorf(`default values of domain type "%s" do not match`, theirType.Name())
 			}
 			// if either of types defined as NOT NULL, take NOT NULL
 			if mergedType.NotNull || theirType.NotNull {

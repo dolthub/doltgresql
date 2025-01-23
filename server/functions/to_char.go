@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -61,7 +62,7 @@ var to_char_timestamp = framework.Function2{
 				format = format[2:]
 
 			case strings.HasPrefix(format, "ssss") || strings.HasPrefix(format, "SSSS") || strings.HasPrefix(format, "sssss") || strings.HasPrefix(format, "SSSSS"):
-				return nil, fmt.Errorf("seconds past midnight not supported")
+				return nil, errors.Errorf("seconds past midnight not supported")
 
 			case strings.HasPrefix(format, "ss") || strings.HasPrefix(format, "SS"):
 				result += timestamp.Format("05")
@@ -121,20 +122,20 @@ var to_char_timestamp = framework.Function2{
 				format = format[1:]
 
 			case strings.HasPrefix(format, "iyyy") || strings.HasPrefix(format, "IYYY"):
-				return nil, fmt.Errorf("ISO year not supported")
+				return nil, errors.Errorf("ISO year not supported")
 			case strings.HasPrefix(format, "iyy") || strings.HasPrefix(format, "IYY"):
-				return nil, fmt.Errorf("ISO year not supported")
+				return nil, errors.Errorf("ISO year not supported")
 			case strings.HasPrefix(format, "iy") || strings.HasPrefix(format, "IY"):
-				return nil, fmt.Errorf("ISO year not supported")
+				return nil, errors.Errorf("ISO year not supported")
 
 			case strings.HasPrefix(format, "bc") || strings.HasPrefix(format, "ad"):
-				return nil, fmt.Errorf("era indicator not supported")
+				return nil, errors.Errorf("era indicator not supported")
 			case strings.HasPrefix(format, "BC") || strings.HasPrefix(format, "AD"):
-				return nil, fmt.Errorf("era indicator not supported")
+				return nil, errors.Errorf("era indicator not supported")
 			case strings.HasPrefix(format, "b.c.") || strings.HasPrefix(format, "a.d."):
-				return nil, fmt.Errorf("era indicator not supported")
+				return nil, errors.Errorf("era indicator not supported")
 			case strings.HasPrefix(format, "B.C.") || strings.HasPrefix(format, "A.D."):
-				return nil, fmt.Errorf("era indicator not supported")
+				return nil, errors.Errorf("era indicator not supported")
 
 			case strings.HasPrefix(format, "MONTH"):
 				result += strings.ToUpper(timestamp.Format("January"))
@@ -193,7 +194,7 @@ var to_char_timestamp = framework.Function2{
 				format = format[1:]
 
 			case strings.HasPrefix(format, "ww") || strings.HasPrefix(format, "WW"):
-				return nil, fmt.Errorf("week of year not supported")
+				return nil, errors.Errorf("week of year not supported")
 
 			case strings.HasPrefix(format, "iw") || strings.HasPrefix(format, "IW"):
 				_, week := timestamp.ISOWeek()
@@ -201,16 +202,16 @@ var to_char_timestamp = framework.Function2{
 				format = format[2:]
 
 			case strings.HasPrefix(format, "i") || strings.HasPrefix(format, "I"):
-				return nil, fmt.Errorf("ISO year not supported")
+				return nil, errors.Errorf("ISO year not supported")
 
 			case strings.HasPrefix(format, "w") || strings.HasPrefix(format, "W"):
-				return nil, fmt.Errorf("week of month not supported")
+				return nil, errors.Errorf("week of month not supported")
 
 			case strings.HasPrefix(format, "cc") || strings.HasPrefix(format, "CC"):
-				return nil, fmt.Errorf("century not supported")
+				return nil, errors.Errorf("century not supported")
 
 			case strings.HasPrefix(format, "j") || strings.HasPrefix(format, "J"):
-				return nil, fmt.Errorf("julian days not supported")
+				return nil, errors.Errorf("julian days not supported")
 
 			case strings.HasPrefix(format, "q") || strings.HasPrefix(format, "Q"):
 				switch timestamp.Month() {
@@ -226,10 +227,10 @@ var to_char_timestamp = framework.Function2{
 				format = format[1:]
 
 			case strings.HasPrefix(format, "rm") || strings.HasPrefix(format, "RM"):
-				return nil, fmt.Errorf("roman numeral month not supported")
+				return nil, errors.Errorf("roman numeral month not supported")
 
 			case strings.HasPrefix(format, "tz") || strings.HasPrefix(format, "TZ"):
-				return nil, fmt.Errorf("time-zone name not supported")
+				return nil, errors.Errorf("time-zone name not supported")
 
 			default:
 				result += string(format[0])

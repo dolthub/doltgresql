@@ -15,9 +15,9 @@
 package ast
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -29,10 +29,10 @@ func nodeCreateView(ctx *Context, node *tree.CreateView) (*vitess.DDL, error) {
 		return nil, nil
 	}
 	if node.Persistence.IsTemporary() {
-		return nil, fmt.Errorf("CREATE TEMPORARY VIEW is not yet supported")
+		return nil, errors.Errorf("CREATE TEMPORARY VIEW is not yet supported")
 	}
 	if node.IsRecursive {
-		return nil, fmt.Errorf("CREATE RECURSIVE VIEW is not yet supported")
+		return nil, errors.Errorf("CREATE RECURSIVE VIEW is not yet supported")
 	}
 	var checkOption = tree.ViewCheckOptionUnspecified
 	var sqlSecurity string
@@ -46,10 +46,10 @@ func nodeCreateView(ctx *Context, node *tree.CreateView) (*vitess.DDL, error) {
 				case "cascaded":
 					checkOption = tree.ViewCheckOptionCascaded
 				default:
-					return nil, fmt.Errorf(`"ERROR:  syntax error at or near "%s"`, opt.Name)
+					return nil, errors.Errorf(`"ERROR:  syntax error at or near "%s"`, opt.Name)
 				}
 			case "security_barrier":
-				return nil, fmt.Errorf("CREATE VIEW '%s' option is not yet supported", opt.Name)
+				return nil, errors.Errorf("CREATE VIEW '%s' option is not yet supported", opt.Name)
 			case "security_invoker":
 				if opt.Security {
 					sqlSecurity = "invoker"
@@ -57,13 +57,13 @@ func nodeCreateView(ctx *Context, node *tree.CreateView) (*vitess.DDL, error) {
 					sqlSecurity = "definer"
 				}
 			default:
-				return nil, fmt.Errorf(`"ERROR:  syntax error at or near "%s"`, opt.Name)
+				return nil, errors.Errorf(`"ERROR:  syntax error at or near "%s"`, opt.Name)
 			}
 		}
 	}
 
 	if checkOption != tree.ViewCheckOptionUnspecified && node.CheckOption != tree.ViewCheckOptionUnspecified {
-		return nil, fmt.Errorf(`ERROR:  parameter "check_option" specified more than once`)
+		return nil, errors.Errorf(`ERROR:  parameter "check_option" specified more than once`)
 	} else {
 		checkOption = node.CheckOption
 	}

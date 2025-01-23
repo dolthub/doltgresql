@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -52,7 +52,7 @@ var pg_get_triggerdef_oid_bool = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		pretty := val2.(bool)
 		if pretty {
-			return "", fmt.Errorf("pretty printing is not yet supported")
+			return "", errors.Errorf("pretty printing is not yet supported")
 		}
 		// TODO: triggers are not supported yet
 		return "", nil

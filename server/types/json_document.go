@@ -15,10 +15,10 @@
 package types
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/goccy/go-json"
 	"github.com/shopspring/decimal"
 
@@ -292,7 +292,7 @@ func JsonValueDeserialize(reader *utils.Reader) (_ JsonValue, err error) {
 	case JsonValueType_Null:
 		return JsonValueNull(0), nil
 	default:
-		return nil, fmt.Errorf("unknown json value type")
+		return nil, errors.Errorf("unknown json value type")
 	}
 }
 
@@ -399,6 +399,6 @@ func ConvertToJsonDocument(val interface{}) (JsonValue, error) {
 	case nil:
 		return JsonValueNull(0), nil
 	default:
-		return nil, fmt.Errorf("unexpected type while constructing JsonDocument: %T", val)
+		return nil, errors.Errorf("unexpected type while constructing JsonDocument: %T", val)
 	}
 }

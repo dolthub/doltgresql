@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -54,7 +55,7 @@ var pg_get_constraintdef_oid_bool = framework.Function2{
 		oidVal := val1.(id.Id)
 		pretty := val2.(bool)
 		if pretty {
-			return "", fmt.Errorf("pretty printing is not yet supported")
+			return "", errors.Errorf("pretty printing is not yet supported")
 		}
 		def, err := getConstraintDef(ctx, oidVal)
 		if err != nil {

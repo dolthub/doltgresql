@@ -14,7 +14,7 @@
 
 package utils
 
-import "fmt"
+import "github.com/cockroachdb/errors"
 
 // ParseTokens parses the given tokens into a StatementGenerator.
 func ParseTokens(tokens []Token, includeRepetition bool) (StatementGenerator, error) {
@@ -37,7 +37,7 @@ ForLoop:
 		case TokenType_VariableDefinition:
 			currentVariable = token.Literal
 			if token, _ = tokenReader.Next(); token.Type != TokenType_LongSpace {
-				return nil, fmt.Errorf("expected a long space after a variable definition declaration")
+				return nil, errors.Errorf("expected a long space after a variable definition declaration")
 			}
 		case TokenType_Or:
 			if err := stack.Or(); err != nil {
@@ -56,18 +56,18 @@ ForLoop:
 				}
 			}
 		case TokenType_ShortSpace, TokenType_MediumSpace:
-			return nil, fmt.Errorf("token reader should have removed all short and medium spaces")
+			return nil, errors.Errorf("token reader should have removed all short and medium spaces")
 		case TokenType_LongSpace, TokenType_EOF:
 			newStatement, err := stack.Finish()
 			if err != nil {
 				return nil, err
 			}
 			if newStatement == nil {
-				return nil, fmt.Errorf("long space encountered before writing to the stack")
+				return nil, errors.Errorf("long space encountered before writing to the stack")
 			}
 			if len(currentVariable) > 0 {
 				if _, ok = variables[currentVariable]; ok {
-					return nil, fmt.Errorf("multiple definitions for the same variable: %s", currentVariable)
+					return nil, errors.Errorf("multiple definitions for the same variable: %s", currentVariable)
 				}
 				variables[currentVariable] = newStatement
 				currentVariable = ""
@@ -106,10 +106,10 @@ ForLoop:
 		return nil, err
 	}
 	if finalStackContents != nil {
-		return nil, fmt.Errorf("encountered an early EOF, as the stack was still processing")
+		return nil, errors.Errorf("encountered an early EOF, as the stack was still processing")
 	}
 	if len(statements) == 0 {
-		return nil, fmt.Errorf("no statements were generated from the token stream")
+		return nil, errors.Errorf("no statements were generated from the token stream")
 	}
 	var finalStatementGenerator StatementGenerator
 	if len(statements) == 1 {

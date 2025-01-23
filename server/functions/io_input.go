@@ -15,16 +15,17 @@
 package functions
 
 import (
-	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/cockroachdb/errors"
 )
 
 // ioInputSections converts the input string for IoInput into a sectioned form according to the rules defined by Postgres:
 // https://www.postgresql.org/docs/15/datatype-oid.html
 func ioInputSections(input string) ([]string, error) {
 	if len(input) == 0 {
-		return nil, fmt.Errorf("invalid name syntax")
+		return nil, errors.Errorf("invalid name syntax")
 	}
 	runeInput := []rune(strings.TrimSpace(input))
 	var sections []string
@@ -53,7 +54,7 @@ func ioInputSections(input string) ([]string, error) {
 				}
 			} else {
 				if i < len(runeInput)-1 && runeInput[i+1] == '"' {
-					return nil, fmt.Errorf("invalid name syntax")
+					return nil, errors.Errorf("invalid name syntax")
 				}
 				inQuotes = true
 				sectionBuilder.WriteRune(char)
@@ -83,7 +84,7 @@ func ioInputSections(input string) ([]string, error) {
 				sectionBuilder.WriteRune(char)
 			} else {
 				if sectionBuilder.Len() == 0 && char == '"' {
-					return nil, fmt.Errorf("invalid name syntax")
+					return nil, errors.Errorf("invalid name syntax")
 				}
 				sectionBuilder.WriteRune(unicode.ToLower(char))
 			}
@@ -95,7 +96,7 @@ func ioInputSections(input string) ([]string, error) {
 		if inQuotes {
 			// For some reason, you can have an unmatched double quote at the end, so we're duplicating that behavior
 			if input[len(input)-1] != '"' {
-				return nil, fmt.Errorf("invalid name syntax")
+				return nil, errors.Errorf("invalid name syntax")
 			}
 		}
 		if len(sections) > 0 && sections[len(sections)-1] != "." {

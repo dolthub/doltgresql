@@ -15,9 +15,9 @@
 package ast
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -30,10 +30,10 @@ func nodeShowVar(ctx *Context, node *tree.ShowVar) (vitess.Statement, error) {
 	}
 
 	if strings.ToLower(node.Name) == "is_superuser" {
-		return nil, fmt.Errorf("SHOW IS_SUPERUSER is not yet supported")
+		return nil, errors.Errorf("SHOW IS_SUPERUSER is not yet supported")
 	} else if strings.ToLower(node.Name) == "all" {
 		// TODO: need this soon
-		return nil, fmt.Errorf("SHOW ALL is not yet supported")
+		return nil, errors.Errorf("SHOW ALL is not yet supported")
 	}
 
 	// TODO: this is a temporary way to get the param value for the current implementation

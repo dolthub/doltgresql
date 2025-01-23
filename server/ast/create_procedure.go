@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,5 +28,5 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 	if err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("CREATE PROCEDURE statement is not yet supported")
+	return nil, errors.Errorf("CREATE PROCEDURE statement is not yet supported")
 }
