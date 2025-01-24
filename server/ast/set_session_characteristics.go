@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeSetSessionCharacteristics(ctx *Context, node *tree.SetSessionCharacteri
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("SET SESSION CHARACTERISTICS is not yet supported")
+	return nil, errors.Errorf("SET SESSION CHARACTERISTICS is not yet supported")
 }

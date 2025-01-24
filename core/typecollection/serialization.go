@@ -16,8 +16,9 @@ package typecollection
 
 import (
 	"context"
-	"fmt"
 	"sync"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -68,7 +69,7 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
 	if version != 0 {
-		return nil, fmt.Errorf("version %d of types is not supported, please upgrade the server", version)
+		return nil, errors.Errorf("version %d of types is not supported, please upgrade the server", version)
 	}
 
 	// Read from the reader
@@ -89,7 +90,7 @@ func Deserialize(ctx context.Context, data []byte) (*TypeCollection, error) {
 		schemaMap[schemaName] = nameMap
 	}
 	if !reader.IsEmpty() {
-		return nil, fmt.Errorf("extra data found while deserializing types")
+		return nil, errors.Errorf("extra data found while deserializing types")
 	}
 
 	// Return the deserialized object

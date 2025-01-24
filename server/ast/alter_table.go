@@ -17,6 +17,7 @@ package ast
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -63,7 +64,7 @@ func nodeAlterTableSetSchema(ctx *Context, node *tree.AlterTableSetSchema) (vite
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("ALTER TABLE SET SCHEMA is not yet supported")
+	return nil, errors.Errorf("ALTER TABLE SET SCHEMA is not yet supported")
 }
 
 // nodeAlterTableCmds converts tree.AlterTableCmds into a slice of vitess.DDL instances that can be executed by GMS.
@@ -76,7 +77,7 @@ func nodeAlterTableCmds(
 	ifExists bool) ([]*vitess.DDL, []string, error) {
 
 	if len(node) == 0 {
-		return nil, nil, fmt.Errorf("no commands specified for ALTER TABLE statement")
+		return nil, nil, errors.Errorf("no commands specified for ALTER TABLE statement")
 	}
 
 	vitessDdlCmds := make([]*vitess.DDL, 0, len(node))
@@ -142,7 +143,7 @@ func nodeAlterTableCmds(
 		case *tree.AlterTableOwner:
 			unsupportedWarnings = append(unsupportedWarnings, fmt.Sprintf("ALTER TABLE %s OWNER TO %s", tableName.String(), cmd.Owner))
 		default:
-			return nil, nil, fmt.Errorf("ALTER TABLE with unsupported command type %T", cmd)
+			return nil, nil, errors.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
 	}
 
@@ -160,7 +161,7 @@ func nodeAlterTableAddConstraint(
 	ifExists bool) (*vitess.DDL, error) {
 
 	if node.ValidationBehavior == tree.ValidationSkip {
-		return nil, fmt.Errorf("NOT VALID is not supported yet")
+		return nil, errors.Errorf("NOT VALID is not supported yet")
 	}
 
 	switch constraintDef := node.ConstraintDef.(type) {
@@ -186,7 +187,7 @@ func nodeAlterTableAddConstraint(
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("ALTER TABLE with unsupported constraint "+
+		return nil, errors.Errorf("ALTER TABLE with unsupported constraint "+
 			"definition type %T", node)
 	}
 }
@@ -194,7 +195,7 @@ func nodeAlterTableAddConstraint(
 // nodeAlterTableAddColumn converts a tree.AlterTableAddColumn instance into an equivalent vitess.DDL instance.
 func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
 	if node.IfNotExists {
-		return nil, fmt.Errorf("IF NOT EXISTS on a column in an ADD COLUMN statement is not supported yet")
+		return nil, errors.Errorf("IF NOT EXISTS on a column in an ADD COLUMN statement is not supported yet")
 	}
 
 	vitessColumnDef, err := nodeColumnTableDef(ctx, node.ColumnDef)
@@ -218,17 +219,17 @@ func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, table
 // nodeAlterTableDropColumn converts a tree.AlterTableDropColumn instance into an equivalent vitess.DDL instance.
 func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
 	if node.IfExists {
-		return nil, fmt.Errorf("IF EXISTS on a column in a DROP COLUMN statement is not supported yet")
+		return nil, errors.Errorf("IF EXISTS on a column in a DROP COLUMN statement is not supported yet")
 	}
 
 	switch node.DropBehavior {
 	case tree.DropDefault:
 	case tree.DropRestrict:
-		return nil, fmt.Errorf("ALTER TABLE DROP COLUMN does not support RESTRICT option")
+		return nil, errors.Errorf("ALTER TABLE DROP COLUMN does not support RESTRICT option")
 	case tree.DropCascade:
-		return nil, fmt.Errorf("ALTER TABLE DROP COLUMN does not support CASCADE option")
+		return nil, errors.Errorf("ALTER TABLE DROP COLUMN does not support CASCADE option")
 	default:
-		return nil, fmt.Errorf("ALTER TABLE with unsupported drop behavior %v", node.DropBehavior)
+		return nil, errors.Errorf("ALTER TABLE with unsupported drop behavior %v", node.DropBehavior)
 	}
 
 	return &vitess.DDL{
@@ -279,11 +280,11 @@ func nodeAlterTableSetDefault(ctx *Context, node *tree.AlterTableSetDefault, tab
 // nodeAlterTableAlterColumnType converts a tree.AlterTableAlterColumnType instance into an equivalent vitess.DDL instance.
 func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColumnType, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
 	if node.Collation != "" {
-		return nil, fmt.Errorf("ALTER TABLE with COLLATE is not supported yet")
+		return nil, errors.Errorf("ALTER TABLE with COLLATE is not supported yet")
 	}
 
 	if node.Using != nil {
-		return nil, fmt.Errorf("ALTER TABLE with USING is not supported yet")
+		return nil, errors.Errorf("ALTER TABLE with USING is not supported yet")
 	}
 
 	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType)
@@ -353,7 +354,7 @@ func nodeAlterTablePartition(ctx *Context, node *tree.AlterTablePartition) (*vit
 	case tree.PartitionBoundFromTo:
 	case tree.PartitionBoundWith:
 	default:
-		return nil, fmt.Errorf("ALTER TABLE with unsupported partition type %v", node.Spec.Type)
+		return nil, errors.Errorf("ALTER TABLE with unsupported partition type %v", node.Spec.Type)
 	}
 
 	partitionDef := &vitess.PartitionDefinition{

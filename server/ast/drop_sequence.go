@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -29,14 +29,14 @@ func nodeDropSequence(ctx *Context, node *tree.DropSequence) (vitess.Statement, 
 		return nil, nil
 	}
 	if len(node.Names) != 1 {
-		return nil, fmt.Errorf("dropping multiple sequences in DROP SEQUENCE is not yet supported")
+		return nil, errors.Errorf("dropping multiple sequences in DROP SEQUENCE is not yet supported")
 	}
 	name, err := nodeTableName(ctx, &node.Names[0])
 	if err != nil {
 		return nil, err
 	}
 	if len(name.DbQualifier.String()) > 0 {
-		return nil, fmt.Errorf("DROP SEQUENCE is currently only supported for the current database")
+		return nil, errors.Errorf("DROP SEQUENCE is currently only supported for the current database")
 	}
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewDropSequence(node.IfExists, name.SchemaQualifier.String(), name.Name.String(),

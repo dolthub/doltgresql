@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"unicode/utf8"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -38,13 +38,13 @@ var chr_int32 = framework.Function1{
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := val1Interface.(int32)
 		if val1 == 0 {
-			return nil, fmt.Errorf("null character not permitted")
+			return nil, errors.Errorf("null character not permitted")
 		} else if val1 < 0 {
-			return nil, fmt.Errorf("character number must be positive")
+			return nil, errors.Errorf("character number must be positive")
 		}
 		r := rune(val1)
 		if !utf8.ValidRune(r) {
-			return nil, fmt.Errorf("requested character too large for encoding")
+			return nil, errors.Errorf("requested character too large for encoding")
 		}
 		return string(r), nil
 	},

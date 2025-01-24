@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -29,7 +29,7 @@ func nodeDropType(ctx *Context, node *tree.DropType) (vitess.Statement, error) {
 		return nil, nil
 	}
 	if len(node.Names) != 1 {
-		return nil, fmt.Errorf("dropping multiple types in DROP TYPE is not yet supported")
+		return nil, errors.Errorf("dropping multiple types in DROP TYPE is not yet supported")
 	}
 	tn := node.Names[0].ToTableName()
 	return vitess.InjectedStatement{

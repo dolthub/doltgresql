@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -47,7 +47,7 @@ var enum_in = framework.Function2{
 			return nil, err
 		}
 		if typ.TypCategory != pgtypes.TypeCategory_EnumTypes {
-			return nil, fmt.Errorf(`"%s" is not an enum type`, typ.Name())
+			return nil, errors.Errorf(`"%s" is not an enum type`, typ.Name())
 		}
 
 		value := val1.(string)
@@ -94,7 +94,7 @@ var enum_recv = framework.Function2{
 			return nil, err
 		}
 		if typ.TypCategory != pgtypes.TypeCategory_EnumTypes {
-			return nil, fmt.Errorf(`"%s" is not an enum type`, typ.Name())
+			return nil, errors.Errorf(`"%s" is not an enum type`, typ.Name())
 		}
 		if _, exists := typ.EnumLabels[value]; !exists {
 			return nil, pgtypes.ErrInvalidInputValueForEnum.New(typ.Name(), value)
@@ -129,7 +129,7 @@ var enum_cmp = framework.Function2{
 		bb := val2.(string)
 		enumType := t[0]
 		if enumType.EnumLabels == nil {
-			return nil, fmt.Errorf(`enum label lookup failed for type %s`, enumType.Name())
+			return nil, errors.Errorf(`enum label lookup failed for type %s`, enumType.Name())
 		}
 		abLabel, ok := enumType.EnumLabels[ab]
 		if !ok {

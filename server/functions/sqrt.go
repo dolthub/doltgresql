@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
@@ -42,7 +42,7 @@ var sqrt_float64 = framework.Function1{
 			return nil, nil
 		}
 		if val1.(float64) < 0 {
-			return nil, fmt.Errorf("cannot take square root of a negative number")
+			return nil, errors.Errorf("cannot take square root of a negative number")
 		}
 		return math.Sqrt(val1.(float64)), nil
 	},
@@ -56,7 +56,7 @@ var sqrt_numeric = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		if val1.(decimal.Decimal).Cmp(decimal.Zero) == -1 {
-			return nil, fmt.Errorf("cannot take square root of a negative number")
+			return nil, errors.Errorf("cannot take square root of a negative number")
 		}
 		// TODO: decimal's Pow function does not work correctly using an exponent of 0.5, need to fix
 		return decimal.NewFromFloat(math.Sqrt(val1.(decimal.Decimal).InexactFloat64())), nil

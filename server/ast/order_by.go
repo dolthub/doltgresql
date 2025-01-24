@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -31,7 +31,7 @@ func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 	orderBys := make([]*vitess.Order, len(node))
 	for i := range node {
 		if node[i].OrderType != tree.OrderByColumn {
-			return nil, fmt.Errorf("ORDER BY type is not yet supported")
+			return nil, errors.Errorf("ORDER BY type is not yet supported")
 		}
 		var direction string
 		switch node[i].Direction {
@@ -42,7 +42,7 @@ func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 		case tree.Descending:
 			direction = vitess.DescScr
 		default:
-			return nil, fmt.Errorf("unknown ORDER BY sorting direction")
+			return nil, errors.Errorf("unknown ORDER BY sorting direction")
 		}
 		switch node[i].NullsOrder {
 		case tree.DefaultNullsOrder:
@@ -51,14 +51,14 @@ func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 			// If the NULL order is explicitly declared, then we want to error rather than return incorrect results.
 		case tree.NullsFirst:
 			if direction != vitess.AscScr {
-				return nil, fmt.Errorf("this NULL ordering is not yet supported for this ORDER BY direction")
+				return nil, errors.Errorf("this NULL ordering is not yet supported for this ORDER BY direction")
 			}
 		case tree.NullsLast:
 			if direction != vitess.DescScr {
-				return nil, fmt.Errorf("this NULL ordering is not yet supported for this ORDER BY direction")
+				return nil, errors.Errorf("this NULL ordering is not yet supported for this ORDER BY direction")
 			}
 		default:
-			return nil, fmt.Errorf("unknown NULL ordering in ORDER BY")
+			return nil, errors.Errorf("unknown NULL ordering in ORDER BY")
 		}
 		expr, err := nodeExpr(ctx, node[i].Expr)
 		if err != nil {

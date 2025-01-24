@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,5 +28,5 @@ func nodeShowCreate(ctx *Context, node *tree.ShowCreate) (vitess.Statement, erro
 		return nil, nil
 	}
 	//TODO: this isn't supported in Postgres, but the parser has support for it as an extension. Should we keep it?
-	return nil, fmt.Errorf("SHOW CREATE is not yet supported")
+	return nil, errors.Errorf("SHOW CREATE is not yet supported")
 }

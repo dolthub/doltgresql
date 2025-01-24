@@ -15,10 +15,10 @@
 package expression
 
 import (
-	"fmt"
 	"strconv"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
@@ -85,7 +85,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 				return nil, err
 			}
 			if _, ok := newVal.(int32); !ok {
-				return nil, fmt.Errorf("GMSCast expected type `int32`, got `%T`", val)
+				return nil, errors.Errorf("GMSCast expected type `int32`, got `%T`", val)
 			}
 			if newVal.(int32) == 0 {
 				return false, nil
@@ -102,7 +102,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, err
 		}
 		if _, ok := newVal.(int32); !ok {
-			return nil, fmt.Errorf("GMSCast expected type `int32`, got `%T`", val)
+			return nil, errors.Errorf("GMSCast expected type `int32`, got `%T`", val)
 		}
 		return newVal, nil
 	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
@@ -111,59 +111,59 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, err
 		}
 		if _, ok := newVal.(int64); !ok {
-			return nil, fmt.Errorf("GMSCast expected type `int64`, got `%T`", val)
+			return nil, errors.Errorf("GMSCast expected type `int64`, got `%T`", val)
 		}
 		return newVal, nil
 	case query.Type_UINT64:
 		if val, ok := val.(uint64); ok {
 			return decimal.NewFromString(strconv.FormatUint(val, 10))
 		}
-		return nil, fmt.Errorf("GMSCast expected type `uint64`, got `%T`", val)
+		return nil, errors.Errorf("GMSCast expected type `uint64`, got `%T`", val)
 	case query.Type_FLOAT32:
 		if val, ok := val.(float32); ok {
 			return val, nil
 		}
-		return nil, fmt.Errorf("GMSCast expected type `float32`, got `%T`", val)
+		return nil, errors.Errorf("GMSCast expected type `float32`, got `%T`", val)
 	case query.Type_FLOAT64:
 		if val, ok := val.(float64); ok {
 			return val, nil
 		}
-		return nil, fmt.Errorf("GMSCast expected type `float64`, got `%T`", val)
+		return nil, errors.Errorf("GMSCast expected type `float64`, got `%T`", val)
 	case query.Type_DECIMAL:
 		if val, ok := val.(decimal.Decimal); ok {
 			return val, nil
 		}
-		return nil, fmt.Errorf("GMSCast expected type `Decimal`, got `%T`", val)
+		return nil, errors.Errorf("GMSCast expected type `Decimal`, got `%T`", val)
 	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 		if val, ok := val.(time.Time); ok {
 			return val, nil
 		}
-		return nil, fmt.Errorf("GMSCast expected type `Time`, got `%T`", val)
+		return nil, errors.Errorf("GMSCast expected type `Time`, got `%T`", val)
 	case query.Type_TIME:
 		if val, ok := val.(types.Timespan); ok {
 			return val.String(), nil
 		}
-		return nil, fmt.Errorf("GMSCast expected type `Timespan`, got `%T`", val)
+		return nil, errors.Errorf("GMSCast expected type `Timespan`, got `%T`", val)
 	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
 		newVal, _, err := types.LongText.Convert(val)
 		if err != nil {
 			return nil, err
 		}
 		if _, ok := newVal.(string); !ok {
-			return nil, fmt.Errorf("GMSCast expected type `string`, got `%T`", val)
+			return nil, errors.Errorf("GMSCast expected type `string`, got `%T`", val)
 		}
 		return newVal, nil
 	case query.Type_JSON:
 		if val, ok := val.(types.JSONDocument); ok {
 			return val.JSONString()
 		}
-		return nil, fmt.Errorf("GMSCast expected type `JSONDocument`, got `%T`", val)
+		return nil, errors.Errorf("GMSCast expected type `JSONDocument`, got `%T`", val)
 	case query.Type_NULL_TYPE:
 		return nil, nil
 	case query.Type_GEOMETRY:
-		return nil, fmt.Errorf("GMS geometry types are not supported")
+		return nil, errors.Errorf("GMS geometry types are not supported")
 	default:
-		return nil, fmt.Errorf("GMS type `%s` is not supported", c.sqlChild.Type().String())
+		return nil, errors.Errorf("GMS type `%s` is not supported", c.sqlChild.Type().String())
 	}
 }
 

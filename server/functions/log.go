@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
@@ -41,9 +41,9 @@ var log_float64 = framework.Function1{
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := val1Interface.(float64)
 		if val1 == 0 {
-			return nil, fmt.Errorf("cannot take logarithm of zero")
+			return nil, errors.Errorf("cannot take logarithm of zero")
 		} else if val1 < 0 {
-			return nil, fmt.Errorf("cannot take logarithm of a negative number")
+			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
 		return math.Log10(val1), nil
 	},
@@ -61,9 +61,9 @@ var log_numeric = framework.Function1{
 		}
 		val1 := val1Interface.(decimal.Decimal)
 		if val1.Equal(decimal.Zero) {
-			return nil, fmt.Errorf("cannot take logarithm of zero")
+			return nil, errors.Errorf("cannot take logarithm of zero")
 		} else if val1.LessThan(decimal.Zero) {
-			return nil, fmt.Errorf("cannot take logarithm of a negative number")
+			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
 		// TODO: implement log for numeric instead of relying on float64
 		f, _ := val1.Float64()
@@ -84,9 +84,9 @@ var log_numeric_numeric = framework.Function2{
 		val1 := val1Interface.(decimal.Decimal)
 		val2 := val2Interface.(decimal.Decimal)
 		if val1.Equal(decimal.Zero) || val2.Equal(decimal.Zero) {
-			return nil, fmt.Errorf("cannot take logarithm of zero")
+			return nil, errors.Errorf("cannot take logarithm of zero")
 		} else if val1.LessThan(decimal.Zero) || val2.LessThan(decimal.Zero) {
-			return nil, fmt.Errorf("cannot take logarithm of a negative number")
+			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
 		// TODO: implement log for numeric instead of relying on float64
 		base, _ := val1.Float64()
@@ -94,7 +94,7 @@ var log_numeric_numeric = framework.Function2{
 		logNum := math.Log(num)
 		logBase := math.Log(base)
 		if logBase == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, errors.Errorf("division by zero")
 		}
 		return decimal.NewFromFloat(logNum / logBase), nil
 	},

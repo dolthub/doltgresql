@@ -16,7 +16,6 @@ package logrepl
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -25,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -317,7 +317,7 @@ func (r *LogicalReplicator) StartReplication(slotName string) error {
 
 			rawMsg := msgAndErr.msg
 			if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-				return fmt.Errorf("received Postgres WAL error: %+v", errMsg)
+				return errors.Errorf("received Postgres WAL error: %+v", errMsg)
 			}
 
 			msg, ok := rawMsg.(*pgproto3.CopyData)

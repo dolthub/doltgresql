@@ -15,11 +15,12 @@
 package servercfg
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
@@ -505,9 +506,9 @@ func ReadConfigFromYamlFile(fs filesys.Filesys, configFilePath string) (*Doltgre
 	if err != nil {
 		absPath, absErr := fs.Abs(configFilePath)
 		if absErr != nil {
-			return nil, fmt.Errorf("error reading config file '%s': %w", configFilePath, err)
+			return nil, errors.Errorf("error reading config file '%s': %w", configFilePath, err)
 		} else {
-			return nil, fmt.Errorf("error reading config file '%s': %w", absPath, err)
+			return nil, errors.Errorf("error reading config file '%s': %w", absPath, err)
 		}
 	}
 	return ConfigFromYamlData(configFileData)
@@ -517,7 +518,7 @@ func ConfigFromYamlData(configFileData []byte) (*DoltgresConfig, error) {
 	var cfg DoltgresConfig
 	err := yaml.UnmarshalStrict(configFileData, &cfg)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling config data: %w", err)
+		return nil, errors.Errorf("error unmarshalling config data: %w", err)
 	}
 
 	return &cfg, err

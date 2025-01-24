@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -60,9 +60,9 @@ func nodeWindowDef(ctx *Context, node *tree.WindowDef) (*vitess.WindowDef, error
 		case tree.ROWS:
 			unit = vitess.RowsUnit
 		case tree.GROUPS:
-			return nil, fmt.Errorf("GROUPS is not yet supported")
+			return nil, errors.Errorf("GROUPS is not yet supported")
 		default:
-			return nil, fmt.Errorf("unknown window frame mode")
+			return nil, errors.Errorf("unknown window frame mode")
 		}
 		var bounds [2]*vitess.FrameBound
 		for i, bound := range []*tree.WindowFrameBound{node.Frame.Bounds.StartBound, node.Frame.Bounds.EndBound} {
@@ -82,7 +82,7 @@ func nodeWindowDef(ctx *Context, node *tree.WindowDef) (*vitess.WindowDef, error
 			case tree.UnboundedFollowing:
 				boundType = vitess.UnboundedFollowing
 			default:
-				return nil, fmt.Errorf("unknown window frame bound type")
+				return nil, errors.Errorf("unknown window frame bound type")
 			}
 			boundExpr, err := nodeExpr(ctx, bound.OffsetExpr)
 			if err != nil {

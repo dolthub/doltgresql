@@ -15,7 +15,7 @@
 package expression
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -38,7 +38,7 @@ var _ expression.Comparer = (*JoinComparator)(nil)
 // NewJoinComparator returns a new *JoinComparator.
 func NewJoinComparator(eq *BinaryOperator) (*JoinComparator, error) {
 	if eq.operator != framework.Operator_BinaryEqual {
-		return nil, fmt.Errorf("join comparator may only be created from equality operators")
+		return nil, errors.Errorf("join comparator may only be created from equality operators")
 	}
 	less, err := (&BinaryOperator{operator: framework.Operator_BinaryLessThan}).WithResolvedChildren([]any{eq.Left(), eq.Right()})
 	if err != nil {
@@ -129,7 +129,7 @@ func (j *JoinComparator) WithChildren(children ...sql.Expression) (sql.Expressio
 	}
 	binaryOper, ok := children[0].(*BinaryOperator)
 	if !ok {
-		return nil, fmt.Errorf("expected join comparator child to be a binary operator but has type `%T`", children[0])
+		return nil, errors.Errorf("expected join comparator child to be a binary operator but has type `%T`", children[0])
 	}
 	return NewJoinComparator(binaryOper)
 }

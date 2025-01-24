@@ -15,16 +15,15 @@
 package config
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
-	"gopkg.in/src-d/go-errors.v1"
-
+	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/variables"
+	"gopkg.in/src-d/go-errors.v1"
 )
 
 // doltConfigParameters is a list of Dolt-specific configuration parameters that can be used in SET statement.
@@ -215,9 +214,9 @@ func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 		return err
 	case PsqlScopeLocal:
 		// TODO: support LOCAL scope
-		return fmt.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
+		return cerrors.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
 	default:
-		return fmt.Errorf("unable to set `%s` due to unknown scope `%v`", name, p.Type)
+		return cerrors.Errorf("unable to set `%s` due to unknown scope `%v`", name, p.Type)
 	}
 }
 
@@ -232,9 +231,9 @@ func (p *PgsqlScope) GetValue(ctx *sql.Context, name string, _ sql.CollationID) 
 		return val, nil
 	case PsqlScopeLocal:
 		// TODO: support LOCAL scope
-		return nil, fmt.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
+		return nil, cerrors.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
 	default:
-		return nil, fmt.Errorf("unknown scope `%v` on configuration parameter `%s`", p.Type, name)
+		return nil, cerrors.Errorf("unknown scope `%v` on configuration parameter `%s`", p.Type, name)
 	}
 }
 
@@ -272,6 +271,6 @@ func TzOffsetToDuration(d string) (time.Duration, error) {
 		mins := matches[3]
 		return time.ParseDuration(symbol + hours + "h" + mins + "m")
 	} else {
-		return -1, fmt.Errorf("error: unable to process time")
+		return -1, cerrors.Errorf("error: unable to process time")
 	}
 }

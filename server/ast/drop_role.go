@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"fmt"
-
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -35,7 +33,7 @@ func nodeDropRole(ctx *Context, node *tree.DropRole) (vitess.Statement, error) {
 		case *tree.StrVal:
 			names = append(names, name.RawString())
 		default:
-			return nil, fmt.Errorf("unknown type `%T` for DROP ROLE name", name)
+			return nil, errors.Errorf("unknown type `%T` for DROP ROLE name", name)
 		}
 	}
 	// Rather than account for every string type for error checking, we can just do it in a second loop

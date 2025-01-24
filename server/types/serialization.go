@@ -16,10 +16,10 @@ package types
 
 import (
 	"cmp"
-	"fmt"
 	"maps"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 
@@ -38,21 +38,21 @@ func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
 	if doltgresType, ok := extendedType.(*DoltgresType); ok {
 		return doltgresType.Serialize(), nil
 	}
-	return nil, fmt.Errorf("unknown type to serialize")
+	return nil, errors.Errorf("unknown type to serialize")
 }
 
 // DeserializeType is able to deserialize the given serialized type into an appropriate extended type. All extended
 // types will be defined by DoltgreSQL.
 func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 	if len(serializedType) == 0 {
-		return nil, fmt.Errorf("deserializing empty type data")
+		return nil, errors.Errorf("deserializing empty type data")
 	}
 
 	typ := &DoltgresType{}
 	reader := utils.NewReader(serializedType)
 	version := reader.VariableUint()
 	if version != 0 {
-		return nil, fmt.Errorf("version %d of types is not supported, please upgrade the server", version)
+		return nil, errors.Errorf("version %d of types is not supported, please upgrade the server", version)
 	}
 
 	typ.ID = id.Type(reader.Id())
@@ -132,7 +132,7 @@ func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
 	}
 	typ.InternalName = reader.String()
 	if !reader.IsEmpty() {
-		return nil, fmt.Errorf("extra data found while deserializing type %s", typ.Name())
+		return nil, errors.Errorf("extra data found while deserializing type %s", typ.Name())
 	}
 
 	// Return the deserialized object

@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -56,7 +56,7 @@ func nodeUnionClause(ctx *Context, node *tree.UnionClause) (*vitess.SetOp, error
 			unionType = vitess.ExceptStr
 		}
 	default:
-		return nil, fmt.Errorf("unknown type of UNION operator: `%s`", node.Type.String())
+		return nil, errors.Errorf("unknown type of UNION operator: `%s`", node.Type.String())
 	}
 
 	// TODO next: the types here are incorrect for parenthetical table statements

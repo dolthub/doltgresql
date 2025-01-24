@@ -17,6 +17,7 @@ package node
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -68,7 +69,7 @@ func (c *DropDomain) Resolved() bool {
 func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	currentDb := ctx.GetCurrentDatabase()
 	if len(c.database) > 0 && c.database != currentDb {
-		return nil, fmt.Errorf("DROP DOMAIN is currently only supported for the current database")
+		return nil, errors.Errorf("DROP DOMAIN is currently only supported for the current database")
 	}
 	schema, err := core.GetSchemaName(ctx, nil, c.schema)
 	if err != nil {
@@ -89,7 +90,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 	if c.cascade {
 		// TODO: handle cascade
-		return nil, fmt.Errorf(`cascading domain drops are not yet supported`)
+		return nil, errors.Errorf(`cascading domain drops are not yet supported`)
 	}
 
 	// iterate on all table columns to check if this domain is currently used.
@@ -112,7 +113,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 					if dt.Name() == domain.Name() {
 						// TODO: issue a detail (list of all columns and tables that uses this domain)
 						//  and a hint (when we support CASCADE)
-						return nil, fmt.Errorf(`cannot drop type %s because other objects depend on it - column %s of table %s depends on type %s'`, c.domain, col.Name, t.Name(), c.domain)
+						return nil, errors.Errorf(`cannot drop type %s because other objects depend on it - column %s of table %s depends on type %s'`, c.domain, col.Name, t.Name(), c.domain)
 					}
 				}
 			}

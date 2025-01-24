@@ -15,7 +15,7 @@
 package utils
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -65,7 +65,7 @@ func (sgs *StatementGeneratorStack) AddVariable(name string) {
 // or the stack will increment the sub depth to insert an OrGen.
 func (sgs *StatementGeneratorStack) Or() error {
 	if sgs.stack.Empty() {
-		return fmt.Errorf("cannot apply Or to an empty stack")
+		return errors.Errorf("cannot apply Or to an empty stack")
 	}
 	parentElement := sgs.stack.PeekDepth(1)
 	current := sgs.aggregate(sgs.stack.Pop().generators)
@@ -164,14 +164,14 @@ func (sgs *StatementGeneratorStack) ExitOptionalScope() error {
 	}
 	optionalElement := sgs.stack.Pop()
 	if optionalElement.depth != sgs.depth {
-		return fmt.Errorf("internal bookkeeping error, attempted to exit from optional scope but the depth is incorrect")
+		return errors.Errorf("internal bookkeeping error, attempted to exit from optional scope but the depth is incorrect")
 	}
 	if optionalGen, ok := optionalElement.LastGenerator().(*OptionalGen); ok {
 		if err := optionalGen.AddChildren(current); err != nil {
 			return err
 		}
 	} else {
-		return fmt.Errorf("internal bookkeeping error, attempted to exit from optional scope but missing OptionalGen")
+		return errors.Errorf("internal bookkeeping error, attempted to exit from optional scope but missing OptionalGen")
 	}
 	sgs.stack.Peek().Append(sgs.aggregate(optionalElement.generators))
 	return nil
@@ -196,14 +196,14 @@ func (sgs *StatementGeneratorStack) ExitParenScope() error {
 	}
 	collectionElement := sgs.stack.Pop()
 	if collectionElement.depth != sgs.depth {
-		return fmt.Errorf("internal bookkeeping error, attempted to exit from paren scope but the depth is incorrect")
+		return errors.Errorf("internal bookkeeping error, attempted to exit from paren scope but the depth is incorrect")
 	}
 	if collectionGen, ok := collectionElement.LastGenerator().(*CollectionGen); ok {
 		if err := collectionGen.AddChildren(current, Text(")")); err != nil {
 			return err
 		}
 	} else {
-		return fmt.Errorf("internal bookkeeping error, attempted to exit from paren scope but missing CollectionGen")
+		return errors.Errorf("internal bookkeeping error, attempted to exit from paren scope but missing CollectionGen")
 	}
 	sgs.stack.Peek().Append(sgs.aggregate(collectionElement.generators))
 	return nil
@@ -214,7 +214,7 @@ func (sgs *StatementGeneratorStack) Repeat() error {
 	current := sgs.stack.Peek()
 	lastGen := current.LastGenerator()
 	if lastGen == nil {
-		return fmt.Errorf("unable to repeat as no generators exist at the current depth")
+		return errors.Errorf("unable to repeat as no generators exist at the current depth")
 	}
 	current.Append(Optional(lastGen.Copy()))
 	return nil
@@ -226,7 +226,7 @@ func (sgs *StatementGeneratorStack) OptionalRepeat(prefix string) error {
 	current := sgs.stack.Peek()
 	lastGen := current.LastGenerator()
 	if lastGen == nil {
-		return fmt.Errorf("unable to optionally repeat as no generators exist at the current depth")
+		return errors.Errorf("unable to optionally repeat as no generators exist at the current depth")
 	}
 	if len(prefix) > 0 {
 		current.Append(Optional(Collection(Text(prefix), lastGen.Copy())))
@@ -241,12 +241,12 @@ func (sgs *StatementGeneratorStack) OptionalRepeat(prefix string) error {
 func (sgs *StatementGeneratorStack) Finish() (StatementGenerator, error) {
 	if sgs.depth != 0 {
 		if sgs.depth < 0 {
-			return nil, fmt.Errorf("depth is invalid, too many scope exits")
+			return nil, errors.Errorf("depth is invalid, too many scope exits")
 		} else {
-			return nil, fmt.Errorf("depth is invalid, too many scope entries")
+			return nil, errors.Errorf("depth is invalid, too many scope entries")
 		}
 	} else if !sgs.stack.Empty() && sgs.stack.Peek().depth != 0 {
-		return nil, fmt.Errorf("internal bookkeeping error, stack depth does not match handle depth")
+		return nil, errors.Errorf("internal bookkeeping error, stack depth does not match handle depth")
 	}
 	if sgs.stack.Len() == 1 && len(sgs.stack.Peek().generators) == 0 {
 		return nil, nil
@@ -255,7 +255,7 @@ func (sgs *StatementGeneratorStack) Finish() (StatementGenerator, error) {
 	for !sgs.stack.Empty() {
 		currentDepth := sgs.stack.Pop()
 		if len(currentDepth.generators) == 0 {
-			return nil, fmt.Errorf("internal bookkeeping error, stack has a depth with no generators")
+			return nil, errors.Errorf("internal bookkeeping error, stack has a depth with no generators")
 		}
 		if lastGen := currentDepth.LastGenerator(); lastGen != nil {
 			if orGen, ok := lastGen.(*OrGen); ok {

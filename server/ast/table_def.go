@@ -15,9 +15,9 @@
 package ast
 
 import (
-	"fmt"
 	"sort"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -81,7 +81,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 		return nil
 	case *tree.LikeTableDef:
 		if len(node.Options) > 0 {
-			return fmt.Errorf("options for LIKE are not yet supported")
+			return errors.Errorf("options for LIKE are not yet supported")
 		}
 		tableName, err := nodeTableName(ctx, &node.Name)
 		if err != nil {
@@ -118,7 +118,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 	case nil:
 		return nil
 	default:
-		return fmt.Errorf("unknown table definition encountered")
+		return errors.Errorf("unknown table definition encountered")
 	}
 }
 

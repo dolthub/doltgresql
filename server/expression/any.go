@@ -17,6 +17,7 @@ package expression
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
@@ -106,7 +107,7 @@ func (a *subqueryAnyExpr) resolved() bool {
 // eval evaluates the comparison functions for subqueryAnyExpr.
 func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row, left interface{}) (interface{}, error) {
 	if len(a.compFuncs) == 0 {
-		return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", a)
+		return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", a)
 	}
 
 	// TODO: This sometimes panics in `evalMultiple` for subqueries that return
@@ -137,7 +138,7 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 	}
 
 	if len(a.arrayLiterals) != len(rightValues) {
-		return nil, fmt.Errorf("%T: expected right child to return `%d` values but returned `%d`", a, len(a.arrayLiterals), len(rightValues))
+		return nil, errors.Errorf("%T: expected right child to return `%d` values but returned `%d`", a, len(a.arrayLiterals), len(rightValues))
 	}
 
 	// Next we'll assign our evaluated values to the expressions that the comparison functions reference
@@ -170,7 +171,7 @@ func (a *expressionAnyExpr) resolved() bool {
 // eval evaluates the comparison function for expressionAnyExpr.
 func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}) (interface{}, error) {
 	if a.compFunc == nil {
-		return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", a)
+		return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", a)
 	}
 
 	rightInterface, err := a.rightExpr.Eval(ctx, row)
@@ -184,7 +185,7 @@ func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}
 
 	rightValues, ok := rightInterface.([]any)
 	if !ok {
-		return nil, fmt.Errorf("%T: expected right child to return `%T` but returned `%T`", a, []any{}, rightInterface)
+		return nil, errors.Errorf("%T: expected right child to return `%T` but returned `%T`", a, []any{}, rightInterface)
 	}
 	if len(rightValues) == 0 {
 		return nil, nil
@@ -221,7 +222,7 @@ func (a *AnyExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		return a.expressionAnyExpr.eval(ctx, row, left)
 	}
 
-	return nil, fmt.Errorf("%T: cannot Eval as it has not been fully resolved", a)
+	return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", a)
 }
 
 // WithChildren implements the Expression interface.
@@ -247,15 +248,15 @@ func (a *AnyExpr) WithChildren(children ...sql.Expression) (sql.Expression, erro
 // WithResolvedChildren implements the Expression interface.
 func (a *AnyExpr) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 2 {
-		return nil, fmt.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
+		return nil, errors.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
 	}
 	left, ok := children[0].(sql.Expression)
 	if !ok {
-		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
+		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
 	right, ok := children[1].(sql.Expression)
 	if !ok {
-		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
+		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
 	}
 	return a.WithChildren(left, right)
 }
@@ -280,7 +281,7 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 	for i, col := range schema {
 		dgType, ok := col.Type.(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", sub)
+			return nil, errors.Errorf("expected right child to be a DoltgresType but got `%T`", sub)
 		}
 		subTypes[i] = dgType
 	}
@@ -300,11 +301,11 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 			arrayLiterals[i] = &Literal{typ: rightType}
 			compFuncs[i] = framework.GetBinaryFunction(op).Compile("internal_any_comparison", staticLiteral, arrayLiterals[i])
 			if compFuncs[i] == nil {
-				return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
+				return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
 			if compFuncs[i].Type().(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
 				// This should never happen, but this is just to be safe
-				return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
+				return nil, errors.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
 			}
 		}
 
@@ -323,7 +324,7 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
 	arrType, ok := anyExpr.rightExpr.Type().(*pgtypes.DoltgresType)
 	if !ok {
-		return nil, fmt.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
+		return nil, errors.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
 	}
 	rightType := arrType.ArrayBaseType()
 	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
@@ -337,11 +338,11 @@ func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
 		arrayLiteral := &Literal{typ: rightType}
 		compFunc := framework.GetBinaryFunction(op).Compile("internal_any_comparison", staticLiteral, arrayLiteral)
 		if compFunc == nil {
-			return nil, fmt.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
+			return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 		}
 		if compFunc.Type().(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
 			// This should never happen, but this is just to be safe
-			return nil, fmt.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
+			return nil, errors.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
 		}
 		anyExpr.expressionAnyExpr = &expressionAnyExpr{
 			rightExpr:     anyExpr.rightExpr,

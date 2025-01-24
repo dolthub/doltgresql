@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
@@ -39,7 +39,7 @@ var div_numeric = framework.Function2{
 		val1 := val1Interface.(decimal.Decimal)
 		val2 := val2Interface.(decimal.Decimal)
 		if val2.Cmp(decimal.Zero) == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, errors.Errorf("division by zero")
 		}
 		val := val1.Div(val2)
 		return val.Truncate(0), nil

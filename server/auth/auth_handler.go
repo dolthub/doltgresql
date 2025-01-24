@@ -15,10 +15,9 @@
 package auth
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -68,12 +67,12 @@ func (h *AuthorizationHandler) NewQueryState(ctx *sql.Context) sql.Authorization
 	LockRead(func() {
 		state.role = GetRole(ctx.Client().User)
 		if !state.role.IsValid() {
-			state.err = fmt.Errorf(`role "%s" does not exist`, state.role.Name)
+			state.err = errors.Errorf(`role "%s" does not exist`, state.role.Name)
 			return
 		}
 		state.public = GetRole("public")
 		if !state.public.IsValid() {
-			state.err = fmt.Errorf(`role "%s" does not exist`, state.public.Name)
+			state.err = errors.Errorf(`role "%s" does not exist`, state.public.Name)
 			return
 		}
 	})
@@ -119,7 +118,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		if len(auth.AuthType) == 0 {
 			return errors.New("AuthType is empty")
 		} else {
-			return fmt.Errorf("AuthType not handled: `%s`", auth.AuthType)
+			return errors.Errorf("AuthType not handled: `%s`", auth.AuthType)
 		}
 	}
 
@@ -140,13 +139,13 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			}
 			for _, privilege := range privileges {
 				if !HasDatabasePrivilege(roleDatabaseKey, privilege) && !HasDatabasePrivilege(publicDatabaseKey, privilege) {
-					return fmt.Errorf("permission denied for database %s", database)
+					return errors.Errorf("permission denied for database %s", database)
 				}
 			}
 		}
 	case AuthTargetType_SchemaIdentifiers:
 		if len(auth.TargetNames)%2 != 0 {
-			return fmt.Errorf("schema identifiers has an unsupported count: %d", len(auth.TargetNames))
+			return errors.Errorf("schema identifiers has an unsupported count: %d", len(auth.TargetNames))
 		}
 		for i := 0; i < len(auth.TargetNames); i += 2 {
 			// TODO: handle database
@@ -166,13 +165,13 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			}
 			for _, privilege := range privileges {
 				if !HasSchemaPrivilege(roleSchemaKey, privilege) && !HasSchemaPrivilege(publicSchemaKey, privilege) {
-					return fmt.Errorf("permission denied for schema %s", schemaName)
+					return errors.Errorf("permission denied for schema %s", schemaName)
 				}
 			}
 		}
 	case AuthTargetType_TableIdentifiers:
 		if len(auth.TargetNames)%3 != 0 {
-			return fmt.Errorf("table identifiers has an unsupported count: %d", len(auth.TargetNames))
+			return errors.Errorf("table identifiers has an unsupported count: %d", len(auth.TargetNames))
 		}
 		for i := 0; i < len(auth.TargetNames); i += 3 {
 			// TODO: handle database
@@ -192,7 +191,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			}
 			for _, privilege := range privileges {
 				if !HasTablePrivilege(roleTableKey, privilege) && !HasTablePrivilege(publicTableKey, privilege) {
-					return fmt.Errorf("permission denied for table %s", auth.TargetNames[i+2])
+					return errors.Errorf("permission denied for table %s", auth.TargetNames[i+2])
 				}
 			}
 		}
@@ -202,7 +201,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		if len(auth.TargetType) == 0 {
 			return errors.New("TargetType is unexpectedly empty")
 		} else {
-			return fmt.Errorf("TargetType not handled: `%s`", auth.TargetType)
+			return errors.Errorf("TargetType not handled: `%s`", auth.TargetType)
 		}
 	}
 	return nil

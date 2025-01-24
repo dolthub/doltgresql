@@ -15,7 +15,7 @@
 package cast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
@@ -38,19 +38,19 @@ func jsonbExplicit() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
-				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb object to type %s", targetType.String())
 			case pgtypes.JsonValueArray:
-				return nil, fmt.Errorf("cannot cast jsonb array to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb array to type %s", targetType.String())
 			case pgtypes.JsonValueString:
-				return nil, fmt.Errorf("cannot cast jsonb string to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
-				return nil, fmt.Errorf("cannot cast jsonb numeric to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb numeric to type %s", targetType.String())
 			case pgtypes.JsonValueBoolean:
 				return bool(value), nil
 			case pgtypes.JsonValueNull:
-				return nil, fmt.Errorf("cannot cast jsonb null to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb null to type %s", targetType.String())
 			default:
-				return nil, fmt.Errorf("")
+				return nil, errors.Errorf("")
 			}
 		},
 	})
@@ -60,20 +60,20 @@ func jsonbExplicit() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
-				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb object to type %s", targetType.String())
 			case pgtypes.JsonValueArray:
-				return nil, fmt.Errorf("cannot cast jsonb array to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb array to type %s", targetType.String())
 			case pgtypes.JsonValueString:
-				return nil, fmt.Errorf("cannot cast jsonb string to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
 				f, _ := decimal.Decimal(value).Float64()
 				return float32(f), nil
 			case pgtypes.JsonValueBoolean:
-				return nil, fmt.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
-				return nil, fmt.Errorf("cannot cast jsonb null to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb null to type %s", targetType.String())
 			default:
-				return nil, fmt.Errorf("")
+				return nil, errors.Errorf("")
 			}
 		},
 	})
@@ -83,20 +83,20 @@ func jsonbExplicit() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
-				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb object to type %s", targetType.String())
 			case pgtypes.JsonValueArray:
-				return nil, fmt.Errorf("cannot cast jsonb array to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb array to type %s", targetType.String())
 			case pgtypes.JsonValueString:
-				return nil, fmt.Errorf("cannot cast jsonb string to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
 				f, _ := decimal.Decimal(value).Float64()
 				return f, nil
 			case pgtypes.JsonValueBoolean:
-				return nil, fmt.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
-				return nil, fmt.Errorf("cannot cast jsonb null to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb null to type %s", targetType.String())
 			default:
-				return nil, fmt.Errorf("")
+				return nil, errors.Errorf("")
 			}
 		},
 	})
@@ -106,23 +106,23 @@ func jsonbExplicit() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
-				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb object to type %s", targetType.String())
 			case pgtypes.JsonValueArray:
-				return nil, fmt.Errorf("cannot cast jsonb array to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb array to type %s", targetType.String())
 			case pgtypes.JsonValueString:
-				return nil, fmt.Errorf("cannot cast jsonb string to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
 				d := decimal.Decimal(value)
 				if d.LessThan(pgtypes.NumericValueMinInt16) || d.GreaterThan(pgtypes.NumericValueMaxInt16) {
-					return nil, fmt.Errorf("smallint out of range")
+					return nil, errors.Errorf("smallint out of range")
 				}
 				return int16(d.IntPart()), nil
 			case pgtypes.JsonValueBoolean:
-				return nil, fmt.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
-				return nil, fmt.Errorf("cannot cast jsonb null to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb null to type %s", targetType.String())
 			default:
-				return nil, fmt.Errorf("")
+				return nil, errors.Errorf("")
 			}
 		},
 	})
@@ -132,23 +132,23 @@ func jsonbExplicit() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
-				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb object to type %s", targetType.String())
 			case pgtypes.JsonValueArray:
-				return nil, fmt.Errorf("cannot cast jsonb array to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb array to type %s", targetType.String())
 			case pgtypes.JsonValueString:
-				return nil, fmt.Errorf("cannot cast jsonb string to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
 				d := decimal.Decimal(value)
 				if d.LessThan(pgtypes.NumericValueMinInt32) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
-					return nil, fmt.Errorf("integer out of range")
+					return nil, errors.Errorf("integer out of range")
 				}
 				return int32(d.IntPart()), nil
 			case pgtypes.JsonValueBoolean:
-				return nil, fmt.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
-				return nil, fmt.Errorf("cannot cast jsonb null to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb null to type %s", targetType.String())
 			default:
-				return nil, fmt.Errorf("")
+				return nil, errors.Errorf("")
 			}
 		},
 	})
@@ -158,23 +158,23 @@ func jsonbExplicit() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
-				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb object to type %s", targetType.String())
 			case pgtypes.JsonValueArray:
-				return nil, fmt.Errorf("cannot cast jsonb array to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb array to type %s", targetType.String())
 			case pgtypes.JsonValueString:
-				return nil, fmt.Errorf("cannot cast jsonb string to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
 				d := decimal.Decimal(value)
 				if d.LessThan(pgtypes.NumericValueMinInt64) || d.GreaterThan(pgtypes.NumericValueMaxInt64) {
-					return nil, fmt.Errorf("bigint out of range")
+					return nil, errors.Errorf("bigint out of range")
 				}
 				return int64(d.IntPart()), nil
 			case pgtypes.JsonValueBoolean:
-				return nil, fmt.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
-				return nil, fmt.Errorf("cannot cast jsonb null to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb null to type %s", targetType.String())
 			default:
-				return nil, fmt.Errorf("")
+				return nil, errors.Errorf("")
 			}
 		},
 	})
@@ -184,19 +184,19 @@ func jsonbExplicit() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			switch value := val.(pgtypes.JsonDocument).Value.(type) {
 			case pgtypes.JsonValueObject:
-				return nil, fmt.Errorf("cannot cast jsonb object to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb object to type %s", targetType.String())
 			case pgtypes.JsonValueArray:
-				return nil, fmt.Errorf("cannot cast jsonb array to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb array to type %s", targetType.String())
 			case pgtypes.JsonValueString:
-				return nil, fmt.Errorf("cannot cast jsonb string to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
 				return decimal.Decimal(value), nil
 			case pgtypes.JsonValueBoolean:
-				return nil, fmt.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
-				return nil, fmt.Errorf("cannot cast jsonb null to type %s", targetType.String())
+				return nil, errors.Errorf("cannot cast jsonb null to type %s", targetType.String())
 			default:
-				return nil, fmt.Errorf("")
+				return nil, errors.Errorf("")
 			}
 		},
 	})

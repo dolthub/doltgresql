@@ -15,7 +15,7 @@
 package core
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -52,7 +52,7 @@ func GetRelationType(ctx *sql.Context, schema string, relation string) (Relation
 		return RelationType_DoesNotExist, err
 	}
 	if !ok {
-		return RelationType_DoesNotExist, fmt.Errorf("GetRelationType cannot find the database")
+		return RelationType_DoesNotExist, errors.Errorf("GetRelationType cannot find the database")
 	}
 	return GetRelationTypeFromRoot(ctx, schema, relation, state.WorkingRoot().(*RootValue))
 }

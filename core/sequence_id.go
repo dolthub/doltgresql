@@ -15,7 +15,7 @@
 package core
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -36,10 +36,10 @@ func (sequenceIDListener) OperationValidator(ctx *sql.Context, operation id.Oper
 		case id.Operation_Rename, id.Operation_Delete, id.Operation_Delete_Cascade:
 			return nil
 		default:
-			return fmt.Errorf("sequence validator received unexpected operation `%s`", operation.String())
+			return errors.Errorf("sequence validator received unexpected operation `%s`", operation.String())
 		}
 	default:
-		return fmt.Errorf("sequence validator received unexpected section `%s`", originalID.Section().String())
+		return errors.Errorf("sequence validator received unexpected section `%s`", originalID.Section().String())
 	}
 }
 
@@ -70,7 +70,7 @@ func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Oper
 			}
 			return nil
 		default:
-			return fmt.Errorf("sequence performer received unexpected operation `%s`", operation.String())
+			return errors.Errorf("sequence performer received unexpected operation `%s`", operation.String())
 		}
 	case id.Section_Table:
 		originalIDTable := id.Table(originalID)
@@ -97,9 +97,9 @@ func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Oper
 			}
 			return nil
 		default:
-			return fmt.Errorf("sequence performer received unexpected operation `%s`", operation.String())
+			return errors.Errorf("sequence performer received unexpected operation `%s`", operation.String())
 		}
 	default:
-		return fmt.Errorf("sequence performer received unexpected section `%s`", originalID.Section().String())
+		return errors.Errorf("sequence performer received unexpected section `%s`", originalID.Section().String())
 	}
 }

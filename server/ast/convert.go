@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -280,6 +280,6 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 	case nil:
 		return nil, nil
 	default:
-		return nil, fmt.Errorf("unknown statement type encountered: `%T`", stmt)
+		return nil, errors.Errorf("unknown statement type encountered: `%T`", stmt)
 	}
 }

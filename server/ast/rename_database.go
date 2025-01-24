@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeRenameDatabase(ctx *Context, node *tree.RenameDatabase) (vitess.Stateme
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("RENAME DATABASE is not yet supported")
+	return nil, errors.Errorf("RENAME DATABASE is not yet supported")
 }

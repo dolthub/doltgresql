@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -160,7 +160,7 @@ PostJoinRewrite:
 		}
 	}
 	if len(node.DistinctOn) > 0 {
-		return nil, fmt.Errorf("DISTINCT ON is not yet supported")
+		return nil, errors.Errorf("DISTINCT ON is not yet supported")
 	}
 	where, err := nodeWhere(ctx, node.Where)
 	if err != nil {

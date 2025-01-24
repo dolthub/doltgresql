@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,5 +28,5 @@ func nodeAlterFunction(ctx *Context, node *tree.AlterFunction) (vitess.Statement
 	if err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("ALTER FUNCTION statement is not yet supported")
+	return nil, errors.Errorf("ALTER FUNCTION statement is not yet supported")
 }

@@ -17,6 +17,7 @@ package analyzer
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
@@ -81,7 +82,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 						}
 					}
 					if seqIndex > 100 {
-						return nil, transform.NewTree, fmt.Errorf("SERIAL sequence name reached max iterations")
+						return nil, transform.NewTree, errors.Errorf("SERIAL sequence name reached max iterations")
 					}
 				}
 
@@ -91,7 +92,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					return nil, transform.NewTree, err
 				}
 				if !ok {
-					return nil, transform.NewTree, fmt.Errorf(`function "nextval" could not be found for SERIAL default`)
+					return nil, transform.NewTree, errors.Errorf(`function "nextval" could not be found for SERIAL default`)
 				}
 				col.Default = &sql.ColumnDefaultValue{
 					Expr:          nextVal,

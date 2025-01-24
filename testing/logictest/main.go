@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/sqllogictest/go/logictest"
 
 	"github.com/dolthub/doltgresql/testing/logictest/harness"
@@ -180,7 +181,7 @@ func fromHeaderColumnValue(h string, r *DoltResultRecord) (string, error) {
 	case "error_message":
 		val = r.ErrorMessage
 	default:
-		return "", fmt.Errorf("unsupported header field")
+		return "", errors.Errorf("unsupported header field")
 	}
 	return val, nil
 }

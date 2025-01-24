@@ -15,7 +15,7 @@
 package expression
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -56,7 +56,7 @@ func (n *Not) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 	boolVal, ok := val.(bool)
 	if !ok {
-		return nil, fmt.Errorf("NOT only applies to boolean values")
+		return nil, errors.Errorf("NOT only applies to boolean values")
 	}
 	return !boolVal, nil
 }
@@ -97,11 +97,11 @@ func (n *Not) WithChildren(children ...sql.Expression) (sql.Expression, error) {
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
 func (n *Not) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 1 {
-		return nil, fmt.Errorf("invalid vitess child count, expected `1` but got `%d`", len(children))
+		return nil, errors.Errorf("invalid vitess child count, expected `1` but got `%d`", len(children))
 	}
 	child, ok := children[0].(sql.Expression)
 	if !ok {
-		return nil, fmt.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
+		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
 	return &Not{
 		child: child,

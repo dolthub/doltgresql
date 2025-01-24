@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,19 +28,19 @@ func nodeCall(ctx *Context, node *tree.Call) (*vitess.Call, error) {
 		return nil, nil
 	}
 	if node.Procedure.Type != 0 {
-		return nil, fmt.Errorf("procedure distinction is not yet supported")
+		return nil, errors.Errorf("procedure distinction is not yet supported")
 	}
 	if node.Procedure.Filter != nil {
-		return nil, fmt.Errorf("procedure filters are not yet supported")
+		return nil, errors.Errorf("procedure filters are not yet supported")
 	}
 	if node.Procedure.WindowDef != nil {
-		return nil, fmt.Errorf("procedure window definitions are not yet supported")
+		return nil, errors.Errorf("procedure window definitions are not yet supported")
 	}
 	if node.Procedure.AggType != tree.GeneralAgg {
-		return nil, fmt.Errorf("procedure aggregation is not yet supported")
+		return nil, errors.Errorf("procedure aggregation is not yet supported")
 	}
 	if len(node.Procedure.OrderBy) > 0 {
-		return nil, fmt.Errorf("procedure ORDER BY is not yet supported")
+		return nil, errors.Errorf("procedure ORDER BY is not yet supported")
 	}
 	var qualifier vitess.TableIdent
 	var name vitess.ColIdent
@@ -49,14 +49,14 @@ func nodeCall(ctx *Context, node *tree.Call) (*vitess.Call, error) {
 		name = vitess.NewColIdent(funcRef.Name)
 	case *tree.UnresolvedName:
 		if funcRef.NumParts > 2 {
-			return nil, fmt.Errorf("referencing items outside the schema or database is not yet supported")
+			return nil, errors.Errorf("referencing items outside the schema or database is not yet supported")
 		}
 		if funcRef.NumParts == 2 {
 			qualifier = vitess.NewTableIdent(funcRef.Parts[1])
 		}
 		name = vitess.NewColIdent(funcRef.Parts[0])
 	default:
-		return nil, fmt.Errorf("unknown function reference")
+		return nil, errors.Errorf("unknown function reference")
 	}
 	exprs, err := nodeExprs(ctx, node.Procedure.Exprs)
 	if err != nil {

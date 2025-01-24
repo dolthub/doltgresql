@@ -15,10 +15,11 @@
 package utils
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/cockroachdb/errors"
 )
 
 // RootFolderLocation is the location of this project's root folder.
@@ -32,7 +33,7 @@ type RootFolderLocation struct {
 func GetRootFolder() (RootFolderLocation, error) {
 	_, currentFileLocation, _, ok := runtime.Caller(0)
 	if !ok {
-		return RootFolderLocation{}, fmt.Errorf("failed to fetch the location of the current file")
+		return RootFolderLocation{}, errors.Errorf("failed to fetch the location of the current file")
 	}
 	return RootFolderLocation{filepath.Clean(filepath.Join(filepath.Dir(currentFileLocation), "../../.."))}, nil
 }

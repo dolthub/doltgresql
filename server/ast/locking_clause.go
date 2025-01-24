@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeLockingClause(ctx *Context, node tree.LockingClause) (vitess.Statement,
 	if len(node) == 0 {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("locking clauses are not yet supported")
+	return nil, errors.Errorf("locking clauses are not yet supported")
 }

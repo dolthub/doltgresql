@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,5 +28,5 @@ func nodeAlterProcedure(ctx *Context, node *tree.AlterProcedure) (vitess.Stateme
 	if err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("ALTER PROCEDURE statement is not yet supported")
+	return nil, errors.Errorf("ALTER PROCEDURE statement is not yet supported")
 }

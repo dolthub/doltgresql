@@ -15,12 +15,12 @@
 package functions
 
 import (
-	"fmt"
 	"io"
 	"reflect"
 	"strconv"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -141,7 +141,7 @@ func typeForElement(v any) (*pgtypes.DoltgresType, error) {
 	case string:
 		return pgtypes.Text, nil
 	default:
-		return nil, fmt.Errorf("dolt_procedures: unsupported type %T", x)
+		return nil, errors.Errorf("dolt_procedures: unsupported type %T", x)
 	}
 }
 

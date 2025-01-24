@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -253,7 +254,7 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 		return cmp.Compare(id.Cache().ToOID(ab), id.Cache().ToOID(v2.(id.Id))), nil
 	case []any:
 		if !t.IsArrayType() {
-			return 0, fmt.Errorf("array value received in Compare for non array type")
+			return 0, errors.Errorf("array value received in Compare for non array type")
 		}
 		bb := v2.([]any)
 		minLength := utils.Min(len(ab), len(bb))
@@ -274,7 +275,7 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 			return 1, nil
 		}
 	default:
-		return 0, fmt.Errorf("unhandled type %T in Compare", v1)
+		return 0, errors.Errorf("unhandled type %T in Compare", v1)
 	}
 }
 
@@ -728,7 +729,7 @@ func (t *DoltgresType) Type() query.Type {
 // TypModIn encodes given text array value to type modifier in int32 format.
 func (t *DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
 	if t.ModInFunc == 0 {
-		return 0, fmt.Errorf("typmodin function for type '%s' doesn't exist", t.Name())
+		return 0, errors.Errorf("typmodin function for type '%s' doesn't exist", t.Name())
 	}
 	o, err := globalFunctionRegistry.GetFunction(t.ModInFunc).CallVariadic(ctx, val)
 	if err != nil {
@@ -736,7 +737,7 @@ func (t *DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
 	}
 	output, ok := o.(int32)
 	if !ok {
-		return 0, fmt.Errorf(`expected int32, got %T`, output)
+		return 0, errors.Errorf(`expected int32, got %T`, output)
 	}
 	return output, nil
 }
@@ -744,7 +745,7 @@ func (t *DoltgresType) TypModIn(ctx *sql.Context, val []any) (int32, error) {
 // TypModOut decodes type modifier in int32 format to string representation of it.
 func (t *DoltgresType) TypModOut(ctx *sql.Context, val int32) (string, error) {
 	if t.ModOutFunc == 0 {
-		return "", fmt.Errorf("typmodout function for type '%s' doesn't exist", t.Name())
+		return "", errors.Errorf("typmodout function for type '%s' doesn't exist", t.Name())
 	}
 	o, err := globalFunctionRegistry.GetFunction(t.ModOutFunc).CallVariadic(ctx, val)
 	if err != nil {
@@ -752,7 +753,7 @@ func (t *DoltgresType) TypModOut(ctx *sql.Context, val int32) (string, error) {
 	}
 	output, ok := o.(string)
 	if !ok {
-		return "", fmt.Errorf(`expected string, got %T`, output)
+		return "", errors.Errorf(`expected string, got %T`, output)
 	}
 	return output, nil
 }

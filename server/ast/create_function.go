@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,7 +28,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	if err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("CREATE FUNCTION statement is not yet supported")
+	return nil, errors.Errorf("CREATE FUNCTION statement is not yet supported")
 }
 
 // verifyRedundantRoutineOption checks for each option defined only once.
@@ -37,7 +37,7 @@ func verifyRedundantRoutineOption(ctx *Context, options []tree.RoutineOption) er
 	var optDefined = make(map[tree.FunctionOption]struct{})
 	for _, opt := range options {
 		if _, ok := optDefined[opt.OptionType]; ok {
-			return fmt.Errorf("ERROR:  conflicting or redundant options")
+			return errors.Errorf("ERROR:  conflicting or redundant options")
 		} else {
 			optDefined[opt.OptionType] = struct{}{}
 		}

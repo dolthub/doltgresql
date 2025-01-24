@@ -15,9 +15,9 @@
 package node
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -65,7 +65,7 @@ func (c *CreateSequence) Resolved() bool {
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if strings.HasPrefix(strings.ToLower(c.sequence.Id.SequenceName()), "dolt") {
-		return nil, fmt.Errorf("sequences cannot be prefixed with 'dolt'")
+		return nil, errors.Errorf("sequences cannot be prefixed with 'dolt'")
 	}
 	schema, err := core.GetSchemaName(ctx, nil, c.schema)
 	if err != nil {
@@ -84,7 +84,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			// TODO: issue a notice
 			return sql.RowsToRowIter(), nil
 		}
-		return nil, fmt.Errorf(`relation "%s" already exists`, c.sequence.Id)
+		return nil, errors.Errorf(`relation "%s" already exists`, c.sequence.Id)
 	}
 	// Check that the OWNED BY is valid, if it exists
 	if c.sequence.OwnerTable.IsValid() {
@@ -95,9 +95,9 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			return nil, err
 		}
 		if relationType == core.RelationType_DoesNotExist {
-			return nil, fmt.Errorf(`relation "%s" does not exist`, c.sequence.OwnerTable.TableName())
+			return nil, errors.Errorf(`relation "%s" does not exist`, c.sequence.OwnerTable.TableName())
 		} else if relationType != core.RelationType_Table {
-			return nil, fmt.Errorf(`sequence cannot be owned by relation "%s"`, c.sequence.OwnerTable.TableName())
+			return nil, errors.Errorf(`sequence cannot be owned by relation "%s"`, c.sequence.OwnerTable.TableName())
 		}
 
 		table, err := core.GetDoltTableFromContext(ctx, doltdb.TableName{Name: c.sequence.OwnerTable.TableName(), Schema: schema})
@@ -105,7 +105,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			return nil, err
 		}
 		if table == nil {
-			return nil, fmt.Errorf(`table "%s" cannot be found but says it exists`, c.sequence.OwnerTable.TableName())
+			return nil, errors.Errorf(`table "%s" cannot be found but says it exists`, c.sequence.OwnerTable.TableName())
 		}
 		tableSch, err := table.GetSchema(ctx)
 		if err != nil {
@@ -119,7 +119,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			}
 		}
 		if !colFound {
-			return nil, fmt.Errorf(`column "%s" of relation "%s" does not exist`,
+			return nil, errors.Errorf(`column "%s" of relation "%s" does not exist`,
 				c.sequence.OwnerColumn, c.sequence.OwnerTable.TableName())
 		}
 	}

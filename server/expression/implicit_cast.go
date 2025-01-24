@@ -15,7 +15,7 @@
 package expression
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -56,7 +56,7 @@ func (ic *ImplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 	castFunc := framework.GetImplicitCast(ic.fromType, ic.toType)
 	if castFunc == nil {
-		return nil, fmt.Errorf("target is of type %s but expression is of type %s", ic.toType.String(), ic.fromType.String())
+		return nil, errors.Errorf("target is of type %s but expression is of type %s", ic.toType.String(), ic.fromType.String())
 	}
 	return castFunc(ctx, val, ic.toType)
 }

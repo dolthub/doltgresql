@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -37,7 +37,7 @@ var pg_get_expr_pgnodetree_oid = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// TODO: Implement this when the pg_node_tree type exists
-		return nil, fmt.Errorf("pg_get_expr is not yet supported")
+		return nil, errors.Errorf("pg_get_expr is not yet supported")
 	},
 }
 
@@ -49,6 +49,6 @@ var pg_get_expr_pgnodetree_oid_bool = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		// TODO: Implement this when the pg_node_tree type exists
-		return nil, fmt.Errorf("pg_get_expr is not yet supported")
+		return nil, errors.Errorf("pg_get_expr is not yet supported")
 	},
 }

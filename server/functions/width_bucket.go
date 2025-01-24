@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
@@ -42,11 +42,11 @@ var width_bucket_float64_float64_float64_int64 = framework.Function4{
 		low := lowInterface.(float64)
 		high := highInterface.(float64)
 		if low == high {
-			return nil, fmt.Errorf("lower bound cannot equal upper bound")
+			return nil, errors.Errorf("lower bound cannot equal upper bound")
 		}
 		count := countInterface.(int32)
 		if count <= 0 {
-			return nil, fmt.Errorf("count must be greater than zero")
+			return nil, errors.Errorf("count must be greater than zero")
 		}
 		if operand == high {
 			return count + 1, nil
@@ -75,11 +75,11 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 		low := lowInterface.(decimal.Decimal)
 		high := highInterface.(decimal.Decimal)
 		if low.Cmp(high) == 0 {
-			return nil, fmt.Errorf("lower bound cannot equal upper bound")
+			return nil, errors.Errorf("lower bound cannot equal upper bound")
 		}
 		count := countInterface.(int32)
 		if count <= 0 {
-			return nil, fmt.Errorf("count must be greater than zero")
+			return nil, errors.Errorf("count must be greater than zero")
 		}
 		if operand.Equal(high) {
 			return count + 1, nil

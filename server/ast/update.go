@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -32,10 +32,10 @@ func nodeUpdate(ctx *Context, node *tree.Update) (*vitess.Update, error) {
 	defer ctx.Auth().PopAuthType()
 
 	if _, ok := node.Returning.(*tree.NoReturningClause); !ok {
-		return nil, fmt.Errorf("RETURNING is not yet supported")
+		return nil, errors.Errorf("RETURNING is not yet supported")
 	}
 	if len(node.From) > 0 {
-		return nil, fmt.Errorf("FROM is not yet supported")
+		return nil, errors.Errorf("FROM is not yet supported")
 	}
 	with, err := nodeWith(ctx, node.With)
 	if err != nil {

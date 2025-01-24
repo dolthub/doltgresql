@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,16 +28,16 @@ func nodeBeginTransaction(ctx *Context, node *tree.BeginTransaction) (*vitess.Be
 		return nil, nil
 	}
 	if node.Modes.Isolation != tree.UnspecifiedIsolation {
-		return nil, fmt.Errorf("isolation levels are not yet supported")
+		return nil, errors.Errorf("isolation levels are not yet supported")
 	}
 	if node.Modes.UserPriority != tree.UnspecifiedUserPriority {
-		return nil, fmt.Errorf("user priority is not yet supported")
+		return nil, errors.Errorf("user priority is not yet supported")
 	}
 	if node.Modes.AsOf.Expr != nil {
-		return nil, fmt.Errorf("AS OF is not yet supported")
+		return nil, errors.Errorf("AS OF is not yet supported")
 	}
 	if node.Modes.Deferrable != tree.UnspecifiedDeferrableMode {
-		return nil, fmt.Errorf("deferrability is not yet supported")
+		return nil, errors.Errorf("deferrability is not yet supported")
 	}
 	var characteristic string
 	switch node.Modes.ReadWriteMode {
@@ -48,7 +48,7 @@ func nodeBeginTransaction(ctx *Context, node *tree.BeginTransaction) (*vitess.Be
 	case tree.ReadWrite:
 		characteristic = vitess.TxReadWrite
 	default:
-		return nil, fmt.Errorf("unknown READ/WRITE setting")
+		return nil, errors.Errorf("unknown READ/WRITE setting")
 	}
 	return &vitess.Begin{
 		TransactionCharacteristic: characteristic,

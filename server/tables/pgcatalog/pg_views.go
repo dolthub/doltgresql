@@ -15,9 +15,9 @@
 package pgcatalog
 
 import (
-	"fmt"
 	"io"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
@@ -118,11 +118,11 @@ func (iter *pgViewsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 			return nil, err
 		}
 		if len(stmts) == 0 {
-			return nil, fmt.Errorf("expected Create View statement, got none")
+			return nil, errors.Errorf("expected Create View statement, got none")
 		}
 		cv, ok := stmts[0].AST.(*tree.CreateView)
 		if !ok {
-			return nil, fmt.Errorf("expected Create View statement, got %s", stmts[0].SQL)
+			return nil, errors.Errorf("expected Create View statement, got %s", stmts[0].SQL)
 		}
 
 		textDef = cv.AsSource.String()

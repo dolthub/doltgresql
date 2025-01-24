@@ -15,10 +15,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/cockroachdb/errors"
 )
 
 var benchmarkFolder BenchmarkFolderLocation // benchmarkFolder is the disk location of the benchmark folder
@@ -33,7 +34,7 @@ type BenchmarkFolderLocation struct {
 func GetBenchmarkFolder() (BenchmarkFolderLocation, error) {
 	_, currentFileLocation, _, ok := runtime.Caller(0)
 	if !ok {
-		return BenchmarkFolderLocation{}, fmt.Errorf("failed to fetch the location of the current file")
+		return BenchmarkFolderLocation{}, errors.Errorf("failed to fetch the location of the current file")
 	}
 	benchmarkFolder = BenchmarkFolderLocation{filepath.Clean(filepath.Join(filepath.Dir(currentFileLocation),
 		"../../../scripts/mini_sysbench"))}

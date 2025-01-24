@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
@@ -38,7 +38,7 @@ var factorial_int64 = framework.Function1{
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
 		val1 := val1Interface.(int64)
 		if val1 < 0 {
-			return nil, fmt.Errorf("factorial of a negative number is undefined")
+			return nil, errors.Errorf("factorial of a negative number is undefined")
 		}
 		total := int64(1)
 		for i := int64(2); i <= val1; i++ {

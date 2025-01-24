@@ -15,9 +15,9 @@
 package ast
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -38,7 +38,7 @@ func nodeCreateDomain(ctx *Context, node *tree.CreateDomain) (vitess.Statement, 
 		return nil, err
 	}
 	if node.Collate != "" {
-		return nil, fmt.Errorf("domain collation is not yet supported")
+		return nil, errors.Errorf("domain collation is not yet supported")
 	}
 	var children []vitess.Expr
 	if node.Default != nil {
@@ -73,12 +73,12 @@ func nodeCreateDomain(ctx *Context, node *tree.CreateDomain) (vitess.Statement, 
 		} else if constraint.NotNull {
 			definedNotNull = true
 			if definedNull {
-				return nil, fmt.Errorf("conflicting NULL/NOT NULL constraints")
+				return nil, errors.Errorf("conflicting NULL/NOT NULL constraints")
 			}
 		} else {
 			definedNull = true
 			if definedNotNull {
-				return nil, fmt.Errorf("conflicting NULL/NOT NULL constraints")
+				return nil, errors.Errorf("conflicting NULL/NOT NULL constraints")
 			}
 		}
 	}
@@ -104,7 +104,7 @@ func verifyAndReplaceValue(typ tree.ResolvableTypeReference, expr tree.Expr) (tr
 		switch v := visitingExpr.(type) {
 		case *tree.UnresolvedName:
 			if strings.ToLower(v.String()) != "value" {
-				return false, nil, fmt.Errorf(`column "%s" does not exist`, v.String())
+				return false, nil, errors.Errorf(`column "%s" does not exist`, v.String())
 			}
 			return false, tree.DomainColumn{Typ: typ}, nil
 		}

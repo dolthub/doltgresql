@@ -15,9 +15,9 @@
 package binary
 
 import (
-	"fmt"
 	"strconv"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -319,7 +319,7 @@ var jsonb_contains = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return nil, fmt.Errorf("JSON contains is not yet supported")
+		return nil, errors.Errorf("JSON contains is not yet supported")
 	},
 }
 
@@ -454,7 +454,7 @@ var jsonb_delete_text = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return nil, fmt.Errorf("JSON deletions are not yet supported")
+		return nil, errors.Errorf("JSON deletions are not yet supported")
 	},
 }
 
@@ -465,7 +465,7 @@ var jsonb_delete_text_array = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return nil, fmt.Errorf("JSON deletions are not yet supported")
+		return nil, errors.Errorf("JSON deletions are not yet supported")
 	},
 }
 
@@ -476,6 +476,6 @@ var jsonb_delete_int32 = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return nil, fmt.Errorf("JSON deletions are not yet supported")
+		return nil, errors.Errorf("JSON deletions are not yet supported")
 	},
 }

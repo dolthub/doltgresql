@@ -17,9 +17,9 @@ package functions
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -53,7 +53,7 @@ var array_in = framework.Function3{
 		if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {
 			// This error is regarded as a critical error, and thus we immediately return the error alongside a nil
 			// value. Returning a nil value is a signal to not ignore the error.
-			return nil, fmt.Errorf(`malformed array literal: "%s"`, input)
+			return nil, errors.Errorf(`malformed array literal: "%s"`, input)
 		}
 		// We'll remove the surrounding braces since we've already verified that they're there
 		input = input[1 : len(input)-1]
@@ -88,7 +88,7 @@ var array_in = framework.Function3{
 				case ',':
 					if quoteStartCount >= 2 {
 						// This is a malformed string, thus we treat it as a critical error.
-						return nil, fmt.Errorf(`malformed array literal: "%s"`, input)
+						return nil, errors.Errorf(`malformed array literal: "%s"`, input)
 					}
 					str := sb.String()
 					var innerValue any
@@ -119,7 +119,7 @@ var array_in = framework.Function3{
 			if escaped || quoteStartCount > quoteEndCount || quoteStartCount >= 2 {
 				// These errors are regarded as critical errors, and thus we immediately return the error alongside a nil
 				// value. Returning a nil value is a signal to not ignore the error.
-				return nil, fmt.Errorf(`malformed array literal: "%s"`, input)
+				return nil, errors.Errorf(`malformed array literal: "%s"`, input)
 			} else {
 				str := sb.String()
 				var innerValue any
@@ -174,7 +174,7 @@ var array_recv = framework.Function3{
 			return nil, nil
 		}
 		if len(data) < 4 {
-			return nil, fmt.Errorf("deserializing non-nil array value has invalid length of %d", len(data))
+			return nil, errors.Errorf("deserializing non-nil array value has invalid length of %d", len(data))
 		}
 		// Grab the number of elements and construct an output slice of the appropriate size
 		elementCount := binary.LittleEndian.Uint32(data)
@@ -265,7 +265,7 @@ var btarraycmp = framework.Function2{
 		if !at.Equals(bt) {
 			// TODO: currently, types should match.
 			// Technically, does not have to e.g.: float4 vs float8
-			return nil, fmt.Errorf("different type comparison is not supported yet")
+			return nil, errors.Errorf("different type comparison is not supported yet")
 		}
 
 		ab := val1.([]any)

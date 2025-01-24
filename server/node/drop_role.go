@@ -15,7 +15,7 @@
 package node
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -62,12 +62,12 @@ func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			if role.IsValid() {
 				roles = append(roles, role)
 			} else if !c.IfExists {
-				err = fmt.Errorf(`role "%s" does not exist`, roleName)
+				err = errors.Errorf(`role "%s" does not exist`, roleName)
 				break
 			}
 			if !userRole.IsSuperUser && (role.IsSuperUser || !userRole.CanCreateRoles) {
 				// TODO: grab the actual error message
-				err = fmt.Errorf(`role "%s" does not have permission to drop role "%s"`, userRole.Name, role.Name)
+				err = errors.Errorf(`role "%s" does not have permission to drop role "%s"`, userRole.Name, role.Name)
 				break
 			}
 		}

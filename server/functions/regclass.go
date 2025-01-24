@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -78,7 +79,7 @@ var regclassin = framework.Function1{
 			searchSchemas = []string{sections[2]}
 			relationName = sections[4]
 		default:
-			return id.Null, fmt.Errorf("regclass failed validation")
+			return id.Null, errors.Errorf("regclass failed validation")
 		}
 
 		// Iterate over all of the items to find which relation matches.
@@ -124,7 +125,7 @@ var regclassin = framework.Function1{
 		if err != nil || resultOid.IsValid() {
 			return resultOid, err
 		}
-		return id.Null, fmt.Errorf(`relation "%s" does not exist`, input)
+		return id.Null, errors.Errorf(`relation "%s" does not exist`, input)
 	},
 }
 
@@ -229,20 +230,20 @@ func regclass_IoInputValidation(ctx *sql.Context, input string, sections []strin
 		return nil
 	case 3:
 		if sections[1] != "." {
-			return fmt.Errorf("invalid name syntax")
+			return errors.Errorf("invalid name syntax")
 		}
 		return nil
 	case 5:
 		if sections[1] != "." || sections[3] != "." {
-			return fmt.Errorf("invalid name syntax")
+			return errors.Errorf("invalid name syntax")
 		}
 		return nil
 	case 7:
 		if sections[1] != "." || sections[3] != "." || sections[5] != "." {
-			return fmt.Errorf("invalid name syntax")
+			return errors.Errorf("invalid name syntax")
 		}
-		return fmt.Errorf("improper qualified name (too many dotted names): %s", input)
+		return errors.Errorf("improper qualified name (too many dotted names): %s", input)
 	default:
-		return fmt.Errorf("invalid name syntax")
+		return errors.Errorf("invalid name syntax")
 	}
 }

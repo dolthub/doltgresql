@@ -15,9 +15,9 @@
 package analyzer
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -70,7 +70,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 				for i := range index.Columns {
 					col, ok := colMap[strings.ToLower(index.Columns[i].Name)]
 					if !ok {
-						return nil, false, fmt.Errorf("indexed column %s not found in schema", index.Columns[i].Name)
+						return nil, false, errors.Errorf("indexed column %s not found in schema", index.Columns[i].Name)
 					}
 					if dt, ok := col.Type.(*pgtypes.DoltgresType); ok && dt.ID == pgtypes.Text.ID && index.Columns[i].Length == 0 {
 						index.Columns[i].Length = defaultIndexPrefixLength
@@ -95,7 +95,7 @@ func AddImplicitPrefixLengths(_ *sql.Context, _ *analyzer.Analyzer, node sql.Nod
 				for i := range newColumns {
 					col, ok := colMap[strings.ToLower(newColumns[i].Name)]
 					if !ok {
-						return nil, false, fmt.Errorf("indexed column %s not found in schema", newColumns[i].Name)
+						return nil, false, errors.Errorf("indexed column %s not found in schema", newColumns[i].Name)
 					}
 					if dt, ok := col.Type.(*pgtypes.DoltgresType); ok && dt.ID == pgtypes.Text.ID && newColumns[i].Length == 0 {
 						newColumns[i].Length = defaultIndexPrefixLength

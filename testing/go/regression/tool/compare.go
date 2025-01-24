@@ -18,12 +18,12 @@ import (
 	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -34,21 +34,21 @@ import (
 // CompareRowsOrdered compares the two rows, enforcing that the order matches between the two rows.
 func CompareRowsOrdered(aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bRows []*pgproto3.DataRow) error {
 	if len(aRows) != len(bRows) {
-		return fmt.Errorf("expected a row count of %d but received %d", len(aRows), len(bRows))
+		return errors.Errorf("expected a row count of %d but received %d", len(aRows), len(bRows))
 	}
 	aReadRows := ReadRows(aRowDesc, aRows)
 	bReadRows := ReadRows(bRowDesc, bRows)
 	for rowIdx := range aReadRows {
 		if len(aReadRows[rowIdx]) != len(bReadRows[rowIdx]) {
-			return fmt.Errorf("expected a row column count of %d but received %d",
+			return errors.Errorf("expected a row column count of %d but received %d",
 				len(aReadRows[rowIdx]), len(bReadRows[rowIdx]))
 		}
 		for colIdx := range aReadRows[rowIdx] {
 			if aReadRows[rowIdx][colIdx] != bReadRows[rowIdx][colIdx] {
 				if len(aReadRows)+len(bReadRows) < 8 {
-					return fmt.Errorf("row sets differ:\n%s", rowsToErrorString(aReadRows, bReadRows))
+					return errors.Errorf("row sets differ:\n%s", rowsToErrorString(aReadRows, bReadRows))
 				} else {
-					return fmt.Errorf("rows differ\n    Postgres:\n        {%s}\n    Doltgres:\n        {%s}",
+					return errors.Errorf("rows differ\n    Postgres:\n        {%s}\n    Doltgres:\n        {%s}",
 						RowToString(aReadRows[rowIdx]), RowToString(bReadRows[rowIdx]))
 				}
 			}
@@ -61,7 +61,7 @@ func CompareRowsOrdered(aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bRow
 // is expected that the duplicate counts match.
 func CompareRowsUnordered(aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bRows []*pgproto3.DataRow) error {
 	if len(aRows) != len(bRows) {
-		return fmt.Errorf("expected a row count of %d but received %d", len(aRows), len(bRows))
+		return errors.Errorf("expected a row count of %d but received %d", len(aRows), len(bRows))
 	}
 	// It's possible that two different rows can hash to the same result, but we're not concerned with that.
 	// The same row will always output the same hash, and that's the only property that we really care about.
@@ -72,7 +72,7 @@ func CompareRowsUnordered(aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bR
 	for rowIdx := range aReadRows {
 		// Column counts should always match, so this is a sanity check
 		if len(aReadRows[rowIdx]) != len(bReadRows[rowIdx]) {
-			return fmt.Errorf("expected a row column count of %d but received %d",
+			return errors.Errorf("expected a row column count of %d but received %d",
 				len(aReadRows[rowIdx]), len(bReadRows[rowIdx]))
 		}
 		// We'll use the string form of each row as though it were a hash
@@ -102,7 +102,7 @@ func CompareRowsUnordered(aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bR
 			bCount += bKV.Value
 		}
 		if aCount+bCount < 8 {
-			return fmt.Errorf("row sets differ:\n%s", rowKVsToErrorString(aKVs, bKVs))
+			return errors.Errorf("row sets differ:\n%s", rowKVsToErrorString(aKVs, bKVs))
 		} else {
 			return errors.New("row sets differ (too large to display)")
 		}
@@ -118,12 +118,12 @@ func CompareRowsUnordered(aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bR
 				bCount += bKV.Value
 			}
 			if aCount+bCount < 8 {
-				return fmt.Errorf("row sets differ:\n%s", rowKVsToErrorString(aKVs, bKVs))
+				return errors.Errorf("row sets differ:\n%s", rowKVsToErrorString(aKVs, bKVs))
 			} else {
 				if aKVs[i].Key != bKVs[i].Key {
-					return fmt.Errorf("could not find the following row in the result set:\n        {%s}", aKVs[i].Key)
+					return errors.Errorf("could not find the following row in the result set:\n        {%s}", aKVs[i].Key)
 				} else {
-					return fmt.Errorf("for the following row, expected to find %d duplicates but found %d:\n {%s}",
+					return errors.Errorf("for the following row, expected to find %d duplicates but found %d:\n {%s}",
 						aKVs[i].Value, bKVs[i].Value, aKVs[i].Key)
 				}
 			}

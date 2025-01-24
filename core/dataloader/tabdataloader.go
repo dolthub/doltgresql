@@ -16,10 +16,10 @@ package dataloader
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/types"
@@ -118,9 +118,9 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 		// Split the values by the delimiter, ensuring the correct number of values have been read
 		values := strings.Split(line, tdl.delimiterChar)
 		if len(values) > len(tdl.colTypes) {
-			return nil, false, fmt.Errorf("extra data after last expected column")
+			return nil, false, errors.Errorf("extra data after last expected column")
 		} else if len(values) < len(tdl.colTypes) {
-			return nil, false, fmt.Errorf(`missing data for column "%s"`, tdl.sch[len(values)].Name)
+			return nil, false, errors.Errorf(`missing data for column "%s"`, tdl.sch[len(values)].Name)
 		}
 
 		// Cast the values using I/O input
@@ -149,7 +149,7 @@ func (tdl *TabularDataLoader) SetNextDataChunk(ctx *sql.Context, data *bufio.Rea
 func (tdl *TabularDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error) {
 	// If there is partial data from the last chunk that hasn't been inserted, return an error.
 	if tdl.partialLine != "" {
-		return nil, fmt.Errorf("partial line found at end of data load")
+		return nil, errors.Errorf("partial line found at end of data load")
 	}
 
 	return &tdl.results, nil

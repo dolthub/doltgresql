@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -28,13 +28,13 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (*vitess.FuncExpr, error) {
 		return nil, nil
 	}
 	if node.Filter != nil {
-		return nil, fmt.Errorf("function filters are not yet supported")
+		return nil, errors.Errorf("function filters are not yet supported")
 	}
 	if node.AggType == tree.OrderedSetAgg {
-		return nil, fmt.Errorf("WITHIN GROUP is not yet supported")
+		return nil, errors.Errorf("WITHIN GROUP is not yet supported")
 	}
 	if len(node.OrderBy) > 0 {
-		return nil, fmt.Errorf("function ORDER BY is not yet supported")
+		return nil, errors.Errorf("function ORDER BY is not yet supported")
 	}
 	var qualifier vitess.TableIdent
 	var name vitess.ColIdent
@@ -43,14 +43,14 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (*vitess.FuncExpr, error) {
 		name = vitess.NewColIdent(funcRef.Name)
 	case *tree.UnresolvedName:
 		if funcRef.NumParts > 2 {
-			return nil, fmt.Errorf("referencing items outside the schema or database is not yet supported")
+			return nil, errors.Errorf("referencing items outside the schema or database is not yet supported")
 		}
 		if funcRef.NumParts == 2 {
 			qualifier = vitess.NewTableIdent(funcRef.Parts[1])
 		}
 		name = vitess.NewColIdent(funcRef.Parts[0])
 	default:
-		return nil, fmt.Errorf("unknown function reference")
+		return nil, errors.Errorf("unknown function reference")
 	}
 	var distinct bool
 	switch node.Type {
@@ -59,7 +59,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (*vitess.FuncExpr, error) {
 	case tree.DistinctFuncType:
 		distinct = true
 	default:
-		return nil, fmt.Errorf("unknown function spec type %d", node.Type)
+		return nil, errors.Errorf("unknown function spec type %d", node.Type)
 	}
 	windowDef, err := nodeWindowDef(ctx, node.WindowDef)
 	if err != nil {

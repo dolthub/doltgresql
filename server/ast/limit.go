@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -51,7 +51,7 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 			}
 
 			if limitValue < 0 {
-				return nil, fmt.Errorf("LIMIT must be greater than or equal to 0")
+				return nil, errors.Errorf("LIMIT must be greater than or equal to 0")
 			}
 
 			count = literal.ToVitessLiteral()
@@ -66,7 +66,7 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 			}
 
 			if offsetVal < 0 {
-				return nil, fmt.Errorf("OFFSET must be greater than or equal to 0")
+				return nil, errors.Errorf("OFFSET must be greater than or equal to 0")
 			}
 
 			offset = literal.ToVitessLiteral()
@@ -93,7 +93,7 @@ func int64ValueForLimit(l any) (int64, error) {
 	case float32:
 		limitValue = int64(l)
 	default:
-		return 0, fmt.Errorf("unsupported limit/offset value type %T", l)
+		return 0, errors.Errorf("unsupported limit/offset value type %T", l)
 	}
 	return limitValue, nil
 }

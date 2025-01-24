@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
@@ -40,7 +40,7 @@ var mod_int16_int16 = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int16) == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, errors.Errorf("division by zero")
 		}
 		return val1.(int16) % val2.(int16), nil
 	},
@@ -54,7 +54,7 @@ var mod_int32_int32 = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int32) == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, errors.Errorf("division by zero")
 		}
 		return val1.(int32) % val2.(int32), nil
 	},
@@ -68,7 +68,7 @@ var mod_int64_int64 = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(int64) == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, errors.Errorf("division by zero")
 		}
 		return val1.(int64) % val2.(int64), nil
 	},
@@ -82,7 +82,7 @@ var mod_numeric_numeric = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		if val2.(decimal.Decimal).Cmp(decimal.Zero) == 0 {
-			return nil, fmt.Errorf("division by zero")
+			return nil, errors.Errorf("division by zero")
 		}
 		return val1.(decimal.Decimal).Mod(val2.(decimal.Decimal)), nil
 	},

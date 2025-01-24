@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -60,7 +60,7 @@ var substr_text_int32_int32 = framework.Function3{
 		count := countInt.(int32)
 		runes := []rune(str.(string))
 		if count < 0 {
-			return nil, fmt.Errorf("negative substring length not allowed")
+			return nil, errors.Errorf("negative substring length not allowed")
 		}
 		// start is 1-indexed
 		start--

@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -31,7 +31,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 	if len(node.Nullable.ConstraintName) > 0 ||
 		len(node.DefaultExpr.ConstraintName) > 0 ||
 		len(node.UniqueConstraintName) > 0 {
-		return nil, fmt.Errorf("non-foreign key column constraint names are not yet supported")
+		return nil, errors.Errorf("non-foreign key column constraint names are not yet supported")
 	}
 	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.Type)
 	if err != nil {
@@ -51,7 +51,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		isNull = true
 		isNotNull = false
 	default:
-		return nil, fmt.Errorf("unknown NULL type encountered")
+		return nil, errors.Errorf("unknown NULL type encountered")
 	}
 	keyOpt := vitess.ColumnKeyOption(0) // colKeyNone, unexported for some reason
 	if node.PrimaryKey.IsPrimaryKey {
@@ -73,7 +73,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 	var fkDef *vitess.ForeignKeyDefinition
 	if node.References.Table != nil {
 		if len(node.References.Col) == 0 {
-			return nil, fmt.Errorf("implicit primary key matching on column foreign key is not yet supported")
+			return nil, errors.Errorf("implicit primary key matching on column foreign key is not yet supported")
 		}
 		fkDef, err = nodeForeignKeyConstraintTableDef(ctx, &tree.ForeignKeyConstraintTableDef{
 			Name:     node.References.ConstraintName,
@@ -105,7 +105,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 	}
 	if node.IsSerial {
 		if resolvedType.IsEmptyType() {
-			return nil, fmt.Errorf("serial type was not resolvable")
+			return nil, errors.Errorf("serial type was not resolvable")
 		}
 		switch resolvedType.ID {
 		case pgtypes.Int16.ID:
@@ -115,10 +115,10 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		case pgtypes.Int64.ID:
 			resolvedType = pgtypes.Int64Serial
 		default:
-			return nil, fmt.Errorf(`type "%s" cannot be serial`, resolvedType.String())
+			return nil, errors.Errorf(`type "%s" cannot be serial`, resolvedType.String())
 		}
 		if defaultExpr != nil {
-			return nil, fmt.Errorf(`multiple default values specified for column "%s"`, node.Name)
+			return nil, errors.Errorf(`multiple default values specified for column "%s"`, node.Name)
 		}
 	}
 	colDef := &vitess.ColumnDefinition{
@@ -142,7 +142,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 	if len(node.CheckExprs) > 0 {
 		// TODO: vitess does not support multiple check constraint on a single column
 		if len(node.CheckExprs) > 1 {
-			return nil, fmt.Errorf("column-declared multiple CHECK expressions are not yet supported")
+			return nil, errors.Errorf("column-declared multiple CHECK expressions are not yet supported")
 		}
 		var checkConstraints = make([]*vitess.ConstraintDefinition, len(node.CheckExprs))
 		for i, checkExpr := range node.CheckExprs {

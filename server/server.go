@@ -20,6 +20,7 @@ import (
 	_ "net/http/pprof"
 	"path/filepath"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -89,7 +90,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 
 	if dEnv.HasDoltDataDir() {
 		cwd, _ := dEnv.FS.Abs(".")
-		return nil, fmt.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database. "+
+		return nil, errors.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database. "+
 			"To use the current directory (%s) as a database, start the server from the parent directory.", cwd)
 	}
 
@@ -97,7 +98,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 
 	err := dsess.InitPersistedSystemVars(dEnv)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load persisted system variables: %w", err)
+		return nil, errors.Errorf("failed to load persisted system variables: %w", err)
 	}
 
 	ssCfg := cfg.ToSqlServerConfig()
@@ -138,7 +139,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		workingDir, _ := dataDirFs.Abs(".")
 		// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
 		// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
-		return nil, fmt.Errorf("Attempted to create the default `postgres` database at `%s`, but a file with "+
+		return nil, errors.Errorf("Attempted to create the default `postgres` database at `%s`, but a file with "+
 			"the same name was found. Either remove the file, change the directory using the `--data-dir` argument, "+
 			"or change the environment variable `%s` so that it points to a different directory.", workingDir, servercfg.DOLTGRES_DATA_DIR)
 	}
@@ -205,15 +206,15 @@ func startReplication(cfg *servercfg.DoltgresConfig, ssCfg doltservercfg.ServerC
 	if cfg.PostgresReplicationConfig == nil {
 		return nil, nil
 	} else if cfg.PostgresReplicationConfig.PostgresDatabase == nil || *cfg.PostgresReplicationConfig.PostgresDatabase == "" {
-		return nil, fmt.Errorf("postgres replication database must be specified and not empty for replication")
+		return nil, errors.Errorf("postgres replication database must be specified and not empty for replication")
 	} else if cfg.PostgresReplicationConfig.PostgresUser == nil || *cfg.PostgresReplicationConfig.PostgresUser == "" {
-		return nil, fmt.Errorf("postgres replication user must be specified and not empty for replication")
+		return nil, errors.Errorf("postgres replication user must be specified and not empty for replication")
 	} else if cfg.PostgresReplicationConfig.PostgresPassword == nil || *cfg.PostgresReplicationConfig.PostgresPassword == "" {
-		return nil, fmt.Errorf("postgres replication password must be specified and not empty for replication")
+		return nil, errors.Errorf("postgres replication password must be specified and not empty for replication")
 	} else if cfg.PostgresReplicationConfig.PostgresPort == nil || *cfg.PostgresReplicationConfig.PostgresPort == 0 {
-		return nil, fmt.Errorf("postgres replication port must be specified and non-zero for replication")
+		return nil, errors.Errorf("postgres replication port must be specified and non-zero for replication")
 	} else if cfg.PostgresReplicationConfig.SlotName == nil || *cfg.PostgresReplicationConfig.SlotName == "" {
-		return nil, fmt.Errorf("postgres replication slot name must be specified and not empty for replication")
+		return nil, errors.Errorf("postgres replication slot name must be specified and not empty for replication")
 	}
 
 	walFilePath := filepath.Join(ssCfg.CfgDir(), "pg_wal_location")
@@ -258,7 +259,7 @@ func (c configCliContext) GlobalArgs() *argparser.ArgParseResults {
 }
 
 func (c configCliContext) QueryEngine(ctx context.Context) (cli.Queryist, *sql.Context, func(), error) {
-	return nil, nil, nil, fmt.Errorf("ConfigCliContext does not support QueryEngine()")
+	return nil, nil, nil, errors.Errorf("ConfigCliContext does not support QueryEngine()")
 }
 
 func (c configCliContext) WorkingDir() filesys.Filesys {

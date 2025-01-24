@@ -15,7 +15,7 @@
 package main
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 )
@@ -163,6 +163,6 @@ func EncodeMessage(message pgproto3.Message) ([]byte, error) {
 	case *pgproto3.Terminate:
 		return nil, nil
 	default:
-		return nil, fmt.Errorf("unknown message type: %T", message)
+		return nil, errors.Errorf("unknown message type: %T", message)
 	}
 }

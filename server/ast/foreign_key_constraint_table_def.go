@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -31,11 +31,11 @@ func nodeForeignKeyConstraintTableDef(ctx *Context, node *tree.ForeignKeyConstra
 	case tree.MatchSimple:
 		// This is the default behavior
 	case tree.MatchFull:
-		return nil, fmt.Errorf("MATCH FULL is not yet supported")
+		return nil, errors.Errorf("MATCH FULL is not yet supported")
 	case tree.MatchPartial:
-		return nil, fmt.Errorf("MATCH PARTIAL is not yet supported")
+		return nil, errors.Errorf("MATCH PARTIAL is not yet supported")
 	default:
-		return nil, fmt.Errorf("unknown foreign key MATCH strategy")
+		return nil, errors.Errorf("unknown foreign key MATCH strategy")
 	}
 	tableName, err := nodeTableName(ctx, &node.Table)
 	if err != nil {
@@ -59,18 +59,18 @@ func nodeForeignKeyConstraintTableDef(ctx *Context, node *tree.ForeignKeyConstra
 		case tree.SetNull:
 			refActions[i] = vitess.SetNull
 			if refAction.Columns != nil {
-				return nil, fmt.Errorf("SET NULL <columns> is not yet supported")
+				return nil, errors.Errorf("SET NULL <columns> is not yet supported")
 			}
 		case tree.SetDefault:
 			// GMS doesn't support this as MySQL doesn't support this
 			refActions[i] = vitess.SetDefault
 			if refAction.Columns != nil {
-				return nil, fmt.Errorf("SET NULL <columns> is not yet supported")
+				return nil, errors.Errorf("SET NULL <columns> is not yet supported")
 			}
 		case tree.Cascade:
 			refActions[i] = vitess.Cascade
 		default:
-			return nil, fmt.Errorf("unknown foreign key reference action encountered")
+			return nil, errors.Errorf("unknown foreign key reference action encountered")
 		}
 	}
 	return &vitess.ForeignKeyDefinition{

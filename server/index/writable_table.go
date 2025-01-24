@@ -15,7 +15,7 @@
 package index
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/index"
@@ -125,7 +125,7 @@ func (idt *IndexedWritableDoltgresTable) LookupPartitions(ctx *sql.Context, look
 
 // Partitions implements the sql.Table interface.
 func (idt *IndexedWritableDoltgresTable) Partitions(ctx *sql.Context) (sql.PartitionIter, error) {
-	return nil, fmt.Errorf("%T: Partitions is invalid on this table", idt)
+	return nil, errors.Errorf("%T: Partitions is invalid on this table", idt)
 }
 
 // PartitionRows implements the sql.Table interface.

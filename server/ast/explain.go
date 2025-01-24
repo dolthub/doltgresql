@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -69,5 +69,5 @@ func nodeExplain(ctx *Context, node *tree.Explain) (vitess.Statement, error) {
 		return explain, nil
 	}
 
-	return nil, fmt.Errorf("This EXPLAIN syntax is not yet supported")
+	return nil, errors.Errorf("This EXPLAIN syntax is not yet supported")
 }

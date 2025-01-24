@@ -16,8 +16,9 @@ package sequences
 
 import (
 	"context"
-	"fmt"
 	"sync"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/utils"
@@ -75,7 +76,7 @@ func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
 	if version != 0 {
-		return nil, fmt.Errorf("version %d of sequences is not supported, please upgrade the server", version)
+		return nil, errors.Errorf("version %d of sequences is not supported, please upgrade the server", version)
 	}
 
 	// Read from the reader
@@ -104,7 +105,7 @@ func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
 		schemaMap[schemaName] = nameMap
 	}
 	if !reader.IsEmpty() {
-		return nil, fmt.Errorf("extra data found while deserializing sequences")
+		return nil, errors.Errorf("extra data found while deserializing sequences")
 	}
 
 	// Return the deserialized object

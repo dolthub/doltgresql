@@ -21,11 +21,12 @@ import (
 	"net"
 	"strings"
 
-	"github.com/dolthub/doltgresql/server/auth"
-	"github.com/dolthub/doltgresql/server/auth/rfc5802"
-
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5/pgproto3"
+
+	"github.com/dolthub/doltgresql/server/auth"
+	"github.com/dolthub/doltgresql/server/auth/rfc5802"
 )
 
 // SCRAM authentication is defined in RFC-5802:
@@ -179,7 +180,7 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 			}
 			return h.send(&pgproto3.AuthenticationOk{})
 		default:
-			return fmt.Errorf("unknown message type encountered during SASL authentication: %T", response)
+			return errors.Errorf("unknown message type encountered during SASL authentication: %T", response)
 		}
 	}
 }
@@ -187,39 +188,39 @@ func (h *ConnectionHandler) handleAuthentication(startupMessage *pgproto3.Startu
 // readSASLInitial reads the initial SASL response from the client.
 func readSASLInitial(r *pgproto3.SASLInitialResponse) (SASLInitial, error) {
 	if r.AuthMechanism != SASLMechanism_SCRAM_SHA_256 {
-		return SASLInitial{}, fmt.Errorf("SASL mechanism not supported: %s", r.AuthMechanism)
+		return SASLInitial{}, errors.Errorf("SASL mechanism not supported: %s", r.AuthMechanism)
 	}
 	saslInitial := SASLInitial{}
 	sections := strings.Split(string(r.Data), ",")
 	if len(sections) < 3 {
-		return SASLInitial{}, fmt.Errorf("invalid SASLInitialResponse: too few sections")
+		return SASLInitial{}, errors.Errorf("invalid SASLInitialResponse: too few sections")
 	}
 
 	// gs2-cbind-flag is the first section
 	gs2CbindFlag := sections[0]
 	if len(gs2CbindFlag) == 0 {
-		return SASLInitial{}, fmt.Errorf("invalid SASLInitialResponse: malformed gs2-cbind-flag")
+		return SASLInitial{}, errors.Errorf("invalid SASLInitialResponse: malformed gs2-cbind-flag")
 	}
 	switch gs2CbindFlag[0] {
 	case 'n':
 		saslInitial.Flag = SASLBindingFlag_NoClientSupport
 	case 'p':
 		if len(gs2CbindFlag) < 3 {
-			return SASLInitial{}, fmt.Errorf("invalid SASLInitialResponse: malformed gs2-cbind-flag channel binding")
+			return SASLInitial{}, errors.Errorf("invalid SASLInitialResponse: malformed gs2-cbind-flag channel binding")
 		}
 		saslInitial.Flag = SASLBindingFlag_Used
 		saslInitial.BindName = gs2CbindFlag[2:]
 	case 'y':
 		saslInitial.Flag = SASLBindingFlag_AssumedNoServerSupport
 	default:
-		return SASLInitial{}, fmt.Errorf("invalid SASLInitialResponse: malformed gs2-cbind-flag options (%c)", gs2CbindFlag[0])
+		return SASLInitial{}, errors.Errorf("invalid SASLInitialResponse: malformed gs2-cbind-flag options (%c)", gs2CbindFlag[0])
 	}
 
 	// authzid is the second section
 	authzid := sections[1]
 	if len(authzid) > 0 {
 		if len(authzid) < 3 {
-			return SASLInitial{}, fmt.Errorf("invalid SASLInitialResponse: malformed authzid")
+			return SASLInitial{}, errors.Errorf("invalid SASLInitialResponse: malformed authzid")
 		}
 		saslInitial.Authzid = authzid[2:]
 	}
@@ -227,7 +228,7 @@ func readSASLInitial(r *pgproto3.SASLInitialResponse) (SASLInitial, error) {
 	// Read the gs2-header
 	for i := 2; i < len(sections); i++ {
 		if len(sections[i]) < 2 {
-			return SASLInitial{}, fmt.Errorf("invalid SASLInitialResponse: malformed gs2-header")
+			return SASLInitial{}, errors.Errorf("invalid SASLInitialResponse: malformed gs2-header")
 		}
 		switch sections[i][0] {
 		case 'c':
@@ -237,13 +238,13 @@ func readSASLInitial(r *pgproto3.SASLInitialResponse) (SASLInitial, error) {
 		case 'r':
 			saslInitial.Nonce = sections[i][2:]
 		default:
-			return SASLInitial{}, fmt.Errorf("invalid SASLInitialResponse: unknown gs2-header option (%c)", sections[i][0])
+			return SASLInitial{}, errors.Errorf("invalid SASLInitialResponse: unknown gs2-header option (%c)", sections[i][0])
 		}
 	}
 
 	// Validate that all required options have been read
 	if len(saslInitial.Nonce) == 0 {
-		return SASLInitial{}, fmt.Errorf("invalid SASLInitialResponse: missing nonce")
+		return SASLInitial{}, errors.Errorf("invalid SASLInitialResponse: missing nonce")
 	}
 	// Copy the message bytes, since the backend may re-use the slice for future responses
 	saslInitial.RawData = make([]byte, len(r.Data))
@@ -256,32 +257,32 @@ func readSASLResponse(gs2EncodedHeader string, nonce string, r *pgproto3.SASLRes
 	saslResponse := SASLResponse{}
 	for _, section := range strings.Split(string(r.Data), ",") {
 		if len(section) < 3 {
-			return SASLResponse{}, fmt.Errorf("invalid SASLResponse: attribute too small")
+			return SASLResponse{}, errors.Errorf("invalid SASLResponse: attribute too small")
 		}
 		switch section[0] {
 		case 'c':
 			saslResponse.GS2Header = section[2:]
 			if saslResponse.GS2Header != gs2EncodedHeader {
-				return SASLResponse{}, fmt.Errorf("invalid SASLResponse: inconsistent GS2 header")
+				return SASLResponse{}, errors.Errorf("invalid SASLResponse: inconsistent GS2 header")
 			}
 		case 'p':
 			saslResponse.ClientProof = section[2:]
 		case 'r':
 			saslResponse.Nonce = section[2:]
 			if saslResponse.Nonce != nonce {
-				return SASLResponse{}, fmt.Errorf("invalid SASLResponse: nonce does not match authentication session")
+				return SASLResponse{}, errors.Errorf("invalid SASLResponse: nonce does not match authentication session")
 			}
 		default:
-			return SASLResponse{}, fmt.Errorf("invalid SASLResponse: unknown attribute (%c)", section[0])
+			return SASLResponse{}, errors.Errorf("invalid SASLResponse: unknown attribute (%c)", section[0])
 		}
 	}
 
 	// Validate that all required options have been read
 	if len(saslResponse.Nonce) == 0 {
-		return SASLResponse{}, fmt.Errorf("invalid SASLResponse: missing nonce")
+		return SASLResponse{}, errors.Errorf("invalid SASLResponse: missing nonce")
 	}
 	if len(saslResponse.ClientProof) == 0 {
-		return SASLResponse{}, fmt.Errorf("invalid SASLResponse: missing nonce")
+		return SASLResponse{}, errors.Errorf("invalid SASLResponse: missing nonce")
 	}
 	// Copy the message bytes, since the backend may re-use the slice for future responses
 	saslResponse.RawData = make([]byte, len(r.Data))
@@ -294,19 +295,19 @@ func readSASLResponse(gs2EncodedHeader string, nonce string, r *pgproto3.SASLRes
 // information.
 func verifySASLClientProof(user auth.Role, saslInitial SASLInitial, saslContinue SASLContinue, saslResponse SASLResponse) (string, error) {
 	if !user.CanLogin || user.Password == nil {
-		return "", fmt.Errorf(`password authentication failed for user "%s"`, user.Name)
+		return "", errors.Errorf(`password authentication failed for user "%s"`, user.Name)
 	}
 	// TODO: check the "valid until" time
 	clientProof := rfc5802.Base64ToOctetString(saslResponse.ClientProof)
 	authMessage := fmt.Sprintf("%s,%s,%s", saslInitial.MessageBare(), saslContinue.Encode().Data, saslResponse.MessageWithoutProof())
 	clientSignature := rfc5802.ClientSignature(user.Password.StoredKey, authMessage)
 	if len(clientProof) != len(clientSignature) {
-		return "", fmt.Errorf(`password authentication failed for user "%s"`, user.Name)
+		return "", errors.Errorf(`password authentication failed for user "%s"`, user.Name)
 	}
 	clientKey := clientSignature.Xor(clientProof)
 	storedKey := rfc5802.StoredKey(clientKey)
 	if !storedKey.Equals(user.Password.StoredKey) {
-		return "", fmt.Errorf(`password authentication failed for user "%s"`, user.Name)
+		return "", errors.Errorf(`password authentication failed for user "%s"`, user.Name)
 	}
 	serverSignature := rfc5802.ServerSignature(user.Password.ServerKey, authMessage)
 	return serverSignature.ToBase64(), nil

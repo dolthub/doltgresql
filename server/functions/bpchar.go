@@ -21,6 +21,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -57,7 +58,7 @@ var bpcharin = framework.Function3{
 		}
 		input, runeLength := truncateString(input, maxChars)
 		if runeLength > maxChars {
-			return input, fmt.Errorf("value too long for type varying(%v)", maxChars)
+			return input, errors.Errorf("value too long for type varying(%v)", maxChars)
 		} else if runeLength < maxChars {
 			return input + strings.Repeat(" ", int(maxChars-runeLength)), nil
 		} else {
@@ -180,7 +181,7 @@ func getTypModFromStringArr(typName string, inputArr []any) (int32, error) {
 	if len(inputArr) == 0 {
 		return 0, pgtypes.ErrTypmodArrayMustBe1D.New()
 	} else if len(inputArr) > 1 {
-		return 0, fmt.Errorf("invalid type modifier")
+		return 0, errors.Errorf("invalid type modifier")
 	}
 
 	l, err := strconv.ParseInt(inputArr[0].(string), 10, 32)

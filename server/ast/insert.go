@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -32,7 +32,7 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 	defer ctx.Auth().PopAuthType()
 
 	if _, ok := node.Returning.(*tree.NoReturningClause); !ok {
-		return nil, fmt.Errorf("RETURNING is not yet supported")
+		return nil, errors.Errorf("RETURNING is not yet supported")
 	}
 	var ignore string
 	var onDuplicate vitess.OnDup
@@ -50,13 +50,13 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 				onDuplicate = append(onDuplicate, updateExpr)
 			}
 		} else {
-			return nil, fmt.Errorf("the ON CONFLICT clause provided is not yet supported")
+			return nil, errors.Errorf("the ON CONFLICT clause provided is not yet supported")
 		}
 	}
 	var tableName vitess.TableName
 	switch node := node.Table.(type) {
 	case *tree.AliasedTableExpr:
-		return nil, fmt.Errorf("aliased inserts are not yet supported")
+		return nil, errors.Errorf("aliased inserts are not yet supported")
 	case *tree.TableName:
 		var err error
 		tableName, err = nodeTableName(ctx, node)
@@ -64,9 +64,9 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 			return nil, err
 		}
 	case *tree.TableRef:
-		return nil, fmt.Errorf("table refs are not yet supported")
+		return nil, errors.Errorf("table refs are not yet supported")
 	default:
-		return nil, fmt.Errorf("unknown table name type in INSERT: `%T`", node)
+		return nil, errors.Errorf("unknown table name type in INSERT: `%T`", node)
 	}
 	var columns []vitess.ColIdent
 	if len(node.Columns) > 0 {

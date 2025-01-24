@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeShowBackup(ctx *Context, node *tree.ShowBackup) (vitess.Statement, erro
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("SHOW BACKUP is not yet supported")
+	return nil, errors.Errorf("SHOW BACKUP is not yet supported")
 }

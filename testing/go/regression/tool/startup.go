@@ -15,8 +15,9 @@
 package main
 
 import (
-	"fmt"
 	"net"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/jackc/pgx/v5/pgproto3"
 )
@@ -54,7 +55,7 @@ StartupLoop:
 			}
 			break StartupLoop
 		default:
-			return fmt.Errorf("Unexpected Startup Message: %v", startupMessage)
+			return errors.Errorf("Unexpected Startup Message: %v", startupMessage)
 		}
 	}
 	return nil

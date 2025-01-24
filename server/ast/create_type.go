@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -53,14 +53,14 @@ func nodeCreateType(ctx *Context, node *tree.CreateType) (vitess.Statement, erro
 	case tree.Enum:
 		createTypeNode = pgnodes.NewCreateEnumType(schemaName, typName, node.Enum.Labels)
 	case tree.Range:
-		return nil, fmt.Errorf("CREATE RANGE TYPE is not yet supported")
+		return nil, errors.Errorf("CREATE RANGE TYPE is not yet supported")
 	case tree.Base:
-		return nil, fmt.Errorf("CREATE BASE TYPE is not yet supported")
+		return nil, errors.Errorf("CREATE BASE TYPE is not yet supported")
 	case tree.Shell:
 		createTypeNode = pgnodes.NewCreateShellType(schemaName, typName)
 	case tree.Domain:
 		// NOT POSSIBLE
-		return nil, fmt.Errorf("use CREATE DOMAIN to create domain type")
+		return nil, errors.Errorf("use CREATE DOMAIN to create domain type")
 	}
 
 	return vitess.InjectedStatement{

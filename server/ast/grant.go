@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -45,7 +45,7 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 			switch normalizedTable := normalizedTable.(type) {
 			case *tree.TableName:
 				if normalizedTable.ExplicitCatalog {
-					return nil, fmt.Errorf("granting privileges to other databases is not yet supported")
+					return nil, errors.Errorf("granting privileges to other databases is not yet supported")
 				}
 				tables = append(tables, doltdb.TableName{
 					Name:   string(normalizedTable.ObjectName),
@@ -57,7 +57,7 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 					Schema: string(normalizedTable.SchemaName),
 				})
 			default:
-				return nil, fmt.Errorf(`unexpected table type in GRANT: %T`, normalizedTable)
+				return nil, errors.Errorf(`unexpected table type in GRANT: %T`, normalizedTable)
 			}
 		}
 		for _, schema := range node.Targets.InSchema {
@@ -93,7 +93,7 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 			Databases:  node.Targets.Databases.ToStrings(),
 		}
 	default:
-		return nil, fmt.Errorf("this form of GRANT is not yet supported")
+		return nil, errors.Errorf("this form of GRANT is not yet supported")
 	}
 	return vitess.InjectedStatement{
 		Statement: &pgnodes.Grant{
@@ -149,12 +149,12 @@ func convertPrivilegeKinds(object auth.PrivilegeObject, kinds []privilege.Kind) 
 			privileges[i] = auth.Privilege_USAGE
 		default:
 			// This shouldn't be possible unless we update our list of supported privileges
-			return nil, fmt.Errorf("unknown privilege kind: %v", kind)
+			return nil, errors.Errorf("unknown privilege kind: %v", kind)
 		}
 	}
 	for _, p := range privileges {
 		if !object.IsValid(p) {
-			return nil, fmt.Errorf("invalid privilege type %s for relation", p.String())
+			return nil, errors.Errorf("invalid privilege type %s for relation", p.String())
 		}
 	}
 	return privileges, nil

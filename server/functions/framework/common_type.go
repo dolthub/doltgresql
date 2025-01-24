@@ -15,7 +15,7 @@
 package framework
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -46,7 +46,7 @@ func FindCommonType(types []*pgtypes.DoltgresType) (*pgtypes.DoltgresType, error
 			candidateType = typ
 		}
 		if typ.ID != pgtypes.Unknown.ID && candidateType.TypCategory != typ.TypCategory {
-			return nil, fmt.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
+			return nil, errors.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
 		}
 	}
 
@@ -57,14 +57,14 @@ func FindCommonType(types []*pgtypes.DoltgresType) (*pgtypes.DoltgresType, error
 		} else if GetImplicitCast(typ, candidateType) != nil {
 			continue
 		} else if GetImplicitCast(candidateType, typ) == nil {
-			return nil, fmt.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
+			return nil, errors.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
 		} else if !preferredTypeFound {
 			if candidateType.IsPreferred {
 				candidateType = typ
 				preferredTypeFound = true
 			}
 		} else {
-			return nil, fmt.Errorf("found another preferred candidate type")
+			return nil, errors.Errorf("found another preferred candidate type")
 		}
 	}
 	return candidateType, nil

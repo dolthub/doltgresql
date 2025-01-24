@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
@@ -42,7 +43,7 @@ import (
 	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/src-d/go-errors.v1"
+	gmserrors "gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
@@ -544,7 +545,7 @@ func (d *DoltgresHarness) EvaluateExpectedError(t *testing.T, expected string, e
 
 // EvaluateExpectedErrorKind is a harness extension that gives us more control over matching expected errors. We don't
 // have access to the error kind object eny longer, so we have to see if the error we get matches its pattern
-func (d *DoltgresHarness) EvaluateExpectedErrorKind(t *testing.T, expected *errors.Kind, actualErr error) {
+func (d *DoltgresHarness) EvaluateExpectedErrorKind(t *testing.T, expected *gmserrors.Kind, actualErr error) {
 	pattern := strings.ReplaceAll(expected.Message, "*", "\\*")
 	pattern = strings.ReplaceAll(pattern, "(", "\\(")
 	pattern = strings.ReplaceAll(pattern, ")", "\\)")
@@ -645,7 +646,7 @@ func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema,
 		}
 
 		if rows == nil {
-			return nil, nil, nil, fmt.Errorf("rows is nil")
+			return nil, nil, nil, errors.Errorf("rows is nil")
 		}
 
 		if rows.Err() != nil {
@@ -788,7 +789,7 @@ func unwrapResultColumn(v any) (any, error) {
 		}
 		return nil, nil
 	default:
-		return nil, fmt.Errorf("unsupported type %T", v)
+		return nil, errors.Errorf("unsupported type %T", v)
 	}
 }
 
@@ -813,7 +814,7 @@ func (d *DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
 
 func (d *DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]vitess.Expr, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	if len(bindings) > 0 {
-		return nil, nil, nil, fmt.Errorf("bindings not supported")
+		return nil, nil, nil, errors.Errorf("bindings not supported")
 	}
 
 	return d.Query(ctx, query)
@@ -871,7 +872,7 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.MustCreateBinary(sqltypes.Binary, 100), Nullable: true})
 		default:
-			return nil, nil, fmt.Errorf("Unhandled OID %d", field.DataTypeOID)
+			return nil, nil, errors.Errorf("Unhandled OID %d", field.DataTypeOID)
 		}
 	}
 

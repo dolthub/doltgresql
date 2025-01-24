@@ -15,9 +15,9 @@
 package ast
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -69,7 +69,7 @@ func nodeSelect(ctx *Context, node *tree.Select) (vitess.SelectStatement, error)
 		selectStmt.Limit = limit
 		return selectStmt, nil
 	default:
-		return nil, fmt.Errorf("SELECT has encountered an unknown clause: `%T`", selectStmt)
+		return nil, errors.Errorf("SELECT has encountered an unknown clause: `%T`", selectStmt)
 	}
 }
 
@@ -91,7 +91,7 @@ func nodeSelectStatement(ctx *Context, node tree.SelectStatement) (vitess.Select
 	case *tree.ValuesClause:
 		return nodeValuesClause(ctx, node)
 	default:
-		return nil, fmt.Errorf("unknown type of SELECT statement: `%T`", node)
+		return nil, errors.Errorf("unknown type of SELECT statement: `%T`", node)
 	}
 }
 
@@ -100,7 +100,7 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 	switch expr := node.Expr.(type) {
 	case *tree.AllColumnsSelector:
 		if expr.TableName.NumParts > 1 {
-			return nil, fmt.Errorf("referencing items outside the schema or database is not yet supported")
+			return nil, errors.Errorf("referencing items outside the schema or database is not yet supported")
 		}
 		return &vitess.StarExpr{
 			TableName: vitess.TableName{
@@ -111,7 +111,7 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 		return &vitess.StarExpr{}, nil
 	case *tree.UnresolvedName:
 		if expr.NumParts > 2 {
-			return nil, fmt.Errorf("referencing items outside the schema or database is not yet supported")
+			return nil, errors.Errorf("referencing items outside the schema or database is not yet supported")
 		}
 		if expr.Star {
 			var tableName vitess.TableName

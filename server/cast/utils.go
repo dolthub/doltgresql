@@ -15,10 +15,10 @@
 package cast
 
 import (
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
+	cerrors "github.com/cockroachdb/errors"
 	"gopkg.in/src-d/go-errors.v1"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -43,7 +43,7 @@ func handleStringCast(str string, targetType *pgtypes.DoltgresType) (string, err
 		length := uint32(maxChars)
 		str, runeLength := truncateString(str, length)
 		if runeLength > length {
-			return str, fmt.Errorf("value too long for type %s", targetType.String())
+			return str, cerrors.Errorf("value too long for type %s", targetType.String())
 		} else if runeLength < length {
 			return str + strings.Repeat(" ", int(length-runeLength)), nil
 		} else {
@@ -63,12 +63,12 @@ func handleStringCast(str string, targetType *pgtypes.DoltgresType) (string, err
 		length := uint32(pgtypes.GetCharLengthFromTypmod(tm))
 		str, runeLength := truncateString(str, length)
 		if runeLength > length {
-			return str, fmt.Errorf("value too long for type %s", targetType.String())
+			return str, cerrors.Errorf("value too long for type %s", targetType.String())
 		} else {
 			return str, nil
 		}
 	default:
-		return "", fmt.Errorf("internal cast called to handle non-string type")
+		return "", cerrors.Errorf("internal cast called to handle non-string type")
 	}
 }
 

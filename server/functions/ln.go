@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
@@ -39,9 +39,9 @@ var ln_float64 = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		if val1.(float64) == 0 {
-			return nil, fmt.Errorf("cannot take logarithm of zero")
+			return nil, errors.Errorf("cannot take logarithm of zero")
 		} else if val1.(float64) < 0 {
-			return nil, fmt.Errorf("cannot take logarithm of a negative number")
+			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
 		return math.Log(val1.(float64)), nil
 	},
@@ -60,9 +60,9 @@ var ln_numeric = framework.Function1{
 		// TODO: add an actual ln for numerics rather than relying on float64
 		f, _ := val1.(decimal.Decimal).Float64()
 		if f == 0 {
-			return nil, fmt.Errorf("cannot take logarithm of zero")
+			return nil, errors.Errorf("cannot take logarithm of zero")
 		} else if f < 0 {
-			return nil, fmt.Errorf("cannot take logarithm of a negative number")
+			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
 		return decimal.NewFromFloat(math.Log(f)), nil
 	},

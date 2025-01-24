@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -30,7 +30,7 @@ func nodeCreateAggregate(ctx *Context, node *tree.CreateAggregate) (vitess.State
 	if err := validateAggArgMode(ctx, node.Args, node.OrderByArgs); err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("CREATE AGGREGATE is not yet supported")
+	return nil, errors.Errorf("CREATE AGGREGATE is not yet supported")
 }
 
 // validateAggArgMode checks routine arguments for `OUT` and `INOUT` modes,
@@ -38,12 +38,12 @@ func nodeCreateAggregate(ctx *Context, node *tree.CreateAggregate) (vitess.State
 func validateAggArgMode(ctx *Context, args, orderByArgs tree.RoutineArgs) error {
 	for _, sig := range args {
 		if sig.Mode == tree.RoutineArgModeOut || sig.Mode == tree.RoutineArgModeInout {
-			return fmt.Errorf("aggregate functions do not support OUT or INOUT arguments")
+			return errors.Errorf("aggregate functions do not support OUT or INOUT arguments")
 		}
 	}
 	for _, sig := range orderByArgs {
 		if sig.Mode == tree.RoutineArgModeOut || sig.Mode == tree.RoutineArgModeInout {
-			return fmt.Errorf("aggregate functions do not support OUT or INOUT arguments")
+			return errors.Errorf("aggregate functions do not support OUT or INOUT arguments")
 		}
 	}
 	return nil

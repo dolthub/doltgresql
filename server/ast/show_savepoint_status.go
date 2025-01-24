@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,5 @@ func nodeShowSavepointStatus(ctx *Context, node *tree.ShowSavepointStatus) (vite
 	if node == nil {
 		return nil, nil
 	}
-	return nil, fmt.Errorf("SHOW SAVEPOINT STATUS is not yet supported")
+	return nil, errors.Errorf("SHOW SAVEPOINT STATUS is not yet supported")
 }

@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -36,7 +36,7 @@ var set_config_text_text_boolean = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Bool},
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, settingName any, newValue any, isLocal any) (any, error) {
 		if settingName == nil {
-			return nil, fmt.Errorf("NULL value not allowed for configuration setting name")
+			return nil, errors.Errorf("NULL value not allowed for configuration setting name")
 		}
 
 		// NULL is not supported for configuration values, and gets turned into the empty string
@@ -46,7 +46,7 @@ var set_config_text_text_boolean = framework.Function3{
 
 		if isLocal == true {
 			// TODO: If isLocal is true, then the config setting should only persist for the current transaction
-			return nil, fmt.Errorf("setting configuration values for the current transaction is not supported yet")
+			return nil, errors.Errorf("setting configuration values for the current transaction is not supported yet")
 		}
 
 		// set_config can set system configuration or user configuration. System configuration settings are in top

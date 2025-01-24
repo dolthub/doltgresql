@@ -15,9 +15,9 @@
 package functions
 
 import (
-	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -84,7 +84,7 @@ func parseRelationName(ctx *sql.Context, name string) (schema string, relation s
 		schema = pathElems[1]
 		relation = pathElems[2]
 	default:
-		return "", "", fmt.Errorf(`cannot parse relation: %s`, name)
+		return "", "", errors.Errorf(`cannot parse relation: %s`, name)
 	}
 
 	// Trim any quotes from the relation name

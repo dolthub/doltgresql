@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -201,7 +202,7 @@ func parseAndReplaceDomainCheckConstraint(ctx *sql.Context, a *analyzer.Analyzer
 		switch v := visitingExpr.(type) {
 		case *tree.UnresolvedName:
 			if strings.ToLower(v.String()) != "value" {
-				return false, nil, fmt.Errorf(`column "%s" does not exist`, v.String())
+				return false, nil, errors.Errorf(`column "%s" does not exist`, v.String())
 			}
 			return false, replacesValue, nil
 		}

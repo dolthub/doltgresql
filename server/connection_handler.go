@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/server"
@@ -143,7 +144,7 @@ func (h *ConnectionHandler) HandleConnection() {
 				} else if rErr, ok := r.(error); ok {
 					eomErr = rErr
 				} else {
-					eomErr = fmt.Errorf("panic: %v", r)
+					eomErr = errors.Errorf("panic: %v", r)
 				}
 
 				// Sending eom can panic, which means we must recover again
@@ -206,7 +207,7 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 		// Receiving EOF means that the connection has terminated, so we should just return
 		return false, nil
 	} else if err != nil {
-		return false, fmt.Errorf("error receiving startup message: %w", err)
+		return false, errors.Errorf("error receiving startup message: %w", err)
 	}
 
 	switch sm := startupMessage.(type) {
@@ -231,7 +232,7 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 		}
 		_, err = h.Conn().Write(performSSL)
 		if err != nil {
-			return false, fmt.Errorf("error sending SSL request: %w", err)
+			return false, errors.Errorf("error sending SSL request: %w", err)
 		}
 		// If we have a certificate and the client has asked for SSL support, then we switch here.
 		// This involves swapping out our underlying net connection for a new one.
@@ -246,11 +247,11 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 		// we don't support GSSAPI
 		_, err = h.Conn().Write([]byte("N"))
 		if err != nil {
-			return false, fmt.Errorf("error sending response to GSS Enc Request: %w", err)
+			return false, errors.Errorf("error sending response to GSS Enc Request: %w", err)
 		}
 		return h.handleStartup()
 	default:
-		return false, fmt.Errorf("terminating connection: unexpected start message: %#v", startupMessage)
+		return false, errors.Errorf("terminating connection: unexpected start message: %#v", startupMessage)
 	}
 }
 
@@ -322,7 +323,7 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 				if rErr, ok := r.(error); ok {
 					eomErr = rErr
 				} else {
-					eomErr = fmt.Errorf("panic: %v", r)
+					eomErr = errors.Errorf("panic: %v", r)
 				}
 
 				if !endOfMessages && h.waitForSync {
@@ -337,7 +338,7 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 
 	msg, err := h.backend.Receive()
 	if err != nil {
-		return false, fmt.Errorf("error receiving message: %w", err)
+		return false, errors.Errorf("error receiving message: %w", err)
 	}
 
 	if m, ok := msg.(json.Marshaler); ok && logrus.IsLevelEnabled(logrus.DebugLevel) {
@@ -402,7 +403,7 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMess
 	case *pgproto3.CopyFail:
 		return h.handleCopyFail(message)
 	default:
-		return false, true, fmt.Errorf(`unhandled message "%t"`, message)
+		return false, true, errors.Errorf(`unhandled message "%t"`, message)
 	}
 }
 
@@ -486,7 +487,7 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 
 	analyzedPlan, ok := parsedQuery.(sql.Node)
 	if !ok {
-		return fmt.Errorf("expected a sql.Node, got %T", parsedQuery)
+		return errors.Errorf("expected a sql.Node, got %T", parsedQuery)
 	}
 
 	// A valid Parse message must have ParameterObjectIDs if there are any binding variables.
@@ -517,7 +518,7 @@ func (h *ConnectionHandler) handleDescribe(message *pgproto3.Describe) error {
 	if message.ObjectType == 'S' {
 		preparedStatementData, ok := h.preparedStatements[message.Name]
 		if !ok {
-			return fmt.Errorf("prepared statement %s does not exist", message.Name)
+			return errors.Errorf("prepared statement %s does not exist", message.Name)
 		}
 
 		fields = preparedStatementData.ReturnFields
@@ -526,7 +527,7 @@ func (h *ConnectionHandler) handleDescribe(message *pgproto3.Describe) error {
 	} else {
 		portalData, ok := h.portals[message.Name]
 		if !ok {
-			return fmt.Errorf("portal %s does not exist", message.Name)
+			return errors.Errorf("portal %s does not exist", message.Name)
 		}
 
 		fields = portalData.Fields
@@ -545,7 +546,7 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 	logrus.Tracef("binding portal %q to prepared statement %s", message.DestinationPortal, message.PreparedStatement)
 	preparedData, ok := h.preparedStatements[message.PreparedStatement]
 	if !ok {
-		return fmt.Errorf("prepared statement %s does not exist", message.PreparedStatement)
+		return errors.Errorf("prepared statement %s does not exist", message.PreparedStatement)
 	}
 
 	if preparedData.Query.AST == nil {
@@ -573,7 +574,7 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 
 	boundPlan, ok := analyzedPlan.(sql.Node)
 	if !ok {
-		return fmt.Errorf("expected a sql.Node, got %T", analyzedPlan)
+		return errors.Errorf("expected a sql.Node, got %T", analyzedPlan)
 	}
 
 	h.portals[message.DestinationPortal] = PortalData{
@@ -591,7 +592,7 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 	// TODO: implement the RowMax
 	portalData, ok := h.portals[message.Portal]
 	if !ok {
-		return fmt.Errorf("portal %s does not exist", message.Portal)
+		return errors.Errorf("portal %s does not exist", message.Portal)
 	}
 
 	logrus.Tracef("executing portal %s with contents %v", message.Portal, portalData)
@@ -678,7 +679,7 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 	if sqlCtx.GetTransaction() != nil && sqlCtx.GetIgnoreAutoCommit() {
 		txSession, ok := sqlCtx.Session.(sql.TransactionSession)
 		if !ok {
-			return fmt.Errorf("session does not implement sql.TransactionSession")
+			return errors.Errorf("session does not implement sql.TransactionSession")
 		}
 		if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
 			return err
@@ -695,7 +696,7 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 // function so that it can capture any returned error message and store it in the saved state.
 func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, copyFromData io.Reader) (stop bool, endOfMessages bool, err error) {
 	if copyState == nil {
-		return false, true, fmt.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
+		return false, true, errors.Errorf("COPY DATA message received without a COPY FROM STDIN operation in progress")
 	}
 
 	// Grab a sql.Context and ensure the session has a transaction started, otherwise the copied data
@@ -712,7 +713,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 	if dataLoader == nil {
 		copyFromStdinNode := copyState.copyFromStdinNode
 		if copyFromStdinNode == nil {
-			return false, false, fmt.Errorf("no COPY FROM STDIN node found")
+			return false, false, errors.Errorf("no COPY FROM STDIN node found")
 		}
 
 		// we build an insert node to use for the full insert plan, for which the copy from node will be the row source
@@ -724,14 +725,14 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 
 		insertNode, ok := node.(*plan.InsertInto)
 		if !ok {
-			return false, false, fmt.Errorf("expected plan.InsertInto, got %T", node)
+			return false, false, errors.Errorf("expected plan.InsertInto, got %T", node)
 		}
 
 		// now that we have our insert node, we can build the data loader
 		tbl := getInsertableTable(insertNode.Destination)
 		if tbl == nil {
 			// this should be impossible, enforced by analyzer above
-			return false, false, fmt.Errorf("no insertable table found in %v", insertNode.Destination)
+			return false, false, errors.Errorf("no insertable table found in %v", insertNode.Destination)
 		}
 
 		switch copyFromStdinNode.CopyOptions.CopyFormat {
@@ -740,9 +741,9 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		case tree.CopyFormatCsv:
 			dataLoader, err = dataloader.NewCsvDataLoader(insertNode.ColumnNames, tbl.Schema(), copyFromStdinNode.CopyOptions.Delimiter, copyFromStdinNode.CopyOptions.Header)
 		case tree.CopyFormatBinary:
-			err = fmt.Errorf("BINARY format is not supported for COPY FROM")
+			err = errors.Errorf("BINARY format is not supported for COPY FROM")
 		default:
-			err = fmt.Errorf("unknown format specified for COPY FROM: %v",
+			err = errors.Errorf("unknown format specified for COPY FROM: %v",
 				copyFromStdinNode.CopyOptions.CopyFormat)
 		}
 
@@ -804,7 +805,7 @@ func getInsertableTable(node sql.Node) sql.InsertableTable {
 func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, endOfMessages bool, err error) {
 	if h.copyFromStdinState == nil {
 		return false, true,
-			fmt.Errorf("COPY DONE message received without a COPY FROM STDIN operation in progress")
+			errors.Errorf("COPY DONE message received without a COPY FROM STDIN operation in progress")
 	}
 
 	// If there was a previous error returned from processing a CopyData message, then don't return an error here
@@ -818,7 +819,7 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 	dataLoader := h.copyFromStdinState.dataLoader
 	if dataLoader == nil {
 		return false, true,
-			fmt.Errorf("no data loader found for COPY FROM STDIN operation")
+			errors.Errorf("no data loader found for COPY FROM STDIN operation")
 	}
 
 	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
@@ -837,7 +838,7 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 	//  processing. We need a new query flag to effectively do the latter though.
 	txSession, ok := sqlCtx.Session.(sql.TransactionSession)
 	if !ok {
-		return false, false, fmt.Errorf("session does not implement sql.TransactionSession")
+		return false, false, errors.Errorf("session does not implement sql.TransactionSession")
 	}
 	if err = txSession.CommitTransaction(sqlCtx, txSession.GetTransaction()); err != nil {
 		return false, false, err
@@ -859,13 +860,13 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, endOfMessages bool, err error) {
 	if h.copyFromStdinState == nil {
 		return false, true,
-			fmt.Errorf("COPY FAIL message received without a COPY FROM STDIN operation in progress")
+			errors.Errorf("COPY FAIL message received without a COPY FROM STDIN operation in progress")
 	}
 
 	dataLoader := h.copyFromStdinState.dataLoader
 	if dataLoader == nil {
 		return false, true,
-			fmt.Errorf("no data loader found for COPY FROM STDIN operation")
+			errors.Errorf("no data loader found for COPY FROM STDIN operation")
 	}
 
 	h.copyFromStdinState = nil
@@ -880,7 +881,7 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 func startTransactionIfNecessary(ctx *sql.Context) error {
 	doltSession, ok := ctx.Session.(*dsess.DoltSession)
 	if !ok {
-		return fmt.Errorf("unexpected session type: %T", ctx.Session)
+		return errors.Errorf("unexpected session type: %T", ctx.Session)
 	}
 	if doltSession.GetTransaction() == nil {
 		if _, err := doltSession.StartTransaction(ctx, sql.ReadWrite); err != nil {
@@ -897,7 +898,7 @@ func startTransactionIfNecessary(ctx *sql.Context) error {
 func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
 	_, ok := preparedStatements[name]
 	if !ok {
-		return fmt.Errorf("prepared statement %s does not exist", name)
+		return errors.Errorf("prepared statement %s does not exist", name)
 	}
 	delete(preparedStatements, name)
 
@@ -915,7 +916,7 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	err := h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, query.String, query.AST, callback)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
-			return fmt.Errorf("This statement is not yet supported")
+			return errors.Errorf("This statement is not yet supported")
 		}
 		return err
 	}
@@ -1023,7 +1024,7 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 	if strings.HasPrefix(statement, "select c.oid,\n  n.nspname,\n  c.relname\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relname operator(pg_catalog.~) '^(") && strings.HasSuffix(statement, ")$' collate pg_catalog.default\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 2, 3;") {
 		// There are >at least< 15 separate statements sent for this command, which is far too much to validate and
 		// implement, so we'll just return an error for now
-		return true, fmt.Errorf("PSQL command not yet supported")
+		return true, errors.Errorf("PSQL command not yet supported")
 	}
 	// Command: \dn
 	if statement == "select n.nspname as \"name\",\n  pg_catalog.pg_get_userbyid(n.nspowner) as \"owner\"\nfrom pg_catalog.pg_namespace n\nwhere n.nspname !~ '^pg_' and n.nspname <> 'information_schema'\norder by 1;" {
@@ -1094,7 +1095,7 @@ func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
 		return ConvertedQuery{}, err
 	}
 	if len(s) > 1 {
-		return ConvertedQuery{}, fmt.Errorf("only a single statement at a time is currently supported")
+		return ConvertedQuery{}, errors.Errorf("only a single statement at a time is currently supported")
 	}
 	if len(s) == 0 {
 		return ConvertedQuery{String: query}, nil

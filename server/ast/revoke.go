@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -45,7 +45,7 @@ func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 			switch normalizedTable := normalizedTable.(type) {
 			case *tree.TableName:
 				if normalizedTable.ExplicitCatalog {
-					return nil, fmt.Errorf("revoking privileges from other databases is not yet supported")
+					return nil, errors.Errorf("revoking privileges from other databases is not yet supported")
 				}
 				tables[i] = doltdb.TableName{
 					Name:   string(normalizedTable.ObjectName),
@@ -57,7 +57,7 @@ func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 					Schema: string(normalizedTable.SchemaName),
 				}
 			default:
-				return nil, fmt.Errorf(`unexpected table type in REVOKE: %T`, normalizedTable)
+				return nil, errors.Errorf(`unexpected table type in REVOKE: %T`, normalizedTable)
 			}
 		}
 		for _, schema := range node.Targets.InSchema {
@@ -93,7 +93,7 @@ func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 			Databases:  node.Targets.Databases.ToStrings(),
 		}
 	default:
-		return nil, fmt.Errorf("this form of REVOKE is not yet supported")
+		return nil, errors.Errorf("this form of REVOKE is not yet supported")
 	}
 	return vitess.InjectedStatement{
 		Statement: &pgnodes.Revoke{

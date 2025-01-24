@@ -15,14 +15,14 @@
 package sequences
 
 import (
-	"fmt"
 	"math"
 	"sort"
 	"sync"
 
-	"github.com/dolthub/doltgresql/core/id"
-
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Collection contains a collection of sequences.
@@ -125,7 +125,7 @@ func (pgs *Collection) CreateSequence(schema string, seq *Sequence) error {
 		pgs.schemaMap[schema] = nameMap
 	}
 	if _, ok = nameMap[seq.Id.SequenceName()]; ok {
-		return fmt.Errorf(`relation "%s" already exists`, seq.Id)
+		return errors.Errorf(`relation "%s" already exists`, seq.Id)
 	}
 	nameMap[seq.Id.SequenceName()] = seq
 	return nil
@@ -142,7 +142,7 @@ func (pgs *Collection) DropSequence(name id.Sequence) error {
 			return nil
 		}
 	}
-	return fmt.Errorf(`sequence "%s" does not exist`, name)
+	return errors.Errorf(`sequence "%s" does not exist`, name)
 }
 
 // IterateSequences iterates over all sequences in the collection.
@@ -170,7 +170,7 @@ func (pgs *Collection) NextVal(schema, name string) (int64, error) {
 			return seq.nextValForSequence()
 		}
 	}
-	return 0, fmt.Errorf(`relation "%s" does not exist`, name)
+	return 0, errors.Errorf(`relation "%s" does not exist`, name)
 }
 
 // SetVal sets the sequence to the
@@ -181,7 +181,7 @@ func (pgs *Collection) SetVal(schema, name string, newValue int64, autoAdvance b
 	if nameMap, ok := pgs.schemaMap[schema]; ok {
 		if seq, ok := nameMap[name]; ok {
 			if newValue < seq.Minimum || newValue > seq.Maximum {
-				return fmt.Errorf(`setval: value %d is out of bounds for sequence "%s" (%d..%d)`,
+				return errors.Errorf(`setval: value %d is out of bounds for sequence "%s" (%d..%d)`,
 					newValue, name, seq.Minimum, seq.Maximum)
 			}
 			seq.Current = newValue
@@ -193,7 +193,7 @@ func (pgs *Collection) SetVal(schema, name string, newValue int64, autoAdvance b
 			return nil
 		}
 	}
-	return fmt.Errorf(`relation "%s" does not exist`, name)
+	return errors.Errorf(`relation "%s" does not exist`, name)
 }
 
 // Clone returns a new *Collection with the same contents as the original.
@@ -225,9 +225,9 @@ func (sequence *Sequence) nextValForSequence() (int64, error) {
 	if sequence.IsAtEnd {
 		if !sequence.Cycle {
 			if sequence.Increment > 0 {
-				return 0, fmt.Errorf(`nextval: reached maximum value of sequence "%s" (%d)`, sequence.Id, sequence.Maximum)
+				return 0, errors.Errorf(`nextval: reached maximum value of sequence "%s" (%d)`, sequence.Id, sequence.Maximum)
 			} else {
-				return 0, fmt.Errorf(`nextval: reached minimum value of sequence "%s" (%d)`, sequence.Id, sequence.Minimum)
+				return 0, errors.Errorf(`nextval: reached minimum value of sequence "%s" (%d)`, sequence.Id, sequence.Minimum)
 			}
 		}
 		sequence.IsAtEnd = false

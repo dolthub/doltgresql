@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -29,7 +29,7 @@ func nodeDiscard(ctx *Context, discard *tree.Discard) (vitess.Statement, error) 
 		return nil, nil
 	}
 	if discard.Mode != tree.DiscardModeAll {
-		return nil, fmt.Errorf("unhandled DISCARD mode: %v", discard.Mode)
+		return nil, errors.Errorf("unhandled DISCARD mode: %v", discard.Mode)
 	}
 
 	return vitess.InjectedStatement{

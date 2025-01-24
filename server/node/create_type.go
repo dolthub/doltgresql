@@ -15,7 +15,7 @@
 package node
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -90,7 +90,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		userRole = auth.GetRole(ctx.Client().User)
 	})
 	if !userRole.IsValid() {
-		return nil, fmt.Errorf(`role "%s" does not exist`, ctx.Client().User)
+		return nil, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
 	}
 
 	schema, err := core.GetSchemaName(ctx, nil, c.SchemaName)
@@ -118,7 +118,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		for i, l := range c.Labels {
 			if _, ok := enumLabelMap[l]; ok {
 				// DETAIL:  Key (enumtypid, enumlabel)=(16702, ok) already exists.
-				return nil, fmt.Errorf(`duplicate key value violates unique constraint "pg_enum_typid_label_index"`)
+				return nil, errors.Errorf(`duplicate key value violates unique constraint "pg_enum_typid_label_index"`)
 			}
 			labelID := id.NewEnumLabel(typeID, l)
 			el := types.NewEnumLabel(ctx, labelID, float32(i+1))
@@ -137,7 +137,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		}
 		newType = types.NewCompositeType(ctx, relID, arrayID, typeID, attrs)
 	default:
-		return nil, fmt.Errorf("create type as %s is not supported", c.typType)
+		return nil, errors.Errorf("create type as %s is not supported", c.typType)
 	}
 
 	err = collection.CreateType(schema, newType)

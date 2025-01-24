@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"fmt"
+	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -38,7 +38,7 @@ func nodeWhere(ctx *Context, node *tree.Where) (*vitess.Where, error) {
 	case tree.AstHaving:
 		whereType = vitess.HavingStr
 	default:
-		return nil, fmt.Errorf("WHERE-type statement not yet supported: `%s`", node.Type)
+		return nil, errors.Errorf("WHERE-type statement not yet supported: `%s`", node.Type)
 	}
 	return &vitess.Where{
 		Type: whereType,

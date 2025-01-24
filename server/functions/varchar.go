@@ -17,6 +17,7 @@ package functions
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -49,7 +50,7 @@ var varcharin = framework.Function3{
 		}
 		input, runeLength := truncateString(input, maxChars)
 		if runeLength > maxChars {
-			return input, fmt.Errorf("value too long for type varying(%v)", maxChars)
+			return input, errors.Errorf("value too long for type varying(%v)", maxChars)
 		} else {
 			return input, nil
 		}

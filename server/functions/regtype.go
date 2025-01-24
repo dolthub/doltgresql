@@ -15,10 +15,10 @@
 package functions
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq/oid"
 
@@ -72,7 +72,7 @@ var regtypein = framework.Function1{
 				typeName = `"char"`
 			}
 		default:
-			return id.Null, fmt.Errorf("regtype failed validation")
+			return id.Null, errors.Errorf("regtype failed validation")
 		}
 		// Remove everything after the first parenthesis
 		typeName = strings.Split(typeName, "(")[0]
@@ -141,20 +141,20 @@ func regtype_IoInputValidation(ctx *sql.Context, input string, sections []string
 	case 3:
 		// We check for name validity before checking the schema name
 		if sections[1] != "." {
-			return fmt.Errorf("invalid name syntax")
+			return errors.Errorf("invalid name syntax")
 		}
 		return nil
 	case 5:
 		if sections[1] != "." || sections[3] != "." {
-			return fmt.Errorf("invalid name syntax")
+			return errors.Errorf("invalid name syntax")
 		}
-		return fmt.Errorf("cross-database references are not implemented: %s", input)
+		return errors.Errorf("cross-database references are not implemented: %s", input)
 	case 7:
 		if sections[1] != "." || sections[3] != "." || sections[5] != "." {
-			return fmt.Errorf("invalid name syntax")
+			return errors.Errorf("invalid name syntax")
 		}
-		return fmt.Errorf("improper qualified name (too many dotted names): %s", input)
+		return errors.Errorf("improper qualified name (too many dotted names): %s", input)
 	default:
-		return fmt.Errorf("invalid name syntax")
+		return errors.Errorf("invalid name syntax")
 	}
 }
