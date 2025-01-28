@@ -43,7 +43,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-var printErrorStackTraces = true
+var printErrorStackTraces = false
 
 const PrintErrorStackTracesEnvKey = "DOLTGRES_PRINT_ERROR_STACK_TRACES"
 
