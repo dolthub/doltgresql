@@ -428,5 +428,63 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "alter table add primary key with timestamp column default values",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (
+    id int NOT NULL,
+    uid uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);`,
+				"INSERT INTO t1 (id, uid) VALUES (1, '00000000-0000-0000-0000-000000000001');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE ONLY public.t1 ADD CONSTRAINT t1_pkey PRIMARY KEY (id);",
+				},
+				{
+					Query:    "select created_at is not null from t1 where id = 1;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "select updated_at is not null from t1 where id = 1;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "select created_at = updated_at from t1 where id = 1;",
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+		{
+			Name: "alter table add primary key with uuid column default values",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (
+    id int NOT NULL,
+    uid uuid default gen_random_uuid() NOT NULL
+);`,
+				"INSERT INTO t1 (id) VALUES (1);",
+				"INSERT INTO t1 (id) VALUES (2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE ONLY public.t1 ADD CONSTRAINT t1_pkey PRIMARY KEY (id);",
+				},
+				{
+					Query:    "select uid is not null from t1 where id = 1;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "select uid is not null from t1 where id = 2;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "select (select uid from t1 where id = 2) = (select uid from t1 where id = 1);",
+					Skip:     true, // panic in equality function
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
 	})
 }

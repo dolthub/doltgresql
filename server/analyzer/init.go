@@ -15,8 +15,6 @@
 package analyzer
 
 import (
-	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 )
 
@@ -37,6 +35,7 @@ const (
 	ruleId_ResolveType                                                // resolveType
 	ruleId_ReplaceArithmeticExpressions                               // replaceArithmeticExpressions
 	ruleId_OptimizeFunctions                                          // optimizeFunctions
+	ruleId_ValidateColumnDefaults                                     // validateColumnDefaults
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -45,13 +44,13 @@ func Init() {
 		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		analyzer.Rule{Id: ruleId_AddDomainConstraints, Apply: AddDomainConstraints},
-		getAnalyzerRule(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId),
+		analyzer.Rule{Id: ruleId_ValidateColumnDefaults, Apply: ValidateColumnDefaults},
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
 		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 	)
 
-	// Column default validation was moved to occur after type sanitization, so we'll remove it from its original place
+	// We remove the original column default rule, as we have our own implementation
 	analyzer.OnceBeforeDefault = removeAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId)
 
 	// PostgreSQL doesn't have the concept of prefix lengths, so we add a rule to implicitly add them
@@ -74,17 +73,6 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_ReplaceNode, Apply: ReplaceNode},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
-}
-
-// getAnalyzerRule returns the rule matching the given ID.
-func getAnalyzerRule(rules []analyzer.Rule, id analyzer.RuleId) analyzer.Rule {
-	for _, rule := range rules {
-		if rule.Id == id {
-			return rule
-		}
-	}
-	// This will only occur if GMS has been changed
-	panic(errors.Errorf("rule not found: %d", id))
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.
