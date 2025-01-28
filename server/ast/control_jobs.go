@@ -25,7 +25,7 @@ func nodeControlJobs(ctx *Context, node *tree.ControlJobs) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("PAUSE/RESUME/CANCEL are not yet supported")
 }
 
@@ -34,6 +34,6 @@ func nodeControlJobsForSchedules(ctx *Context, node *tree.ControlJobsForSchedule
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("PAUSE/RESUME/CANCEL are not yet supported")
 }

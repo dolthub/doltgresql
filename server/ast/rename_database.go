@@ -25,6 +25,6 @@ func nodeRenameDatabase(ctx *Context, node *tree.RenameDatabase) (vitess.Stateme
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("RENAME DATABASE is not yet supported")
 }

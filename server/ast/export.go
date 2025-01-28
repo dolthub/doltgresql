@@ -25,6 +25,6 @@ func nodeExport(ctx *Context, node *tree.Export) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("EXPORT is not yet supported")
 }

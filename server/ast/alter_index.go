@@ -25,7 +25,7 @@ func nodeAlterIndex(ctx *Context, node *tree.AlterIndex) (vitess.Statement, erro
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	// Only PARTITION alterations are supported by the parser, so there's nothing to convert to yet
 	return NotYetSupportedError("ALTER INDEX is not yet supported")
 }

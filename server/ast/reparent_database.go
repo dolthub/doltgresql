@@ -25,6 +25,6 @@ func nodeReparentDatabase(ctx *Context, node *tree.ReparentDatabase) (vitess.Sta
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("reparenting a database is not yet supported")
 }

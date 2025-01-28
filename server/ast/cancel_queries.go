@@ -25,6 +25,6 @@ func nodeCancelQueries(ctx *Context, node *tree.CancelQueries) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("CANCEL QUERIES is not yet supported")
 }

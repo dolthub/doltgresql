@@ -26,6 +26,6 @@ func nodeAlterFunction(ctx *Context, node *tree.AlterFunction) (vitess.Statement
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return NotYetSupportedError("ALTER FUNCTION statement is not yet supported")
 }

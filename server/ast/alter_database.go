@@ -25,6 +25,6 @@ func nodeAlterDatabase(ctx *Context, node *tree.AlterDatabase) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("ALTER DATABASE is not yet supported")
 }

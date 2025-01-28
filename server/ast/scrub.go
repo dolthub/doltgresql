@@ -25,6 +25,6 @@ func nodeScrub(ctx *Context, node *tree.Scrub) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("SCRUB is not yet supported")
 }

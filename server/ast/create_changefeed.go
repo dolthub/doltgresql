@@ -25,6 +25,6 @@ func nodeCreateChangefeed(ctx *Context, node *tree.CreateChangefeed) (vitess.Sta
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("CREATE CHANGEFEED is not yet supported")
 }

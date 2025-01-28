@@ -25,6 +25,6 @@ func nodeBackup(ctx *Context, node *tree.Backup) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("BACKUP is not yet supported")
 }

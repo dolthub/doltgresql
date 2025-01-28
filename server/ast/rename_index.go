@@ -25,6 +25,6 @@ func nodeRenameIndex(ctx *Context, node *tree.RenameIndex) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("RENAME INDEX is not yet supported")
 }

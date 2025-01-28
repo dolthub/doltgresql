@@ -25,6 +25,6 @@ func nodeRefreshMaterializedView(ctx *Context, node *tree.RefreshMaterializedVie
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("REFRESH MATERIALIZED VIEW is not yet supported")
 }

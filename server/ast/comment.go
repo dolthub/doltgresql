@@ -25,6 +25,6 @@ func nodeComment(ctx *Context, node *tree.Comment) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("COMMENT ON is not yet supported")
 }

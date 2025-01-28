@@ -25,6 +25,6 @@ func nodeCreateStats(ctx *Context, node *tree.CreateStats) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("CREATE STATISTICS is not yet supported")
 }

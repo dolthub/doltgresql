@@ -25,6 +25,6 @@ func nodeScheduledBackup(ctx *Context, node *tree.ScheduledBackup) (vitess.State
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("scheduled backups are not yet supported")
 }

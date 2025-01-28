@@ -25,6 +25,6 @@ func nodeRestore(ctx *Context, node *tree.Restore) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("RESTORE is not yet supported")
 }

@@ -26,6 +26,6 @@ func nodeAlterProcedure(ctx *Context, node *tree.AlterProcedure) (vitess.Stateme
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return NotYetSupportedError("ALTER PROCEDURE statement is not yet supported")
 }

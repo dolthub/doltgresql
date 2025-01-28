@@ -25,6 +25,6 @@ func nodeControlSchedules(ctx *Context, node *tree.ControlSchedules) (vitess.Sta
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("PAUSE/RESUME SCHEDULE is not yet supported")
 }

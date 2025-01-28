@@ -25,6 +25,6 @@ func nodeCannedOptPlan(ctx *Context, node *tree.CannedOptPlan) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("PREPARE AS OPT PLAN is not yet supported")
 }

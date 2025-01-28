@@ -25,6 +25,6 @@ func nodeAlterSchema(ctx *Context, node *tree.AlterSchema) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("ALTER SCHEMA is not yet supported")
 }

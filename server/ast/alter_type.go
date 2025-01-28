@@ -25,6 +25,6 @@ func nodeAlterType(ctx *Context, node *tree.AlterType) (vitess.Statement, error)
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("ALTER TYPE is not yet supported")
 }

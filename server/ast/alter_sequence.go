@@ -25,6 +25,6 @@ func nodeAlterSequence(ctx *Context, node *tree.AlterSequence) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("ALTER SEQUENCE is not yet supported")
 }

@@ -25,6 +25,6 @@ func nodeCancelSessions(ctx *Context, node *tree.CancelSessions) (vitess.Stateme
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("CANCEL SESSIONS is not yet supported")
 }

@@ -25,6 +25,6 @@ func nodeImport(ctx *Context, node *tree.Import) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("IMPORT is not yet supported")
 }

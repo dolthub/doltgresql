@@ -26,6 +26,6 @@ func nodeDropSchema(ctx *Context, node *tree.DropSchema) (vitess.Statement, erro
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("DROP SCHEMA is not yet supported")
 }

@@ -26,6 +26,6 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return NotYetSupportedError("CREATE PROCEDURE statement is not yet supported")
 }

@@ -25,6 +25,6 @@ func nodePrepare(ctx *Context, node *tree.Prepare) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("PREPARE is not yet supported")
 }

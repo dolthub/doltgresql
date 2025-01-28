@@ -25,7 +25,7 @@ func nodeDropAggregate(ctx *Context, node *tree.DropAggregate) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	if !ignoreUnsupportedStatements {
 		for _, agg := range node.Aggregates {
 			if err := validateAggArgMode(ctx, agg.AggSig.Args, agg.AggSig.OrderByArgs); err != nil {
@@ -33,6 +33,6 @@ func nodeDropAggregate(ctx *Context, node *tree.DropAggregate) (vitess.Statement
 			}
 		}
 	}
-	
+
 	return NotYetSupportedError("DROP AGGREGATE is not yet supported")
 }

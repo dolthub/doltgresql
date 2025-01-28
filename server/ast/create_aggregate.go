@@ -27,13 +27,13 @@ func nodeCreateAggregate(ctx *Context, node *tree.CreateAggregate) (vitess.State
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	if !ignoreUnsupportedStatements {
 		if err := validateAggArgMode(ctx, node.Args, node.OrderByArgs); err != nil {
 			return nil, err
 		}
 	}
-	
+
 	return NotYetSupportedError("CREATE AGGREGATE is not yet supported")
 }
 

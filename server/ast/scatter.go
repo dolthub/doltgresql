@@ -25,6 +25,6 @@ func nodeScatter(ctx *Context, node *tree.Scatter) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("ALTER TABLE SCATTER is not yet supported")
 }

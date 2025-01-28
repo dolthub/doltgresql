@@ -25,6 +25,6 @@ func nodeRelocate(ctx *Context, node *tree.Relocate) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("ALTER TABLE RELOCATE is not yet supported")
 }

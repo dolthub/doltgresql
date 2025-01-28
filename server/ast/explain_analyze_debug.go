@@ -25,6 +25,6 @@ func nodeExplainAnalyzeDebug(ctx *Context, node *tree.ExplainAnalyzeDebug) (vite
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("EXPLAIN ANALYZE is not yet supported")
 }

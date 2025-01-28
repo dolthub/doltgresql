@@ -28,7 +28,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return NotYetSupportedError("CREATE FUNCTION statement is not yet supported")
 }
 

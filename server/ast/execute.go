@@ -25,6 +25,6 @@ func nodeExecute(ctx *Context, node *tree.Execute) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("EXECUTE is not yet supported")
 }

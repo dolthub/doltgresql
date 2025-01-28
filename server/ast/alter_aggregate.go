@@ -28,6 +28,6 @@ func nodeAlterAggregate(ctx *Context, node *tree.AlterAggregate) (vitess.Stateme
 	if err := validateAggArgMode(ctx, node.AggSig.Args, node.AggSig.OrderByArgs); err != nil {
 		return nil, err
 	}
-	
+
 	return NotYetSupportedError("ALTER AGGREGATE is not yet supported")
 }

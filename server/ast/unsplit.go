@@ -25,6 +25,6 @@ func nodeUnsplit(ctx *Context, node *tree.Unsplit) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("ALTER TABLE UNSPLIT is not yet supported")
 }
