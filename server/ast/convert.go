@@ -51,6 +51,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeAlterTableSetSchema(ctx, stmt)
 	case *tree.AlterType:
 		return nodeAlterType(ctx, stmt)
+	case *tree.AlterView:
+		return nodeAlterView(ctx, stmt)
 	case *tree.Analyze:
 		return nodeAnalyze(ctx, stmt)
 	case *tree.Backup:
@@ -85,6 +87,7 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeCreateDatabase(ctx, stmt)
 	case *tree.CreateDomain:
 		return nodeCreateDomain(ctx, stmt)
+	case *tree.CreateExtension: return nodeCreateExtension(ctx, stmt)
 	case *tree.CreateFunction:
 		return nodeCreateFunction(ctx, stmt)
 	case *tree.CreateIndex:
@@ -273,13 +276,14 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeUnsplit(ctx, stmt)
 	case *tree.Update:
 		return nodeUpdate(ctx, stmt)
-	case *tree.ValuesClause:
-		return nodeValuesClause(ctx, stmt)
 	case *tree.Vacuum:
 		return nodeVacuum(ctx, stmt)
+	case *tree.ValuesClause:
+		return nodeValuesClause(ctx, stmt)
 	case nil:
 		return nil, nil
 	default:
 		return nil, errors.Errorf("unknown statement type encountered: `%T`", stmt)
 	}
 }
+
