@@ -15,8 +15,6 @@
 package analyzer
 
 import (
-	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 )
 
@@ -75,17 +73,6 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_ReplaceNode, Apply: ReplaceNode},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
-}
-
-// getAnalyzerRule returns the rule matching the given ID.
-func getAnalyzerRule(rules []analyzer.Rule, id analyzer.RuleId) analyzer.Rule {
-	for _, rule := range rules {
-		if rule.Id == id {
-			return rule
-		}
-	}
-	// This will only occur if GMS has been changed
-	panic(errors.Errorf("rule not found: %d", id))
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.
