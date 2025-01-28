@@ -102,6 +102,7 @@ func Init() {
 	initFloor()
 	initFormatType()
 	initGcd()
+	initGenRandomUuid()
 	initInitcap()
 	initLcm()
 	initLeft()

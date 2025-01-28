@@ -43,7 +43,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-var printErrorStackTraces = false
+var printErrorStackTraces = true
 
 const PrintErrorStackTracesEnvKey = "DOLTGRES_PRINT_ERROR_STACK_TRACES"
 
@@ -104,11 +104,17 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 
 	bvs, err := h.convertBindParameters(sqlCtx, bindVars.varTypes, bindVars.formatCodes, bindVars.parameters)
 	if err != nil {
+		if printErrorStackTraces {
+			fmt.Printf("unable to convert bind params: %+v\n", err)
+		}
 		return nil, nil, err
 	}
 
 	queryPlan, err := h.e.BoundQueryPlan(sqlCtx, query, stmt, bvs)
 	if err != nil {
+		if printErrorStackTraces {
+			fmt.Printf("unable to bind query plan: %+v\n", err)
+		}
 		return nil, nil, err
 	}
 

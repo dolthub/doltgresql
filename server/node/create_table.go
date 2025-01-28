@@ -29,6 +29,7 @@ type CreateTable struct {
 }
 
 var _ sql.ExecSourceRel = (*CreateTable)(nil)
+var _ sql.SchemaTarget = (*CreateTable)(nil)
 
 // NewCreateTable returns a new *CreateTable.
 func NewCreateTable(createTable *plan.CreateTable, sequences []*CreateSequence) *CreateTable {
@@ -100,4 +101,19 @@ func (c *CreateTable) WithChildren(children ...sql.Node) (sql.Node, error) {
 		gmsCreateTable: gmsCreateTable.(*plan.CreateTable),
 		sequences:      c.sequences,
 	}, nil
+}
+
+func (c *CreateTable) TargetSchema() sql.Schema {
+	return c.gmsCreateTable.TargetSchema()
+}
+
+func (c CreateTable) WithTargetSchema(schema sql.Schema) (sql.Node, error) {
+	n, err := c.gmsCreateTable.WithTargetSchema(schema)
+	if err != nil {
+		return nil, err
+	}
+	
+	c.gmsCreateTable = n.(*plan.CreateTable)
+	
+	return &c, nil
 }

@@ -428,5 +428,37 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "alter table add primary key with timestamp column default values",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (
+    id int NOT NULL,
+    uid uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);`,
+			"INSERT INTO t1 (id, uid) VALUES (1, '00000000-0000-0000-0000-000000000001');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE ONLY public.t1 ADD CONSTRAINT t1_pkey PRIMARY KEY (id);",
+				},
+			},
+		},
+		{
+			Name: "alter table add primary key with uuid column default values",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (
+    id int NOT NULL,
+    uid uuid default gen_random_uuid() NOT NULL
+);`,
+				"INSERT INTO t1 (id) VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE ONLY public.t1 ADD CONSTRAINT t1_pkey PRIMARY KEY (id);",
+				},
+			},
+		},
 	})
 }
