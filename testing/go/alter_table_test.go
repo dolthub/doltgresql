@@ -465,6 +465,7 @@ func TestAlterTable(t *testing.T) {
     uid uuid default gen_random_uuid() NOT NULL
 );`,
 				"INSERT INTO t1 (id) VALUES (1);",
+				"INSERT INTO t1 (id) VALUES (2);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -473,6 +474,15 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:    "select uid is not null from t1 where id = 1;",
 					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "select uid is not null from t1 where id = 2;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "select (select uid from t1 where id = 2) = (select uid from t1 where id = 1);",
+					Skip:     true, // panic in equality function
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},

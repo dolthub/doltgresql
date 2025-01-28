@@ -88,6 +88,34 @@ func TestSubqueries(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "subquery equality",
+			SetUpScript: []string{
+				`CREATE TABLE test (id INT, c varchar);`,
+				`INSERT INTO test VALUES (1, 'a'), (2, 'b'), (3, 'b');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM test WHERE id = (SELECT id from test where id = 2);`,
+					Expected: []sql.Row{{int32(2), "b"}},
+				},
+				{
+					Skip:     true, // panic in equality func
+					Query:    `SELECT (SELECT id from test where id = 2) = (SELECT id from test where id = 2);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Skip:     true, // panic in equality func
+					Query:    `SELECT (SELECT c from test where id = 2) = (SELECT c from test where id = 3);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Skip:     true, // panic in equality func
+					Query:    `SELECT (SELECT c from test where id = 1) = (SELECT c from test where id = 2);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
 	})
 }
 
