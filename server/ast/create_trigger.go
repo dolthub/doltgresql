@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -24,5 +22,5 @@ import (
 
 // nodeCreateTrigger handles *tree.CreateTrigger nodes.
 func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (vitess.Statement, error) {
-	return nil, errors.Errorf("CREATE TRIGGER statement is not yet supported")
+	return NotYetSupportedError("CREATE TRIGGER statement is not yet supported")
 }

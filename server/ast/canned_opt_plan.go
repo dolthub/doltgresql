@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,6 @@ func nodeCannedOptPlan(ctx *Context, node *tree.CannedOptPlan) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("PREPARE AS OPT PLAN is not yet supported")
+	
+	return NotYetSupportedError("PREPARE AS OPT PLAN is not yet supported")
 }

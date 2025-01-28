@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,6 @@ func nodeCreateChangefeed(ctx *Context, node *tree.CreateChangefeed) (vitess.Sta
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("CREATE CHANGEFEED is not yet supported")
+	
+	return NotYetSupportedError("CREATE CHANGEFEED is not yet supported")
 }

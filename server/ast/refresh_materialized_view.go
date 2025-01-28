@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,6 @@ func nodeRefreshMaterializedView(ctx *Context, node *tree.RefreshMaterializedVie
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("REFRESH MATERIALIZED VIEW is not yet supported")
+	
+	return NotYetSupportedError("REFRESH MATERIALIZED VIEW is not yet supported")
 }

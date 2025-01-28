@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,10 +25,14 @@ func nodeDropAggregate(ctx *Context, node *tree.DropAggregate) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	for _, agg := range node.Aggregates {
-		if err := validateAggArgMode(ctx, agg.AggSig.Args, agg.AggSig.OrderByArgs); err != nil {
-			return nil, err
+	
+	if !ignoreUnsupportedStatements {
+		for _, agg := range node.Aggregates {
+			if err := validateAggArgMode(ctx, agg.AggSig.Args, agg.AggSig.OrderByArgs); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return nil, errors.Errorf("DROP AGGREGATE is not yet supported")
+	
+	return NotYetSupportedError("DROP AGGREGATE is not yet supported")
 }

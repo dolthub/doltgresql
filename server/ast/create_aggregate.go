@@ -27,10 +27,14 @@ func nodeCreateAggregate(ctx *Context, node *tree.CreateAggregate) (vitess.State
 	if node == nil {
 		return nil, nil
 	}
-	if err := validateAggArgMode(ctx, node.Args, node.OrderByArgs); err != nil {
-		return nil, err
+	
+	if !ignoreUnsupportedStatements {
+		if err := validateAggArgMode(ctx, node.Args, node.OrderByArgs); err != nil {
+			return nil, err
+		}
 	}
-	return nil, errors.Errorf("CREATE AGGREGATE is not yet supported")
+	
+	return NotYetSupportedError("CREATE AGGREGATE is not yet supported")
 }
 
 // validateAggArgMode checks routine arguments for `OUT` and `INOUT` modes,

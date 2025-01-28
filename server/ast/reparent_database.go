@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,6 @@ func nodeReparentDatabase(ctx *Context, node *tree.ReparentDatabase) (vitess.Sta
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("reparenting a database is not yet supported")
+	
+	return NotYetSupportedError("reparenting a database is not yet supported")
 }

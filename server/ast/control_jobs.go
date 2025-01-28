@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,7 +25,8 @@ func nodeControlJobs(ctx *Context, node *tree.ControlJobs) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("PAUSE/RESUME/CANCEL are not yet supported")
+	
+	return NotYetSupportedError("PAUSE/RESUME/CANCEL are not yet supported")
 }
 
 // nodeControlJobsForSchedules handles *tree.ControlJobsForSchedules nodes.
@@ -35,5 +34,6 @@ func nodeControlJobsForSchedules(ctx *Context, node *tree.ControlJobsForSchedule
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("PAUSE/RESUME/CANCEL are not yet supported")
+	
+	return NotYetSupportedError("PAUSE/RESUME/CANCEL are not yet supported")
 }
