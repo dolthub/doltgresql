@@ -15,10 +15,11 @@
 package functions
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // initRadians registers the functions to the catalog.
@@ -27,9 +28,9 @@ func initGenRandomUuid() {
 }
 
 var gen_random_uuid = framework.Function0{
-	Name:       "gen_random_uuid",
-	Return:     pgtypes.Uuid,
-	Strict:     true,
+	Name:   "gen_random_uuid",
+	Return: pgtypes.Uuid,
+	Strict: true,
 	Callable: func(ctx *sql.Context) (any, error) {
 		return uuid.NewV4()
 	},

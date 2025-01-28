@@ -37,7 +37,7 @@ const (
 	ruleId_ResolveType                                                // resolveType
 	ruleId_ReplaceArithmeticExpressions                               // replaceArithmeticExpressions
 	ruleId_OptimizeFunctions                                          // optimizeFunctions
-	ruleId_ValidateColumnDefaults 																	  // validateColumnDefaults
+	ruleId_ValidateColumnDefaults                                     // validateColumnDefaults
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.

@@ -15,12 +15,13 @@
 package analyzer
 
 import (
-	pgnode "github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+
+	pgnode "github.com/dolthub/doltgresql/server/node"
 )
 
 // validateColumnDefaults ensures that newly created column defaults from a DDL statement are legal for the type of

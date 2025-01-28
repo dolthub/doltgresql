@@ -112,8 +112,8 @@ func (c CreateTable) WithTargetSchema(schema sql.Schema) (sql.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	c.gmsCreateTable = n.(*plan.CreateTable)
-	
+
 	return &c, nil
 }
