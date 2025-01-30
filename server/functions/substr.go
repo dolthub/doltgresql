@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"regexp"
+
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -27,6 +29,7 @@ import (
 func initSubstr() {
 	framework.RegisterFunction(substr_text_int32)
 	framework.RegisterFunction(substr_text_int32_int32)
+	framework.RegisterFunction(substring_text_text)
 }
 
 // substr_text_int32 represents the PostgreSQL function of the same name, taking the same parameters.
@@ -77,5 +80,28 @@ var substr_text_int32_int32 = framework.Function3{
 			return string(runes[start:]), nil
 		}
 		return string(runes[start : start+count]), nil
+	},
+}
+
+// substr_text_text represents the PostgreSQL function of the same name, taking the same parameters.
+// This is a form of the syntax `substring(string from pattern)`.
+var substring_text_text = framework.Function2{
+	Name:       "substring",
+	Return:     pgtypes.Text,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, str any, pattern any) (any, error) {
+		re, err := regexp.Compile(pattern.(string))
+		if err != nil {
+			return nil, err
+		}
+		
+		match := re.Find([]byte(str.(string)))
+		
+		if match == nil {
+			return nil, nil
+		}
+		
+		return string(match), nil
 	},
 }

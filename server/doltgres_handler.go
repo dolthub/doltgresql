@@ -439,9 +439,12 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 // resultForOkIter reads a maximum of one result row from a result iterator.
 func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForOkIter").End()
-
+	
 	row, err := iter.Next(ctx)
 	if err != nil {
+		if printErrorStackTraces {
+			fmt.Printf("row: %+v\n", err)
+		}
 		return nil, err
 	}
 	_, err = iter.Next(ctx)

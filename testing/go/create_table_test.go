@@ -193,7 +193,6 @@ func TestCreateTable(t *testing.T) {
 		},
 		{
 			Name: "generated column with complex expression",
-			Focus: true,
 			SetUpScript: []string{
 				`create table t1 (a varchar(10) primary key,
 				b varchar(20) generated always as 
@@ -205,11 +204,11 @@ func TestCreateTable(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "insert into t1 (a) values ('foo');",
+					Query: "insert into t1 (a) values (' foo ');",
 				},
 				{
 					Query:    "select * from t1;",
-					Expected: []sql.Row{{"foo", "bar", "foobar"}},
+					Expected: []sql.Row{{" foo ", "foo foo"}},
 				},
 			},
 		},
