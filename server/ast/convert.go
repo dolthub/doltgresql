@@ -87,7 +87,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeCreateDatabase(ctx, stmt)
 	case *tree.CreateDomain:
 		return nodeCreateDomain(ctx, stmt)
-	case *tree.CreateExtension: return nodeCreateExtension(ctx, stmt)
+	case *tree.CreateExtension:
+		return nodeCreateExtension(ctx, stmt)
 	case *tree.CreateFunction:
 		return nodeCreateFunction(ctx, stmt)
 	case *tree.CreateIndex:
@@ -286,4 +287,3 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nil, errors.Errorf("unknown statement type encountered: `%T`", stmt)
 	}
 }
-

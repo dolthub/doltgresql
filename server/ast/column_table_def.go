@@ -98,7 +98,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		if _, ok := generated.(*vitess.FuncExpr); ok {
 			generated = &vitess.ParenExpr{Expr: generated}
 		}
-		
+
 		// clean up the expressions generated here. our default expression handling generates aliases that aren't
 		// appropriate in this context.
 		generated = clearAliases(generated)

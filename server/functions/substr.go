@@ -18,7 +18,6 @@ import (
 	"regexp"
 
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"

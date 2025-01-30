@@ -25,6 +25,6 @@ func nodeCreateExtension(ctx *Context, node *tree.CreateExtension) (vitess.State
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return NotYetSupportedError("CREATE EXTENSION is not yet supported")
 }

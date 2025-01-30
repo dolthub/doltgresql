@@ -1944,7 +1944,7 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
-			Name: "substring with integer arg",
+			Name:        "substring with integer arg",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1958,7 +1958,7 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
-			Name: "substring with integer args",
+			Name:        "substring with integer args",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1972,11 +1972,11 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
-			Name: "substring with integer args, expanded form",
+			Name:        "substring with integer args, expanded form",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT substr('hello' from 2 for 3)`,
+					Query:       `SELECT substr('hello' from 2 for 3)`,
 					ExpectedErr: "syntax error",
 				},
 				{
@@ -1984,7 +1984,7 @@ func TestStringFunction(t *testing.T) {
 					Expected: []sql.Row{{"ell"}},
 				},
 				{
-					Query:    `SELECT substr('hello' from 2)`,
+					Query:       `SELECT substr('hello' from 2)`,
 					ExpectedErr: "syntax error",
 				},
 				{
@@ -1992,36 +1992,36 @@ func TestStringFunction(t *testing.T) {
 					Expected: []sql.Row{{"ello"}},
 				},
 				{
-					Query:    `SELECT substr('hello' for 3)`,
+					Query:       `SELECT substr('hello' for 3)`,
 					ExpectedErr: "syntax error",
 				},
 				{
 					Query:    `SELECT substring('hello' for 3)`,
-					Skip: 		true, // ERROR: function substring(unknown, bigint, integer) does not exist
+					Skip:     true, // ERROR: function substring(unknown, bigint, integer) does not exist
 					Expected: []sql.Row{{"hel"}},
 				},
 			},
 		},
 		{
-			Name: "substring with regex",
+			Name:        "substring with regex",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "SELECT substring('hello', 'l+')",
+					Query:    "SELECT substring('hello', 'l+')",
 					Expected: []sql.Row{{"ll"}},
 				},
 				{
-					Query: "SELECT substring('hello' FROM 'l+')",
+					Query:    "SELECT substring('hello' FROM 'l+')",
 					Expected: []sql.Row{{"ll"}},
 				},
 				{
-					Query: `SELECT substring('hello.' similar 'hello#.' escape '#')`,
-					Skip: true, // syntax error
+					Query:    `SELECT substring('hello.' similar 'hello#.' escape '#')`,
+					Skip:     true, // syntax error
 					Expected: []sql.Row{{"hello."}},
 				},
 				{
-					Query: `SELECT substring('Thomas' similar '%#"o_a#"_' escape '#')`,
-					Skip: true, // syntax error
+					Query:    `SELECT substring('Thomas' similar '%#"o_a#"_' escape '#')`,
+					Skip:     true, // syntax error
 					Expected: []sql.Row{{"oma"}},
 				},
 			},

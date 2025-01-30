@@ -15,8 +15,9 @@
 package ast
 
 import (
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
 // nodeAlterView handles ALTER VIEW nodes.
