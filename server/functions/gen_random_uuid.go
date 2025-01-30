@@ -22,7 +22,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initRadians registers the functions to the catalog.
+// initGenRandomUuid registers the functions to the catalog.
 func initGenRandomUuid() {
 	framework.RegisterFunction(gen_random_uuid)
 }

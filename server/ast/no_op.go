@@ -25,6 +25,9 @@ import (
 
 const ignoreUnsupportedEnvKey = "DOLTGRES_IGNORE_UNSUPPORTED"
 
+// ignoreUnsupportedStatements is a flag that determines whether to ignore unsupported statements. This is useful
+// when importing a dump from postgres using certain import tools that expect every statement to succeed, including
+// ones that we can't yet fully support (or that we never will, but are safe to ignore).
 var ignoreUnsupportedStatements bool
 
 func init() {
