@@ -164,13 +164,15 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 	return colDef, nil
 }
 
-func clearAliases(generated vitess.Expr) vitess.Expr {
+// clearAliases removes As and InputExpression from any AliasedExpr in the expression tree given. This is required
+// in some contexts where we expect the expression to serialize to a string without any alias names.
+func clearAliases(e vitess.Expr) vitess.Expr {
 	_ = vitess.Walk(func(node vitess.SQLNode) (kontinue bool, err error) {
 		if expr, ok := node.(*vitess.AliasedExpr); ok {
 			expr.As = vitess.ColIdent{}
 			expr.InputExpression = ""
 		}
 		return true, nil
-	}, generated)
-	return generated
+	}, e)
+	return e
 }
