@@ -12,7 +12,7 @@ require (
 	github.com/dolthub/go-icu-regex v0.0.0-20241215010122-db690dd53c90
 	github.com/dolthub/go-mysql-server v0.19.1-0.20250123191908-97b350e0113f
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20250129015503-aede188292ae
+	github.com/dolthub/vitess v0.0.0-20250130172413-6338ebee2571
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
