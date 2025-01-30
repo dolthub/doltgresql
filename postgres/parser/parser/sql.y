@@ -1199,7 +1199,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <[]*tree.Order> sortby_list
 %type <tree.IndexParams> constraint_index_params
 %type <tree.IndexElemList> index_params index_params_name_only opt_index_params_name_only opt_include_index_cols partition_index_params exclude_elems
-%type <tree.NameList> name_list privilege_list
+%type <tree.NameList> name_list opt_name_list privilege_list
 %type <[]int32> opt_array_bounds
 %type <tree.From> from_clause
 %type <tree.TableExprs> from_list rowsfrom_list opt_from_list
@@ -8659,7 +8659,7 @@ password_clause:
 
 create_trigger_stmt:
   CREATE opt_constraint TRIGGER trigger_name trigger_time trigger_events ON table_name opt_from_ref_table
-  opt_trigger_deferrable_mode opt_trigger_relations opt_for_each opt_when EXECUTE function_or_procedure routine_name '(' name_list ')'
+  opt_trigger_deferrable_mode opt_trigger_relations opt_for_each opt_when EXECUTE function_or_procedure routine_name '(' opt_name_list ')'
   {
     $$.val = &tree.CreateTrigger{
       Replace: false,
@@ -8678,7 +8678,7 @@ create_trigger_stmt:
     }
   }
 | CREATE OR REPLACE opt_constraint TRIGGER trigger_name trigger_time trigger_events ON table_name opt_from_ref_table
-  opt_trigger_deferrable_mode opt_trigger_relations opt_for_each opt_when EXECUTE function_or_procedure routine_name '(' name_list ')'
+  opt_trigger_deferrable_mode opt_trigger_relations opt_for_each opt_when EXECUTE function_or_procedure routine_name '(' opt_name_list ')'
   {
     $$.val = &tree.CreateTrigger{
       Replace: true,
@@ -13990,6 +13990,16 @@ complex_table_pattern:
 | '*'
   {
      $$.val = &tree.UnresolvedName{Star: true, NumParts: 1}
+  }
+
+opt_name_list:
+  /* Empty */
+  {
+    $$.val = tree.NameList(nil)
+  }
+| name_list
+  {
+    $$.val = $1.nameList()
   }
 
 name_list:

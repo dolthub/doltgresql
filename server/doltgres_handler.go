@@ -442,6 +442,9 @@ func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 
 	row, err := iter.Next(ctx)
 	if err != nil {
+		if printErrorStackTraces {
+			fmt.Printf("row: %+v\n", err)
+		}
 		return nil, err
 	}
 	_, err = iter.Next(ctx)

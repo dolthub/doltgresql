@@ -192,6 +192,27 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "generated column with complex expression",
+			SetUpScript: []string{
+				`create table t1 (a varchar(10) primary key,
+				b varchar(20) generated always as 
+				    ((
+				        ("substring"(TRIM(BOTH FROM a), '([^ ]+)$'::text) || ' '::text)
+				          || "substring"(TRIM(BOTH FROM a), '^([^ ]+)'::text)
+				    )) stored
+				);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "insert into t1 (a) values (' foo ');",
+				},
+				{
+					Query:    "select * from t1;",
+					Expected: []sql.Row{{" foo ", "foo foo"}},
+				},
+			},
+		},
+		{
 			Name: "create table with default value",
 			SetUpScript: []string{
 				"create table t1 (a varchar(10) primary key, b varchar(10) default (concat('foo', 'bar')));",
