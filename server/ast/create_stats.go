@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,6 @@ func nodeCreateStats(ctx *Context, node *tree.CreateStats) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("CREATE STATISTICS is not yet supported")
+
+	return NotYetSupportedError("CREATE STATISTICS is not yet supported")
 }

@@ -28,7 +28,8 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	if err != nil {
 		return nil, err
 	}
-	return nil, errors.Errorf("CREATE FUNCTION statement is not yet supported")
+
+	return NotYetSupportedError("CREATE FUNCTION statement is not yet supported")
 }
 
 // verifyRedundantRoutineOption checks for each option defined only once.

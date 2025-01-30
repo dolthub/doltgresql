@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,6 @@ func nodeScrub(ctx *Context, node *tree.Scrub) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("SCRUB is not yet supported")
+
+	return NotYetSupportedError("SCRUB is not yet supported")
 }
