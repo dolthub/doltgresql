@@ -80,6 +80,7 @@ export const branchTests = [
           latest_commit_message: "CREATE DATABASE",
           remote: "",
           branch: "",
+          dirty: 1,
         },
         {
           name: "mybranch",
@@ -90,6 +91,7 @@ export const branchTests = [
           latest_commit_message: "Create table test",
           remote: "",
           branch: "",
+          dirty: 0,
         },
       ],
     },
