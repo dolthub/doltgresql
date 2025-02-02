@@ -79,7 +79,7 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bit type",
-		Skip: true,
+		Skip: true, // no pgx support: unknown type with oid: 1560 
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (1, B'11011010'), (2, B'00101011');",
@@ -96,7 +96,7 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bit key",
-		Skip: true,
+		Skip: true, // no pgx support: unknown type with oid: 1560 
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id BIT(8) primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (B'11011010', B'11011010'), (B'00101011', B'00101011');",
@@ -153,7 +153,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Boolean key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_boolean (id boolean primary key, v1 BOOLEAN);",
 			"INSERT INTO t_boolean VALUES (true, true), (false, 'false')",
@@ -389,7 +388,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Character key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_character (id CHAR(5) primary key, v1 CHARACTER(5));",
 			"INSERT INTO t_character VALUES ('abcde', 'fghjk'), ('vwxyz', '12345')",
@@ -920,7 +918,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Interval key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_interval (id interval primary key, v1 INTERVAL);",
 			"INSERT INTO t_interval VALUES ('1 hour', '1 day 3 hours'), ('2 days', '23 hours 30 minutes');",
@@ -1452,7 +1449,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Name key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_name (id NAME primary key, v1 NAME);",
 			"INSERT INTO t_name VALUES ('wxyz', 'abcdefghij'), ('abcd', 'klmnopqrst');",
@@ -1648,14 +1644,23 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Numeric key",
-		Skip: true, // error decoding binary: Int.GobDecode: encoding version 57 not supported
+		Focus: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_numeric (id numeric(5,2) primary key, v1 NUMERIC(5,2));",
 			"INSERT INTO t_numeric VALUES (123.45, 67.89), (67.89, 100.3);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				Query: "SELECT * FROM t_numeric;",
+				Skip: true, // test setup problem, values are logically equivalent but don't match
+				Expected: []sql.Row{
+					{Numeric("123.45"), Numeric("67.89")},
+					{Numeric("67.89"), Numeric("100.3")},
+				},
+			},
+			{
 				Query: "SELECT * FROM t_numeric WHERE ID = 123.45 ORDER BY id;",
+				Skip: true, // value not found
 				Expected: []sql.Row{
 					{Numeric("123.45"), Numeric("67.89")},
 				},
@@ -2619,7 +2624,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Time without time zone key",
-		Skip: true, //  blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_time_without_zone (id TIME primary key, v1 TIME);",
 			"INSERT INTO t_time_without_zone VALUES ('12:34:56', '23:45:01'), ('23:45:01', '12:34:56');",
@@ -2820,7 +2824,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Uuid key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_uuid (id UUID primary key, v1 UUID);",
 			"INSERT INTO t_uuid VALUES ('f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'f47ac10b58cc4372a567-0e02b2c3d479');",
@@ -2829,7 +2832,7 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_uuid WHERE ID = 'f47ac10b58cc4372a567-0e02b2c3d479' ORDER BY id;",
 				Expected: []sql.Row{
-					{"f47ac10b58cc4372a567-0e02b2c3d479", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
+					{"f47ac10b-58cc-4372-a567-0e02b2c3d479", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
 				},
 			},
 		},
