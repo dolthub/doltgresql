@@ -38,13 +38,16 @@ import (
 // DoltgresType represents a single type.
 type DoltgresType struct {
 	ID            id.Type
-	TypLength     int16
-	PassedByVal   bool
+	
+	// TODO: we are serializing these values, they should be derived
 	TypType       TypeType
 	TypCategory   TypeCategory
+	TypLength     int16
+	PassedByVal   bool
 	IsPreferred   bool
 	IsDefined     bool
 	Delimiter     string
+	
 	RelID         id.Id // for Composite types
 	SubscriptFunc uint32
 	Elem          id.Type
@@ -56,8 +59,10 @@ type DoltgresType struct {
 	ModInFunc     uint32
 	ModOutFunc    uint32
 	AnalyzeFunc   uint32
+	// TODO: we are serializing these values, they should be derived
 	Align         TypeAlignment
 	Storage       TypeStorage
+	
 	NotNull       bool    // for Domain types
 	BaseTypeID    id.Type // for Domain types
 	TypMod        int32   // for Domain types
@@ -519,34 +524,10 @@ func (t *DoltgresType) MaxCharacterLength() int64 {
 
 // MaxSerializedWidth implements the types.ExtendedType interface.
 func (t *DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
-	// TODO: need better way to get accurate result
-	switch t.TypCategory {
-	case TypeCategory_ArrayTypes:
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	case TypeCategory_BooleanTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	case TypeCategory_CompositeTypes, TypeCategory_EnumTypes, TypeCategory_GeometricTypes, TypeCategory_NetworkAddressTypes,
-		TypeCategory_RangeTypes, TypeCategory_PseudoTypes, TypeCategory_UserDefinedTypes, TypeCategory_BitStringTypes,
-		TypeCategory_InternalUseTypes:
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	case TypeCategory_DateTimeTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	case TypeCategory_NumericTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
-		if t.ID == VarChar.ID {
-			l := t.Length()
-			if l != StringUnbounded && l <= stringInline {
-				return types.ExtendedTypeSerializedWidth_64K
-			}
+		if t.TypLength < 0 {
+			return types.ExtendedTypeSerializedWidth_Unbounded
 		}
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	case TypeCategory_TimespanTypes:
 		return types.ExtendedTypeSerializedWidth_64K
-	default:
-		// shouldn't happen
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	}
 }
 
 // MaxTextResponseByteLength implements the types.ExtendedType interface.
