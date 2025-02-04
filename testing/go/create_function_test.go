@@ -23,7 +23,7 @@ import (
 func TestCreateFunction(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "Interpreter Example",
+			Name: "Interpreter Assignment Example",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT interpreted_assignment('Hello');",
@@ -48,6 +48,15 @@ func TestCreateFunction(t *testing.T) {
 					Expected: []sql.Row{
 						{"Initial: something - Over 5"},
 					},
+				},
+			},
+		},
+		{
+			Name: "Interpreter Alias Example",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_alias('123');",
+					Expected: []sql.Row{{"123"}},
 				},
 			},
 		},

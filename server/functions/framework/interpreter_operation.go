@@ -19,7 +19,8 @@ package framework
 type OpCode uint16
 
 const (
-	OpCode_Assign     OpCode = iota // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-ASSIGNMENT
+	OpCode_Alias      OpCode = iota // https://www.postgresql.org/docs/15/plpgsql-declarations.html#PLPGSQL-DECLARATION-ALIAS
+	OpCode_Assign                   // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-ASSIGNMENT
 	OpCode_Case                     // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
 	OpCode_Declare                  // https://www.postgresql.org/docs/15/plpgsql-declarations.html
 	OpCode_DeleteInto               // https://www.postgresql.org/docs/15/plpgsql-statements.html
