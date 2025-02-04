@@ -24,6 +24,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,11 +217,22 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 						}
 					}
 				}
+				
+				// not an exact match but works well enough for our tests
+				orderBy := strings.Contains(strings.ToLower(assertion.Query), "order by")
 
 				if normalizeRows {
-					assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows)
+					if orderBy {
+						assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows)
+					} else {
+						assert.ElementsMatch(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows)
+					}
 				} else {
-					assert.Equal(t, assertion.Expected, readRows)
+					if orderBy {
+						assert.Equal(t, assertion.Expected, readRows)
+					} else {
+						assert.ElementsMatch(t, assertion.Expected, readRows)
+					}
 				}
 			}
 		})

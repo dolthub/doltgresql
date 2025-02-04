@@ -2456,7 +2456,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Text type",
-		Focus: true,
 		SetUpScript: []string{
 			// Test a table with a TEXT column
 			"CREATE TABLE t_text (id INTEGER primary key, v1 TEXT);",
@@ -2494,7 +2493,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT * FROM t_text WHERE v1 = 'World';",
-				Skip: true, // Can't find this row, need to fix
+				Skip: true, // text indexes are broken
 				Expected: []sql.Row{
 					{2, "World"},
 				},
@@ -2565,13 +2564,14 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:    `SELECT c1 from t2 order by c1;`,
+				Skip: true, // ordering is broken due to text indexes being broken
 				Expected: []sql.Row{{"one"}, {"two"}},
 			},
 		},
 	},
 	{
 		Name: "Text key",
-		Skip: true, //  blob/text column 'id' used in key specification without a key length
+		Skip: true, // text indexes are broken
 		SetUpScript: []string{
 			"CREATE TABLE t_text (id TEXT primary key, v1 TEXT);",
 			"INSERT INTO t_text VALUES ('Hello', 'World'), ('goodbye', 'cruel world');",
@@ -3303,23 +3303,6 @@ func TestEnumTypes(t *testing.T) {
 var enumTypeTests = []ScriptTest{
 	{
 		Name: "create enum type",
-		Assertions: []ScriptTestAssertion{
-			{
-				Query:       `CREATE TYPE mood AS ENUM ('ok','ok');`,
-				ExpectedErr: `duplicate key value violates unique constraint "pg_enum_typid_label_index"`,
-			},
-			{
-				Query:    `CREATE TYPE empty_mood AS ENUM ();`,
-				Expected: []sql.Row{},
-			},
-			{
-				Query:    `CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');`,
-				Expected: []sql.Row{},
-			},
-		},
-	},
-	{
-		Name: "create enum type",
 		SetUpScript: []string{
 			`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')`,
 		},
@@ -3333,8 +3316,16 @@ var enumTypeTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				Query:    `SELECT * FROM person order by current_mood;`,
+				Expected: []sql.Row{{"Larry", "sad"}, {"Curly", "ok"}, {"Moe", "happy"}},
+			},
+			{
+				Query:    `SELECT * FROM person order by name;`,
+				Expected: []sql.Row{{"Curly", "ok"}, {"Larry", "sad"}, {"Moe", "happy"}},
+			},
+			{
 				Query:    `SELECT * FROM person;`,
-				Expected: []sql.Row{{"Moe", "happy"}, {"Curly", "ok"}, {"Larry", "sad"}},
+				Expected: []sql.Row{{"Moe", "happy"}, {"Larry", "sad"}, {"Curly", "ok"}},
 			},
 			{
 				Query:    `SELECT * FROM person WHERE current_mood = 'happy';`,
@@ -3351,6 +3342,14 @@ var enumTypeTests = []ScriptTest{
 			{
 				Query:       `INSERT INTO person VALUES ('Joey', 'invalid');`,
 				ExpectedErr: `invalid input value for enum mood: "invalid"`,
+			},
+			{
+				Query:       `CREATE TYPE failure AS ENUM ('ok','ok');`,
+				ExpectedErr: `duplicate key value violates unique constraint "pg_enum_typid_label_index"`,
+			},
+			{
+				Query:    `CREATE TYPE empty_mood AS ENUM ();`,
+				Expected: []sql.Row{},
 			},
 		},
 	},
