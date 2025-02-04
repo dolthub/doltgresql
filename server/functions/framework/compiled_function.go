@@ -20,6 +20,7 @@ import (
 
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"gopkg.in/src-d/go-errors.v1"
 
@@ -46,15 +47,17 @@ type CompiledFunction struct {
 	overload      overloadMatch
 	originalTypes []*pgtypes.DoltgresType
 	callResolved  []*pgtypes.DoltgresType
+	runner        analyzer.StatementRunner
 	stashedErr    error
 }
 
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
+var _ analyzer.Interpreter = (*CompiledFunction)(nil)
 
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
-	return newCompiledFunctionInternal(name, args, functions, functions.overloadsForParams(len(args)), isOperator)
+	return newCompiledFunctionInternal(name, args, functions, functions.overloadsForParams(len(args)), isOperator, nil)
 }
 
 // newCompiledFunctionInternal is called internally, which skips steps that may have already been processed.
@@ -64,8 +67,16 @@ func newCompiledFunctionInternal(
 	overloads *Overloads,
 	fnOverloads []Overload,
 	isOperator bool,
+	runner analyzer.StatementRunner,
 ) *CompiledFunction {
-	c := &CompiledFunction{Name: name, Arguments: args, IsOperator: isOperator, overloads: overloads, fnOverloads: fnOverloads}
+	c := &CompiledFunction{
+		Name:        name,
+		Arguments:   args,
+		IsOperator:  isOperator,
+		overloads:   overloads,
+		fnOverloads: fnOverloads,
+		runner:      runner,
+	}
 	// First we'll analyze all the parameters.
 	originalTypes, err := c.analyzeParameters()
 	if err != nil {
@@ -292,6 +303,8 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return f.Callable(ctx, ([4]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2])
 	case Function4:
 		return f.Callable(ctx, ([5]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3])
+	case InterpretedFunction:
+		return f.Call(ctx, c.runner, c.callResolved, args)
 	default:
 		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval")
 	}
@@ -309,7 +322,13 @@ func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Express
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	return newCompiledFunctionInternal(c.Name, children, c.overloads, c.fnOverloads, c.IsOperator), nil
+	return newCompiledFunctionInternal(c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner), nil
+}
+
+// SetStatementRunner implements the interface analyzer.Interpreter.
+func (c *CompiledFunction) SetStatementRunner(ctx *sql.Context, runner analyzer.StatementRunner) sql.Expression {
+	c.runner = runner
+	return c
 }
 
 // GetQuickFunction returns the QuickFunction form of this function, if it exists. If one does not exist, then this

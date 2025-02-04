@@ -23,7 +23,7 @@ paths=`find . -maxdepth 1 -mindepth 1 ! -name ".idea" ! -name ".git" ! -name ".g
 
 goimports -w -local github.com/dolthub/doltgresql $paths
 
-bad_files=$(find $paths -name '*.go' | while read f; do
+bad_files=$(find $paths -name '*.go' ! -path ".idea/*" | while read f; do
     if [[ $(awk '/import \(/{flag=1;next}/\)/{flag=0}flag' < $f | egrep -c '$^') -gt 2 ]]; then
         echo $f
     fi
