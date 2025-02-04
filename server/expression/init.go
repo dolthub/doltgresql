@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2025 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package framework
+package expression
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// LiteralInterface is used to prevent import cycles, since we can't reference pgexprs.Literal from this package.
-type LiteralInterface interface {
-	sql.Expression
-	vitess.Injectable
-	GetDoltgresType() *pgtypes.DoltgresType
-	ConformsToLiteralInterface()
+// Init handles all setup needed for this package.
+func Init() {
+	framework.NewUnsafeLiteral = func(val any, t *pgtypes.DoltgresType) framework.LiteralInterface {
+		return NewUnsafeLiteral(val, t)
+	}
 }
-
-// NewUnsafeLiteral creates a pgexprs.Literal that can be accessed from this package.
-var NewUnsafeLiteral func(val any, t *pgtypes.DoltgresType) LiteralInterface
