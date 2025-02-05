@@ -37,17 +37,17 @@ import (
 
 // DoltgresType represents a single type.
 type DoltgresType struct {
-	ID            id.Type
-	
+	ID id.Type
+
 	// TODO: we are serializing these values, they should be derived
-	TypType       TypeType
-	TypCategory   TypeCategory
-	TypLength     int16
-	PassedByVal   bool
-	IsPreferred   bool
-	IsDefined     bool
-	Delimiter     string
-	
+	TypType     TypeType
+	TypCategory TypeCategory
+	TypLength   int16
+	PassedByVal bool
+	IsPreferred bool
+	IsDefined   bool
+	Delimiter   string
+
 	RelID         id.Id // for Composite types
 	SubscriptFunc uint32
 	Elem          id.Type
@@ -60,17 +60,17 @@ type DoltgresType struct {
 	ModOutFunc    uint32
 	AnalyzeFunc   uint32
 	// TODO: we are serializing these values, they should be derived
-	Align         TypeAlignment
-	Storage       TypeStorage
-	
-	NotNull       bool    // for Domain types
-	BaseTypeID    id.Type // for Domain types
-	TypMod        int32   // for Domain types
-	NDims         int32   // for Domain types
-	TypCollation  id.Collation
-	DefaulBin     string // for Domain types
-	Default       string
-	Acl           []string // TODO: list of privileges
+	Align   TypeAlignment
+	Storage TypeStorage
+
+	NotNull      bool    // for Domain types
+	BaseTypeID   id.Type // for Domain types
+	TypMod       int32   // for Domain types
+	NDims        int32   // for Domain types
+	TypCollation id.Collation
+	DefaulBin    string // for Domain types
+	Default      string
+	Acl          []string // TODO: list of privileges
 
 	// Below are not part of pg_type fields
 	Checks         []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
@@ -524,10 +524,10 @@ func (t *DoltgresType) MaxCharacterLength() int64 {
 
 // MaxSerializedWidth implements the types.ExtendedType interface.
 func (t *DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
-		if t.TypLength < 0 {
-			return types.ExtendedTypeSerializedWidth_Unbounded
-		}
-		return types.ExtendedTypeSerializedWidth_64K
+	if t.TypLength < 0 {
+		return types.ExtendedTypeSerializedWidth_Unbounded
+	}
+	return types.ExtendedTypeSerializedWidth_64K
 }
 
 // MaxTextResponseByteLength implements the types.ExtendedType interface.

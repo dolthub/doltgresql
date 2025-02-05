@@ -42,7 +42,7 @@ func validateCreateTable(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, sco
 	if err != nil {
 		return nil, transform.SameTree, err
 	}
-	
+
 	return n, transform.SameTree, nil
 }
 

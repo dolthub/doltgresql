@@ -217,7 +217,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 						}
 					}
 				}
-				
+
 				// not an exact match but works well enough for our tests
 				orderBy := strings.Contains(strings.ToLower(assertion.Query), "order by")
 

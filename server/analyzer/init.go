@@ -36,7 +36,7 @@ const (
 	ruleId_ReplaceArithmeticExpressions                               // replaceArithmeticExpressions
 	ruleId_OptimizeFunctions                                          // optimizeFunctions
 	ruleId_ValidateColumnDefaults                                     // validateColumnDefaults
-	ruleId_ValidateCreateTable 																			  // validateCreateTable
+	ruleId_ValidateCreateTable                                        // validateCreateTable
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -50,18 +50,18 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
 		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 	)
-	
+
 	// PostgreSQL doesn't have the concept of prefix lengths, so we add a rule to implicitly add them
 	// TODO: this should be replaced by implementing automatic toast semantics for blob types
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths}},
 		analyzer.OnceBeforeDefault...)
-	
-	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateCreateTableId, true, 
+
+	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateCreateTableId, true,
 		analyzer.Rule{Id: ruleId_ValidateCreateTable, Apply: validateCreateTable})
 
 	// We remove the original column default and create table validation rules, as we have our own implementations
 	analyzer.OnceBeforeDefault = removeAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId, analyzer.ValidateCreateTableId)
-	
+
 	// Remove all other validation rules that do not apply to Postgres
 	analyzer.DefaultValidationRules = removeAnalyzerRules(analyzer.DefaultValidationRules, analyzer.ValidateOperandsId)
 

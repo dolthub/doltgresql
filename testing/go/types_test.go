@@ -79,7 +79,7 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bit type",
-		Skip: true, // no pgx support: unknown type with oid: 1560 
+		Skip: true, // no pgx support: unknown type with oid: 1560
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (1, B'11011010'), (2, B'00101011');",
@@ -96,7 +96,7 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bit key",
-		Skip: true, // no pgx support: unknown type with oid: 1560 
+		Skip: true, // no pgx support: unknown type with oid: 1560
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id BIT(8) primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (B'11011010', B'11011010'), (B'00101011', B'00101011');",
@@ -1651,7 +1651,7 @@ var typesTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_numeric;",
-				Skip: true, // test setup problem, values are logically equivalent but don't match
+				Skip:  true, // test setup problem, values are logically equivalent but don't match
 				Expected: []sql.Row{
 					{Numeric("123.45"), Numeric("67.89")},
 					{Numeric("67.89"), Numeric("100.3")},
@@ -1659,7 +1659,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT * FROM t_numeric WHERE ID = 123.45 ORDER BY id;",
-				Skip: true, // value not found
+				Skip:  true, // value not found
 				Expected: []sql.Row{
 					{Numeric("123.45"), Numeric("67.89")},
 				},
@@ -2142,7 +2142,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT relname FROM pg_catalog.pg_class WHERE oid = 'testing'::regclass;",
-				Skip: true, // panic converting string to regclass
+				Skip:  true, // panic converting string to regclass
 				Expected: []sql.Row{
 					{"testing"},
 				},
@@ -2493,7 +2493,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT * FROM t_text WHERE v1 = 'World';",
-				Skip: true, // text indexes are broken
+				Skip:  true, // text indexes are broken
 				Expected: []sql.Row{
 					{2, "World"},
 				},
@@ -2564,7 +2564,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:    `SELECT c1 from t2 order by c1;`,
-				Skip: true, // ordering is broken due to text indexes being broken
+				Skip:     true, // ordering is broken due to text indexes being broken
 				Expected: []sql.Row{{"one"}, {"two"}},
 			},
 		},
