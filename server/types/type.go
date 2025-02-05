@@ -36,10 +36,11 @@ import (
 )
 
 // DoltgresType represents a single type.
+// TODO: the serialization logic always serializes every field for built-in types, which is kind of silly. They are
+//  effectively hard-coded. We could serialize much more cheaply by only serializing values which can't be derived 
+//  (for custom types) and hard-coding everything else.
 type DoltgresType struct {
 	ID id.Type
-
-	// TODO: we are serializing these values, they should be derived
 	TypType     TypeType
 	TypCategory TypeCategory
 	TypLength   int16
@@ -59,7 +60,6 @@ type DoltgresType struct {
 	ModInFunc     uint32
 	ModOutFunc    uint32
 	AnalyzeFunc   uint32
-	// TODO: we are serializing these values, they should be derived
 	Align   TypeAlignment
 	Storage TypeStorage
 

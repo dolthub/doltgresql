@@ -22,9 +22,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
-	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
+// validateCreateTable validates that a table can be created as specified
 func validateCreateTable(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scope *plan.Scope, sel analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	ct, ok := n.(*plan.CreateTable)
 	if !ok {
@@ -86,7 +86,7 @@ func validateIdentifiers(ct *plan.CreateTable) error {
 	return nil
 }
 
-// validateIndexes validates that the index definitions being create are valid
+// validateIndexes validates that the index definitions being created are valid
 func validateIndexes(ctx *sql.Context, sch sql.Schema, idxDefs sql.IndexDefs) error {
 	colMap := schToColMap(sch)
 	for _, idxDef := range idxDefs {
@@ -104,6 +104,7 @@ func validateIndexes(ctx *sql.Context, sch sql.Schema, idxDefs sql.IndexDefs) er
 //   - in the schema
 //   - not duplicated
 //   - a compatible type for an index
+// TODO: there are other constraints on indexes that we could enforce and are not yet (e.g. JSON as an index) 
 func validateIndex(ctx *sql.Context, colMap map[string]*sql.Column, idxDef *sql.IndexDef) error {
 	seenCols := make(map[string]struct{})
 	for _, idxCol := range idxDef.Columns {
@@ -115,10 +116,6 @@ func validateIndex(ctx *sql.Context, colMap map[string]*sql.Column, idxDef *sql.
 			return sql.ErrDuplicateColumn.New(schCol.Name)
 		}
 		seenCols[schCol.Name] = struct{}{}
-		if types.IsJSON(schCol.Type) && !idxDef.IsVector() {
-			return sql.ErrJSONIndex.New(schCol.Name)
-		}
-
 		if idxDef.IsFullText() {
 			continue
 		}
