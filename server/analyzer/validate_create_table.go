@@ -104,7 +104,8 @@ func validateIndexes(ctx *sql.Context, sch sql.Schema, idxDefs sql.IndexDefs) er
 //   - in the schema
 //   - not duplicated
 //   - a compatible type for an index
-// TODO: there are other constraints on indexes that we could enforce and are not yet (e.g. JSON as an index) 
+//
+// TODO: there are other constraints on indexes that we could enforce and are not yet (e.g. JSON as an index)
 func validateIndex(ctx *sql.Context, colMap map[string]*sql.Column, idxDef *sql.IndexDef) error {
 	seenCols := make(map[string]struct{})
 	for _, idxCol := range idxDef.Columns {
