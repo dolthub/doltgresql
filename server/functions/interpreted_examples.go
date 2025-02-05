@@ -24,6 +24,7 @@ import (
 // interpreter functionality.
 func initInterpretedExamples() {
 	framework.RegisterFunction(interpretedAssignment)
+	framework.RegisterFunction(interpretedAlias)
 }
 
 // interpretedAssignment is roughly equivalent to the (expected) parsed output of the following function definition:
@@ -147,6 +148,89 @@ var interpretedAssignment = framework.InterpretedFunction{
 			SecondaryData: []string{`var1`},
 		},
 		{ // 19
+			OpCode: framework.OpCode_ScopeEnd,
+		},
+	},
+}
+
+// interpretedAlias is roughly equivalent to the (expected) parsed output of the following function definition:
+/*
+CREATE FUNCTION interpreted_alias(input TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    var1 TEXT;
+	var2 TEXT;
+BEGIN
+    DECLARE
+		alias1 ALIAS FOR var1;
+		alias2 ALIAS FOR alias1;
+		alias3 ALIAS FOR input;
+	BEGIN
+        alias2 := alias3;
+	END;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;
+*/
+var interpretedAlias = framework.InterpretedFunction{
+	ID:                 id.NewFunction("pg_catalog", "interpreted_alias", pgtypes.Text.ID),
+	ReturnType:         pgtypes.Text,
+	ParameterNames:     []string{"input"},
+	ParameterTypes:     []*pgtypes.DoltgresType{pgtypes.Text},
+	Variadic:           false,
+	IsNonDeterministic: false,
+	Strict:             true,
+	Labels:             nil,
+	Statements: []framework.InterpreterOperation{
+		{ // 0
+			OpCode: framework.OpCode_ScopeBegin,
+		},
+		{ // 1
+			OpCode:      framework.OpCode_Declare,
+			Target:      `var1`,
+			PrimaryData: `text`,
+		},
+		{ // 2
+			OpCode:      framework.OpCode_Declare,
+			Target:      `var2`,
+			PrimaryData: `text`,
+		},
+		{ // 3
+			OpCode: framework.OpCode_ScopeBegin,
+		},
+		{ // 4
+			OpCode:      framework.OpCode_Alias,
+			Target:      `alias1`,
+			PrimaryData: `var1`,
+		},
+		{ // 5
+			OpCode:      framework.OpCode_Alias,
+			Target:      `alias2`,
+			PrimaryData: `alias1`,
+		},
+		{ // 6
+			OpCode:      framework.OpCode_Alias,
+			Target:      `alias3`,
+			PrimaryData: `input`,
+		},
+		{ // 7
+			OpCode: framework.OpCode_ScopeBegin,
+		},
+		{ // 8
+			OpCode:        framework.OpCode_Assign,
+			PrimaryData:   `SELECT $1;`,
+			SecondaryData: []string{`alias3`},
+			Target:        `alias2`,
+		},
+		{ // 9
+			OpCode: framework.OpCode_ScopeEnd,
+		},
+		{ // 10
+			OpCode:        framework.OpCode_Return,
+			PrimaryData:   `SELECT $1;`,
+			SecondaryData: []string{`var1`},
+		},
+		{ // 11
 			OpCode: framework.OpCode_ScopeEnd,
 		},
 	},
