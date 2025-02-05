@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -304,7 +305,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	case Function4:
 		return f.Callable(ctx, ([5]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3])
 	case InterpretedFunction:
-		return f.Call(ctx, c.runner, c.callResolved, args)
+		return plpgsql.Call(ctx, f, c.runner, c.callResolved, args)
 	default:
 		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval")
 	}

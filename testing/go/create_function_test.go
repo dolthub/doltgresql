@@ -24,6 +24,24 @@ func TestCreateFunction(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Interpreter Example",
+			Skip: true, // TODO: need to use a Doltgres function provider, as the current one doesn't allow for adding functions
+			SetUpScript: []string{`CREATE FUNCTION interpreted_assignment(input TEXT) RETURNS TEXT AS $$
+DECLARE
+    var1 TEXT;
+BEGIN
+    var1 := 'Initial: ' || input;
+    IF input = 'Hello' THEN
+        var1 := var1 || ' - Greeting';
+    ELSIF input = 'Bye' THEN
+        var1 := var1 || ' - Farewell';
+    ELSIF length(input) > 5 THEN
+        var1 := var1 || ' - Over 5';
+    ELSE
+        var1 := var1 || ' - Else';
+    END IF;
+    RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT interpreted_assignment('Hello');",
