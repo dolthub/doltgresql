@@ -27,6 +27,7 @@ import (
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/binary"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -45,6 +46,7 @@ func Initialize(dEnv *env.DoltEnv) {
 	once.Do(func() {
 		core.Init()
 		auth.Init(dEnv)
+		pgexprs.Init()
 		analyzer.Init()
 		config.Init()
 		binary.Init()
