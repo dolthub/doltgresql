@@ -71,6 +71,28 @@ $$ LANGUAGE plpgsql;`},
 		},
 		{
 			Name: "Interpreter Alias Example",
+			// TODO: need to use a Doltgres function provider, and need to implement the
+			//       OpCode conversion for parsed ALIAS statements.
+			Skip: true,
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_alias(input TEXT)
+				RETURNS TEXT AS $$
+				DECLARE
+					var1 TEXT;
+					var2 TEXT;
+				BEGIN
+					DECLARE
+						alias1 ALIAS FOR var1;
+						alias2 ALIAS FOR alias1;
+						alias3 ALIAS FOR input;
+					BEGIN
+						alias2 := alias3;
+					END;
+					RETURN var1;
+				END;
+				$$ LANGUAGE plpgsql;
+				`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT interpreted_alias('123');",
