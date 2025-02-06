@@ -102,6 +102,12 @@ func (is *InterpreterStack) NewVariableWithValue(name string, typ *pgtypes.Doltg
 	}
 }
 
+// NewVariableAlias creates a new variable alias, named |alias|, in the current frame of this stack,
+// pointing to the specified |variable|.
+func (is *InterpreterStack) NewVariableAlias(alias string, variable *InterpreterVariable) {
+	is.stack.Peek().variables[alias] = variable
+}
+
 // PushScope creates a new scope.
 func (is *InterpreterStack) PushScope() {
 	is.stack.Push(&InterpreterScopeDetails{

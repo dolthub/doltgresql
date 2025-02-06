@@ -62,6 +62,12 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 
 		operation := statements[counter]
 		switch operation.OpCode {
+		case OpCode_Alias:
+			iv := stack.GetVariable(operation.PrimaryData)
+			if iv == nil {
+				return nil, fmt.Errorf("variable `%s` could not be found", operation.PrimaryData)
+			}
+			stack.NewVariableAlias(operation.Target, iv)
 		case OpCode_Assign:
 			iv := stack.GetVariable(operation.Target)
 			if iv == nil {

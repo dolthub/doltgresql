@@ -23,7 +23,7 @@ import (
 func TestCreateFunction(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "Interpreter Example",
+			Name: "Interpreter Assignment Example",
 			Skip: true, // TODO: need to use a Doltgres function provider, as the current one doesn't allow for adding functions
 			SetUpScript: []string{`CREATE FUNCTION interpreted_assignment(input TEXT) RETURNS TEXT AS $$
 DECLARE
@@ -66,6 +66,15 @@ $$ LANGUAGE plpgsql;`},
 					Expected: []sql.Row{
 						{"Initial: something - Over 5"},
 					},
+				},
+			},
+		},
+		{
+			Name: "Interpreter Alias Example",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_alias('123');",
+					Expected: []sql.Row{{"123"}},
 				},
 			},
 		},
