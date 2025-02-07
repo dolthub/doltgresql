@@ -24,7 +24,6 @@ func TestCreateFunction(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Interpreter Assignment Example",
-			Skip: true, // TODO: need to use a Doltgres function provider, as the current one doesn't allow for adding functions
 			SetUpScript: []string{`CREATE FUNCTION interpreted_assignment(input TEXT) RETURNS TEXT AS $$
 DECLARE
     var1 TEXT;
