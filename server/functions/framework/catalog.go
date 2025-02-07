@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -76,6 +77,7 @@ func Initialize() {
 	initializedFunctions = true
 
 	pgtypes.LoadFunctionFromCatalog = getQuickFunctionForTypes
+	analyzer.ExternalFunctionProvider = &FunctionProvider{}
 	replaceGmsBuiltIns()
 	validateFunctions()
 	compileFunctions()
