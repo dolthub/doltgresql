@@ -16,7 +16,8 @@ package plpgsql
 
 import (
 	"fmt"
-	"strings"
+
+	pg_query "github.com/pganalyze/pg_query_go/v6"
 )
 
 // Statement represents a PL/pgSQL statement.
@@ -43,15 +44,12 @@ func (Assignment) OperationSize() int32 {
 
 // AppendOperations implements the interface Statement.
 func (stmt Assignment) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) {
-	// TODO: figure out how I'm supposed to actually do this, rather than a search and replace
-	expression := stmt.Expression
-	var referencedVariables []string
-	for varName := range stack.ListVariables() {
-		if strings.Contains(expression, varName) {
-			referencedVariables = append(referencedVariables, varName)
-		}
-		expression = strings.Replace(expression, varName, fmt.Sprintf("$%d", len(referencedVariables)), 1)
+	expression, referencedVariables, err := substituteVariableReferences(stmt.Expression, stack)
+	if err != nil {
+		// TODO: add an error return param instead of panicing
+		panic(err)
 	}
+
 	*ops = append(*ops, InterpreterOperation{
 		OpCode:        OpCode_Assign,
 		PrimaryData:   "SELECT " + expression + ";",
@@ -143,14 +141,12 @@ func (If) OperationSize() int32 {
 
 // AppendOperations implements the interface Statement.
 func (stmt If) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) {
-	condition := stmt.Condition
-	var referencedVariables []string
-	for varName := range stack.ListVariables() {
-		if strings.Contains(condition, varName) {
-			referencedVariables = append(referencedVariables, varName)
-		}
-		condition = strings.Replace(condition, varName, fmt.Sprintf("$%d", len(referencedVariables)), 1)
+	condition, referencedVariables, err := substituteVariableReferences(stmt.Condition, stack)
+	if err != nil {
+		// TODO: add an error return param instead of panicing
+		panic(err)
 	}
+
 	*ops = append(*ops, InterpreterOperation{
 		OpCode:        OpCode_If,
 		PrimaryData:   "SELECT " + condition + ";",
@@ -173,15 +169,12 @@ func (Return) OperationSize() int32 {
 
 // AppendOperations implements the interface Statement.
 func (stmt Return) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) {
-	// TODO: figure out how I'm supposed to actually do this, rather than a search and replace
-	expression := stmt.Expression
-	var referencedVariables []string
-	for varName := range stack.ListVariables() {
-		if strings.Contains(expression, varName) {
-			referencedVariables = append(referencedVariables, varName)
-		}
-		expression = strings.Replace(expression, varName, fmt.Sprintf("$%d", len(referencedVariables)), 1)
+	expression, referencedVariables, err := substituteVariableReferences(stmt.Expression, stack)
+	if err != nil {
+		// TODO: add an error return param instead of panicing
+		panic(err)
 	}
+
 	*ops = append(*ops, InterpreterOperation{
 		OpCode:        OpCode_Return,
 		PrimaryData:   "SELECT " + expression + ";",
@@ -203,4 +196,27 @@ func OperationSizeForStatements(stmts []Statement) int32 {
 		total += stmt.OperationSize()
 	}
 	return total
+}
+
+// substituteVariableReferences parses the specified |expression| and replaces
+// any token that matches a variable name in the |stack| with "$N", where N
+// indicates which variable in the returned |referenceVars| slice is used.
+func substituteVariableReferences(expression string, stack *InterpreterStack) (newExpression string, referencedVars []string, err error) {
+	scanResult, err := pg_query.Scan(expression)
+	if err != nil {
+		return "", nil, err
+	}
+
+	varMap := stack.ListVariables()
+	for _, token := range scanResult.Tokens {
+		substring := expression[token.Start:token.End]
+		if _, ok := varMap[substring]; ok {
+			referencedVars = append(referencedVars, substring)
+			newExpression += fmt.Sprintf("$%d ", len(referencedVars))
+		} else {
+			newExpression += substring + " "
+		}
+	}
+
+	return newExpression, referencedVars, nil
 }
