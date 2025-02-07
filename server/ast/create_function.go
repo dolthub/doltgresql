@@ -15,33 +15,65 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
+	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
+	"github.com/dolthub/doltgresql/server/plpgsql"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // nodeCreateFunction handles *tree.CreateFunction nodes.
 func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Statement, error) {
-	err := verifyRedundantRoutineOption(ctx, node.Options)
+	options, err := validateRoutineOptions(ctx, node.Options)
 	if err != nil {
 		return nil, err
 	}
-
-	return NotYetSupportedError("CREATE FUNCTION statement is not yet supported")
-}
-
-// verifyRedundantRoutineOption checks for each option defined only once.
-// If there is multiple definition of the same option, it returns an error.
-func verifyRedundantRoutineOption(ctx *Context, options []tree.RoutineOption) error {
-	var optDefined = make(map[tree.FunctionOption]struct{})
-	for _, opt := range options {
-		if _, ok := optDefined[opt.OptionType]; ok {
-			return errors.Errorf("ERROR:  conflicting or redundant options")
-		} else {
-			optDefined[opt.OptionType] = struct{}{}
+	// We only support PL/pgSQL for now, so we'll verify that first
+	if languageOption, ok := options[tree.OptionLanguage]; ok {
+		if strings.ToLower(languageOption.Language) != "plpgsql" {
+			return nil, errors.Errorf("CREATE FUNCTION only supports PL/pgSQL for now")
 		}
+	} else {
+		return nil, errors.Errorf("CREATE FUNCTION does not define an input language")
 	}
-	return nil
+	// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
+	// This parser also requires the full `CREATE FUNCTION` string, so we'll pass that.
+	parsedBody, err := plpgsql.Parse(ctx.originalQuery)
+	if err != nil {
+		return nil, err
+	}
+	// Grab the rest of the information that we'll need to create the function
+	tableName := node.Name.ToTableName()
+	schemaName := tableName.Schema()
+	if len(schemaName) == 0 {
+		// TODO: fix function finder such that it doesn't always assume pg_catalog
+		schemaName = "pg_catalog"
+	}
+	retType := pgtypes.Void
+	if len(node.RetType) == 1 {
+		retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(node.RetType[0].Type.SQLString()))
+	}
+	paramNames := make([]string, len(node.Args))
+	paramTypes := make([]*pgtypes.DoltgresType, len(node.Args))
+	for i, arg := range node.Args {
+		paramNames[i] = arg.Name.String()
+		paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(arg.Type.SQLString()))
+	}
+	// Returns the stored procedure call with all options
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewCreateFunction(
+			tableName.Table(),
+			schemaName,
+			retType,
+			paramNames,
+			paramTypes,
+			true, // TODO: implement strict check
+			parsedBody,
+		),
+		Children: nil,
+	}, nil
 }

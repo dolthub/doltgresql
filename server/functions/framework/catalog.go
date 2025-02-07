@@ -34,7 +34,12 @@ var initializedFunctions = false
 // from within an init().
 func RegisterFunction(f FunctionInterface) {
 	if initializedFunctions {
-		panic("attempted to register a function after the init() phase")
+		// TODO: this should be able to handle overloads
+		name := strings.ToLower(f.GetName())
+		if err := validateFunction(name, []FunctionInterface{f}); err != nil {
+			panic(err) // TODO: replace panics here with errors
+		}
+		compileNonOperatorFunction(name, []FunctionInterface{f})
 	}
 	switch f := f.(type) {
 	case Function0:
@@ -76,7 +81,7 @@ func Initialize() {
 	compileFunctions()
 }
 
-// replaceGmsBuiltIns replaces all GMS built-ins that have conflicting names with PostgreSQL functions
+// replaceGmsBuiltIns replaces all GMS built-ins that have conflicting names with PostgreSQL functions.
 func replaceGmsBuiltIns() {
 	functionNames := make(map[string]struct{})
 	for name := range Catalog {
@@ -91,59 +96,71 @@ func replaceGmsBuiltIns() {
 	function.BuiltIns = newBuiltIns
 }
 
-// validateFunctions panics if any functions are defined incorrectly or ambiguously
+// validateFunctions panics if any functions are defined incorrectly or ambiguously.
 func validateFunctions() {
 	for funcName, overloads := range Catalog {
-		funcName := funcName
-		// Verify that each function uses the correct Function overload
-		for _, functionOverload := range overloads {
-			if functionOverload.GetExpectedParameterCount() >= 0 &&
-				len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {
-				panic(errors.Errorf("function `%s` should have %d arguments but has %d arguments",
-					funcName, functionOverload.GetExpectedParameterCount(), len(functionOverload.GetParameters())))
-			}
-		}
-		// Verify that all overloads are unique
-		for functionIndex, f1 := range overloads {
-			for _, f2 := range overloads[functionIndex+1:] {
-				sameCount := 0
-				if f1.GetExpectedParameterCount() == f2.GetExpectedParameterCount() {
-					f2Parameters := f2.GetParameters()
-					for parameterIndex, f1Parameter := range f1.GetParameters() {
-						if f1Parameter.Equals(f2Parameters[parameterIndex]) {
-							sameCount++
-						}
-					}
-				}
-				if sameCount == f1.GetExpectedParameterCount() && f1.GetExpectedParameterCount() > 0 {
-					panic(errors.Errorf("duplicate function overloads on `%s`", funcName))
-				}
-			}
+		if err := validateFunction(funcName, overloads); err != nil {
+			panic(err)
 		}
 	}
 }
 
-// compileFunctions creates a CompiledFunction for each overload of each function in the catalog
-func compileFunctions() {
-	for funcName, overloads := range Catalog {
-		overloadTree := NewOverloads()
-		for _, functionOverload := range overloads {
-			if err := overloadTree.Add(functionOverload); err != nil {
-				panic(err)
+// validateFunction validates whether functions are defined incorrectly or ambiguously.
+func validateFunction(funcName string, overloads []FunctionInterface) error {
+	// Verify that each function uses the correct Function overload
+	for _, functionOverload := range overloads {
+		if functionOverload.GetExpectedParameterCount() >= 0 &&
+			len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {
+			return errors.Errorf("function `%s` should have %d arguments but has %d arguments",
+				funcName, functionOverload.GetExpectedParameterCount(), len(functionOverload.GetParameters()))
+		}
+	}
+	// Verify that all overloads are unique
+	for functionIndex, f1 := range overloads {
+		for _, f2 := range overloads[functionIndex+1:] {
+			sameCount := 0
+			if f1.GetExpectedParameterCount() == f2.GetExpectedParameterCount() {
+				f2Parameters := f2.GetParameters()
+				for parameterIndex, f1Parameter := range f1.GetParameters() {
+					if f1Parameter.Equals(f2Parameters[parameterIndex]) {
+						sameCount++
+					}
+				}
+			}
+			if sameCount == f1.GetExpectedParameterCount() && f1.GetExpectedParameterCount() > 0 {
+				return errors.Errorf("duplicate function overloads on `%s`", funcName)
 			}
 		}
+	}
+	return nil
+}
 
-		// Store the compiled function into the engine's built-in functions
-		// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
-		createFunc := func(params ...sql.Expression) (sql.Expression, error) {
-			return NewCompiledFunction(funcName, params, overloadTree, false), nil
+// compileNonOperatorFunction creates a CompiledFunction for each overload of the given function.
+func compileNonOperatorFunction(funcName string, overloads []FunctionInterface) {
+	overloadTree := NewOverloads()
+	for _, functionOverload := range overloads {
+		if err := overloadTree.Add(functionOverload); err != nil {
+			panic(err)
 		}
-		function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
-			Name: funcName,
-			Fn:   createFunc,
-		})
-		compiledCatalog[funcName] = createFunc
-		namedCatalog[funcName] = overloads
+	}
+
+	// Store the compiled function into the engine's built-in functions
+	// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
+	createFunc := func(params ...sql.Expression) (sql.Expression, error) {
+		return NewCompiledFunction(funcName, params, overloadTree, false), nil
+	}
+	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
+		Name: funcName,
+		Fn:   createFunc,
+	})
+	compiledCatalog[funcName] = createFunc
+	namedCatalog[funcName] = overloads
+}
+
+// compileFunctions creates a CompiledFunction for each overload of each function in the catalog.
+func compileFunctions() {
+	for funcName, overloads := range Catalog {
+		compileNonOperatorFunction(funcName, overloads)
 	}
 
 	// Build the overload for all unary and binary functions based on their operator. This will be used for fallback if

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package framework
+package plpgsql
 
 // OpCode states the operation to be performed. Most operations have a direct analogue to a Pl/pgSQL operation, however
 // some exist only in Doltgres (specific to our interpreter implementation).

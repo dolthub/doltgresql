@@ -22,7 +22,7 @@ import (
 
 // nodeAlterProcedure handles *tree.AlterProcedure nodes.
 func nodeAlterProcedure(ctx *Context, node *tree.AlterProcedure) (vitess.Statement, error) {
-	err := verifyRedundantRoutineOption(ctx, node.Options)
+	_, err := validateRoutineOptions(ctx, node.Options)
 	if err != nil {
 		return nil, err
 	}

@@ -14,19 +14,24 @@
 
 package ast
 
-import "github.com/dolthub/doltgresql/server/auth"
+import (
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/server/auth"
+)
 
 // Context contains any relevant context for the AST conversion. For example, the auth system uses the context to
 // determine which larger statement an expression exists in, which may influence how the expression should handle
 // authorization.
 type Context struct {
-	authContext *auth.AuthContext
+	authContext   *auth.AuthContext
+	originalQuery string
 }
 
 // NewContext returns a new *Context.
-func NewContext() *Context {
+func NewContext(postgresStmt parser.Statement) *Context {
 	return &Context{
-		authContext: auth.NewAuthContext(),
+		authContext:   auth.NewAuthContext(),
+		originalQuery: postgresStmt.SQL,
 	}
 }
 
