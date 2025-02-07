@@ -16,7 +16,7 @@ package framework
 
 import "github.com/dolthub/go-mysql-server/sql"
 
-// FunctionProvider is the special sql.FunctionProvider for Doltgres that allows us to handle functions that were
+// FunctionProvider is the special sql.FunctionProvider for Doltgres that allows us to handle functions that
 // are created by users.
 type FunctionProvider struct{}
 
