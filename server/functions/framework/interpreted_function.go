@@ -42,6 +42,7 @@ type InterpretedFunction struct {
 }
 
 var _ FunctionInterface = InterpretedFunction{}
+var _ plpgsql.InterpretedFunction = InterpretedFunction{}
 
 // GetExpectedParameterCount implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) GetExpectedParameterCount() int {

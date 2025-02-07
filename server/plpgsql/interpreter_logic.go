@@ -30,10 +30,10 @@ import (
 type InterpretedFunction interface {
 	GetParameters() []*pgtypes.DoltgresType
 	GetParameterNames() []string
+	GetReturn() *pgtypes.DoltgresType
 	GetStatements() []InterpreterOperation
 	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (rowIter sql.RowIter, err error)
 	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
-	Return(ctx *sql.Context) sql.Type
 }
 
 // Call runs the contained operations on the given runner.
@@ -45,7 +45,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 	parameterTypes := iFunc.GetParameters()
 	parameterNames := iFunc.GetParameterNames()
 	if len(vals) != len(parameterTypes) {
-		return nil, fmt.Errorf("parameter count mismatch: expected `%d` got %d`", len(parameterTypes), len(vals))
+		return nil, fmt.Errorf("parameter count mismatch: expected %d got %d", len(parameterTypes), len(vals))
 	}
 	for i := range vals {
 		stack.NewVariableWithValue(parameterNames[i], parameterTypes[i], vals[i])
@@ -166,7 +166,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if len(operation.PrimaryData) == 0 {
 				return nil, nil
 			}
-			return iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.Return(ctx).(*pgtypes.DoltgresType), operation.SecondaryData)
+			return iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
 		case OpCode_ScopeBegin:
 			stack.PushScope()
 		case OpCode_ScopeEnd:
