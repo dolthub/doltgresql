@@ -15,15 +15,16 @@
 package framework
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -37,11 +38,11 @@ type InterpretedFunction struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
-	Labels             map[string]int
-	Statements         []InterpreterOperation
+	Statements         []plpgsql.InterpreterOperation
 }
 
 var _ FunctionInterface = InterpretedFunction{}
+var _ plpgsql.InterpretedFunction = InterpretedFunction{}
 
 // GetExpectedParameterCount implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) GetExpectedParameterCount() int {
@@ -58,9 +59,19 @@ func (iFunc InterpretedFunction) GetParameters() []*pgtypes.DoltgresType {
 	return iFunc.ParameterTypes
 }
 
+// GetParameterNames returns the names of all parameters.
+func (iFunc InterpretedFunction) GetParameterNames() []string {
+	return iFunc.ParameterNames
+}
+
 // GetReturn implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) GetReturn() *pgtypes.DoltgresType {
 	return iFunc.ReturnType
+}
+
+// GetStatements returns the contained statements.
+func (iFunc InterpretedFunction) GetStatements() []plpgsql.InterpreterOperation {
+	return iFunc.Statements
 }
 
 // InternalID implements the interface FunctionInterface.
@@ -89,8 +100,8 @@ func (iFunc InterpretedFunction) VariadicIndex() int {
 	return -1
 }
 
-// querySingleReturn handles queries that are supposed to return a single value.
-func (iFunc InterpretedFunction) querySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error) {
+// QuerySingleReturn handles queries that are supposed to return a single value.
+func (InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error) {
 	if len(bindings) > 0 {
 		for i, bindingName := range bindings {
 			variable := stack.GetVariable(bindingName)
@@ -108,7 +119,7 @@ func (iFunc InterpretedFunction) querySingleReturn(ctx *sql.Context, stack Inter
 			stmt = strings.Replace(stmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
 		}
 	}
-	sch, rowIter, _, err := stack.runner.QueryWithBindings(ctx, stmt, nil, nil, nil)
+	sch, rowIter, _, err := stack.Runner().QueryWithBindings(ctx, stmt, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +154,8 @@ func (iFunc InterpretedFunction) querySingleReturn(ctx *sql.Context, stack Inter
 	return castFunc(ctx, rows[0][0], targetType)
 }
 
-// queryMultiReturn handles queries that may return multiple values over multiple rows.
-func (iFunc InterpretedFunction) queryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (rowIter sql.RowIter, err error) {
+// QueryMultiReturn handles queries that may return multiple values over multiple rows.
+func (InterpretedFunction) QueryMultiReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, bindings []string) (rowIter sql.RowIter, err error) {
 	if len(bindings) > 0 {
 		for i, bindingName := range bindings {
 			variable := stack.GetVariable(bindingName)
@@ -162,7 +173,7 @@ func (iFunc InterpretedFunction) queryMultiReturn(ctx *sql.Context, stack Interp
 			stmt = strings.Replace(stmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
 		}
 	}
-	_, rowIter, _, err = stack.runner.QueryWithBindings(ctx, stmt, nil, nil, nil)
+	_, rowIter, _, err = stack.Runner().QueryWithBindings(ctx, stmt, nil, nil, nil)
 	return rowIter, err
 }
 

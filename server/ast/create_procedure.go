@@ -15,6 +15,8 @@
 package ast
 
 import (
+	"github.com/cockroachdb/errors"
+
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -22,10 +24,24 @@ import (
 
 // nodeCreateProcedure handles *tree.CreateProcedure nodes.
 func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.Statement, error) {
-	err := verifyRedundantRoutineOption(ctx, node.Options)
+	_, err := validateRoutineOptions(ctx, node.Options)
 	if err != nil {
 		return nil, err
 	}
 
 	return NotYetSupportedError("CREATE PROCEDURE statement is not yet supported")
+}
+
+// validateRoutineOptions ensures that each option is defined only once. Returns a map containing all options, or an
+// error if an option is invalid or is defined multiple times.
+func validateRoutineOptions(ctx *Context, options []tree.RoutineOption) (map[tree.FunctionOption]tree.RoutineOption, error) {
+	var optDefined = make(map[tree.FunctionOption]tree.RoutineOption)
+	for _, opt := range options {
+		if _, ok := optDefined[opt.OptionType]; ok {
+			return nil, errors.Errorf("ERROR:  conflicting or redundant options")
+		} else {
+			optDefined[opt.OptionType] = opt
+		}
+	}
+	return optDefined, nil
 }

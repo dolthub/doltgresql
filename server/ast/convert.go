@@ -25,7 +25,7 @@ import (
 
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
-	ctx := NewContext()
+	ctx := NewContext(postgresStmt)
 	switch stmt := postgresStmt.AST.(type) {
 	case *tree.AlterAggregate:
 		return nodeAlterAggregate(ctx, stmt)

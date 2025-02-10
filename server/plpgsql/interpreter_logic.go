@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package framework
+package plpgsql
 
 import (
 	"fmt"
@@ -25,35 +25,55 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// InterpretedFunction is an interface that essentially mirrors the implementation of InterpretedFunction in the
+// framework package.
+type InterpretedFunction interface {
+	GetParameters() []*pgtypes.DoltgresType
+	GetParameterNames() []string
+	GetReturn() *pgtypes.DoltgresType
+	GetStatements() []InterpreterOperation
+	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (rowIter sql.RowIter, err error)
+	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
+}
+
 // Call runs the contained operations on the given runner.
-func (iFunc InterpretedFunction) Call(ctx *sql.Context, runner analyzer.StatementRunner, paramsAndReturn []*pgtypes.DoltgresType, vals []any) (any, error) {
+func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.StatementRunner, paramsAndReturn []*pgtypes.DoltgresType, vals []any) (any, error) {
 	// Set up the initial state of the function
 	counter := -1 // We increment before accessing, so start at -1
 	stack := NewInterpreterStack(runner)
 	// Add the parameters
-	if len(vals) != len(iFunc.ParameterTypes) {
-		return nil, fmt.Errorf("parameter count mismatch: expected `%d` got %d`", len(iFunc.ParameterTypes), len(vals))
+	parameterTypes := iFunc.GetParameters()
+	parameterNames := iFunc.GetParameterNames()
+	if len(vals) != len(parameterTypes) {
+		return nil, fmt.Errorf("parameter count mismatch: expected %d got %d", len(parameterTypes), len(vals))
 	}
 	for i := range vals {
-		stack.NewVariableWithValue(iFunc.ParameterNames[i], iFunc.ParameterTypes[i], vals[i])
+		stack.NewVariableWithValue(parameterNames[i], parameterTypes[i], vals[i])
 	}
 	// Run the statements
+	statements := iFunc.GetStatements()
 	for {
 		counter++
-		if counter >= len(iFunc.Statements) {
+		if counter >= len(statements) {
 			break
 		} else if counter < 0 {
 			panic("negative function counter")
 		}
 
-		operation := iFunc.Statements[counter]
+		operation := statements[counter]
 		switch operation.OpCode {
+		case OpCode_Alias:
+			iv := stack.GetVariable(operation.PrimaryData)
+			if iv == nil {
+				return nil, fmt.Errorf("variable `%s` could not be found", operation.PrimaryData)
+			}
+			stack.NewVariableAlias(operation.Target, iv)
 		case OpCode_Assign:
 			iv := stack.GetVariable(operation.Target)
 			if iv == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
 			}
-			retVal, err := iFunc.querySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, operation.SecondaryData)
+			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, operation.SecondaryData)
 			if err != nil {
 				return nil, err
 			}
@@ -78,7 +98,7 @@ func (iFunc InterpretedFunction) Call(ctx *sql.Context, runner analyzer.Statemen
 		case OpCode_Exception:
 			// TODO: implement
 		case OpCode_Execute:
-			rowIter, err := iFunc.queryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
 				return nil, err
 			}
@@ -95,7 +115,7 @@ func (iFunc InterpretedFunction) Call(ctx *sql.Context, runner analyzer.Statemen
 			// We must compare to the index - 1, so that the increment hits our target
 			if counter <= operation.Index {
 				for ; counter < operation.Index-1; counter++ {
-					switch iFunc.Statements[counter].OpCode {
+					switch statements[counter].OpCode {
 					case OpCode_ScopeBegin:
 						stack.PushScope()
 					case OpCode_ScopeEnd:
@@ -104,7 +124,7 @@ func (iFunc InterpretedFunction) Call(ctx *sql.Context, runner analyzer.Statemen
 				}
 			} else {
 				for ; counter > operation.Index-1; counter-- {
-					switch iFunc.Statements[counter].OpCode {
+					switch statements[counter].OpCode {
 					case OpCode_ScopeBegin:
 						stack.PopScope()
 					case OpCode_ScopeEnd:
@@ -113,7 +133,7 @@ func (iFunc InterpretedFunction) Call(ctx *sql.Context, runner analyzer.Statemen
 				}
 			}
 		case OpCode_If:
-			retVal, err := iFunc.querySingleReturn(ctx, stack, operation.PrimaryData, pgtypes.Bool, operation.SecondaryData)
+			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, pgtypes.Bool, operation.SecondaryData)
 			if err != nil {
 				return nil, err
 			}
@@ -127,7 +147,7 @@ func (iFunc InterpretedFunction) Call(ctx *sql.Context, runner analyzer.Statemen
 		case OpCode_Loop:
 			// TODO: implement
 		case OpCode_Perform:
-			rowIter, err := iFunc.queryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
 				return nil, err
 			}
@@ -135,7 +155,7 @@ func (iFunc InterpretedFunction) Call(ctx *sql.Context, runner analyzer.Statemen
 				return nil, err
 			}
 		case OpCode_Query:
-			rowIter, err := iFunc.queryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
 				return nil, err
 			}
@@ -146,7 +166,7 @@ func (iFunc InterpretedFunction) Call(ctx *sql.Context, runner analyzer.Statemen
 			if len(operation.PrimaryData) == 0 {
 				return nil, nil
 			}
-			return iFunc.querySingleReturn(ctx, stack, operation.PrimaryData, iFunc.ReturnType, operation.SecondaryData)
+			return iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
 		case OpCode_ScopeBegin:
 			stack.PushScope()
 		case OpCode_ScopeEnd:

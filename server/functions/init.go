@@ -104,7 +104,6 @@ func Init() {
 	initGcd()
 	initGenRandomUuid()
 	initInitcap()
-	initInterpretedExamples()
 	initLcm()
 	initLeft()
 	initLength()

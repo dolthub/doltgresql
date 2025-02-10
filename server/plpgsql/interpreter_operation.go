@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package framework
+package plpgsql
 
 // OpCode states the operation to be performed. Most operations have a direct analogue to a Pl/pgSQL operation, however
 // some exist only in Doltgres (specific to our interpreter implementation).
 type OpCode uint16
 
 const (
-	OpCode_Assign     OpCode = iota // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-ASSIGNMENT
+	OpCode_Alias      OpCode = iota // https://www.postgresql.org/docs/15/plpgsql-declarations.html#PLPGSQL-DECLARATION-ALIAS
+	OpCode_Assign                   // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-ASSIGNMENT
 	OpCode_Case                     // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
 	OpCode_Declare                  // https://www.postgresql.org/docs/15/plpgsql-declarations.html
 	OpCode_DeleteInto               // https://www.postgresql.org/docs/15/plpgsql-statements.html

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package framework
+package plpgsql
 
 import (
 	"fmt"
@@ -61,6 +61,11 @@ func (is *InterpreterStack) Details() *InterpreterScopeDetails {
 	return is.stack.Peek()
 }
 
+// Runner returns the runner that is being used for the function's execution.
+func (is *InterpreterStack) Runner() analyzer.StatementRunner {
+	return is.runner
+}
+
 // GetVariable traverses the stack (starting from the top) to find a variable with a matching name. Returns nil if no
 // variable was found.
 func (is *InterpreterStack) GetVariable(name string) *InterpreterVariable {
@@ -70,6 +75,17 @@ func (is *InterpreterStack) GetVariable(name string) *InterpreterVariable {
 		}
 	}
 	return nil
+}
+
+// ListVariables returns a map with the names of all variables.
+func (is *InterpreterStack) ListVariables() map[string]struct{} {
+	seen := make(map[string]struct{})
+	for i := 0; i < is.stack.Len(); i++ {
+		for varName := range is.stack.PeekDepth(i).variables {
+			seen[varName] = struct{}{}
+		}
+	}
+	return seen
 }
 
 // NewVariable creates a new variable in the current scope. If a variable with the same name exists in a previous scope,
@@ -84,6 +100,12 @@ func (is *InterpreterStack) NewVariableWithValue(name string, typ *pgtypes.Doltg
 		Type:  typ,
 		Value: val,
 	}
+}
+
+// NewVariableAlias creates a new variable alias, named |alias|, in the current frame of this stack,
+// pointing to the specified |variable|.
+func (is *InterpreterStack) NewVariableAlias(alias string, variable *InterpreterVariable) {
+	is.stack.Peek().variables[alias] = variable
 }
 
 // PushScope creates a new scope.

@@ -20,6 +20,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
+	pgnodes "github.com/dolthub/doltgresql/server/node"
+
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/expression"
@@ -47,6 +49,32 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 	return transform.Node(node, func(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		var same = transform.SameTree
 		switch n := node.(type) {
+		case *plan.AddColumn:
+			col := n.Column()
+			if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
+				dt, err := resolveType(ctx, rt)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				col.Type = dt
+			}
+			return node, same, nil
+		case *pgnodes.CreateFunction:
+			retType, err := resolveType(ctx, n.ReturnType)
+			if err != nil {
+				return nil, transform.NewTree, err
+			}
+			paramTypes := make([]*pgtypes.DoltgresType, len(n.ParameterTypes))
+			for i := range n.ParameterTypes {
+				paramTypes[i], err = resolveType(ctx, n.ParameterTypes[i])
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+			}
+			n.ReturnType = retType
+			n.ParameterTypes = paramTypes
+			return node, transform.NewTree, nil
 		case *plan.CreateTable:
 			for _, col := range n.TargetSchema() {
 				if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
@@ -57,17 +85,6 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 					same = transform.NewTree
 					col.Type = dt
 				}
-			}
-			return node, same, nil
-		case *plan.AddColumn:
-			col := n.Column()
-			if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
-				dt, err := resolveType(ctx, rt)
-				if err != nil {
-					return nil, transform.NewTree, err
-				}
-				same = transform.NewTree
-				col.Type = dt
 			}
 			return node, same, nil
 		case *plan.ModifyColumn:
@@ -116,6 +133,9 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 
 // resolveType resolves any type that is unresolved yet. (e.g.: domain types, built-in types that schema specified, etc.)
 func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.DoltgresType, error) {
+	if typ.IsResolvedType() {
+		return typ, nil
+	}
 	schema, err := core.GetSchemaName(ctx, nil, typ.Schema())
 	if err != nil {
 		return nil, err
@@ -126,6 +146,13 @@ func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.Doltgres
 	}
 	resolvedTyp, exists := typs.GetType(id.NewType(schema, typ.Name()))
 	if !exists {
+		// If a blank schema is provided, then we'll also try the pg_catalog, since a type is most likely to be there
+		if typ.Schema() == "" {
+			resolvedTyp, exists = typs.GetType(id.NewType("pg_catalog", typ.Name()))
+			if exists {
+				return resolvedTyp, nil
+			}
+		}
 		return nil, pgtypes.ErrTypeDoesNotExist.New(typ.Name())
 	}
 	return resolvedTyp, nil
