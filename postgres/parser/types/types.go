@@ -1317,7 +1317,7 @@ func (t *T) Name() string {
 	case FloatFamily:
 		switch t.Width() {
 		case 64:
-			return "float"
+			return "float8"
 		case 32:
 			return "float4"
 		default:
@@ -1327,7 +1327,7 @@ func (t *T) Name() string {
 	case IntFamily:
 		switch t.Width() {
 		case 64:
-			return "int"
+			return "int8"
 		case 32:
 			return "int4"
 		case 16:
@@ -1342,7 +1342,7 @@ func (t *T) Name() string {
 	case StringFamily, CollatedStringFamily:
 		switch t.Oid() {
 		case oid.T_text:
-			return "string"
+			return "text"
 		case oid.T_bpchar:
 			return "char"
 		case oid.T_char:

@@ -98,13 +98,30 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		case OpCode_Exception:
 			// TODO: implement
 		case OpCode_Execute:
-			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
-			if err != nil {
-				return nil, err
+			if len(operation.Target) > 0 {
+				target := stack.GetVariable(operation.Target)
+				if target == nil {
+					return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
+				}
+				retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, target.Type, operation.SecondaryData)
+				if err != nil {
+					return nil, err
+				}
+				err = stack.SetVariable(ctx, operation.Target, retVal)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+				if err != nil {
+					return nil, err
+				}
+				if err = rowIter.Close(ctx); err != nil {
+					return nil, err
+				}
 			}
-			if err = rowIter.Close(ctx); err != nil {
-				return nil, err
-			}
+		case OpCode_ExecuteDynamic:
+			// TODO: implement
 		case OpCode_For:
 			// TODO: implement
 		case OpCode_Foreach:

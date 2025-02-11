@@ -25,7 +25,7 @@ type Statement interface {
 	// OperationSize reports the number of operations that the statement will convert to.
 	OperationSize() int32
 	// AppendOperations adds the statement to the operation slice.
-	AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack)
+	AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error
 }
 
 // Assignment represents an assignment statement.
@@ -43,11 +43,10 @@ func (Assignment) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt Assignment) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) {
+func (stmt Assignment) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	expression, referencedVariables, err := substituteVariableReferences(stmt.Expression, stack)
 	if err != nil {
-		// TODO: add an error return param instead of panicing
-		panic(err)
+		return err
 	}
 
 	*ops = append(*ops, InterpreterOperation{
@@ -56,6 +55,7 @@ func (stmt Assignment) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 		SecondaryData: referencedVariables,
 		Target:        stmt.VariableName,
 	})
+	return nil
 }
 
 // Block contains a collection of statements, alongside the variables that were declared for the block. Only the
@@ -82,7 +82,7 @@ func (stmt Block) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) {
+func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	stack.PushScope()
 	*ops = append(*ops, InterpreterOperation{
 		OpCode: OpCode_ScopeBegin,
@@ -98,12 +98,43 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 		stack.NewVariableWithValue(variable.Name, nil, nil)
 	}
 	for _, innerStmt := range stmt.Body {
-		innerStmt.AppendOperations(ops, stack)
+		if err := innerStmt.AppendOperations(ops, stack); err != nil {
+			return err
+		}
 	}
 	*ops = append(*ops, InterpreterOperation{
 		OpCode: OpCode_ScopeEnd,
 	})
 	stack.PopScope()
+	return nil
+}
+
+// ExecuteSQL represents a standard SQL statement's execution (including the INTO syntax).
+type ExecuteSQL struct {
+	Statement string
+	Target    string
+}
+
+var _ Statement = ExecuteSQL{}
+
+// OperationSize implements the interface Statement.
+func (ExecuteSQL) OperationSize() int32 {
+	return 1
+}
+
+// AppendOperations implements the interface Statement.
+func (stmt ExecuteSQL) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+	statementStr, referencedVariables, err := substituteVariableReferences(stmt.Statement, stack)
+	if err != nil {
+		return err
+	}
+	*ops = append(*ops, InterpreterOperation{
+		OpCode:        OpCode_Execute,
+		PrimaryData:   statementStr,
+		SecondaryData: referencedVariables,
+		Target:        stmt.Target,
+	})
+	return nil
 }
 
 // Goto jumps to the counter at the given offset.
@@ -119,11 +150,12 @@ func (Goto) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt Goto) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) {
+func (stmt Goto) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	*ops = append(*ops, InterpreterOperation{
 		OpCode: OpCode_Goto,
 		Index:  len(*ops) + int(stmt.Offset),
 	})
+	return nil
 }
 
 // If represents an IF condition, alongside its Goto offset if the condition is true.
@@ -140,11 +172,10 @@ func (If) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt If) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) {
+func (stmt If) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	condition, referencedVariables, err := substituteVariableReferences(stmt.Condition, stack)
 	if err != nil {
-		// TODO: add an error return param instead of panicing
-		panic(err)
+		return err
 	}
 
 	*ops = append(*ops, InterpreterOperation{
@@ -153,6 +184,34 @@ func (stmt If) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterS
 		SecondaryData: referencedVariables,
 		Index:         len(*ops) + int(stmt.GotoOffset),
 	})
+	return nil
+}
+
+// Perform represents a PERFORM statement.
+type Perform struct {
+	Statement string
+}
+
+var _ Statement = Perform{}
+
+// OperationSize implements the interface Statement.
+func (Perform) OperationSize() int32 {
+	return 1
+}
+
+// AppendOperations implements the interface Statement.
+func (stmt Perform) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+	statementStr, referencedVariables, err := substituteVariableReferences(stmt.Statement, stack)
+	if err != nil {
+		return err
+	}
+
+	*ops = append(*ops, InterpreterOperation{
+		OpCode:        OpCode_Perform,
+		PrimaryData:   statementStr,
+		SecondaryData: referencedVariables,
+	})
+	return nil
 }
 
 // Return represents a RETURN statement.
@@ -168,18 +227,20 @@ func (Return) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt Return) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) {
+func (stmt Return) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	expression, referencedVariables, err := substituteVariableReferences(stmt.Expression, stack)
 	if err != nil {
-		// TODO: add an error return param instead of panicing
-		panic(err)
+		return err
 	}
-
+	if len(expression) > 0 {
+		expression = "SELECT " + expression + ";"
+	}
 	*ops = append(*ops, InterpreterOperation{
 		OpCode:        OpCode_Return,
-		PrimaryData:   "SELECT " + expression + ";",
+		PrimaryData:   expression,
 		SecondaryData: referencedVariables,
 	})
+	return nil
 }
 
 // Variable represents a variable. These are exclusively found within Block.

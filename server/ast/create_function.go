@@ -21,6 +21,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -61,7 +62,12 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	paramTypes := make([]*pgtypes.DoltgresType, len(node.Args))
 	for i, arg := range node.Args {
 		paramNames[i] = arg.Name.String()
-		paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(arg.Type.SQLString()))
+		switch argType := arg.Type.(type) {
+		case *types.T:
+			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.Name()))
+		default:
+			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.SQLString()))
+		}
 	}
 	// Returns the stored procedure call with all options
 	return vitess.InjectedStatement{
