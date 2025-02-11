@@ -24,11 +24,20 @@ import (
 func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 	block := Block{}
 	for _, v := range jsonBlock.Datums {
-		block.Variable = append(block.Variable, Variable{
-			Name:        v.Variable.RefName,
-			Type:        strings.ToLower(v.Variable.Type.Type.Name),
-			IsParameter: v.Variable.LineNumber == 0,
-		})
+		switch {
+		case v.Row != nil:
+			if len(v.Row.Fields) != 1 {
+				return Block{}, errors.New("record types are not yet supported")
+			}
+		case v.Variable != nil:
+			block.Variable = append(block.Variable, Variable{
+				Name:        v.Variable.RefName,
+				Type:        strings.ToLower(v.Variable.Type.Type.Name),
+				IsParameter: v.Variable.LineNumber == 0,
+			})
+		default:
+			return Block{}, errors.Errorf("unhandled datum type: %T", v)
+		}
 	}
 	var err error
 	block.Body, err = jsonConvertStatements(jsonBlock.Action.StmtBlock.Body)
@@ -43,8 +52,12 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 	switch {
 	case stmt.Assignment != nil:
 		return stmt.Assignment.Convert()
+	case stmt.ExecSQL != nil:
+		return stmt.ExecSQL.Convert()
 	case stmt.If != nil:
 		return stmt.If.Convert()
+	case stmt.Perform != nil:
+		return stmt.Perform.Convert(), nil
 	case stmt.Return != nil:
 		return stmt.Return.Convert(), nil
 	default:

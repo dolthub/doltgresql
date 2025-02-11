@@ -35,6 +35,12 @@ type datatype struct {
 	Type plpgSQL_type `json:"PLpgSQL_type"`
 }
 
+// datum exists to match the expected JSON format.
+type datum struct {
+	Row      *plpgSQL_row `json:"PLpgSQL_row"`
+	Variable *plpgSQL_var `json:"PLpgSQL_var"`
+}
+
 // elsif exists to match the expected JSON format.
 type elsif struct {
 	ElseIf plpgSQL_if_elsif `json:"PLpgSQL_if_elsif"`
@@ -45,9 +51,10 @@ type expr struct {
 	Expression plpgSQL_expr `json:"PLpgSQL_expr"`
 }
 
-// datum exists to match the expected JSON format.
-type datum struct {
-	Variable plpgSQL_var `json:"PLpgSQL_var"`
+// field exists to match the expected JSON format.
+type field struct {
+	Name           string `json:"name"`
+	VariableNumber int32  `json:"varno"`
 }
 
 // function exists to match the expected JSON format.
@@ -67,6 +74,20 @@ type plpgSQL_expr struct {
 	ParseMode int32  `json:"parseMode"`
 }
 
+// plpgSQL_if_elsif exists to match the expected JSON format.
+type plpgSQL_if_elsif struct {
+	Condition  cond        `json:"cond"`
+	Then       []statement `json:"stmts"`
+	LineNumber int32       `json:"lineno"`
+}
+
+// plpgSQL_row exists to match the expected JSON format.
+type plpgSQL_row struct {
+	RefName    string  `json:"refname"`
+	Fields     []field `json:"fields"`
+	LineNumber int32   `json:"lineno"`
+}
+
 // plpgSQL_stmt_assign exists to match the expected JSON format.
 type plpgSQL_stmt_assign struct {
 	Expression     expr  `json:"expr"`
@@ -80,11 +101,12 @@ type plpgSQL_stmt_block struct {
 	LineNumber int32       `json:"lineno"`
 }
 
-// plpgSQL_if_elsif exists to match the expected JSON format.
-type plpgSQL_if_elsif struct {
-	Condition  cond        `json:"cond"`
-	Then       []statement `json:"stmts"`
-	LineNumber int32       `json:"lineno"`
+// plpgSQL_stmt_execsql exists to match the expected JSON format.
+type plpgSQL_stmt_execsql struct {
+	SQLStmt    sqlstmt `json:"sqlstmt"`
+	LineNumber int32   `json:"lineno"`
+	Into       bool    `json:"into"`
+	Target     datum   `json:"target"`
 }
 
 // plpgSQL_stmt_if exists to match the expected JSON format.
@@ -94,6 +116,12 @@ type plpgSQL_stmt_if struct {
 	ElseIf     []elsif     `json:"elsif_list"`
 	Else       []statement `json:"else_body"`
 	LineNumber int32       `json:"lineno"`
+}
+
+// plpgSQL_stmt_perform exists to match the expected JSON format.
+type plpgSQL_stmt_perform struct {
+	Expression expr  `json:"expr"`
+	LineNumber int32 `json:"lineno"`
 }
 
 // plpgSQL_stmt_return exists to match the expected JSON format.
@@ -114,12 +142,19 @@ type plpgSQL_var struct {
 	LineNumber int32    `json:"lineno"`
 }
 
+// sqlstmt exists to match the expected JSON format.
+type sqlstmt struct {
+	Expr plpgSQL_expr `json:"PLpgSQL_expr"`
+}
+
 // statement exists to match the expected JSON format. Unlike other structs, this is used like a union rather than
 // having a singular expected implementation.
 type statement struct {
-	Assignment *plpgSQL_stmt_assign `json:"PLpgSQL_stmt_assign"`
-	If         *plpgSQL_stmt_if     `json:"PLpgSQL_stmt_if"`
-	Return     *plpgSQL_stmt_return `json:"PLpgSQL_stmt_return"`
+	Assignment *plpgSQL_stmt_assign  `json:"PLpgSQL_stmt_assign"`
+	ExecSQL    *plpgSQL_stmt_execsql `json:"PLpgSQL_stmt_execsql"`
+	If         *plpgSQL_stmt_if      `json:"PLpgSQL_stmt_if"`
+	Perform    *plpgSQL_stmt_perform `json:"PLpgSQL_stmt_perform"`
+	Return     *plpgSQL_stmt_return  `json:"PLpgSQL_stmt_return"`
 }
 
 // Convert converts the JSON statement into its output form.
@@ -139,6 +174,28 @@ func (stmt *plpgSQL_stmt_assign) Convert() (Assignment, error) {
 		VariableName:  varName,
 		Expression:    query,
 		VariableIndex: stmt.VariableNumber,
+	}, nil
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_execsql) Convert() (ExecuteSQL, error) {
+	var target string
+	if stmt.Into {
+		switch {
+		case stmt.Target.Row != nil:
+			if len(stmt.Target.Row.Fields) != 1 {
+				return ExecuteSQL{}, errors.New("record types are not yet supported")
+			}
+			target = stmt.Target.Row.Fields[0].Name
+		case stmt.Target.Variable != nil:
+			target = stmt.Target.Variable.RefName
+		default:
+			return ExecuteSQL{}, errors.Errorf("unhandled datum type: %T", stmt.Target)
+		}
+	}
+	return ExecuteSQL{
+		Statement: stmt.SQLStmt.Expr.Query,
+		Target:    target,
 	}, nil
 }
 
@@ -196,6 +253,13 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 		returnBlock.Body[gotoEndIndex] = Goto{Offset: int32(len(returnBlock.Body)) - gotoEndIndex}
 	}
 	return returnBlock, nil
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_perform) Convert() Perform {
+	return Perform{
+		Statement: stmt.Expression.Expression.Query,
+	}
 }
 
 // Convert converts the JSON statement into its output form.
