@@ -70,8 +70,7 @@ $$ LANGUAGE plpgsql;`},
 		},
 		{
 			Name: "Interpreter Alias Example",
-			// TODO: need to use a Doltgres function provider, and need to implement the
-			//       OpCode conversion for parsed ALIAS statements.
+			// TODO: Implement OpCode conversion for parsed ALIAS statements.
 			Skip: true,
 			SetUpScript: []string{
 				`CREATE FUNCTION interpreted_alias(input TEXT)
@@ -96,6 +95,31 @@ $$ LANGUAGE plpgsql;`},
 				{
 					Query:    "SELECT interpreted_alias('123');",
 					Expected: []sql.Row{{"123"}},
+				},
+			},
+		},
+		{
+			// Tests that variable names are correctly substituted with references
+			// to the variables when the function is parsed.
+			Name: "Variable reference substitution",
+			SetUpScript: []string{`
+CREATE FUNCTION test1(input TEXT) RETURNS TEXT AS $$
+DECLARE
+    var1 TEXT;
+BEGIN
+	var1 := 'input' || input;
+	IF var1 = 'input' || input THEN
+		RETURN var1 || 'var1';
+	ELSE
+		RETURN '!!!';
+	END IF;
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT test1('Hello');",
+					Expected: []sql.Row{{"inputHellovar1"}},
 				},
 			},
 		},
