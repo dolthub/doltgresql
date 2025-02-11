@@ -1749,7 +1749,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Name:  "dolt statistics",
+			Name: "dolt statistics",
 			SetUpScript: []string{
 				"CREATE TABLE horses (id int primary key, name varchar(10));",
 				"CREATE INDEX horses_name_idx ON horses(name);",

@@ -19,9 +19,8 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -80,7 +79,7 @@ func getIgnoreTablePatternKey(keyDesc val.TupleDesc, keyTuple val.Tuple, ns tree
 	if err != nil {
 		return "", err
 	}
-	
+
 	key, err := keyDesc.Handlers[0].DeserializeValue(b)
 	if err != nil {
 		return "", err
