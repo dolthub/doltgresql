@@ -49,7 +49,9 @@ platform_cgo_ldflags["linux-arm64"]="-static -s"
 platform_cgo_ldflags["linux-amd64"]="-static -s"
 platform_cgo_ldflags["darwin-arm64"]=""
 platform_cgo_ldflags["darwin-amd64"]=""
-platform_cgo_ldflags["windows-amd64"]=""
+# Stack smash protection lib is built into clang for unix platforms,
+# but on Windows we need to pull in the separate ssp library
+platform_cgo_ldflags["windows-amd64"]="-lssp"
 
 for tuple in $OS_ARCH_TUPLES; do
   os=`echo $tuple | sed 's/-.*//'`
