@@ -69,6 +69,48 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "Covering string Index",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk bigint PRIMARY KEY, v1 varchar(10));",
+				"INSERT INTO test VALUES (13, 'thirteen'), (11, 'eleven'), (15, 'fifteen'), (12, 'twelve'), (14, 'fourteen');",
+				"CREATE UNIQUE INDEX v1_idx ON test(v1);",
+				"CREATE INDEX v1_pk_idx ON test(v1, pk);",
+				"CREATE INDEX pk_v1_idx ON test(pk, v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 = 'twelve' ORDER BY pk;",
+					Expected: []sql.Row{
+						{12, "twelve"},
+					},
+				},
+				{
+					Query: "DELETE FROM test WHERE v1 = 'twelve'",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 = 'twelve' ORDER BY pk;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "String primary key ordering",
+			Skip: true, // string primary key ordering is broken
+			SetUpScript: []string{
+				"create table t (s varchar(5) primary key);",
+				"insert into t values ('foo');",
+				"insert into t values ('bar');",
+				"insert into t values ('baz');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select * from t order by s;",
+					Expected: []sql.Row{{"bar"}, {"baz"}, {"foo"}},
+				},
+			},
+		},
+		{
 			Name: "Unique Covering Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
