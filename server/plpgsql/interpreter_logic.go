@@ -116,7 +116,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 				if err != nil {
 					return nil, err
 				}
-				if err = rowIter.Close(ctx); err != nil {
+				if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
 					return nil, err
 				}
 			}
@@ -168,7 +168,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if err != nil {
 				return nil, err
 			}
-			if err = rowIter.Close(ctx); err != nil {
+			if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
 				return nil, err
 			}
 		case OpCode_Query:
@@ -176,7 +176,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if err != nil {
 				return nil, err
 			}
-			if err = rowIter.Close(ctx); err != nil {
+			if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
 				return nil, err
 			}
 		case OpCode_Return:
