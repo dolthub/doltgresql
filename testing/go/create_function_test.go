@@ -70,7 +70,6 @@ $$ LANGUAGE plpgsql;`},
 		},
 		{
 			Name: "SELECT INTO",
-			Skip: true, // TODO: INSERT INTO's results can't be fetched from within the block
 			SetUpScript: []string{`CREATE FUNCTION interpreted_select_into(input INT4) RETURNS TEXT AS $$
 DECLARE
     ret TEXT;
@@ -79,52 +78,6 @@ BEGIN
 	DROP TABLE IF EXISTS temp_table;
     CREATE TABLE temp_table (pk SERIAL PRIMARY KEY, v1 TEXT NOT NULL);
     INSERT INTO temp_table (v1) VALUES ('abc'), ('def'), ('ghi');
-	SELECT COUNT(*) INTO count FROM temp_table;
-    IF input > 0 AND input <= count THEN
-        SELECT v1 INTO ret FROM temp_table WHERE pk = input;
-    ELSE
-        ret := 'out of bounds';
-    END IF;
-    RETURN ret;
-END;
-$$ LANGUAGE plpgsql;`},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: "SELECT interpreted_select_into(1);",
-					Expected: []sql.Row{
-						{"abc"},
-					},
-				},
-				{
-					Query: "SELECT interpreted_select_into(2);",
-					Expected: []sql.Row{
-						{"def"},
-					},
-				},
-				{
-					Query: "SELECT interpreted_select_into(3);",
-					Expected: []sql.Row{
-						{"ghi"},
-					},
-				},
-				{
-					Query: "SELECT interpreted_select_into(4);",
-					Expected: []sql.Row{
-						{"out of bounds"},
-					},
-				},
-			},
-		},
-		{
-			Name: "SELECT INTO temporary",
-			SetUpScript: []string{
-				`CREATE TABLE temp_table (pk SERIAL PRIMARY KEY, v1 TEXT NOT NULL);`,
-				`INSERT INTO temp_table (v1) VALUES ('abc'), ('def'), ('ghi');`,
-				`CREATE FUNCTION interpreted_select_into(input INT4) RETURNS TEXT AS $$
-DECLARE
-    ret TEXT;
-	count INT4;
-BEGIN
 	SELECT COUNT(*) INTO count FROM temp_table;
     IF input > 0 AND input <= count THEN
         SELECT v1 INTO ret FROM temp_table WHERE pk = input;
@@ -193,7 +146,6 @@ $$ LANGUAGE plpgsql;`},
 		},
 		{
 			Name: "PERFORM",
-			Skip: true, // TODO: nextval isn't persisting its results when called within a function block
 			SetUpScript: []string{
 				`CREATE SEQUENCE test_sequence;`,
 				`CREATE FUNCTION interpreted_perform() RETURNS VOID AS $$
@@ -208,7 +160,7 @@ $$ LANGUAGE plpgsql;`},
 				},
 				{
 					Query:    "SELECT interpreted_perform();",
-					Expected: []sql.Row{nil}, // TODO: Postgres returns a value that's not null, but also not a value?
+					Expected: []sql.Row{{nil}}, // TODO: Postgres returns a value that's not null, but also not a value?
 				},
 				{
 					Query:    "SELECT nextval('test_sequence');",
