@@ -169,6 +169,29 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "WHILE",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_while(input INT4) RETURNS INT AS $$
+DECLARE
+	counter INT4;
+BEGIN
+	WHILE counter + input < 100 LOOP
+		-- Include more than one statement in the loop so it's not too simple 
+		counter = counter + 1;
+		counter = counter - 1;
+		counter = counter + 1;
+	END LOOP;
+	RETURN counter;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_while(42);",
+					Expected: []sql.Row{{58}},
+				},
+			},
+		},
+		{
 			// Tests that variable names are correctly substituted with references
 			// to the variables when the function is parsed.
 			Name: "Variable reference substitution",

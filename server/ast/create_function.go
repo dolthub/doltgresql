@@ -56,7 +56,12 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}
 	retType := pgtypes.Void
 	if len(node.RetType) == 1 {
-		retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(node.RetType[0].Type.SQLString()))
+		switch typ := node.RetType[0].Type.(type) {
+		case *types.T:
+			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.Name()))
+		default:
+			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.SQLString()))
+		}
 	}
 	paramNames := make([]string, len(node.Args))
 	paramTypes := make([]*pgtypes.DoltgresType, len(node.Args))
