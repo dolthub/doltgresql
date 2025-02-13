@@ -59,7 +59,7 @@ func convertTupleToIgnoreBoolean(valueDesc val.TupleDesc, valueTuple val.Tuple) 
 	return ignore, nil
 }
 
-// convertTupleToIgnoreBoolean reads a boolean from a tuple and returns it.
+// getIgnoreTablePatternKey reads the pattern key from a tuple and returns it.
 func getIgnoreTablePatternKey(keyDesc val.TupleDesc, keyTuple val.Tuple, ns tree.NodeStore) (string, error) {
 	extendedTuple := val.NewTupleDescriptorWithArgs(
 		val.TupleDescriptorArgs{Comparator: keyDesc.Comparator(), Handlers: keyDesc.Handlers},
