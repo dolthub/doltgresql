@@ -137,40 +137,6 @@ type plpgSQL_stmt_while struct {
 	LineNumber int32       `json:"lineno"`
 }
 
-// Convert converts the JSON statement into its output form.
-func (stmt *plpgSQL_stmt_while) Convert() (block Block, err error) {
-	// Convert the body of the loop first so we can determine the GOTO offsets
-	convertedLoopBodyStmts := make([]Statement, 0, len(stmt.Body))
-	for _, bodyStmt := range stmt.Body {
-		convertStmt, err := jsonConvertStatement(bodyStmt)
-		if err != nil {
-			return Block{}, err
-		}
-		convertedLoopBodyStmts = append(convertedLoopBodyStmts, convertStmt)
-	}
-
-	block = Block{
-		Body: []Statement{
-			If{
-				Condition: stmt.Condition.Expression.Query,
-				// Jump forward two statements, so we skip over the GOTO below that exits the WHILE loop.
-				GotoOffset: 2,
-			},
-			Goto{
-				// Jump forward 1 statement to get to the loop body, then jump over the loop body and the
-				// GOTO statement that jumps to the start of the WHILE loop.
-				Offset: 1 + int32(len(convertedLoopBodyStmts)) + 1,
-			},
-		},
-	}
-
-	// Add the converted body of the WHILE loop, and a GOTO statement that jumps backwards past the current
-	// GOTO statement, and past all the body statements, and past the GOTO statement at the start of the loop.
-	block.Body = append(block.Body, convertedLoopBodyStmts...)
-	block.Body = append(block.Body, Goto{Offset: -1 * (int32(len(convertedLoopBodyStmts)) + 2)})
-	return block, nil
-}
-
 // plpgSQL_type exists to match the expected JSON format.
 type plpgSQL_type struct {
 	Name string `json:"typname"`
@@ -309,4 +275,38 @@ func (stmt *plpgSQL_stmt_return) Convert() Return {
 	return Return{
 		Expression: stmt.Expression.Expression.Query,
 	}
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_while) Convert() (block Block, err error) {
+	// Convert the body of the loop first so we can determine the GOTO offsets
+	convertedLoopBodyStmts := make([]Statement, 0, len(stmt.Body))
+	for _, bodyStmt := range stmt.Body {
+		convertStmt, err := jsonConvertStatement(bodyStmt)
+		if err != nil {
+			return Block{}, err
+		}
+		convertedLoopBodyStmts = append(convertedLoopBodyStmts, convertStmt)
+	}
+
+	block = Block{
+		Body: []Statement{
+			If{
+				Condition: stmt.Condition.Expression.Query,
+				// Jump forward two statements, so we skip over the GOTO below that exits the WHILE loop.
+				GotoOffset: 2,
+			},
+			Goto{
+				// Jump forward 1 statement to get to the loop body, then jump over the loop body and the
+				// GOTO statement that jumps to the start of the WHILE loop.
+				Offset: 1 + int32(len(convertedLoopBodyStmts)) + 1,
+			},
+		},
+	}
+
+	// Add the converted body of the WHILE loop, and a GOTO statement that jumps backwards past the current
+	// GOTO statement, and past all the body statements, and past the GOTO statement at the start of the loop.
+	block.Body = append(block.Body, convertedLoopBodyStmts...)
+	block.Body = append(block.Body, Goto{Offset: -1 * (int32(len(convertedLoopBodyStmts)) + 2)})
+	return block, nil
 }
