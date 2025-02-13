@@ -85,11 +85,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
-					Query: "DELETE FROM test WHERE v1 = 'twelve'",
+					Query:            "DELETE FROM test WHERE v1 = 'twelve'",
 					SkipResultsCheck: true,
 				},
 				{
-					Query: "SELECT * FROM test WHERE v1 = 'twelve' ORDER BY pk;",
+					Query:    "SELECT * FROM test WHERE v1 = 'twelve' ORDER BY pk;",
 					Expected: []sql.Row{},
 				},
 			},
