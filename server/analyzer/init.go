@@ -36,6 +36,7 @@ const (
 	ruleId_ReplaceArithmeticExpressions                               // replaceArithmeticExpressions
 	ruleId_OptimizeFunctions                                          // optimizeFunctions
 	ruleId_ValidateColumnDefaults                                     // validateColumnDefaults
+	ruleId_ValidateCreateTable                                        // validateCreateTable
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -50,12 +51,16 @@ func Init() {
 		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 	)
 
-	// We remove the original column default rule, as we have our own implementation
-	analyzer.OnceBeforeDefault = removeAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId)
-
 	// PostgreSQL doesn't have the concept of prefix lengths, so we add a rule to implicitly add them
+	// TODO: this should be replaced by implementing automatic toast semantics for blob types
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths}},
 		analyzer.OnceBeforeDefault...)
+
+	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateCreateTableId, true,
+		analyzer.Rule{Id: ruleId_ValidateCreateTable, Apply: validateCreateTable})
+
+	// We remove the original column default and create table validation rules, as we have our own implementations
+	analyzer.OnceBeforeDefault = removeAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId, analyzer.ValidateCreateTableId)
 
 	// Remove all other validation rules that do not apply to Postgres
 	analyzer.DefaultValidationRules = removeAnalyzerRules(analyzer.DefaultValidationRules, analyzer.ValidateOperandsId)
@@ -81,13 +86,13 @@ func insertAnalyzerRules(rules []analyzer.Rule, id analyzer.RuleId, before bool,
 	for i, rule := range rules {
 		if rule.Id == id {
 			if before {
-				copy(newRules, analyzer.OnceAfterAll[:i])
+				copy(newRules, rules[:i])
 				copy(newRules[i:], additionalRules)
-				copy(newRules[i+len(additionalRules):], analyzer.OnceAfterAll[i:])
+				copy(newRules[i+len(additionalRules):], rules[i:])
 			} else {
-				copy(newRules, analyzer.OnceAfterAll[:i+1])
+				copy(newRules, rules[:i+1])
 				copy(newRules[i+1:], additionalRules)
-				copy(newRules[i+1+len(additionalRules):], analyzer.OnceAfterAll[i+1:])
+				copy(newRules[i+1+len(additionalRules):], rules[i+1:])
 			}
 			break
 		}
@@ -101,7 +106,7 @@ func removeAnalyzerRules(rules []analyzer.Rule, remove ...analyzer.RuleId) []ana
 	for _, removal := range remove {
 		ids[removal] = struct{}{}
 	}
-	newRules := make([]analyzer.Rule, 0, len(rules))
+	var newRules []analyzer.Rule
 	for _, rule := range rules {
 		if _, ok := ids[rule.Id]; !ok {
 			newRules = append(newRules, rule)

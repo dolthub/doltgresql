@@ -36,15 +36,20 @@ import (
 )
 
 // DoltgresType represents a single type.
+// TODO: the serialization logic always serializes every field for built-in types, which is kind of silly. They are
+//
+//	effectively hard-coded. We could serialize much more cheaply by only serializing values which can't be derived
+//	(for custom types) and hard-coding everything else.
 type DoltgresType struct {
-	ID            id.Type
-	TypLength     int16
-	PassedByVal   bool
-	TypType       TypeType
-	TypCategory   TypeCategory
-	IsPreferred   bool
-	IsDefined     bool
-	Delimiter     string
+	ID          id.Type
+	TypType     TypeType
+	TypCategory TypeCategory
+	TypLength   int16
+	PassedByVal bool
+	IsPreferred bool
+	IsDefined   bool
+	Delimiter   string
+
 	RelID         id.Id // for Composite types
 	SubscriptFunc uint32
 	Elem          id.Type
@@ -58,14 +63,15 @@ type DoltgresType struct {
 	AnalyzeFunc   uint32
 	Align         TypeAlignment
 	Storage       TypeStorage
-	NotNull       bool    // for Domain types
-	BaseTypeID    id.Type // for Domain types
-	TypMod        int32   // for Domain types
-	NDims         int32   // for Domain types
-	TypCollation  id.Collation
-	DefaulBin     string // for Domain types
-	Default       string
-	Acl           []string // TODO: list of privileges
+
+	NotNull      bool    // for Domain types
+	BaseTypeID   id.Type // for Domain types
+	TypMod       int32   // for Domain types
+	NDims        int32   // for Domain types
+	TypCollation id.Collation
+	DefaulBin    string // for Domain types
+	Default      string
+	Acl          []string // TODO: list of privileges
 
 	// Below are not part of pg_type fields
 	Checks         []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
@@ -519,34 +525,10 @@ func (t *DoltgresType) MaxCharacterLength() int64 {
 
 // MaxSerializedWidth implements the types.ExtendedType interface.
 func (t *DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
-	// TODO: need better way to get accurate result
-	switch t.TypCategory {
-	case TypeCategory_ArrayTypes:
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	case TypeCategory_BooleanTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	case TypeCategory_CompositeTypes, TypeCategory_EnumTypes, TypeCategory_GeometricTypes, TypeCategory_NetworkAddressTypes,
-		TypeCategory_RangeTypes, TypeCategory_PseudoTypes, TypeCategory_UserDefinedTypes, TypeCategory_BitStringTypes,
-		TypeCategory_InternalUseTypes:
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	case TypeCategory_DateTimeTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	case TypeCategory_NumericTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
-		if t.ID == VarChar.ID {
-			l := t.Length()
-			if l != StringUnbounded && l <= stringInline {
-				return types.ExtendedTypeSerializedWidth_64K
-			}
-		}
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	case TypeCategory_TimespanTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	default:
-		// shouldn't happen
+	if t.TypLength < 0 {
 		return types.ExtendedTypeSerializedWidth_Unbounded
 	}
+	return types.ExtendedTypeSerializedWidth_64K
 }
 
 // MaxTextResponseByteLength implements the types.ExtendedType interface.

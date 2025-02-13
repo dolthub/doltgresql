@@ -15,9 +15,12 @@
 package dtables
 
 import (
-	"github.com/cockroachdb/errors"
+	"context"
+	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -54,4 +57,33 @@ func convertTupleToIgnoreBoolean(valueDesc val.TupleDesc, valueTuple val.Tuple) 
 		return false, errors.Errorf("could not read boolean")
 	}
 	return ignore, nil
+}
+
+// getIgnoreTablePatternKey reads the pattern key from a tuple and returns it.
+func getIgnoreTablePatternKey(keyDesc val.TupleDesc, keyTuple val.Tuple, ns tree.NodeStore) (string, error) {
+	extendedTuple := val.NewTupleDescriptorWithArgs(
+		val.TupleDescriptorArgs{Comparator: keyDesc.Comparator(), Handlers: keyDesc.Handlers},
+		val.Type{Enc: val.ExtendedAddrEnc, Nullable: false},
+	)
+	if !keyDesc.Equals(extendedTuple) {
+		return "", fmt.Errorf("dolt_ignore had unexpected key type, this should never happen")
+	}
+
+	keyAddr, ok := keyDesc.GetExtendedAddr(0, keyTuple)
+	if !ok {
+		return "", fmt.Errorf("could not read pattern")
+	}
+
+	var b []byte
+	b, err := tree.NewByteArray(keyAddr, ns).ToBytes(context.Background())
+	if err != nil {
+		return "", err
+	}
+
+	key, err := keyDesc.Handlers[0].DeserializeValue(b)
+	if err != nil {
+		return "", err
+	}
+
+	return key.(string), nil
 }

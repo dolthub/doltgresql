@@ -54,6 +54,7 @@ func Init() {
 
 	// Conversions
 	doltdb.ConvertTupleToIgnoreBoolean = convertTupleToIgnoreBoolean
+	doltdb.GetIgnoreTablePatternKey = getIgnoreTablePatternKey
 	sqle.ConvertRebasePlanStepToRow = convertRebasePlanStepToRow
 	sqle.ConvertRowToRebasePlanStep = convertRowToRebasePlanStep
 	merge.MapCVType = mapCVType
