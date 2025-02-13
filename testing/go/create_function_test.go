@@ -192,6 +192,32 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "NULL",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_null(input INT) RETURNS TEXT AS $$
+BEGIN
+	IF input = 42 THEN
+		NULL;
+		NULL;
+	ELSE
+		RETURN 'No'; 
+	END IF;
+	NULL;
+	RETURN 'Yes'; 
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_null(42);",
+					Expected: []sql.Row{{"Yes"}},
+				},
+				{
+					Query:    "SELECT interpreted_null(43);",
+					Expected: []sql.Row{{"No"}},
+				},
+			},
+		},
+		{
 			// Tests that variable names are correctly substituted with references
 			// to the variables when the function is parsed.
 			Name: "Variable reference substitution",
