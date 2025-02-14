@@ -120,12 +120,6 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 					return nil, err
 				}
 			}
-		case OpCode_ExecuteDynamic:
-			// TODO: implement
-		case OpCode_For:
-			// TODO: implement
-		case OpCode_Foreach:
-			// TODO: implement
 		case OpCode_Get:
 			// TODO: implement
 		case OpCode_Goto:
@@ -161,17 +155,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			}
 		case OpCode_InsertInto:
 			// TODO: implement
-		case OpCode_Loop:
-			// TODO: implement
 		case OpCode_Perform:
-			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
-			if err != nil {
-				return nil, err
-			}
-			if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
-				return nil, err
-			}
-		case OpCode_Query:
 			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
 				return nil, err
@@ -189,10 +173,6 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		case OpCode_ScopeEnd:
 			stack.PopScope()
 		case OpCode_SelectInto:
-			// TODO: implement
-		case OpCode_When:
-			// TODO: implement
-		case OpCode_While:
 			// TODO: implement
 		case OpCode_UpdateInto:
 			// TODO: implement

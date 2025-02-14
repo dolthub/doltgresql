@@ -45,5 +45,8 @@ func Parse(fullCreateFunctionString string) ([]InterpreterOperation, error) {
 	if err = block.AppendOperations(&ops, &stack); err != nil {
 		return nil, err
 	}
+	if err = reconcileLabels(ops); err != nil {
+		return nil, err
+	}
 	return ops, nil
 }
