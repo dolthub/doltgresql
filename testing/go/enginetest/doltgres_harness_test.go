@@ -701,6 +701,11 @@ func getDmlResult(rows pgx.Rows) (sql.Row, bool) {
 
 	switch true {
 	case tag.Insert():
+		// TODO: PostgreSQL allows DML statements to return results via the RETURNING clause of INSERT/DELETE/UPDATE
+		//       We can't rely on just the statement tag anymore to know if a query will return results.
+		if true {
+			return nil, false
+		}
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
 	case tag.Update():
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true

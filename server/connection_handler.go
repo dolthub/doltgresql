@@ -912,6 +912,8 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	// |rowsAffected| gets altered by the callback below
 	rowsAffected := int32(0)
 
+	// TODO: Technically... we need more than the statementTag to determine if a query sends back rows or not
+	//       For example, INSERT/UPDATE/DELETE can return results via the RETURNING clause.
 	callback := h.spoolRowsCallback(query.StatementTag, &rowsAffected, false)
 	err := h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, query.String, query.AST, callback)
 	if err != nil {
@@ -1168,6 +1170,11 @@ func (h *ConnectionHandler) send(message pgproto3.BackendMessage) error {
 func returnsRow(tag string) bool {
 	switch tag {
 	case "SELECT", "SHOW", "FETCH", "EXPLAIN", "SHOW TABLES":
+		return true
+	case "INSERT":
+		// TODO: The RETURNING clause allows INSERT/UPDATE/DELETE to return rows. We need a way to ask
+		//       the query if it has results to return or not. It won't be possible to just assume that DDL
+		//       operations don't return results anymore.
 		return true
 	default:
 		return false
