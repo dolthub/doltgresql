@@ -33,14 +33,16 @@ type InterpreterVariable struct {
 // InterpreterScopeDetails contains all of the details that are relevant to a particular scope.
 type InterpreterScopeDetails struct {
 	variables map[string]*InterpreterVariable
+	label     string
 }
 
 // InterpreterStack represents the working information that an interpreter will use during execution. It is not exactly
 // the same as a stack in the traditional programming sense, but rather is a loose abstraction that serves the same
 // general purpose.
 type InterpreterStack struct {
-	stack  *utils.Stack[*InterpreterScopeDetails]
-	runner analyzer.StatementRunner
+	stack   *utils.Stack[*InterpreterScopeDetails]
+	runner  analyzer.StatementRunner
+	labelID int
 }
 
 // NewInterpreterStack creates a new InterpreterStack.
@@ -64,6 +66,18 @@ func (is *InterpreterStack) Details() *InterpreterScopeDetails {
 // Runner returns the runner that is being used for the function's execution.
 func (is *InterpreterStack) Runner() analyzer.StatementRunner {
 	return is.runner
+}
+
+// GetCurrentLabel traverses the stack (starting from the top) returning the first label found. Returns an empty string
+// if no labels were set.
+func (is *InterpreterStack) GetCurrentLabel() string {
+	for i := 0; i < is.stack.Len(); i++ {
+		label := is.stack.PeekDepth(i).label
+		if len(label) > 0 {
+			return label
+		}
+	}
+	return ""
 }
 
 // GetVariable traverses the stack (starting from the top) to find a variable with a matching name. Returns nil if no
@@ -130,4 +144,16 @@ func (is *InterpreterStack) SetVariable(ctx *sql.Context, name string, val any) 
 	}
 	iv.Value = val
 	return nil
+}
+
+// SetLabel sets the label for the current scope.
+func (is *InterpreterStack) SetLabel(label string) {
+	is.stack.Peek().label = label
+}
+
+// SetAnonymousLabel sets the label for the current scope to a guaranteed unique value.
+func (is *InterpreterStack) SetAnonymousLabel() {
+	// Postgres labels cannot have a tab character, so we can generate a label with one to guarantee it's unique
+	is.stack.Peek().label = fmt.Sprintf("\t%d", is.labelID)
+	is.labelID++
 }

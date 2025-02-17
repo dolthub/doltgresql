@@ -23,98 +23,6 @@ import (
 func TestCreateFunction(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "Assignment",
-			SetUpScript: []string{`CREATE FUNCTION interpreted_assignment(input TEXT) RETURNS TEXT AS $$
-DECLARE
-    var1 TEXT;
-BEGIN
-    var1 := 'Initial: ' || input;
-    IF input = 'Hello' THEN
-        var1 := var1 || ' - Greeting';
-    ELSIF input = 'Bye' THEN
-        var1 := var1 || ' - Farewell';
-    ELSIF length(input) > 5 THEN
-        var1 := var1 || ' - Over 5';
-    ELSE
-        var1 := var1 || ' - Else';
-    END IF;
-    RETURN var1;
-END;
-$$ LANGUAGE plpgsql;`},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: "SELECT interpreted_assignment('Hello');",
-					Expected: []sql.Row{
-						{"Initial: Hello - Greeting"},
-					},
-				},
-				{
-					Query: "SELECT interpreted_assignment('Bye');",
-					Expected: []sql.Row{
-						{"Initial: Bye - Farewell"},
-					},
-				},
-				{
-					Query: "SELECT interpreted_assignment('abc');",
-					Expected: []sql.Row{
-						{"Initial: abc - Else"},
-					},
-				},
-				{
-					Query: "SELECT interpreted_assignment('something');",
-					Expected: []sql.Row{
-						{"Initial: something - Over 5"},
-					},
-				},
-			},
-		},
-		{
-			Name: "SELECT INTO",
-			SetUpScript: []string{`CREATE FUNCTION interpreted_select_into(input INT4) RETURNS TEXT AS $$
-DECLARE
-    ret TEXT;
-	count INT4;
-BEGIN
-	DROP TABLE IF EXISTS temp_table;
-    CREATE TABLE temp_table (pk SERIAL PRIMARY KEY, v1 TEXT NOT NULL);
-    INSERT INTO temp_table (v1) VALUES ('abc'), ('def'), ('ghi');
-	SELECT COUNT(*) INTO count FROM temp_table;
-    IF input > 0 AND input <= count THEN
-        SELECT v1 INTO ret FROM temp_table WHERE pk = input;
-    ELSE
-        ret := 'out of bounds';
-    END IF;
-    RETURN ret;
-END;
-$$ LANGUAGE plpgsql;`},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: "SELECT interpreted_select_into(1);",
-					Expected: []sql.Row{
-						{"abc"},
-					},
-				},
-				{
-					Query: "SELECT interpreted_select_into(2);",
-					Expected: []sql.Row{
-						{"def"},
-					},
-				},
-				{
-					Query: "SELECT interpreted_select_into(3);",
-					Expected: []sql.Row{
-						{"ghi"},
-					},
-				},
-				{
-					Query: "SELECT interpreted_select_into(4);",
-					Expected: []sql.Row{
-						{"out of bounds"},
-					},
-				},
-			},
-		},
-		{
 			Name: "ALIAS",
 			// TODO: Implement OpCode conversion for parsed ALIAS statements.
 			Skip: true,
@@ -145,6 +53,183 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "Assignment",
+			SetUpScript: []string{`CREATE FUNCTION interpreted_assignment(input TEXT) RETURNS TEXT AS $$
+DECLARE
+	var1 TEXT;
+BEGIN
+	var1 := 'Initial: ' || input;
+	IF input = 'Hello' THEN
+		var1 := var1 || ' - Greeting';
+	ELSIF input = 'Bye' THEN
+		var1 := var1 || ' - Farewell';
+	ELSIF length(input) > 5 THEN
+		var1 := var1 || ' - Over 5';
+	ELSE
+		var1 := var1 || ' - Else';
+	END IF;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT interpreted_assignment('Hello');",
+					Expected: []sql.Row{
+						{"Initial: Hello - Greeting"},
+					},
+				},
+				{
+					Query: "SELECT interpreted_assignment('Bye');",
+					Expected: []sql.Row{
+						{"Initial: Bye - Farewell"},
+					},
+				},
+				{
+					Query: "SELECT interpreted_assignment('abc');",
+					Expected: []sql.Row{
+						{"Initial: abc - Else"},
+					},
+				},
+				{
+					Query: "SELECT interpreted_assignment('something');",
+					Expected: []sql.Row{
+						{"Initial: something - Over 5"},
+					},
+				},
+			},
+		},
+		{
+			Name: "CONTINUE",
+			SetUpScript: []string{`CREATE FUNCTION interpreted_continue() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4;
+BEGIN
+	LOOP
+		var1 := var1 + 1;
+		IF var1 < 4 THEN
+			CONTINUE;
+		END IF;
+		RETURN var1;
+	END LOOP;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_continue();",
+					Expected: []sql.Row{{4}},
+				},
+			},
+		},
+		{
+			Name: "CONTINUE Label",
+			SetUpScript: []string{`CREATE FUNCTION interpreted_continue_label() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4;
+BEGIN
+	<<cont_label>>
+	LOOP
+		var1 := var1 + 1;
+		IF var1 < 6 THEN
+			CONTINUE cont_label;
+		END IF;
+		RETURN var1;
+	END LOOP;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_continue_label();",
+					Expected: []sql.Row{{6}},
+				},
+			},
+		},
+		{
+			Name: "EXIT",
+			SetUpScript: []string{`CREATE FUNCTION interpreted_exit() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4;
+BEGIN
+	LOOP
+		var1 := var1 + 1;
+		IF var1 >= 8 THEN
+			EXIT;
+		END IF;
+	END LOOP;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_exit();",
+					Expected: []sql.Row{{8}},
+				},
+			},
+		},
+		{
+			Name: "EXIT WHEN",
+			SetUpScript: []string{`CREATE FUNCTION interpreted_exit_when() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4;
+BEGIN
+	LOOP
+		var1 := var1 + 1;
+		EXIT WHEN var1 >= 9;
+	END LOOP;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_exit_when();",
+					Expected: []sql.Row{{9}},
+				},
+			},
+		},
+		{
+			Name: "LOOP",
+			SetUpScript: []string{`CREATE FUNCTION interpreted_loop() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4;
+BEGIN
+	LOOP
+		var1 := var1 + 1;
+		IF var1 >= 10 THEN
+			RETURN var1;
+		END IF;
+	END LOOP;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_loop();",
+					Expected: []sql.Row{{10}},
+				},
+			},
+		},
+		{
+			Name: "LOOP Label",
+			SetUpScript: []string{`CREATE FUNCTION interpreted_loop_label() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4;
+BEGIN
+	<<loop_label>>
+	LOOP
+		var1 := var1 + 1;
+		IF var1 >= 12 THEN
+			EXIT loop_label;
+		END IF;
+	END LOOP;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_loop_label();",
+					Expected: []sql.Row{{12}},
+				},
+			},
+		},
+		{
 			Name: "PERFORM",
 			SetUpScript: []string{
 				`CREATE SEQUENCE test_sequence;`,
@@ -169,6 +254,52 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "SELECT INTO",
+			SetUpScript: []string{`CREATE FUNCTION interpreted_select_into(input INT4) RETURNS TEXT AS $$
+DECLARE
+	ret TEXT;
+	count INT4;
+BEGIN
+	DROP TABLE IF EXISTS temp_table;
+	CREATE TABLE temp_table (pk SERIAL PRIMARY KEY, v1 TEXT NOT NULL);
+	INSERT INTO temp_table (v1) VALUES ('abc'), ('def'), ('ghi');
+	SELECT COUNT(*) INTO count FROM temp_table;
+	IF input > 0 AND input <= count THEN
+		SELECT v1 INTO ret FROM temp_table WHERE pk = input;
+	ELSE
+		ret := 'out of bounds';
+	END IF;
+	RETURN ret;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT interpreted_select_into(1);",
+					Expected: []sql.Row{
+						{"abc"},
+					},
+				},
+				{
+					Query: "SELECT interpreted_select_into(2);",
+					Expected: []sql.Row{
+						{"def"},
+					},
+				},
+				{
+					Query: "SELECT interpreted_select_into(3);",
+					Expected: []sql.Row{
+						{"ghi"},
+					},
+				},
+				{
+					Query: "SELECT interpreted_select_into(4);",
+					Expected: []sql.Row{
+						{"out of bounds"},
+					},
+				},
+			},
+		},
+		{
 			Name: "WHILE",
 			SetUpScript: []string{
 				`CREATE FUNCTION interpreted_while(input INT4) RETURNS INT AS $$
@@ -188,6 +319,31 @@ $$ LANGUAGE plpgsql;`},
 				{
 					Query:    "SELECT interpreted_while(42);",
 					Expected: []sql.Row{{58}},
+				},
+			},
+		},
+		{
+			Name: "WHILE Label",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_while_label(input INT4) RETURNS INT AS $$
+DECLARE
+	counter INT4;
+BEGIN
+	<<while_label>>
+	WHILE input < 1000 LOOP
+		input := input + 1;
+		counter := counter + 1;
+		IF counter >= 10 THEN
+			EXIT while_label;
+		END IF;
+	END LOOP;
+	RETURN input;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_while_label(42);",
+					Expected: []sql.Row{{52}},
 				},
 			},
 		},
@@ -224,7 +380,7 @@ $$ LANGUAGE plpgsql;`},
 			SetUpScript: []string{`
 CREATE FUNCTION test1(input TEXT) RETURNS TEXT AS $$
 DECLARE
-    var1 TEXT;
+	var1 TEXT;
 BEGIN
 	var1 := 'input' || input;
 	IF var1 = 'input' || input THEN
