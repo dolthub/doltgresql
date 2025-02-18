@@ -29,6 +29,10 @@ table RootValue {
   schemas:[DatabaseSchema];
 
   sequences:[ubyte];
+
+  types:[ubyte];
+
+  functions:[ubyte];
 }
 
 table DatabaseSchema {

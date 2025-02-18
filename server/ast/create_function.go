@@ -79,6 +79,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		Statement: pgnodes.NewCreateFunction(
 			tableName.Table(),
 			schemaName,
+			node.Replace,
 			retType,
 			paramNames,
 			paramTypes,
