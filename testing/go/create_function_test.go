@@ -398,5 +398,58 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "Overloading",
+			SetUpScript: []string{`CREATE FUNCTION interpreted_overload(input TEXT) RETURNS TEXT AS $$
+DECLARE
+	var1 TEXT;
+BEGIN
+	IF length(input) > 3 THEN
+		var1 := input || '_long';
+	ELSE
+		var1 := input;
+	END IF;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION interpreted_overload(input INT4) RETURNS INT4 AS $$
+DECLARE
+	var1 INT4;
+BEGIN
+	IF input > 3 THEN
+		var1 := -input;
+	ELSE
+		var1 := input;
+	END IF;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT interpreted_overload('abc');",
+					Expected: []sql.Row{
+						{"abc"},
+					},
+				},
+				{
+					Query: "SELECT interpreted_overload('abcd');",
+					Expected: []sql.Row{
+						{"abcd_long"},
+					},
+				},
+				{
+					Query: "SELECT interpreted_overload(3);",
+					Expected: []sql.Row{
+						{3},
+					},
+				},
+				{
+					Query: "SELECT interpreted_overload(4);",
+					Expected: []sql.Row{
+						{-4},
+					},
+				},
+			},
+		},
 	})
 }

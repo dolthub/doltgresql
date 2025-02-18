@@ -273,6 +273,22 @@ func (writer *Writer) StringSlice(vals []string) {
 	}
 }
 
+// IdSlice writes a slice of internal IDs.
+func (writer *Writer) IdSlice(vals []id.Id) {
+	writer.VariableUint(uint64(len(vals)))
+	for i := range vals {
+		writer.Id(vals[i])
+	}
+}
+
+// IdTypeSlice writes a slice of internal type IDs.
+func (writer *Writer) IdTypeSlice(vals []id.Type) {
+	writer.VariableUint(uint64(len(vals)))
+	for i := range vals {
+		writer.Id(vals[i].AsId())
+	}
+}
+
 // Data returns the data written to the Writer.
 func (writer *Writer) Data() []byte {
 	return writer.buf.Bytes()

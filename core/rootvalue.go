@@ -30,6 +30,7 @@ import (
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
 
+	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/typecollection"
@@ -206,6 +207,29 @@ func (root *RootValue) GetForeignKeyCollection(ctx context.Context) (*doltdb.For
 	return root.fkc.Copy(), nil
 }
 
+// GetFunctions returns all functions that are on the root.
+func (root *RootValue) GetFunctions(ctx context.Context) (*functions.Collection, error) {
+	h := root.st.GetFunctions()
+	if h.IsEmpty() {
+		return functions.Deserialize(ctx, nil)
+	}
+	dataValue, err := root.vrw.ReadValue(ctx, h)
+	if err != nil {
+		return nil, err
+	}
+	dataBlob := dataValue.(types.Blob)
+	dataBlobLength := dataBlob.Len()
+	data := make([]byte, dataBlobLength)
+	n, err := dataBlob.ReadAt(context.Background(), data, 0)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	if uint64(n) != dataBlobLength {
+		return nil, errors.Errorf("wanted %d bytes from blob for functions, got %d", dataBlobLength, n)
+	}
+	return functions.Deserialize(ctx, data)
+}
+
 // GetSequences returns all sequences that are on the root.
 func (root *RootValue) GetSequences(ctx context.Context) (*sequences.Collection, error) {
 	h := root.st.GetSequences()
@@ -227,29 +251,6 @@ func (root *RootValue) GetSequences(ctx context.Context) (*sequences.Collection,
 		return nil, errors.Errorf("wanted %d bytes from blob for sequences, got %d", dataBlobLength, n)
 	}
 	return sequences.Deserialize(ctx, data)
-}
-
-// GetTypes returns all types that are on the root.
-func (root *RootValue) GetTypes(ctx context.Context) (*typecollection.TypeCollection, error) {
-	h := root.st.GetTypes()
-	if h.IsEmpty() {
-		return typecollection.Deserialize(ctx, nil)
-	}
-	dataValue, err := root.vrw.ReadValue(ctx, h)
-	if err != nil {
-		return nil, err
-	}
-	dataBlob := dataValue.(types.Blob)
-	dataBlobLength := dataBlob.Len()
-	data := make([]byte, dataBlobLength)
-	n, err := dataBlob.ReadAt(context.Background(), data, 0)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-	if uint64(n) != dataBlobLength {
-		return nil, errors.Errorf("wanted %d bytes from blob for types, got %d", dataBlobLength, n)
-	}
-	return typecollection.Deserialize(ctx, data)
 }
 
 // GetTable implements the interface doltdb.RootValue.
@@ -301,6 +302,29 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 	return names, nil
 }
 
+// GetTypes returns all types that are on the root.
+func (root *RootValue) GetTypes(ctx context.Context) (*typecollection.TypeCollection, error) {
+	h := root.st.GetTypes()
+	if h.IsEmpty() {
+		return typecollection.Deserialize(ctx, nil)
+	}
+	dataValue, err := root.vrw.ReadValue(ctx, h)
+	if err != nil {
+		return nil, err
+	}
+	dataBlob := dataValue.(types.Blob)
+	dataBlobLength := dataBlob.Len()
+	data := make([]byte, dataBlobLength)
+	n, err := dataBlob.ReadAt(context.Background(), data, 0)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	if uint64(n) != dataBlobLength {
+		return nil, errors.Errorf("wanted %d bytes from blob for types, got %d", dataBlobLength, n)
+	}
+	return typecollection.Deserialize(ctx, data)
+}
+
 // HandlePostMerge implements the interface doltdb.RootValue.
 func (root *RootValue) HandlePostMerge(ctx context.Context, ourRoot, theirRoot, ancRoot doltdb.RootValue) (doltdb.RootValue, error) {
 	// Handle sequences
@@ -309,7 +333,33 @@ func (root *RootValue) HandlePostMerge(ctx context.Context, ourRoot, theirRoot, 
 		return nil, err
 	}
 	// Handle types
-	return root.handlePostTypesMerge(ctx, ourRoot, theirRoot, ancRoot)
+	_, err = root.handlePostTypesMerge(ctx, ourRoot, theirRoot, ancRoot)
+	if err != nil {
+		return nil, err
+	}
+	// Handle functions
+	return root.handlePostFunctionsMerge(ctx, ourRoot, theirRoot, ancRoot)
+}
+
+// handlePostFunctionsMerge merges functions.
+func (root *RootValue) handlePostFunctionsMerge(ctx context.Context, ourRoot, theirRoot, ancRoot doltdb.RootValue) (doltdb.RootValue, error) {
+	ourFunctions, err := ourRoot.(*RootValue).GetFunctions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	theirFunctions, err := theirRoot.(*RootValue).GetFunctions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ancFunctions, err := ancRoot.(*RootValue).GetFunctions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mergedFunctions, err := functions.Merge(ctx, ourFunctions, theirFunctions, ancFunctions)
+	if err != nil {
+		return nil, err
+	}
+	return root.PutFunctions(ctx, mergedFunctions)
 }
 
 // handlePostSequencesMerge merges sequences.
@@ -441,27 +491,6 @@ func (root *RootValue) NomsValue() types.Value {
 	return root.st.nomsValue()
 }
 
-// PutTypes writes the given types to the returned root value.
-func (root *RootValue) PutTypes(ctx context.Context, typ *typecollection.TypeCollection) (*RootValue, error) {
-	data, err := typ.Serialize(ctx)
-	if err != nil {
-		return nil, err
-	}
-	dataBlob, err := types.NewBlob(ctx, root.vrw, bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	ref, err := root.vrw.WriteValue(ctx, dataBlob)
-	if err != nil {
-		return nil, err
-	}
-	newStorage, err := root.st.SetTypes(ctx, ref.TargetHash())
-	if err != nil {
-		return nil, err
-	}
-	return root.withStorage(newStorage), nil
-}
-
 // PutForeignKeyCollection implements the interface doltdb.RootValue.
 func (root *RootValue) PutForeignKeyCollection(ctx context.Context, fkc *doltdb.ForeignKeyCollection) (doltdb.RootValue, error) {
 	value, err := doltdb.SerializeForeignKeys(ctx, root.vrw, fkc)
@@ -475,8 +504,35 @@ func (root *RootValue) PutForeignKeyCollection(ctx context.Context, fkc *doltdb.
 	return root.withStorage(newStorage), nil
 }
 
+// PutFunctions writes the given functions to the returned root value.
+func (root *RootValue) PutFunctions(ctx context.Context, funcCollection *functions.Collection) (*RootValue, error) {
+	if funcCollection == nil {
+		return root, nil
+	}
+	data, err := funcCollection.Serialize(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dataBlob, err := types.NewBlob(ctx, root.vrw, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	ref, err := root.vrw.WriteValue(ctx, dataBlob)
+	if err != nil {
+		return nil, err
+	}
+	newStorage, err := root.st.SetFunctions(ctx, ref.TargetHash())
+	if err != nil {
+		return nil, err
+	}
+	return root.withStorage(newStorage), nil
+}
+
 // PutSequences writes the given sequences to the returned root value.
 func (root *RootValue) PutSequences(ctx context.Context, seq *sequences.Collection) (*RootValue, error) {
+	if seq == nil {
+		return root, nil
+	}
 	data, err := seq.Serialize(ctx)
 	if err != nil {
 		return nil, err
@@ -510,6 +566,30 @@ func (root *RootValue) PutTable(ctx context.Context, tName doltdb.TableName, tab
 	}
 
 	return root.putTable(ctx, tName, tableRef)
+}
+
+// PutTypes writes the given types to the returned root value.
+func (root *RootValue) PutTypes(ctx context.Context, typ *typecollection.TypeCollection) (*RootValue, error) {
+	if typ == nil {
+		return root, nil
+	}
+	data, err := typ.Serialize(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dataBlob, err := types.NewBlob(ctx, root.vrw, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	ref, err := root.vrw.WriteValue(ctx, dataBlob)
+	if err != nil {
+		return nil, err
+	}
+	newStorage, err := root.st.SetTypes(ctx, ref.TargetHash())
+	if err != nil {
+		return nil, err
+	}
+	return root.withStorage(newStorage), nil
 }
 
 // RemoveTables implements the interface doltdb.RootValue.
