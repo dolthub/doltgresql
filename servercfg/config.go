@@ -102,6 +102,14 @@ type DoltgresBehaviorConfig struct {
 	DoltTransactionCommit *bool `yaml:"dolt_transaction_commit,omitempty" minver:"0.7.4"`
 }
 
+// Implements dolt servercfg.AutoGCBehavior.
+type DoltgresAutoGCBehavior struct {
+}
+
+func (DoltgresAutoGCBehavior) Enable() bool {
+	return false
+}
+
 type DoltgresUserConfig struct {
 	Name     *string `yaml:"name,omitempty" minver:"0.7.4"`
 	Password *string `yaml:"password,omitempty" minver:"0.7.4"`
@@ -445,6 +453,10 @@ func (cfg *DoltgresConfig) ClusterConfig() servercfg.ClusterConfig {
 
 func (cfg *DoltgresConfig) EventSchedulerStatus() string {
 	return "OFF"
+}
+
+func (cfg *DoltgresConfig) AutoGCBehavior() servercfg.AutoGCBehavior {
+	return DoltgresAutoGCBehavior{}
 }
 
 func (cfg *DoltgresConfig) ValueSet(value string) bool {
