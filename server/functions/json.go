@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"unsafe"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -93,7 +94,8 @@ var json_build_array = framework.Function1{
 	Variadic: true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		inputArray := val1.([]any)
-		return json.Marshal(inputArray)
+		json, err := json.Marshal(inputArray)
+		return string(json), err
 	},
 }
 
@@ -107,20 +109,23 @@ var json_build_object = framework.Function1{
 		if len(inputArray)%2 != 0 {
 			return nil, sql.ErrInvalidArgumentNumber.New("json_build_object", "even number of arguments", len(inputArray))
 		}
-		var jsonObject map[string]any
+		jsonObject := make(map[string]any)
 		var key string
 		for _, e := range inputArray {
 			if key == "" {
 				var ok bool
 				key, ok = e.(string)
 				if !ok {
-					return nil, sql.ErrInvalidArgumentType.New("json_build_object", "string", e)
+					// TODO: not clear this is the correct approach for all values, may need special handling for some of them
+					key = fmt.Sprintf("%v", e)
 				}
 			} else {
 				jsonObject[key] = e
+				key = ""
 			}
 		}
-		
-		return json.Marshal(jsonObject)
+
+		json, err := json.Marshal(jsonObject)
+		return string(json), err
 	},
 }
