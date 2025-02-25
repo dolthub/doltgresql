@@ -118,7 +118,9 @@ var json_build_object = framework.Function1{
 				var ok bool
 				key, ok = e.(string)
 				if !ok {
-					// TODO: not clear this is the correct approach for all values, may need special handling for some of them
+					// TODO: This isn't correct for every type we might use as a value. To get better type info to transform
+					//  every value into its string format, we need to pass detailed arg type info for the vararg params (the
+					//  unused param in the function call).
 					key = fmt.Sprintf("%v", e)
 				}
 			} else {
