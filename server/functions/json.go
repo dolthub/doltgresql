@@ -87,11 +87,12 @@ var json_send = framework.Function1{
 	},
 }
 
+// json_build_array represents the PostgreSQL function json_build_array.
 var json_build_array = framework.Function1{
-	Name:               "json_build_array",
-	Return:             pgtypes.Json,
-	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
-	Variadic: true,
+	Name:       "json_build_array",
+	Return:     pgtypes.Json,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
+	Variadic:   true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		inputArray := val1.([]any)
 		json, err := json.Marshal(inputArray)
@@ -99,11 +100,12 @@ var json_build_array = framework.Function1{
 	},
 }
 
+// json_build_object represents the PostgreSQL function json_build_object.
 var json_build_object = framework.Function1{
 	Name:       "json_build_object",
 	Return:     pgtypes.Json,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
-	Variadic: true,
+	Variadic:   true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		inputArray := val1.([]any)
 		if len(inputArray)%2 != 0 {

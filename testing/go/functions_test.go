@@ -979,7 +979,7 @@ func TestJsonFunctions(t *testing.T) {
 				},
 				{
 					Query:    `SELECT json_build_array();`,
-					Skip: 	  true, // variadic functions can't handle 0 arguments right now
+					Skip:     true, // variadic functions can't handle 0 arguments right now
 					Cols:     []string{"json_build_array"},
 					Expected: []sql.Row{{`[]`}},
 				},
@@ -994,7 +994,7 @@ func TestJsonFunctions(t *testing.T) {
 					Expected: []sql.Row{{`{"a":2,"b":4}`}},
 				},
 				{
-					Query:    `SELECT json_build_object('a', 2, 'b');`,
+					Query:       `SELECT json_build_object('a', 2, 'b');`,
 					ExpectedErr: "even number",
 				},
 				{
