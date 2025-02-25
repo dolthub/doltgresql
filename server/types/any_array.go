@@ -31,7 +31,7 @@ var AnyArray = &DoltgresType{
 	Delimiter:     ",",
 	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          AnyElement.ID,
+	Elem:          id.NullType,
 	Array:         id.NullType,
 	InputFunc:     toFuncID("anyarray_in", toInternal("cstring")),
 	OutputFunc:    toFuncID("anyarray_out", toInternal("anyarray")),
