@@ -114,7 +114,7 @@ var json_build_object = framework.Function1{
 		jsonObject := make(map[string]any)
 		var key string
 		for i, e := range inputArray {
-			if i % 2 == 0 {
+			if i%2 == 0 {
 				var ok bool
 				key, ok = e.(string)
 				if !ok {

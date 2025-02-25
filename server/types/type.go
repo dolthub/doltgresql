@@ -112,17 +112,17 @@ func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 
 	var elem *DoltgresType
 	var ok bool
-	
+
 	elem, ok = IDToBuiltInDoltgresType[t.Elem]
 	if !ok {
-		// Some array types have no declared element type for pg_catalog compatibilty, but still have a logical type 
-		// we return for analysis 
+		// Some array types have no declared element type for pg_catalog compatibilty, but still have a logical type
+		// we return for analysis
 		elem, ok = LogicalArrayElementTypes[t.ID]
 		if !ok {
 			panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
 		}
 	}
-	
+
 	newElem := *elem.WithAttTypMod(t.attTypMod)
 	return &newElem
 }
