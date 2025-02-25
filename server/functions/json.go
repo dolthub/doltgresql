@@ -30,6 +30,8 @@ func initJson() {
 	framework.RegisterFunction(json_out)
 	framework.RegisterFunction(json_recv)
 	framework.RegisterFunction(json_send)
+	framework.RegisterFunction(json_build_array)
+	framework.RegisterFunction(json_build_object)
 }
 
 // json_in represents the PostgreSQL function of json type IO input.
@@ -81,5 +83,44 @@ var json_send = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		return []byte(val.(string)), nil
+	},
+}
+
+var json_build_array = framework.Function1{
+	Name:               "json_build_array",
+	Return:             pgtypes.Json,
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
+	Variadic: true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		inputArray := val1.([]any)
+		return json.Marshal(inputArray)
+	},
+}
+
+var json_build_object = framework.Function1{
+	Name:       "json_build_object",
+	Return:     pgtypes.Json,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
+	Variadic: true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		inputArray := val1.([]any)
+		if len(inputArray)%2 != 0 {
+			return nil, sql.ErrInvalidArgumentNumber.New("json_build_object", "even number of arguments", len(inputArray))
+		}
+		var jsonObject map[string]any
+		var key string
+		for _, e := range inputArray {
+			if key == "" {
+				var ok bool
+				key, ok = e.(string)
+				if !ok {
+					return nil, sql.ErrInvalidArgumentType.New("json_build_object", "string", e)
+				}
+			} else {
+				jsonObject[key] = e
+			}
+		}
+		
+		return json.Marshal(jsonObject)
 	},
 }

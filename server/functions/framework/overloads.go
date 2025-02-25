@@ -18,7 +18,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -86,9 +85,21 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 			// parameter count from the target parameter count to obtain the additional parameter count.
 			firstValueAfterVariadic := variadicIndex + 1 + (numParams - len(params))
 			copy(extendedParams[firstValueAfterVariadic:], params[variadicIndex+1:])
-			// ToArrayType immediately followed by BaseType is a way to get the base type without having to cast.
-			// For array types, ToArrayType causes them to return themselves.
-			variadicBaseType := overload.GetParameters()[variadicIndex].ToArrayType().ArrayBaseType()
+			paramType := overload.GetParameters()[variadicIndex]
+
+			var variadicBaseType *pgtypes.DoltgresType 
+			
+			// special case: anyArray takes any args, pass as is 
+			if paramType == pgtypes.AnyArray {
+				for variadicParamIdx := 0; variadicParamIdx < 1+(numParams-len(params)); variadicParamIdx++ {
+					variadicBaseType = pgtypes.Any
+				}
+			} else {
+				// ToArrayType immediately followed by BaseType is a way to get the base type without having to cast.
+				// For array types, ToArrayType causes them to return themselves.
+				variadicBaseType = paramType.ToArrayType().ArrayBaseType()
+			}
+			
 			for variadicParamIdx := 0; variadicParamIdx < 1+(numParams-len(params)); variadicParamIdx++ {
 				extendedParams[variadicParamIdx+variadicIndex] = variadicBaseType
 			}
