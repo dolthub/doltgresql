@@ -962,6 +962,51 @@ func TestSystemInformationFunctions(t *testing.T) {
 	})
 }
 
+func TestJsonFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "json_build_array",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_build_array(1, 2, 3);`,
+					Cols:     []string{"json_build_array"},
+					Expected: []sql.Row{{`[1,2,3]`}},
+				},
+				{
+					Query:    `SELECT json_build_array(1, '2', 3);`,
+					Cols:     []string{"json_build_array"},
+					Expected: []sql.Row{{`[1,"2",3]`}},
+				},
+				{
+					Query:    `SELECT json_build_array();`,
+					Skip:     true, // variadic functions can't handle 0 arguments right now
+					Cols:     []string{"json_build_array"},
+					Expected: []sql.Row{{`[]`}},
+				},
+			},
+		},
+		{
+			Name: "json_build_object",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_build_object('a', 2, 'b', 4);`,
+					Cols:     []string{"json_build_object"},
+					Expected: []sql.Row{{`{"a":2,"b":4}`}},
+				},
+				{
+					Query:       `SELECT json_build_object('a', 2, 'b');`,
+					ExpectedErr: "even number",
+				},
+				{
+					Query:    `SELECT json_build_object(1, 2, 'b', 3);`,
+					Cols:     []string{"json_build_object"},
+					Expected: []sql.Row{{`{"1":2,"b":3}`}},
+				},
+			},
+		},
+	})
+}
+
 func TestArrayFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

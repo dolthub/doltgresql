@@ -62,3 +62,10 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 		CompareFunc:   toFuncID("btarraycmp", toInternal("anyarray"), toInternal("anyarray")),
 	}
 }
+
+// LogicalArrayElementTypes is a map of array element types for particular array types where the logical type varies
+// from the declared type, as needed. Some types that have a NULL element for pg_catalog compatibility have a logical
+// type that we need during analysis for function calls.
+var LogicalArrayElementTypes = map[id.Type]*DoltgresType{
+	toInternal("anyarray"): AnyElement,
+}
