@@ -55,6 +55,6 @@ var domain_recv = framework.Function3{
 		t := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
 		typmod := val3.(int32)
 		t = t.WithAttTypMod(typmod)
-		return t.DeserializeValue(data)
+		return t.DeserializeValue(ctx, data)
 	},
 }

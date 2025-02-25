@@ -20,7 +20,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -36,7 +35,7 @@ func getDoltIgnoreSchema() sql.Schema {
 }
 
 // convertTupleToIgnoreBoolean reads a boolean from a tuple and returns it.
-func convertTupleToIgnoreBoolean(valueDesc val.TupleDesc, valueTuple val.Tuple) (bool, error) {
+func convertTupleToIgnoreBoolean(ctx context.Context, valueDesc val.TupleDesc, valueTuple val.Tuple) (bool, error) {
 	extendedTuple := val.NewTupleDescriptorWithArgs(
 		val.TupleDescriptorArgs{Comparator: valueDesc.Comparator(), Handlers: valueDesc.Handlers},
 		val.Type{Enc: val.ExtendedEnc, Nullable: false},
@@ -48,7 +47,7 @@ func convertTupleToIgnoreBoolean(valueDesc val.TupleDesc, valueTuple val.Tuple) 
 	if !ok {
 		return false, errors.Errorf("could not read boolean")
 	}
-	val, err := valueDesc.Handlers[0].DeserializeValue(extended)
+	val, err := valueDesc.Handlers[0].DeserializeValue(ctx, extended)
 	if err != nil {
 		return false, err
 	}
@@ -60,7 +59,7 @@ func convertTupleToIgnoreBoolean(valueDesc val.TupleDesc, valueTuple val.Tuple) 
 }
 
 // getIgnoreTablePatternKey reads the pattern key from a tuple and returns it.
-func getIgnoreTablePatternKey(keyDesc val.TupleDesc, keyTuple val.Tuple, ns tree.NodeStore) (string, error) {
+func getIgnoreTablePatternKey(ctx context.Context, keyDesc val.TupleDesc, keyTuple val.Tuple) (string, error) {
 	extendedTuple := val.NewTupleDescriptorWithArgs(
 		val.TupleDescriptorArgs{Comparator: keyDesc.Comparator(), Handlers: keyDesc.Handlers},
 		val.Type{Enc: val.ExtendedAddrEnc, Nullable: false},
@@ -74,13 +73,7 @@ func getIgnoreTablePatternKey(keyDesc val.TupleDesc, keyTuple val.Tuple, ns tree
 		return "", fmt.Errorf("could not read pattern")
 	}
 
-	var b []byte
-	b, err := tree.NewByteArray(keyAddr, ns).ToBytes(context.Background())
-	if err != nil {
-		return "", err
-	}
-
-	key, err := keyDesc.Handlers[0].DeserializeValue(b)
+	key, err := keyDesc.Handlers[0].DeserializeValue(ctx, keyAddr[:])
 	if err != nil {
 		return "", err
 	}
