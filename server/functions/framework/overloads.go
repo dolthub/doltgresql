@@ -92,7 +92,7 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 			// special case: anyArray takes any args, pass as is 
 			if paramType == pgtypes.AnyArray {
 				for variadicParamIdx := 0; variadicParamIdx < 1+(numParams-len(params)); variadicParamIdx++ {
-					variadicBaseType = pgtypes.Any
+					variadicBaseType = pgtypes.AnyElement
 				}
 			} else {
 				// ToArrayType immediately followed by BaseType is a way to get the base type without having to cast.

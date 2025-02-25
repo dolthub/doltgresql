@@ -973,9 +973,9 @@ func TestJsonFunctions(t *testing.T) {
 					Expected: []sql.Row{{`[1,2,3]`}},
 				},
 				{
-					Query:    `SELECT json_build_array(1, "2", 3);`,
+					Query:    `SELECT json_build_array(1, '2', 3);`,
 					Cols:     []string{"json_build_array"},
-					Expected: []sql.Row{{`[1,"2",3]`}},
+					Expected: []sql.Row{{`[1,"2"",3]`}},
 				},
 			},
 		},
