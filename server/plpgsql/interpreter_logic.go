@@ -16,12 +16,14 @@ package plpgsql
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/typecollection"
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -92,7 +94,26 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if err != nil {
 				return nil, err
 			}
-			resolvedType, exists := typeCollection.GetType(id.NewType("pg_catalog", operation.PrimaryData))
+
+			// pg_query_go sets PrimaryData for implicit CASE statement variables to
+			// `pg_catalog."integer"`, so we remove double-quotes and extract the schema name.
+			typeName := operation.PrimaryData
+			typeName = strings.ReplaceAll(typeName, `"`, "")
+			schemaName := "pg_catalog"
+			if strings.Contains(typeName, ".") {
+				parts := strings.Split(typeName, ".")
+				schemaName = parts[0]
+				typeName = parts[1]
+				// Check the NonKeyword type names to see if we're looking at
+				// an alias of a type if we're in the pg_catalog schema.
+				if schemaName == "pg_catalog" {
+					typ, ok, _ := types.TypeForNonKeywordTypeName(typeName)
+					if ok && typ != nil {
+						typeName = typ.Name()
+					}
+				}
+			}
+			resolvedType, exists := typeCollection.GetType(id.NewType(schemaName, typeName))
 			if !exists {
 				return nil, pgtypes.ErrTypeDoesNotExist.New(operation.PrimaryData)
 			}
