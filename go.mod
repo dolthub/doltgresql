@@ -1,6 +1,6 @@
 module github.com/dolthub/doltgresql
 
-go 1.23.3
+go 1.24.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
