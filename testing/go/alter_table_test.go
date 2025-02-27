@@ -180,7 +180,7 @@ func TestAlterTable(t *testing.T) {
 		},
 		{
 			Name: "Add primary key with generated column",
-			SetUpScript: []string {
+			SetUpScript: []string{
 				`CREATE TABLE t1 (
       id uuid DEFAULT public.gen_random_uuid() NOT NULL,
       data jsonb,
@@ -189,11 +189,11 @@ func TestAlterTable(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: " ALTER TABLE ONLY t1 ADD CONSTRAINT pk PRIMARY KEY (id);",
+					Query:            " ALTER TABLE ONLY t1 ADD CONSTRAINT pk PRIMARY KEY (id);",
 					SkipResultsCheck: true, // only care if it doesn't error
 				},
 				{
-					Query: "insert into t1 (id, data) values (default, '{}');",
+					Query:            "insert into t1 (id, data) values (default, '{}');",
 					SkipResultsCheck: true, // only care if it doesn't error
 				},
 				{

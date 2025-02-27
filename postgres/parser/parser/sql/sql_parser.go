@@ -87,4 +87,3 @@ func (p *PostgresParser) ParseOneWithOptions(_ context.Context, query string, _ 
 func (p *PostgresParser) QuoteIdentifier(identifier string) string {
 	return fmt.Sprintf("\"%s\"", strings.ReplaceAll(identifier, "\"", "\"\""))
 }
-
