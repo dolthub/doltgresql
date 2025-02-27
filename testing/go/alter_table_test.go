@@ -179,6 +179,32 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Add primary key with generated column",
+			SetUpScript: []string {
+				`CREATE TABLE t1 (
+      id uuid DEFAULT public.gen_random_uuid() NOT NULL,
+      data jsonb,
+      has_data boolean GENERATED ALWAYS AS ((data IS NOT NULL)) STORED
+  );`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: " ALTER TABLE ONLY t1 ADD CONSTRAINT pk PRIMARY KEY (id);",
+					SkipResultsCheck: true, // only care if it doesn't error
+				},
+				{
+					Query: "insert into t1 (id, data) values (default, '{}');",
+					SkipResultsCheck: true, // only care if it doesn't error
+				},
+				{
+					Query: "Select has_data from t1;",
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+			},
+		},
+		{
 			Name: "Add Column",
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a INT, b INT);",
