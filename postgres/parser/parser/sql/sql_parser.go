@@ -17,6 +17,7 @@ package sql
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
@@ -82,3 +83,8 @@ func (p *PostgresParser) ParseOneWithOptions(_ context.Context, query string, _ 
 	}
 	return vitessAST, 0, nil
 }
+
+func (p *PostgresParser) QuoteIdentifier(identifier string) string {
+	return fmt.Sprintf("\"%s\"", strings.ReplaceAll(identifier, "\"", "\"\""))
+}
+
