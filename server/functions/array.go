@@ -189,7 +189,7 @@ var array_recv = framework.Function3{
 			}
 			// The element data is everything from the offset to the next offset, excluding the null determinant
 			nextOffset := binary.LittleEndian.Uint32(data[(i+2)*4:])
-			o, err := baseType.DeserializeValue(data[offset+1 : nextOffset])
+			o, err := baseType.DeserializeValue(ctx, data[offset+1:nextOffset])
 			if err != nil {
 				return nil, err
 			}
@@ -230,7 +230,7 @@ var array_send = framework.Function1{
 			binary.LittleEndian.PutUint32(offsets[i*4:], currentOffset)
 			// Handle serialization of the value
 			// TODO: ARRAYs may be multidimensional, such as ARRAY[[4,2],[6,3]], which isn't accounted for here
-			serializedVal, err := baseType.SerializeValue(vals[i])
+			serializedVal, err := baseType.SerializeValue(ctx, vals[i])
 			if err != nil {
 				return nil, err
 			}

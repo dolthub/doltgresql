@@ -17,6 +17,7 @@ package types
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"fmt"
 	"math"
 	"reflect"
@@ -599,7 +600,7 @@ func (t *DoltgresType) SendFuncName() string {
 }
 
 // SerializedCompare implements the types.ExtendedType interface.
-func (t *DoltgresType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
+func (t *DoltgresType) SerializedCompare(ctx context.Context, v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
 	} else if len(v1) > 0 && len(v2) == 0 {
@@ -811,7 +812,7 @@ func (t *DoltgresType) Zero() interface{} {
 }
 
 // SerializeValue implements the types.ExtendedType interface.
-func (t *DoltgresType) SerializeValue(val any) ([]byte, error) {
+func (t *DoltgresType) SerializeValue(ctx context.Context, val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
@@ -832,7 +833,7 @@ func (t *DoltgresType) SerializeValue(val any) ([]byte, error) {
 }
 
 // DeserializeValue implements the types.ExtendedType interface.
-func (t *DoltgresType) DeserializeValue(val []byte) (any, error) {
+func (t *DoltgresType) DeserializeValue(ctx context.Context, val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}

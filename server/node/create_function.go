@@ -19,8 +19,10 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/functions"
+
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -29,6 +31,7 @@ import (
 type CreateFunction struct {
 	FunctionName   string
 	SchemaName     string
+	Replace        bool
 	ReturnType     *pgtypes.DoltgresType
 	ParameterNames []string
 	ParameterTypes []*pgtypes.DoltgresType
@@ -43,6 +46,7 @@ var _ vitess.Injectable = (*CreateFunction)(nil)
 func NewCreateFunction(
 	functionName string,
 	schemaName string,
+	replace bool,
 	retType *pgtypes.DoltgresType,
 	paramNames []string,
 	paramTypes []*pgtypes.DoltgresType,
@@ -51,6 +55,7 @@ func NewCreateFunction(
 	return &CreateFunction{
 		FunctionName:   functionName,
 		SchemaName:     schemaName,
+		Replace:        replace,
 		ReturnType:     retType,
 		ParameterNames: paramNames,
 		ParameterTypes: paramTypes,
@@ -80,16 +85,33 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	for i, typ := range c.ParameterTypes {
 		idTypes[i] = typ.ID
 	}
-	framework.RegisterFunction(framework.InterpretedFunction{
-		ID:                 id.NewFunction(c.SchemaName, c.FunctionName, idTypes...),
-		ReturnType:         c.ReturnType,
+	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	paramTypes := make([]id.Type, len(c.ParameterTypes))
+	for i, paramType := range c.ParameterTypes {
+		paramTypes[i] = paramType.ID
+	}
+	funcID := id.NewFunction(c.SchemaName, c.FunctionName, idTypes...)
+	if c.Replace && funcCollection.HasFunction(funcID) {
+		if err = funcCollection.DropFunction(funcID); err != nil {
+			return nil, err
+		}
+	}
+	err = funcCollection.AddFunction(&functions.Function{
+		ID:                 funcID,
+		ReturnType:         c.ReturnType.ID,
 		ParameterNames:     c.ParameterNames,
-		ParameterTypes:     c.ParameterTypes,
+		ParameterTypes:     paramTypes,
 		Variadic:           false, // TODO: implement this
 		IsNonDeterministic: true,
 		Strict:             c.Strict,
-		Statements:         c.Statements,
+		Operations:         c.Statements,
 	})
+	if err != nil {
+		return nil, err
+	}
 	return sql.RowsToRowIter(), nil
 }
 

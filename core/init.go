@@ -19,6 +19,7 @@ import (
 	"github.com/dolthub/dolt/go/store/types"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/plpgsql"
 )
 
 // Init initializes this package.
@@ -27,5 +28,6 @@ func Init() {
 	doltdb.NewRootValue = newRootValue
 	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
 	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
+	plpgsql.GetTypesCollectionFromContext = GetTypesCollectionFromContext
 	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
 }

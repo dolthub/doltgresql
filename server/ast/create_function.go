@@ -21,6 +21,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -55,19 +56,30 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}
 	retType := pgtypes.Void
 	if len(node.RetType) == 1 {
-		retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(node.RetType[0].Type.SQLString()))
+		switch typ := node.RetType[0].Type.(type) {
+		case *types.T:
+			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.Name()))
+		default:
+			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.SQLString()))
+		}
 	}
 	paramNames := make([]string, len(node.Args))
 	paramTypes := make([]*pgtypes.DoltgresType, len(node.Args))
 	for i, arg := range node.Args {
 		paramNames[i] = arg.Name.String()
-		paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(arg.Type.SQLString()))
+		switch argType := arg.Type.(type) {
+		case *types.T:
+			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.Name()))
+		default:
+			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.SQLString()))
+		}
 	}
 	// Returns the stored procedure call with all options
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateFunction(
 			tableName.Table(),
 			schemaName,
+			node.Replace,
 			retType,
 			paramNames,
 			paramTypes,

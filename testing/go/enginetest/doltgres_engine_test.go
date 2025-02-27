@@ -454,7 +454,6 @@ func TestDeleteFrom(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"DELETE FROM mytable ORDER BY i DESC LIMIT 1 OFFSET 1;", // offset is unsupported syntax
 		"DELETE FROM mytable WHERE (i,s) = (1, 'first row');",   // type error, needs investigation
-		"DELETE FROM mytable WHERE s = 'first row';",            // index lookup error
 		"with t (n) as (select (1) from dual) delete from mytable where i in (select n from t)",
 		"with recursive t (n) as (select (1) from dual union all select n + 1 from t where n < 2) delete from mytable where i in (select n from t)",
 	})

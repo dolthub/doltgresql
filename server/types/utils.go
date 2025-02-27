@@ -34,6 +34,9 @@ var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
 // ErrTypeDoesNotExist is returned when using given type that does not exist.
 var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
 
+// ErrFunctionDoesNotExist is returned when a specified function does not exist.
+var ErrFunctionDoesNotExist = errors.NewKind(`function %s does not exist`)
+
 // ErrUnhandledType is returned when the type of value does not match given type.
 var ErrUnhandledType = errors.NewKind(`%s: unhandled type: %T`)
 

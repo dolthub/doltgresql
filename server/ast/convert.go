@@ -123,6 +123,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDropDatabase(ctx, stmt)
 	case *tree.DropDomain:
 		return nodeDropDomain(ctx, stmt)
+	case *tree.DropFunction:
+		return nodeDropFunction(ctx, stmt)
 	case *tree.DropIndex:
 		return nodeDropIndex(ctx, stmt)
 	case *tree.DropRole:

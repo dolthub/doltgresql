@@ -20,8 +20,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/typecollection"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -35,6 +35,10 @@ type InterpretedFunction interface {
 	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (rowIter sql.RowIter, err error)
 	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
 }
+
+// GetTypesCollectionFromContext is declared within the core package, but is assigned to this variable to work around
+// import cycles.
+var GetTypesCollectionFromContext func(ctx *sql.Context) (*typecollection.TypeCollection, error)
 
 // Call runs the contained operations on the given runner.
 func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.StatementRunner, paramsAndReturn []*pgtypes.DoltgresType, vals []any) (any, error) {
@@ -84,7 +88,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		case OpCode_Case:
 			// TODO: implement
 		case OpCode_Declare:
-			typeCollection, err := core.GetTypesCollectionFromContext(ctx)
+			typeCollection, err := GetTypesCollectionFromContext(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -98,17 +102,28 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		case OpCode_Exception:
 			// TODO: implement
 		case OpCode_Execute:
-			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
-			if err != nil {
-				return nil, err
+			if len(operation.Target) > 0 {
+				target := stack.GetVariable(operation.Target)
+				if target == nil {
+					return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
+				}
+				retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, target.Type, operation.SecondaryData)
+				if err != nil {
+					return nil, err
+				}
+				err = stack.SetVariable(ctx, operation.Target, retVal)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+				if err != nil {
+					return nil, err
+				}
+				if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
+					return nil, err
+				}
 			}
-			if err = rowIter.Close(ctx); err != nil {
-				return nil, err
-			}
-		case OpCode_For:
-			// TODO: implement
-		case OpCode_Foreach:
-			// TODO: implement
 		case OpCode_Get:
 			// TODO: implement
 		case OpCode_Goto:
@@ -144,22 +159,12 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			}
 		case OpCode_InsertInto:
 			// TODO: implement
-		case OpCode_Loop:
-			// TODO: implement
 		case OpCode_Perform:
 			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
 				return nil, err
 			}
-			if err = rowIter.Close(ctx); err != nil {
-				return nil, err
-			}
-		case OpCode_Query:
-			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
-			if err != nil {
-				return nil, err
-			}
-			if err = rowIter.Close(ctx); err != nil {
+			if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
 				return nil, err
 			}
 		case OpCode_Return:
@@ -172,10 +177,6 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		case OpCode_ScopeEnd:
 			stack.PopScope()
 		case OpCode_SelectInto:
-			// TODO: implement
-		case OpCode_When:
-			// TODO: implement
-		case OpCode_While:
 			// TODO: implement
 		case OpCode_UpdateInto:
 			// TODO: implement

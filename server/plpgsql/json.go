@@ -35,6 +35,12 @@ type datatype struct {
 	Type plpgSQL_type `json:"PLpgSQL_type"`
 }
 
+// datum exists to match the expected JSON format.
+type datum struct {
+	Row      *plpgSQL_row `json:"PLpgSQL_row"`
+	Variable *plpgSQL_var `json:"PLpgSQL_var"`
+}
+
 // elsif exists to match the expected JSON format.
 type elsif struct {
 	ElseIf plpgSQL_if_elsif `json:"PLpgSQL_if_elsif"`
@@ -45,9 +51,10 @@ type expr struct {
 	Expression plpgSQL_expr `json:"PLpgSQL_expr"`
 }
 
-// datum exists to match the expected JSON format.
-type datum struct {
-	Variable plpgSQL_var `json:"PLpgSQL_var"`
+// field exists to match the expected JSON format.
+type field struct {
+	Name           string `json:"name"`
+	VariableNumber int32  `json:"varno"`
 }
 
 // function exists to match the expected JSON format.
@@ -67,6 +74,20 @@ type plpgSQL_expr struct {
 	ParseMode int32  `json:"parseMode"`
 }
 
+// plpgSQL_if_elsif exists to match the expected JSON format.
+type plpgSQL_if_elsif struct {
+	Condition  cond        `json:"cond"`
+	Then       []statement `json:"stmts"`
+	LineNumber int32       `json:"lineno"`
+}
+
+// plpgSQL_row exists to match the expected JSON format.
+type plpgSQL_row struct {
+	RefName    string  `json:"refname"`
+	Fields     []field `json:"fields"`
+	LineNumber int32   `json:"lineno"`
+}
+
 // plpgSQL_stmt_assign exists to match the expected JSON format.
 type plpgSQL_stmt_assign struct {
 	Expression     expr  `json:"expr"`
@@ -77,14 +98,24 @@ type plpgSQL_stmt_assign struct {
 // plpgSQL_stmt_block exists to match the expected JSON format.
 type plpgSQL_stmt_block struct {
 	Body       []statement `json:"body"`
+	Label      string      `json:"label"`
 	LineNumber int32       `json:"lineno"`
 }
 
-// plpgSQL_if_elsif exists to match the expected JSON format.
-type plpgSQL_if_elsif struct {
-	Condition  cond        `json:"cond"`
-	Then       []statement `json:"stmts"`
-	LineNumber int32       `json:"lineno"`
+// plpgSQL_stmt_execsql exists to match the expected JSON format.
+type plpgSQL_stmt_execsql struct {
+	SQLStmt    sqlstmt `json:"sqlstmt"`
+	LineNumber int32   `json:"lineno"`
+	Into       bool    `json:"into"`
+	Target     datum   `json:"target"`
+}
+
+// plpgSQL_stmt_exit exists to match the expected JSON format.
+type plpgSQL_stmt_exit struct {
+	Label      string `json:"label"`
+	IsExit     bool   `json:"is_exit"`
+	Condition  *expr  `json:"cond"`
+	LineNumber int32  `json:"lineno"`
 }
 
 // plpgSQL_stmt_if exists to match the expected JSON format.
@@ -96,10 +127,31 @@ type plpgSQL_stmt_if struct {
 	LineNumber int32       `json:"lineno"`
 }
 
+// plpgSQL_stmt_loop exists to match the expected JSON format.
+type plpgSQL_stmt_loop struct {
+	Body       []statement `json:"body"`
+	Label      string      `json:"label"`
+	LineNumber int32       `json:"lineno"`
+}
+
+// plpgSQL_stmt_perform exists to match the expected JSON format.
+type plpgSQL_stmt_perform struct {
+	Expression expr  `json:"expr"`
+	LineNumber int32 `json:"lineno"`
+}
+
 // plpgSQL_stmt_return exists to match the expected JSON format.
 type plpgSQL_stmt_return struct {
 	Expression expr  `json:"expr"`
 	LineNumber int32 `json:"lineno"`
+}
+
+// plpgSQL_stmt_while exists to match the expected JSON format.
+type plpgSQL_stmt_while struct {
+	Condition  cond        `json:"cond"`
+	Body       []statement `json:"body"`
+	Label      string      `json:"label"`
+	LineNumber int32       `json:"lineno"`
 }
 
 // plpgSQL_type exists to match the expected JSON format.
@@ -114,12 +166,22 @@ type plpgSQL_var struct {
 	LineNumber int32    `json:"lineno"`
 }
 
+// sqlstmt exists to match the expected JSON format.
+type sqlstmt struct {
+	Expr plpgSQL_expr `json:"PLpgSQL_expr"`
+}
+
 // statement exists to match the expected JSON format. Unlike other structs, this is used like a union rather than
 // having a singular expected implementation.
 type statement struct {
-	Assignment *plpgSQL_stmt_assign `json:"PLpgSQL_stmt_assign"`
-	If         *plpgSQL_stmt_if     `json:"PLpgSQL_stmt_if"`
-	Return     *plpgSQL_stmt_return `json:"PLpgSQL_stmt_return"`
+	Assignment *plpgSQL_stmt_assign  `json:"PLpgSQL_stmt_assign"`
+	ExecSQL    *plpgSQL_stmt_execsql `json:"PLpgSQL_stmt_execsql"`
+	Exit       *plpgSQL_stmt_exit    `json:"PLpgSQL_stmt_exit"`
+	If         *plpgSQL_stmt_if      `json:"PLpgSQL_stmt_if"`
+	Loop       *plpgSQL_stmt_loop    `json:"PLpgSQL_stmt_loop"`
+	Perform    *plpgSQL_stmt_perform `json:"PLpgSQL_stmt_perform"`
+	Return     *plpgSQL_stmt_return  `json:"PLpgSQL_stmt_return"`
+	While      *plpgSQL_stmt_while   `json:"PLpgSQL_stmt_while"`
 }
 
 // Convert converts the JSON statement into its output form.
@@ -140,6 +202,62 @@ func (stmt *plpgSQL_stmt_assign) Convert() (Assignment, error) {
 		Expression:    query,
 		VariableIndex: stmt.VariableNumber,
 	}, nil
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_execsql) Convert() (ExecuteSQL, error) {
+	var target string
+	if stmt.Into {
+		switch {
+		case stmt.Target.Row != nil:
+			if len(stmt.Target.Row.Fields) != 1 {
+				return ExecuteSQL{}, errors.New("record types are not yet supported")
+			}
+			target = stmt.Target.Row.Fields[0].Name
+		case stmt.Target.Variable != nil:
+			target = stmt.Target.Variable.RefName
+		default:
+			return ExecuteSQL{}, errors.Errorf("unhandled datum type: %T", stmt.Target)
+		}
+	}
+	return ExecuteSQL{
+		Statement: stmt.SQLStmt.Expr.Query,
+		Target:    target,
+	}, nil
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_exit) Convert() Statement {
+	offset := int32(-1)
+	if stmt.IsExit {
+		offset = 1
+	}
+	var gotoStmt Goto
+	if len(stmt.Label) > 0 {
+		gotoStmt = Goto{
+			Offset: offset,
+			Label:  stmt.Label,
+		}
+	} else {
+		gotoStmt = Goto{
+			Offset:         offset,
+			NearestScopeOp: true,
+		}
+	}
+	if stmt.Condition == nil {
+		return gotoStmt
+	} else {
+		return Block{
+			Body: []Statement{
+				If{
+					Condition:  stmt.Condition.Expression.Query,
+					GotoOffset: 2,
+				},
+				Goto{Offset: 2},
+				gotoStmt,
+			},
+		}
+	}
 }
 
 // Convert converts the JSON statement into its output form.
@@ -166,7 +284,7 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 	returnBlock.Body = append(returnBlock.Body, thenStmts...)
 	// Then we want to append the GOTO that finishes the THEN block, but we don't know the end just yet, so we'll save
 	// its index and fill it in later
-	gotoEndIndexes = append(gotoEndIndexes, int32(len(returnBlock.Body)))
+	gotoEndIndexes = append(gotoEndIndexes, OperationSizeForStatements(returnBlock.Body))
 	returnBlock.Body = append(returnBlock.Body, Goto{})
 	// We repeat the same process for each ELSIF statement (refer to the comments above)
 	for _, elseIf := range stmt.ElseIf {
@@ -180,7 +298,7 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 		}
 		returnBlock.Body = append(returnBlock.Body, Goto{Offset: OperationSizeForStatements(elseIfStmts) + 2})
 		returnBlock.Body = append(returnBlock.Body, elseIfStmts...)
-		gotoEndIndexes = append(gotoEndIndexes, int32(len(returnBlock.Body)))
+		gotoEndIndexes = append(gotoEndIndexes, OperationSizeForStatements(returnBlock.Body))
 		returnBlock.Body = append(returnBlock.Body, Goto{})
 	}
 	// Finally we handle our ELSE statements. We don't have a condition to check, so we don't have to append any
@@ -193,9 +311,31 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 	// Now we'll set all of our GOTOs so that they skip to the end of the block.
 	// We have to take their index position into account, since we want to skip to the end from their relative position.
 	for _, gotoEndIndex := range gotoEndIndexes {
-		returnBlock.Body[gotoEndIndex] = Goto{Offset: int32(len(returnBlock.Body)) - gotoEndIndex}
+		returnBlock.Body[gotoEndIndex] = Goto{Offset: OperationSizeForStatements(returnBlock.Body) - gotoEndIndex}
 	}
 	return returnBlock, nil
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_loop) Convert() (block Block, err error) {
+	// Set the block's label if one was provided
+	block.Label = stmt.Label
+	block.IsLoop = true
+	// Convert the body of the loop first so we can determine the GOTO offset
+	block.Body, err = jsonConvertStatements(stmt.Body)
+	if err != nil {
+		return Block{}, err
+	}
+	// The loop returns to the beginning of the loop, skipping the body
+	block.Body = append(block.Body, Goto{Offset: -OperationSizeForStatements(block.Body)})
+	return block, nil
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_perform) Convert() Perform {
+	return Perform{
+		Statement: stmt.Expression.Expression.Query,
+	}
 }
 
 // Convert converts the JSON statement into its output form.
@@ -203,4 +343,36 @@ func (stmt *plpgSQL_stmt_return) Convert() Return {
 	return Return{
 		Expression: stmt.Expression.Expression.Query,
 	}
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_while) Convert() (block Block, err error) {
+	// Convert the body of the loop first so we can determine the GOTO offsets
+	convertedLoopBodyStmts, err := jsonConvertStatements(stmt.Body)
+	if err != nil {
+		return Block{}, err
+	}
+
+	block = Block{
+		Body: []Statement{
+			If{
+				Condition: stmt.Condition.Expression.Query,
+				// Jump forward two statements, so we skip over the GOTO below that exits the WHILE loop.
+				GotoOffset: 2,
+			},
+			Goto{
+				// Jump forward 1 statement to get to the loop body, then jump over the loop body and the
+				// GOTO statement that jumps to the start of the WHILE loop.
+				Offset: 1 + OperationSizeForStatements(convertedLoopBodyStmts) + 1,
+			},
+		},
+		Label:  stmt.Label,
+		IsLoop: true,
+	}
+
+	// Add the converted body of the WHILE loop, and a GOTO statement that jumps backwards past the current
+	// GOTO statement, and past all the body statements, and past the GOTO statement at the start of the loop.
+	block.Body = append(block.Body, convertedLoopBodyStmts...)
+	block.Body = append(block.Body, Goto{Offset: -1 * (OperationSizeForStatements(convertedLoopBodyStmts) + 2)})
+	return block, nil
 }

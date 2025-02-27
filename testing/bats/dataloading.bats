@@ -12,16 +12,10 @@ teardown() {
 
 # Tests that we can successfully load the french towns dataset into Doltgres
 # https://github.com/morenoh149/postgresDBSamples/blob/master/french-towns-communes-francaises/french-towns-communes-francaises.sql
-# NOTE: This data dump still has one issue that needs to be fixed in Doltgres, before it will load cleanly without
-#       modifications:
-#         TEXT columns are replaced with VARCHAR because unique TEXT indexes don't work properly yet
 @test 'dataloading: tabular import, french towns dataset' {
-    
-  skip "Unique text field in regions table currently incorrectly generates duplicate unique key error"
   # Import the data dump and assert the expected output
   run query_server -f $BATS_TEST_DIRNAME/dataloading/french-towns-communes-francaises.sql
   [ "$status" -eq 0 ]
-  echo "OUTPUT: $output"
   [[ "$output" =~ "COPY 26" ]] || false
   [[ "$output" =~ "COPY 100" ]] || false
   [[ "$output" =~ "COPY 36684" ]] || false
@@ -133,7 +127,6 @@ teardown() {
   # Import the data dump and assert the expected output
   run query_server -f $BATS_TEST_DIRNAME/dataloading/tab-load-with-delimiter-no-tx-control.sql
   [ "$status" -eq 0 ]
-  echo "OUTPUT: $output"
   [[ "$output" =~ "COPY 3" ]] || false
   [[ ! "$output" =~ "ERROR" ]] || false
 
@@ -144,7 +137,6 @@ teardown() {
   [[ "$output" =~ "5 | string for 5 |       0" ]] || false
   [[ "$output" =~ "6 | string for 6 |       0" ]] || false
 }
-
 
 # Tests loading in data via different CSV data files.
 @test 'dataloading: csv import' {

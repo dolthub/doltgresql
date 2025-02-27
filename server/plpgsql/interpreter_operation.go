@@ -25,22 +25,16 @@ const (
 	OpCode_Declare                  // https://www.postgresql.org/docs/15/plpgsql-declarations.html
 	OpCode_DeleteInto               // https://www.postgresql.org/docs/15/plpgsql-statements.html
 	OpCode_Exception                // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-ERROR-TRAPPING
-	OpCode_Execute                  // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-EXECUTING-DYN
-	OpCode_For                      // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONTROL-STRUCTURES-LOOPS
-	OpCode_Foreach                  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONTROL-STRUCTURES-LOOPS
+	OpCode_Execute                  // Executing a standard SQL statement (expects no rows returned unless Target is specified)
 	OpCode_Get                      // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-DIAGNOSTICS
 	OpCode_Goto                     // All control-flow structures can be represented using Goto
 	OpCode_If                       // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
 	OpCode_InsertInto               // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_Loop                     // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONTROL-STRUCTURES-LOOPS
 	OpCode_Perform                  // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_Query                    // This is just a standard query, nothing special
 	OpCode_Return                   // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING
 	OpCode_ScopeBegin               // This is used for scope control, specific to Doltgres
 	OpCode_ScopeEnd                 // This is used for scope control, specific to Doltgres
 	OpCode_SelectInto               // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_When                     // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
-	OpCode_While                    // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONTROL-STRUCTURES-LOOPS
 	OpCode_UpdateInto               // https://www.postgresql.org/docs/15/plpgsql-statements.html
 )
 
