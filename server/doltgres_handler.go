@@ -210,12 +210,14 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	h.maybeReleaseAllLocks(c)
 	h.e.CloseSession(c.ConnectionID)
 
+	ctx := context.Background()
+
 	// Create a new session and set the current database
-	err := h.sm.NewSession(context.Background(), c)
+	err := h.sm.NewSession(ctx, c)
 	if err != nil {
 		return err
 	}
-	return h.sm.SetDB(c, db)
+	return h.sm.SetDB(ctx, c, db)
 }
 
 // ConnectionClosed implements the Handler interface.
@@ -249,7 +251,7 @@ func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 
 // NewContext implements the Handler interface.
 func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query string) (*sql.Context, error) {
-	return h.sm.NewContext(ctx, c, query)
+	return h.sm.NewContextWithQuery(ctx, c, query)
 }
 
 // convertBindParameters handles the conversion from bind parameters to variable values.
