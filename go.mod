@@ -1,5 +1,11 @@
 module github.com/dolthub/doltgresql
 
+replace github.com/dolthub/vitess => ../vitess
+
+replace github.com/dolthub/go-mysql-server => ../go-mysql-server
+
+replace github.com/dolthub/dolt/go => ../dolt/go
+
 go 1.23.3
 
 require (
@@ -10,7 +16,7 @@ require (
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20241215010122-db690dd53c90
-	github.com/dolthub/go-mysql-server v0.19.1-0.20250227174003-8401d194be06
+	github.com/dolthub/go-mysql-server v0.19.1-0.20250227182754-a65e4891509b
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20250214225328-a0ed4612b41c
 	github.com/fatih/color v1.13.0
