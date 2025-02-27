@@ -72,7 +72,7 @@ func Init() {
 
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that.
 	// We also should optimize functions last, since other rules may change the underlying expressions, potentially changing their return types.
-	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.BacktickDefaulColumnValueNamesId, false,
+	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.QuoteDefaultColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
 		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
