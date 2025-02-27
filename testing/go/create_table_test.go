@@ -213,6 +213,49 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "generated column with reference to another column",
+			SetUpScript: []string{
+				`create table t1 (
+    			a varchar(10) primary key,
+    			b varchar(20),
+				  b_not_null bool generated always as ((b is not null)) stored
+				);`,
+				"insert into t1 (a, b) values ('foo', 'bar');",
+				"insert into t1 (a) values ('foo2');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select * from t1 order by a;",
+					Expected: []sql.Row{
+						{"foo", "bar", "t"},
+						{"foo2", nil, "f"},
+					},
+				},
+			},
+		},
+		{
+			Name: "generated column with reference to another column that needs quote",
+			Skip: true, // generated columns are not being properly quoted, this is a bug in GMS
+			SetUpScript: []string{
+				`create table t1 (
+    			a varchar(10) primary key,
+    			"b 2" varchar(20),
+				  b_not_null bool generated always as (("b 2" is not null)) stored
+				);`,
+				`insert into t1 (a, "b 2") values ('foo', 'bar');`,
+				"insert into t1 (a) values ('foo2');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select * from t1 order by a;",
+					Expected: []sql.Row{
+						{"foo", "bar", "t"},
+						{"foo2", nil, "f"},
+					},
+				},
+			},
+		},
+		{
 			Name: "create table with default value",
 			SetUpScript: []string{
 				"create table t1 (a varchar(10) primary key, b varchar(10) default (concat('foo', 'bar')));",
