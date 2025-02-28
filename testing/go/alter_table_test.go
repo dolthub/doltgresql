@@ -116,6 +116,55 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Add Check Constraint with IN tuple",
+			SetUpScript: []string{
+				"create table t1 (pk int primary key, c1 int);",
+				"insert into t1 values (1,1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Add a check constraint that is already violated by the existing data
+					Query:       "ALTER TABLE t1 ADD CONSTRAINT constraint1 CHECK (c1 in (100));",
+					ExpectedErr: "violated",
+				},
+				{
+					// Add a check constraint
+					Query:    "ALTER TABLE t1 ADD CONSTRAINT constraint1 CHECK (c1 in (1,2));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t1 VALUES (2, 2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t1 VALUES (3, 101);",
+					ExpectedErr: "violated",
+				},
+			},
+		},
+		{
+			Name: "Add Check Constraint and another constraint in same statement",
+			SetUpScript: []string{
+				"create table t1 (pk int, c1 int);",
+				"insert into t1 values (1,1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Add a check constraint
+					Query:    " ALTER TABLE t1 ADD CONSTRAINT check_a CHECK (c1 IN (1)), ALTER c1 SET NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t1 VALUES (2, 2);",
+					ExpectedErr: "violated",
+				},
+				{
+					Query:       "INSERT INTO t1 VALUES (1, NULL);",
+					ExpectedErr: "non-nullable",
+				},
+			},
+		},
+		{
 			Name: "Drop Constraint",
 			SetUpScript: []string{
 				"create table t1 (pk int primary key, c1 int);",
