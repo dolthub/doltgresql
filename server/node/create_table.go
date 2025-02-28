@@ -30,6 +30,7 @@ type CreateTable struct {
 
 var _ sql.ExecSourceRel = (*CreateTable)(nil)
 var _ sql.SchemaTarget = (*CreateTable)(nil)
+var _ sql.Expressioner = (*CreateTable)(nil)
 
 // NewCreateTable returns a new *CreateTable.
 func NewCreateTable(createTable *plan.CreateTable, sequences []*CreateSequence) *CreateTable {
@@ -116,4 +117,19 @@ func (c CreateTable) WithTargetSchema(schema sql.Schema) (sql.Node, error) {
 	c.gmsCreateTable = n.(*plan.CreateTable)
 
 	return &c, nil
+}
+
+func (c *CreateTable) Expressions() []sql.Expression {
+	return c.gmsCreateTable.Expressions()
+}
+
+func (c *CreateTable) WithExpressions(expression ...sql.Expression) (sql.Node, error) {
+	nc := *c
+	n, err := nc.gmsCreateTable.WithExpressions(expression...)
+	if err != nil {
+		return nil, err
+	}
+
+	nc.gmsCreateTable = n.(*plan.CreateTable)
+	return &nc, nil
 }

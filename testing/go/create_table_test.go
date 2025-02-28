@@ -234,8 +234,7 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
-			Name: "generated column with reference to another column that needs quote",
-			Skip: true, // generated columns are not being properly quoted, this is a bug in GMS
+			Name: "generated column with space in column name",
 			SetUpScript: []string{
 				`create table t1 (
     			a varchar(10) primary key,
