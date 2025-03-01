@@ -1,18 +1,18 @@
 module github.com/dolthub/doltgresql
 
-go 1.23.3
+go 1.24.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20250227000557-ec15fdc1ddc6
+	github.com/dolthub/dolt/go v0.40.5-0.20250301061713-78215f233169
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20241215010122-db690dd53c90
-	github.com/dolthub/go-mysql-server v0.19.1-0.20250227200259-b9d44c4607d1
+	github.com/dolthub/go-mysql-server v0.19.1-0.20250301010531-8637b99d8f90
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20250214225328-a0ed4612b41c
+	github.com/dolthub/vitess v0.0.0-20250228011932-c4f6bba87730
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
