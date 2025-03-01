@@ -119,10 +119,12 @@ func (c CreateTable) WithTargetSchema(schema sql.Schema) (sql.Node, error) {
 	return &c, nil
 }
 
+// Expressions implements the sql.Expressioner interface.
 func (c *CreateTable) Expressions() []sql.Expression {
 	return c.gmsCreateTable.Expressions()
 }
 
+// WithExpressions implements the sql.Expressioner interface.
 func (c *CreateTable) WithExpressions(expression ...sql.Expression) (sql.Node, error) {
 	nc := *c
 	n, err := nc.gmsCreateTable.WithExpressions(expression...)
