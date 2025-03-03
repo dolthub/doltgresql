@@ -2553,6 +2553,7 @@ var unreservedTypeTokens = map[string]*T{
 	"float4":     Float,
 	"float8":     Float,
 	"inet":       INet,
+	"integer":    Int4,
 	"int2":       Int2,
 	"int4":       Int4,
 	"int8":       Int,
