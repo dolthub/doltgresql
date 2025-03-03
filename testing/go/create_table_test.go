@@ -107,6 +107,27 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "check constraint with a function",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE TABLE mytbl (a text CHECK (length(a) > 2) PRIMARY KEY, b text);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into mytbl values ('abc', 'def');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "insert into mytbl values ('de', 'abc');",
+					ExpectedErr: `Check constraint`,
+				},
+				{
+					Query:    "select * from mytbl;",
+					Expected: []sql.Row{{"abc", "def"}},
+				},
+			},
+		},
+		{
 			Skip: true, // TODO: vitess does not support multiple check constraint on a single column
 			Name: "Create table with multiple check constraints on a single column",
 			Assertions: []ScriptTestAssertion{
@@ -234,8 +255,7 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
-			Name: "generated column with reference to another column that needs quote",
-			Skip: true, // generated columns are not being properly quoted, this is a bug in GMS
+			Name: "generated column with space in column name",
 			SetUpScript: []string{
 				`create table t1 (
     			a varchar(10) primary key,
