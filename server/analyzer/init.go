@@ -37,6 +37,7 @@ const (
 	ruleId_OptimizeFunctions                                          // optimizeFunctions
 	ruleId_ValidateColumnDefaults                                     // validateColumnDefaults
 	ruleId_ValidateCreateTable                                        // validateCreateTable
+	rulesId_ResolveAlterColumn                                        // resolveAlterColumn
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -56,11 +57,18 @@ func Init() {
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths}},
 		analyzer.OnceBeforeDefault...)
 
+	// We remove the original column default and create table validation rules, as we have our own implementations
 	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateCreateTableId, true,
 		analyzer.Rule{Id: ruleId_ValidateCreateTable, Apply: validateCreateTable})
+	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ResolveAlterColumnId, true,
+		analyzer.Rule{Id: rulesId_ResolveAlterColumn, Apply: resolveAlterColumn})
 
-	// We remove the original column default and create table validation rules, as we have our own implementations
-	analyzer.OnceBeforeDefault = removeAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateColumnDefaultsId, analyzer.ValidateCreateTableId)
+	analyzer.OnceBeforeDefault = removeAnalyzerRules(
+		analyzer.OnceBeforeDefault,
+		analyzer.ValidateColumnDefaultsId,
+		analyzer.ValidateCreateTableId,
+		analyzer.ResolveAlterColumnId,
+	)
 
 	// Remove all other validation rules that do not apply to Postgres
 	analyzer.DefaultValidationRules = removeAnalyzerRules(analyzer.DefaultValidationRules, analyzer.ValidateOperandsId)
@@ -82,9 +90,11 @@ func Init() {
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.
 func insertAnalyzerRules(rules []analyzer.Rule, id analyzer.RuleId, before bool, additionalRules ...analyzer.Rule) []analyzer.Rule {
+	inserted := false
 	newRules := make([]analyzer.Rule, len(rules)+len(additionalRules))
 	for i, rule := range rules {
 		if rule.Id == id {
+			inserted = true
 			if before {
 				copy(newRules, rules[:i])
 				copy(newRules[i:], additionalRules)
@@ -97,6 +107,11 @@ func insertAnalyzerRules(rules []analyzer.Rule, id analyzer.RuleId, before bool,
 			break
 		}
 	}
+
+	if !inserted {
+		panic("no rules were inserted")
+	}
+
 	return newRules
 }
 
@@ -106,11 +121,20 @@ func removeAnalyzerRules(rules []analyzer.Rule, remove ...analyzer.RuleId) []ana
 	for _, removal := range remove {
 		ids[removal] = struct{}{}
 	}
+
+	removedIds := 0
 	var newRules []analyzer.Rule
 	for _, rule := range rules {
 		if _, ok := ids[rule.Id]; !ok {
 			newRules = append(newRules, rule)
+		} else {
+			removedIds++
 		}
 	}
+
+	if removedIds < len(remove) {
+		panic("one or more rules were not removed, this is a bug")
+	}
+
 	return newRules
 }

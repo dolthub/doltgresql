@@ -134,7 +134,8 @@ func validateIndex(ctx *sql.Context, colMap map[string]*sql.Column, idxDef *sql.
 	return nil
 }
 
-// resolveAlterColumn is a validation rule that validates the schema changes in an ALTER TABLE statement.
+// resolveAlterColumn is a validation rule that validates the schema changes in an ALTER TABLE statement and updates
+// the nodes with necessary intermediate / update schema information
 func resolveAlterColumn(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scope *plan.Scope, sel analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	if !analyzer.FlagIsSet(qFlags, sql.QFlagAlterTable) {
 		return n, transform.SameTree, nil
