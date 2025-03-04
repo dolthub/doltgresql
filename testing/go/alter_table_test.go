@@ -229,7 +229,6 @@ func TestAlterTable(t *testing.T) {
 		},
 		{
 			Name: "Add Primary Key on text column",
-			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a text, b INT);",
 				"insert into test1 values ('a', 1), ('b', 2);",

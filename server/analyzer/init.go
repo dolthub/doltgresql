@@ -57,7 +57,7 @@ func Init() {
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths}},
 		analyzer.OnceBeforeDefault...)
 
-	// We remove the original column default and create table validation rules, as we have our own implementations
+	// We remove several validation rules and substitute our own
 	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateCreateTableId, true,
 		analyzer.Rule{Id: ruleId_ValidateCreateTable, Apply: validateCreateTable})
 	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ResolveAlterColumnId, true,
