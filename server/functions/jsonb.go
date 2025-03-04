@@ -33,6 +33,9 @@ func initJsonB() {
 	framework.RegisterFunction(jsonb_recv)
 	framework.RegisterFunction(jsonb_send)
 	framework.RegisterFunction(jsonb_cmp)
+	framework.RegisterFunction(jsonb_build_array)
+	framework.RegisterFunction(jsonb_build_object)
+
 }
 
 // jsonb_in represents the PostgreSQL function of jsonb type IO input.
@@ -106,5 +109,48 @@ var jsonb_cmp = framework.Function2{
 		ab := val1.(pgtypes.JsonDocument)
 		bb := val2.(pgtypes.JsonDocument)
 		return int32(pgtypes.JsonValueCompare(ab.Value, bb.Value)), nil
+	},
+}
+
+// jsonb_build_array represents the PostgreSQL function jsonb_build_array.
+var jsonb_build_array = framework.Function1{
+	Name:       "jsonb_build_array",
+	Return:     pgtypes.JsonB,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
+	Variadic:   true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		inputArray := val1.([]any)
+		json, err := json.Marshal(inputArray)
+		if err != nil {
+			return nil, err
+		}
+
+		jsonDoc, err := pgtypes.UnmarshalToJsonDocument(json)
+		if err != nil {
+			return nil, err
+		}
+
+		return jsonDoc, nil
+	},
+}
+
+// jsonb_build_object represents the PostgreSQL function jsonb_build_object.
+var jsonb_build_object = framework.Function1{
+	Name:       "jsonb_build_object",
+	Return:     pgtypes.JsonB,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
+	Variadic:   true,
+	Callable: func(ctx *sql.Context, argTypes [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		json, err := buildJsonObject("jsonb_build_object", argTypes, val1)
+		if err != nil {
+			return nil, err
+		}
+
+		jsonDoc, err := pgtypes.UnmarshalToJsonDocument(json)
+		if err != nil {
+			return nil, err
+		}
+
+		return jsonDoc, nil
 	},
 }
