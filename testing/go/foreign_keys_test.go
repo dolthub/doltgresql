@@ -45,6 +45,26 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				Name: "text foreign key",
+				SetUpScript: []string{
+					`CREATE TABLE parent (a text PRIMARY KEY, b int)`,
+					`CREATE TABLE child (a INT PRIMARY KEY, b text, FOREIGN KEY (b) REFERENCES parent(a))`,
+					`INSERT INTO parent VALUES ('a', 1)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "INSERT INTO child VALUES (1, 'a')",
+					},
+					{
+						Query: "INSERT INTO child VALUES (2, 'a')",
+					},
+					{
+						Query:       "INSERT INTO child VALUES (3, 'b')",
+						ExpectedErr: "Foreign key violation",
+					},
+				},
+			},
+			{
 				Name: "foreign key with dolt_add, dolt_commit",
 				SetUpScript: []string{
 					"create table test (pk int, \"value\" int, primary key(pk));",

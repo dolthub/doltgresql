@@ -15,7 +15,12 @@
 package analyzer
 
 import (
+	"strings"
+
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/vitess/go/sqltypes"
 )
 
 // IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
@@ -86,6 +91,48 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_ReplaceNode, Apply: ReplaceNode},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
+	
+	initEngine()
+}
+
+func initEngine() {
+	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
+}
+
+// validateForeignKeyDefinition validates that the given foreign key definition is valid for creation
+func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstraint, cols map[string]*sql.Column, parentCols map[string]*sql.Column) error {
+	for i := range fkDef.Columns {
+		col := cols[strings.ToLower(fkDef.Columns[i])]
+		parentCol := parentCols[strings.ToLower(fkDef.ParentColumns[i])]
+		if !foreignKeyComparableTypes(ctx, col.Type, parentCol.Type) {
+			return sql.ErrForeignKeyColumnTypeMismatch.New(fkDef.Columns[i], fkDef.ParentColumns[i])
+		}
+	}
+	return nil
+}
+
+// foreignKeyComparableTypes returns whether the two given types are able to be used as parent/child columns in a
+// foreign key.
+func foreignKeyComparableTypes(ctx *sql.Context, type1 sql.Type, type2 sql.Type) bool {
+	if !type1.Equals(type2) {
+		// There seems to be a special case where CHAR/VARCHAR/BINARY/VARBINARY can have unequal lengths.
+		// Have not tested every type nor combination, but this seems specific to those 4 types.
+		if type1.Type() == type2.Type() {
+			switch type1.Type() {
+			case sqltypes.Char, sqltypes.VarChar, sqltypes.Binary, sqltypes.VarBinary:
+				type1String := type1.(sql.StringType)
+				type2String := type2.(sql.StringType)
+				if type1String.Collation().CharacterSet() != type2String.Collation().CharacterSet() {
+					return false
+				}
+			default:
+				return false
+			}
+		} else {
+			return false
+		}
+	}
+	return true
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.
