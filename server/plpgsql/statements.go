@@ -18,7 +18,6 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
-
 	pg_query "github.com/pganalyze/pg_query_go/v6"
 )
 
@@ -250,6 +249,32 @@ func (stmt Perform) AppendOperations(ops *[]InterpreterOperation, stack *Interpr
 		OpCode:        OpCode_Perform,
 		PrimaryData:   statementStr,
 		SecondaryData: referencedVariables,
+	})
+	return nil
+}
+
+// Raise represents a RAISE statement
+type Raise struct {
+	Level   string
+	Message string
+	Params  []string
+	Options map[string]string
+}
+
+var _ Statement = Raise{}
+
+// OperationSize implements the interface Statement.
+func (r Raise) OperationSize() int32 {
+	return 1
+}
+
+// AppendOperations implements the interface Statement.
+func (r Raise) AppendOperations(ops *[]InterpreterOperation, _ *InterpreterStack) error {
+	*ops = append(*ops, InterpreterOperation{
+		OpCode:        OpCode_Raise,
+		PrimaryData:   r.Level,
+		SecondaryData: append([]string{r.Message}, r.Params...),
+		Options:       r.Options,
 	})
 	return nil
 }

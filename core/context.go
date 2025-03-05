@@ -26,7 +26,9 @@ import (
 	"github.com/dolthub/doltgresql/core/typecollection"
 )
 
-// contextValues contains a set of objects that will be passed alongside the context.
+// contextValues contains a set of cached data passed alongside the context. This data is considered temporary
+// and may be refreshed at any point, including during the middle of a query. Callers should not assume that
+// data stored in contextValues is persisted, and other types of data should not be added to contextValues.
 type contextValues struct {
 	collection     *sequences.Collection
 	types          *typecollection.TypeCollection

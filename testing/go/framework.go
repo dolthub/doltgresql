@@ -73,11 +73,18 @@ type ScriptTest struct {
 	Skip bool
 }
 
+// ExpectedNotice specifies what notices are expected during a script test assertion.
+type ExpectedNotice struct {
+	Severity string
+	Message  string
+}
+
 // ScriptTestAssertion are the assertions upon which the script executes its main "testing" logic.
 type ScriptTestAssertion struct {
-	Query       string
-	Expected    []sql.Row
-	ExpectedErr string
+	Query           string
+	Expected        []sql.Row
+	ExpectedErr     string
+	ExpectedNotices []ExpectedNotice
 
 	BindVars []any
 
@@ -119,6 +126,10 @@ type Connection struct {
 	Username string
 	Password string
 }
+
+// receivedNotices tracks the NOTICE messages received over the connection to the Doltgres server, so that tests
+// can assert what notices are expected to be sent to the client.
+var receivedNotices []*pgconn.Notice
 
 // RunScript runs the given script.
 func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
@@ -176,6 +187,10 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			if assertion.Skip {
 				t.Skip("Skip has been set in the assertion")
 			}
+
+			// Clear out any previously received notices
+			receivedNotices = nil
+
 			// Use the provided username and password to create a new connection (if a username has been specified).
 			// This will automatically handle connection reuse, using the default connection is no user is specified, etc.
 			if err := conn.Connect(ctx, assertion.Username, assertion.Password); err != nil {
@@ -232,6 +247,22 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 						assert.Equal(t, assertion.Expected, readRows)
 					} else {
 						assert.ElementsMatch(t, assertion.Expected, readRows)
+					}
+				}
+
+				if len(assertion.ExpectedNotices) > 0 {
+					if len(assertion.ExpectedNotices) == len(receivedNotices) {
+						for i, notice := range receivedNotices {
+							assert.Equal(t, assertion.ExpectedNotices[i].Severity, notice.Severity)
+							assert.Equal(t, assertion.ExpectedNotices[i].Message, notice.Message)
+						}
+					} else {
+						if len(receivedNotices) == 0 {
+							receivedNotices = []*pgconn.Notice{}
+						}
+						assert.Fail(t, "Received notices do not match expected notices",
+							"Expected %d notices, but received %d. Expected: %v, Received: %v",
+							len(assertion.ExpectedNotices), len(receivedNotices), assertion.ExpectedNotices, receivedNotices)
 					}
 				}
 			}
@@ -345,7 +376,14 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 	}()
 	require.NoError(t, err)
 
-	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s", port, database))
+	connectionString := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s", port, database)
+	config, err := pgx.ParseConfig(connectionString)
+	require.NoError(t, err)
+	config.OnNotice = func(c *pgconn.PgConn, notice *pgconn.Notice) {
+		receivedNotices = append(receivedNotices, notice)
+	}
+
+	conn, err := pgx.ConnectConfig(ctx, config)
 	require.NoError(t, err)
 
 	// Ping the connection to test that it's alive, and also to test that Doltgres handles empty queries correctly

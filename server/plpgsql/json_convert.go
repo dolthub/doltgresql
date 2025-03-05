@@ -64,6 +64,8 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 		return stmt.Loop.Convert()
 	case stmt.Perform != nil:
 		return stmt.Perform.Convert(), nil
+	case stmt.Raise != nil:
+		return stmt.Raise.Convert(), nil
 	case stmt.Return != nil:
 		return stmt.Return.Convert(), nil
 	case stmt.While != nil:
