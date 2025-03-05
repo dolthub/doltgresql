@@ -1,18 +1,20 @@
 module github.com/dolthub/doltgresql
 
-go 1.23.3
+go 1.24.0
+
+toolchain go1.24.1
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20250227000557-ec15fdc1ddc6
+	github.com/dolthub/dolt/go v0.40.5-0.20250305000844-bac8e33f5754
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-icu-regex v0.0.0-20241215010122-db690dd53c90
-	github.com/dolthub/go-mysql-server v0.19.1-0.20250227200259-b9d44c4607d1
+	github.com/dolthub/go-icu-regex v0.0.0-20250303123116-549b8d7cad00
+	github.com/dolthub/go-mysql-server v0.19.1-0.20250304030016-7784677b9db5
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20250214225328-a0ed4612b41c
+	github.com/dolthub/vitess v0.0.0-20250228011932-c4f6bba87730
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
@@ -58,7 +60,7 @@ require (
 	github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/apache/thrift v0.13.1-0.20201008052519-daf620915714 // indirect
-	github.com/aws/aws-sdk-go v1.34.0 // indirect
+	github.com/aws/aws-sdk-go v1.55.6 // indirect
 	github.com/bcicen/jstream v1.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
