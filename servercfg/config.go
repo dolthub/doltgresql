@@ -299,6 +299,10 @@ func (cfg *DoltgresConfig) LogLevel() servercfg.LogLevel {
 	}
 }
 
+func (cfg *DoltgresConfig) LogFormat() servercfg.LogFormat {
+	return servercfg.LogFormat_Text
+}
+
 func (cfg *DoltgresConfig) MaxConnections() uint64 {
 	return 0
 }
