@@ -602,15 +602,15 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 				ctx.GetLogger().Tracef("spooling result row %s", outputRow)
 				r.Rows = append(r.Rows, Row{outputRow})
 				r.RowsAffected++
+				if !timer.Stop() {
+					<-timer.C
+				}
 			case <-timer.C:
 				if h.readTimeout != 0 {
 					// Cancel and return so Vitess can call the CloseConnection callback
 					ctx.GetLogger().Tracef("connection timeout")
 					return errors.Errorf("row read wait bigger than connection timeout")
 				}
-			}
-			if !timer.Stop() {
-				<-timer.C
 			}
 			timer.Reset(waitTime)
 		}
