@@ -301,16 +301,10 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	sqlCtx.GetLogger().Debugf("Starting query")
 	sqlCtx.GetLogger().Tracef("beginning execution")
 
-	oCtx := ctx
-
 	// TODO: it would be nice to put this logic in the engine, not the handler, but we don't want the process to be
 	//  marked done until we're done spooling rows over the wire
-	ctx, err = sqlCtx.ProcessList.BeginQuery(sqlCtx, query)
-	defer func() {
-		if err != nil && ctx != nil {
-			sqlCtx.ProcessList.EndQuery(sqlCtx)
-		}
-	}()
+	sqlCtx, err = sqlCtx.ProcessList.BeginQuery(sqlCtx, query)
+	defer sqlCtx.ProcessList.EndQuery(sqlCtx)
 
 	schema, rowIter, qFlags, err := queryExec(sqlCtx, query, parsed, analyzedPlan)
 	if err != nil {
@@ -340,9 +334,6 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	if err != nil {
 		return err
 	}
-
-	// errGroup context is now canceled
-	ctx = oCtx
 
 	sqlCtx.GetLogger().Debugf("Query finished in %d ms", time.Since(start).Milliseconds())
 
@@ -528,7 +519,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 		for {
 			select {
 			case <-ctx.Done():
-				return nil
+				return context.Cause(ctx)
 			default:
 				row, err := iter.Next(ctx)
 				if err == io.EOF {
@@ -578,7 +569,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 
 			select {
 			case <-ctx.Done():
-				return nil
+				return context.Cause(ctx)
 			case row, ok := <-rowChan:
 				if !ok {
 					return nil
