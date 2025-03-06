@@ -99,6 +99,163 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "CASE, with ELSE",
+			SetUpScript: []string{`
+CREATE FUNCTION interpreted_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 1, 2 THEN
+			msg := 'one';
+			msg := msg || ' or two';
+		ELSE
+			msg := 'other';
+			msg := msg || ' value than one or two';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case(1);",
+					Expected: []sql.Row{{"one or two"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(2);",
+					Expected: []sql.Row{{"one or two"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(0);",
+					Expected: []sql.Row{{"other value than one or two"}},
+				},
+			},
+		},
+		{
+			// TODO: When no CASE statements match, and there is no ELSE block,
+			//       Postgres raises an exception. Unskip this test after we
+			//       add support for raising exceptions from functions.
+			Skip: true,
+			Name: "CASE, without ELSE",
+			SetUpScript: []string{`
+CREATE FUNCTION interpreted_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE x
+		WHEN 1, 2 THEN
+			msg := 'one or two';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case(1);",
+					Expected: []sql.Row{{"one or two"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(2);",
+					Expected: []sql.Row{{"one or two"}},
+				},
+				{
+					Query:       "SELECT interpreted_case(0);",
+					ExpectedErr: "case not found",
+				},
+			},
+		},
+		{
+			Name: "Searched CASE, with ELSE",
+			SetUpScript: []string{`
+CREATE FUNCTION interpreted_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE
+		WHEN x BETWEEN 0 AND 10 THEN
+			msg := 'value is between zero';
+			msg := msg || ' and ten';
+		WHEN x BETWEEN 11 AND 20 THEN
+			msg := 'value is between eleven and twenty';
+		ELSE
+			msg := 'value';
+			msg := msg || ' is';
+			msg := msg || ' out of';
+			msg := msg || ' bounds';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case(0);",
+					Expected: []sql.Row{{"value is between zero and ten"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(1);",
+					Expected: []sql.Row{{"value is between zero and ten"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(10);",
+					Expected: []sql.Row{{"value is between zero and ten"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(11);",
+					Expected: []sql.Row{{"value is between eleven and twenty"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(21);",
+					Expected: []sql.Row{{"value is out of bounds"}},
+				},
+			},
+		},
+		{
+			// TODO: When no CASE statements match, and there is no ELSE block,
+			//       Postgres raises an exception. Unskip this test after we
+			//       add support for raising exceptions from functions.
+			Skip: true,
+			Name: "Searched CASE, without ELSE",
+			SetUpScript: []string{`
+CREATE FUNCTION interpreted_case(x INT) RETURNS TEXT AS $$
+DECLARE
+	msg TEXT;
+BEGIN
+	CASE
+		WHEN x BETWEEN 0 AND 10 THEN
+			msg := 'value is between zero and ten';
+		WHEN x BETWEEN 11 AND 20 THEN
+			msg := 'value';
+			msg := msg || ' is between';
+			msg := msg || ' eleven and';
+			msg := msg || ' twenty';
+	END CASE;
+	RETURN msg;
+END;
+$$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_case(0);",
+					Expected: []sql.Row{{"value is between zero and ten"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(1);",
+					Expected: []sql.Row{{"value is between zero and ten"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(10);",
+					Expected: []sql.Row{{"value is between zero and ten"}},
+				},
+				{
+					Query:    "SELECT interpreted_case(11);",
+					Expected: []sql.Row{{"value is between eleven and twenty"}},
+				},
+				{
+					Query:       "SELECT interpreted_case(21);",
+					ExpectedErr: "case not found",
+				},
+			},
+		},
+		{
 			Name: "CONTINUE",
 			SetUpScript: []string{`CREATE FUNCTION interpreted_continue() RETURNS INT4 AS $$
 DECLARE

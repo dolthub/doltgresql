@@ -15,6 +15,7 @@
 package plpgsql
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -102,6 +103,25 @@ type plpgSQL_stmt_block struct {
 	LineNumber int32       `json:"lineno"`
 }
 
+// plpgSQL_stmt_case exists to match the expected JSON format.
+type plpgSQL_stmt_case struct {
+	LineNumber int32 `json:"lineno"`
+	Expression expr  `json:"t_expr"`
+	// VarNo indicates the ID for the __Case__Variable_N__ variable that holds the evaluated
+	// value of the case expression.
+	VarNo    int32       `json:"t_varno"`
+	WhenList []statement `json:"case_when_list"`
+	HasElse  bool        `json:"have_else"`
+	Else     []statement `json:"else_stmts"`
+}
+
+// plpgSQL_case_when exists to match the expected JSON format.
+type plpgSQL_case_when struct {
+	LineNumber int32       `json:"lineno"`
+	Expression expr        `json:"expr"`
+	Body       []statement `json:"stmts"`
+}
+
 // plpgSQL_stmt_execsql exists to match the expected JSON format.
 type plpgSQL_stmt_execsql struct {
 	SQLStmt    sqlstmt `json:"sqlstmt"`
@@ -175,12 +195,14 @@ type sqlstmt struct {
 // having a singular expected implementation.
 type statement struct {
 	Assignment *plpgSQL_stmt_assign  `json:"PLpgSQL_stmt_assign"`
+	Case       *plpgSQL_stmt_case    `json:"PLpgSQL_stmt_case"`
 	ExecSQL    *plpgSQL_stmt_execsql `json:"PLpgSQL_stmt_execsql"`
 	Exit       *plpgSQL_stmt_exit    `json:"PLpgSQL_stmt_exit"`
 	If         *plpgSQL_stmt_if      `json:"PLpgSQL_stmt_if"`
 	Loop       *plpgSQL_stmt_loop    `json:"PLpgSQL_stmt_loop"`
 	Perform    *plpgSQL_stmt_perform `json:"PLpgSQL_stmt_perform"`
 	Return     *plpgSQL_stmt_return  `json:"PLpgSQL_stmt_return"`
+	When       *plpgSQL_case_when    `json:"PLpgSQL_case_when"`
 	While      *plpgSQL_stmt_while   `json:"PLpgSQL_stmt_while"`
 }
 
@@ -202,6 +224,93 @@ func (stmt *plpgSQL_stmt_assign) Convert() (Assignment, error) {
 		Expression:    query,
 		VariableIndex: stmt.VariableNumber,
 	}, nil
+}
+
+func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
+	// If the CASE statement has a main expression, start by assigning it to a variable so
+	// we can evaluate it once and only once.
+	if stmt.Expression.Expression.Query != "" {
+		// TODO: pg_query_go creates the definitions for these variables, and
+		//       ideally users shouldn't be able to reference them. We could
+		//       update all the references to them (i.e. declaration, assignment,
+		//       and WHEN block exprs) to change the name to include a \0 char to
+		//       prevent users from referencing them or colliding with them.
+		block.Body = append(block.Body, Assignment{
+			VariableName: fmt.Sprintf("__Case__Variable_%d__", stmt.VarNo),
+			Expression:   stmt.Expression.Expression.Query,
+		})
+	}
+
+	// Record indexes of all the GOTO ops that jump to the very end of the case block so we
+	// can update them later and plug in the correct offsets after we know the final size.
+	var gotoEndOpsIndexes []int
+
+	// Add operations for each WHEN statement...
+	for _, stmt := range stmt.WhenList {
+		when := stmt.When
+		if when == nil {
+			return Block{}, fmt.Errorf("case statement WHEN clause is nil")
+		}
+
+		// TODO: The generated expressions from pg_query_go uses double quotes
+		//       around the variable name, which is valid for Postgres, but
+		//       our engine doesn't currently resolve double-quoted strings to
+		//       variables, so for now, we just extract the double quotes.
+		expressionString := when.Expression.Expression.Query
+		expressionString = strings.ReplaceAll(expressionString, `"`, "")
+
+		convertedWhenBodyStatements, err := jsonConvertStatements(when.Body)
+		if err != nil {
+			return Block{}, err
+		}
+
+		block.Body = append(block.Body,
+			If{
+				Condition:  expressionString,
+				GotoOffset: 2,
+			},
+			Goto{
+				// This GOTO jumps to the next WHEN block, so step over all the statements
+				// from this WHEN block, plus 1 for the GOTO op we add at the end of each
+				// block, and plus 1 more to move to the next statement.
+				Offset: int32(len(convertedWhenBodyStatements) + 1 + 1),
+			})
+		block.Body = append(block.Body, convertedWhenBodyStatements...)
+
+		// Add a GOTO op to jump to the end of the entire CASE block, and record its position
+		// in the statement block so we can update it later.
+		block.Body = append(block.Body, Goto{})
+		gotoEndOpsIndexes = append(gotoEndOpsIndexes, len(block.Body)-1)
+	}
+
+	if stmt.HasElse {
+		convertElseBodyStatements, err := jsonConvertStatements(stmt.Else)
+		if err != nil {
+			return Block{}, err
+		}
+		block.Body = append(block.Body, convertElseBodyStatements...)
+		// TODO: If no cases match and there is no ELSE block, then add a RAISE statement
+		//       to return an error.
+		//} else {
+		// Sample PostgreSQL error response:
+		//	     ERROR:  case not found
+		//	     HINT:  CASE statement is missing ELSE part.
+		//	     CONTEXT:  PL/pgSQL function interpreted_case(integer) line 5 at CASE
+	}
+
+	// Update all the GOTO ops that jump to the very end of the case block.
+	for _, gotoEndOpIndex := range gotoEndOpsIndexes {
+		// Sanity check that we are looking at a GOTO statement
+		if _, ok := block.Body[gotoEndOpIndex].(Goto); !ok {
+			return Block{}, fmt.Errorf("expected Goto statement, got %T", block.Body[gotoEndOpIndex])
+		}
+
+		block.Body[gotoEndOpIndex] = Goto{
+			Offset: int32(len(block.Body) - gotoEndOpIndex),
+		}
+	}
+
+	return block, nil
 }
 
 // Convert converts the JSON statement into its output form.

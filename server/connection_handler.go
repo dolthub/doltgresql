@@ -159,14 +159,17 @@ func (h *ConnectionHandler) HandleConnection() {
 			if returnErr != nil {
 				fmt.Println(returnErr.Error())
 			}
-
-			h.doltgresHandler.ConnectionClosed(h.mysqlConn)
-			if err := h.Conn().Close(); err != nil {
-				fmt.Printf("Failed to properly close connection:\n%v\n", err)
-			}
 		}()
 	}
+	defer func() {
+		if err := h.Conn().Close(); err != nil {
+			fmt.Printf("Failed to properly close connection:\n%v\n", err)
+		}
+	}()
 	h.doltgresHandler.NewConnection(h.mysqlConn)
+	defer func() {
+		h.doltgresHandler.ConnectionClosed(h.mysqlConn)
+	}()
 
 	if proceed, err := h.handleStartup(); err != nil || !proceed {
 		returnErr = err

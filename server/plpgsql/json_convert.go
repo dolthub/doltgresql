@@ -52,6 +52,8 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 	switch {
 	case stmt.Assignment != nil:
 		return stmt.Assignment.Convert()
+	case stmt.Case != nil:
+		return stmt.Case.Convert()
 	case stmt.ExecSQL != nil:
 		return stmt.ExecSQL.Convert()
 	case stmt.Exit != nil:
