@@ -23,7 +23,7 @@ import (
 	"github.com/dolthub/doltgresql/core/functions"
 
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/server/plpgsql"
+	"github.com/dolthub/doltgresql/core/interpreter"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -36,7 +36,7 @@ type CreateFunction struct {
 	ParameterNames []string
 	ParameterTypes []*pgtypes.DoltgresType
 	Strict         bool
-	Statements     []plpgsql.InterpreterOperation
+	Statements     []interpreter.InterpreterOperation
 }
 
 var _ sql.ExecSourceRel = (*CreateFunction)(nil)
@@ -51,7 +51,7 @@ func NewCreateFunction(
 	paramNames []string,
 	paramTypes []*pgtypes.DoltgresType,
 	strict bool,
-	statements []plpgsql.InterpreterOperation) *CreateFunction {
+	statements []interpreter.InterpreterOperation) *CreateFunction {
 	return &CreateFunction{
 		FunctionName:   functionName,
 		SchemaName:     schemaName,

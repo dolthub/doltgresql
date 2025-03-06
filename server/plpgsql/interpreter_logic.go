@@ -20,8 +20,11 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/jackc/pgx/v5/pgproto3"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/interpreter"
 	"github.com/dolthub/doltgresql/core/typecollection"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -33,7 +36,7 @@ type InterpretedFunction interface {
 	GetParameters() []*pgtypes.DoltgresType
 	GetParameterNames() []string
 	GetReturn() *pgtypes.DoltgresType
-	GetStatements() []InterpreterOperation
+	GetStatements() []interpreter.InterpreterOperation
 	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (rowIter sql.RowIter, err error)
 	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
 }
@@ -68,13 +71,13 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 
 		operation := statements[counter]
 		switch operation.OpCode {
-		case OpCode_Alias:
+		case interpreter.OpCode_Alias:
 			iv := stack.GetVariable(operation.PrimaryData)
 			if iv == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", operation.PrimaryData)
 			}
 			stack.NewVariableAlias(operation.Target, iv)
-		case OpCode_Assign:
+		case interpreter.OpCode_Assign:
 			iv := stack.GetVariable(operation.Target)
 			if iv == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
@@ -87,9 +90,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if err != nil {
 				return nil, err
 			}
-		case OpCode_Case:
-			// TODO: implement
-		case OpCode_Declare:
+		case interpreter.OpCode_Declare:
 			typeCollection, err := GetTypesCollectionFromContext(ctx)
 			if err != nil {
 				return nil, err
@@ -118,11 +119,11 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 				return nil, pgtypes.ErrTypeDoesNotExist.New(operation.PrimaryData)
 			}
 			stack.NewVariable(operation.Target, resolvedType)
-		case OpCode_DeleteInto:
+		case interpreter.OpCode_DeleteInto:
 			// TODO: implement
-		case OpCode_Exception:
+		case interpreter.OpCode_Exception:
 			// TODO: implement
-		case OpCode_Execute:
+		case interpreter.OpCode_Execute:
 			if len(operation.Target) > 0 {
 				target := stack.GetVariable(operation.Target)
 				if target == nil {
@@ -145,30 +146,30 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 					return nil, err
 				}
 			}
-		case OpCode_Get:
+		case interpreter.OpCode_Get:
 			// TODO: implement
-		case OpCode_Goto:
+		case interpreter.OpCode_Goto:
 			// We must compare to the index - 1, so that the increment hits our target
 			if counter <= operation.Index {
 				for ; counter < operation.Index-1; counter++ {
 					switch statements[counter].OpCode {
-					case OpCode_ScopeBegin:
+					case interpreter.OpCode_ScopeBegin:
 						stack.PushScope()
-					case OpCode_ScopeEnd:
+					case interpreter.OpCode_ScopeEnd:
 						stack.PopScope()
 					}
 				}
 			} else {
 				for ; counter > operation.Index-1; counter-- {
 					switch statements[counter].OpCode {
-					case OpCode_ScopeBegin:
+					case interpreter.OpCode_ScopeBegin:
 						stack.PopScope()
-					case OpCode_ScopeEnd:
+					case interpreter.OpCode_ScopeEnd:
 						stack.PushScope()
 					}
 				}
 			}
-		case OpCode_If:
+		case interpreter.OpCode_If:
 			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, pgtypes.Bool, operation.SecondaryData)
 			if err != nil {
 				return nil, err
@@ -178,9 +179,9 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 				// Also, we must assign to index-1, so that the increment hits our target.
 				counter = operation.Index - 1
 			}
-		case OpCode_InsertInto:
+		case interpreter.OpCode_InsertInto:
 			// TODO: implement
-		case OpCode_Perform:
+		case interpreter.OpCode_Perform:
 			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
 				return nil, err
@@ -188,22 +189,104 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
 				return nil, err
 			}
-		case OpCode_Return:
+		case interpreter.OpCode_Raise:
+			backend, err := core.GetBackend(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			// TODO: Use the client_min_messages config param to determine which
+			//       notice levels to send to the client.
+			// https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-CLIENT-MIN-MESSAGES
+
+			// TODO: Notices at the EXCEPTION level should also abort the current tx.
+
+			message, err := evaluteNoticeMessage(ctx, iFunc, operation, stack)
+			if err != nil {
+				return nil, err
+			}
+
+			noticeResponse := &pgproto3.NoticeResponse{
+				Severity: operation.PrimaryData,
+				Message:  message,
+			}
+
+			applyNoticeOptions(ctx, noticeResponse, operation.Options.(map[uint8]string))
+			backend.Send(noticeResponse)
+			if err = backend.Flush(); err != nil {
+				return nil, err
+			}
+		case interpreter.OpCode_Return:
 			if len(operation.PrimaryData) == 0 {
 				return nil, nil
 			}
 			return iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
-		case OpCode_ScopeBegin:
+		case interpreter.OpCode_ScopeBegin:
 			stack.PushScope()
-		case OpCode_ScopeEnd:
+		case interpreter.OpCode_ScopeEnd:
 			stack.PopScope()
-		case OpCode_SelectInto:
+		case interpreter.OpCode_SelectInto:
 			// TODO: implement
-		case OpCode_UpdateInto:
+		case interpreter.OpCode_UpdateInto:
 			// TODO: implement
 		default:
 			panic("unimplemented opcode")
 		}
 	}
 	return nil, nil
+}
+
+// applyNoticeOptions adds the specified |options| to the |noticeResponse|.
+func applyNoticeOptions(ctx *sql.Context, noticeResponse *pgproto3.NoticeResponse, options map[uint8]string) {
+	for key, value := range options {
+		switch NoticeOptionType(key) {
+		case NoticeOptionTypeErrCode:
+			noticeResponse.Code = value
+		case NoticeOptionTypeMessage:
+			noticeResponse.Message = value
+		case NoticeOptionTypeDetail:
+			noticeResponse.Detail = value
+		case NoticeOptionTypeHint:
+			noticeResponse.Hint = value
+		case NoticeOptionTypeConstraint:
+			noticeResponse.ConstraintName = value
+		case NoticeOptionTypeDataType:
+			noticeResponse.DataTypeName = value
+		case NoticeOptionTypeTable:
+			noticeResponse.TableName = value
+		case NoticeOptionTypeSchema:
+			noticeResponse.SchemaName = value
+		default:
+			ctx.GetLogger().Warnf("unhandled notice option type: %d", key)
+		}
+	}
+}
+
+// evaluteNoticeMessage evaluates the message for a RAISE NOTICE statement, including
+// evaluating any specified parameters and plugging them into the message in place of
+// the % placeholders.
+func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
+	operation interpreter.InterpreterOperation, stack InterpreterStack) (string, error) {
+	message := operation.SecondaryData[0]
+	if len(operation.SecondaryData) > 1 {
+		params := operation.SecondaryData[1:]
+		currentParam := 0
+
+		parts := strings.Split(message, "%%")
+		for i, part := range parts {
+			for strings.Contains(part, "%") {
+				retVal, err := iFunc.QuerySingleReturn(ctx, stack, "SELECT "+params[currentParam], nil, nil)
+				if err != nil {
+					return "", err
+				}
+				currentParam += 1
+
+				s := fmt.Sprintf("%v", retVal)
+				part = strings.Replace(part, "%", s, 1)
+			}
+			parts[i] = part
+		}
+		message = strings.Join(parts, "%")
+	}
+	return message, nil
 }

@@ -17,6 +17,7 @@ package plpgsql
 import (
 	"github.com/cockroachdb/errors"
 
+	"github.com/dolthub/doltgresql/core/interpreter"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -29,12 +30,12 @@ type labelStackItem struct {
 
 // reconcileLabels handles all GOTO operations that may point to a label, since labels may be nested/shadowed. It's
 // easier to perform this is a final step, rather than trying to reconcile them during the operation conversion step.
-func reconcileLabels(ops []InterpreterOperation) error {
+func reconcileLabels(ops []interpreter.InterpreterOperation) error {
 	labels := utils.NewStack[labelStackItem]()
-	gotos := make(map[int]*InterpreterOperation)
+	gotos := make(map[int]*interpreter.InterpreterOperation)
 	for opIndex, operation := range ops {
 		switch operation.OpCode {
-		case OpCode_Goto:
+		case interpreter.OpCode_Goto:
 			// When this is true, we have a label
 			if len(operation.PrimaryData) > 0 {
 				if operation.Index < 0 {
@@ -60,7 +61,7 @@ func reconcileLabels(ops []InterpreterOperation) error {
 					gotos[opIndex] = &ops[opIndex]
 				}
 			}
-		case OpCode_ScopeBegin:
+		case interpreter.OpCode_ScopeBegin:
 			// We'll push the label and loop status to the stack
 			labels.Push(labelStackItem{
 				label:  operation.PrimaryData,
@@ -70,7 +71,7 @@ func reconcileLabels(ops []InterpreterOperation) error {
 			// We clear the label and loop status since we only set them for reconciliation
 			ops[opIndex].PrimaryData = ""
 			ops[opIndex].Target = ""
-		case OpCode_ScopeEnd:
+		case interpreter.OpCode_ScopeEnd:
 			stackItem := labels.Pop()
 			for gotoIdx, gotoOp := range gotos {
 				if gotoOp.PrimaryData == stackItem.label {

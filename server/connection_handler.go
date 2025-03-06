@@ -109,12 +109,17 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.Serve
 	// TODO: possibly should define engine and session manager ourselves
 	//  instead of depending on the GetRunningServer method.
 	server := sqlserver.GetRunningServer()
+
+	// Exposing backend as part of the context allows other code to access the connection and send pgproto messages.
+	// This is required for RAISE in PL/pgSQL, for example.
+	backend := pgproto3.NewBackend(conn, conn)
 	doltgresHandler := &DoltgresHandler{
 		e:                 server.Engine,
 		sm:                server.SessionManager(),
 		readTimeout:       0,     // cfg.ConnReadTimeout,
 		encodeLoggedQuery: false, // cfg.EncodeLoggedQuery,
 		pgTypeMap:         pgtype.NewMap(),
+		backend:           backend,
 	}
 	if sel != nil {
 		doltgresHandler.sel = sel
@@ -125,7 +130,7 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.Serve
 		preparedStatements: preparedStatements,
 		portals:            portals,
 		doltgresHandler:    doltgresHandler,
-		backend:            pgproto3.NewBackend(conn, conn),
+		backend:            backend,
 	}
 }
 

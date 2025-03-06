@@ -21,7 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/server/plpgsql"
+	"github.com/dolthub/doltgresql/core/interpreter"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -92,10 +92,10 @@ func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
 		f.Strict = reader.Bool()
 		// Read the operations
 		opCount := reader.VariableUint()
-		f.Operations = make([]plpgsql.InterpreterOperation, opCount)
+		f.Operations = make([]interpreter.InterpreterOperation, opCount)
 		for opIdx := uint64(0); opIdx < opCount; opIdx++ {
-			op := plpgsql.InterpreterOperation{}
-			op.OpCode = plpgsql.OpCode(reader.Uint16())
+			op := interpreter.InterpreterOperation{}
+			op.OpCode = interpreter.OpCode(reader.Uint16())
 			op.PrimaryData = reader.String()
 			op.SecondaryData = reader.StringSlice()
 			op.Target = reader.String()

@@ -21,7 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/server/plpgsql"
+	"github.com/dolthub/doltgresql/core/interpreter"
 )
 
 // Collection contains a collection of functions.
@@ -40,7 +40,7 @@ type Function struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
-	Operations         []plpgsql.InterpreterOperation
+	Operations         []interpreter.InterpreterOperation
 }
 
 // GetFunction returns the function with the given ID. Returns nil if the function cannot be found.
