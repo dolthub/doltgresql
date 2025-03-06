@@ -49,7 +49,7 @@ func WithCertificate(cert tls.Certificate) ListenerOpt {
 }
 
 // NewListener creates a new Listener.
-func NewListener(listenerCfg mysql.ListenerConfig, sel server.ServerEventListener) (server.ProtocolListener, error) {
+func NewListener(cfg server.Config, listenerCfg mysql.ListenerConfig, sel server.ServerEventListener) (server.ProtocolListener, error) {
 	return NewListenerWithOpts(listenerCfg, sel)
 }
 
