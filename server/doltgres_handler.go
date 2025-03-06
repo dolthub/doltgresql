@@ -510,22 +510,19 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 
 	var rowChan = make(chan sql.Row, 512)
 
-	pan2err := func() error {
+	pan2err := func(err *error) {
 		if HandlePanics {
 			if recoveredPanic := recover(); recoveredPanic != nil {
-				return errors.Errorf("DoltgresHandler caught panic: %v", recoveredPanic)
+				*err = goerrors.Join(*err, errors.Errorf("DoltgresHandler caught panic: %v", recoveredPanic))
 			}
 		}
-		return nil
 	}
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	// Read rows off the row iterator and send them to the row channel.
 	eg.Go(func() (err error) {
-		defer func() {
-			err = goerrors.Join(err, pan2err())
-		}()
+		defer pan2err(&err)
 		defer wg.Done()
 		defer close(rowChan)
 		for {
@@ -563,10 +560,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	// reads rows from the channel, converts them to wire format,
 	// and calls |callback| to give them to vitess.
 	eg.Go(func() (err error) {
-		defer func() {
-			err = goerrors.Join(err, pan2err())
-		}()
-		// defer cancelF()
+		defer pan2err(&err)
 		defer wg.Done()
 		for {
 			if r == nil {
@@ -624,9 +618,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	// Close() kills this PID in the process list,
 	// wait until all rows have be sent over the wire
 	eg.Go(func() (err error) {
-		defer func() {
-			err = goerrors.Join(err, pan2err())
-		}()
+		defer pan2err(&err)
 		wg.Wait()
 		return iter.Close(ctx)
 	})
