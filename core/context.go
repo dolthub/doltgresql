@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/sequences"
@@ -32,6 +33,10 @@ type contextValues struct {
 	types          *typecollection.TypeCollection
 	funcs          *functions.Collection
 	pgCatalogCache any
+
+	// backend is the connection to the client, used to send postgres protocol messages back to the client
+	// (e.g. when a RAISE statement sends a NOTICE to the client)
+	backend *pgproto3.Backend
 }
 
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
@@ -99,6 +104,28 @@ func SetPgCatalogCache(ctx *sql.Context, pgCatalogCache any) error {
 		return err
 	}
 	cv.pgCatalogCache = pgCatalogCache
+	return nil
+}
+
+// GetBackend returns the pgproto3 Backend instance stored in the specified |ctx|.
+func GetBackend(ctx *sql.Context) (*pgproto3.Backend, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cv.backend, nil
+}
+
+// SetBackend sets the pgproto3 |backend| in the specified |ctx|, so that other parts of the engine can access it
+// to send messages, such as Notices.
+func SetBackend(ctx *sql.Context, backend *pgproto3.Backend) error {
+	// TODO: Instead of exposing the Backend instance directly, if only support for sending Notices is needed,
+	//       we could pass in a type that is specific for sending Notices.
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.backend = backend
 	return nil
 }
 

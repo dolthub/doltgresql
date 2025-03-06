@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2025 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,20 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package plpgsql
 
-import (
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/store/types"
+import "github.com/dolthub/doltgresql/core"
 
-	"github.com/dolthub/doltgresql/core/id"
-)
-
-// Init initializes this package.
 func Init() {
-	doltdb.EmptyRootValue = emptyRootValue
-	doltdb.NewRootValue = newRootValue
-	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
-	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
-	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
+	GetTypesCollectionFromContext = core.GetTypesCollectionFromContext
 }

@@ -39,6 +39,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/sirupsen/logrus"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -87,6 +88,7 @@ type DoltgresHandler struct {
 	encodeLoggedQuery bool
 	pgTypeMap         *pgtype.Map
 	sel               server.ServerEventListener
+	backend           *pgproto3.Backend
 }
 
 var _ Handler = &DoltgresHandler{}
@@ -284,6 +286,10 @@ var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*Result) error) error {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
+		return err
+	}
+
+	if err = core.SetBackend(sqlCtx, h.backend); err != nil {
 		return err
 	}
 

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package plpgsql
+package interpreter
 
 // OpCode states the operation to be performed. Most operations have a direct analogue to a Pl/pgSQL operation, however
 // some exist only in Doltgres (specific to our interpreter implementation).
@@ -31,6 +31,7 @@ const (
 	OpCode_If                       // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
 	OpCode_InsertInto               // https://www.postgresql.org/docs/15/plpgsql-statements.html
 	OpCode_Perform                  // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_Raise                    // https://www.postgresql.org/docs/15/plpgsql-errors-and-messages.html
 	OpCode_Return                   // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING
 	OpCode_ScopeBegin               // This is used for scope control, specific to Doltgres
 	OpCode_ScopeEnd                 // This is used for scope control, specific to Doltgres
@@ -45,4 +46,5 @@ type InterpreterOperation struct {
 	SecondaryData []string // This represents auxiliary data, such as bindings, strictness, etc.
 	Target        string   // This is the variable that will store the results (if applicable)
 	Index         int      // This is the index that should be set for operations that move the function counter
+	Options       any      // This is extra, opaque data for operations that need it
 }

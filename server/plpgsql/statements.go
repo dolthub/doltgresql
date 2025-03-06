@@ -18,8 +18,9 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/errors"
-
 	pg_query "github.com/pganalyze/pg_query_go/v6"
+
+	"github.com/dolthub/doltgresql/core/interpreter"
 )
 
 // Statement represents a PL/pgSQL statement.
@@ -27,7 +28,7 @@ type Statement interface {
 	// OperationSize reports the number of operations that the statement will convert to.
 	OperationSize() int32
 	// AppendOperations adds the statement to the operation slice.
-	AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error
+	AppendOperations(ops *[]interpreter.InterpreterOperation, stack *InterpreterStack) error
 }
 
 // Assignment represents an assignment statement.
@@ -45,14 +46,14 @@ func (Assignment) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt Assignment) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+func (stmt Assignment) AppendOperations(ops *[]interpreter.InterpreterOperation, stack *InterpreterStack) error {
 	expression, referencedVariables, err := substituteVariableReferences(stmt.Expression, stack)
 	if err != nil {
 		return err
 	}
 
-	*ops = append(*ops, InterpreterOperation{
-		OpCode:        OpCode_Assign,
+	*ops = append(*ops, interpreter.InterpreterOperation{
+		OpCode:        interpreter.OpCode_Assign,
 		PrimaryData:   "SELECT " + expression + ";",
 		SecondaryData: referencedVariables,
 		Target:        stmt.VariableName,
@@ -86,7 +87,7 @@ func (stmt Block) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+func (stmt Block) AppendOperations(ops *[]interpreter.InterpreterOperation, stack *InterpreterStack) error {
 	stack.PushScope()
 	stack.SetLabel(stmt.Label) // If the label is empty, then this won't change anything
 	var loop string
@@ -98,15 +99,15 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 			stmt.Label = stack.GetCurrentLabel()
 		}
 	}
-	*ops = append(*ops, InterpreterOperation{
-		OpCode:      OpCode_ScopeBegin,
+	*ops = append(*ops, interpreter.InterpreterOperation{
+		OpCode:      interpreter.OpCode_ScopeBegin,
 		PrimaryData: stmt.Label,
 		Target:      loop,
 	})
 	for _, variable := range stmt.Variable {
 		if !variable.IsParameter {
-			*ops = append(*ops, InterpreterOperation{
-				OpCode:      OpCode_Declare,
+			*ops = append(*ops, interpreter.InterpreterOperation{
+				OpCode:      interpreter.OpCode_Declare,
 				PrimaryData: variable.Type,
 				Target:      variable.Name,
 			})
@@ -118,8 +119,8 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 			return err
 		}
 	}
-	*ops = append(*ops, InterpreterOperation{
-		OpCode: OpCode_ScopeEnd,
+	*ops = append(*ops, interpreter.InterpreterOperation{
+		OpCode: interpreter.OpCode_ScopeEnd,
 	})
 	stack.PopScope()
 	return nil
@@ -139,13 +140,13 @@ func (ExecuteSQL) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt ExecuteSQL) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+func (stmt ExecuteSQL) AppendOperations(ops *[]interpreter.InterpreterOperation, stack *InterpreterStack) error {
 	statementStr, referencedVariables, err := substituteVariableReferences(stmt.Statement, stack)
 	if err != nil {
 		return err
 	}
-	*ops = append(*ops, InterpreterOperation{
-		OpCode:        OpCode_Execute,
+	*ops = append(*ops, interpreter.InterpreterOperation{
+		OpCode:        interpreter.OpCode_Execute,
 		PrimaryData:   statementStr,
 		SecondaryData: referencedVariables,
 		Target:        stmt.Target,
@@ -168,10 +169,10 @@ func (Goto) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt Goto) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+func (stmt Goto) AppendOperations(ops *[]interpreter.InterpreterOperation, stack *InterpreterStack) error {
 	if len(stmt.Label) > 0 {
-		*ops = append(*ops, InterpreterOperation{
-			OpCode:      OpCode_Goto,
+		*ops = append(*ops, interpreter.InterpreterOperation{
+			OpCode:      interpreter.OpCode_Goto,
 			PrimaryData: stmt.Label,
 			Index:       int(stmt.Offset),
 		})
@@ -184,14 +185,14 @@ func (stmt Goto) AppendOperations(ops *[]InterpreterOperation, stack *Interprete
 				return errors.New("CONTINUE cannot be used outside a loop")
 			}
 		}
-		*ops = append(*ops, InterpreterOperation{
-			OpCode:      OpCode_Goto,
+		*ops = append(*ops, interpreter.InterpreterOperation{
+			OpCode:      interpreter.OpCode_Goto,
 			PrimaryData: label,
 			Index:       int(stmt.Offset),
 		})
 	} else {
-		*ops = append(*ops, InterpreterOperation{
-			OpCode: OpCode_Goto,
+		*ops = append(*ops, interpreter.InterpreterOperation{
+			OpCode: interpreter.OpCode_Goto,
 			Index:  len(*ops) + int(stmt.Offset),
 		})
 	}
@@ -212,14 +213,14 @@ func (If) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt If) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+func (stmt If) AppendOperations(ops *[]interpreter.InterpreterOperation, stack *InterpreterStack) error {
 	condition, referencedVariables, err := substituteVariableReferences(stmt.Condition, stack)
 	if err != nil {
 		return err
 	}
 
-	*ops = append(*ops, InterpreterOperation{
-		OpCode:        OpCode_If,
+	*ops = append(*ops, interpreter.InterpreterOperation{
+		OpCode:        interpreter.OpCode_If,
 		PrimaryData:   "SELECT " + condition + ";",
 		SecondaryData: referencedVariables,
 		Index:         len(*ops) + int(stmt.GotoOffset),
@@ -240,16 +241,42 @@ func (Perform) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt Perform) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+func (stmt Perform) AppendOperations(ops *[]interpreter.InterpreterOperation, stack *InterpreterStack) error {
 	statementStr, referencedVariables, err := substituteVariableReferences(stmt.Statement, stack)
 	if err != nil {
 		return err
 	}
 
-	*ops = append(*ops, InterpreterOperation{
-		OpCode:        OpCode_Perform,
+	*ops = append(*ops, interpreter.InterpreterOperation{
+		OpCode:        interpreter.OpCode_Perform,
 		PrimaryData:   statementStr,
 		SecondaryData: referencedVariables,
+	})
+	return nil
+}
+
+// Raise represents a RAISE statement
+type Raise struct {
+	Level   string
+	Message string
+	Params  []string
+	Options map[uint8]string
+}
+
+var _ Statement = Raise{}
+
+// OperationSize implements the interface Statement.
+func (r Raise) OperationSize() int32 {
+	return 1
+}
+
+// AppendOperations implements the interface Statement.
+func (r Raise) AppendOperations(ops *[]interpreter.InterpreterOperation, stack *InterpreterStack) error {
+	*ops = append(*ops, interpreter.InterpreterOperation{
+		OpCode:        interpreter.OpCode_Raise,
+		PrimaryData:   r.Level,
+		SecondaryData: append([]string{r.Message}, r.Params...),
+		Options:       r.Options,
 	})
 	return nil
 }
@@ -267,7 +294,7 @@ func (Return) OperationSize() int32 {
 }
 
 // AppendOperations implements the interface Statement.
-func (stmt Return) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+func (stmt Return) AppendOperations(ops *[]interpreter.InterpreterOperation, stack *InterpreterStack) error {
 	expression, referencedVariables, err := substituteVariableReferences(stmt.Expression, stack)
 	if err != nil {
 		return err
@@ -275,8 +302,8 @@ func (stmt Return) AppendOperations(ops *[]InterpreterOperation, stack *Interpre
 	if len(expression) > 0 {
 		expression = "SELECT " + expression + ";"
 	}
-	*ops = append(*ops, InterpreterOperation{
-		OpCode:        OpCode_Return,
+	*ops = append(*ops, interpreter.InterpreterOperation{
+		OpCode:        interpreter.OpCode_Return,
 		PrimaryData:   expression,
 		SecondaryData: referencedVariables,
 	})

@@ -24,6 +24,7 @@ import (
 	"github.com/lib/pq"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/interpreter"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -38,7 +39,7 @@ type InterpretedFunction struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
-	Statements         []plpgsql.InterpreterOperation
+	Statements         []interpreter.InterpreterOperation
 }
 
 var _ FunctionInterface = InterpretedFunction{}
@@ -70,7 +71,7 @@ func (iFunc InterpretedFunction) GetReturn() *pgtypes.DoltgresType {
 }
 
 // GetStatements returns the contained statements.
-func (iFunc InterpretedFunction) GetStatements() []plpgsql.InterpreterOperation {
+func (iFunc InterpretedFunction) GetStatements() []interpreter.InterpreterOperation {
 	return iFunc.Statements
 }
 

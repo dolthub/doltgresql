@@ -160,6 +160,26 @@ type plpgSQL_stmt_perform struct {
 	LineNumber int32 `json:"lineno"`
 }
 
+// plpgSQL_stmt_raise exists to match the expected JSON format.
+type plpgSQL_stmt_raise struct {
+	LineNumber int32                          `json:"lineno"`
+	ELogLevel  int32                          `json:"elog_level"`
+	Message    string                         `json:"message"`
+	Params     []sqlstmt                      `json:"params"`
+	Options    []plpgSQL_raise_option_wrapper `json:"options"`
+}
+
+// plpgSQL_raise_option_wrapper exists to match the expected JSON format.
+type plpgSQL_raise_option_wrapper struct {
+	Option plpgSQL_raise_option `json:"PLpgSQL_raise_option"`
+}
+
+// plpgSQL_raise_option exists to match the expected JSON format.
+type plpgSQL_raise_option struct {
+	OptionType int32   `json:"opt_type"`
+	Expression sqlstmt `json:"expr"`
+}
+
 // plpgSQL_stmt_return exists to match the expected JSON format.
 type plpgSQL_stmt_return struct {
 	Expression expr  `json:"expr"`
@@ -201,6 +221,7 @@ type statement struct {
 	If         *plpgSQL_stmt_if      `json:"PLpgSQL_stmt_if"`
 	Loop       *plpgSQL_stmt_loop    `json:"PLpgSQL_stmt_loop"`
 	Perform    *plpgSQL_stmt_perform `json:"PLpgSQL_stmt_perform"`
+	Raise      *plpgSQL_stmt_raise   `json:"PLpgSQL_stmt_raise"`
 	Return     *plpgSQL_stmt_return  `json:"PLpgSQL_stmt_return"`
 	When       *plpgSQL_case_when    `json:"PLpgSQL_case_when"`
 	While      *plpgSQL_stmt_while   `json:"PLpgSQL_stmt_while"`
@@ -444,6 +465,26 @@ func (stmt *plpgSQL_stmt_loop) Convert() (block Block, err error) {
 func (stmt *plpgSQL_stmt_perform) Convert() Perform {
 	return Perform{
 		Statement: stmt.Expression.Expression.Query,
+	}
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_raise) Convert() Raise {
+	var params []string
+	for _, param := range stmt.Params {
+		params = append(params, param.Expr.Query)
+	}
+
+	options := make(map[uint8]string)
+	for _, option := range stmt.Options {
+		options[uint8(option.Option.OptionType)] = option.Option.Expression.Expr.Query
+	}
+
+	return Raise{
+		Level:   NoticeLevel(uint8(stmt.ELogLevel)).String(),
+		Message: stmt.Message,
+		Params:  params,
+		Options: options,
 	}
 }
 

@@ -19,11 +19,13 @@ import (
 
 	"github.com/cockroachdb/errors"
 	pg_query "github.com/pganalyze/pg_query_go/v6"
+
+	"github.com/dolthub/doltgresql/core/interpreter"
 )
 
 // Parse parses the given CREATE FUNCTION string (which must be the entire string, not just the body) into a Block
 // containing the contents of the body.
-func Parse(fullCreateFunctionString string) ([]InterpreterOperation, error) {
+func Parse(fullCreateFunctionString string) ([]interpreter.InterpreterOperation, error) {
 	var functions []function
 	parsedBody, err := pg_query.ParsePlPgSqlToJSON(fullCreateFunctionString)
 	if err != nil {
@@ -40,7 +42,7 @@ func Parse(fullCreateFunctionString string) ([]InterpreterOperation, error) {
 	if err != nil {
 		return nil, err
 	}
-	ops := make([]InterpreterOperation, 0, len(block.Body)+len(block.Variable))
+	ops := make([]interpreter.InterpreterOperation, 0, len(block.Body)+len(block.Variable))
 	stack := NewInterpreterStack(nil)
 	if err = block.AppendOperations(&ops, &stack); err != nil {
 		return nil, err

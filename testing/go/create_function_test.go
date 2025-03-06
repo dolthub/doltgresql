@@ -411,6 +411,48 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "RAISE",
+			SetUpScript: []string{
+				`CREATE FUNCTION interpreted_raise(input TEXT) RETURNS TEXT AS $$
+				DECLARE
+					var1 TEXT;
+				BEGIN
+					RAISE WARNING 'MyMessage';
+					RAISE NOTICE USING MESSAGE = 'MyNoticeMessage'; 
+					RAISE DEBUG 'DebugTest1' USING MESSAGE = 'DebugMessage';
+					RAISE EXCEPTION '% %% bar %', 'foo', 1+1;
+					var1 := input;
+					RETURN var1;
+				END;
+				$$ LANGUAGE plpgsql;
+				`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_raise('123');",
+					Expected: []sql.Row{{"123"}},
+					ExpectedNotices: []ExpectedNotice{
+						{
+							Severity: "WARNING",
+							Message:  "MyMessage",
+						},
+						{
+							Severity: "NOTICE",
+							Message:  "'MyNoticeMessage'",
+						},
+						{
+							Severity: "DEBUG",
+							Message:  "'DebugMessage'",
+						},
+						{
+							Severity: "EXCEPTION",
+							Message:  "foo % bar 2",
+						},
+					},
+				},
+			},
+		},
+		{
 			Name: "SELECT INTO",
 			SetUpScript: []string{`CREATE FUNCTION interpreted_select_into(input INT4) RETURNS TEXT AS $$
 DECLARE

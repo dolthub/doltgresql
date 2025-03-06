@@ -32,6 +32,7 @@ import (
 	"github.com/dolthub/doltgresql/server/functions/binary"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/functions/unary"
+	"github.com/dolthub/doltgresql/server/plpgsql"
 	"github.com/dolthub/doltgresql/server/tables"
 	"github.com/dolthub/doltgresql/server/tables/dprocedures"
 	"github.com/dolthub/doltgresql/server/tables/dtables"
@@ -62,5 +63,6 @@ func Initialize(dEnv *env.DoltEnv) {
 		information_schema.Init()
 		dtables.Init()
 		dprocedures.Init()
+		plpgsql.Init()
 	})
 }
