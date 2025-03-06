@@ -604,7 +604,7 @@ func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQue
 		ListenerConfig: &servercfg.DoltgresListenerConfig{
 			PortNumber: Ptr(port),
 		},
-	})
+	}, server.NewListener)
 	require.NoError(t, err)
 	return &DoltgresQueryEngine{
 		harness:    harness,

@@ -312,7 +312,7 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 			HostStr:    ptr("127.0.0.1"),
 		},
 		LogLevelStr: ptr(testServerLogLevel),
-	})
+	}, dserver.NewListener)
 	require.NoError(t, err)
 	auth.ClearDatabase()
 

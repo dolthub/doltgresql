@@ -45,7 +45,7 @@ func CreateDoltgresServer() (controller *svcs.Controller, port int, err error) {
 			PortNumber: &port,
 			HostStr:    &address,
 		},
-	})
+	}, dserver.NewListener)
 	if err != nil {
 		return nil, 0, err
 	}
