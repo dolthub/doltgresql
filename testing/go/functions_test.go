@@ -917,7 +917,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				// TODO: ALTER SEQUENCE OWNED BY is not supported yet. When the sequence is created
 				//       explicitly, separate from the column, the owner must be udpated before
 				//       pg_get_serial_sequence() will identify it.
-				//`ALTER SEQUENCE t2_id_seq OWNED BY t2.id;`,
+				// `ALTER SEQUENCE t2_id_seq OWNED BY t2.id;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1001,6 +1001,46 @@ func TestJsonFunctions(t *testing.T) {
 					Query:    `SELECT json_build_object(1, 2, 'b', 3);`,
 					Cols:     []string{"json_build_object"},
 					Expected: []sql.Row{{`{"1":2,"b":3}`}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_build_array",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT jsonb_build_array(1, 2, 3);`,
+					Cols:     []string{"jsonb_build_array"},
+					Expected: []sql.Row{{`[1, 2, 3]`}},
+				},
+				{
+					Query:    `SELECT jsonb_build_array(1, '2', 3);`,
+					Cols:     []string{"jsonb_build_array"},
+					Expected: []sql.Row{{`[1, "2", 3]`}},
+				},
+				{
+					Query:    `SELECT jsonb_build_array();`,
+					Skip:     true, // variadic functions can't handle 0 arguments right now
+					Cols:     []string{"jsonb_build_array"},
+					Expected: []sql.Row{{`[]`}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_build_object",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT jsonb_build_object('a', 2, 'b', 4);`,
+					Cols:     []string{"jsonb_build_object"},
+					Expected: []sql.Row{{`{"a": 2, "b": 4}`}},
+				},
+				{
+					Query:       `SELECT jsonb_build_object('a', 2, 'b');`,
+					ExpectedErr: "even number",
+				},
+				{
+					Query:    `SELECT jsonb_build_object(1, 2, 'b', 3);`,
+					Cols:     []string{"jsonb_build_object"},
+					Expected: []sql.Row{{`{"1": 2, "b": 3}`}},
 				},
 			},
 		},
