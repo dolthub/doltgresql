@@ -112,7 +112,7 @@ func (iFunc InterpretedFunction) VariadicIndex() int {
 // TODO: Fix GMS to not do this.
 func HackNewSubqueryContext(ctx *sql.Context) *sql.Context {
 	res := *ctx
-	res.ApplyOpts(sql.WithPid(1<<64-1))
+	res.ApplyOpts(sql.WithPid(1<<64 - 1))
 	if res.Pid() == ctx.Pid() {
 		panic("pids matched when they shouldn't")
 	}
