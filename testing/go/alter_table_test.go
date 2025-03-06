@@ -228,6 +228,31 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Add Primary Key on text column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a text, b INT);",
+				"insert into test1 values ('a', 1), ('b', 2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ADD PRIMARY KEY (a);",
+					Expected: []sql.Row{},
+				},
+				{
+					// Test the pk by inserting a duplicate value
+					Query:       "INSERT into test1 values ('a', 3);",
+					ExpectedErr: "duplicate primary key",
+				},
+				{
+					Query: "select * from test1;",
+					Expected: []sql.Row{
+						{"a", 1},
+						{"b", 2},
+					},
+				},
+			},
+		},
+		{
 			Name: "Add primary key with generated column",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (
