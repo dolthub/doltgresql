@@ -65,6 +65,26 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				Name: "type compatibility",
+				Focus: true,
+				SetUpScript: []string{
+					`CREATE TABLE child (
+      id uuid DEFAULT public.gen_random_uuid() NOT NULL,
+      name character varying NOT NULL
+  );`,
+					`CREATE TABLE parent (
+      value text NOT NULL,
+      comment text
+  );`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `ALTER TABLE ONLY child
+      ADD CONSTRAINT name_fkey FOREIGN KEY (name) REFERENCES parent(value) ON UPDATE RESTRICT ON DELETE RESTRICT;`,
+					},
+				},
+			},
+			{
 				Name: "foreign key with dolt_add, dolt_commit",
 				SetUpScript: []string{
 					"create table test (pk int, \"value\" int, primary key(pk));",
