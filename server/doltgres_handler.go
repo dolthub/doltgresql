@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	goerrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -303,7 +304,12 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 
 	// TODO: it would be nice to put this logic in the engine, not the handler, but we don't want the process to be
 	//  marked done until we're done spooling rows over the wire
+	lgr := sqlCtx.GetLogger()
 	sqlCtx, err = sqlCtx.ProcessList.BeginQuery(sqlCtx, query)
+	if err != nil {
+		lgr.WithError(err).Warn("error running query; could not open process list context")
+		return err
+	}
 	defer sqlCtx.ProcessList.EndQuery(sqlCtx)
 
 	schema, rowIter, qFlags, err := queryExec(sqlCtx, query, parsed, analyzedPlan)
@@ -494,26 +500,32 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 
 // resultForDefaultIter reads batches of rows from the iterator
 // and writes results into the callback function.
-func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*Result) error, resultFields []pgproto3.FieldDescription) (r *Result, processedAtLeastOneBatch bool, returnErr error) {
+func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*Result) error, resultFields []pgproto3.FieldDescription) (*Result, bool, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForDefaultIter").End()
+
+	var r *Result
+	var processedAtLeastOneBatch bool
 
 	eg, ctx := ctx.NewErrgroup()
 
 	var rowChan = make(chan sql.Row, 512)
 
-	pan2err := func() {
+	pan2err := func() error {
 		if HandlePanics {
 			if recoveredPanic := recover(); recoveredPanic != nil {
-				returnErr = errors.Errorf("DoltgresHandler caught panic: %v", recoveredPanic)
+				return errors.Errorf("DoltgresHandler caught panic: %v", recoveredPanic)
 			}
 		}
+		return nil
 	}
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	// Read rows off the row iterator and send them to the row channel.
-	eg.Go(func() error {
-		defer pan2err()
+	eg.Go(func() (err error) {
+		defer func() {
+			err = goerrors.Join(err, pan2err())
+		}()
 		defer wg.Done()
 		defer close(rowChan)
 		for {
@@ -550,8 +562,10 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 
 	// reads rows from the channel, converts them to wire format,
 	// and calls |callback| to give them to vitess.
-	eg.Go(func() error {
-		defer pan2err()
+	eg.Go(func() (err error) {
+		defer func() {
+			err = goerrors.Join(err, pan2err())
+		}()
 		// defer cancelF()
 		defer wg.Done()
 		for {
@@ -609,8 +623,10 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 
 	// Close() kills this PID in the process list,
 	// wait until all rows have be sent over the wire
-	eg.Go(func() error {
-		defer pan2err()
+	eg.Go(func() (err error) {
+		defer func() {
+			err = goerrors.Join(err, pan2err())
+		}()
 		wg.Wait()
 		return iter.Close(ctx)
 	})
@@ -618,10 +634,10 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	err := eg.Wait()
 	if err != nil {
 		ctx.GetLogger().WithError(err).Warn("error running query")
-		returnErr = err
+		return nil, false, err
 	}
 
-	return
+	return r, processedAtLeastOneBatch, nil
 }
 
 func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row) ([][]byte, error) {

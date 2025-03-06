@@ -100,6 +100,25 @@ func (iFunc InterpretedFunction) VariadicIndex() int {
 	return -1
 }
 
+// We need to call QueryWithBindings. GMS's QueryWithBindings
+// currently wraps the result iterator in a tracking iterator which
+// calls ProcessList.EndQuery() on the ctx which is used to build the
+// query after the iterator is closed.
+//
+// Here we hack to get a subcontext that will not cause the context
+// associated with the top-level query to get canceled when it gets
+// passed to ProcessList.EndQuery.
+//
+// TODO: Fix GMS to not do this.
+func HackNewSubqueryContext(ctx *sql.Context) *sql.Context {
+	res := *ctx
+	res.ApplyOpts(sql.WithPid(1<<64-1))
+	if res.Pid() == ctx.Pid() {
+		panic("pids matched when they shouldn't")
+	}
+	return &res
+}
+
 // QuerySingleReturn handles queries that are supposed to return a single value.
 func (InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error) {
 	if len(bindings) > 0 {
@@ -119,7 +138,8 @@ func (InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgsql.Int
 			stmt = strings.Replace(stmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
 		}
 	}
-	sch, rowIter, _, err := stack.Runner().QueryWithBindings(ctx, stmt, nil, nil, nil)
+	subCtx := HackNewSubqueryContext(ctx)
+	sch, rowIter, _, err := stack.Runner().QueryWithBindings(subCtx, stmt, nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +193,8 @@ func (InterpretedFunction) QueryMultiReturn(ctx *sql.Context, stack plpgsql.Inte
 			stmt = strings.Replace(stmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
 		}
 	}
-	_, rowIter, _, err = stack.Runner().QueryWithBindings(ctx, stmt, nil, nil, nil)
+	subCtx := HackNewSubqueryContext(ctx)
+	_, rowIter, _, err = stack.Runner().QueryWithBindings(subCtx, stmt, nil, nil, nil)
 	return rowIter, err
 }
 
