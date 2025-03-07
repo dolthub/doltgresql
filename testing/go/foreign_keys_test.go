@@ -76,6 +76,7 @@ func TestForeignKeys(t *testing.T) {
       value text NOT NULL,
       comment text
   );`,
+	"alter table parent add constraint uv unique (value)",
 				},
 				Assertions: []ScriptTestAssertion{
 					{
