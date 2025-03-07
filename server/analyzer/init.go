@@ -17,6 +17,7 @@ package analyzer
 import (
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -107,7 +108,7 @@ func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstrai
 		col := cols[strings.ToLower(fkDef.Columns[i])]
 		parentCol := parentCols[strings.ToLower(fkDef.ParentColumns[i])]
 		if !foreignKeyComparableTypes(col.Type, parentCol.Type) {
-			return sql.ErrForeignKeyColumnTypeMismatch.New(fkDef.Columns[i], fkDef.ParentColumns[i])
+			return errors.Errorf("Key columns %q and %q are of incompatible types: %s and %s", col.Name, parentCol.Name, col.Type.String(), parentCol.Type.String())
 		}
 	}
 	return nil
@@ -116,17 +117,17 @@ func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstrai
 // foreignKeyComparableTypes returns whether the two given types are able to be used as parent/child columns in a
 // foreign key.
 func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
-	dt1, ok := from.(*types.DoltgresType)
+	dtFrom, ok := from.(*types.DoltgresType)
 	if !ok {
 		return false // should never be possible
 	}
 
-	dt2, ok := to.(*types.DoltgresType)
+	dtTo, ok := to.(*types.DoltgresType)
 	if !ok {
 		return false // should never be possible
 	}
 
-	if framework.GetImplicitCast(dt1, dt2) != nil {
+	if framework.GetImplicitCast(dtFrom, dtTo) != nil {
 		return true
 	}
 	return false
