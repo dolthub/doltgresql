@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 )
 
@@ -126,10 +127,20 @@ func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
 	if !ok {
 		return false // should never be possible
 	}
-
-	if framework.GetImplicitCast(dtFrom, dtTo) != nil {
+	
+	if dtFrom.Equals(dtTo) {
 		return true
 	}
+	
+	fromLiteral := expression.NewLiteral(dtFrom.Zero(), from)
+	toLiteral := expression.NewLiteral(dtTo.Zero(), to)
+	
+	// a foreign key between two different types is valid if there is an equality operator on the two types
+	eq := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("=", fromLiteral, toLiteral)
+	if eq != nil && eq.StashedError() == nil {
+		return true
+	}
+	
 	return false
 }
 
