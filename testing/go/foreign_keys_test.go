@@ -410,7 +410,7 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "Foreign key violation",
 					},
 					{
-						Query:            "alter table child DROP constraint child_ibfk_1",
+						Query:            "alter table child DROP constraint child_test_pk_fkey;",
 						SkipResultsCheck: true,
 					},
 					{
@@ -446,6 +446,83 @@ func TestForeignKeys(t *testing.T) {
 					},
 					{
 						Query:    "INSERT INTO child.child VALUES (3, 'three', 3)",
+						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
+				Name: "foreign key default naming",
+				SetUpScript: []string{
+					"CREATE TABLE webhooks (id varchar not null, id2 int8, primary key (id));",
+					"CREATE UNIQUE INDEX idx1 on webhooks(id, id2);",
+					"CREATE TABLE t33 (id varchar not null, webhook_id_fk varchar not null, webhook_id2_fk int8, foreign key (webhook_id_fk) references webhooks(id), foreign key (webhook_id_fk, webhook_id2_fk) references webhooks(id, id2), primary key (id));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "SELECT conname AS constraint_name FROM pg_constraint WHERE conrelid = 't33'::regclass  AND contype = 'f';",
+						Expected: []sql.Row{
+							{"t33_webhook_id_fk_fkey"},
+							{"t33_webhook_id_fk_webhook_id2_fk_fkey"},
+						},
+					},
+					{
+						Query:    "ALTER TABLE t33 DROP CONSTRAINT t33_webhook_id_fk_fkey;",
+						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
+				Name: "foreign key default naming, in column definition",
+				SetUpScript: []string{
+					"CREATE TABLE webhooks (id varchar not null, primary key (id));",
+					"CREATE TABLE t33 (id varchar not null, webhook_id_fk varchar not null references webhooks(id), primary key (id));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "SELECT conname AS constraint_name FROM pg_constraint WHERE conrelid = 't33'::regclass  AND contype = 'f';",
+						Expected: []sql.Row{
+							{"t33_webhook_id_fk_fkey"},
+						},
+					},
+					{
+						Query:    "ALTER TABLE t33 DROP CONSTRAINT t33_webhook_id_fk_fkey;",
+						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
+				Name: "foreign key custom naming",
+				SetUpScript: []string{
+					"CREATE TABLE webhooks (id VARCHAR NOT NULL, PRIMARY KEY (id));",
+					"CREATE TABLE t33 (id VARCHAR NOT NULL, webhook_id_fk VARCHAR NOT NULL, CONSTRAINT foo1 FOREIGN KEY (webhook_id_fk) REFERENCES webhooks(id), PRIMARY KEY (id));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "SELECT conname AS constraint_name FROM pg_constraint WHERE conrelid = 't33'::regclass AND contype = 'f';",
+						Expected: []sql.Row{{"foo1"}},
+					},
+					{
+						Query:    "ALTER TABLE t33 DROP CONSTRAINT foo1;",
+						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
+				Name: "foreign key default naming, added through alter table",
+				SetUpScript: []string{
+					"CREATE TABLE webhooks (id varchar not null, primary key (id));",
+					"CREATE TABLE t33 (id varchar not null, webhook_id_fk varchar not null, primary key (id));",
+					"ALTER TABLE t33 ADD FOREIGN KEY (webhook_id_fk) REFERENCES webhooks(id);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "SELECT conname AS constraint_name FROM pg_constraint WHERE conrelid = 't33'::regclass  AND contype = 'f';",
+						Expected: []sql.Row{
+							{"t33_webhook_id_fk_fkey"},
+						},
+					},
+					{
+						Query:    "ALTER TABLE t33 DROP CONSTRAINT t33_webhook_id_fk_fkey;",
 						Expected: []sql.Row{},
 					},
 				},

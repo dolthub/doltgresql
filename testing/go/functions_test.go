@@ -848,17 +848,10 @@ func TestSystemInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing2'::regclass LIMIT 1;`,
-					Expected: []sql.Row{
-						{"PRIMARY KEY (pk)"},
-					},
-				},
-				{
-					Skip:  true, // TODO: Foreign keys don't work
 					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing2'::regclass;`,
 					Expected: []sql.Row{
+						{"FOREIGN KEY testing2_pktesting_fkey (pktesting) REFERENCES testing (pk)"},
 						{"PRIMARY KEY (pk)"},
-						{"FOREIGN KEY (pktesting) REFERENCES testing(pk)"},
 					},
 				},
 				{
