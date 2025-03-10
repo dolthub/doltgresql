@@ -134,7 +134,9 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 					if index.Item.IsUnique() {
 						conType = "u"
 					} else {
-						conType = "f"
+						// If this isn't a primary key or a unique index, then it's a regular index, and not
+						// a constraint, so we don't need to report it in the pg_constraint table.
+						return true, nil
 					}
 				}
 

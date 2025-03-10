@@ -629,21 +629,14 @@ func TestPgConstraint(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_constraint" LIMIT 3;`,
-					Expected: []sql.Row{
-						{3757635986, "testing_pkey", 2200, "p", "f", "f", "t", 2147906242, 0, 3757635986, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
-						{3050361446, "v1", 2200, "u", "f", "f", "t", 2147906242, 0, 3050361446, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},
-						{2068729390, "testing2_pkey", 2200, "p", "f", "f", "t", 2694106299, 0, 2068729390, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
-					},
-				},
-				{
-					Skip:  true, // TODO: Foreign keys don't work
 					Query: `SELECT * FROM "pg_catalog"."pg_constraint" WHERE conrelid='testing2'::regclass OR conrelid='testing'::regclass;`,
 					Expected: []sql.Row{
 						{3757635986, "testing_pkey", 2200, "p", "f", "f", "t", 2147906242, 0, 3757635986, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
+						// TODO: postgres names this index testing_v1_key
 						{3050361446, "v1", 2200, "u", "f", "f", "t", 2147906242, 0, 3050361446, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},
+						{1719906648, "testing2_pktesting_fkey", 2200, "f", "f", "f", "t", 2694106299, 0, 1719906648, 0, 2147906242, "a", "a", "s", "t", 0, "t", "{0}", "{1}", nil, nil, nil, nil, nil, nil},
 						{2068729390, "testing2_pkey", 2200, "p", "f", "f", "t", 2694106299, 0, 2068729390, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
-						{2068729390, "testing2_pktesting_fkey", 2200, "f", "f", "t", 2694106299, 0, 2068729390, 0, 0, "", "", "", "t", 0, "t", "{2}", "{1}", nil, nil, nil, nil, nil, nil}},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_constraint";`,
@@ -657,6 +650,7 @@ func TestPgConstraint(t *testing.T) {
 					Query: "SELECT conname FROM PG_catalog.pg_CONSTRAINT ORDER BY conname;",
 					Expected: []sql.Row{
 						{"testing2_pkey"},
+						{"testing2_pktesting_fkey"},
 						{"testing_pkey"},
 						{"v1"},
 					},
@@ -665,6 +659,7 @@ func TestPgConstraint(t *testing.T) {
 					Query: "SELECT co.oid, co.conname, co.conrelid, cl.relname FROM pg_catalog.pg_constraint co JOIN pg_catalog.pg_class cl ON co.conrelid = cl.oid WHERE cl.relname = 'testing2';",
 					Expected: []sql.Row{
 						{2068729390, "testing2_pkey", 2694106299, "testing2"},
+						{1719906648, "testing2_pktesting_fkey", 2694106299, "testing2"},
 					},
 				},
 			},
