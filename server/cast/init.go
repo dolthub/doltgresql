@@ -14,6 +14,11 @@
 
 package cast
 
+import (
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/types"
+)
+
 // Init initializes all casts in this package.
 func Init() {
 	initBool()
@@ -40,4 +45,7 @@ func Init() {
 	initTimestampTZ()
 	initTimeTZ()
 	initVarChar()
+
+	// This is a hack to get around import cycles
+	types.GetImplicitCast = framework.GetImplicitCast
 }

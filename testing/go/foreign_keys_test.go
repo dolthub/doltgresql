@@ -226,7 +226,7 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "incompatible types",
 					},
 					{
-						Query: "insert into child values (1, 1, 1, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
+						Query: "insert into child values (1, 1, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
 					},
 					{
 						Query:       "insert into child values (1, 2, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
