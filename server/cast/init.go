@@ -48,4 +48,5 @@ func Init() {
 
 	// This is a hack to get around import cycles
 	types.GetImplicitCast = framework.GetImplicitCast
+	types.GetAssignmentCast = framework.GetAssignmentCast
 }

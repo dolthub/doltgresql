@@ -368,13 +368,15 @@ func (t *DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, 
 // here due to import cycles
 var GetImplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
 
+var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+
 func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ types.ExtendedType, val any) (any, error) {
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
 		return nil, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 	
-	castFn := GetImplicitCast(dt, t)
+	castFn := GetAssignmentCast(dt, t)
 	if castFn == nil {
 		return nil, errors.Errorf("no implicit cast from %s to %s", dt.Name(), t.Name())
 	}

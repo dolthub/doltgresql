@@ -28,7 +28,7 @@ func TestForeignKeys(t *testing.T) {
 				Name: "simple foreign key",
 				SetUpScript: []string{
 					`CREATE TABLE parent (a INT PRIMARY KEY, b int)`,
-					`CREATE TABLE child (a INT PRIMARY KEY, b INT, FOREIGN KEY (i4) REFERENCES parent(a))`,
+					`CREATE TABLE child (a INT PRIMARY KEY, b INT, FOREIGN KEY (b) REFERENCES parent(a))`,
 					`INSERT INTO parent VALUES (1, 1)`,
 				},
 				Assertions: []ScriptTestAssertion{
@@ -41,6 +41,27 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query:       "INSERT INTO child VALUES (2, 2)",
 						ExpectedErr: "Foreign key violation",
+					},
+				},
+			},
+			{
+				Name: "named constraint",
+				SetUpScript: []string{
+					`CREATE TABLE parent (a INT PRIMARY KEY, b int)`,
+					`CREATE TABLE child (a INT PRIMARY KEY, b INT)`,
+					`INSERT INTO parent VALUES (1, 1)`,
+					`ALTER TABLE child ADD CONSTRAINT fk123 FOREIGN KEY (b) REFERENCES parent(a)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "INSERT INTO child VALUES (1, 1)",
+					},
+					{
+						Query: "INSERT INTO child VALUES (2, 1)",
+					},
+					{
+						Query:       "INSERT INTO child VALUES (2, 2)",
+						ExpectedErr: "fk123",
 					},
 				},
 			},
@@ -66,7 +87,6 @@ func TestForeignKeys(t *testing.T) {
 			},
 			{
 				Name:  "type compatibility",
-				Focus: true,
 				SetUpScript: []string{
 					`create table parent (i2 int2, i4 int4, i8 int8, f float, d double precision, v varchar, vl varchar(100), t text, j json, ts timestamp);`,
 					"alter table parent add constraint u1 unique (i2);",
@@ -230,19 +250,37 @@ func TestForeignKeys(t *testing.T) {
 					},
 					{
 						Query:       "insert into child values (1, 2, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
-						ExpectedErr: "foreign key",
+						ExpectedErr: "Foreign key",
 					},
 					{
 						Query:       "insert into child values (1, 1, 1, 2.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
-						ExpectedErr: "foreign key",
+						ExpectedErr: "Foreign key",
 					},
 					{
-						Query:       "insert into child values (1, 1, 1.0, 1.0, 'a', 'a', 'b', '{\"a\": 1}', '2021-01-01 00:00:00');",
-						ExpectedErr: "foreign key",
+						Query:       "insert into child values (1, 1, 1, 1.0, 1.0, 'a', 'a', 'b', '{\"a\": 1}', '2021-01-01 00:00:00');",
+						ExpectedErr: "Foreign key",
 					},
 					{
 						Query:       "insert into child values (1, 1, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:01');",
-						ExpectedErr: "foreign key",
+						ExpectedErr: "Foreign key",
+					},
+				},
+			},
+			{
+				Name: "invalid foreign key not enforced",
+				Focus: true,
+				SetUpScript: []string{
+					`CREATE TABLE parent (a INT PRIMARY KEY, b int)`,
+					`CREATE TABLE child (a INT PRIMARY KEY, b float)`,
+					`INSERT INTO parent VALUES (1, 1)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "alter table child add constraint fk foreign key (b) references parent(a)",
+						ExpectedErr: "incompatible types",
+					},
+					{
+						Query: "insert into child values (2, 2)", // no error expected
 					},
 				},
 			},

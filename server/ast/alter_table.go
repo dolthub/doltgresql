@@ -181,7 +181,10 @@ func nodeAlterTableAddConstraint(
 			IfExists:         ifExists,
 			TableSpec: &vitess.TableSpec{
 				Constraints: []*vitess.ConstraintDefinition{
-					{Details: foreignKeyDefinition},
+					{
+						Name:    constraintDef.Name.String(),
+						Details: foreignKeyDefinition,
+					},
 				},
 			},
 		}, nil

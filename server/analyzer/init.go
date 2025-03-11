@@ -104,7 +104,6 @@ func initEngine() {
 
 // validateForeignKeyDefinition validates that the given foreign key definition is valid for creation
 func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstraint, cols map[string]*sql.Column, parentCols map[string]*sql.Column) error {
-	// TODO: this check is too permissive, we should be doing some type checks here
 	for i := range fkDef.Columns {
 		col := cols[strings.ToLower(fkDef.Columns[i])]
 		parentCol := parentCols[strings.ToLower(fkDef.ParentColumns[i])]
