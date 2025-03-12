@@ -182,7 +182,7 @@ func nodeAlterTableAddConstraint(
 			TableSpec: &vitess.TableSpec{
 				Constraints: []*vitess.ConstraintDefinition{
 					{
-						Name:    constraintDef.Name.String(),
+						Name:    bareIdentifier(constraintDef.Name),
 						Details: foreignKeyDefinition,
 					},
 				},
@@ -193,6 +193,14 @@ func nodeAlterTableAddConstraint(
 		return nil, errors.Errorf("ALTER TABLE with unsupported constraint "+
 			"definition type %T", node)
 	}
+}
+
+// bareIdentifier returns the string representation of a name without any quoting 
+// (quoted is the default Name.String() behavior)
+func bareIdentifier(id tree.Name) string {
+	ctx := tree.NewFmtCtx(tree.FmtBareIdentifiers)
+	id.Format(ctx)
+	return ctx.CloseAndGetString()
 }
 
 // nodeAlterTableAddColumn converts a tree.AlterTableAddColumn instance into an equivalent vitess.DDL instance.

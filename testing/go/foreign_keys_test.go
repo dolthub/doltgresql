@@ -66,6 +66,27 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				Name: "unnamed constraint",
+				SetUpScript: []string{
+					`CREATE TABLE parent (a INT PRIMARY KEY, b int)`,
+					`CREATE TABLE child (a INT PRIMARY KEY, b INT)`,
+					`INSERT INTO parent VALUES (1, 1)`,
+					`ALTER TABLE child ADD FOREIGN KEY (b) REFERENCES parent(a)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "INSERT INTO child VALUES (1, 1)",
+					},
+					{
+						Query: "INSERT INTO child VALUES (2, 1)",
+					},
+					{
+						Query:       "INSERT INTO child VALUES (2, 2)",
+						ExpectedErr: "child_ibfk_1", // TODO: this name generation scheme needs to match postgres
+					},
+				},
+			},
+			{
 				Name: "text foreign key",
 				SetUpScript: []string{
 					`CREATE TABLE parent (a text PRIMARY KEY, b int)`,
