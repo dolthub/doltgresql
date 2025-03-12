@@ -55,6 +55,7 @@ func (pgf *Collection) Serialize(ctx context.Context) ([]byte, error) {
 			writer.StringSlice(op.SecondaryData)
 			writer.String(op.Target)
 			writer.Int32(int32(op.Index))
+			writer.StringMap(op.Options)
 		}
 	}
 
@@ -100,6 +101,7 @@ func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
 			op.SecondaryData = reader.StringSlice()
 			op.Target = reader.String()
 			op.Index = int(reader.Int32())
+			op.Options = reader.StringMap()
 			f.Operations[opIdx] = op
 		}
 		// Add the function to each map

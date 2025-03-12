@@ -273,6 +273,15 @@ func (writer *Writer) StringSlice(vals []string) {
 	}
 }
 
+// StringMap writes a map of strings, keyed by strings.
+func (writer *Writer) StringMap(m map[string]string) {
+	writer.VariableUint(uint64(len(m)))
+	for k, v := range m {
+		writer.String(k)
+		writer.String(v)
+	}
+}
+
 // IdSlice writes a slice of internal IDs.
 func (writer *Writer) IdSlice(vals []id.Id) {
 	writer.VariableUint(uint64(len(vals)))

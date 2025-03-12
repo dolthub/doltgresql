@@ -123,7 +123,7 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 }
 
 // ComExecuteBound implements the Handler interface.
-func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error {
+func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*sql.Context, *Result) error) error {
 	analyzedPlan, ok := boundQuery.(sql.Node)
 	if !ok {
 		return errors.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
@@ -181,7 +181,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 }
 
 // ComQuery implements the Handler interface.
-func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error {
+func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*sql.Context, *Result) error) error {
 	// TODO: This technically isn't query start and underestimates query execution time
 	start := time.Now()
 	if h.sel != nil {
@@ -281,7 +281,7 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
-func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*Result) error) error {
+func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error) error {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return err
@@ -349,7 +349,7 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 		return nil
 	}
 
-	return callback(r)
+	return callback(sqlCtx, r)
 }
 
 // QueryExecutor is a function that executes a query and returns the result as a schema and iterator. Either of
@@ -500,7 +500,7 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 
 // resultForDefaultIter reads batches of rows from the iterator
 // and writes results into the callback function.
-func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*Result) error, resultFields []pgproto3.FieldDescription) (*Result, bool, error) {
+func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription) (*Result, bool, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForDefaultIter").End()
 
 	var r *Result
@@ -567,7 +567,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 				r = &Result{Fields: resultFields}
 			}
 			if r.RowsAffected == rowsBatch {
-				if err := callback(r); err != nil {
+				if err := callback(ctx, r); err != nil {
 					return err
 				}
 				r = nil

@@ -27,12 +27,12 @@ type Handler interface {
 	// ComBind is called when a connection receives a request to bind a prepared statement to a set of values.
 	ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars BindVariables) (mysql.BoundQuery, []pgproto3.FieldDescription, error)
 	// ComExecuteBound is called when a connection receives a request to execute a prepared statement that has already bound to a set of values.
-	ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error
+	ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*sql.Context, *Result) error) error
 	// ComPrepareParsed is called when a connection receives a prepared statement query that has already been parsed.
 	ComPrepareParsed(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement) (mysql.ParsedQuery, []pgproto3.FieldDescription, error)
 	// ComQuery is called when a connection receives a query. Note the contents of the query slice may change
 	// after the first call to callback. So the DoltgresHandler should not hang on to the byte slice.
-	ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error
+	ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*sql.Context, *Result) error) error
 	// ComResetConnection resets the connection's session, clearing out any cached prepared statements, locks, user and
 	// session variables. The currently selected database is preserved.
 	ComResetConnection(c *mysql.Conn) error
