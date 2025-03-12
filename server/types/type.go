@@ -368,6 +368,8 @@ func (t *DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, 
 // here due to import cycles
 var GetImplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
 
+// GetAssignmentCast is a reference to the assignment cast logic in the functions/framework package, which we can't use
+// here due to import cycles
 var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
 
 func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ types.ExtendedType, val any) (any, error) {
@@ -378,7 +380,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ types.ExtendedType, v
 	
 	castFn := GetAssignmentCast(dt, t)
 	if castFn == nil {
-		return nil, errors.Errorf("no implicit cast from %s to %s", dt.Name(), t.Name())
+		return nil, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
 	}
 	
 	return castFn(ctx, val, dt)
