@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
 func TestCreateTable(t *testing.T) {
@@ -42,6 +43,33 @@ func TestCreateTable(t *testing.T) {
 					Expected: []sql.Row{
 						{1, "Doe", "John"},
 					},
+				},
+				{
+					// Test that the PK constraint shows up in the information schema
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'employees'::regclass AND contype = 'p';",
+					Expected: []sql.Row{{"employees_pkey"}},
+				},
+				{
+					Query:    "ALTER TABLE employees DROP CONSTRAINT employees_pkey;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			// TODO: We don't currently support storing a custom name for a primary key constraint.
+			Skip: true,
+			Name: "create table with primary key, using custom constraint name",
+			SetUpScript: []string{
+				"CREATE TABLE users (id SERIAL, name TEXT, CONSTRAINT users_primary_key PRIMARY KEY (id));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'users'::regclass AND contype = 'p';",
+					Expected: []sql.Row{{"users_primary_key"}},
+				},
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT users_primary_key;",
+					Expected: []sql.Row{{types.NewOkResult(0)}},
 				},
 			},
 		},
