@@ -135,6 +135,8 @@ func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
 	toLiteral := expression.NewLiteral(dtTo.Zero(), to)
 	
 	// a foreign key between two different types is valid if there is an equality operator on the two types
+	// TODO: there are some subtleties in postgres not captured by this logic, e.g. a foreign key from double -> int 
+	//  is valid, but the reverse is not. This works fine, but is more permissive than postgres is.
 	eq := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("=", fromLiteral, toLiteral)
 	if eq != nil && eq.StashedError() == nil {
 		return true
