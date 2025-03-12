@@ -15,16 +15,8 @@
 package analyzer
 
 import (
-	"strings"
-
-	"github.com/cockroachdb/errors"
-	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
-	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
-
-	"github.com/dolthub/doltgresql/server/functions/framework"
-	"github.com/dolthub/doltgresql/server/types"
 )
 
 // IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
@@ -100,50 +92,10 @@ func Init() {
 }
 
 func initEngine() {
+	// This technically takes place at execution time rather than as part of analysis, but we don't have a better 
+	// place to put it. Our foreign key validation logic is different from MySQL's, and since it's not an analyzer rule
+	// we can't swap out a rule like the rest of the logic in this packge, we have to do a function swap. 
 	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
-}
-
-// validateForeignKeyDefinition validates that the given foreign key definition is valid for creation
-func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstraint, cols map[string]*sql.Column, parentCols map[string]*sql.Column) error {
-	for i := range fkDef.Columns {
-		col := cols[strings.ToLower(fkDef.Columns[i])]
-		parentCol := parentCols[strings.ToLower(fkDef.ParentColumns[i])]
-		if !foreignKeyComparableTypes(col.Type, parentCol.Type) {
-			return errors.Errorf("Key columns %q and %q are of incompatible types: %s and %s", col.Name, parentCol.Name, col.Type.String(), parentCol.Type.String())
-		}
-	}
-	return nil
-}
-
-// foreignKeyComparableTypes returns whether the two given types are able to be used as parent/child columns in a
-// foreign key.
-func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
-	dtFrom, ok := from.(*types.DoltgresType)
-	if !ok {
-		return false // should never be possible
-	}
-
-	dtTo, ok := to.(*types.DoltgresType)
-	if !ok {
-		return false // should never be possible
-	}
-
-	if dtFrom.Equals(dtTo) {
-		return true
-	}
-
-	fromLiteral := expression.NewLiteral(dtFrom.Zero(), from)
-	toLiteral := expression.NewLiteral(dtTo.Zero(), to)
-
-	// a foreign key between two different types is valid if there is an equality operator on the two types
-	// TODO: there are some subtleties in postgres not captured by this logic, e.g. a foreign key from double -> int
-	//  is valid, but the reverse is not. This works fine, but is more permissive than postgres is.
-	eq := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("=", fromLiteral, toLiteral)
-	if eq != nil && eq.StashedError() == nil {
-		return true
-	}
-
-	return false
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.

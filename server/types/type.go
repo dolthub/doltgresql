@@ -372,6 +372,10 @@ var GetImplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastF
 // here due to import cycles
 var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
 
+// GetExplicitCast is a reference to the explicit cast logic in the functions/framework package, which we can't use
+// here due to import cycles
+var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+
 func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ types.ExtendedType, val any) (any, error) {
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
@@ -383,7 +387,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ types.ExtendedType, v
 		return nil, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
 	}
 
-	return castFn(ctx, val, dt)
+	return castFn(ctx, val, t)
 }
 
 // DomainUnderlyingBaseType returns an underlying base type of this domain type.

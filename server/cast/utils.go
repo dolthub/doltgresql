@@ -32,8 +32,6 @@ var errOutOfRange = errors.NewKind("%s out of range")
 func handleStringCast(str string, targetType *pgtypes.DoltgresType) (string, error) {
 	tm := targetType.GetAttTypMod()
 	switch targetType.ID {
-	case pgtypes.Text.ID:
-		return str, nil
 	case pgtypes.BpChar.ID:
 		if tm == -1 {
 			return str, nil

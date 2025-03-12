@@ -270,6 +270,34 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				Name: "type conversion: text to varchar",
+				SetUpScript: []string{
+					`CREATE TABLE parent (a INT PRIMARY KEY, b varchar(100))`,
+					`CREATE TABLE child (c INT PRIMARY KEY, d text)`,
+					`INSERT INTO parent VALUES (1, 'abc'), (2, 'def')`,
+					`alter table parent add constraint ub unique (b)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "alter table child add constraint fk foreign key (d) references parent(b)",
+					},
+					{
+						Query: "insert into child values (1, 'abc')",
+					},
+					{
+						Query:       "insert into child values (2, 'xyz')",
+						ExpectedErr: "Foreign key",
+					},
+					{
+						Query: "delete from parent where b = 'def'",
+					},
+					{
+						Query:       "delete from parent where b = 'abc'",
+						ExpectedErr: "Foreign key",
+					},
+				},
+			},
+			{
 				Name: "type conversion: integer to double",
 				SetUpScript: []string{
 					`CREATE TABLE parent (a INT PRIMARY KEY, b double precision)`,
