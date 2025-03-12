@@ -86,7 +86,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name:  "type compatibility",
+				Name: "type compatibility",
 				SetUpScript: []string{
 					`create table parent (i2 int2, i4 int4, i8 int8, f float, d double precision, v varchar, vl varchar(100), t text, j json, ts timestamp);`,
 					"alter table parent add constraint u1 unique (i2);",
@@ -159,17 +159,17 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "incompatible types",
 					},
 					{
-						Skip: true, // this isn't allowed in postgres, but works with our constraints currently
+						Skip:        true, // this isn't allowed in postgres, but works with our constraints currently
 						Query:       "alter table child add constraint ffi2 foreign key (f) references parent(i2);",
 						ExpectedErr: "incompatible types",
 					},
 					{
-						Skip: true, // this isn't allowed in postgres, but works with our constraints currently
+						Skip:        true, // this isn't allowed in postgres, but works with our constraints currently
 						Query:       "alter table child add constraint ffi4 foreign key (f) references parent(i4);",
 						ExpectedErr: "incompatible types",
 					},
 					{
-						Skip: true, // this isn't allowed in postgres, but works with our constraints currently
+						Skip:        true, // this isn't allowed in postgres, but works with our constraints currently
 						Query:       "alter table child add constraint ffi8 foreign key (f) references parent(i8);",
 						ExpectedErr: "incompatible types",
 					},
@@ -294,14 +294,14 @@ func TestForeignKeys(t *testing.T) {
 						Query: "insert into child values (2, 1)",
 					},
 					{
-						Query: "insert into child values (2, 2)",
+						Query:       "insert into child values (2, 2)",
 						ExpectedErr: "Foreign key",
 					},
 					{
 						Query: "delete from parent where b = 3.0",
 					},
 					{
-						Query: "delete from parent where b = 1.0",
+						Query:       "delete from parent where b = 1.0",
 						ExpectedErr: "Foreign key",
 					},
 				},
@@ -322,18 +322,18 @@ func TestForeignKeys(t *testing.T) {
 						Query: "insert into child values (1, 1)",
 					},
 					{
-						Query: "insert into child values (2, 2)",
+						Query:       "insert into child values (2, 2)",
 						ExpectedErr: "Foreign key",
 					},
 					{
-						Query: "insert into child values (2, 65536)", // above maximum int2
+						Query:       "insert into child values (2, 65536)", // above maximum int2
 						ExpectedErr: "Foreign key",
 					},
 					{
 						Query: "delete from parent where b = 3",
 					},
 					{
-						Query: "delete from parent where b = 1",
+						Query:       "delete from parent where b = 1",
 						ExpectedErr: "Foreign key",
 					},
 				},
@@ -354,18 +354,18 @@ func TestForeignKeys(t *testing.T) {
 						Query: "insert into child values (1, 1)",
 					},
 					{
-						Query: "insert into child values (2, 2)",
+						Query:       "insert into child values (2, 2)",
 						ExpectedErr: "Foreign key",
 					},
 					{
-						Query: "insert into child values (2, 65536)", 
+						Query:       "insert into child values (2, 65536)",
 						ExpectedErr: "out of range",
 					},
 					{
 						Query: "delete from parent where b = 65536",
 					},
 					{
-						Query: "delete from parent where b = 1",
+						Query:       "delete from parent where b = 1",
 						ExpectedErr: "Foreign key",
 					},
 				},
