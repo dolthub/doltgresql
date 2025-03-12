@@ -69,7 +69,7 @@ func TestForeignKeys(t *testing.T) {
 				Name: "text foreign key",
 				SetUpScript: []string{
 					`CREATE TABLE parent (a text PRIMARY KEY, b int)`,
-					`CREATE TABLE child (a INT PRIMARY KEY, b text, FOREIGN KEY (i4) REFERENCES parent(a))`,
+					`CREATE TABLE child (a INT PRIMARY KEY, b text, FOREIGN KEY (b) REFERENCES parent(a))`,
 					`INSERT INTO parent VALUES ('a', 1)`,
 				},
 				Assertions: []ScriptTestAssertion{
@@ -273,13 +273,13 @@ func TestForeignKeys(t *testing.T) {
 				Name: "type conversion: integer to double",
 				SetUpScript: []string{
 					`CREATE TABLE parent (a INT PRIMARY KEY, b double precision)`,
-					`CREATE TABLE child (a INT PRIMARY KEY, b int)`,
+					`CREATE TABLE child (c INT PRIMARY KEY, d int)`,
 					`INSERT INTO parent VALUES (1, 1), (3, 3)`,
 					`alter table parent add constraint ub unique (b)`,
 				},
 				Assertions: []ScriptTestAssertion{
 					{
-						Query: "alter table child add constraint fk foreign key (b) references parent(b)",
+						Query: "alter table child add constraint fk foreign key (d) references parent(b)",
 					},
 					{
 						Query: "select * from parent where b = 1.0",
@@ -664,7 +664,7 @@ func TestForeignKeys(t *testing.T) {
 					"INSERT INTO parent.parent VALUES (0, 0), (1, 1), (2,2)",
 					"SELECT DOLT_COMMIT('-Am', 'new tables')",
 					"INSERT INTO child.child VALUES (2, 'two', 2)",
-					"ALTER TABLE child.child ADD FOREIGN KEY (test_pk) REFERENCES parent(pk)",
+					"ALTER TABLE child.child ADD CONSTRAINT fk1 FOREIGN KEY (test_pk) REFERENCES parent(pk)",
 				},
 				Assertions: []ScriptTestAssertion{
 					{
@@ -672,7 +672,7 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "Foreign key violation",
 					},
 					{
-						Query:            "alter table child DROP constraint child_ibfk_1",
+						Query:            "alter table child DROP constraint fk1",
 						SkipResultsCheck: true,
 					},
 					{
