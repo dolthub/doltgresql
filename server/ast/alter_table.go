@@ -195,7 +195,7 @@ func nodeAlterTableAddConstraint(
 	}
 }
 
-// bareIdentifier returns the string representation of a name without any quoting 
+// bareIdentifier returns the string representation of a name without any quoting
 // (quoted is the default Name.String() behavior)
 func bareIdentifier(id tree.Name) string {
 	ctx := tree.NewFmtCtx(tree.FmtBareIdentifiers)

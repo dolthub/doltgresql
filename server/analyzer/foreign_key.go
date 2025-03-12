@@ -18,10 +18,11 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/server/functions/framework"
-	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 // validateForeignKeyDefinition validates that the given foreign key definition is valid for creation
@@ -66,4 +67,3 @@ func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
 
 	return false
 }
-

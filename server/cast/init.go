@@ -46,7 +46,7 @@ func Init() {
 	initTimeTZ()
 	initVarChar()
 
-	// This is a hack to get around import cycles. The types package needs these references for type conversions in 
+	// This is a hack to get around import cycles. The types package needs these references for type conversions in
 	// some contexts
 	types.GetImplicitCast = framework.GetImplicitCast
 	types.GetAssignmentCast = framework.GetAssignmentCast
