@@ -64,9 +64,9 @@ func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
 	if eq != nil && eq.StashedError() == nil {
 		return true
 	}
-	
+
 	// Additionally, we need to be able to convert freely between the two types in both directions, since we do this
-	// during the process of enforcing the constraints 
+	// during the process of enforcing the constraints
 	forwardConversion := types.GetAssignmentCast(dtFrom, dtTo)
 	reverseConversion := types.GetAssignmentCast(dtTo, dtFrom)
 
