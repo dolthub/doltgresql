@@ -251,7 +251,7 @@ export const tableTests = [
         {
           CONSTRAINT_CATALOG: `${dbName}/main`,
           CONSTRAINT_SCHEMA: "public",
-          CONSTRAINT_NAME: "test_info_ibfk_1",
+          CONSTRAINT_NAME: "test_info_test_pk_fkey",
           TABLE_CATALOG: `${dbName}/main`,
           TABLE_SCHEMA: "public",
           TABLE_NAME: "test_info",

@@ -349,6 +349,17 @@ func (reader *Reader) StringSlice() []string {
 	return vals
 }
 
+// StringMap reads a map of strings, keyed by strings.
+func (reader *Reader) StringMap() map[string]string {
+	count := reader.VariableUint()
+	vals := make(map[string]string, count)
+	for i := uint64(0); i < count; i++ {
+		key := reader.String()
+		vals[key] = reader.String()
+	}
+	return vals
+}
+
 // IdSlice reads a slice of internal IDs.
 func (reader *Reader) IdSlice() []id.Id {
 	count := reader.VariableUint()

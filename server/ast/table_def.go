@@ -55,6 +55,15 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 			return err
 		}
 		target.TableSpec.AddColumn(columnDef)
+		if node.References.Table != nil {
+			fkDef, err := nodeForeignKeyDefinitionFromColumnTableDef(ctx, node.Name, node)
+			if err != nil {
+				return err
+			}
+			target.TableSpec.Constraints = append(target.TableSpec.Constraints, &vitess.ConstraintDefinition{
+				Details: fkDef,
+			})
+		}
 		return nil
 	case *tree.ForeignKeyConstraintTableDef:
 		if target.TableSpec == nil {
@@ -120,6 +129,26 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 	default:
 		return errors.Errorf("unknown table definition encountered")
 	}
+}
+
+// nodeForeignKeyDefinitionFromColumnTableDef returns a vitess ForeignKeyDefinition from the specified column
+// definition |node|.
+func nodeForeignKeyDefinitionFromColumnTableDef(ctx *Context, fromColumn tree.Name, node *tree.ColumnTableDef) (*vitess.ForeignKeyDefinition, error) {
+	if node == nil {
+		return nil, nil
+	}
+
+	references := node.References
+	fkConstraintTableDef := &tree.ForeignKeyConstraintTableDef{
+		Name:     references.ConstraintName,
+		FromCols: []tree.Name{fromColumn},
+		Table:    *references.Table,
+		ToCols:   []tree.Name{references.Col},
+		Actions:  references.Actions,
+		Match:    references.Match,
+	}
+
+	return nodeForeignKeyConstraintTableDef(ctx, fkConstraintTableDef)
 }
 
 // assignTableDefs handles tree.TableDefs nodes for *vitess.DDL targets. This also sorts table defs by whether they're

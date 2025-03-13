@@ -16,10 +16,13 @@ package plpgsql
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/typecollection"
@@ -87,8 +90,6 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if err != nil {
 				return nil, err
 			}
-		case OpCode_Case:
-			// TODO: implement
 		case OpCode_Declare:
 			typeCollection, err := GetTypesCollectionFromContext(ctx)
 			if err != nil {
@@ -188,6 +189,28 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
 				return nil, err
 			}
+		case OpCode_Raise:
+			// TODO: Use the client_min_messages config param to determine which
+			//       notice levels to send to the client.
+			// https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-CLIENT-MIN-MESSAGES
+
+			// TODO: Notices at the EXCEPTION level should also abort the current tx.
+
+			message, err := evaluteNoticeMessage(ctx, iFunc, operation, stack)
+			if err != nil {
+				return nil, err
+			}
+
+			noticeResponse := &pgproto3.NoticeResponse{
+				Severity: operation.PrimaryData,
+				Message:  message,
+			}
+
+			if err = applyNoticeOptions(ctx, noticeResponse, operation.Options); err != nil {
+				return nil, err
+			}
+			sess := dsess.DSessFromSess(ctx.Session)
+			sess.Notice(noticeResponse)
 		case OpCode_Return:
 			if len(operation.PrimaryData) == 0 {
 				return nil, nil
@@ -206,4 +229,65 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		}
 	}
 	return nil, nil
+}
+
+// applyNoticeOptions adds the specified |options| to the |noticeResponse|.
+func applyNoticeOptions(ctx *sql.Context, noticeResponse *pgproto3.NoticeResponse, options map[string]string) error {
+	for key, value := range options {
+		i, err := strconv.Atoi(key)
+		if err != nil {
+			return err
+		}
+
+		switch NoticeOptionType(i) {
+		case NoticeOptionTypeErrCode:
+			noticeResponse.Code = value
+		case NoticeOptionTypeMessage:
+			noticeResponse.Message = value
+		case NoticeOptionTypeDetail:
+			noticeResponse.Detail = value
+		case NoticeOptionTypeHint:
+			noticeResponse.Hint = value
+		case NoticeOptionTypeConstraint:
+			noticeResponse.ConstraintName = value
+		case NoticeOptionTypeDataType:
+			noticeResponse.DataTypeName = value
+		case NoticeOptionTypeTable:
+			noticeResponse.TableName = value
+		case NoticeOptionTypeSchema:
+			noticeResponse.SchemaName = value
+		default:
+			ctx.GetLogger().Warnf("unhandled notice option type: %s", key)
+		}
+	}
+	return nil
+}
+
+// evaluteNoticeMessage evaluates the message for a RAISE NOTICE statement, including
+// evaluating any specified parameters and plugging them into the message in place of
+// the % placeholders.
+func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
+	operation InterpreterOperation, stack InterpreterStack) (string, error) {
+	message := operation.SecondaryData[0]
+	if len(operation.SecondaryData) > 1 {
+		params := operation.SecondaryData[1:]
+		currentParam := 0
+
+		parts := strings.Split(message, "%%")
+		for i, part := range parts {
+			for strings.Contains(part, "%") {
+				retVal, err := iFunc.QuerySingleReturn(ctx, stack, "SELECT "+params[currentParam], nil, nil)
+				if err != nil {
+					return "", err
+				}
+				currentParam += 1
+
+				s := fmt.Sprintf("%v", retVal)
+				part = strings.Replace(part, "%", s, 1)
+			}
+			parts[i] = part
+		}
+		message = strings.Join(parts, "%")
+	}
+	return message, nil
 }

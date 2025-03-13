@@ -23,22 +23,24 @@ import (
 // Comments are to match the Stringer formatting rules in the original rule definition file, but we can't generate
 // human-readable strings for these extended types because they are in another package.
 const (
-	ruleId_TypeSanitizer                analyzer.RuleId = iota + 1000 // typeSanitizer
-	ruleId_AddDomainConstraints                                       // addDomainConstraints
-	ruleId_AddDomainConstraintsToCasts                                // addDomainConstraintsToCasts
-	ruleId_AssignInsertCasts                                          // assignInsertCasts
-	ruleId_AssignUpdateCasts                                          // assignUpdateCasts
-	ruleId_ReplaceIndexedTables                                       // replaceIndexedTables
-	ruleId_ReplaceNode                                                // replaceNode
-	ruleId_ReplaceSerial                                              // replaceSerial
-	ruleId_AddImplicitPrefixLengths                                   // addImplicitPrefixLengths
-	ruleId_InsertContextRootFinalizer                                 // insertContextRootFinalizer
-	ruleId_ResolveType                                                // resolveType
-	ruleId_ReplaceArithmeticExpressions                               // replaceArithmeticExpressions
-	ruleId_OptimizeFunctions                                          // optimizeFunctions
-	ruleId_ValidateColumnDefaults                                     // validateColumnDefaults
-	ruleId_ValidateCreateTable                                        // validateCreateTable
-	rulesId_ResolveAlterColumn                                        // resolveAlterColumn
+	ruleId_TypeSanitizer                   analyzer.RuleId = iota + 1000 // typeSanitizer
+	ruleId_AddDomainConstraints                                          // addDomainConstraints
+	ruleId_AddDomainConstraintsToCasts                                   // addDomainConstraintsToCasts
+	ruleId_AssignInsertCasts                                             // assignInsertCasts
+	ruleId_AssignUpdateCasts                                             // assignUpdateCasts
+	ruleId_ConvertDropPrimaryKeyConstraint                               // convertDropPrimaryKeyConstraint
+	ruleId_GenerateForeignKeyName                                        // generateForeignKeyName
+	ruleId_ReplaceIndexedTables                                          // replaceIndexedTables
+	ruleId_ReplaceNode                                                   // replaceNode
+	ruleId_ReplaceSerial                                                 // replaceSerial
+	ruleId_AddImplicitPrefixLengths                                      // addImplicitPrefixLengths
+	ruleId_InsertContextRootFinalizer                                    // insertContextRootFinalizer
+	ruleId_ResolveType                                                   // resolveType
+	ruleId_ReplaceArithmeticExpressions                                  // replaceArithmeticExpressions
+	ruleId_OptimizeFunctions                                             // optimizeFunctions
+	ruleId_ValidateColumnDefaults                                        // validateColumnDefaults
+	ruleId_ValidateCreateTable                                           // validateCreateTable
+	ruleId_ResolveAlterColumn                                            // resolveAlterColumn
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -46,6 +48,7 @@ func Init() {
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
 		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
+		analyzer.Rule{Id: ruleId_GenerateForeignKeyName, Apply: generateForeignKeyName},
 		analyzer.Rule{Id: ruleId_AddDomainConstraints, Apply: AddDomainConstraints},
 		analyzer.Rule{Id: ruleId_ValidateColumnDefaults, Apply: ValidateColumnDefaults},
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
@@ -55,14 +58,16 @@ func Init() {
 
 	// PostgreSQL doesn't have the concept of prefix lengths, so we add a rule to implicitly add them
 	// TODO: this should be replaced by implementing automatic toast semantics for blob types
-	analyzer.OnceBeforeDefault = append([]analyzer.Rule{{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths}},
+	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
+		{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths},
+		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint}},
 		analyzer.OnceBeforeDefault...)
 
 	// We remove several validation rules and substitute our own
 	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateCreateTableId, true,
 		analyzer.Rule{Id: ruleId_ValidateCreateTable, Apply: validateCreateTable})
 	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ResolveAlterColumnId, true,
-		analyzer.Rule{Id: rulesId_ResolveAlterColumn, Apply: resolveAlterColumn})
+		analyzer.Rule{Id: ruleId_ResolveAlterColumn, Apply: resolveAlterColumn})
 
 	analyzer.OnceBeforeDefault = removeAnalyzerRules(
 		analyzer.OnceBeforeDefault,

@@ -61,8 +61,8 @@ func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
 	// TODO: there are some subtleties in postgres not captured by this logic, e.g. a foreign key from double -> int
 	//  is valid, but the reverse is not. This works fine, but is more permissive than postgres is.
 	eq := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("=", fromLiteral, toLiteral)
-	if eq != nil && eq.StashedError() == nil {
-		return true
+	if eq == nil || eq.StashedError() != nil {
+		return false
 	}
 
 	// Additionally, we need to be able to convert freely between the two types in both directions, since we do this
