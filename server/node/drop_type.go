@@ -89,8 +89,12 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	typ, exists := collection.GetType(id.NewType(schema, c.typName))
-	if !exists {
+	typeID := id.NewType(schema, c.typName)
+	typ, err := collection.GetType(ctx, typeID)
+	if err != nil {
+		return nil, err
+	}
+	if typ == nil {
 		if c.ifExists {
 			// TODO: issue a notice
 			return sql.RowsToRowIter(), nil
@@ -142,14 +146,15 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		}
 	}
 
-	if err = collection.DropType(schema, c.typName); err != nil {
+	if err = collection.DropType(ctx, typeID); err != nil {
 		return nil, err
 	}
 
 	// undefined/shell type doesn't create array type.
 	if typ.IsDefined {
 		arrayTypeName := fmt.Sprintf(`_%s`, c.typName)
-		if err = collection.DropType(schema, arrayTypeName); err != nil {
+		arrayID := id.NewType(schema, arrayTypeName)
+		if err = collection.DropType(ctx, arrayID); err != nil {
 			return nil, err
 		}
 	}

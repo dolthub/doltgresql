@@ -22,15 +22,14 @@ import (
 
 // Merge handles merging functions on our root and their root.
 func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *Collection) (*Collection, error) {
-	mergedCollection := ourCollection.Clone()
-	err := theirCollection.IterateFunctions(func(theirFunc *Function) error {
+	mergedCollection := ourCollection.Clone(ctx)
+	err := theirCollection.IterateFunctions(ctx, func(theirFunc Function) (bool, error) {
 		// If we don't have the sequence, then we simply add it
-		if !mergedCollection.HasFunction(theirFunc.ID) {
-			newFunc := *theirFunc
-			return mergedCollection.AddFunction(&newFunc)
+		if !mergedCollection.HasFunction(ctx, theirFunc.ID) {
+			return false, mergedCollection.AddFunction(ctx, theirFunc)
 		}
 		// TODO: figure out a decent merge strategy
-		return errors.Errorf(`unable to merge "%s"`, theirFunc.ID.AsId().String())
+		return true, errors.Errorf(`unable to merge "%s"`, theirFunc.ID.AsId().String())
 	})
 	if err != nil {
 		return nil, err

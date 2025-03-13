@@ -23,15 +23,18 @@ import (
 
 // Merge handles merging sequences on our root and their root.
 func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *Collection) (*Collection, error) {
-	mergedCollection := ourCollection.Clone()
-	err := theirCollection.IterateSequences(func(theirSeq *Sequence) error {
+	mergedCollection := ourCollection.Clone(ctx)
+	err := theirCollection.IterateSequences(ctx, func(theirSeq *Sequence) (bool, error) {
 		// If we don't have the sequence, then we simply add it
-		if !mergedCollection.HasSequence(theirSeq.Id) {
+		if !mergedCollection.HasSequence(ctx, theirSeq.Id) {
 			newSeq := *theirSeq
-			return mergedCollection.CreateSequence(theirSeq.Id.SchemaName(), &newSeq)
+			return false, mergedCollection.CreateSequence(ctx, &newSeq)
 		}
 		// Take the min/max of fields that aren't dependent on the increment direction
-		mergedSeq := mergedCollection.GetSequence(theirSeq.Id)
+		mergedSeq, err := mergedCollection.GetSequence(ctx, theirSeq.Id)
+		if err != nil {
+			return false, err
+		}
 		mergedSeq.Minimum = utils.Min(mergedSeq.Minimum, theirSeq.Minimum)
 		mergedSeq.Maximum = utils.Max(mergedSeq.Maximum, theirSeq.Maximum)
 		mergedSeq.Cache = utils.Min(mergedSeq.Cache, theirSeq.Cache)
@@ -54,7 +57,7 @@ func Merge(ctx context.Context, ourCollection, theirCollection, ancCollection *C
 			mergedSeq.Start = utils.Max(mergedSeq.Start, theirSeq.Start)
 			mergedSeq.Current = utils.Min(mergedSeq.Current, theirSeq.Current)
 		}
-		return nil
+		return false, nil
 	})
 	if err != nil {
 		return nil, err

@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2025 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,21 +15,21 @@
 package core
 
 import (
+	"context"
+
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
-	"github.com/dolthub/dolt/go/store/types"
-
-	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/server/plpgsql"
 )
 
-// Init initializes this package.
-func Init() {
-	doltdb.EmptyRootValue = emptyRootValue
-	doltdb.NewRootValue = newRootValue
-	merge.MergeRootObjects = MergeRootObjects
-	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
-	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
-	plpgsql.GetTypesCollectionFromContext = GetTypesCollectionFromContext
-	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
+// MergeRootObjects handles merging root objects, which is primarily used by Doltgres.
+func MergeRootObjects(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObject, *merge.MergeStats, error) {
+	return mro.OurRootObj, &merge.MergeStats{
+		Operation:            merge.TableUnmodified,
+		Adds:                 0,
+		Deletes:              0,
+		Modifications:        0,
+		DataConflicts:        0,
+		SchemaConflicts:      0,
+		ConstraintViolations: 0,
+	}, nil
 }

@@ -128,7 +128,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if err != nil {
 		return nil, err
 	}
-	if err = collection.CreateSequence(schema, c.sequence); err != nil {
+	if err = collection.CreateSequence(ctx, c.sequence); err != nil {
 		return nil, err
 	}
 	return sql.RowsToRowIter(), nil

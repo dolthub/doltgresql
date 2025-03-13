@@ -114,8 +114,11 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 					}
 				}
 			}
-			resolvedType, exists := typeCollection.GetType(id.NewType(schemaName, typeName))
-			if !exists {
+			resolvedType, err := typeCollection.GetType(ctx, id.NewType(schemaName, typeName))
+			if err != nil {
+				return nil, err
+			}
+			if resolvedType == nil {
 				return nil, pgtypes.ErrTypeDoesNotExist.New(operation.PrimaryData)
 			}
 			stack.NewVariable(operation.Target, resolvedType)

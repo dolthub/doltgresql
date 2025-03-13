@@ -17,7 +17,9 @@ package utils
 import (
 	"bytes"
 	"encoding/binary"
+	"maps"
 	"math"
+	"slices"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
@@ -276,9 +278,10 @@ func (writer *Writer) StringSlice(vals []string) {
 // StringMap writes a map of strings, keyed by strings.
 func (writer *Writer) StringMap(m map[string]string) {
 	writer.VariableUint(uint64(len(m)))
-	for k, v := range m {
+	// We iterate over the sorted set of keys for determinism
+	for _, k := range slices.Sorted(maps.Keys(m)) {
 		writer.String(k)
-		writer.String(v)
+		writer.String(m[k])
 	}
 }
 
