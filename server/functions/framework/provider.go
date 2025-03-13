@@ -43,21 +43,24 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 		return nil, false
 	}
 	funcName := id.NewFunction("pg_catalog", name)
-	overloads := funcCollection.GetFunctionOverloads(funcName)
+	overloads, err := funcCollection.GetFunctionOverloads(ctx, funcName)
+	if err != nil {
+		return nil, false
+	}
 	if len(overloads) == 0 {
 		return nil, false
 	}
 
 	overloadTree := NewOverloads()
 	for _, overload := range overloads {
-		returnType, ok := typesCollection.GetType(overload.ReturnType)
-		if !ok {
+		returnType, err := typesCollection.GetType(ctx, overload.ReturnType)
+		if err != nil || returnType == nil {
 			return nil, false
 		}
 		paramTypes := make([]*pgtypes.DoltgresType, len(overload.ParameterTypes))
 		for i, paramType := range overload.ParameterTypes {
-			paramTypes[i], ok = typesCollection.GetType(paramType)
-			if !ok {
+			paramTypes[i], err = typesCollection.GetType(ctx, paramType)
+			if err != nil || paramTypes[i] == nil {
 				return nil, false
 			}
 		}

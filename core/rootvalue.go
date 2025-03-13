@@ -17,7 +17,7 @@ package core
 import (
 	"bytes"
 	"context"
-	"io"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,6 +34,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/typecollection"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 const (
@@ -156,21 +157,81 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 	return buf.String()
 }
 
-// GetTableSchemaHash implements the interface doltdb.RootValue.
-func (root *RootValue) GetTableSchemaHash(ctx context.Context, tName doltdb.TableName) (hash.Hash, error) {
-	tab, ok, err := root.GetTable(ctx, tName)
-	if err != nil {
-		return hash.Hash{}, err
+// FindRootObjectNames implements the interface doltdb.RootValue.
+func (root *RootValue) FindRootObjectNames(ctx context.Context, names []doltdb.TableName) (map[doltdb.TableName]struct{}, []doltdb.TableName, error) {
+	nameMap := make(map[doltdb.TableName]struct{})
+	var returnNames []doltdb.TableName
+	for _, name := range names {
+		rom, err := root.GetObjectMap(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		_, _, objID, err := rom.ResolveName(ctx, name)
+		if err != nil {
+			return nil, nil, err
+		}
+		if objID != RootObjectID_None {
+			nameMap[name] = struct{}{}
+			returnNames = append(returnNames, name)
+		}
 	}
-	if !ok {
-		return hash.Hash{}, nil
-	}
-	return tab.GetSchemaHash(ctx)
+	return nameMap, returnNames, nil
 }
 
 // GetCollation implements the interface doltdb.RootValue.
 func (root *RootValue) GetCollation(ctx context.Context) (schema.Collation, error) {
 	return root.st.GetCollation(ctx)
+}
+
+// GetRootObject implements the interface doltdb.RootValue.
+func (root *RootValue) GetRootObject(ctx context.Context, tName doltdb.TableName) (doltdb.RootObject, bool, error) {
+	objMap, err := root.GetObjectMap(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	_, rawID, objID, err := objMap.ResolveName(ctx, tName)
+	if err != nil {
+		return nil, false, err
+	}
+	switch objID {
+	case RootObjectID_Sequences:
+		seqs, err := objMap.GetSequences(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		seq, err := seqs.GetSequence(ctx, id.Sequence(rawID))
+		if err != nil {
+			return nil, false, err
+		}
+		if seq != nil {
+			return seq, true, nil
+		}
+	case RootObjectID_Functions:
+		funcs, err := objMap.GetFunctions(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		f, err := funcs.GetFunction(ctx, id.Function(rawID))
+		if err != nil {
+			return nil, false, err
+		}
+		if f.ID.IsValid() {
+			return f, true, nil
+		}
+	case RootObjectID_Types:
+		typeColl, err := objMap.GetTypes(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		t, err := typeColl.GetType(ctx, id.Type(rawID))
+		if err != nil {
+			return nil, false, err
+		}
+		if t != nil {
+			return typecollection.TypeWrapper{Type: t}, true, nil
+		}
+	}
+	return nil, false, nil
 }
 
 // GetDatabaseSchemas implements the interface doltdb.RootValue.
@@ -209,48 +270,33 @@ func (root *RootValue) GetForeignKeyCollection(ctx context.Context) (*doltdb.For
 
 // GetFunctions returns all functions that are on the root.
 func (root *RootValue) GetFunctions(ctx context.Context) (*functions.Collection, error) {
-	h := root.st.GetFunctions()
-	if h.IsEmpty() {
-		return functions.Deserialize(ctx, nil)
-	}
-	dataValue, err := root.vrw.ReadValue(ctx, h)
+	m, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return nil, err
 	}
-	dataBlob := dataValue.(types.Blob)
-	dataBlobLength := dataBlob.Len()
-	data := make([]byte, dataBlobLength)
-	n, err := dataBlob.ReadAt(context.Background(), data, 0)
-	if err != nil && err != io.EOF {
-		return nil, err
+	return m.GetFunctions(ctx)
+}
+
+// GetObjectMap returns the map for root objects.
+func (root *RootValue) GetObjectMap(ctx context.Context) (RootObjectMap, error) {
+	h := root.st.GetSequences() // TODO: GetRootObjectMap
+	if h.IsEmpty() {
+		return NewRootObjectMap(ctx, root.vrw)
 	}
-	if uint64(n) != dataBlobLength {
-		return nil, errors.Errorf("wanted %d bytes from blob for functions, got %d", dataBlobLength, n)
+	dataValue, err := root.vrw.ReadValue(ctx, h)
+	if err != nil {
+		return RootObjectMap{}, err
 	}
-	return functions.Deserialize(ctx, data)
+	return ToRootObjectMap(ctx, dataValue.(types.Map), root.vrw), nil
 }
 
 // GetSequences returns all sequences that are on the root.
 func (root *RootValue) GetSequences(ctx context.Context) (*sequences.Collection, error) {
-	h := root.st.GetSequences()
-	if h.IsEmpty() {
-		return sequences.Deserialize(ctx, nil)
-	}
-	dataValue, err := root.vrw.ReadValue(ctx, h)
+	m, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return nil, err
 	}
-	dataBlob := dataValue.(types.Blob)
-	dataBlobLength := dataBlob.Len()
-	data := make([]byte, dataBlobLength)
-	n, err := dataBlob.ReadAt(context.Background(), data, 0)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-	if uint64(n) != dataBlobLength {
-		return nil, errors.Errorf("wanted %d bytes from blob for sequences, got %d", dataBlobLength, n)
-	}
-	return sequences.Deserialize(ctx, data)
+	return m.GetSequences(ctx)
 }
 
 // GetTable implements the interface doltdb.RootValue.
@@ -270,17 +316,79 @@ func (root *RootValue) GetTable(ctx context.Context, tName doltdb.TableName) (*d
 
 // GetTableHash implements the interface doltdb.RootValue.
 func (root *RootValue) GetTableHash(ctx context.Context, tName doltdb.TableName) (hash.Hash, bool, error) {
-	tableMap, err := root.getTableMap(ctx, tName.Schema)
+	objMap, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return hash.Hash{}, false, err
 	}
-
-	tVal, err := tableMap.Get(ctx, tName.Name)
+	_, rawID, objID, err := objMap.ResolveName(ctx, tName)
 	if err != nil {
 		return hash.Hash{}, false, err
 	}
+	switch objID {
+	case RootObjectID_Sequences:
+		seqs, err := objMap.GetSequences(ctx)
+		if err != nil {
+			return hash.Hash{}, false, err
+		}
+		seq, err := seqs.GetSequence(ctx, id.Sequence(rawID))
+		if err != nil {
+			return hash.Hash{}, false, err
+		}
+		if seq != nil {
+			h, err := seq.HashOf(ctx)
+			if err != nil {
+				return hash.Hash{}, false, err
+			}
+			return h, true, nil
+		}
+		return hash.Hash{}, false, nil
+	case RootObjectID_Functions:
+		funcs, err := objMap.GetFunctions(ctx)
+		if err != nil {
+			return hash.Hash{}, false, err
+		}
+		f, err := funcs.GetFunction(ctx, id.Function(rawID))
+		if err != nil {
+			return hash.Hash{}, false, err
+		}
+		if f.ID.IsValid() {
+			h, err := f.HashOf(ctx)
+			if err != nil {
+				return hash.Hash{}, false, err
+			}
+			return h, true, nil
+		}
+		return hash.Hash{}, false, nil
+	case RootObjectID_Types:
+		typeColl, err := objMap.GetTypes(ctx)
+		if err != nil {
+			return hash.Hash{}, false, err
+		}
+		t, err := typeColl.GetType(ctx, id.Type(rawID))
+		if err != nil {
+			return hash.Hash{}, false, err
+		}
+		if t != nil {
+			h, err := typecollection.TypeWrapper{Type: t}.HashOf(ctx)
+			if err != nil {
+				return hash.Hash{}, false, err
+			}
+			return h, true, nil
+		}
+		return hash.Hash{}, false, nil
+	default:
+		tableMap, err := root.getTableMap(ctx, tName.Schema)
+		if err != nil {
+			return hash.Hash{}, false, err
+		}
 
-	return tVal, !tVal.IsEmpty(), nil
+		tVal, err := tableMap.Get(ctx, tName.Name)
+		if err != nil {
+			return hash.Hash{}, false, err
+		}
+
+		return tVal, !tVal.IsEmpty(), nil
+	}
 }
 
 // GetTableNames implements the interface doltdb.RootValue.
@@ -298,31 +406,74 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 	if err != nil {
 		return nil, err
 	}
-
+	// Iterate sequences
+	objMap, err := root.GetObjectMap(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seqs, err := objMap.GetSequences(ctx)
+	if err != nil {
+		return nil, err
+	}
+	err = seqs.IterateIDs(ctx, func(seq id.Sequence) (bool, error) {
+		if seq.SchemaName() == schemaName {
+			names = append(names, seq.SequenceName())
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Iterate functions
+	funcs, err := objMap.GetFunctions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	err = funcs.IterateIDs(ctx, func(funcID id.Function) (bool, error) {
+		if funcID.SchemaName() == schemaName {
+			names = append(names, functions.FunctionIDToTableName(funcID).Name)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Iterate types
+	typeColl, err := objMap.GetTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	err = typeColl.IterateIDs(ctx, func(typeID id.Type) (bool, error) {
+		if typeID.SchemaName() == schemaName {
+			names = append(names, typeID.TypeName())
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
 	return names, nil
+}
+
+// GetTableSchemaHash implements the interface doltdb.RootValue.
+func (root *RootValue) GetTableSchemaHash(ctx context.Context, tName doltdb.TableName) (hash.Hash, error) {
+	tab, ok, err := root.GetTable(ctx, tName)
+	if err != nil {
+		return hash.Hash{}, err
+	}
+	if !ok {
+		return hash.Hash{}, nil
+	}
+	return tab.GetSchemaHash(ctx)
 }
 
 // GetTypes returns all types that are on the root.
 func (root *RootValue) GetTypes(ctx context.Context) (*typecollection.TypeCollection, error) {
-	h := root.st.GetTypes()
-	if h.IsEmpty() {
-		return typecollection.Deserialize(ctx, nil)
-	}
-	dataValue, err := root.vrw.ReadValue(ctx, h)
+	m, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return nil, err
 	}
-	dataBlob := dataValue.(types.Blob)
-	dataBlobLength := dataBlob.Len()
-	data := make([]byte, dataBlobLength)
-	n, err := dataBlob.ReadAt(context.Background(), data, 0)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-	if uint64(n) != dataBlobLength {
-		return nil, errors.Errorf("wanted %d bytes from blob for types, got %d", dataBlobLength, n)
-	}
-	return typecollection.Deserialize(ctx, data)
+	return m.GetTypes(ctx)
 }
 
 // HandlePostMerge implements the interface doltdb.RootValue.
@@ -418,15 +569,90 @@ func (root *RootValue) HashOf() (hash.Hash, error) {
 
 // HasTable implements the interface doltdb.RootValue.
 func (root *RootValue) HasTable(ctx context.Context, tName doltdb.TableName) (bool, error) {
-	tableMap, err := root.st.GetTablesMap(ctx, root.vrw, root.ns, tName.Schema)
+	rom, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return false, err
 	}
-	a, err := tableMap.Get(ctx, tName.Name)
+	_, _, objID, err := rom.ResolveName(ctx, tName)
 	if err != nil {
 		return false, err
 	}
-	return !a.IsEmpty(), nil
+	switch objID {
+	case RootObjectID_Sequences:
+		return true, nil
+	case RootObjectID_Functions:
+		return true, nil
+	case RootObjectID_Types:
+		return true, nil
+	default:
+		tableMap, err := root.st.GetTablesMap(ctx, root.vrw, root.ns, tName.Schema)
+		if err != nil {
+			return false, err
+		}
+		a, err := tableMap.Get(ctx, tName.Name)
+		if err != nil {
+			return false, err
+		}
+		return !a.IsEmpty(), nil
+	}
+}
+
+// IterRootObjects implements the interface doltdb.RootValue.
+func (root *RootValue) IterRootObjects(ctx context.Context, cb func(name doltdb.TableName, table doltdb.RootObject) (stop bool, err error)) error {
+	rom, err := root.GetObjectMap(ctx)
+	if err != nil {
+		return err
+	}
+	var stop bool
+	// Iterate sequences
+	seqs, err := rom.GetSequences(ctx)
+	if err != nil {
+		return err
+	}
+	err = seqs.IterateSequences(ctx, func(seq *sequences.Sequence) (bool, error) {
+		stop, err = cb(seq.Name(), seq)
+		return stop, err
+	})
+	if err != nil {
+		return err
+	}
+	if stop {
+		return nil
+	}
+	// Iterate functions
+	funcs, err := rom.GetFunctions(ctx)
+	if err != nil {
+		return err
+	}
+	err = funcs.IterateFunctions(ctx, func(f functions.Function) (bool, error) {
+		stop, err = cb(f.Name(), f)
+		return stop, err
+	})
+	if err != nil {
+		return err
+	}
+	if stop {
+		return nil
+	}
+	// Iterate types
+	typeColl, err := rom.GetTypes(ctx)
+	if err != nil {
+		return err
+	}
+	err = typeColl.IterateTypes(ctx, func(t *pgtypes.DoltgresType) (bool, error) {
+		stop, err = cb(doltdb.TableName{
+			Name:   t.ID.TypeName(),
+			Schema: t.ID.SchemaName(),
+		}, typecollection.TypeWrapper{Type: t})
+		return stop, err
+	})
+	if err != nil {
+		return err
+	}
+	if stop {
+		return nil
+	}
+	return nil
 }
 
 // IterTables implements the interface doltdb.RootValue.
@@ -491,6 +717,57 @@ func (root *RootValue) NomsValue() types.Value {
 	return root.st.nomsValue()
 }
 
+// PutRootObject implements the interface doltdb.RootValue.
+func (root *RootValue) PutRootObject(ctx context.Context, tName doltdb.TableName, table doltdb.RootObject) (doltdb.RootValue, error) {
+	switch item := table.(type) {
+	case *sequences.Sequence:
+		coll, err := root.GetSequences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		seqId := id.NewSequence(tName.Schema, tName.Name)
+		if coll.HasSequence(ctx, seqId) {
+			if err = coll.DropSequence(ctx, seqId); err != nil {
+				return nil, err
+			}
+		}
+		if err = coll.CreateSequence(ctx, item); err != nil {
+			return nil, err
+		}
+		return root.PutSequences(ctx, coll)
+	case functions.Function:
+		coll, err := root.GetFunctions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if coll.HasFunction(ctx, item.ID) {
+			if err = coll.DropFunction(ctx, item.ID); err != nil {
+				return nil, err
+			}
+		}
+		if err = coll.AddFunction(ctx, item); err != nil {
+			return nil, err
+		}
+		return root.PutFunctions(ctx, coll)
+	case typecollection.TypeWrapper:
+		coll, err := root.GetTypes(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if coll.HasType(ctx, item.Type.ID) {
+			if err = coll.DropType(ctx, item.Type.ID); err != nil {
+				return nil, err
+			}
+		}
+		if err = coll.CreateType(ctx, item.Type); err != nil {
+			return nil, err
+		}
+		return root.PutTypes(ctx, coll)
+	default:
+		return nil, fmt.Errorf("unknown root object name format `%s`", tName.String())
+	}
+}
+
 // PutForeignKeyCollection implements the interface doltdb.RootValue.
 func (root *RootValue) PutForeignKeyCollection(ctx context.Context, fkc *doltdb.ForeignKeyCollection) (doltdb.RootValue, error) {
 	value, err := doltdb.SerializeForeignKeys(ctx, root.vrw, fkc)
@@ -505,23 +782,28 @@ func (root *RootValue) PutForeignKeyCollection(ctx context.Context, fkc *doltdb.
 }
 
 // PutFunctions writes the given functions to the returned root value.
-func (root *RootValue) PutFunctions(ctx context.Context, funcCollection *functions.Collection) (*RootValue, error) {
-	if funcCollection == nil {
+func (root *RootValue) PutFunctions(ctx context.Context, funcs *functions.Collection) (*RootValue, error) {
+	if funcs == nil {
 		return root, nil
 	}
-	data, err := funcCollection.Serialize(ctx)
+	rom, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return nil, err
 	}
-	dataBlob, err := types.NewBlob(ctx, root.vrw, bytes.NewReader(data))
+	newRom, err := rom.SetFunctions(ctx, funcs)
 	if err != nil {
 		return nil, err
 	}
-	ref, err := root.vrw.WriteValue(ctx, dataBlob)
+	return root.PutObjectMap(ctx, newRom)
+}
+
+// TODO: doc
+func (root *RootValue) PutObjectMap(ctx context.Context, rom RootObjectMap) (*RootValue, error) {
+	ref, err := root.vrw.WriteValue(ctx, rom.m)
 	if err != nil {
 		return nil, err
 	}
-	newStorage, err := root.st.SetFunctions(ctx, ref.TargetHash())
+	newStorage, err := root.st.SetSequences(ctx, ref.TargetHash()) // TODO: SetRootObjectMap
 	if err != nil {
 		return nil, err
 	}
@@ -533,23 +815,15 @@ func (root *RootValue) PutSequences(ctx context.Context, seq *sequences.Collecti
 	if seq == nil {
 		return root, nil
 	}
-	data, err := seq.Serialize(ctx)
+	rom, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return nil, err
 	}
-	dataBlob, err := types.NewBlob(ctx, root.vrw, bytes.NewReader(data))
+	newRom, err := rom.SetSequences(ctx, seq)
 	if err != nil {
 		return nil, err
 	}
-	ref, err := root.vrw.WriteValue(ctx, dataBlob)
-	if err != nil {
-		return nil, err
-	}
-	newStorage, err := root.st.SetSequences(ctx, ref.TargetHash())
-	if err != nil {
-		return nil, err
-	}
-	return root.withStorage(newStorage), nil
+	return root.PutObjectMap(ctx, newRom)
 }
 
 // PutTable implements the interface doltdb.RootValue.
@@ -573,23 +847,15 @@ func (root *RootValue) PutTypes(ctx context.Context, typ *typecollection.TypeCol
 	if typ == nil {
 		return root, nil
 	}
-	data, err := typ.Serialize(ctx)
+	rom, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return nil, err
 	}
-	dataBlob, err := types.NewBlob(ctx, root.vrw, bytes.NewReader(data))
+	newRom, err := rom.SetTypes(ctx, typ)
 	if err != nil {
 		return nil, err
 	}
-	ref, err := root.vrw.WriteValue(ctx, dataBlob)
-	if err != nil {
-		return nil, err
-	}
-	newStorage, err := root.st.SetTypes(ctx, ref.TargetHash())
-	if err != nil {
-		return nil, err
-	}
-	return root.withStorage(newStorage), nil
+	return root.PutObjectMap(ctx, newRom)
 }
 
 // RemoveTables implements the interface doltdb.RootValue.
@@ -597,92 +863,240 @@ func (root *RootValue) RemoveTables(
 	ctx context.Context,
 	skipFKHandling bool,
 	allowDroppingFKReferenced bool,
-	tables ...doltdb.TableName,
+	originalTables ...doltdb.TableName,
 ) (doltdb.RootValue, error) {
-	if len(tables) == 0 {
+	if len(originalTables) == 0 {
 		return root, nil
 	}
 
-	// TODO: support multiple schemas in the same set
-	tableMap, err := root.getTableMap(ctx, tables[0].Schema)
+	rom, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	edits := make([]tableEdit, len(tables))
-	for i, name := range tables {
-		a, err := tableMap.Get(ctx, name.Name)
+	var tables []doltdb.TableName
+	var seqNames []id.Sequence
+	var funcNames []id.Function
+	var typeNames []id.Type
+	for _, name := range originalTables {
+		_, rawID, objID, err := rom.ResolveName(ctx, name)
 		if err != nil {
 			return nil, err
 		}
-		if a.IsEmpty() {
-			return nil, errors.Errorf("%w: '%s'", doltdb.ErrTableNotFound, name)
+		switch objID {
+		case RootObjectID_Sequences:
+			seqNames = append(seqNames, id.Sequence(rawID))
+		case RootObjectID_Functions:
+			funcNames = append(funcNames, id.Function(rawID))
+		case RootObjectID_Types:
+			typeNames = append(typeNames, id.Type(rawID))
+		default:
+			tables = append(tables, name)
 		}
-		edits[i].name = name
 	}
+	newRoot := root
 
-	newStorage, err := root.st.EditTablesMap(ctx, root.vrw, root.ns, edits)
-	if err != nil {
-		return nil, err
-	}
-	newRoot := root.withStorage(newStorage)
+	// First we'll handle regular table names
+	if len(tables) > 0 {
+		// TODO: support multiple schemas in the same set
+		tableMap, err := newRoot.getTableMap(ctx, tables[0].Schema)
+		if err != nil {
+			return nil, err
+		}
 
-	collection, err := newRoot.GetSequences(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, tableName := range tables {
-		for _, seq := range collection.GetSequencesWithTable(tableName) {
-			if err = collection.DropSequence(seq.Id); err != nil {
+		edits := make([]tableEdit, len(tables))
+		for i, name := range tables {
+			a, err := tableMap.Get(ctx, name.Name)
+			if err != nil {
 				return nil, err
 			}
+			if a.IsEmpty() {
+				return nil, errors.Errorf("%w: '%s'", doltdb.ErrTableNotFound, name)
+			}
+			edits[i].name = name
+		}
+
+		newStorage, err := newRoot.st.EditTablesMap(ctx, newRoot.vrw, newRoot.ns, edits)
+		if err != nil {
+			return nil, err
+		}
+		newRoot = newRoot.withStorage(newStorage)
+
+		collection, err := newRoot.GetSequences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, tableName := range tables {
+			seqs, err := collection.GetSequencesWithTable(ctx, tableName)
+			if err != nil {
+				return nil, err
+			}
+			if len(seqs) > 0 {
+				for _, seq := range seqs {
+					if err = collection.DropSequence(ctx, seq.Id); err != nil {
+						return nil, err
+					}
+				}
+			} else {
+
+			}
+		}
+		newRoot, err = newRoot.PutSequences(ctx, collection)
+		if err != nil {
+			return nil, err
+		}
+
+		if skipFKHandling {
+			return newRoot, nil
+		}
+		fkc, err := newRoot.GetForeignKeyCollection(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if allowDroppingFKReferenced {
+			err = fkc.RemoveAndUnresolveTables(ctx, newRoot, tables...)
+		} else {
+			err = fkc.RemoveTables(ctx, tables...)
+		}
+		if err != nil {
+			return nil, err
+		}
+		newRootInterface, err := newRoot.PutForeignKeyCollection(ctx, fkc)
+		if err != nil {
+			return nil, err
+		}
+		newRoot = newRootInterface.(*RootValue)
+	}
+
+	// Then we'll handle sequences
+	if len(seqNames) > 0 {
+		coll, err := newRoot.GetSequences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err = coll.DropSequence(ctx, seqNames...); err != nil {
+			return nil, err
+		}
+		newRoot, err = newRoot.PutSequences(ctx, coll)
+		if err != nil {
+			return nil, err
 		}
 	}
-	newRoot, err = newRoot.PutSequences(ctx, collection)
-	if err != nil {
-		return nil, err
+
+	// Then we'll handle functions
+	if len(funcNames) > 0 {
+		coll, err := newRoot.GetFunctions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err = coll.DropFunction(ctx, funcNames...); err != nil {
+			return nil, err
+		}
+		newRoot, err = newRoot.PutFunctions(ctx, coll)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	if skipFKHandling {
-		return newRoot, nil
-	}
-	fkc, err := newRoot.GetForeignKeyCollection(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if allowDroppingFKReferenced {
-		err = fkc.RemoveAndUnresolveTables(ctx, root, tables...)
-	} else {
-		err = fkc.RemoveTables(ctx, tables...)
-	}
-	if err != nil {
-		return nil, err
+	// Then we'll handle types
+	if len(typeNames) > 0 {
+		coll, err := newRoot.GetTypes(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err = coll.DropType(ctx, typeNames...); err != nil {
+			return nil, err
+		}
+		newRoot, err = newRoot.PutTypes(ctx, coll)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return newRoot.PutForeignKeyCollection(ctx, fkc)
+	return newRoot, nil
 }
 
 // RenameTable implements the interface doltdb.RootValue.
 func (root *RootValue) RenameTable(ctx context.Context, oldName, newName doltdb.TableName) (doltdb.RootValue, error) {
-	newStorage, err := root.st.EditTablesMap(ctx, root.vrw, root.ns, []tableEdit{{old_name: oldName, name: newName}})
+	rom, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return nil, err
 	}
-	newRoot := root.withStorage(newStorage)
-
-	collection, err := newRoot.GetSequences(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, seq := range collection.GetSequencesWithTable(oldName) {
-		seq.OwnerTable = id.NewTable(seq.OwnerTable.SchemaName(), newName.Name)
-	}
-	newRoot, err = newRoot.PutSequences(ctx, collection)
+	_, rawOldID, objID, err := rom.ResolveName(ctx, oldName)
 	if err != nil {
 		return nil, err
 	}
 
-	return newRoot, nil
+	switch objID {
+	case RootObjectID_Sequences:
+		coll, err := root.GetSequences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		oldId := id.Sequence(rawOldID)
+		seq, err := coll.GetSequence(ctx, oldId)
+		if err != nil {
+			return nil, err
+		}
+		if seq == nil {
+			return nil, fmt.Errorf("sequence `%s` not found for renaming", oldName.String())
+		}
+		if err = coll.DropSequence(ctx, oldId); err != nil {
+			return nil, err
+		}
+		seq.Id = id.NewSequence(newName.Schema, newName.Name)
+		if err = coll.CreateSequence(ctx, seq); err != nil {
+			return nil, err
+		}
+		return root.PutSequences(ctx, coll)
+	case RootObjectID_Functions:
+		return nil, fmt.Errorf("function `%s` cannot be renamed this way", oldName.String())
+	case RootObjectID_Types:
+		coll, err := root.GetTypes(ctx)
+		if err != nil {
+			return nil, err
+		}
+		oldId := id.Type(rawOldID)
+		typ, err := coll.GetType(ctx, oldId)
+		if err != nil {
+			return nil, err
+		}
+		if typ == nil {
+			return nil, fmt.Errorf("sequence `%s` not found for renaming", oldName.String())
+		}
+		if err = coll.DropType(ctx, oldId); err != nil {
+			return nil, err
+		}
+		newTyp := *typ
+		newTyp.ID = id.NewType(newName.Schema, newName.Name)
+		if err = coll.CreateType(ctx, &newTyp); err != nil {
+			return nil, err
+		}
+		return root.PutTypes(ctx, coll)
+	default:
+		newStorage, err := root.st.EditTablesMap(ctx, root.vrw, root.ns, []tableEdit{{old_name: oldName, name: newName}})
+		if err != nil {
+			return nil, err
+		}
+		newRoot := root.withStorage(newStorage)
+
+		collection, err := newRoot.GetSequences(ctx)
+		if err != nil {
+			return nil, err
+		}
+		seqs, err := collection.GetSequencesWithTable(ctx, oldName)
+		if err != nil {
+			return nil, err
+		}
+		for _, seq := range seqs {
+			seq.OwnerTable = id.NewTable(seq.OwnerTable.SchemaName(), newName.Name)
+		}
+		newRoot, err = newRoot.PutSequences(ctx, collection)
+		if err != nil {
+			return nil, err
+		}
+
+		return newRoot, nil
+	}
 }
 
 // ResolveRootValue implements the interface doltdb.RootValue.
@@ -692,32 +1106,49 @@ func (root *RootValue) ResolveRootValue(ctx context.Context) (doltdb.RootValue, 
 
 // ResolveTableName implements the interface doltdb.RootValue.
 func (root *RootValue) ResolveTableName(ctx context.Context, tName doltdb.TableName) (string, bool, error) {
-	tableMap, err := root.getTableMap(ctx, tName.Schema)
+	rom, err := root.GetObjectMap(ctx)
 	if err != nil {
 		return "", false, err
 	}
-
-	a, err := tableMap.Get(ctx, tName.Name)
+	resolvedTableName, _, objID, err := rom.ResolveName(ctx, tName)
 	if err != nil {
 		return "", false, err
 	}
-	if !a.IsEmpty() {
-		return tName.Name, true, nil
-	}
-
-	found := false
-	resolvedName := tName.Name
-	err = tableMap.Iter(ctx, func(name string, addr hash.Hash) (bool, error) {
-		if !found && strings.EqualFold(tName.Name, name) {
-			resolvedName = name
-			found = true
+	switch objID {
+	case RootObjectID_Sequences:
+		return resolvedTableName.Name, true, nil
+	case RootObjectID_Functions:
+		return resolvedTableName.Name, true, nil
+	case RootObjectID_Types:
+		return resolvedTableName.Name, true, nil
+	default:
+		tableMap, err := root.getTableMap(ctx, tName.Schema)
+		if err != nil {
+			return "", false, err
 		}
-		return false, nil
-	})
-	if err != nil {
-		return "", false, nil
+
+		a, err := tableMap.Get(ctx, tName.Name)
+		if err != nil {
+			return "", false, err
+		}
+		if !a.IsEmpty() {
+			return tName.Name, true, nil
+		}
+
+		found := false
+		resolvedName := tName.Name
+		err = tableMap.Iter(ctx, func(name string, addr hash.Hash) (bool, error) {
+			if !found && strings.EqualFold(tName.Name, name) {
+				resolvedName = name
+				found = true
+			}
+			return false, nil
+		})
+		if err != nil {
+			return "", false, nil
+		}
+		return resolvedName, found, nil
 	}
-	return resolvedName, found, nil
 }
 
 // SetCollation implements the interface doltdb.RootValue.
@@ -740,6 +1171,7 @@ func (root *RootValue) SetFeatureVersion(v doltdb.FeatureVersion) (doltdb.RootVa
 
 // SetTableHash implements the interface doltdb.RootValue.
 func (root *RootValue) SetTableHash(ctx context.Context, tName doltdb.TableName, h hash.Hash) (doltdb.RootValue, error) {
+	// TODO: error for root object tables?
 	val, err := root.vrw.ReadValue(ctx, h)
 
 	if err != nil {
