@@ -22,11 +22,13 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+
+	"github.com/dolthub/doltgresql/server/functions"
 )
 
 // generateForeignKeyName populates a generated foreign key name, in the Postgres default foreign key name format,
 // when a foreign key is created without an explicit name specified.
-func generateForeignKeyName(_ *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ *plan.Scope, _ analyzer.RuleSelector, _ *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+func generateForeignKeyName(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ *plan.Scope, _ analyzer.RuleSelector, _ *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	return transform.Node(n, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		switch n := n.(type) {
 		case *plan.CreateTable:
@@ -39,7 +41,7 @@ func generateForeignKeyName(_ *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ 
 			changedForeignKey := false
 			for _, fk := range copiedForeignKeys {
 				if fk.Name == "" {
-					generatedName, err := generateFkName(n.Name(), fk, nil)
+					generatedName, err := generateFkName(ctx, n.Name(), fk)
 					if err != nil {
 						return nil, transform.SameTree, err
 					}
@@ -64,7 +66,7 @@ func generateForeignKeyName(_ *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ 
 		case *plan.CreateForeignKey:
 			if n.FkDef.Name == "" {
 				copiedFk := *n.FkDef
-				generatedName, err := generateFkName(copiedFk.Table, &copiedFk, nil)
+				generatedName, err := generateFkName(ctx, copiedFk.Table, &copiedFk)
 				if err != nil {
 					return nil, transform.SameTree, err
 				}
@@ -83,20 +85,38 @@ func generateForeignKeyName(_ *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ 
 	})
 }
 
-// generateFkName creates a default foreign key name, according to Postgres naming rules (i.e. "<tablename>_<col1name>_<col2name>_fkey").
-// |existingFks| is used to check that the generated name doesn't conflict with an existing foreign key name. If a
-// conflicting name is generated, this function returns an error.
-func generateFkName(tableName string, newFk *sql.ForeignKeyConstraint, existingFks []sql.ForeignKeyConstraint) (string, error) {
+// generateFkName creates a default foreign key name, according to Postgres naming rules
+// (i.e. "<tablename>_<col1name>_<col2name>_fkey"). If an existing foreign key is found with the default, generated
+// name, the generated name will be suffixed with a number to ensure uniqueness.
+func generateFkName(ctx *sql.Context, tableName string, newFk *sql.ForeignKeyConstraint) (string, error) {
 	columnNames := strings.Join(newFk.Columns, "_")
-	generatedFkName := fmt.Sprintf("%s_%s_fkey", tableName, columnNames)
+	generatedBaseName := fmt.Sprintf("%s_%s_fkey", tableName, columnNames)
 
-	for _, existingFk := range existingFks {
-		if existingFk.Name == generatedFkName {
-			// TODO: Instead of returning an error, we should follow Postgres' behavior for disambiguating the name.
-			return "", fmt.Errorf("unable to create foreign key %s: "+
-				"a foreign key constraint already exists with this name", generatedFkName)
+	for counter := 0; counter < 100; counter += 1 {
+		generatedFkName := generatedBaseName
+		if counter > 0 {
+			generatedFkName = fmt.Sprintf("%s%d", generatedBaseName, counter)
+		}
+
+		duplicate := false
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			ForeignKey: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, foreignKey functions.ItemForeignKey) (cont bool, err error) {
+				if foreignKey.Item.Name == generatedFkName {
+					duplicate = true
+					return false, nil
+				}
+				return true, nil
+			},
+		})
+		if err != nil {
+			return "", err
+		}
+
+		if !duplicate {
+			return generatedFkName, nil
 		}
 	}
 
-	return generatedFkName, nil
+	return "", fmt.Errorf("unable to create unique foreign key %s: "+
+		"a foreign key constraint already exists with this name", generatedBaseName)
 }

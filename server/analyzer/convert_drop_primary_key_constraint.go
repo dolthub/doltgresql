@@ -44,7 +44,12 @@ func convertDropPrimaryKeyConstraint(ctx *sql.Context, _ *analyzer.Analyzer, n s
 			}
 			for _, index := range indexes {
 				if index.ID() == "PRIMARY" && dropConstraint.Name == rt.Name()+"_pkey" {
-					return plan.NewAlterDropPk(rt.Database(), rt), transform.NewTree, nil
+					alterDropPk := plan.NewAlterDropPk(rt.Database(), rt)
+					newNode, err := alterDropPk.WithTargetSchema(rt.Schema())
+					if err != nil {
+						return n, transform.SameTree, err
+					}
+					return newNode, transform.NewTree, nil
 				}
 			}
 		}
