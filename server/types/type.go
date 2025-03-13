@@ -376,6 +376,7 @@ var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCas
 // here due to import cycles
 var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
 
+// ConvertToType implements the types.ExtendedType interface.
 func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ types.ExtendedType, val any) (any, error) {
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
