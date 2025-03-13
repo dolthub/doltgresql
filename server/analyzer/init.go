@@ -16,6 +16,7 @@ package analyzer
 
 import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 )
 
 // IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
@@ -91,6 +92,15 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_ReplaceNode, Apply: ReplaceNode},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
+
+	initEngine()
+}
+
+func initEngine() {
+	// This technically takes place at execution time rather than as part of analysis, but we don't have a better
+	// place to put it. Our foreign key validation logic is different from MySQL's, and since it's not an analyzer rule
+	// we can't swap out a rule like the rest of the logic in this packge, we have to do a function swap.
+	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.

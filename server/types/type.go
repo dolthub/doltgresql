@@ -364,6 +364,33 @@ func (t *DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, 
 	return nil, sql.OutOfRange, ErrUnhandledType.New(t.String(), v)
 }
 
+// GetImplicitCast is a reference to the implicit cast logic in the functions/framework package, which we can't use
+// here due to import cycles
+var GetImplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+
+// GetAssignmentCast is a reference to the assignment cast logic in the functions/framework package, which we can't use
+// here due to import cycles
+var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+
+// GetExplicitCast is a reference to the explicit cast logic in the functions/framework package, which we can't use
+// here due to import cycles
+var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+
+// ConvertToType implements the types.ExtendedType interface.
+func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ types.ExtendedType, val any) (any, error) {
+	dt, ok := typ.(*DoltgresType)
+	if !ok {
+		return nil, errors.Errorf("expected DoltgresType, got %T", typ)
+	}
+
+	castFn := GetAssignmentCast(dt, t)
+	if castFn == nil {
+		return nil, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
+	}
+
+	return castFn(ctx, val, t)
+}
+
 // DomainUnderlyingBaseType returns an underlying base type of this domain type.
 // It can be a nested domain type, so it recursively searches for a valid base type.
 func (t *DoltgresType) DomainUnderlyingBaseType() *DoltgresType {
@@ -851,3 +878,7 @@ func (t *DoltgresType) DeserializeValue(ctx context.Context, val []byte) (any, e
 		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val)
 	}
 }
+
+// TypeCastFunction is a function that takes a value of a particular kind of type, and returns it as another kind of type.
+// The targetType given should match the "To" type used to obtain the cast.
+type TypeCastFunction func(ctx *sql.Context, val any, targetType *DoltgresType) (any, error)

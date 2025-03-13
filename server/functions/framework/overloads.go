@@ -165,7 +165,7 @@ func (o *Overload) coalesceVariadicValues(returnValues []any) []any {
 // as the type cast functions required to convert every argument to its appropriate parameter type
 type overloadMatch struct {
 	params Overload
-	casts  []TypeCastFunction
+	casts  []pgtypes.TypeCastFunction
 }
 
 // Valid returns whether this overload is valid (has a callable function)

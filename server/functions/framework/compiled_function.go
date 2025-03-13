@@ -403,7 +403,7 @@ func (c *CompiledFunction) resolveOperator(argTypes []*pgtypes.DoltgresType, ove
 		rightUnknownType := argTypes[1].ID == pgtypes.Unknown.ID
 		if (leftUnknownType && !rightUnknownType) || (!leftUnknownType && rightUnknownType) {
 			var typ *pgtypes.DoltgresType
-			casts := []TypeCastFunction{identityCast, identityCast}
+			casts := []pgtypes.TypeCastFunction{identityCast, identityCast}
 			if leftUnknownType {
 				casts[0] = UnknownLiteralCast
 				typ = argTypes[1]
@@ -484,7 +484,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 	var compatible []overloadMatch
 	for _, overload := range fnOverloads {
 		isConvertible := true
-		overloadCasts := make([]TypeCastFunction, len(argTypes))
+		overloadCasts := make([]pgtypes.TypeCastFunction, len(argTypes))
 		// Polymorphic parameters must be gathered so that we can later verify that they all have matching base types
 		var polymorphicParameters []*pgtypes.DoltgresType
 		var polymorphicTargets []*pgtypes.DoltgresType

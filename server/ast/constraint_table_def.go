@@ -128,6 +128,7 @@ func nodeUniqueConstraintTableDef(
 		Table:    tableName,
 		IfExists: ifExists,
 		IndexSpec: &vitess.IndexSpec{
+			ToName:  vitess.NewColIdent(bareIdentifier(node.Name)),
 			Action:  "create",
 			Type:    indexType,
 			Columns: columns,
