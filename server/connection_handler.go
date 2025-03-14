@@ -515,7 +515,7 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 func (h *ConnectionHandler) handleDescribe(message *pgproto3.Describe) error {
 	var fields []pgproto3.FieldDescription
 	var bindvarTypes []uint32
-	var tag string
+	var query ConvertedQuery
 
 	h.waitForSync = true
 	if message.ObjectType == 'S' {
@@ -526,7 +526,7 @@ func (h *ConnectionHandler) handleDescribe(message *pgproto3.Describe) error {
 
 		fields = preparedStatementData.ReturnFields
 		bindvarTypes = preparedStatementData.BindVarTypes
-		tag = preparedStatementData.Query.StatementTag
+		query = preparedStatementData.Query
 	} else {
 		portalData, ok := h.portals[message.Name]
 		if !ok {
@@ -534,10 +534,10 @@ func (h *ConnectionHandler) handleDescribe(message *pgproto3.Describe) error {
 		}
 
 		fields = portalData.Fields
-		tag = portalData.Query.StatementTag
+		query = portalData.Query
 	}
 
-	return h.sendDescribeResponse(fields, bindvarTypes, tag)
+	return h.sendDescribeResponse(fields, bindvarTypes, query)
 }
 
 // handleBind handles a bind message, returning any error that occurs
@@ -614,7 +614,7 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 	// |rowsAffected| gets altered by the callback below
 	rowsAffected := int32(0)
 
-	callback := h.spoolRowsCallback(query.StatementTag, &rowsAffected, true)
+	callback := h.spoolRowsCallback(query, &rowsAffected, true)
 	err = h.doltgresHandler.ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, callback)
 	if err != nil {
 		return err
@@ -915,9 +915,7 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	// |rowsAffected| gets altered by the callback below
 	rowsAffected := int32(0)
 
-	// TODO: Technically... we need more than the statementTag to determine if a query sends back rows or not
-	//       For example, INSERT/UPDATE/DELETE can return results via the RETURNING clause.
-	callback := h.spoolRowsCallback(query.StatementTag, &rowsAffected, false)
+	callback := h.spoolRowsCallback(query, &rowsAffected, false)
 	err := h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, query.String, query.AST, callback)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "syntax error at position") {
@@ -931,9 +929,9 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 
 // spoolRowsCallback returns a callback function that will send RowDescription message,
 // then a DataRow message for each row in the result set.
-func (h *ConnectionHandler) spoolRowsCallback(tag string, rows *int32, isExecute bool) func(ctx *sql.Context, res *Result) error {
+func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32, isExecute bool) func(ctx *sql.Context, res *Result) error {
 	// IsIUD returns whether the query is either an INSERT, UPDATE, or DELETE query.
-	isIUD := tag == "INSERT" || tag == "UPDATE" || tag == "DELETE"
+	isIUD := query.StatementTag == "INSERT" || query.StatementTag == "UPDATE" || query.StatementTag == "DELETE"
 	return func(ctx *sql.Context, res *Result) error {
 		sess := dsess.DSessFromSess(ctx.Session)
 		for _, notice := range sess.Notices() {
@@ -948,7 +946,7 @@ func (h *ConnectionHandler) spoolRowsCallback(tag string, rows *int32, isExecute
 		}
 		sess.ClearNotices()
 
-		if returnsRow(tag) {
+		if returnsRow(query) {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute {
 				if err := h.send(&pgproto3.RowDescription{
@@ -978,7 +976,7 @@ func (h *ConnectionHandler) spoolRowsCallback(tag string, rows *int32, isExecute
 }
 
 // sendDescribeResponse sends a response message for a Describe message
-func (h *ConnectionHandler) sendDescribeResponse(fields []pgproto3.FieldDescription, types []uint32, tag string) error {
+func (h *ConnectionHandler) sendDescribeResponse(fields []pgproto3.FieldDescription, types []uint32, query ConvertedQuery) error {
 	// The prepared statement variant of the describe command returns the OIDs of the parameters.
 	if types != nil {
 		if err := h.send(&pgproto3.ParameterDescription{
@@ -988,7 +986,7 @@ func (h *ConnectionHandler) sendDescribeResponse(fields []pgproto3.FieldDescript
 		}
 	}
 
-	if returnsRow(tag) {
+	if returnsRow(query) {
 		// Both variants finish with a row description.
 		return h.send(&pgproto3.RowDescription{
 			Fields: fields,
@@ -1183,15 +1181,24 @@ func (h *ConnectionHandler) send(message pgproto3.BackendMessage) error {
 }
 
 // returnsRow returns whether the query returns set of rows such as SELECT and FETCH statements.
-func returnsRow(tag string) bool {
-	switch tag {
+func returnsRow(query ConvertedQuery) bool {
+	switch query.StatementTag {
 	case "SELECT", "SHOW", "FETCH", "EXPLAIN", "SHOW TABLES":
 		return true
 	case "INSERT":
-		// TODO: The RETURNING clause allows INSERT/UPDATE/DELETE to return rows. We need a way to ask
-		//       the query if it has results to return or not. It won't be possible to just assume that DDL
-		//       operations don't return results anymore.
-		return true
+		hasReturningClause := false
+		sqlparser.Walk(func(node sqlparser.SQLNode) (kontinue bool, err error) {
+			switch node := node.(type) {
+			case *sqlparser.Insert:
+				if len(node.Returning) > 0 {
+					hasReturningClause = true
+				}
+				return false, nil
+			}
+			// this should be impossible, but just in case
+			return true, nil 
+		}, query.AST)
+		return hasReturningClause
 	default:
 		return false
 	}

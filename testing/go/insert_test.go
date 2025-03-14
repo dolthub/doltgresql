@@ -190,6 +190,8 @@ func TestInsert(t *testing.T) {
 			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE t (i serial, j INT)",
+				"CREATE TABLE u (u uuid DEFAULT 'ac1f3e2d-1e4b-4d3e-8b1f-2b7f1e7f0e3d', j INT)",
+				"CREATE TABLE s (v1 varchar DEFAULT 'hello', v2 varchar DEFAULT 'world')",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -202,6 +204,24 @@ func TestInsert(t *testing.T) {
 					Query: "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i+3",
 					Expected: []sql.Row{
 						{7}, {8}, {9},
+					},
+				},
+				{
+					Query: "INSERT INTO u (j) VALUES (5), (6), (7) RETURNING u",
+					Expected: []sql.Row{
+						{"ac1f3e2d-1e4b-4d3e-8b1f-2b7f1e7f0e3d"}, {"ac1f3e2d-1e4b-4d3e-8b1f-2b7f1e7f0e3d"}, {"ac1f3e2d-1e4b-4d3e-8b1f-2b7f1e7f0e3d"},
+					},
+				},
+				{
+					Query: "INSERT INTO s (v2) VALUES (' a') RETURNING concat(v1, v2)",
+					Expected: []sql.Row{
+						{"hello a"},
+					},
+				},
+				{
+					Query: "INSERT INTO s (v1) VALUES ('sup ') RETURNING concat(v1, v2)",
+					Expected: []sql.Row{
+						{"sup world"},
 					},
 				},
 			},

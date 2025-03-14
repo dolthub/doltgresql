@@ -33,7 +33,6 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 
 	var returningExprs vitess.SelectExprs
 	if returning, ok := node.Returning.(*tree.ReturningExprs); ok {
-		// TODO: How does PostgreSQL handle multiple rows inserted? all rows returned?
 		// TODO: PostgreSQL will apply any triggers before returning the value; need to test this.
 		returningExprs, err = nodeSelectExprs(ctx, tree.SelectExprs(*returning))
 		if err != nil {
