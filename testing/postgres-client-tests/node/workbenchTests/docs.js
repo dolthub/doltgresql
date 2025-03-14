@@ -47,13 +47,12 @@ export const docsTests = [
     },
   },
   {
-    skip: true, // TODO: the ON CONFLICT clause provided is not yet supported
-    q: "INSERT INTO schema.searches VALUES ($1, $2) ON CONFLICT (doc_name) DO UPDATE SET doc_text = $2",
+    q: "INSERT INTO dolt.docs VALUES ($1, $2) ON CONFLICT (doc_name) DO UPDATE SET doc_text = $2",
     p: ["README.md", updatedReadmeText],
     res: {
       command: "INSERT",
-      rowCount: null,
-      oid: null,
+      rowCount: 2,
+      oid: 0,
       rows: [],
       fields: [],
     },
