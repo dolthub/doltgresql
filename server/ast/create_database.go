@@ -24,9 +24,8 @@ import (
 
 // nodeCreateDatabase handles *tree.CreateDatabase nodes.
 func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL, error) {
-	if len(node.Owner) > 0 {
-		return nil, errors.Errorf("OWNER clause is not yet supported")
-	}
+	var charsets []*vitess.CharsetAndCollate
+	
 	if len(node.Template) > 0 {
 		// TODO: special casing "template0", as some tests make use of it and we need them to pass for now
 		if node.Template != "template0" {
@@ -34,7 +33,10 @@ func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL,
 		}
 	}
 	if len(node.Encoding) > 0 {
-		return nil, errors.Errorf("ENCODING clause is not yet supported")
+		charsets = append(charsets, &vitess.CharsetAndCollate{
+			Type:      "CHARACTER SET",
+			Value:     node.Encoding,
+		})
 	}
 	if len(node.Strategy) > 0 {
 		return nil, errors.Errorf("STRATEGY clause is not yet supported")
@@ -85,5 +87,6 @@ func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL,
 		SchemaOrDatabase: "database",
 		DBName:           node.Name.String(),
 		IfNotExists:      node.IfNotExists,
+		CharsetCollate:   charsets,
 	}, nil
 }
