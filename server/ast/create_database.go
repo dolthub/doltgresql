@@ -25,7 +25,7 @@ import (
 // nodeCreateDatabase handles *tree.CreateDatabase nodes.
 func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL, error) {
 	var charsets []*vitess.CharsetAndCollate
-	
+
 	if len(node.Template) > 0 {
 		// TODO: special casing "template0", as some tests make use of it and we need them to pass for now
 		if node.Template != "template0" {
@@ -34,8 +34,8 @@ func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL,
 	}
 	if len(node.Encoding) > 0 {
 		charsets = append(charsets, &vitess.CharsetAndCollate{
-			Type:      "CHARACTER SET",
-			Value:     node.Encoding,
+			Type:  "CHARACTER SET",
+			Value: node.Encoding,
 		})
 	}
 	if len(node.Strategy) > 0 {
