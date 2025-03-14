@@ -847,6 +847,27 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				Name: "foreign key default naming, name collision ",
+				SetUpScript: []string{
+					"CREATE TABLE parent (id varchar not null primary key);",
+					"CREATE TABLE child (id varchar primary key, constraint t33_webhook_id_fk_fkey foreign key (id) references parent(id));",
+					"CREATE TABLE webhooks (id varchar not null, id2 int8, primary key (id));",
+					"CREATE TABLE t33 (id varchar not null, webhook_id_fk varchar not null, foreign key (webhook_id_fk) references webhooks(id), primary key (id));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "SELECT conname AS constraint_name FROM pg_constraint WHERE conrelid = 't33'::regclass  AND contype = 'f';",
+						Expected: []sql.Row{
+							{"t33_webhook_id_fk_fkey1"},
+						},
+					},
+					{
+						Query:    "ALTER TABLE t33 DROP CONSTRAINT t33_webhook_id_fk_fkey1;",
+						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
 				Name: "foreign key default naming, in column definition",
 				SetUpScript: []string{
 					"CREATE TABLE webhooks (id varchar not null, primary key (id));",

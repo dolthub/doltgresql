@@ -586,5 +586,23 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "alter table drop primary key",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id int PRIMARY KEY);",
+				"INSERT INTO t1 (id) VALUES (1), (2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT t1_pkey;",
+					Expected: []sql.Row{},
+				},
+				{
+					// Assert that the constraint is gone
+					Query:    "INSERT INTO t1 VALUES (1), (2);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
