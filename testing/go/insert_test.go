@@ -168,5 +168,26 @@ func TestInsert(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:  "insert returning",
+			Focus: true,
+			SetUpScript: []string{
+				"CREATE TABLE t (i serial, j INT)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i",
+					Expected: []sql.Row{
+						{1}, {2}, {3},
+					},
+				},
+				{
+					Query: "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i+3",
+					Expected: []sql.Row{
+						{7}, {8}, {9},
+					},
+				},
+			},
+		},
 	})
 }
