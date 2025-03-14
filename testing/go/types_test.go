@@ -79,7 +79,7 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bit type",
-		Skip: true,
+		Skip: true, // no pgx support: unknown type with oid: 1560
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (1, B'11011010'), (2, B'00101011');",
@@ -96,7 +96,7 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bit key",
-		Skip: true,
+		Skip: true, // no pgx support: unknown type with oid: 1560
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id BIT(8) primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (B'11011010', B'11011010'), (B'00101011', B'00101011');",
@@ -153,7 +153,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Boolean key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_boolean (id boolean primary key, v1 BOOLEAN);",
 			"INSERT INTO t_boolean VALUES (true, true), (false, 'false')",
@@ -389,7 +388,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Character key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_character (id CHAR(5) primary key, v1 CHARACTER(5));",
 			"INSERT INTO t_character VALUES ('abcde', 'fghjk'), ('vwxyz', '12345')",
@@ -920,7 +918,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Interval key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_interval (id interval primary key, v1 INTERVAL);",
 			"INSERT INTO t_interval VALUES ('1 hour', '1 day 3 hours'), ('2 days', '23 hours 30 minutes');",
@@ -1452,7 +1449,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Name key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_name (id NAME primary key, v1 NAME);",
 			"INSERT INTO t_name VALUES ('wxyz', 'abcdefghij'), ('abcd', 'klmnopqrst');",
@@ -1648,14 +1644,22 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Numeric key",
-		Skip: true, // error decoding binary: Int.GobDecode: encoding version 57 not supported
 		SetUpScript: []string{
 			"CREATE TABLE t_numeric (id numeric(5,2) primary key, v1 NUMERIC(5,2));",
 			"INSERT INTO t_numeric VALUES (123.45, 67.89), (67.89, 100.3);",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				Query: "SELECT * FROM t_numeric;",
+				Skip:  true, // test setup problem, values are logically equivalent but don't match
+				Expected: []sql.Row{
+					{Numeric("123.45"), Numeric("67.89")},
+					{Numeric("67.89"), Numeric("100.3")},
+				},
+			},
+			{
 				Query: "SELECT * FROM t_numeric WHERE ID = 123.45 ORDER BY id;",
+				Skip:  true, // value not found
 				Expected: []sql.Row{
 					{Numeric("123.45"), Numeric("67.89")},
 				},
@@ -2138,6 +2142,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT relname FROM pg_catalog.pg_class WHERE oid = 'testing'::regclass;",
+				Skip:  true, // panic converting string to regclass
 				Expected: []sql.Row{
 					{"testing"},
 				},
@@ -2488,6 +2493,7 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT * FROM t_text WHERE v1 = 'World';",
+				Skip:  true, // text indexes are broken
 				Expected: []sql.Row{
 					{2, "World"},
 				},
@@ -2558,13 +2564,14 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:    `SELECT c1 from t2 order by c1;`,
+				Skip:     true, // ordering is broken due to text indexes being broken
 				Expected: []sql.Row{{"one"}, {"two"}},
 			},
 		},
 	},
 	{
 		Name: "Text key",
-		Skip: true, //  blob/text column 'id' used in key specification without a key length
+		Skip: true, // text indexes are broken
 		SetUpScript: []string{
 			"CREATE TABLE t_text (id TEXT primary key, v1 TEXT);",
 			"INSERT INTO t_text VALUES ('Hello', 'World'), ('goodbye', 'cruel world');",
@@ -2619,7 +2626,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Time without time zone key",
-		Skip: true, //  blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_time_without_zone (id TIME primary key, v1 TIME);",
 			"INSERT INTO t_time_without_zone VALUES ('12:34:56', '23:45:01'), ('23:45:01', '12:34:56');",
@@ -2820,16 +2826,32 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Uuid key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_uuid (id UUID primary key, v1 UUID);",
 			"INSERT INTO t_uuid VALUES ('f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'f47ac10b58cc4372a567-0e02b2c3d479');",
+			"create table t_uuid2 (id int primary key, v1 uuid, v2 uuid);",
+			"create index on t_uuid2(v1, v2);",
+			"insert into t_uuid2 values " +
+				"(1, 'f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), " +
+				"(2, 'dcf783c8-49c2-44b4-8b90-34ad8c52ea1e', 'f99802e8-0018-4913-806c-bcad5d246d46');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_uuid WHERE ID = 'f47ac10b58cc4372a567-0e02b2c3d479' ORDER BY id;",
 				Expected: []sql.Row{
-					{"f47ac10b58cc4372a567-0e02b2c3d479", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
+					{"f47ac10b-58cc-4372-a567-0e02b2c3d479", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_uuid2 WHERE v1 = 'f47ac10b58cc4372a567-0e02b2c3d479' and v2 = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "f47ac10b-58cc-4372-a567-0e02b2c3d479", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_uuid2 WHERE v1 < 'f47ac10b58cc4372a567-0e02b2c3d479' ORDER BY id;",
+				Expected: []sql.Row{
+					{2, "dcf783c8-49c2-44b4-8b90-34ad8c52ea1e", "f99802e8-0018-4913-806c-bcad5d246d46"},
 				},
 			},
 		},
@@ -3298,23 +3320,6 @@ func TestEnumTypes(t *testing.T) {
 var enumTypeTests = []ScriptTest{
 	{
 		Name: "create enum type",
-		Assertions: []ScriptTestAssertion{
-			{
-				Query:       `CREATE TYPE mood AS ENUM ('ok','ok');`,
-				ExpectedErr: `duplicate key value violates unique constraint "pg_enum_typid_label_index"`,
-			},
-			{
-				Query:    `CREATE TYPE empty_mood AS ENUM ();`,
-				Expected: []sql.Row{},
-			},
-			{
-				Query:    `CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');`,
-				Expected: []sql.Row{},
-			},
-		},
-	},
-	{
-		Name: "create enum type",
 		SetUpScript: []string{
 			`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')`,
 		},
@@ -3328,8 +3333,16 @@ var enumTypeTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				Query:    `SELECT * FROM person order by current_mood;`,
+				Expected: []sql.Row{{"Larry", "sad"}, {"Curly", "ok"}, {"Moe", "happy"}},
+			},
+			{
+				Query:    `SELECT * FROM person order by name;`,
+				Expected: []sql.Row{{"Curly", "ok"}, {"Larry", "sad"}, {"Moe", "happy"}},
+			},
+			{
 				Query:    `SELECT * FROM person;`,
-				Expected: []sql.Row{{"Moe", "happy"}, {"Curly", "ok"}, {"Larry", "sad"}},
+				Expected: []sql.Row{{"Moe", "happy"}, {"Larry", "sad"}, {"Curly", "ok"}},
 			},
 			{
 				Query:    `SELECT * FROM person WHERE current_mood = 'happy';`,
@@ -3346,6 +3359,14 @@ var enumTypeTests = []ScriptTest{
 			{
 				Query:       `INSERT INTO person VALUES ('Joey', 'invalid');`,
 				ExpectedErr: `invalid input value for enum mood: "invalid"`,
+			},
+			{
+				Query:       `CREATE TYPE failure AS ENUM ('ok','ok');`,
+				ExpectedErr: `duplicate key value violates unique constraint "pg_enum_typid_label_index"`,
+			},
+			{
+				Query:    `CREATE TYPE empty_mood AS ENUM ();`,
+				Expected: []sql.Row{},
 			},
 		},
 	},

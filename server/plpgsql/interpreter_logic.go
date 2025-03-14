@@ -16,12 +16,17 @@ package plpgsql
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/jackc/pgx/v5/pgproto3"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/typecollection"
+	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -35,6 +40,10 @@ type InterpretedFunction interface {
 	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (rowIter sql.RowIter, err error)
 	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
 }
+
+// GetTypesCollectionFromContext is declared within the core package, but is assigned to this variable to work around
+// import cycles.
+var GetTypesCollectionFromContext func(ctx *sql.Context) (*typecollection.TypeCollection, error)
 
 // Call runs the contained operations on the given runner.
 func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.StatementRunner, paramsAndReturn []*pgtypes.DoltgresType, vals []any) (any, error) {
@@ -81,14 +90,31 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if err != nil {
 				return nil, err
 			}
-		case OpCode_Case:
-			// TODO: implement
 		case OpCode_Declare:
-			typeCollection, err := core.GetTypesCollectionFromContext(ctx)
+			typeCollection, err := GetTypesCollectionFromContext(ctx)
 			if err != nil {
 				return nil, err
 			}
-			resolvedType, exists := typeCollection.GetType(id.NewType("pg_catalog", operation.PrimaryData))
+
+			// pg_query_go sets PrimaryData for implicit CASE statement variables to
+			// `pg_catalog."integer"`, so we remove double-quotes and extract the schema name.
+			typeName := operation.PrimaryData
+			typeName = strings.ReplaceAll(typeName, `"`, "")
+			schemaName := "pg_catalog"
+			if strings.Contains(typeName, ".") {
+				parts := strings.Split(typeName, ".")
+				schemaName = parts[0]
+				typeName = parts[1]
+				// Check the NonKeyword type names to see if we're looking at
+				// an alias of a type if we're in the pg_catalog schema.
+				if schemaName == "pg_catalog" {
+					typ, ok, _ := types.TypeForNonKeywordTypeName(typeName)
+					if ok && typ != nil {
+						typeName = typ.Name()
+					}
+				}
+			}
+			resolvedType, exists := typeCollection.GetType(id.NewType(schemaName, typeName))
 			if !exists {
 				return nil, pgtypes.ErrTypeDoesNotExist.New(operation.PrimaryData)
 			}
@@ -120,12 +146,6 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 					return nil, err
 				}
 			}
-		case OpCode_ExecuteDynamic:
-			// TODO: implement
-		case OpCode_For:
-			// TODO: implement
-		case OpCode_Foreach:
-			// TODO: implement
 		case OpCode_Get:
 			// TODO: implement
 		case OpCode_Goto:
@@ -161,8 +181,6 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			}
 		case OpCode_InsertInto:
 			// TODO: implement
-		case OpCode_Loop:
-			// TODO: implement
 		case OpCode_Perform:
 			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
@@ -171,14 +189,28 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
 				return nil, err
 			}
-		case OpCode_Query:
-			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+		case OpCode_Raise:
+			// TODO: Use the client_min_messages config param to determine which
+			//       notice levels to send to the client.
+			// https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-CLIENT-MIN-MESSAGES
+
+			// TODO: Notices at the EXCEPTION level should also abort the current tx.
+
+			message, err := evaluteNoticeMessage(ctx, iFunc, operation, stack)
 			if err != nil {
 				return nil, err
 			}
-			if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
+
+			noticeResponse := &pgproto3.NoticeResponse{
+				Severity: operation.PrimaryData,
+				Message:  message,
+			}
+
+			if err = applyNoticeOptions(ctx, noticeResponse, operation.Options); err != nil {
 				return nil, err
 			}
+			sess := dsess.DSessFromSess(ctx.Session)
+			sess.Notice(noticeResponse)
 		case OpCode_Return:
 			if len(operation.PrimaryData) == 0 {
 				return nil, nil
@@ -190,10 +222,6 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 			stack.PopScope()
 		case OpCode_SelectInto:
 			// TODO: implement
-		case OpCode_When:
-			// TODO: implement
-		case OpCode_While:
-			// TODO: implement
 		case OpCode_UpdateInto:
 			// TODO: implement
 		default:
@@ -201,4 +229,65 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		}
 	}
 	return nil, nil
+}
+
+// applyNoticeOptions adds the specified |options| to the |noticeResponse|.
+func applyNoticeOptions(ctx *sql.Context, noticeResponse *pgproto3.NoticeResponse, options map[string]string) error {
+	for key, value := range options {
+		i, err := strconv.Atoi(key)
+		if err != nil {
+			return err
+		}
+
+		switch NoticeOptionType(i) {
+		case NoticeOptionTypeErrCode:
+			noticeResponse.Code = value
+		case NoticeOptionTypeMessage:
+			noticeResponse.Message = value
+		case NoticeOptionTypeDetail:
+			noticeResponse.Detail = value
+		case NoticeOptionTypeHint:
+			noticeResponse.Hint = value
+		case NoticeOptionTypeConstraint:
+			noticeResponse.ConstraintName = value
+		case NoticeOptionTypeDataType:
+			noticeResponse.DataTypeName = value
+		case NoticeOptionTypeTable:
+			noticeResponse.TableName = value
+		case NoticeOptionTypeSchema:
+			noticeResponse.SchemaName = value
+		default:
+			ctx.GetLogger().Warnf("unhandled notice option type: %s", key)
+		}
+	}
+	return nil
+}
+
+// evaluteNoticeMessage evaluates the message for a RAISE NOTICE statement, including
+// evaluating any specified parameters and plugging them into the message in place of
+// the % placeholders.
+func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
+	operation InterpreterOperation, stack InterpreterStack) (string, error) {
+	message := operation.SecondaryData[0]
+	if len(operation.SecondaryData) > 1 {
+		params := operation.SecondaryData[1:]
+		currentParam := 0
+
+		parts := strings.Split(message, "%%")
+		for i, part := range parts {
+			for strings.Contains(part, "%") {
+				retVal, err := iFunc.QuerySingleReturn(ctx, stack, "SELECT "+params[currentParam], nil, nil)
+				if err != nil {
+					return "", err
+				}
+				currentParam += 1
+
+				s := fmt.Sprintf("%v", retVal)
+				part = strings.Replace(part, "%", s, 1)
+			}
+			parts[i] = part
+		}
+		message = strings.Join(parts, "%")
+	}
+	return message, nil
 }

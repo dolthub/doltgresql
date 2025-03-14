@@ -848,17 +848,10 @@ func TestSystemInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing2'::regclass LIMIT 1;`,
-					Expected: []sql.Row{
-						{"PRIMARY KEY (pk)"},
-					},
-				},
-				{
-					Skip:  true, // TODO: Foreign keys don't work
 					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing2'::regclass;`,
 					Expected: []sql.Row{
+						{"FOREIGN KEY testing2_pktesting_fkey (pktesting) REFERENCES testing (pk)"},
 						{"PRIMARY KEY (pk)"},
-						{"FOREIGN KEY (pktesting) REFERENCES testing(pk)"},
 					},
 				},
 				{
@@ -917,7 +910,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				// TODO: ALTER SEQUENCE OWNED BY is not supported yet. When the sequence is created
 				//       explicitly, separate from the column, the owner must be udpated before
 				//       pg_get_serial_sequence() will identify it.
-				//`ALTER SEQUENCE t2_id_seq OWNED BY t2.id;`,
+				// `ALTER SEQUENCE t2_id_seq OWNED BY t2.id;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -956,6 +949,91 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query:    `SELECT pg_get_serial_sequence('t2', 'id');`,
 					Cols:     []string{"pg_get_serial_sequence"},
 					Expected: []sql.Row{{"public.t2_id_seq"}},
+				},
+			},
+		},
+	})
+}
+
+func TestJsonFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "json_build_array",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_build_array(1, 2, 3);`,
+					Cols:     []string{"json_build_array"},
+					Expected: []sql.Row{{`[1,2,3]`}},
+				},
+				{
+					Query:    `SELECT json_build_array(1, '2', 3);`,
+					Cols:     []string{"json_build_array"},
+					Expected: []sql.Row{{`[1,"2",3]`}},
+				},
+				{
+					Query:    `SELECT json_build_array();`,
+					Skip:     true, // variadic functions can't handle 0 arguments right now
+					Cols:     []string{"json_build_array"},
+					Expected: []sql.Row{{`[]`}},
+				},
+			},
+		},
+		{
+			Name: "json_build_object",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_build_object('a', 2, 'b', 4);`,
+					Cols:     []string{"json_build_object"},
+					Expected: []sql.Row{{`{"a":2,"b":4}`}},
+				},
+				{
+					Query:       `SELECT json_build_object('a', 2, 'b');`,
+					ExpectedErr: "even number",
+				},
+				{
+					Query:    `SELECT json_build_object(1, 2, 'b', 3);`,
+					Cols:     []string{"json_build_object"},
+					Expected: []sql.Row{{`{"1":2,"b":3}`}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_build_array",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT jsonb_build_array(1, 2, 3);`,
+					Cols:     []string{"jsonb_build_array"},
+					Expected: []sql.Row{{`[1, 2, 3]`}},
+				},
+				{
+					Query:    `SELECT jsonb_build_array(1, '2', 3);`,
+					Cols:     []string{"jsonb_build_array"},
+					Expected: []sql.Row{{`[1, "2", 3]`}},
+				},
+				{
+					Query:    `SELECT jsonb_build_array();`,
+					Skip:     true, // variadic functions can't handle 0 arguments right now
+					Cols:     []string{"jsonb_build_array"},
+					Expected: []sql.Row{{`[]`}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_build_object",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT jsonb_build_object('a', 2, 'b', 4);`,
+					Cols:     []string{"jsonb_build_object"},
+					Expected: []sql.Row{{`{"a": 2, "b": 4}`}},
+				},
+				{
+					Query:       `SELECT jsonb_build_object('a', 2, 'b');`,
+					ExpectedErr: "even number",
+				},
+				{
+					Query:    `SELECT jsonb_build_object(1, 2, 'b', 3);`,
+					Cols:     []string{"jsonb_build_object"},
+					Expected: []sql.Row{{`{"1": 2, "b": 3}`}},
 				},
 			},
 		},

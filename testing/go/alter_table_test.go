@@ -116,6 +116,55 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Add Check Constraint with IN tuple",
+			SetUpScript: []string{
+				"create table t1 (pk int primary key, c1 int);",
+				"insert into t1 values (1,1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Add a check constraint that is already violated by the existing data
+					Query:       "ALTER TABLE t1 ADD CONSTRAINT constraint1 CHECK (c1 in (100));",
+					ExpectedErr: "violated",
+				},
+				{
+					// Add a check constraint
+					Query:    "ALTER TABLE t1 ADD CONSTRAINT constraint1 CHECK (c1 in (1,2));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t1 VALUES (2, 2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t1 VALUES (3, 101);",
+					ExpectedErr: "violated",
+				},
+			},
+		},
+		{
+			Name: "Add Check Constraint and another constraint in same statement",
+			SetUpScript: []string{
+				"create table t1 (pk int, c1 int);",
+				"insert into t1 values (1,1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Add a check constraint
+					Query:    " ALTER TABLE t1 ADD CONSTRAINT check_a CHECK (c1 IN (1)), ALTER c1 SET NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t1 VALUES (2, 2);",
+					ExpectedErr: "violated",
+				},
+				{
+					Query:       "INSERT INTO t1 VALUES (1, NULL);",
+					ExpectedErr: "non-nullable",
+				},
+			},
+		},
+		{
 			Name: "Drop Constraint",
 			SetUpScript: []string{
 				"create table t1 (pk int primary key, c1 int);",
@@ -175,6 +224,57 @@ func TestAlterTable(t *testing.T) {
 					Skip:     true,
 					Query:    "ALTER TABLE IF EXISTS doesNotExist ADD PRIMARY KEY (a, b);",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "Add Primary Key on text column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a text, b INT);",
+				"insert into test1 values ('a', 1), ('b', 2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ADD PRIMARY KEY (a);",
+					Expected: []sql.Row{},
+				},
+				{
+					// Test the pk by inserting a duplicate value
+					Query:       "INSERT into test1 values ('a', 3);",
+					ExpectedErr: "duplicate primary key",
+				},
+				{
+					Query: "select * from test1;",
+					Expected: []sql.Row{
+						{"a", 1},
+						{"b", 2},
+					},
+				},
+			},
+		},
+		{
+			Name: "Add primary key with generated column",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (
+      id uuid DEFAULT public.gen_random_uuid() NOT NULL,
+      data jsonb,
+      has_data boolean GENERATED ALWAYS AS ((data IS NOT NULL)) STORED
+  );`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            " ALTER TABLE ONLY t1 ADD CONSTRAINT pk PRIMARY KEY (id);",
+					SkipResultsCheck: true, // only care if it doesn't error
+				},
+				{
+					Query:            "insert into t1 (id, data) values (default, '{}');",
+					SkipResultsCheck: true, // only care if it doesn't error
+				},
+				{
+					Query: "Select has_data from t1;",
+					Expected: []sql.Row{
+						{"t"},
+					},
 				},
 			},
 		},
@@ -483,6 +583,24 @@ func TestAlterTable(t *testing.T) {
 					Query:    "select (select uid from t1 where id = 2) = (select uid from t1 where id = 1);",
 					Skip:     true, // panic in equality function
 					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name: "alter table drop primary key",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id int PRIMARY KEY);",
+				"INSERT INTO t1 (id) VALUES (1), (2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT t1_pkey;",
+					Expected: []sql.Row{},
+				},
+				{
+					// Assert that the constraint is gone
+					Query:    "INSERT INTO t1 VALUES (1), (2);",
+					Expected: []sql.Row{},
 				},
 			},
 		},

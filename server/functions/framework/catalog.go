@@ -35,12 +35,7 @@ var initializedFunctions = false
 // from within an init().
 func RegisterFunction(f FunctionInterface) {
 	if initializedFunctions {
-		// TODO: this should be able to handle overloads
-		name := strings.ToLower(f.GetName())
-		if err := validateFunction(name, []FunctionInterface{f}); err != nil {
-			panic(err) // TODO: replace panics here with errors
-		}
-		compileNonOperatorFunction(name, []FunctionInterface{f})
+		panic("attempted to register a function after the init() phase")
 	}
 	switch f := f.(type) {
 	case Function0:

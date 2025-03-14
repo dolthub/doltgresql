@@ -17,6 +17,7 @@ package types
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"fmt"
 	"math"
 	"reflect"
@@ -36,15 +37,20 @@ import (
 )
 
 // DoltgresType represents a single type.
+// TODO: the serialization logic always serializes every field for built-in types, which is kind of silly. They are
+//
+//	effectively hard-coded. We could serialize much more cheaply by only serializing values which can't be derived
+//	(for custom types) and hard-coding everything else.
 type DoltgresType struct {
-	ID            id.Type
-	TypLength     int16
-	PassedByVal   bool
-	TypType       TypeType
-	TypCategory   TypeCategory
-	IsPreferred   bool
-	IsDefined     bool
-	Delimiter     string
+	ID          id.Type
+	TypType     TypeType
+	TypCategory TypeCategory
+	TypLength   int16
+	PassedByVal bool
+	IsPreferred bool
+	IsDefined   bool
+	Delimiter   string
+
 	RelID         id.Id // for Composite types
 	SubscriptFunc uint32
 	Elem          id.Type
@@ -58,14 +64,15 @@ type DoltgresType struct {
 	AnalyzeFunc   uint32
 	Align         TypeAlignment
 	Storage       TypeStorage
-	NotNull       bool    // for Domain types
-	BaseTypeID    id.Type // for Domain types
-	TypMod        int32   // for Domain types
-	NDims         int32   // for Domain types
-	TypCollation  id.Collation
-	DefaulBin     string // for Domain types
-	Default       string
-	Acl           []string // TODO: list of privileges
+
+	NotNull      bool    // for Domain types
+	BaseTypeID   id.Type // for Domain types
+	TypMod       int32   // for Domain types
+	NDims        int32   // for Domain types
+	TypCollation id.Collation
+	DefaulBin    string // for Domain types
+	Default      string
+	Acl          []string // TODO: list of privileges
 
 	// Below are not part of pg_type fields
 	Checks         []*sql.CheckDefinition // TODO: should be in `pg_constraint` for Domain types
@@ -103,10 +110,20 @@ func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 	if !t.IsArrayType() {
 		return t
 	}
-	elem, ok := IDToBuiltInDoltgresType[t.Elem]
+
+	var elem *DoltgresType
+	var ok bool
+
+	elem, ok = IDToBuiltInDoltgresType[t.Elem]
 	if !ok {
-		panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
+		// Some array types have no declared element type for pg_catalog compatibilty, but still have a logical type
+		// we return for analysis
+		elem, ok = LogicalArrayElementTypes[t.ID]
+		if !ok {
+			panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
+		}
 	}
+
 	newElem := *elem.WithAttTypMod(t.attTypMod)
 	return &newElem
 }
@@ -347,6 +364,33 @@ func (t *DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, 
 	return nil, sql.OutOfRange, ErrUnhandledType.New(t.String(), v)
 }
 
+// GetImplicitCast is a reference to the implicit cast logic in the functions/framework package, which we can't use
+// here due to import cycles
+var GetImplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+
+// GetAssignmentCast is a reference to the assignment cast logic in the functions/framework package, which we can't use
+// here due to import cycles
+var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+
+// GetExplicitCast is a reference to the explicit cast logic in the functions/framework package, which we can't use
+// here due to import cycles
+var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+
+// ConvertToType implements the types.ExtendedType interface.
+func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ types.ExtendedType, val any) (any, error) {
+	dt, ok := typ.(*DoltgresType)
+	if !ok {
+		return nil, errors.Errorf("expected DoltgresType, got %T", typ)
+	}
+
+	castFn := GetAssignmentCast(dt, t)
+	if castFn == nil {
+		return nil, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
+	}
+
+	return castFn(ctx, val, t)
+}
+
 // DomainUnderlyingBaseType returns an underlying base type of this domain type.
 // It can be a nested domain type, so it recursively searches for a valid base type.
 func (t *DoltgresType) DomainUnderlyingBaseType() *DoltgresType {
@@ -427,7 +471,8 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 
 // IsArrayType returns true if the type is of 'array' category
 func (t *DoltgresType) IsArrayType() bool {
-	return t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType
+	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType) ||
+		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 
 // IsEmptyType returns true if the type is not valid.
@@ -519,34 +564,10 @@ func (t *DoltgresType) MaxCharacterLength() int64 {
 
 // MaxSerializedWidth implements the types.ExtendedType interface.
 func (t *DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
-	// TODO: need better way to get accurate result
-	switch t.TypCategory {
-	case TypeCategory_ArrayTypes:
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	case TypeCategory_BooleanTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	case TypeCategory_CompositeTypes, TypeCategory_EnumTypes, TypeCategory_GeometricTypes, TypeCategory_NetworkAddressTypes,
-		TypeCategory_RangeTypes, TypeCategory_PseudoTypes, TypeCategory_UserDefinedTypes, TypeCategory_BitStringTypes,
-		TypeCategory_InternalUseTypes:
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	case TypeCategory_DateTimeTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	case TypeCategory_NumericTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	case TypeCategory_StringTypes, TypeCategory_UnknownTypes:
-		if t.ID == VarChar.ID {
-			l := t.Length()
-			if l != StringUnbounded && l <= stringInline {
-				return types.ExtendedTypeSerializedWidth_64K
-			}
-		}
-		return types.ExtendedTypeSerializedWidth_Unbounded
-	case TypeCategory_TimespanTypes:
-		return types.ExtendedTypeSerializedWidth_64K
-	default:
-		// shouldn't happen
+	if t.TypLength < 0 {
 		return types.ExtendedTypeSerializedWidth_Unbounded
 	}
+	return types.ExtendedTypeSerializedWidth_64K
 }
 
 // MaxTextResponseByteLength implements the types.ExtendedType interface.
@@ -606,7 +627,7 @@ func (t *DoltgresType) SendFuncName() string {
 }
 
 // SerializedCompare implements the types.ExtendedType interface.
-func (t *DoltgresType) SerializedCompare(v1 []byte, v2 []byte) (int, error) {
+func (t *DoltgresType) SerializedCompare(ctx context.Context, v1 []byte, v2 []byte) (int, error) {
 	if len(v1) == 0 && len(v2) == 0 {
 		return 0, nil
 	} else if len(v1) > 0 && len(v2) == 0 {
@@ -818,7 +839,7 @@ func (t *DoltgresType) Zero() interface{} {
 }
 
 // SerializeValue implements the types.ExtendedType interface.
-func (t *DoltgresType) SerializeValue(val any) ([]byte, error) {
+func (t *DoltgresType) SerializeValue(ctx context.Context, val any) ([]byte, error) {
 	if val == nil {
 		return nil, nil
 	}
@@ -839,7 +860,7 @@ func (t *DoltgresType) SerializeValue(val any) ([]byte, error) {
 }
 
 // DeserializeValue implements the types.ExtendedType interface.
-func (t *DoltgresType) DeserializeValue(val []byte) (any, error) {
+func (t *DoltgresType) DeserializeValue(ctx context.Context, val []byte) (any, error) {
 	if len(val) == 0 {
 		return nil, nil
 	}
@@ -857,3 +878,7 @@ func (t *DoltgresType) DeserializeValue(val []byte) (any, error) {
 		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val)
 	}
 }
+
+// TypeCastFunction is a function that takes a value of a particular kind of type, and returns it as another kind of type.
+// The targetType given should match the "To" type used to obtain the cast.
+type TypeCastFunction func(ctx *sql.Context, val any, targetType *DoltgresType) (any, error)

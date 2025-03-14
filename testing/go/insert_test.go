@@ -169,6 +169,23 @@ func TestInsert(t *testing.T) {
 			},
 		},
 		{
+			Name: "types",
+			SetUpScript: []string{
+				`create table child (i2 int2, i4 int4, i8 int8, f float, d double precision, v varchar, vl varchar(100), t text, j json, ts timestamp);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `insert into child values (1, 2, 3, 4.5, 6.7, 'hello', 'world', 'text', '{"a": 1}', '2021-01-01 00:00:00');`,
+				},
+				{
+					Query: `select * from child;`,
+					Expected: []sql.Row{
+						{int16(1), int32(2), int64(3), float32(4.5), float64(6.7), "hello", "world", "text", `{"a": 1}`, "2021-01-01 00:00:00"},
+					},
+				},
+			},
+		},
+		{
 			Name:  "insert returning",
 			Focus: true,
 			SetUpScript: []string{

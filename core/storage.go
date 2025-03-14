@@ -36,6 +36,17 @@ type rootStorage struct {
 	srv *serial.RootValue
 }
 
+// SetFunctions sets the function hash and returns a new storage object.
+func (r rootStorage) SetFunctions(ctx context.Context, h hash.Hash) (rootStorage, error) {
+	if len(r.srv.FunctionsBytes()) > 0 {
+		ret := r.clone()
+		copy(ret.srv.FunctionsBytes(), h[:])
+		return ret, nil
+	} else {
+		return r.clone(), nil
+	}
+}
+
 // SetSequences sets the sequence hash and returns a new storage object.
 func (r rootStorage) SetSequences(ctx context.Context, h hash.Hash) (rootStorage, error) {
 	if len(r.srv.SequencesBytes()) > 0 {
@@ -114,6 +125,15 @@ func (r rootStorage) SetSchemas(ctx context.Context, dbSchemas []schema.Database
 		return rootStorage{}, err
 	}
 	return rootStorage{msg}, nil
+}
+
+// GetFunctions returns the functions hash.
+func (r rootStorage) GetFunctions() hash.Hash {
+	hashBytes := r.srv.FunctionsBytes()
+	if len(hashBytes) == 0 {
+		return hash.Hash{}
+	}
+	return hash.New(hashBytes)
 }
 
 // GetSequences returns the sequence hash.

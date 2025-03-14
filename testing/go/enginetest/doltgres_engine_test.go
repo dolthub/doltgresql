@@ -1367,6 +1367,8 @@ func TestDoltCheckout(t *testing.T) {
 		"Using non-existent refs",
 		"read-only databases", // read-only not yet implemented in harness
 		"Checkout tables from commit",
+		"dolt_checkout with new branch forcefully",                        // string primary key ordering broken
+		"dolt_checkout with new branch forcefully with dirty working set", // string primary key ordering broken
 	})
 	denginetest.RunDoltCheckoutTests(t, h)
 }

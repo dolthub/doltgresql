@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
 func TestCreateTable(t *testing.T) {
@@ -42,6 +43,33 @@ func TestCreateTable(t *testing.T) {
 					Expected: []sql.Row{
 						{1, "Doe", "John"},
 					},
+				},
+				{
+					// Test that the PK constraint shows up in the information schema
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'employees'::regclass AND contype = 'p';",
+					Expected: []sql.Row{{"employees_pkey"}},
+				},
+				{
+					Query:    "ALTER TABLE employees DROP CONSTRAINT employees_pkey;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			// TODO: We don't currently support storing a custom name for a primary key constraint.
+			Skip: true,
+			Name: "create table with primary key, using custom constraint name",
+			SetUpScript: []string{
+				"CREATE TABLE users (id SERIAL, name TEXT, CONSTRAINT users_primary_key PRIMARY KEY (id));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'users'::regclass AND contype = 'p';",
+					Expected: []sql.Row{{"users_primary_key"}},
+				},
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT users_primary_key;",
+					Expected: []sql.Row{{types.NewOkResult(0)}},
 				},
 			},
 		},
@@ -103,6 +131,27 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:    "select * from mytbl;",
 					Expected: []sql.Row{{1, 20}},
+				},
+			},
+		},
+		{
+			Name: "check constraint with a function",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE TABLE mytbl (a text CHECK (length(a) > 2) PRIMARY KEY, b text);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into mytbl values ('abc', 'def');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "insert into mytbl values ('de', 'abc');",
+					ExpectedErr: `Check constraint`,
+				},
+				{
+					Query:    "select * from mytbl;",
+					Expected: []sql.Row{{"abc", "def"}},
 				},
 			},
 		},
@@ -209,6 +258,48 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:    "select * from t1;",
 					Expected: []sql.Row{{" foo ", "foo foo"}},
+				},
+			},
+		},
+		{
+			Name: "generated column with reference to another column",
+			SetUpScript: []string{
+				`create table t1 (
+    			a varchar(10) primary key,
+    			b varchar(20),
+				  b_not_null bool generated always as ((b is not null)) stored
+				);`,
+				"insert into t1 (a, b) values ('foo', 'bar');",
+				"insert into t1 (a) values ('foo2');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select * from t1 order by a;",
+					Expected: []sql.Row{
+						{"foo", "bar", "t"},
+						{"foo2", nil, "f"},
+					},
+				},
+			},
+		},
+		{
+			Name: "generated column with space in column name",
+			SetUpScript: []string{
+				`create table t1 (
+    			a varchar(10) primary key,
+    			"b 2" varchar(20),
+				  b_not_null bool generated always as (("b 2" is not null)) stored
+				);`,
+				`insert into t1 (a, "b 2") values ('foo', 'bar');`,
+				"insert into t1 (a) values ('foo2');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select * from t1 order by a;",
+					Expected: []sql.Row{
+						{"foo", "bar", "t"},
+						{"foo2", nil, "f"},
+					},
 				},
 			},
 		},

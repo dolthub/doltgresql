@@ -22,7 +22,7 @@ import (
 
 // jsonConvert handles the conversion from the JSON format into a format that is easier to work with.
 func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
-	block := Block{}
+	block := Block{Label: jsonBlock.Action.StmtBlock.Label}
 	for _, v := range jsonBlock.Datums {
 		switch {
 		case v.Row != nil:
@@ -52,12 +52,20 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 	switch {
 	case stmt.Assignment != nil:
 		return stmt.Assignment.Convert()
+	case stmt.Case != nil:
+		return stmt.Case.Convert()
 	case stmt.ExecSQL != nil:
 		return stmt.ExecSQL.Convert()
+	case stmt.Exit != nil:
+		return stmt.Exit.Convert(), nil
 	case stmt.If != nil:
 		return stmt.If.Convert()
+	case stmt.Loop != nil:
+		return stmt.Loop.Convert()
 	case stmt.Perform != nil:
 		return stmt.Perform.Convert(), nil
+	case stmt.Raise != nil:
+		return stmt.Raise.Convert(), nil
 	case stmt.Return != nil:
 		return stmt.Return.Convert(), nil
 	case stmt.While != nil:

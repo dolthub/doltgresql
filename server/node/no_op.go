@@ -69,7 +69,7 @@ func (n noOpRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 func (n noOpRowIter) Close(ctx *sql.Context) error {
 	for _, warning := range n.warnings {
-		ctx.Warn(0, fmt.Sprintf("%s is unimplemented", warning))
+		ctx.Warn(0, "%s is unimplemented", warning)
 	}
 	return nil
 }

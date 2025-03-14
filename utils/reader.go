@@ -349,6 +349,37 @@ func (reader *Reader) StringSlice() []string {
 	return vals
 }
 
+// StringMap reads a map of strings, keyed by strings.
+func (reader *Reader) StringMap() map[string]string {
+	count := reader.VariableUint()
+	vals := make(map[string]string, count)
+	for i := uint64(0); i < count; i++ {
+		key := reader.String()
+		vals[key] = reader.String()
+	}
+	return vals
+}
+
+// IdSlice reads a slice of internal IDs.
+func (reader *Reader) IdSlice() []id.Id {
+	count := reader.VariableUint()
+	vals := make([]id.Id, count)
+	for i := uint64(0); i < count; i++ {
+		vals[i] = reader.Id()
+	}
+	return vals
+}
+
+// IdTypeSlice reads a slice of internal type IDs.
+func (reader *Reader) IdTypeSlice() []id.Type {
+	count := reader.VariableUint()
+	vals := make([]id.Type, count)
+	for i := uint64(0); i < count; i++ {
+		vals[i] = id.Type(reader.Id())
+	}
+	return vals
+}
+
 // IsEmpty returns true when all of the data has been read.
 func (reader *Reader) IsEmpty() bool {
 	return reader.offset >= uint64(len(reader.buf))

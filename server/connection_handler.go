@@ -159,14 +159,17 @@ func (h *ConnectionHandler) HandleConnection() {
 			if returnErr != nil {
 				fmt.Println(returnErr.Error())
 			}
-
-			h.doltgresHandler.ConnectionClosed(h.mysqlConn)
-			if err := h.Conn().Close(); err != nil {
-				fmt.Printf("Failed to properly close connection:\n%v\n", err)
-			}
 		}()
 	}
+	defer func() {
+		if err := h.Conn().Close(); err != nil {
+			fmt.Printf("Failed to properly close connection:\n%v\n", err)
+		}
+	}()
 	h.doltgresHandler.NewConnection(h.mysqlConn)
+	defer func() {
+		h.doltgresHandler.ConnectionClosed(h.mysqlConn)
+	}()
 
 	if proceed, err := h.handleStartup(); err != nil || !proceed {
 		returnErr = err
@@ -288,7 +291,7 @@ func (h *ConnectionHandler) chooseInitialDatabase(startupMessage *pgproto3.Start
 	if err != nil {
 		return err
 	}
-	err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, useStmt, parsed, func(res *Result) error {
+	err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, useStmt, parsed, func(_ *sql.Context, _ *Result) error {
 		return nil
 	})
 	// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
@@ -771,7 +774,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		return false, false, err
 	}
 
-	callback := func(res *Result) error { return nil }
+	callback := func(_ *sql.Context, _ *Result) error { return nil }
 	err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY FROM", copyState.insertNode, callback)
 	if err != nil {
 		return false, false, err
@@ -928,10 +931,23 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 
 // spoolRowsCallback returns a callback function that will send RowDescription message,
 // then a DataRow message for each row in the result set.
-func (h *ConnectionHandler) spoolRowsCallback(tag string, rows *int32, isExecute bool) func(res *Result) error {
+func (h *ConnectionHandler) spoolRowsCallback(tag string, rows *int32, isExecute bool) func(ctx *sql.Context, res *Result) error {
 	// IsIUD returns whether the query is either an INSERT, UPDATE, or DELETE query.
 	isIUD := tag == "INSERT" || tag == "UPDATE" || tag == "DELETE"
-	return func(res *Result) error {
+	return func(ctx *sql.Context, res *Result) error {
+		sess := dsess.DSessFromSess(ctx.Session)
+		for _, notice := range sess.Notices() {
+			backendMsg, ok := notice.(pgproto3.BackendMessage)
+			if !ok {
+				return fmt.Errorf("unexpected notice message type: %T", notice)
+			}
+
+			if err := h.send(backendMsg); err != nil {
+				return err
+			}
+		}
+		sess.ClearNotices()
+
 		if returnsRow(tag) {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute {

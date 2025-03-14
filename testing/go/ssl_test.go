@@ -23,7 +23,7 @@ type SSLListener struct {
 	*dserver.Listener
 }
 
-func NewSslListener(listenerCfg mysql.ListenerConfig, sel server.ServerEventListener) (server.ProtocolListener, error) {
+func NewSslListener(_ server.Config, listenerCfg mysql.ListenerConfig, sel server.ServerEventListener) (server.ProtocolListener, error) {
 	// Since this is intended for testing, we'll configure a test certificate so that we can test for SSL support
 	cert, key, err := testcerts.GenerateCerts()
 	if err != nil {
@@ -47,13 +47,12 @@ func NewSslListener(listenerCfg mysql.ListenerConfig, sel server.ServerEventList
 
 func TestSSL(t *testing.T) {
 	port := GetUnusedPort(t)
-	server.DefaultProtocolListenerFunc = NewSslListener
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
 		ListenerConfig: &servercfg.DoltgresListenerConfig{
 			PortNumber: &port,
 			HostStr:    ptr("127.0.0.1"),
 		},
-	})
+	}, NewSslListener)
 	require.NoError(t, err)
 
 	defer func() {

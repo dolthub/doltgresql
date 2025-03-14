@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	goerrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -122,7 +123,7 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 }
 
 // ComExecuteBound implements the Handler interface.
-func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*Result) error) error {
+func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*sql.Context, *Result) error) error {
 	analyzedPlan, ok := boundQuery.(sql.Node)
 	if !ok {
 		return errors.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
@@ -180,7 +181,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 }
 
 // ComQuery implements the Handler interface.
-func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*Result) error) error {
+func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, callback func(*sql.Context, *Result) error) error {
 	// TODO: This technically isn't query start and underestimates query execution time
 	start := time.Now()
 	if h.sel != nil {
@@ -210,12 +211,14 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	h.maybeReleaseAllLocks(c)
 	h.e.CloseSession(c.ConnectionID)
 
+	ctx := context.Background()
+
 	// Create a new session and set the current database
-	err := h.sm.NewSession(context.Background(), c)
+	err := h.sm.NewSession(ctx, c)
 	if err != nil {
 		return err
 	}
-	return h.sm.SetDB(c, db)
+	return h.sm.SetDB(ctx, c, db)
 }
 
 // ConnectionClosed implements the Handler interface.
@@ -249,7 +252,7 @@ func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 
 // NewContext implements the Handler interface.
 func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query string) (*sql.Context, error) {
-	return h.sm.NewContext(ctx, c, query)
+	return h.sm.NewContextWithQuery(ctx, c, query)
 }
 
 // convertBindParameters handles the conversion from bind parameters to variable values.
@@ -278,7 +281,7 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
-func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*Result) error) error {
+func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error) error {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return err
@@ -299,16 +302,15 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	sqlCtx.GetLogger().Debugf("Starting query")
 	sqlCtx.GetLogger().Tracef("beginning execution")
 
-	oCtx := ctx
-
 	// TODO: it would be nice to put this logic in the engine, not the handler, but we don't want the process to be
 	//  marked done until we're done spooling rows over the wire
-	ctx, err = sqlCtx.ProcessList.BeginQuery(sqlCtx, query)
-	defer func() {
-		if err != nil && ctx != nil {
-			sqlCtx.ProcessList.EndQuery(sqlCtx)
-		}
-	}()
+	lgr := sqlCtx.GetLogger()
+	sqlCtx, err = sqlCtx.ProcessList.BeginQuery(sqlCtx, query)
+	if err != nil {
+		lgr.WithError(err).Warn("error running query; could not open process list context")
+		return err
+	}
+	defer sqlCtx.ProcessList.EndQuery(sqlCtx)
 
 	schema, rowIter, qFlags, err := queryExec(sqlCtx, query, parsed, analyzedPlan)
 	if err != nil {
@@ -339,9 +341,6 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 		return err
 	}
 
-	// errGroup context is now canceled
-	ctx = oCtx
-
 	sqlCtx.GetLogger().Debugf("Query finished in %d ms", time.Since(start).Milliseconds())
 
 	// processedAtLeastOneBatch means we already called callback() at least
@@ -350,7 +349,7 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 		return nil
 	}
 
-	return callback(r)
+	return callback(sqlCtx, r)
 }
 
 // QueryExecutor is a function that executes a query and returns the result as a schema and iterator. Either of
@@ -501,17 +500,20 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 
 // resultForDefaultIter reads batches of rows from the iterator
 // and writes results into the callback function.
-func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*Result) error, resultFields []pgproto3.FieldDescription) (r *Result, processedAtLeastOneBatch bool, returnErr error) {
+func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription) (*Result, bool, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForDefaultIter").End()
+
+	var r *Result
+	var processedAtLeastOneBatch bool
 
 	eg, ctx := ctx.NewErrgroup()
 
 	var rowChan = make(chan sql.Row, 512)
 
-	pan2err := func() {
+	pan2err := func(err *error) {
 		if HandlePanics {
 			if recoveredPanic := recover(); recoveredPanic != nil {
-				returnErr = errors.Errorf("DoltgresHandler caught panic: %v", recoveredPanic)
+				*err = goerrors.Join(*err, errors.Errorf("DoltgresHandler caught panic: %v", recoveredPanic))
 			}
 		}
 	}
@@ -519,14 +521,14 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	// Read rows off the row iterator and send them to the row channel.
-	eg.Go(func() error {
-		defer pan2err()
+	eg.Go(func() (err error) {
+		defer pan2err(&err)
 		defer wg.Done()
 		defer close(rowChan)
 		for {
 			select {
 			case <-ctx.Done():
-				return nil
+				return context.Cause(ctx)
 			default:
 				row, err := iter.Next(ctx)
 				if err == io.EOF {
@@ -557,16 +559,15 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 
 	// reads rows from the channel, converts them to wire format,
 	// and calls |callback| to give them to vitess.
-	eg.Go(func() error {
-		defer pan2err()
-		// defer cancelF()
+	eg.Go(func() (err error) {
+		defer pan2err(&err)
 		defer wg.Done()
 		for {
 			if r == nil {
 				r = &Result{Fields: resultFields}
 			}
 			if r.RowsAffected == rowsBatch {
-				if err := callback(r); err != nil {
+				if err := callback(ctx, r); err != nil {
 					return err
 				}
 				r = nil
@@ -576,7 +577,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 
 			select {
 			case <-ctx.Done():
-				return nil
+				return context.Cause(ctx)
 			case row, ok := <-rowChan:
 				if !ok {
 					return nil
@@ -600,6 +601,9 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 				ctx.GetLogger().Tracef("spooling result row %s", outputRow)
 				r.Rows = append(r.Rows, Row{outputRow})
 				r.RowsAffected++
+				if !timer.Stop() {
+					<-timer.C
+				}
 			case <-timer.C:
 				if h.readTimeout != 0 {
 					// Cancel and return so Vitess can call the CloseConnection callback
@@ -607,17 +611,14 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 					return errors.Errorf("row read wait bigger than connection timeout")
 				}
 			}
-			if !timer.Stop() {
-				<-timer.C
-			}
 			timer.Reset(waitTime)
 		}
 	})
 
 	// Close() kills this PID in the process list,
 	// wait until all rows have be sent over the wire
-	eg.Go(func() error {
-		defer pan2err()
+	eg.Go(func() (err error) {
+		defer pan2err(&err)
 		wg.Wait()
 		return iter.Close(ctx)
 	})
@@ -625,10 +626,10 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	err := eg.Wait()
 	if err != nil {
 		ctx.GetLogger().WithError(err).Warn("error running query")
-		returnErr = err
+		return nil, false, err
 	}
 
-	return
+	return r, processedAtLeastOneBatch, nil
 }
 
 func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row) ([][]byte, error) {

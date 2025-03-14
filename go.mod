@@ -1,18 +1,18 @@
 module github.com/dolthub/doltgresql
 
-go 1.23.3
+go 1.24.1
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20250203230248-b4b6d7110a62
+	github.com/dolthub/dolt/go v0.40.5-0.20250312233409-ee7034b043e9
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-icu-regex v0.0.0-20241215010122-db690dd53c90
-	github.com/dolthub/go-mysql-server v0.19.1-0.20250207100547-b7600cbac71e
+	github.com/dolthub/go-icu-regex v0.0.0-20250303123116-549b8d7cad00
+	github.com/dolthub/go-mysql-server v0.19.1-0.20250313005113-73b3865b4145
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20250130172413-6338ebee2571
+	github.com/dolthub/vitess v0.0.0-20250304211657-920ca9ec2b9a
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
@@ -58,7 +58,27 @@ require (
 	github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/apache/thrift v0.13.1-0.20201008052519-daf620915714 // indirect
-	github.com/aws/aws-sdk-go v1.34.0 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.36.3 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.29.8 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.61 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.30 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.64 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.34 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.34 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.3 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.34 // indirect
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.41.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.6.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.10.15 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.15 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.15 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.25.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.29.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.33.16 // indirect
+	github.com/aws/smithy-go v1.22.2 // indirect
 	github.com/bcicen/jstream v1.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
@@ -68,12 +88,11 @@ require (
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
+	github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 // indirect
 	github.com/dolthub/ishell v0.0.0-20240701202509-2b217167d718 // indirect
 	github.com/dolthub/jsonpath v0.0.2-0.20240227200619-19675ab05c71 // indirect
-	github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 // indirect
-	github.com/dolthub/swiss v0.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/esote/minmaxheap v1.0.0 // indirect
 	github.com/flynn-archive/go-shlex v0.0.0-20150515145356-3f9db97f8568 // indirect
@@ -104,7 +123,6 @@ require (
 	github.com/jackc/pgproto3/v2 v2.3.3 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgtype v1.14.0 // indirect
-	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d // indirect
 	github.com/kch42/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect

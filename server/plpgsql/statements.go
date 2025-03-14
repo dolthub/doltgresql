@@ -17,6 +17,7 @@ package plpgsql
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	pg_query "github.com/pganalyze/pg_query_go/v6"
 )
 
@@ -63,6 +64,8 @@ func (stmt Assignment) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 type Block struct {
 	Variable []Variable
 	Body     []Statement
+	Label    string
+	IsLoop   bool
 }
 
 var _ Statement = Block{}
@@ -84,8 +87,20 @@ func (stmt Block) OperationSize() int32 {
 // AppendOperations implements the interface Statement.
 func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	stack.PushScope()
+	stack.SetLabel(stmt.Label) // If the label is empty, then this won't change anything
+	var loop string
+	if stmt.IsLoop {
+		loop = "_"
+		// All loops need a label, so we'll make an anonymous one if an explicit one hasn't been given
+		if len(stmt.Label) == 0 {
+			stack.SetAnonymousLabel()
+			stmt.Label = stack.GetCurrentLabel()
+		}
+	}
 	*ops = append(*ops, InterpreterOperation{
-		OpCode: OpCode_ScopeBegin,
+		OpCode:      OpCode_ScopeBegin,
+		PrimaryData: stmt.Label,
+		Target:      loop,
 	})
 	for _, variable := range stmt.Variable {
 		if !variable.IsParameter {
@@ -139,7 +154,9 @@ func (stmt ExecuteSQL) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 
 // Goto jumps to the counter at the given offset.
 type Goto struct {
-	Offset int32
+	Offset         int32
+	Label          string
+	NearestScopeOp bool
 }
 
 var _ Statement = Goto{}
@@ -151,10 +168,32 @@ func (Goto) OperationSize() int32 {
 
 // AppendOperations implements the interface Statement.
 func (stmt Goto) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
-	*ops = append(*ops, InterpreterOperation{
-		OpCode: OpCode_Goto,
-		Index:  len(*ops) + int(stmt.Offset),
-	})
+	if len(stmt.Label) > 0 {
+		*ops = append(*ops, InterpreterOperation{
+			OpCode:      OpCode_Goto,
+			PrimaryData: stmt.Label,
+			Index:       int(stmt.Offset),
+		})
+	} else if stmt.NearestScopeOp {
+		label := stack.GetCurrentLabel()
+		if len(label) == 0 {
+			if stmt.Offset > 0 {
+				return errors.New("EXIT cannot be used outside a loop, unless it has a label")
+			} else {
+				return errors.New("CONTINUE cannot be used outside a loop")
+			}
+		}
+		*ops = append(*ops, InterpreterOperation{
+			OpCode:      OpCode_Goto,
+			PrimaryData: label,
+			Index:       int(stmt.Offset),
+		})
+	} else {
+		*ops = append(*ops, InterpreterOperation{
+			OpCode: OpCode_Goto,
+			Index:  len(*ops) + int(stmt.Offset),
+		})
+	}
 	return nil
 }
 
@@ -210,6 +249,32 @@ func (stmt Perform) AppendOperations(ops *[]InterpreterOperation, stack *Interpr
 		OpCode:        OpCode_Perform,
 		PrimaryData:   statementStr,
 		SecondaryData: referencedVariables,
+	})
+	return nil
+}
+
+// Raise represents a RAISE statement
+type Raise struct {
+	Level   string
+	Message string
+	Params  []string
+	Options map[string]string
+}
+
+var _ Statement = Raise{}
+
+// OperationSize implements the interface Statement.
+func (r Raise) OperationSize() int32 {
+	return 1
+}
+
+// AppendOperations implements the interface Statement.
+func (r Raise) AppendOperations(ops *[]InterpreterOperation, _ *InterpreterStack) error {
+	*ops = append(*ops, InterpreterOperation{
+		OpCode:        OpCode_Raise,
+		PrimaryData:   r.Level,
+		SecondaryData: append([]string{r.Message}, r.Params...),
+		Options:       r.Options,
 	})
 	return nil
 }

@@ -16,20 +16,23 @@ package core
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/typecollection"
 )
 
-// contextValues contains a set of objects that will be passed alongside the context.
+// contextValues contains a set of cached data passed alongside the context. This data is considered temporary
+// and may be refreshed at any point, including during the middle of a query. Callers should not assume that
+// data stored in contextValues is persisted, and other types of data should not be added to contextValues.
 type contextValues struct {
 	collection     *sequences.Collection
 	types          *typecollection.TypeCollection
+	funcs          *functions.Collection
 	pgCatalogCache any
 }
 
@@ -61,6 +64,17 @@ func getRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error
 		return nil, nil, errors.Errorf("cannot find the database while fetching root from context")
 	}
 	return session, state.WorkingRoot().(*RootValue), nil
+}
+
+// IsContextValid returns whether the context is valid for use with any of the functions in the package. If this is not
+// false, then there's a high likelihood that the context is being used in a temporary scenario (such as setting up the
+// database, etc.).
+func IsContextValid(ctx *sql.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	_, ok := ctx.Session.(*dsess.DoltSession)
+	return ok
 }
 
 // GetPgCatalogCache returns a cache of data for pg_catalog tables. This function should only be used by
@@ -185,6 +199,26 @@ func GetSqlTableFromContext(ctx *sql.Context, databaseName string, tableName dol
 	return nil, nil
 }
 
+// GetFunctionsCollectionFromContext returns the functions collection from the given context. Will always return a
+// collection if no error is returned.
+func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cv.funcs == nil {
+		_, root, err := getRootFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		cv.funcs, err = root.GetFunctions(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return cv.funcs, nil
+}
+
 // GetSequencesCollectionFromContext returns the given sequence collection from the context. Will always return a collection if
 // no error is returned.
 func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection, error) {
@@ -244,6 +278,10 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 		return err
 	}
 	newRoot, err := root.PutSequences(ctx, cv.collection)
+	if err != nil {
+		return err
+	}
+	newRoot, err = newRoot.PutFunctions(ctx, cv.funcs)
 	if err != nil {
 		return err
 	}

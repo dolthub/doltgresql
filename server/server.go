@@ -46,7 +46,7 @@ import (
 // Version should have a new line that follows, else the formatter will fail the PR created by the release GH action
 
 const (
-	Version = "0.17.0"
+	Version = "0.18.0"
 
 	DefUserName  = "postres"
 	DefUserEmail = "postgres@somewhere.com"
@@ -54,7 +54,6 @@ const (
 )
 
 func init() {
-	server.DefaultProtocolListenerFunc = NewListener
 	sqlserver.ExternalDisableUsers = true
 	dfunctions.VersionString = Version
 	resolve.UseSearchPath = true
@@ -63,12 +62,12 @@ func init() {
 // RunOnDisk starts the server based on the given args, while also using the local disk as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func RunOnDisk(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
-	return runServer(ctx, cfg, dEnv)
+	return runServer(ctx, cfg, dEnv, NewListener)
 }
 
 // RunInMemory starts the server based on the given args, while also using RAM as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func RunInMemory(cfg *servercfg.DoltgresConfig) (*svcs.Controller, error) {
+func RunInMemory(cfg *servercfg.DoltgresConfig, protocolListenerFactory server.ProtocolListenerFunc) (*svcs.Controller, error) {
 	ctx := context.Background()
 	fs := filesys.EmptyInMemFS("")
 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fs, doltdb.InMemDoltDB, Version)
@@ -80,12 +79,12 @@ func RunInMemory(cfg *servercfg.DoltgresConfig) (*svcs.Controller, error) {
 		})
 	}
 
-	return runServer(ctx, cfg, dEnv)
+	return runServer(ctx, cfg, dEnv, protocolListenerFactory)
 }
 
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
-func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.DoltEnv) (*svcs.Controller, error) {
+func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.DoltEnv, protocolListenerFactory server.ProtocolListenerFunc) (*svcs.Controller, error) {
 	initialization.Initialize(dEnv)
 
 	if dEnv.HasDoltDataDir() {
@@ -160,7 +159,13 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		}
 	}()
 
-	sqlserver.ConfigureServices(ssCfg, controller, Version, dEnv, false)
+	sqlserver.ConfigureServices(&sqlserver.Config{
+		Version:                 Version,
+		ServerConfig:            ssCfg,
+		Controller:              controller,
+		DoltEnv:                 dEnv,
+		ProtocolListenerFactory: protocolListenerFactory,
+	})
 	go controller.Start(newCtx)
 
 	err = controller.WaitForStart()
