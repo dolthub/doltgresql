@@ -465,6 +465,33 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "ALTER COLUMN resolves column default expressions",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id VARCHAR PRIMARY KEY, c1 TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
+				"CREATE TABLE t2 (id VARCHAR PRIMARY KEY, c1 VARCHAR(100) DEFAULT concat('f', 'oo'));",
+				"CREATE TABLE t3 (id VARCHAR PRIMARY KEY, c1 VARCHAR(20) NOT NULL DEFAULT CONCAT('f', 'oo'));",
+				"CREATE TABLE t4 (id VARCHAR PRIMARY KEY, c1 VARCHAR(100) DEFAULT CONCAT('f', 'oo'));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t1 ALTER COLUMN c1 SET NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE t2 ALTER COLUMN c1 TYPE VARCHAR(50);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE t3 ALTER COLUMN c1 DROP NOT NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE t4 RENAME COLUMN c1 TO ccc1;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: "Rename table",
 			SetUpScript: []string{
 				"create schema s1",
