@@ -1196,7 +1196,7 @@ func returnsRow(query ConvertedQuery) bool {
 				return false, nil
 			}
 			// this should be impossible, but just in case
-			return true, nil 
+			return true, nil
 		}, query.AST)
 		return hasReturningClause
 	default:

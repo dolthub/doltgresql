@@ -186,7 +186,7 @@ func TestInsert(t *testing.T) {
 			},
 		},
 		{
-			Name:  "insert returning",
+			Name: "insert returning",
 			SetUpScript: []string{
 				"CREATE TABLE t (i serial, j INT)",
 				"CREATE TABLE u (u uuid DEFAULT 'ac1f3e2d-1e4b-4d3e-8b1f-2b7f1e7f0e3d', j INT)",
@@ -237,11 +237,11 @@ func TestInsert(t *testing.T) {
 					},
 				},
 				{
-					Query: "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i, doesnotexist",
+					Query:       "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i, doesnotexist",
 					ExpectedErr: "could not be found",
 				},
 				{
-					Query: "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i, doesnotexist(j)",
+					Query:       "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i, doesnotexist(j)",
 					ExpectedErr: "function: 'doesnotexist' not found",
 				},
 			},
