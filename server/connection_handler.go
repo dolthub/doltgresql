@@ -24,6 +24,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 
@@ -136,7 +137,7 @@ func (h *ConnectionHandler) HandleConnection() {
 	if HandlePanics {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Printf("Listener recovered panic: %v", r)
+				logrus.Errorf("Listener recovered panic: %v: %s", r, string(debug.Stack()))
 
 				var eomErr error
 				if returnErr != nil {
@@ -150,7 +151,7 @@ func (h *ConnectionHandler) HandleConnection() {
 				// Sending eom can panic, which means we must recover again
 				defer func() {
 					if r := recover(); r != nil {
-						fmt.Printf("Listener recovered panic: %v", r)
+						logrus.Errorf("Listener recovered panic: %v: %s", r, string(debug.Stack()))
 					}
 				}()
 				h.endOfMessages(eomErr)
@@ -320,7 +321,7 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	if HandlePanics {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Printf("Listener recovered panic: %v", r)
+				logrus.Errorf("Listener recovered panic: %v: %s", r, string(debug.Stack()))
 
 				var eomErr error
 				if rErr, ok := r.(error); ok {
