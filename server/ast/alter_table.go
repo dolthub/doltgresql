@@ -98,6 +98,22 @@ func nodeAlterTableCmds(
 				return nil, nil, err
 			}
 			vitessDdlCmds = append(vitessDdlCmds, statement)
+
+			// Postgres (unlike MySQL) allows an inline FK constraint
+			// when altering a table to add a column. GMS doesn't support
+			// this directly in the ALTER TABLE ADD COLUMN DDL command,
+			// so we break this out into a separate DDL command.
+			if len(statement.TableSpec.Constraints) > 0 {
+				vitessDdlCmds = append(vitessDdlCmds,
+					&vitess.DDL{
+						Action:           "alter",
+						ConstraintAction: "add",
+						Table:            tableName,
+						IfExists:         ifExists,
+						TableSpec:        statement.TableSpec,
+					})
+			}
+
 		case *tree.AlterTableDropColumn:
 			statement, err = nodeAlterTableDropColumn(ctx, cmd, tableName, ifExists)
 			if err != nil {
@@ -216,6 +232,14 @@ func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, table
 
 	tableSpec := &vitess.TableSpec{}
 	tableSpec.AddColumn(vitessColumnDef)
+
+	if node.ColumnDef.References.Table != nil {
+		constraintDef, err := nodeForeignKeyDefinitionFromColumnTableDef(ctx, node.ColumnDef.Name, node.ColumnDef)
+		if err != nil {
+			return nil, err
+		}
+		tableSpec.AddConstraint(&vitess.ConstraintDefinition{Details: constraintDef})
+	}
 
 	return &vitess.DDL{
 		Action:       "alter",
