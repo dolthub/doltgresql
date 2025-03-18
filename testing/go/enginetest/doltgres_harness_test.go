@@ -701,6 +701,8 @@ func getDmlResult(rows pgx.Rows) (sql.Row, bool) {
 
 	switch true {
 	case tag.Insert():
+		// The engine tests are currently all MySQL based, which doesn't support the RETURNING clause. If we decide
+		// to support this in the future, we will have to do so here.
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true
 	case tag.Update():
 		return sql.NewRow(gmstypes.NewOkResult(int(tag.RowsAffected()))), true

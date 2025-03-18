@@ -24,15 +24,20 @@ import (
 )
 
 // nodeInsert handles *tree.Insert nodes.
-func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
+func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err error) {
 	if node == nil {
 		return nil, nil
 	}
 	ctx.Auth().PushAuthType(auth.AuthType_INSERT)
 	defer ctx.Auth().PopAuthType()
 
-	if _, ok := node.Returning.(*tree.NoReturningClause); !ok {
-		return nil, errors.Errorf("RETURNING is not yet supported")
+	var returningExprs vitess.SelectExprs
+	if returning, ok := node.Returning.(*tree.ReturningExprs); ok {
+		// TODO: PostgreSQL will apply any triggers before returning the value; need to test this.
+		returningExprs, err = nodeSelectExprs(ctx, tree.SelectExprs(*returning))
+		if err != nil {
+			return nil, err
+		}
 	}
 	var ignore string
 	var onDuplicate vitess.OnDup
@@ -102,13 +107,14 @@ func nodeInsert(ctx *Context, node *tree.Insert) (*vitess.Insert, error) {
 		}
 	}
 	return &vitess.Insert{
-		Action:  vitess.InsertStr,
-		Ignore:  ignore,
-		Table:   tableName,
-		With:    with,
-		Columns: columns,
-		Rows:    rows,
-		OnDup:   onDuplicate,
+		Action:    vitess.InsertStr,
+		Ignore:    ignore,
+		Table:     tableName,
+		Returning: returningExprs,
+		With:      with,
+		Columns:   columns,
+		Rows:      rows,
+		OnDup:     onDuplicate,
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_INSERT,
 			TargetType:  auth.AuthTargetType_TableIdentifiers,

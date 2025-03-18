@@ -170,40 +170,7 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 func TestSingleScript(t *testing.T) {
 	t.Skip()
 
-	var scripts = []queries.ScriptTest{
-		{
-			Name: "strings vs decimals with trailing 0s in IN exprs",
-			SetUpScript: []string{
-				"create table t (v varchar(100));",
-				"insert into t values ('0'), ('0.0'), ('123'), ('123.0');",
-				"create table t_idx (v varchar(100));",
-				"create index idx on t_idx(v);",
-				"insert into t_idx values ('0'), ('0.0'), ('123'), ('123.0');",
-			},
-			Assertions: []queries.ScriptTestAssertion{
-				{
-					Skip:  true,
-					Query: "select * from t where (v in (0.0, 123));",
-					Expected: []sql.Row{
-						{"0"},
-						{"0.0"},
-						{"123"},
-						{"123.0"},
-					},
-				},
-				{
-					Skip:  true,
-					Query: "select * from t_idx where (v in (0.0, 123));",
-					Expected: []sql.Row{
-						{"0"},
-						{"0.0"},
-						{"123"},
-						{"123.0"},
-					},
-				},
-			},
-		},
-	}
+	var scripts = []queries.ScriptTest{}
 
 	for _, script := range scripts {
 		func() {
@@ -215,8 +182,8 @@ func TestSingleScript(t *testing.T) {
 			if err != nil {
 				panic(err)
 			}
-			// engine.EngineAnalyzer().Debug = true
-			// engine.EngineAnalyzer().Verbose = true
+			engine.EngineAnalyzer().Debug = true
+			engine.EngineAnalyzer().Verbose = true
 
 			enginetest.TestScriptWithEngine(t, engine, harness, script)
 		}()
