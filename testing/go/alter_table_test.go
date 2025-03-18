@@ -492,6 +492,27 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "ALTER TABLE ADD COLUMN with inline FK constraint",
+			SetUpScript: []string{
+				"create table t (v varchar(100));",
+				"create table parent (id int primary key);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t ADD COLUMN c1 int REFERENCES parent(id);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT conname AS constraint_name, pg_get_constraintdef(oid) AS constraint_definition FROM pg_constraint WHERE conrelid = 't'::regclass AND contype='f';",
+					Expected: []sql.Row{{"t_c1_fkey", "FOREIGN KEY t_c1_fkey (c1) REFERENCES parent (id)"}},
+				},
+				{
+					Query:       "INSERT INTO t VALUES ('abc', 123);",
+					ExpectedErr: "Foreign key violation on fk: `t_c1_fkey`",
+				},
+			},
+		},
+		{
 			Name: "Rename table",
 			SetUpScript: []string{
 				"create schema s1",
