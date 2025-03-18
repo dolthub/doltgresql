@@ -119,7 +119,7 @@ func RunTests(t *testing.T, tests []QueryParses) {
 				}()
 				if !test.ShouldConvert() {
 					if err == nil && vitessAST != nil {
-						t.Fatal("Query now converts, please upgrade the type to `Converts`")
+						t.Fatalf("Query %s now converts, please upgrade the type to `Converts`", test.String())
 					}
 					return
 				}
