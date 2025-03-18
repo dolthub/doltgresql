@@ -168,22 +168,9 @@ func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.
 func TestSingleScript(t *testing.T) {
-	//t.Skip()
+	t.Skip()
 
-	var scripts = []queries.ScriptTest{
-		{
-			Name: "insert returning",
-			SetUpScript: []string{
-				"create table t (v varchar(100));",
-			},
-			Assertions: []queries.ScriptTestAssertion{
-				{
-					Query:    "INSERT INTO t VALUES ('zzz') RETURNING t.v;",
-					Expected: []sql.Row{{"zzz"}},
-				},
-			},
-		},
-	}
+	var scripts = []queries.ScriptTest{}
 
 	for _, script := range scripts {
 		func() {
