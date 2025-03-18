@@ -908,7 +908,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				`create sequence t2_id_seq START 1 INCREMENT 3;`,
 				`create table t2 (id INTEGER NOT NULL DEFAULT nextval('t2_id_seq'));`,
 				// TODO: ALTER SEQUENCE OWNED BY is not supported yet. When the sequence is created
-				//       explicitly, separate from the column, the owner must be udpated before
+				//       explicitly, separate from the column, the owner must be updated before
 				//       pg_get_serial_sequence() will identify it.
 				// `ALTER SEQUENCE t2_id_seq OWNED BY t2.id;`,
 			},

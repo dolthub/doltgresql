@@ -99,7 +99,7 @@ func Init() {
 func initEngine() {
 	// This technically takes place at execution time rather than as part of analysis, but we don't have a better
 	// place to put it. Our foreign key validation logic is different from MySQL's, and since it's not an analyzer rule
-	// we can't swap out a rule like the rest of the logic in this packge, we have to do a function swap.
+	// we can't swap out a rule like the rest of the logic in this package, we have to do a function swap.
 	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
 }
 
