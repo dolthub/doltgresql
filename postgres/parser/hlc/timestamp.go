@@ -168,7 +168,7 @@ func (t LegacyTimestamp) String() string {
 	return Timestamp(t).String()
 }
 
-// IsEmpty retruns true if t is an empty Timestamp.
+// IsEmpty returns true if t is an empty Timestamp.
 func (t Timestamp) IsEmpty() bool {
 	return t == Timestamp{}
 }
