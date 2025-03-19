@@ -94,12 +94,12 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		paramTypes[i] = paramType.ID
 	}
 	funcID := id.NewFunction(c.SchemaName, c.FunctionName, idTypes...)
-	if c.Replace && funcCollection.HasFunction(funcID) {
-		if err = funcCollection.DropFunction(funcID); err != nil {
+	if c.Replace && funcCollection.HasFunction(ctx, funcID) {
+		if err = funcCollection.DropFunction(ctx, funcID); err != nil {
 			return nil, err
 		}
 	}
-	err = funcCollection.AddFunction(&functions.Function{
+	err = funcCollection.AddFunction(ctx, functions.Function{
 		ID:                 funcID,
 		ReturnType:         c.ReturnType.ID,
 		ParameterNames:     c.ParameterNames,

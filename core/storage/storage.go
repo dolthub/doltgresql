@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package core
+package storage
 
 import (
 	"context"
@@ -31,81 +31,69 @@ import (
 	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
 
-// rootStorage is the FlatBuffer interface for the storage format.
-type rootStorage struct {
-	srv *serial.RootValue
+// RootStorage is the FlatBuffer interface for the storage format.
+type RootStorage struct {
+	SRV *serial.RootValue
 }
 
-// SetFunctions sets the function hash and returns a new storage object.
-func (r rootStorage) SetFunctions(ctx context.Context, h hash.Hash) (rootStorage, error) {
-	if len(r.srv.FunctionsBytes()) > 0 {
-		ret := r.clone()
-		copy(ret.srv.FunctionsBytes(), h[:])
-		return ret, nil
-	} else {
-		return r.clone(), nil
-	}
+type TableEdit struct {
+	Name doltdb.TableName
+	Ref  *types.Ref
+
+	// Used for rename.
+	OldName doltdb.TableName
 }
 
-// SetSequences sets the sequence hash and returns a new storage object.
-func (r rootStorage) SetSequences(ctx context.Context, h hash.Hash) (rootStorage, error) {
-	if len(r.srv.SequencesBytes()) > 0 {
-		ret := r.clone()
-		copy(ret.srv.SequencesBytes(), h[:])
-		return ret, nil
-	} else {
-		dbSchemas, err := r.GetSchemas(ctx)
-		if err != nil {
-			return rootStorage{}, err
-		}
-		msg, err := r.serializeRootValue(r.srv.TablesBytes(), dbSchemas, h[:])
-		if err != nil {
-			return rootStorage{}, err
-		}
-		return rootStorage{msg}, nil
-	}
+// RootObjectSerialization handles the allocation/preservation of bytes for root objects.
+type RootObjectSerialization struct {
+	Bytes        func(*serial.RootValue) []byte
+	RootValueAdd func(builder *flatbuffers.Builder, sequences flatbuffers.UOffsetT)
 }
+
+// RootObjectSerializations contains all root object serializations. This should be set from the global initialization
+// function.
+var RootObjectSerializations []RootObjectSerialization
 
 // SetForeignKeyMap sets the foreign key and returns a new storage object.
-func (r rootStorage) SetForeignKeyMap(ctx context.Context, vrw types.ValueReadWriter, v types.Value) (rootStorage, error) {
+func (r RootStorage) SetForeignKeyMap(ctx context.Context, vrw types.ValueReadWriter, v types.Value) (RootStorage, error) {
 	var h hash.Hash
 	isempty, err := doltdb.EmptyForeignKeyCollection(v.(types.SerialMessage))
 	if err != nil {
-		return rootStorage{}, err
+		return RootStorage{}, err
 	}
 	if !isempty {
 		ref, err := vrw.WriteValue(ctx, v)
 		if err != nil {
-			return rootStorage{}, err
+			return RootStorage{}, err
 		}
 		h = ref.TargetHash()
 	}
-	ret := r.clone()
-	copy(ret.srv.ForeignKeyAddrBytes(), h[:])
+	ret := r.Clone()
+	copy(ret.SRV.ForeignKeyAddrBytes(), h[:])
 	return ret, nil
 }
 
 // SetFeatureVersion sets the feature version and returns a new storage object.
-func (r rootStorage) SetFeatureVersion(v doltdb.FeatureVersion) (rootStorage, error) {
-	ret := r.clone()
-	ret.srv.MutateFeatureVersion(int64(v))
+func (r RootStorage) SetFeatureVersion(v doltdb.FeatureVersion) (RootStorage, error) {
+	ret := r.Clone()
+	ret.SRV.MutateFeatureVersion(int64(v))
 	return ret, nil
 }
 
 // SetCollation sets the collation and returns a new storage object.
-func (r rootStorage) SetCollation(ctx context.Context, collation schema.Collation) (rootStorage, error) {
-	ret := r.clone()
-	ret.srv.MutateCollation(serial.Collation(collation))
+func (r RootStorage) SetCollation(ctx context.Context, collation schema.Collation) (RootStorage, error) {
+	ret := r.Clone()
+	ret.SRV.MutateCollation(serial.Collation(collation))
 	return ret, nil
 }
 
 // GetSchemas returns all schemas.
-func (r rootStorage) GetSchemas(ctx context.Context) ([]schema.DatabaseSchema, error) {
-	numSchemas := r.srv.SchemasLength()
+func (r RootStorage) GetSchemas(ctx context.Context) ([]schema.DatabaseSchema, error) {
+	numSchemas := r.SRV.SchemasLength()
 	schemas := make([]schema.DatabaseSchema, numSchemas)
 	for i := 0; i < numSchemas; i++ {
 		dbSchema := new(serial.DatabaseSchema)
-		_, err := r.srv.TrySchemas(dbSchema, i)
+		_, err := r.SRV.TrySchemas(dbSchema, i)
 		if err != nil {
 			return nil, err
 		}
@@ -119,90 +107,44 @@ func (r rootStorage) GetSchemas(ctx context.Context) ([]schema.DatabaseSchema, e
 }
 
 // SetSchemas sets the given schemas and returns a new storage object.
-func (r rootStorage) SetSchemas(ctx context.Context, dbSchemas []schema.DatabaseSchema) (rootStorage, error) {
-	msg, err := r.serializeRootValue(r.srv.TablesBytes(), dbSchemas, r.srv.SequencesBytes())
+func (r RootStorage) SetSchemas(ctx context.Context, dbSchemas []schema.DatabaseSchema) (RootStorage, error) {
+	msg, err := r.serializeRootValue(r.SRV.TablesBytes(), dbSchemas)
 	if err != nil {
-		return rootStorage{}, err
+		return RootStorage{}, err
 	}
-	return rootStorage{msg}, nil
+	return RootStorage{msg}, nil
 }
 
-// GetFunctions returns the functions hash.
-func (r rootStorage) GetFunctions() hash.Hash {
-	hashBytes := r.srv.FunctionsBytes()
-	if len(hashBytes) == 0 {
-		return hash.Hash{}
-	}
-	return hash.New(hashBytes)
-}
-
-// GetSequences returns the sequence hash.
-func (r rootStorage) GetSequences() hash.Hash {
-	hashBytes := r.srv.SequencesBytes()
-	if len(hashBytes) == 0 {
-		return hash.Hash{}
-	}
-	return hash.New(hashBytes)
-}
-
-// GetTypes returns the domain hash.
-func (r rootStorage) GetTypes() hash.Hash {
-	hashBytes := r.srv.TypesBytes()
-	if len(hashBytes) == 0 {
-		return hash.Hash{}
-	}
-	return hash.New(hashBytes)
-}
-
-// SetTypes sets the domain hash and returns a new storage object.
-func (r rootStorage) SetTypes(ctx context.Context, h hash.Hash) (rootStorage, error) {
-	if len(r.srv.TypesBytes()) > 0 {
-		ret := r.clone()
-		copy(ret.srv.TypesBytes(), h[:])
-		return ret, nil
-	} else {
-		dbSchemas, err := r.GetSchemas(ctx)
-		if err != nil {
-			return rootStorage{}, err
-		}
-		msg, err := r.serializeRootValue(r.srv.TablesBytes(), dbSchemas, h[:])
-		if err != nil {
-			return rootStorage{}, err
-		}
-		return rootStorage{msg}, nil
-	}
-}
-
-// clone returns a clone of the calling storage.
-func (r rootStorage) clone() rootStorage {
-	bs := make([]byte, len(r.srv.Table().Bytes))
-	copy(bs, r.srv.Table().Bytes)
+// Clone returns a clone of the calling storage.
+func (r RootStorage) Clone() RootStorage {
+	bs := make([]byte, len(r.SRV.Table().Bytes))
+	copy(bs, r.SRV.Table().Bytes)
 	var ret serial.RootValue
-	ret.Init(bs, r.srv.Table().Pos)
-	return rootStorage{&ret}
+	ret.Init(bs, r.SRV.Table().Pos)
+	return RootStorage{&ret}
 }
 
 // DebugString returns the storage as a printable string.
-func (r rootStorage) DebugString(ctx context.Context) string {
-	return fmt.Sprintf("rootStorage[%d, %s, %s]",
-		r.srv.FeatureVersion(),
+func (r RootStorage) DebugString(ctx context.Context) string {
+	return fmt.Sprintf("RootStorage[%d, %s, %s]",
+		r.SRV.FeatureVersion(),
 		"...",
-		hash.New(r.srv.ForeignKeyAddrBytes()).String())
+		hash.New(r.SRV.ForeignKeyAddrBytes()).String())
 }
 
-// nomsValue returns the storage as a noms value.
-func (r rootStorage) nomsValue() types.Value {
-	return types.SerialMessage(r.srv.Table().Bytes)
+// NomsValue returns the storage as a noms value.
+func (r RootStorage) NomsValue() types.Value {
+	return types.SerialMessage(r.SRV.Table().Bytes)
 }
 
 // GetFeatureVersion returns the feature version for this storage object.
-func (r rootStorage) GetFeatureVersion() doltdb.FeatureVersion {
-	return doltdb.FeatureVersion(r.srv.FeatureVersion())
+func (r RootStorage) GetFeatureVersion() doltdb.FeatureVersion {
+	return doltdb.FeatureVersion(r.SRV.FeatureVersion())
 }
 
 // getAddressMap returns the address map from within this storage object.
-func (r rootStorage) getAddressMap(vrw types.ValueReadWriter, ns tree.NodeStore) (prolly.AddressMap, error) {
-	tbytes := r.srv.TablesBytes()
+func (r RootStorage) getAddressMap(vrw types.ValueReadWriter, ns tree.NodeStore) (prolly.AddressMap, error) {
+	tbytes := r.SRV.TablesBytes()
 	node, _, err := shim.NodeFromValue(types.SerialMessage(tbytes))
 	if err != nil {
 		return prolly.AddressMap{}, err
@@ -211,17 +153,17 @@ func (r rootStorage) getAddressMap(vrw types.ValueReadWriter, ns tree.NodeStore)
 }
 
 // GetTablesMap returns the tables map from within this storage object.
-func (r rootStorage) GetTablesMap(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, databaseSchema string) (rootTableMap, error) {
+func (r RootStorage) GetTablesMap(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, databaseSchema string) (RootTableMap, error) {
 	am, err := r.getAddressMap(vrw, ns)
 	if err != nil {
-		return rootTableMap{}, err
+		return RootTableMap{}, err
 	}
-	return rootTableMap{AddressMap: am, schemaName: databaseSchema}, nil
+	return RootTableMap{AddressMap: am, schemaName: databaseSchema}, nil
 }
 
 // GetForeignKeys returns the types.SerialMessage representing the foreign keys.
-func (r rootStorage) GetForeignKeys(ctx context.Context, vr types.ValueReader) (types.Value, bool, error) {
-	addr := hash.New(r.srv.ForeignKeyAddrBytes())
+func (r RootStorage) GetForeignKeys(ctx context.Context, vr types.ValueReader) (types.Value, bool, error) {
+	addr := hash.New(r.SRV.ForeignKeyAddrBytes())
 	if addr.IsEmpty() {
 		return types.SerialMessage{}, false, nil
 	}
@@ -233,8 +175,8 @@ func (r rootStorage) GetForeignKeys(ctx context.Context, vr types.ValueReader) (
 }
 
 // GetCollation returns the collation declared within storage.
-func (r rootStorage) GetCollation(ctx context.Context) (schema.Collation, error) {
-	collation := r.srv.Collation()
+func (r RootStorage) GetCollation(ctx context.Context) (schema.Collation, error) {
+	collation := r.SRV.Collation()
 	// Pre-existing repositories will return invalid here
 	if collation == serial.Collationinvalid {
 		return schema.Collation_Default, nil
@@ -243,82 +185,92 @@ func (r rootStorage) GetCollation(ctx context.Context) (schema.Collation, error)
 }
 
 // EditTablesMap edits the table map within storage.
-func (r rootStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, edits []tableEdit) (rootStorage, error) {
+func (r RootStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, edits []TableEdit) (RootStorage, error) {
 	am, err := r.getAddressMap(vrw, ns)
 	if err != nil {
-		return rootStorage{}, err
+		return RootStorage{}, err
 	}
 	ae := am.Editor()
 	for _, e := range edits {
-		if e.old_name.Name != "" {
-			oldaddr, err := am.Get(ctx, encodeTableNameForAddressMap(e.old_name))
+		if e.OldName.Name != "" {
+			oldaddr, err := am.Get(ctx, encodeTableNameForAddressMap(e.OldName))
 			if err != nil {
-				return rootStorage{}, err
+				return RootStorage{}, err
 			}
-			newaddr, err := am.Get(ctx, encodeTableNameForAddressMap(e.name))
+			newaddr, err := am.Get(ctx, encodeTableNameForAddressMap(e.Name))
 			if err != nil {
-				return rootStorage{}, err
+				return RootStorage{}, err
 			}
 			if oldaddr.IsEmpty() {
-				return rootStorage{}, doltdb.ErrTableNotFound
+				return RootStorage{}, doltdb.ErrTableNotFound
 			}
 			if !newaddr.IsEmpty() {
-				return rootStorage{}, doltdb.ErrTableExists
+				return RootStorage{}, doltdb.ErrTableExists
 			}
-			err = ae.Delete(ctx, encodeTableNameForAddressMap(e.old_name))
+			err = ae.Delete(ctx, encodeTableNameForAddressMap(e.OldName))
 			if err != nil {
-				return rootStorage{}, err
+				return RootStorage{}, err
 			}
-			err = ae.Update(ctx, encodeTableNameForAddressMap(e.name), oldaddr)
+			err = ae.Update(ctx, encodeTableNameForAddressMap(e.Name), oldaddr)
 			if err != nil {
-				return rootStorage{}, err
+				return RootStorage{}, err
 			}
 		} else {
-			if e.ref == nil {
-				err := ae.Delete(ctx, encodeTableNameForAddressMap(e.name))
+			if e.Ref == nil {
+				err := ae.Delete(ctx, encodeTableNameForAddressMap(e.Name))
 				if err != nil {
-					return rootStorage{}, err
+					return RootStorage{}, err
 				}
 			} else {
-				err := ae.Update(ctx, encodeTableNameForAddressMap(e.name), e.ref.TargetHash())
+				err := ae.Update(ctx, encodeTableNameForAddressMap(e.Name), e.Ref.TargetHash())
 				if err != nil {
-					return rootStorage{}, err
+					return RootStorage{}, err
 				}
 			}
 		}
 	}
 	am, err = ae.Flush(ctx)
 	if err != nil {
-		return rootStorage{}, err
+		return RootStorage{}, err
 	}
 
 	ambytes := []byte(tree.ValueFromNode(am.Node()).(types.SerialMessage))
 	dbSchemas, err := r.GetSchemas(ctx)
 	if err != nil {
-		return rootStorage{}, err
+		return RootStorage{}, err
 	}
 
-	msg, err := r.serializeRootValue(ambytes, dbSchemas, r.srv.SequencesBytes())
+	msg, err := r.serializeRootValue(ambytes, dbSchemas)
 	if err != nil {
-		return rootStorage{}, err
+		return RootStorage{}, err
 	}
-	return rootStorage{msg}, nil
+	return RootStorage{msg}, nil
 }
 
 // serializeRootValue serializes a new serial.RootValue object.
-func (r rootStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []schema.DatabaseSchema, seqHash []byte) (*serial.RootValue, error) {
+func (r RootStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []schema.DatabaseSchema) (*serial.RootValue, error) {
 	builder := flatbuffers.NewBuilder(80)
 	tablesOffset := builder.CreateByteVector(addressMapBytes)
 	schemasOffset := serializeDatabaseSchemas(builder, dbSchemas)
-	fkOffset := builder.CreateByteVector(r.srv.ForeignKeyAddrBytes())
-	seqOffset := builder.CreateByteVector(seqHash)
+	fkOffset := builder.CreateByteVector(r.SRV.ForeignKeyAddrBytes())
+	rootObjOffsets := make([]flatbuffers.UOffsetT, len(RootObjectSerializations))
+	for i := range RootObjectSerializations {
+		rootObjOffset := RootObjectSerializations[i].Bytes(r.SRV)
+		if len(rootObjOffset) == 0 {
+			h := hash.Hash{}
+			rootObjOffset = h[:]
+		}
+		rootObjOffsets[i] = builder.CreateByteVector(rootObjOffset)
+	}
 
 	serial.RootValueStart(builder)
-	serial.RootValueAddFeatureVersion(builder, r.srv.FeatureVersion())
-	serial.RootValueAddCollation(builder, r.srv.Collation())
+	serial.RootValueAddFeatureVersion(builder, r.SRV.FeatureVersion())
+	serial.RootValueAddCollation(builder, r.SRV.Collation())
 	serial.RootValueAddTables(builder, tablesOffset)
 	serial.RootValueAddForeignKeyAddr(builder, fkOffset)
-	serial.RootValueAddSequences(builder, seqOffset)
+	for i := range RootObjectSerializations {
+		RootObjectSerializations[i].RootValueAdd(builder, rootObjOffsets[i])
+	}
 	if schemasOffset > 0 {
 		serial.RootValueAddSchemas(builder, schemasOffset)
 	}
@@ -375,19 +327,19 @@ func decodeTableNameForAddressMap(encodedName, schemaName string) (string, bool)
 	return "", false
 }
 
-// rootTableMap is an address map alongside a schema name.
-type rootTableMap struct {
+// RootTableMap is an address map alongside a schema name.
+type RootTableMap struct {
 	prolly.AddressMap
 	schemaName string
 }
 
 // Get returns the hash of the table with the given case-sensitive name.
-func (m rootTableMap) Get(ctx context.Context, name string) (hash.Hash, error) {
+func (m RootTableMap) Get(ctx context.Context, name string) (hash.Hash, error) {
 	return m.AddressMap.Get(ctx, encodeTableNameForAddressMap(doltdb.TableName{Name: name, Schema: m.schemaName}))
 }
 
 // Iter calls the given callback for each table and hash contained in the map.
-func (m rootTableMap) Iter(ctx context.Context, cb func(string, hash.Hash) (bool, error)) error {
+func (m RootTableMap) Iter(ctx context.Context, cb func(string, hash.Hash) (bool, error)) error {
 	var stop bool
 	return m.AddressMap.IterAll(ctx, func(n string, a hash.Hash) error {
 		n, ok := decodeTableNameForAddressMap(n, m.schemaName)

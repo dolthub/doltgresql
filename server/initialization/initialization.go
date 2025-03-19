@@ -22,6 +22,10 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
+	corefunctions "github.com/dolthub/doltgresql/core/functions"
+	"github.com/dolthub/doltgresql/core/rootobject"
+	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/core/typecollection"
 	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/auth"
@@ -46,6 +50,10 @@ var once = &sync.Once{}
 func Initialize(dEnv *env.DoltEnv) {
 	once.Do(func() {
 		core.Init()
+		corefunctions.Init()
+		sequences.Init()
+		typecollection.Init()
+		rootobject.Init()
 		auth.Init(dEnv)
 		pgexprs.Init()
 		analyzer.Init()

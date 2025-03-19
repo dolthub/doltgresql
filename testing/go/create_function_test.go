@@ -650,5 +650,62 @@ $$ LANGUAGE plpgsql;`},
 				},
 			},
 		},
+		{
+			Name: "Branching",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION interpreted_as_of(input TEXT) RETURNS TEXT AS $$
+BEGIN
+	RETURN input || '_extra';
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT interpreted_as_of('abcd');",
+					Expected: []sql.Row{{"abcd_extra"}},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT dolt_checkout('-b', 'other')`,
+					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+				},
+				{
+					Query: `CREATE OR REPLACE FUNCTION interpreted_as_of(input TEXT) RETURNS TEXT AS $$
+BEGIN
+	RETURN input;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT interpreted_as_of('abc');",
+					Expected: []sql.Row{{"abc"}},
+				},
+				{
+					Query:    "SELECT dolt_checkout('main')",
+					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+				},
+				{
+					Query:    "SELECT interpreted_as_of('abcd');",
+					Expected: []sql.Row{{"abcd_extra"}},
+				},
+			},
+		},
 	})
 }
