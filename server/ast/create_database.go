@@ -43,7 +43,7 @@ func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL,
 		return nil, errors.Errorf("STRATEGY clause is not yet supported")
 	}
 	if len(node.Locale) > 0 {
-		return nil, errors.Errorf("LOCALE clause is not yet supported")
+		logrus.Warnf("unsupported clause LC_LOCALE, ignoring")
 	}
 	if len(node.Collate) > 0 {
 		collation, charset, err := parseLocaleString(node.Collate)
