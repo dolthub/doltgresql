@@ -15,7 +15,11 @@
 package ast
 
 import (
+	"regexp"
+	"strings"
+
 	"github.com/cockroachdb/errors"
+	"github.com/sirupsen/logrus"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -33,10 +37,7 @@ func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL,
 		}
 	}
 	if len(node.Encoding) > 0 {
-		charsets = append(charsets, &vitess.CharsetAndCollate{
-			Type:  "CHARACTER SET",
-			Value: node.Encoding,
-		})
+		logrus.Warnf("unsupported clause ENCODING, ignoring")
 	}
 	if len(node.Strategy) > 0 {
 		return nil, errors.Errorf("STRATEGY clause is not yet supported")
@@ -45,10 +46,28 @@ func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL,
 		return nil, errors.Errorf("LOCALE clause is not yet supported")
 	}
 	if len(node.Collate) > 0 {
-		return nil, errors.Errorf("LC_COLLATE clause is not yet supported")
+		collation, charset, err := parseLocaleString(node.Collate)
+		if err != nil {
+			return nil, err
+		}
+
+		if collation == "" {
+			logrus.Warnf("unsupported LC_COLLATE, ignoring")
+		} else {
+			charsets = append(charsets,
+				&vitess.CharsetAndCollate{
+					Type:  "CHARACTER SET",
+					Value: charset,
+				},
+				&vitess.CharsetAndCollate{
+					Type:  "COLLATE",
+					Value: collation,
+				},
+			)
+		}
 	}
 	if len(node.CType) > 0 {
-		return nil, errors.Errorf("LC_CTYPE clause is not yet supported")
+		logrus.Warnf("CTYPE clause is not yet supported, ignoring")
 	}
 	if len(node.IcuLocale) > 0 {
 		return nil, errors.Errorf("ICU_LOCALE clause is not yet supported")
@@ -89,4 +108,30 @@ func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL,
 		IfNotExists:      node.IfNotExists,
 		CharsetCollate:   charsets,
 	}, nil
+}
+
+var collationRegex = regexp.MustCompile(`^(?P<Language>[^_]+)_?(?P<Region>[^.]+)?\.?(?P<CodePage>\d+)?$`)
+
+// parseLocaleString attempts to parse the locale string given to extract a mysql collation we can use
+func parseLocaleString(collation string) (string, string, error) {
+	// FindStringSubmatchIndex returns the indices of the matched elements
+	match := collationRegex.FindStringSubmatch(collation)
+
+	result := make(map[string]string)
+	for i, name := range collationRegex.SubexpNames() {
+		if i > 0 && i <= len(match) {
+			result[name] = match[i]
+		}
+	}
+
+	if result["Language"] == "" {
+		return "", "", errors.Errorf("malformed collation: %s", collation)
+	}
+
+	switch strings.ToLower(result["Language"]) {
+	case "english", "en":
+		return "latin1_general_cs", "latin1", nil
+	}
+
+	return "", "", nil
 }
