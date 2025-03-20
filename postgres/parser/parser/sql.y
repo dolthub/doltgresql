@@ -11731,21 +11731,11 @@ simple_typename:
       // Otherwise, package it up as a type reference for later.
       var ok bool
       var err error
-      var unimp int
-      $$.val, ok, unimp = types.TypeForNonKeywordTypeName($1)
+      $$.val, ok, _ = types.TypeForNonKeywordTypeName($1)
       if !ok {
-        switch unimp {
-          case 0:
-            // In this case, we don't think this type is one of our
-            // known unsupported types, so make a type reference for it.
-            aIdx := sqllex.(*lexer).NewAnnotation()
-            $$.val, err = tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
-            if err != nil { return setErr(sqllex, err) }
-          case -1:
-            return unimplemented(sqllex, "type name " + $1)
-          default:
-            return unimplementedWithIssueDetail(sqllex, unimp, $1)
-        }
+        aIdx := sqllex.(*lexer).NewAnnotation()
+        $$.val, err = tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
+        if err != nil { return setErr(sqllex, err) }
       }
     }
   }

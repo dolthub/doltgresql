@@ -45,8 +45,8 @@ func TestCreateDatabase(t *testing.T) {
 					Query: "USE testdb2",
 				},
 				{
-					Query:       "CREATE DATABASE testdb encoding=notexist",
-					ExpectedErr: "Unknown character set: notexist",
+					Query: "CREATE DATABASE testdb3 encoding=notexist",
+					// Errors converted to warnings for now
 				},
 			},
 		},
