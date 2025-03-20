@@ -19,9 +19,8 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/sirupsen/logrus"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )

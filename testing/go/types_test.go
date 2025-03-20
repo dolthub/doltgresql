@@ -2790,10 +2790,10 @@ var typesTests = []ScriptTest{
 	{
 		// This syntax had a very bad error message ("unsupported: this syntax"), this test just assert it's better
 		// It can be retired when we support the type.
-		Name: "tsvector unsupported error", 
+		Name: "tsvector unsupported error",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: `CREATE TABLE t_tsvector (id INTEGER primary key, v1 TSVECTOR);`,
+				Query:       `CREATE TABLE t_tsvector (id INTEGER primary key, v1 TSVECTOR);`,
 				ExpectedErr: `type "tsvector" does not exist`,
 			},
 		},
