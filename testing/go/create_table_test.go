@@ -316,19 +316,6 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
-		{
-			Name: "tsvector schema",
-			Skip: true, // tsvector not a recognized type
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: `CREATE TABLE public.film (
-      film_id integer DEFAULT nextval('public.film_film_id_seq'::regclass) NOT NULL,
-      special_features text[],
-      fulltext tsvector
-  );`,
-				},
-			},
-		},
 	})
 }
 
