@@ -270,22 +270,30 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 	if !ok {
 		return nil
 	}
-	if cv.collection == nil {
-		return nil
-	}
 	session, root, err := getRootFromContext(ctx)
 	if err != nil {
 		return err
 	}
-	newRoot, err := root.PutSequences(ctx, cv.collection)
-	if err != nil {
-		return err
+	newRoot := root
+	if cv.collection != nil {
+		newRoot, err = newRoot.PutSequences(ctx, cv.collection)
+		if err != nil {
+			return err
+		}
 	}
-	newRoot, err = newRoot.PutFunctions(ctx, cv.funcs)
-	if err != nil {
-		return err
+	if cv.funcs != nil {
+		newRoot, err = newRoot.PutFunctions(ctx, cv.funcs)
+		if err != nil {
+			return err
+		}
 	}
-	if newRoot != nil {
+	if cv.types != nil {
+		newRoot, err = newRoot.PutTypes(ctx, cv.types)
+		if err != nil {
+			return err
+		}
+	}
+	if newRoot != root {
 		if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
 			// TODO: We need a way to see if the session has a writeable working root
 			// (new interface method on session probably), and avoid setting it if so
@@ -295,5 +303,7 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 			return err
 		}
 	}
+	// Reset the session object once we've written everything to root
+	sess.DoltgresSessObj = nil
 	return nil
 }
