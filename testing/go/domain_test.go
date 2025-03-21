@@ -153,24 +153,24 @@ func TestDomain(t *testing.T) {
 			Name: "domain type as text type",
 			SetUpScript: []string{
 				`CREATE DOMAIN non_empty_string AS text NULL CONSTRAINT name_check CHECK (VALUE <> '');`,
-				`CREATE TABLE non_empty_string (id int primary key, first_name non_empty_string, last_name non_empty_string);`,
-				`INSERT INTO non_empty_string VALUES (1, 'John', 'Doe')`,
+				`CREATE TABLE non_empty_string_t (id int primary key, first_name non_empty_string, last_name non_empty_string);`,
+				`INSERT INTO non_empty_string_t VALUES (1, 'John', 'Doe')`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `INSERT INTO non_empty_string VALUES (2, 'Jane', 'Doe')`,
+					Query:    `INSERT INTO non_empty_string_t VALUES (2, 'Jane', 'Doe')`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:       `UPDATE non_empty_string SET last_name = '' WHERE first_name = 'Jane'`,
+					Query:       `UPDATE non_empty_string_t SET last_name = '' WHERE first_name = 'Jane'`,
 					ExpectedErr: `Check constraint "name_check" violated`,
 				},
 				{
-					Query:    `UPDATE non_empty_string SET last_name = NULL WHERE first_name = 'Jane'`,
+					Query:    `UPDATE non_empty_string_t SET last_name = NULL WHERE first_name = 'Jane'`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT * FROM non_empty_string`,
+					Query:    `SELECT * FROM non_empty_string_t`,
 					Expected: []sql.Row{{1, "John", "Doe"}, {2, "Jane", nil}},
 				},
 			},

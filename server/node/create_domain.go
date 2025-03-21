@@ -68,12 +68,12 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		return nil, err
 	}
 
-	if collection.HasType(c.SchemaName, c.Name) {
+	internalID := id.NewType(schema, c.Name)
+	arrayID := id.NewType(schema, "_"+c.Name)
+
+	if collection.HasType(ctx, internalID) {
 		return nil, types.ErrTypeAlreadyExists.New(c.Name)
 	}
-
-	internalID := id.NewType(c.SchemaName, c.Name)
-	arrayID := id.NewType(c.SchemaName, "_"+c.Name)
 
 	var defExpr string
 	if c.DefaultExpr != nil {
@@ -89,14 +89,14 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	}
 
 	newType := types.NewDomainType(ctx, c.AsType, defExpr, c.IsNotNull, checkDefs, arrayID, internalID)
-	err = collection.CreateType(schema, newType)
+	err = collection.CreateType(ctx, newType)
 	if err != nil {
 		return nil, err
 	}
 
 	// create array type of this type
 	arrayType := types.CreateArrayTypeFromBaseType(newType)
-	err = collection.CreateType(schema, arrayType)
+	err = collection.CreateType(ctx, arrayType)
 	if err != nil {
 		return nil, err
 	}
