@@ -26,5 +26,10 @@ func nodeAlterDatabase(ctx *Context, node *tree.AlterDatabase) (vitess.Statement
 		return nil, nil
 	}
 
+	// We can handle the common ALTER DATABASE .. TO OWNER case since it's a no-op
+	if node.Owner != "" {
+		return NewNoOp([]string{"owners are unsupported"}), nil
+	}
+
 	return NotYetSupportedError("ALTER DATABASE is not yet supported")
 }

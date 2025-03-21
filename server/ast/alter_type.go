@@ -26,5 +26,10 @@ func nodeAlterType(ctx *Context, node *tree.AlterType) (vitess.Statement, error)
 		return nil, nil
 	}
 
+	// We can handle the common ALTER TYPE .. TO OWNER case since it's a no-op
+	if _, ok := node.Cmd.(*tree.AlterTypeOwner); ok {
+		return NewNoOp([]string{"owners are not supported"}), nil
+	}
+
 	return NotYetSupportedError("ALTER TYPE is not yet supported")
 }

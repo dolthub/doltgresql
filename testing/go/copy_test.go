@@ -90,6 +90,26 @@ func TestCopy(t *testing.T) {
 			},
 		},
 		{
+			Name: "timestamp columns",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk timestamp primary key, ts timestamp);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:             "COPY tbl1 FROM STDIN WITH (HEADER)",
+					CopyFromStdInFile: "tab-load-with-timestamp-col.sql",
+				},
+				{
+					Query: "select * from tbl1 order by pk;",
+					Expected: []sql.Row{
+						{"2020-12-19 19:00:00", "2021-04-04 20:00:00"},
+						{"2020-12-19 21:36:32.188", "2020-12-19 19:00:00"},
+						{"2021-04-04 20:00:00", "2020-12-19 21:36:32.188"},
+					},
+				},
+			},
+		},
+		{
 			Name: "basic csv",
 			SetUpScript: []string{
 				"CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));",
