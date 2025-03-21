@@ -26,5 +26,10 @@ func nodeAlterSequence(ctx *Context, node *tree.AlterSequence) (vitess.Statement
 		return nil, nil
 	}
 
+	// We can handle the common ALTER SEQUENCE .. TO OWNER case since it's a no-op
+	if node.Owner != "" {
+		return NewNoOp([]string{"owners are unsupported"}), nil
+	}
+
 	return NotYetSupportedError("ALTER SEQUENCE is not yet supported")
 }
