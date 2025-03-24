@@ -39,8 +39,8 @@ func TestParseTimestamp(t *testing.T) {
 		{"2025-03-24T19:21:59.123456+02:30", time.Date(2025, 3, 24, 19, 21, 59, 123456000, time.FixedZone("+023000", 2*60*60+30*60)), false},
 
 		// Edge cases
-		{"2024-02-29T12:34:56Z", time.Date(2024, 2, 29, 12, 34, 56, 0, time.UTC), false}, // Leap year
-		{"0001-01-01T00:00:00Z", time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), false},       // Minimum date
+		{"2024-02-29T12:34:56Z", time.Date(2024, 2, 29, 12, 34, 56, 0, time.UTC), false},  // Leap year
+		{"0001-01-01T00:00:00Z", time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), false},         // Minimum date
 		{"9999-12-31T23:59:59Z", time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC), false}, // Maximum date
 
 		// Invalid formats
@@ -49,7 +49,7 @@ func TestParseTimestamp(t *testing.T) {
 		{"2025-13-01T12:00:00Z", time.Time{}, true}, // Invalid month
 		{"2025-03-32T12:00:00Z", time.Time{}, true}, // Invalid day
 		{"2025-02-29T12:34:56Z", time.Time{}, true},
-		{"NotATimestamp", time.Time{}, true},        // Completely invalid
+		{"NotATimestamp", time.Time{}, true}, // Completely invalid
 	}
 
 	for _, test := range tests {

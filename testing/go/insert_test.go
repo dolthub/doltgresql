@@ -253,7 +253,7 @@ func TestInsert(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `INSERT INTO "django_migrations" ("app", "name", "applied") VALUES ('contenttypes', '0001_initial', '2025-03-24T19:21:59.690479+00:00'::timestamptz) RETURNING "django_migrations"."id"`,
+					Query:    `INSERT INTO "django_migrations" ("app", "name", "applied") VALUES ('contenttypes', '0001_initial', '2025-03-24T19:21:59.690479+00:00'::timestamptz) RETURNING "django_migrations"."id"`,
 					Expected: []sql.Row{{1}},
 				},
 			},
