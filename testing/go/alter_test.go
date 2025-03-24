@@ -25,6 +25,12 @@ func TestAlterStatements(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "ALTER DATABASE postgres OWNER TO foo",
+					ExpectedNotices: []ExpectedNotice{
+						{
+							Severity: "WARNING",
+							Message:  "owners are unsupported",
+						},
+					},
 				},
 			},
 		},
@@ -36,6 +42,12 @@ func TestAlterStatements(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "ALTER SEQUENCE testseq OWNER TO foo",
+					ExpectedNotices: []ExpectedNotice{
+						{
+							Severity: "WARNING",
+							Message:  "owners are unsupported",
+						},
+					},
 				},
 			},
 		},
@@ -47,6 +59,12 @@ func TestAlterStatements(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "ALTER TYPE testtype OWNER TO foo",
+					ExpectedNotices: []ExpectedNotice{
+						{
+							Severity: "WARNING",
+							Message:  "owners are unsupported",
+						},
+					},
 				},
 			},
 		},
@@ -58,6 +76,12 @@ func TestAlterStatements(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "ALTER FUNCTION testfunc() OWNER TO foo",
+					ExpectedNotices: []ExpectedNotice{
+						{
+							Severity: "WARNING",
+							Message:  "owners are unsupported",
+						},
+					},
 				},
 			},
 		},
@@ -69,6 +93,12 @@ func TestAlterStatements(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "ALTER schema testschema OWNER TO foo",
+					ExpectedNotices: []ExpectedNotice{
+						{
+							Severity: "WARNING",
+							Message:  "owners are unsupported",
+						},
+					},
 				},
 			},
 		},
@@ -80,6 +110,12 @@ func TestAlterStatements(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "ALTER VIEW testview OWNER TO foo",
+					ExpectedNotices: []ExpectedNotice{
+						{
+							Severity: "WARNING",
+							Message:  "owners are unsupported",
+						},
+					},
 				},
 			},
 		},
