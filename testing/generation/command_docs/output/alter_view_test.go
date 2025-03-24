@@ -151,7 +151,7 @@ func TestAlterView(t *testing.T) {
 		Parses("ALTER VIEW name RESET ( security_invoker , security_invoker )"),
 		Parses("ALTER VIEW IF EXISTS name RESET ( security_invoker , security_invoker )"),
 	}
-	
+
 	RunTests(t, tests)
 	// RewriteTests(t, tests, "alter_view_test.go")
 }

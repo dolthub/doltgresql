@@ -49,7 +49,7 @@ func TestAlterServer(t *testing.T) {
 		Unimplemented("ALTER SERVER name OWNER TO SESSION_USER"),
 		Unimplemented("ALTER SERVER name RENAME TO new_name"),
 	}
-	
+
 	//RunTests(t, tests)
 	RewriteTests(t, tests, "alter_server_test.go")
 }

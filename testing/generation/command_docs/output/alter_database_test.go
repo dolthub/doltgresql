@@ -58,7 +58,7 @@ func TestAlterDatabase(t *testing.T) {
 		Parses("ALTER DATABASE name RESET configuration_parameter"),
 		Parses("ALTER DATABASE name RESET ALL"),
 	}
-	
+
 	RunTests(t, tests)
 	// RewriteTests(t, tests, "alter_database_test.go")
 }

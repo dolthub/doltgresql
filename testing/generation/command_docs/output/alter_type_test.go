@@ -677,7 +677,7 @@ func TestAlterType(t *testing.T) {
 		Parses("ALTER TYPE name SET ( ANALYZE = analyze_function , SUBSCRIPT = subscript_function )"),
 		Parses("ALTER TYPE name SET ( SUBSCRIPT = subscript_function , SUBSCRIPT = subscript_function )"),
 	}
-	
+
 	RunTests(t, tests)
 	// RewriteTests(t, tests, "alter_type_test.go")
 }

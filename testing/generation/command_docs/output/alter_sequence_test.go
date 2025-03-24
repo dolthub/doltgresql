@@ -10019,7 +10019,7 @@ func TestAlterSequence(t *testing.T) {
 		Converts("ALTER SEQUENCE name OWNER TO SESSION_USER"),
 		Parses("ALTER SEQUENCE IF EXISTS name RENAME TO new_name"),
 	}
-	
+
 	RunTests(t, tests)
 	// RewriteTests(t, tests, "alter_sequence_test.go")
 }
