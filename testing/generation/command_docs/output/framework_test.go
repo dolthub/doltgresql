@@ -15,6 +15,12 @@
 package output
 
 import (
+	"bufio"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/dolthub/vitess/go/vt/sqlparser"
@@ -96,6 +102,7 @@ func (c Converts) String() string {
 }
 
 // RunTests runs the given collection of QueryParses tests.
+
 func RunTests(t *testing.T, tests []QueryParses) {
 	for _, test := range tests {
 		t.Run(test.String(), func(t *testing.T) {
@@ -128,4 +135,103 @@ func RunTests(t *testing.T, tests []QueryParses) {
 			}
 		})
 	}
+}
+
+// Regex which checks for the line beginning with Unimplemented, Parses, or Converts
+var testStatementRegex = regexp.MustCompile(`^(\s*)(Unimplemented|Parses|Converts)\(`)
+
+// RewriteTests rewrites the given test file with the given tests to have the new results. This is a utility to avoid
+// having to tediously update tests after implementing some parser / engine functionality.
+func RewriteTests(t *testing.T, tests []QueryParses, file string) {
+	newPath := file + ".new"
+	f, err := os.Open(file)
+	require.NoError(t, err)
+	fNew, err := os.Create(newPath)
+	require.NoError(t, err)
+
+	abs, err := filepath.Abs(newPath)
+	require.NoError(t, err)
+	fmt.Println("Rewriting tests to", abs)
+
+	bufferedReader := bufio.NewReader(f)
+	bufferedWriter := bufio.NewWriter(fNew)
+
+	// copy the source file until we find the first test statement
+	var line []byte
+	for {
+		line, _, err = bufferedReader.ReadLine()
+		if err == io.EOF {
+			break
+		} else {
+			require.NoError(t, err)
+		}
+
+		if testStatementRegex.Match(line) {
+			break
+		}
+
+		_, err = bufferedWriter.Write(line)
+		require.NoError(t, err)
+		_, err = bufferedWriter.Write([]byte("\n"))
+		require.NoError(t, err)
+	}
+
+	for _, test := range tests {
+		t.Run(test.String(), func(t *testing.T) {
+			statements, err := parser.Parse(test.String())
+			if !test.ShouldParse() {
+				if err == nil && len(statements) > 0 {
+					line = testStatementRegex.ReplaceAll(line, []byte("${1}Parses("))
+				}
+			}
+
+			for _, statement := range statements {
+				vitessAST, err := func() (vitessAST sqlparser.Statement, err error) {
+					defer func() {
+						if recoverVal := recover(); recoverVal != nil {
+							vitessAST = nil
+						}
+					}()
+					return ast.Convert(statement)
+				}()
+
+				if !test.ShouldConvert() {
+					if err == nil && vitessAST != nil {
+						line = testStatementRegex.ReplaceAll(line, []byte("${1}Converts("))
+					}
+				}
+			}
+
+			_, err = bufferedWriter.Write(line)
+			require.NoError(t, err)
+			_, err = bufferedWriter.Write([]byte("\n"))
+			require.NoError(t, err)
+
+			line, _, err = bufferedReader.ReadLine()
+			require.NoError(t, err)
+		})
+	}
+
+	// copy the rest of the file
+	for {
+		_, err = bufferedWriter.Write(line)
+		require.NoError(t, err)
+		_, err = bufferedWriter.Write([]byte("\n"))
+		require.NoError(t, err)
+
+		line, _, err = bufferedReader.ReadLine()
+		if err == io.EOF {
+			break
+		} else {
+			require.NoError(t, err)
+		}
+	}
+
+	bufferedWriter.Flush()
+	f.Close()
+	fNew.Close()
+
+	// move the new file to the original file
+	err = os.Rename(newPath, file)
+	require.NoError(t, err)
 }

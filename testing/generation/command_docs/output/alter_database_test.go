@@ -44,10 +44,10 @@ func TestAlterDatabase(t *testing.T) {
 		Parses("ALTER DATABASE name IS_TEMPLATE istemplate IS_TEMPLATE istemplate"),
 		Parses("ALTER DATABASE name WITH IS_TEMPLATE istemplate IS_TEMPLATE istemplate"),
 		Parses("ALTER DATABASE name RENAME TO new_name"),
-		Parses("ALTER DATABASE name OWNER TO new_owner"),
-		Parses("ALTER DATABASE name OWNER TO CURRENT_ROLE"),
-		Parses("ALTER DATABASE name OWNER TO CURRENT_USER"),
-		Parses("ALTER DATABASE name OWNER TO SESSION_USER"),
+		Converts("ALTER DATABASE name OWNER TO new_owner"),
+		Converts("ALTER DATABASE name OWNER TO CURRENT_ROLE"),
+		Converts("ALTER DATABASE name OWNER TO CURRENT_USER"),
+		Converts("ALTER DATABASE name OWNER TO SESSION_USER"),
 		Parses("ALTER DATABASE name SET TABLESPACE new_tablespace"),
 		Parses("ALTER DATABASE name REFRESH COLLATION VERSION"),
 		Parses("ALTER DATABASE name SET configuration_parameter TO value"),
@@ -58,5 +58,7 @@ func TestAlterDatabase(t *testing.T) {
 		Parses("ALTER DATABASE name RESET configuration_parameter"),
 		Parses("ALTER DATABASE name RESET ALL"),
 	}
+
 	RunTests(t, tests)
+	// RewriteTests(t, tests, "alter_database_test.go")
 }

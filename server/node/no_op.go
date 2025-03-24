@@ -18,8 +18,10 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/jackc/pgx/v5/pgproto3"
 )
 
 var _ vitess.Injectable = (*NoOp)(nil)
@@ -69,7 +71,12 @@ func (n noOpRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 func (n noOpRowIter) Close(ctx *sql.Context) error {
 	for _, warning := range n.warnings {
-		ctx.Warn(0, "%s is unimplemented", warning)
+		noticeResponse := &pgproto3.NoticeResponse{
+			Severity: "WARNING",
+			Message:  warning,
+		}
+		sess := dsess.DSessFromSess(ctx.Session)
+		sess.Notice(noticeResponse)
 	}
 	return nil
 }

@@ -52,5 +52,7 @@ func TestAlterIndex(t *testing.T) {
 		Parses("ALTER INDEX ALL IN TABLESPACE name OWNED BY role_name SET TABLESPACE new_tablespace NOWAIT"),
 		Parses("ALTER INDEX ALL IN TABLESPACE name OWNED BY role_name , role_name SET TABLESPACE new_tablespace NOWAIT"),
 	}
+
 	RunTests(t, tests)
+	// RewriteTests(t, tests, "alter_index_test.go")
 }

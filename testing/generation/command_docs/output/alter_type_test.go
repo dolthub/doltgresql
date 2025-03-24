@@ -18,10 +18,10 @@ import "testing"
 
 func TestAlterType(t *testing.T) {
 	tests := []QueryParses{
-		Parses("ALTER TYPE name OWNER TO new_owner"),
-		Parses("ALTER TYPE name OWNER TO CURRENT_ROLE"),
-		Parses("ALTER TYPE name OWNER TO CURRENT_USER"),
-		Parses("ALTER TYPE name OWNER TO SESSION_USER"),
+		Converts("ALTER TYPE name OWNER TO new_owner"),
+		Converts("ALTER TYPE name OWNER TO CURRENT_ROLE"),
+		Converts("ALTER TYPE name OWNER TO CURRENT_USER"),
+		Converts("ALTER TYPE name OWNER TO SESSION_USER"),
 		Parses("ALTER TYPE name RENAME TO new_name"),
 		Parses("ALTER TYPE name SET SCHEMA new_schema"),
 		Parses("ALTER TYPE name RENAME ATTRIBUTE attribute_name TO new_attribute_name"),
@@ -677,5 +677,7 @@ func TestAlterType(t *testing.T) {
 		Parses("ALTER TYPE name SET ( ANALYZE = analyze_function , SUBSCRIPT = subscript_function )"),
 		Parses("ALTER TYPE name SET ( SUBSCRIPT = subscript_function , SUBSCRIPT = subscript_function )"),
 	}
+
 	RunTests(t, tests)
+	// RewriteTests(t, tests, "alter_type_test.go")
 }
