@@ -173,6 +173,7 @@ func RewriteTests(t *testing.T, tests []QueryParses, file string) {
 		_, err = bufferedWriter.Write(line)
 		require.NoError(t, err)
 		_, err = bufferedWriter.Write([]byte("\n"))
+		require.NoError(t, err)
 	}
 
 	for _, test := range tests {
@@ -232,4 +233,5 @@ func RewriteTests(t *testing.T, tests []QueryParses, file string) {
 
 	// move the new file to the original file
 	err = os.Rename(newPath, file)
+	require.NoError(t, err)
 }
