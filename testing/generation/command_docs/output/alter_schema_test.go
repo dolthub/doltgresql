@@ -19,10 +19,10 @@ import "testing"
 func TestAlterSchema(t *testing.T) {
 	tests := []QueryParses{
 		Parses("ALTER SCHEMA name RENAME TO new_name"),
-		Parses("ALTER SCHEMA name OWNER TO new_owner"),
-		Parses("ALTER SCHEMA name OWNER TO CURRENT_ROLE"),
-		Parses("ALTER SCHEMA name OWNER TO CURRENT_USER"),
-		Parses("ALTER SCHEMA name OWNER TO SESSION_USER"),
+		Converts("ALTER SCHEMA name OWNER TO new_owner"),
+		Converts("ALTER SCHEMA name OWNER TO CURRENT_ROLE"),
+		Converts("ALTER SCHEMA name OWNER TO CURRENT_USER"),
+		Converts("ALTER SCHEMA name OWNER TO SESSION_USER"),
 	}
 	RunTests(t, tests)
 }

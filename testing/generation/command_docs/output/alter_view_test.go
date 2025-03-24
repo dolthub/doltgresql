@@ -26,14 +26,14 @@ func TestAlterView(t *testing.T) {
 		Parses("ALTER VIEW IF EXISTS name ALTER column_name DROP DEFAULT"),
 		Parses("ALTER VIEW name ALTER COLUMN column_name DROP DEFAULT"),
 		Parses("ALTER VIEW IF EXISTS name ALTER COLUMN column_name DROP DEFAULT"),
-		Parses("ALTER VIEW name OWNER TO new_owner"),
-		Parses("ALTER VIEW IF EXISTS name OWNER TO new_owner"),
-		Parses("ALTER VIEW name OWNER TO CURRENT_ROLE"),
-		Parses("ALTER VIEW IF EXISTS name OWNER TO CURRENT_ROLE"),
-		Parses("ALTER VIEW name OWNER TO CURRENT_USER"),
-		Parses("ALTER VIEW IF EXISTS name OWNER TO CURRENT_USER"),
-		Parses("ALTER VIEW name OWNER TO SESSION_USER"),
-		Parses("ALTER VIEW IF EXISTS name OWNER TO SESSION_USER"),
+		Converts("ALTER VIEW name OWNER TO new_owner"),
+		Converts("ALTER VIEW IF EXISTS name OWNER TO new_owner"),
+		Converts("ALTER VIEW name OWNER TO CURRENT_ROLE"),
+		Converts("ALTER VIEW IF EXISTS name OWNER TO CURRENT_ROLE"),
+		Converts("ALTER VIEW name OWNER TO CURRENT_USER"),
+		Converts("ALTER VIEW IF EXISTS name OWNER TO CURRENT_USER"),
+		Converts("ALTER VIEW name OWNER TO SESSION_USER"),
+		Converts("ALTER VIEW IF EXISTS name OWNER TO SESSION_USER"),
 		Parses("ALTER VIEW name RENAME column_name TO new_column_name"),
 		Parses("ALTER VIEW IF EXISTS name RENAME column_name TO new_column_name"),
 		Parses("ALTER VIEW name RENAME COLUMN column_name TO new_column_name"),
@@ -151,5 +151,7 @@ func TestAlterView(t *testing.T) {
 		Parses("ALTER VIEW name RESET ( security_invoker , security_invoker )"),
 		Parses("ALTER VIEW IF EXISTS name RESET ( security_invoker , security_invoker )"),
 	}
+	
 	RunTests(t, tests)
+	// RewriteTests(t, tests, "alter_view_test.go")
 }
