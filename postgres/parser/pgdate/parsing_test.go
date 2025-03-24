@@ -43,6 +43,13 @@ func TestParseTimestamp(t *testing.T) {
 		{"0001-01-01T00:00:00Z", time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), false},         // Minimum date
 		{"9999-12-31T23:59:59Z", time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC), false}, // Maximum date
 
+		// PostgreSQL-specific formats
+		{"2025-03-24 19:21:59", time.Date(2025, 3, 24, 19, 21, 59, 0, time.Local), false},                  // Without T separator
+		{"March 24, 2025 19:21:59", time.Date(2025, 3, 24, 19, 21, 59, 0, time.Local), false},              // Long date format
+		{"20250324T192159Z", time.Date(2025, 3, 24, 19, 21, 59, 0, time.UTC), false},                       // Compact format
+		{"2025-03-24T19:21:59.123", time.Date(2025, 3, 24, 19, 21, 59, 123000000, time.Local), false},      // Milliseconds precision
+		{"2025-03-24T19:21:59.123456789Z", time.Date(2025, 3, 24, 19, 21, 59, 123456789, time.UTC), false}, // Nanoseconds precision
+
 		// Invalid formats
 		{"24-03-2025T19:21:59Z", time.Time{}, true}, // Wrong date format
 		{"2025-03-24T25:00:00Z", time.Time{}, true}, // Invalid hour
