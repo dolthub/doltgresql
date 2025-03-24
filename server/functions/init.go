@@ -65,6 +65,7 @@ func Init() {
 	initAcos()
 	initAcosd()
 	initAcosh()
+	initAdvisoryLockFunctions()
 	initAge()
 	initArrayAppend()
 	initArrayToString()
