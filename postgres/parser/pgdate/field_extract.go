@@ -175,6 +175,9 @@ func (fe *fieldExtract) Extract(s string) error {
 				return err
 			}
 
+		case "t":
+			continue
+
 		default:
 			// The most probable case is that we have a numeric input.
 			if err := appendNumber(chunk.NotMatch, match); err == nil {
