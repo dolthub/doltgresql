@@ -87,8 +87,14 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 			return nil, err
 		}
 	}
+
+	if len(node.Computed.Options) > 0 {
+		return nil, errors.Errorf("sequence options are not yet supported, create a sequence separately")
+	}
+
 	var generated vitess.Expr
-	if node.Computed.Computed {
+	computedByDefaultAsIdentity := node.IsComputed() && node.Computed.ByDefault
+	if node.IsComputed() && !computedByDefaultAsIdentity {
 		generated, err = nodeExpr(ctx, node.Computed.Expr)
 		if err != nil {
 			return nil, err
@@ -103,7 +109,8 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		// appropriate in this context.
 		generated = clearAliases(generated)
 	}
-	if node.IsSerial {
+
+	if node.IsSerial || computedByDefaultAsIdentity {
 		if resolvedType.IsEmptyType() {
 			return nil, errors.Errorf("serial type was not resolvable")
 		}
@@ -121,6 +128,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 			return nil, errors.Errorf(`multiple default values specified for column "%s"`, node.Name)
 		}
 	}
+
 	colDef := &vitess.ColumnDefinition{
 		Name: vitess.NewColIdent(string(node.Name)),
 		Type: vitess.ColumnType{
