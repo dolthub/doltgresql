@@ -94,8 +94,30 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 
 	var generated vitess.Expr
 	computedByDefaultAsIdentity := node.IsComputed() && node.Computed.ByDefault
-	if node.IsComputed() && !computedByDefaultAsIdentity {
+	computedAsIdentity := node.IsComputed() && !node.Computed.ByDefault
+	hasGeneratedExpr := node.IsComputed() && node.Computed.Expr != nil
+	
+	if hasGeneratedExpr {
 		generated, err = nodeExpr(ctx, node.Computed.Expr)
+		if err != nil {
+			return nil, err
+		}
+
+		// GMS requires the AST to wrap function expressions in parens
+		if _, ok := generated.(*vitess.FuncExpr); ok {
+			generated = &vitess.ParenExpr{Expr: generated}
+		}
+
+		// clean up the expressions generated here. our default expression handling generates aliases that aren't
+		// appropriate in this context.
+		generated = clearAliases(generated)
+	} else if node.IsComputed() && computedAsIdentity {
+		generated, err = nodeExpr(ctx, &tree.FuncExpr{
+			Func:      tree.WrapFunction("nextval"),
+			Exprs:     tree.Exprs{
+				tree.NewStrVal("dolt_create_table_placeholder_sequence"),
+			},
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +132,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		generated = clearAliases(generated)
 	}
 
-	if node.IsSerial || computedByDefaultAsIdentity {
+	if node.IsSerial || computedByDefaultAsIdentity || computedAsIdentity {
 		if resolvedType.IsEmptyType() {
 			return nil, errors.Errorf("serial type was not resolvable")
 		}

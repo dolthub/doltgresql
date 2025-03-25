@@ -16,6 +16,7 @@ package analyzer
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -43,81 +44,122 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 
 	var ctSequences []*pgnodes.CreateSequence
 	for _, col := range createTable.PkSchema().Schema {
-		if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
-			if doltgresType.IsSerial {
-				var maxValue int64
-				switch doltgresType.Name() {
-				case "smallserial":
-					col.Type = pgtypes.Int16
-					maxValue = 32767
-				case "serial":
-					col.Type = pgtypes.Int32
-					maxValue = 2147483647
-				case "bigserial":
-					col.Type = pgtypes.Int64
-					maxValue = 9223372036854775807
-				}
+		doltgresType, isDoltgresType := col.Type.(*pgtypes.DoltgresType)
+		if !isDoltgresType || !doltgresType.IsSerial {
+			continue
+		}
 
-				baseSequenceName := fmt.Sprintf("%s_%s_seq", createTable.Name(), col.Name)
-				sequenceName := baseSequenceName
-				schemaName, err := core.GetSchemaName(ctx, createTable.Db, "")
-				if err != nil {
-					return nil, false, err
-				}
-
-				relationType, err := core.GetRelationType(ctx, schemaName, baseSequenceName)
-				if err != nil {
-					return nil, transform.NewTree, err
-				}
-				if relationType != core.RelationType_DoesNotExist {
-					seqIndex := 1
-					for ; seqIndex <= 100; seqIndex++ {
-						sequenceName = fmt.Sprintf("%s%d", baseSequenceName, seqIndex)
-						relationType, err = core.GetRelationType(ctx, schemaName, baseSequenceName)
-						if err != nil {
-							return nil, transform.NewTree, err
-						}
-						if relationType == core.RelationType_DoesNotExist {
-							break
-						}
+		// for always-generated columns we insert a placeholder sequence to be replaced by the actual sequence name. We
+		// detect that here and treat these generated columns differently than other generated columns on serial types.
+		isGeneratedFromSequence := false
+		if col.Generated != nil {
+			seenNextVal := false
+			transform.InspectExpr(col.Generated, func(expr sql.Expression) bool {
+				switch expr := expr.(type) {
+				case *framework.CompiledFunction:
+					if strings.ToLower(expr.Name) == "nextval" {
+						seenNextVal = true
 					}
-					if seqIndex > 100 {
-						return nil, transform.NewTree, errors.Errorf("SERIAL sequence name reached max iterations")
+				case *pgexprs.Literal:
+					if expr.String() == "'dolt_create_table_placeholder_sequence'" {
+						isGeneratedFromSequence = true
 					}
 				}
+				return false
+			})
 
-				seqName := doltdb.TableName{Name: sequenceName, Schema: schemaName}.String()
-				nextVal, ok, err := framework.GetFunction("nextval", pgexprs.NewTextLiteral(seqName))
-				if err != nil {
-					return nil, transform.NewTree, err
-				}
-				if !ok {
-					return nil, transform.NewTree, errors.Errorf(`function "nextval" could not be found for SERIAL default`)
-				}
-				col.Default = &sql.ColumnDefaultValue{
-					Expr:          nextVal,
-					OutType:       pgtypes.Int64,
-					Literal:       false,
-					ReturnNil:     false,
-					Parenthesized: false,
-				}
-				ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", &sequences.Sequence{
-					Id:          id.NewSequence("", sequenceName),
-					DataTypeID:  col.Type.(*pgtypes.DoltgresType).ID,
-					Persistence: sequences.Persistence_Permanent,
-					Start:       1,
-					Current:     1,
-					Increment:   1,
-					Minimum:     1,
-					Maximum:     maxValue,
-					Cache:       1,
-					Cycle:       false,
-					IsAtEnd:     false,
-					OwnerTable:  id.NewTable("", createTable.Name()),
-					OwnerColumn: col.Name,
-				}))
+			if !seenNextVal && !isGeneratedFromSequence {
+				continue
 			}
 		}
+
+		var maxValue int64
+		switch doltgresType.Name() {
+		case "smallserial":
+			col.Type = pgtypes.Int16
+			maxValue = 32767
+		case "serial":
+			col.Type = pgtypes.Int32
+			maxValue = 2147483647
+		case "bigserial":
+			col.Type = pgtypes.Int64
+			maxValue = 9223372036854775807
+		}
+
+		schemaName, err := core.GetSchemaName(ctx, createTable.Db, "")
+		if err != nil {
+			return nil, false, err
+		}
+
+		sequenceName, err := generateSequenceName(ctx, createTable, col, err, schemaName)
+		if err != nil {
+			return nil, transform.NewTree, err
+		}
+
+		seqName := doltdb.TableName{Name: sequenceName, Schema: schemaName}.String()
+		nextVal, isDoltgresType, err := framework.GetFunction("nextval", pgexprs.NewTextLiteral(seqName))
+		if err != nil {
+			return nil, transform.NewTree, err
+		}
+		if !isDoltgresType {
+			return nil, transform.NewTree, errors.Errorf(`function "nextval" could not be found for SERIAL default`)
+		}
+
+		nextValExpr := &sql.ColumnDefaultValue{
+			Expr:          nextVal,
+			OutType:       pgtypes.Int64,
+			Literal:       false,
+			ReturnNil:     false,
+			Parenthesized: false,
+		}
+
+		if isGeneratedFromSequence {
+			col.Generated = nextValExpr
+		} else {
+			col.Default = nextValExpr
+		}
+
+		ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", &sequences.Sequence{
+			Id:          id.NewSequence("", sequenceName),
+			DataTypeID:  col.Type.(*pgtypes.DoltgresType).ID,
+			Persistence: sequences.Persistence_Permanent,
+			Start:       1,
+			Current:     1,
+			Increment:   1,
+			Minimum:     1,
+			Maximum:     maxValue,
+			Cache:       1,
+			Cycle:       false,
+			IsAtEnd:     false,
+			OwnerTable:  id.NewTable("", createTable.Name()),
+			OwnerColumn: col.Name,
+		}))
 	}
 	return pgnodes.NewCreateTable(createTable, ctSequences), transform.NewTree, nil
+}
+
+func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *sql.Column, err error, schemaName string) (string, error) {
+	baseSequenceName := fmt.Sprintf("%s_%s_seq", createTable.Name(), col.Name)
+	sequenceName := baseSequenceName
+	relationType, err := core.GetRelationType(ctx, schemaName, baseSequenceName)
+	if err != nil {
+		return "", err
+	}
+	if relationType != core.RelationType_DoesNotExist {
+		seqIndex := 1
+		for ; seqIndex <= 100; seqIndex++ {
+			sequenceName = fmt.Sprintf("%s%d", baseSequenceName, seqIndex)
+			relationType, err = core.GetRelationType(ctx, schemaName, baseSequenceName)
+			if err != nil {
+				return "", err
+			}
+			if relationType == core.RelationType_DoesNotExist {
+				break
+			}
+		}
+		if seqIndex > 100 {
+			return "", errors.Errorf("SERIAL sequence name reached max iterations")
+		}
+	}
+	return sequenceName, nil
 }
