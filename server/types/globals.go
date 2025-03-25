@@ -64,7 +64,6 @@ const (
 	TypeStorage_External TypeStorage = "e"
 	TypeStorage_Main     TypeStorage = "m"
 	TypeStorage_Extended TypeStorage = "x"
-	TypeStorage_Toast    TypeStorage = "t"
 )
 
 // TypeType represents the type of types that can be created/used.
