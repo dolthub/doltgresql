@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -49,7 +50,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			continue
 		}
 
-		// for always-generated columns we insert a placeholder sequence to be replaced by the actual sequence name. We
+		// For always-generated columns we insert a placeholder sequence to be replaced by the actual sequence name. We
 		// detect that here and treat these generated columns differently than other generated columns on serial types.
 		isGeneratedFromSequence := false
 		if col.Generated != nil {
@@ -61,7 +62,8 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 						seenNextVal = true
 					}
 				case *pgexprs.Literal:
-					if expr.String() == "'dolt_create_table_placeholder_sequence'" {
+					placeholderName := fmt.Sprintf("'%s'", ast.DoltCreateTablePlaceholderSequenceName)
+					if expr.String() == placeholderName {
 						isGeneratedFromSequence = true
 					}
 				}
@@ -73,25 +75,12 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			}
 		}
 
-		var maxValue int64
-		switch doltgresType.Name() {
-		case "smallserial":
-			col.Type = pgtypes.Int16
-			maxValue = 32767
-		case "serial":
-			col.Type = pgtypes.Int32
-			maxValue = 2147483647
-		case "bigserial":
-			col.Type = pgtypes.Int64
-			maxValue = 9223372036854775807
-		}
-
 		schemaName, err := core.GetSchemaName(ctx, createTable.Db, "")
 		if err != nil {
 			return nil, false, err
 		}
 
-		sequenceName, err := generateSequenceName(ctx, createTable, col, err, schemaName)
+		sequenceName, err := generateSequenceName(ctx, createTable, col, schemaName)
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -119,6 +108,19 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			col.Default = nextValExpr
 		}
 
+		var maxValue int64
+		switch doltgresType.Name() {
+		case "smallserial":
+			col.Type = pgtypes.Int16
+			maxValue = 32767
+		case "serial":
+			col.Type = pgtypes.Int32
+			maxValue = 2147483647
+		case "bigserial":
+			col.Type = pgtypes.Int64
+			maxValue = 9223372036854775807
+		}
+
 		ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", &sequences.Sequence{
 			Id:          id.NewSequence("", sequenceName),
 			DataTypeID:  col.Type.(*pgtypes.DoltgresType).ID,
@@ -138,7 +140,8 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 	return pgnodes.NewCreateTable(createTable, ctSequences), transform.NewTree, nil
 }
 
-func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *sql.Column, err error, schemaName string) (string, error) {
+// generateSequenceName generates a unique sequence name for a SERIAL column in the table given
+func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *sql.Column, schemaName string) (string, error) {
 	baseSequenceName := fmt.Sprintf("%s_%s_seq", createTable.Name(), col.Name)
 	sequenceName := baseSequenceName
 	relationType, err := core.GetRelationType(ctx, schemaName, baseSequenceName)

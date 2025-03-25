@@ -23,6 +23,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// DoltCreateTablePlaceholderSequenceName is a Placeholder name used in translating computed columns to generated 
+// columns that involve a sequence, used later in analysis
+const DoltCreateTablePlaceholderSequenceName = "dolt_create_table_placeholder_sequence"
+
 // nodeColumnTableDef handles *tree.ColumnTableDef nodes.
 func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.ColumnDefinition, error) {
 	if node == nil {
@@ -115,7 +119,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		generated, err = nodeExpr(ctx, &tree.FuncExpr{
 			Func:      tree.WrapFunction("nextval"),
 			Exprs:     tree.Exprs{
-				tree.NewStrVal("dolt_create_table_placeholder_sequence"),
+				tree.NewStrVal(DoltCreateTablePlaceholderSequenceName),
 			},
 		})
 		if err != nil {
