@@ -23,7 +23,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// DoltCreateTablePlaceholderSequenceName is a Placeholder name used in translating computed columns to generated 
+// DoltCreateTablePlaceholderSequenceName is a Placeholder name used in translating computed columns to generated
 // columns that involve a sequence, used later in analysis
 const DoltCreateTablePlaceholderSequenceName = "dolt_create_table_placeholder_sequence"
 
@@ -97,35 +97,28 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 	}
 
 	var generated vitess.Expr
-	computedByDefaultAsIdentity := node.IsComputed() && node.Computed.ByDefault
-	computedAsIdentity := node.IsComputed() && !node.Computed.ByDefault
 	hasGeneratedExpr := node.IsComputed() && node.Computed.Expr != nil
-	
+	computedByDefaultAsIdentity := node.IsComputed() && !hasGeneratedExpr && node.Computed.ByDefault
+	computedAsIdentity := node.IsComputed() && !hasGeneratedExpr && !node.Computed.ByDefault
+
 	if hasGeneratedExpr {
 		generated, err = nodeExpr(ctx, node.Computed.Expr)
 		if err != nil {
 			return nil, err
 		}
-
-		// GMS requires the AST to wrap function expressions in parens
-		if _, ok := generated.(*vitess.FuncExpr); ok {
-			generated = &vitess.ParenExpr{Expr: generated}
-		}
-
-		// clean up the expressions generated here. our default expression handling generates aliases that aren't
-		// appropriate in this context.
-		generated = clearAliases(generated)
-	} else if node.IsComputed() && computedAsIdentity {
+	} else if computedAsIdentity {
 		generated, err = nodeExpr(ctx, &tree.FuncExpr{
-			Func:      tree.WrapFunction("nextval"),
-			Exprs:     tree.Exprs{
+			Func: tree.WrapFunction("nextval"),
+			Exprs: tree.Exprs{
 				tree.NewStrVal(DoltCreateTablePlaceholderSequenceName),
 			},
 		})
 		if err != nil {
 			return nil, err
 		}
+	}
 
+	if generated != nil {
 		// GMS requires the AST to wrap function expressions in parens
 		if _, ok := generated.(*vitess.FuncExpr); ok {
 			generated = &vitess.ParenExpr{Expr: generated}
