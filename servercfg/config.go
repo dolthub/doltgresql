@@ -17,6 +17,7 @@ package servercfg
 import (
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -304,6 +305,14 @@ func (cfg *DoltgresConfig) LogFormat() servercfg.LogFormat {
 }
 
 func (cfg *DoltgresConfig) MaxConnections() uint64 {
+	return 0
+}
+
+func (cfg *DoltgresConfig) MaxWaitConnections() uint32 {
+	return 0
+}
+
+func (cfg *DoltgresConfig) MaxWaitConnectionsTimeout() time.Duration {
 	return 0
 }
 
