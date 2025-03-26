@@ -31,10 +31,10 @@ func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexCo
 			return nil, errors.Errorf("expression index attribute is not yet supported")
 		}
 		if inputColumn.Collation != "" {
-			return nil, errors.Errorf("index attribute collation is not yet supported")
+			logrus.Warn("index attribute collation is not yet supported, ignoring")
 		}
 		if inputColumn.OpClass != nil {
-			return nil, errors.Errorf("index attribute operator class is not yet supported")
+			logrus.Warn("index attribute operator class is not yet supported, ignoring")
 		}
 		if inputColumn.ExcludeOp != nil {
 			return nil, errors.Errorf("index attribute exclude operator is not yet supported")
