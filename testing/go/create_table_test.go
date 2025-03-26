@@ -304,6 +304,27 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "primary key GENERATED ALWAYS AS IDENTITY",
+			SetUpScript: []string{
+				`create table t1 (
+    			a BIGINT NOT NULL PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+				  b varchar(100)
+				);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "insert into t1 (b) values ('foo') returning a;",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+				{
+					Query:       "insert into t1 (a, b) values (2, 'foo') returning a;",
+					ExpectedErr: "The value specified for generated column \"a\" in table \"t1\" is not allowed",
+				},
+			},
+		},
+		{
 			Name: "create table with default value",
 			SetUpScript: []string{
 				"create table t1 (a varchar(10) primary key, b varchar(10) default (concat('foo', 'bar')));",
