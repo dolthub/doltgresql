@@ -256,8 +256,8 @@ github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5Xh
 github.com/docker/go-units v0.4.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 h1:IdqX7J8vi/Kn3T3Ee0VzqnLqwFmgA2hr8WZETPcQjfM=
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12/go.mod h1:rN7X8BHwkjPcfMQQ2QTAq/xM3leUSGLfb+1Js7Y6TVo=
-github.com/dolthub/dolt/go v0.40.5-0.20250327034921-08692f622c0f h1:vguCB9P2PSFAiZkHX/g08+ExwqP0sQYBCc5bcuIN/xY=
-github.com/dolthub/dolt/go v0.40.5-0.20250327034921-08692f622c0f/go.mod h1:9sIl4ONhoRuizQhVvW7boh/im2o7acUS8S1g1I2Na0w=
+github.com/dolthub/dolt/go v0.40.5-0.20250327222038-d784d96d0e40 h1:sDH7MqSuwL4CmoUnjq8tGuPVYT7F8/yrYpXFk/XqMyw=
+github.com/dolthub/dolt/go v0.40.5-0.20250327222038-d784d96d0e40/go.mod h1:RlmLbEjyqllLueZYCtNTYJohZ3DNPl7cpzBk3M53OzM=
 github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d h1:gO9+wrmNHXukPNCO1tpfCcXIdMlW/qppbUStfLvqz/U=
 github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d/go.mod h1:L5RDYZbC9BBWmoU2+TjTekeqqhFXX5EqH9ln00O0stY=
 github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 h1:u3PMzfF8RkKd3lB9pZ2bfn0qEG+1Gms9599cr0REMww=
@@ -349,8 +349,8 @@ github.com/go-sql-driver/mysql v1.4.0/go.mod h1:zAC/RDZ24gD3HViQzih4MyKcchzm+sOG
 github.com/go-sql-driver/mysql v1.4.1/go.mod h1:zAC/RDZ24gD3HViQzih4MyKcchzm+sOG5ZlKdlhCg5w=
 github.com/go-sql-driver/mysql v1.5.0/go.mod h1:DCzpHaOWr8IXmIStZouvnhqoel9Qv2LBy8hT2VhHyBg=
 github.com/go-sql-driver/mysql v1.6.0/go.mod h1:DCzpHaOWr8IXmIStZouvnhqoel9Qv2LBy8hT2VhHyBg=
-github.com/go-sql-driver/mysql v1.7.2-0.20231213112541-0004702b931d h1:QQP1nE4qh5aHTGvI1LgOFxZYVxYoGeMfbNHikogPyoA=
-github.com/go-sql-driver/mysql v1.7.2-0.20231213112541-0004702b931d/go.mod h1:wEBSXgmK//2ZFJyE+qWnIsVGmvmEKlqwuVSjsCm7DZg=
+github.com/go-sql-driver/mysql v1.9.1 h1:FrjNGn/BsJQjVRuSa8CBrM5BWA9BWoXXat3KrtSb/iI=
+github.com/go-sql-driver/mysql v1.9.1/go.mod h1:qn46aNg1333BRMNU69Lq93t8du/dwxI64Gl8i5p1WMU=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
 github.com/gobwas/glob v0.2.3/go.mod h1:d3Ez4x06l9bZtSvzIay5+Yzi0fmZzPgnTbPcKjJAkT8=
 github.com/gobwas/httphead v0.0.0-20180130184737-2c6c146eadee/go.mod h1:L0fX3K22YWvt/FAX9NnzrNzcI4wNYi9Yku4O0LKYflo=
