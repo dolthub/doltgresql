@@ -6,11 +6,11 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20250326030620-b891619f33c3
+	github.com/dolthub/dolt/go v0.40.5-0.20250327233129-1b20b2c343b0
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-icu-regex v0.0.0-20250319212010-451ea8d003fa
-	github.com/dolthub/go-mysql-server v0.19.1-0.20250326000213-8a2ead9ae1a0
+	github.com/dolthub/go-icu-regex v0.0.0-20250327004329-6799764f2dad
+	github.com/dolthub/go-mysql-server v0.19.1-0.20250327232646-0dc98df3ff7e
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20250325024605-8131be3ca6d3
 	github.com/fatih/color v1.13.0
@@ -99,7 +99,7 @@ require (
 	github.com/go-kit/kit v0.10.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-sql-driver/mysql v1.7.2-0.20231213112541-0004702b931d // indirect
+	github.com/go-sql-driver/mysql v1.9.1 // indirect
 	github.com/gocraft/dbr/v2 v2.7.2 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
