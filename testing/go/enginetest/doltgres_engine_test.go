@@ -1463,12 +1463,6 @@ func TestStatBranchTests(t *testing.T) {
 	denginetest.RunStatBranchTests(t, harness)
 }
 
-func TestStatsFunctions(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunStatsFunctionsTest(t, harness)
-}
-
 func TestDiffTableFunction(t *testing.T) {
 	t.Skip()
 	harness := newDoltgresServerHarness(t)
