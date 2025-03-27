@@ -356,7 +356,7 @@ func (d *DoltgresHarness) SnapshotTable(db sql.VersionedDatabase, tableName stri
 	panic("implement me")
 }
 
-func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row, expectedCols []*sql.Column, sch sql.Schema, rows []sql.Row, q string) {
+func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row, expectedCols []*sql.Column, sch sql.Schema, rows []sql.Row, q string, unwrapValues bool) {
 	widenedRows := enginetest.WidenRows(t, sch, rows)
 	widenedExpected := enginetest.WidenRows(t, sch, expected)
 
@@ -369,10 +369,18 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 
 	for _, widenedRow := range widenedRows {
 		for i, val := range widenedRow {
-			switch val.(type) {
+			switch v := val.(type) {
 			case time.Time:
 				if setZeroTime {
 					widenedRow[i] = time.Unix(0, 0).UTC()
+				}
+			case sql.AnyWrapper:
+				if unwrapValues {
+					var err error
+					widenedRow[i], err = sql.UnwrapAny(context.Background(), v)
+					require.NoError(t, err)
+				} else {
+					widenedRow[i] = v.Hash()
 				}
 			}
 		}
