@@ -579,3 +579,13 @@ func (cfg *DoltgresConfig) String() string {
 	result := strings.Join(formatted, "\n")
 	return result
 }
+
+// MaxWaitConnections implements servercfg.ServerConfig
+func (cfg *DoltgresConfig) MaxWaitConnections() uint32 {
+	return servercfg.DefaultMaxWaitConnections
+}
+
+// MaxWaitConnectionsTimeout implements servercfg.ServerConfig
+func (cfg *DoltgresConfig) MaxWaitConnectionsTimeout() time.Duration {
+	return servercfg.DefaultMaxWaitConnectionsTimeout
+}

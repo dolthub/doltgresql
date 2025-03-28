@@ -466,7 +466,12 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return o.(string), nil
+	var ok bool
+	os, ok, err := sql.Unwrap[string](ctx, o)
+	if !ok {
+		return "", fmt.Errorf("unexpected type for io output, expected string, got %T", val)
+	}
+	return os, err
 }
 
 // IsArrayType returns true if the type is of 'array' category
