@@ -84,6 +84,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			paramNames,
 			paramTypes,
 			true, // TODO: implement strict check
+			ctx.originalQuery,
 			parsedBody,
 		),
 		Children: nil,

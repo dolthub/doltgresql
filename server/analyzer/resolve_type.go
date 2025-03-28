@@ -136,7 +136,7 @@ func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.Doltgres
 	if typ.IsResolvedType() {
 		return typ, nil
 	}
-	schema, err := core.GetSchemaName(ctx, nil, typ.Schema())
+	schema, err := core.GetSchemaName(ctx, nil, typ.ID.SchemaName())
 	if err != nil {
 		return nil, err
 	}
@@ -144,12 +144,18 @@ func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.Doltgres
 	if err != nil {
 		return nil, err
 	}
-	resolvedTyp, exists := typs.GetType(id.NewType(schema, typ.Name()))
-	if !exists {
+	resolvedTyp, err := typs.GetType(ctx, id.NewType(schema, typ.ID.TypeName()))
+	if err != nil {
+		return nil, err
+	}
+	if resolvedTyp == nil {
 		// If a blank schema is provided, then we'll also try the pg_catalog, since a type is most likely to be there
-		if typ.Schema() == "" {
-			resolvedTyp, exists = typs.GetType(id.NewType("pg_catalog", typ.Name()))
-			if exists {
+		if typ.ID.SchemaName() == "" {
+			resolvedTyp, err = typs.GetType(ctx, id.NewType("pg_catalog", typ.ID.TypeName()))
+			if err != nil {
+				return nil, err
+			}
+			if resolvedTyp != nil && (typ.ID.TypeName() == "unknown" || resolvedTyp.ID != pgtypes.Unknown.ID) {
 				return resolvedTyp, nil
 			}
 		}

@@ -16,7 +16,6 @@ package sequences
 
 import (
 	"context"
-	"sync"
 
 	"github.com/cockroachdb/errors"
 
@@ -24,55 +23,39 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// Serialize returns the Collection as a byte slice. If the Collection is nil, then this returns a nil slice.
-func (pgs *Collection) Serialize(ctx context.Context) ([]byte, error) {
-	if pgs == nil {
+// Serialize returns the Sequence as a byte slice. If the Sequence is nil, then this returns a nil slice.
+func (sequence *Sequence) Serialize(ctx context.Context) ([]byte, error) {
+	if sequence == nil {
 		return nil, nil
 	}
-	pgs.mutex.Lock()
-	defer pgs.mutex.Unlock()
 
-	// Write all of the sequences to the writer
+	// Create the writer
 	writer := utils.NewWriter(256)
 	writer.VariableUint(0) // Version
-	schemaMapKeys := utils.GetMapKeysSorted(pgs.schemaMap)
-	writer.VariableUint(uint64(len(schemaMapKeys)))
-	for _, schemaMapKey := range schemaMapKeys {
-		nameMap := pgs.schemaMap[schemaMapKey]
-		writer.String(schemaMapKey)
-		nameMapKeys := utils.GetMapKeysSorted(nameMap)
-		writer.VariableUint(uint64(len(nameMapKeys)))
-		for _, nameMapKey := range nameMapKeys {
-			sequence := nameMap[nameMapKey]
-			writer.Id(sequence.Id.AsId())
-			writer.Id(sequence.DataTypeID.AsId())
-			writer.Uint8(uint8(sequence.Persistence))
-			writer.Int64(sequence.Start)
-			writer.Int64(sequence.Current)
-			writer.Int64(sequence.Increment)
-			writer.Int64(sequence.Minimum)
-			writer.Int64(sequence.Maximum)
-			writer.Int64(sequence.Cache)
-			writer.Bool(sequence.Cycle)
-			writer.Bool(sequence.IsAtEnd)
-			writer.Id(sequence.OwnerTable.AsId())
-			writer.String(sequence.OwnerColumn)
-		}
-	}
-
+	// Write the sequence data
+	writer.Id(sequence.Id.AsId())
+	writer.Id(sequence.DataTypeID.AsId())
+	writer.Uint8(uint8(sequence.Persistence))
+	writer.Int64(sequence.Start)
+	writer.Int64(sequence.Current)
+	writer.Int64(sequence.Increment)
+	writer.Int64(sequence.Minimum)
+	writer.Int64(sequence.Maximum)
+	writer.Int64(sequence.Cache)
+	writer.Bool(sequence.Cycle)
+	writer.Bool(sequence.IsAtEnd)
+	writer.Id(sequence.OwnerTable.AsId())
+	writer.String(sequence.OwnerColumn)
+	// Returns the data
 	return writer.Data(), nil
 }
 
-// Deserialize returns the Collection that was serialized in the byte slice. Returns an empty Collection if data is nil
-// or empty.
-func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
+// DeserializeSequence returns the Sequence that was serialized in the byte slice. Returns an empty Sequence if data is
+// nil or empty.
+func DeserializeSequence(ctx context.Context, data []byte) (*Sequence, error) {
 	if len(data) == 0 {
-		return &Collection{
-			schemaMap: make(map[string]map[string]*Sequence),
-			mutex:     &sync.Mutex{},
-		}, nil
+		return nil, nil
 	}
-	schemaMap := make(map[string]map[string]*Sequence)
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
 	if version != 0 {
@@ -80,37 +63,23 @@ func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
 	}
 
 	// Read from the reader
-	numOfSchemas := reader.VariableUint()
-	for i := uint64(0); i < numOfSchemas; i++ {
-		schemaName := reader.String()
-		numOfSequences := reader.VariableUint()
-		nameMap := make(map[string]*Sequence)
-		for j := uint64(0); j < numOfSequences; j++ {
-			sequence := &Sequence{}
-			sequence.Id = id.Sequence(reader.Id())
-			sequence.DataTypeID = id.Type(reader.Id())
-			sequence.Persistence = Persistence(reader.Uint8())
-			sequence.Start = reader.Int64()
-			sequence.Current = reader.Int64()
-			sequence.Increment = reader.Int64()
-			sequence.Minimum = reader.Int64()
-			sequence.Maximum = reader.Int64()
-			sequence.Cache = reader.Int64()
-			sequence.Cycle = reader.Bool()
-			sequence.IsAtEnd = reader.Bool()
-			sequence.OwnerTable = id.Table(reader.Id())
-			sequence.OwnerColumn = reader.String()
-			nameMap[sequence.Id.SequenceName()] = sequence
-		}
-		schemaMap[schemaName] = nameMap
-	}
+	sequence := &Sequence{}
+	sequence.Id = id.Sequence(reader.Id())
+	sequence.DataTypeID = id.Type(reader.Id())
+	sequence.Persistence = Persistence(reader.Uint8())
+	sequence.Start = reader.Int64()
+	sequence.Current = reader.Int64()
+	sequence.Increment = reader.Int64()
+	sequence.Minimum = reader.Int64()
+	sequence.Maximum = reader.Int64()
+	sequence.Cache = reader.Int64()
+	sequence.Cycle = reader.Bool()
+	sequence.IsAtEnd = reader.Bool()
+	sequence.OwnerTable = id.Table(reader.Id())
+	sequence.OwnerColumn = reader.String()
 	if !reader.IsEmpty() {
-		return nil, errors.Errorf("extra data found while deserializing sequences")
+		return nil, errors.Errorf("extra data found while deserializing a sequence")
 	}
-
 	// Return the deserialized object
-	return &Collection{
-		schemaMap: schemaMap,
-		mutex:     &sync.Mutex{},
-	}, nil
+	return sequence, nil
 }

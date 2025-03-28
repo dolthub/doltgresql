@@ -101,10 +101,13 @@ var pg_get_serial_sequence_text_text = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		sequences := sequenceCollection.GetSequencesWithTable(doltdb.TableName{
+		sequences, err := sequenceCollection.GetSequencesWithTable(ctx, doltdb.TableName{
 			Name:   tableName,
 			Schema: schemaName,
 		})
+		if err != nil {
+			return nil, err
+		}
 		for _, sequence := range sequences {
 			if sequence.OwnerColumn == column.Name {
 				// pg_get_serial_sequence() always includes the schema name in its output
