@@ -18,6 +18,7 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
+	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"io"
 	"regexp"
 	"runtime"
@@ -356,7 +357,7 @@ func (d *DoltgresHarness) SnapshotTable(db sql.VersionedDatabase, tableName stri
 	panic("implement me")
 }
 
-func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row, expectedCols []*sql.Column, sch sql.Schema, rows []sql.Row, q string, unwrapValues bool) {
+func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row, expectedCols []*sql.Column, sch sql.Schema, rows []sql.Row, q string, wrapBehavior queries.WrapBehavior) {
 	widenedRows := enginetest.WidenRows(t, sch, rows)
 	widenedExpected := enginetest.WidenRows(t, sch, expected)
 
@@ -375,11 +376,12 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 					widenedRow[i] = time.Unix(0, 0).UTC()
 				}
 			case sql.AnyWrapper:
-				if unwrapValues {
+				switch wrapBehavior {
+				case queries.WrapBehavior_Unwrap:
 					var err error
 					widenedRow[i], err = sql.UnwrapAny(context.Background(), v)
 					require.NoError(t, err)
-				} else {
+				case queries.WrapBehavior_Hash:
 					widenedRow[i] = v.Hash()
 				}
 			}
