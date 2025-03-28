@@ -16,12 +16,12 @@ package core
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/sequences"
 )
 
 // RelationType states the type of the relation.
@@ -69,11 +69,11 @@ func GetRelationTypeFromRoot(ctx *sql.Context, schema string, relation string, r
 		return RelationType_Table, nil
 	}
 	// Check sequences next
-	collection, err := root.GetSequences(ctx)
+	collection, err := sequences.LoadSequences(ctx, root)
 	if err != nil {
 		return RelationType_DoesNotExist, err
 	}
-	if collection.HasSequence(id.NewSequence(schema, relation)) {
+	if collection.HasSequence(ctx, id.NewSequence(schema, relation)) {
 		return RelationType_Sequence, nil
 	}
 	// TODO: the rest of the relations

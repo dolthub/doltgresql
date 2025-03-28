@@ -15,6 +15,9 @@
 package node
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/rowexec"
@@ -57,6 +60,13 @@ func (c *CreateTable) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	// Prevent tables from having names like `guid()`, which resembles a function
+	leftParen := strings.IndexByte(c.gmsCreateTable.Name(), '(')
+	rightParen := strings.IndexByte(c.gmsCreateTable.Name(), ')')
+	if leftParen != -1 && rightParen != -1 && rightParen > leftParen {
+		return nil, fmt.Errorf("table name `%s` cannot contain a parenthesized portion", c.gmsCreateTable.Name())
+	}
+
 	createTableIter, err := rowexec.DefaultBuilder.Build(ctx, c.gmsCreateTable, r)
 	if err != nil {
 		return nil, err

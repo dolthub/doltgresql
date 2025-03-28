@@ -905,5 +905,183 @@ func TestSequences(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "dolt_add, dolt_branch, dolt_checkout, dolt_commit, dolt_reset",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE SEQUENCE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT setval('test', 10);",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    "SELECT nextval('test');",
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Query: "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING')",
+					Expected: []sql.Row{
+						{"", "public.test", "added", 1, 1},
+					},
+				},
+				{
+					Query:    "SELECT dolt_add('test');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT dolt_branch('other');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT setval('test', 20);",
+					Expected: []sql.Row{{20}},
+				},
+				{
+					Query:    "SELECT dolt_add('.');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT nextval('test');",
+					Expected: []sql.Row{{21}},
+				},
+				{
+					Query:    "SELECT dolt_checkout('other');",
+					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+				},
+				{
+					Query:    "SELECT nextval('test');",
+					Expected: []sql.Row{{12}},
+				},
+				{
+					Query:    "SELECT dolt_reset('--hard');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT nextval('test');",
+					Expected: []sql.Row{{12}},
+				},
+			},
+		},
+		{
+			Name: "dolt_clean",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE SEQUENCE test1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SEQUENCE test2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT setval('test1', 10);",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    "SELECT nextval('test1');",
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Query:    "SELECT setval('test2', 10);",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    "SELECT nextval('test2');",
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Query:    "SELECT dolt_add('test1');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query: "SELECT * FROM dolt.status;",
+					Expected: []sql.Row{
+						{"public.test1", "t", "new table"},
+						{"public.test2", "f", "new table"},
+					},
+				},
+				{
+					Query:    "SELECT dolt_clean('test2');", // TODO: dolt_clean() requires a param, need to fix procedure to func conversion
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query: "SELECT * FROM dolt.status;",
+					Expected: []sql.Row{
+						{"public.test1", "t", "new table"},
+					},
+				},
+			},
+		},
+		{
+			Name: "dolt_merge",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE SEQUENCE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT setval('test', 10);",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-Am', 'initial')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT dolt_branch('other');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT setval('test', 20);",
+					Expected: []sql.Row{{20}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-am', 'next')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT dolt_checkout('other');",
+					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+				},
+				{
+					Query:    "SELECT setval('test', 30);",
+					Expected: []sql.Row{{30}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-am', 'next2')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT dolt_checkout('main');",
+					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+				},
+				{
+					Query:    "SELECT nextval('test');",
+					Expected: []sql.Row{{21}},
+				},
+				{
+					Query:    "SELECT dolt_reset('--hard');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT strpos(dolt_merge('other')::text, 'merge successful') > 32;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT nextval('test');",
+					Expected: []sql.Row{{31}},
+				},
+			},
+		},
 	})
 }
