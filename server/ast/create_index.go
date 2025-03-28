@@ -29,10 +29,10 @@ func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, 
 		return nil, nil
 	}
 	if node.Concurrently {
-		return nil, errors.Errorf("concurrent indexes are not yet supported")
+		return nil, errors.Errorf("concurrent index creation is not yet supported")
 	}
 	if node.Using != "" && strings.ToLower(node.Using) != "btree" {
-		return nil, errors.Errorf("index tablespace is not yet supported")
+		return nil, errors.Errorf("index method %s is not yet supported", node.Using)
 	}
 	if node.Predicate != nil {
 		return nil, errors.Errorf("WHERE is not yet supported")

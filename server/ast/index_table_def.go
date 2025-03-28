@@ -16,6 +16,7 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/sirupsen/logrus"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -32,10 +33,10 @@ func nodeIndexTableDef(ctx *Context, node *tree.IndexTableDef) (*vitess.IndexDef
 		return nil, errors.Errorf("include columns is not yet supported")
 	}
 	if len(node.IndexParams.StorageParams) > 0 {
-		return nil, errors.Errorf("storage parameters is not yet supported")
+		logrus.Warn("storage params are not yet supported, ignoring")
 	}
 	if node.IndexParams.Tablespace != "" {
-		return nil, errors.Errorf("tablespace is not yet supported")
+		logrus.Warn("tablespace is not yet supported, ignoring")
 	}
 
 	columns, err := nodeIndexElemList(ctx, node.Columns)

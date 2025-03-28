@@ -195,6 +195,10 @@ func RewriteTests(t *testing.T, tests []QueryParses, file string) {
 					return ast.Convert(statement)
 				}()
 
+				if err != nil {
+					line = testStatementRegex.ReplaceAll(line, []byte("${1}Parses("))
+				}
+
 				if !test.ShouldConvert() {
 					if err == nil && vitessAST != nil {
 						line = testStatementRegex.ReplaceAll(line, []byte("${1}Converts("))

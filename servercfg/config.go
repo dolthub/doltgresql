@@ -308,6 +308,14 @@ func (cfg *DoltgresConfig) MaxConnections() uint64 {
 	return 0
 }
 
+func (cfg *DoltgresConfig) MaxWaitConnections() uint32 {
+	return 0
+}
+
+func (cfg *DoltgresConfig) MaxWaitConnectionsTimeout() time.Duration {
+	return 0
+}
+
 func (cfg *DoltgresConfig) TLSKey() string {
 	if cfg.ListenerConfig == nil || cfg.ListenerConfig.TLSKey == nil {
 		return ""

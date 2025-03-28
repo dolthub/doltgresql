@@ -23,6 +23,10 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// DoltCreateTablePlaceholderSequenceName is a Placeholder name used in translating computed columns to generated
+// columns that involve a sequence, used later in analysis
+const DoltCreateTablePlaceholderSequenceName = "dolt_create_table_placeholder_sequence"
+
 // nodeColumnTableDef handles *tree.ColumnTableDef nodes.
 func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.ColumnDefinition, error) {
 	if node == nil {
@@ -87,13 +91,34 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 			return nil, err
 		}
 	}
+
+	if len(node.Computed.Options) > 0 {
+		return nil, errors.Errorf("sequence options are not yet supported, create a sequence separately")
+	}
+
 	var generated vitess.Expr
-	if node.Computed.Computed {
+	hasGeneratedExpr := node.IsComputed() && node.Computed.Expr != nil
+	computedByDefaultAsIdentity := node.IsComputed() && !hasGeneratedExpr && node.Computed.ByDefault
+	computedAsIdentity := node.IsComputed() && !hasGeneratedExpr && !node.Computed.ByDefault
+
+	if hasGeneratedExpr {
 		generated, err = nodeExpr(ctx, node.Computed.Expr)
 		if err != nil {
 			return nil, err
 		}
+	} else if computedAsIdentity {
+		generated, err = nodeExpr(ctx, &tree.FuncExpr{
+			Func: tree.WrapFunction("nextval"),
+			Exprs: tree.Exprs{
+				tree.NewStrVal(DoltCreateTablePlaceholderSequenceName),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
 
+	if generated != nil {
 		// GMS requires the AST to wrap function expressions in parens
 		if _, ok := generated.(*vitess.FuncExpr); ok {
 			generated = &vitess.ParenExpr{Expr: generated}
@@ -103,7 +128,8 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		// appropriate in this context.
 		generated = clearAliases(generated)
 	}
-	if node.IsSerial {
+
+	if node.IsSerial || computedByDefaultAsIdentity || computedAsIdentity {
 		if resolvedType.IsEmptyType() {
 			return nil, errors.Errorf("serial type was not resolvable")
 		}
@@ -121,6 +147,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 			return nil, errors.Errorf(`multiple default values specified for column "%s"`, node.Name)
 		}
 	}
+
 	colDef := &vitess.ColumnDefinition{
 		Name: vitess.NewColIdent(string(node.Name)),
 		Type: vitess.ColumnType{
