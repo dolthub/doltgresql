@@ -159,17 +159,19 @@ func getDoltgresTypeFromId(ctx *sql.Context, rawId id.Id) (*pgtypes.DoltgresType
 	typID := id.Type(rawId)
 
 	schName := typID.SchemaName()
-	sch, err := core.GetCurrentSchema(ctx)
-	if err != nil {
-		return nil, err
-	}
 	if schName == "" {
-		schName = sch
+		schName, err = core.GetCurrentSchema(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	typName := typID.TypeName()
-	typ, found := typCol.GetType(id.NewType(schName, typName))
-	if !found {
+	typ, err := typCol.GetType(ctx, id.NewType(schName, typName))
+	if err != nil {
+		return nil, err
+	}
+	if typ == nil {
 		return nil, pgtypes.ErrTypeDoesNotExist.New(typName)
 	}
 	return typ, nil

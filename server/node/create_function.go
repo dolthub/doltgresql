@@ -37,6 +37,7 @@ type CreateFunction struct {
 	ParameterTypes []*pgtypes.DoltgresType
 	Strict         bool
 	Statements     []plpgsql.InterpreterOperation
+	Definition     string
 }
 
 var _ sql.ExecSourceRel = (*CreateFunction)(nil)
@@ -51,6 +52,7 @@ func NewCreateFunction(
 	paramNames []string,
 	paramTypes []*pgtypes.DoltgresType,
 	strict bool,
+	definition string,
 	statements []plpgsql.InterpreterOperation) *CreateFunction {
 	return &CreateFunction{
 		FunctionName:   functionName,
@@ -61,6 +63,7 @@ func NewCreateFunction(
 		ParameterTypes: paramTypes,
 		Strict:         strict,
 		Statements:     statements,
+		Definition:     definition,
 	}
 }
 
@@ -94,12 +97,12 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		paramTypes[i] = paramType.ID
 	}
 	funcID := id.NewFunction(c.SchemaName, c.FunctionName, idTypes...)
-	if c.Replace && funcCollection.HasFunction(funcID) {
-		if err = funcCollection.DropFunction(funcID); err != nil {
+	if c.Replace && funcCollection.HasFunction(ctx, funcID) {
+		if err = funcCollection.DropFunction(ctx, funcID); err != nil {
 			return nil, err
 		}
 	}
-	err = funcCollection.AddFunction(&functions.Function{
+	err = funcCollection.AddFunction(ctx, functions.Function{
 		ID:                 funcID,
 		ReturnType:         c.ReturnType.ID,
 		ParameterNames:     c.ParameterNames,
@@ -107,6 +110,7 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		Variadic:           false, // TODO: implement this
 		IsNonDeterministic: true,
 		Strict:             c.Strict,
+		Definition:         c.Definition,
 		Operations:         c.Statements,
 	})
 	if err != nil {

@@ -57,13 +57,16 @@ func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Oper
 			if err != nil {
 				return err
 			}
-			sequences := collection.GetSequencesWithTable(doltdb.TableName{
+			sequences, err := collection.GetSequencesWithTable(ctx, doltdb.TableName{
 				Name:   originalIDCol.TableName(),
 				Schema: originalIDCol.SchemaName(),
 			})
+			if err != nil {
+				return err
+			}
 			for _, sequence := range sequences {
 				if sequence.OwnerColumn == originalIDCol.ColumnName() {
-					if err = collection.DropSequence(sequence.Id); err != nil {
+					if err = collection.DropSequence(ctx, sequence.Id); err != nil {
 						return err
 					}
 				}
@@ -80,17 +83,20 @@ func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Oper
 			if err != nil {
 				return err
 			}
-			sequences := collection.GetSequencesWithTable(doltdb.TableName{
+			sequences, err := collection.GetSequencesWithTable(ctx, doltdb.TableName{
 				Name:   originalIDTable.TableName(),
 				Schema: originalIDTable.SchemaName(),
 			})
+			if err != nil {
+				return err
+			}
 			for _, sequence := range sequences {
-				if err = collection.DropSequence(sequence.Id); err != nil {
+				if err = collection.DropSequence(ctx, sequence.Id); err != nil {
 					return err
 				}
 				if operation == id.Operation_Rename {
 					sequence.OwnerTable = id.Table(newID)
-					if err = collection.CreateSequence(sequence.Id.SchemaName(), sequence); err != nil {
+					if err = collection.CreateSequence(ctx, sequence); err != nil {
 						return err
 					}
 				}

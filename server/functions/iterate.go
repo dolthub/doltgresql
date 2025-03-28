@@ -17,6 +17,8 @@ package functions
 import (
 	"sort"
 
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	sqle "github.com/dolthub/go-mysql-server"
@@ -139,7 +141,10 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 			if err != nil {
 				return err
 			}
-			sequenceMap, _, _ = collection.GetAllSequences()
+			sequenceMap, _, _, err = collection.GetAllSequences(ctx)
+			if err != nil {
+				return err
+			}
 		}
 		if err = iterateSchemas(ctx, callbacks, schemas, sequenceMap); err != nil {
 			return err
@@ -243,10 +248,11 @@ func iterateTables(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 	// Iterate over the sorted table names
 	for _, tableName := range sortedTableNames {
 		table, ok, err := itemSchema.Item.GetTableInsensitive(ctx, tableName)
-		if err != nil {
+		if err != nil && !errors.Is(err, doltdb.ErrTableNotFound) {
 			return err
 		} else if !ok {
-			return sql.ErrTableNotFound.New(tableName)
+			// We receive these names from the database, so these must be the names of root objects
+			continue
 		}
 		itemTable := ItemTable{
 			OID:  id.NewTable(itemSchema.Item.SchemaName(), table.Name()),
@@ -457,10 +463,11 @@ func RunCallback(ctx *sql.Context, internalID id.Id, callbacks Callbacks) error 
 		countedIndex := 0
 		for _, tableName := range tableNames {
 			table, ok, err := itemSchema.Item.GetTableInsensitive(ctx, tableName)
-			if err != nil {
+			if err != nil && !errors.Is(err, doltdb.ErrTableNotFound) {
 				return err
 			} else if !ok {
-				return sql.ErrTableNotFound.New(tableName)
+				// We receive these names from the schema, so these must be the names of root objects
+				continue
 			}
 			itemTable := ItemTable{
 				OID:  id.NewTable(itemSchema.Item.SchemaName(), table.Name()),
@@ -617,7 +624,10 @@ func runSequence(ctx *sql.Context, internalID id.Id, callbacks Callbacks, itemSc
 	if err != nil {
 		return err
 	}
-	sequenceMap, _, _ := collection.GetAllSequences()
+	sequenceMap, _, _, err := collection.GetAllSequences(ctx)
+	if err != nil {
+		return err
+	}
 	sequencesInSchema, ok := sequenceMap[itemSchema.Item.SchemaName()]
 	if !ok {
 		return nil

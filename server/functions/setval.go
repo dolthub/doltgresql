@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -61,7 +62,7 @@ var setval_text_int64_boolean = framework.Function3{
 		if err != nil {
 			return nil, err
 		}
-		return val2.(int64), collection.SetVal(schema, relation, val2.(int64), val3.(bool))
+		return val2.(int64), collection.SetVal(ctx, id.NewSequence(schema, relation), val2.(int64), val3.(bool))
 	},
 }
 

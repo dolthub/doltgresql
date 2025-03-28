@@ -650,5 +650,163 @@ $$ LANGUAGE plpgsql;`},
 				},
 			},
 		},
+		{
+			Name: "Branching",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION interpreted_as_of(input TEXT) RETURNS TEXT AS $$
+BEGIN
+	RETURN input || '_extra';
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT interpreted_as_of('abcd');",
+					Expected: []sql.Row{{"abcd_extra"}},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT dolt_checkout('-b', 'other')`,
+					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+				},
+				{
+					Query: `CREATE OR REPLACE FUNCTION interpreted_as_of(input TEXT) RETURNS TEXT AS $$
+BEGIN
+	RETURN input;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT interpreted_as_of('abc');",
+					Expected: []sql.Row{{"abc"}},
+				},
+				{
+					Query:    "SELECT dolt_checkout('main')",
+					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+				},
+				{
+					Query:    "SELECT interpreted_as_of('abcd');",
+					Expected: []sql.Row{{"abcd_extra"}},
+				},
+			},
+		},
+		{
+			Name: "Merging",
+			SetUpScript: []string{
+				`CREATE TABLE test(pk INT4);`,
+				`INSERT INTO test VALUES (77);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION interpreted_merging(input TEXT) RETURNS TEXT AS $$
+BEGIN
+	RETURN input || '_extra';
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT interpreted_merging('abcd');",
+					Expected: []sql.Row{{"abcd_extra"}},
+				},
+				{
+					Query:       "SELECT interpreted_merging(55);",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT dolt_checkout('-b', 'other')`,
+					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+				},
+				{
+					Query: `CREATE FUNCTION interpreted_merging(input INT4) RETURNS INT4 AS $$
+BEGIN
+	RETURN input + 11;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT interpreted_merging(55);",
+					Expected: []sql.Row{{66}},
+				},
+				{
+					Query:    "SELECT dolt_checkout('main')",
+					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+				},
+				{
+					Query:    "INSERT INTO test VALUES (80);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT interpreted_merging('abcde');",
+					Expected: []sql.Row{{"abcde_extra"}},
+				},
+				{
+					Query:       "SELECT interpreted_merging(67);",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{77}, {80}},
+				},
+				{
+					Query:    "SELECT length(dolt_merge('other')::text) = 57;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT interpreted_merging('abcdef');",
+					Expected: []sql.Row{{"abcdef_extra"}},
+				},
+				{
+					Query:    "SELECT interpreted_merging(58);",
+					Expected: []sql.Row{{69}},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{77}, {80}},
+				},
+			},
+		},
 	})
 }
