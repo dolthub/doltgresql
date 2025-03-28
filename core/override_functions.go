@@ -28,6 +28,7 @@ import (
 	"github.com/dolthub/dolt/go/store/types"
 	flatbuffers "github.com/dolthub/flatbuffers/v23/go"
 
+	"github.com/dolthub/doltgresql/core/storage"
 	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
 
@@ -75,7 +76,7 @@ func emptyRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.Node
 
 // newRootValue is Doltgres' implementation of doltdb.NewRootValue.
 func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, v types.Value) (doltdb.RootValue, error) {
-	var storage rootStorage
+	var st storage.RootStorage
 
 	if !vrw.Format().UsesFlatbuffers() {
 		return nil, errors.Errorf("unsupported vrw")
@@ -84,8 +85,8 @@ func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeSt
 	if err != nil {
 		return nil, err
 	}
-	storage = rootStorage{srv}
-	ver := storage.GetFeatureVersion()
+	st = storage.RootStorage{SRV: srv}
+	ver := st.GetFeatureVersion()
 	if DoltgresFeatureVersion < ver {
 		return nil, doltdb.ErrClientOutOfDate{
 			ClientVer: DoltgresFeatureVersion,
@@ -93,7 +94,7 @@ func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeSt
 		}
 	}
 
-	return &RootValue{vrw, ns, storage, nil, hash.Hash{}}, nil
+	return &RootValue{vrw, ns, st, nil, hash.Hash{}}, nil
 }
 
 // rootValueHumanReadableStringAtIndentationLevel is Doltgres' implementation of

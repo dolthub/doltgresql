@@ -102,7 +102,10 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, err
 	}
 
-	if collection.HasType(c.SchemaName, c.Name) {
+	typeID := id.NewType(schema, c.Name)
+	arrayID := id.NewType(schema, "_"+c.Name)
+
+	if collection.HasType(ctx, typeID) {
 		// TODO: if the existing type is array type, it updates the array type name and creates the new type.
 		return nil, types.ErrTypeAlreadyExists.New(c.Name)
 	}
@@ -110,10 +113,8 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var newType *types.DoltgresType
 	switch c.typType {
 	case types.TypeType_Pseudo:
-		newType = types.NewShellType(ctx, id.NewType(c.SchemaName, c.Name))
+		newType = types.NewShellType(ctx, typeID)
 	case types.TypeType_Enum:
-		typeID := id.NewType(c.SchemaName, c.Name)
-		arrayID := id.NewType(c.SchemaName, "_"+c.Name)
 		enumLabelMap := make(map[string]types.EnumLabel)
 		for i, l := range c.Labels {
 			if _, ok := enumLabelMap[l]; ok {
@@ -127,9 +128,6 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		newType = types.NewEnumType(ctx, arrayID, typeID, enumLabelMap)
 		// TODO: store labels somewhere
 	case types.TypeType_Composite:
-		typeID := id.NewType(c.SchemaName, c.Name)
-		arrayID := id.NewType(c.SchemaName, "_"+c.Name)
-
 		relID := id.Null // TODO: create relation with c.AsTypes
 		attrs := make([]types.CompositeAttribute, len(c.AsTypes))
 		for i, a := range c.AsTypes {
@@ -140,7 +138,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, errors.Errorf("create type as %s is not supported", c.typType)
 	}
 
-	err = collection.CreateType(schema, newType)
+	err = collection.CreateType(ctx, newType)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +146,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	// create array type for defined types
 	if newType.IsDefined {
 		arrayType := types.CreateArrayTypeFromBaseType(newType)
-		err = collection.CreateType(schema, arrayType)
+		err = collection.CreateType(ctx, arrayType)
 		if err != nil {
 			return nil, err
 		}

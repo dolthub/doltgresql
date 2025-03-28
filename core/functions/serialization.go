@@ -16,7 +16,6 @@ package functions
 
 import (
 	"context"
-	"sync"
 
 	"github.com/cockroachdb/errors"
 
@@ -25,98 +24,76 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// Serialize returns the Collection as a byte slice. If the Collection is nil, then this returns a nil slice.
-func (pgf *Collection) Serialize(ctx context.Context) ([]byte, error) {
-	if pgf == nil {
+// Serialize returns the Function as a byte slice. If the Function is invalid, then this returns a nil slice.
+func (function Function) Serialize(ctx context.Context) ([]byte, error) {
+	if !function.ID.IsValid() {
 		return nil, nil
 	}
-	pgf.mutex.Lock()
-	defer pgf.mutex.Unlock()
 
 	// Write all of the functions to the writer
 	writer := utils.NewWriter(256)
 	writer.VariableUint(0) // Version
-	funcIDs := utils.GetMapKeysSorted(pgf.funcMap)
-	writer.VariableUint(uint64(len(funcIDs)))
-	for _, funcID := range funcIDs {
-		f := pgf.funcMap[funcID]
-		writer.Id(f.ID.AsId())
-		writer.Id(f.ReturnType.AsId())
-		writer.StringSlice(f.ParameterNames)
-		writer.IdTypeSlice(f.ParameterTypes)
-		writer.Bool(f.Variadic)
-		writer.Bool(f.IsNonDeterministic)
-		writer.Bool(f.Strict)
-		// Write the operations
-		writer.VariableUint(uint64(len(f.Operations)))
-		for _, op := range f.Operations {
-			writer.Uint16(uint16(op.OpCode))
-			writer.String(op.PrimaryData)
-			writer.StringSlice(op.SecondaryData)
-			writer.String(op.Target)
-			writer.Int32(int32(op.Index))
-			writer.StringMap(op.Options)
-		}
+	// Write the function data
+	writer.Id(function.ID.AsId())
+	writer.Id(function.ReturnType.AsId())
+	writer.StringSlice(function.ParameterNames)
+	writer.IdTypeSlice(function.ParameterTypes)
+	writer.Bool(function.Variadic)
+	writer.Bool(function.IsNonDeterministic)
+	writer.Bool(function.Strict)
+	writer.String(function.Definition)
+	// Write the operations
+	writer.VariableUint(uint64(len(function.Operations)))
+	for _, op := range function.Operations {
+		writer.Uint16(uint16(op.OpCode))
+		writer.String(op.PrimaryData)
+		writer.StringSlice(op.SecondaryData)
+		writer.String(op.Target)
+		writer.Int32(int32(op.Index))
+		writer.StringMap(op.Options)
 	}
-
+	// Returns the data
 	return writer.Data(), nil
 }
 
-// Deserialize returns the Collection that was serialized in the byte slice. Returns an empty Collection if data is nil
-// or empty.
-func Deserialize(ctx context.Context, data []byte) (*Collection, error) {
+// DeserializeFunction returns the Function that was serialized in the byte slice. Returns an empty Function (invalid
+// ID) if data is nil or empty.
+func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 	if len(data) == 0 {
-		return &Collection{
-			funcMap:     make(map[id.Function]*Function),
-			overloadMap: make(map[id.Function][]*Function),
-			mutex:       &sync.Mutex{},
-		}, nil
+		return Function{}, nil
 	}
-	funcMap := make(map[id.Function]*Function)
-	overloadMap := make(map[id.Function][]*Function)
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
 	if version != 0 {
-		return nil, errors.Errorf("version %d of functions is not supported, please upgrade the server", version)
+		return Function{}, errors.Errorf("version %d of functions is not supported, please upgrade the server", version)
 	}
 
 	// Read from the reader
-	numOfFunctions := reader.VariableUint()
-	for i := uint64(0); i < numOfFunctions; i++ {
-		f := &Function{}
-		f.ID = id.Function(reader.Id())
-		f.ReturnType = id.Type(reader.Id())
-		f.ParameterNames = reader.StringSlice()
-		f.ParameterTypes = reader.IdTypeSlice()
-		f.Variadic = reader.Bool()
-		f.IsNonDeterministic = reader.Bool()
-		f.Strict = reader.Bool()
-		// Read the operations
-		opCount := reader.VariableUint()
-		f.Operations = make([]plpgsql.InterpreterOperation, opCount)
-		for opIdx := uint64(0); opIdx < opCount; opIdx++ {
-			op := plpgsql.InterpreterOperation{}
-			op.OpCode = plpgsql.OpCode(reader.Uint16())
-			op.PrimaryData = reader.String()
-			op.SecondaryData = reader.StringSlice()
-			op.Target = reader.String()
-			op.Index = int(reader.Int32())
-			op.Options = reader.StringMap()
-			f.Operations[opIdx] = op
-		}
-		// Add the function to each map
-		funcMap[f.ID] = f
-		funcNameOnly := id.NewFunction(f.ID.SchemaName(), f.ID.FunctionName())
-		overloadMap[funcNameOnly] = append(overloadMap[funcNameOnly], f)
+	f := Function{}
+	f.ID = id.Function(reader.Id())
+	f.ReturnType = id.Type(reader.Id())
+	f.ParameterNames = reader.StringSlice()
+	f.ParameterTypes = reader.IdTypeSlice()
+	f.Variadic = reader.Bool()
+	f.IsNonDeterministic = reader.Bool()
+	f.Strict = reader.Bool()
+	f.Definition = reader.String()
+	// Read the operations
+	opCount := reader.VariableUint()
+	f.Operations = make([]plpgsql.InterpreterOperation, opCount)
+	for opIdx := uint64(0); opIdx < opCount; opIdx++ {
+		op := plpgsql.InterpreterOperation{}
+		op.OpCode = plpgsql.OpCode(reader.Uint16())
+		op.PrimaryData = reader.String()
+		op.SecondaryData = reader.StringSlice()
+		op.Target = reader.String()
+		op.Index = int(reader.Int32())
+		op.Options = reader.StringMap()
+		f.Operations[opIdx] = op
 	}
 	if !reader.IsEmpty() {
-		return nil, errors.Errorf("extra data found while deserializing functions")
+		return Function{}, errors.Errorf("extra data found while deserializing a function")
 	}
-
 	// Return the deserialized object
-	return &Collection{
-		funcMap:     funcMap,
-		overloadMap: overloadMap,
-		mutex:       &sync.Mutex{},
-	}, nil
+	return f, nil
 }

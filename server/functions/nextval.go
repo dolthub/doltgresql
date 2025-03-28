@@ -17,6 +17,8 @@ package functions
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -50,7 +52,7 @@ var nextval_text = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		return collection.NextVal(schema, sequence)
+		return collection.NextVal(ctx, id.NewSequence(schema, sequence))
 	},
 }
 
@@ -76,6 +78,6 @@ var nextval_regclass = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		return collection.NextVal(schema, sequence)
+		return collection.NextVal(ctx, id.NewSequence(schema, sequence))
 	},
 }

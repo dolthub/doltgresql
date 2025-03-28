@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/rootobject"
 	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/auth"
@@ -46,6 +47,7 @@ var once = &sync.Once{}
 func Initialize(dEnv *env.DoltEnv) {
 	once.Do(func() {
 		core.Init()
+		rootobject.Init()
 		auth.Init(dEnv)
 		pgexprs.Init()
 		analyzer.Init()

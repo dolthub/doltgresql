@@ -79,8 +79,12 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	domain, exists := collection.GetDomainType(id.NewType(schema, c.domain))
-	if !exists {
+	typeID := id.NewType(schema, c.domain)
+	domain, err := collection.GetDomainType(ctx, typeID)
+	if err != nil {
+		return nil, err
+	}
+	if domain == nil {
 		if c.ifExists {
 			// TODO: issue a notice
 			return sql.RowsToRowIter(), nil
@@ -120,13 +124,14 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		}
 	}
 
-	if err = collection.DropType(schema, c.domain); err != nil {
+	if err = collection.DropType(ctx, typeID); err != nil {
 		return nil, err
 	}
 
 	// drop array type of this type
 	arrayTypeName := fmt.Sprintf(`_%s`, c.domain)
-	if err = collection.DropType(schema, arrayTypeName); err != nil {
+	arrayID := id.NewType(schema, arrayTypeName)
+	if err = collection.DropType(ctx, arrayID); err != nil {
 		return nil, err
 	}
 
