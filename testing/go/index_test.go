@@ -773,7 +773,7 @@ func TestBasicIndexing(t *testing.T) {
 		},
 		{
 			Name: "Unique index varchar",
-			Focus: true,
+			// Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE test (pk INT4 PRIMARY KEY, v1 varchar(100), v2 varchar(100));`,
 				`ALTER TABLE test ADD CONSTRAINT uniqIdx UNIQUE (v1, v2);`,
