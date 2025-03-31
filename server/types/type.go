@@ -567,7 +567,7 @@ func (t *DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	if t.TypLength < 0 {
 		// Length will be 0 for any non-string type, as well as unbounded string types
 		if t.Length() > 0 {
-			return types.ExtendedTypeSerializedWidth_64K		
+			return types.ExtendedTypeSerializedWidth_64K
 		}
 		return types.ExtendedTypeSerializedWidth_Unbounded
 	}
