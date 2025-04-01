@@ -181,7 +181,7 @@ func main() {
 
 			args = args[2:]
 		}
-		
+
 		if profilingOptions.HasOptions() {
 			utils.StartProfiling(profilingOptions)
 			defer utils.StopProfiling()
