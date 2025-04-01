@@ -95,6 +95,8 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 
 	defer tempfiles.MovableTempFileProvider.Clean()
 
+	sql.SystemVariables.SetGlobal(dsess.DoltStatsEnabled, false)
+	
 	err := dsess.InitPersistedSystemVars(dEnv)
 	if err != nil {
 		return nil, errors.Errorf("failed to load persisted system variables: %w", err)
