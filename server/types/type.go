@@ -155,6 +155,18 @@ func (t *DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Co
 
 // Compare implements the types.ExtendedType interface.
 func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
+	// TODO: Add context parameter to Type::Compare
+	ctx := context.Background()
+	var err error
+	v1, err = sql.UnwrapAny(ctx, v1)
+	if err != nil {
+		return 0, err
+	}
+	v2, err = sql.UnwrapAny(ctx, v2)
+	if err != nil {
+		return 0, err
+	}
+
 	// TODO: use IoCompare
 	if v1 == nil && v2 == nil {
 		return 0, nil

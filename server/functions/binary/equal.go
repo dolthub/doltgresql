@@ -418,7 +418,7 @@ var text_eq = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Text.Compare(val1.(string), val2.(string))
+		res, err := pgtypes.Text.Compare(val1, val2)
 		return res == 0, err
 	},
 }
