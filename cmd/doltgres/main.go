@@ -185,10 +185,10 @@ func main() {
 		if profilingOptions.HasOptions() {
 			utils.StartProfiling(profilingOptions)
 			defer utils.StopProfiling()
+			os.Args = append([]string{os.Args[0]}, args...)
 		}
-
-		os.Args = append([]string{os.Args[0]}, args...)
 	}
+
 	ctx := context.Background()
 	flags, params := parseArgs()
 

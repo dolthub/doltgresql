@@ -525,7 +525,7 @@ func (t *DoltgresType) IsValidForPolymorphicType(target *DoltgresType) bool {
 // Length implements the sql.StringType interface.
 func (t *DoltgresType) Length() int64 {
 	switch t.ID.TypeName() {
-	case "varchar":
+	case "varchar", "bpchar":
 		if t.attTypMod == -1 {
 			return StringUnbounded
 		} else {
