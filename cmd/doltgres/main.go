@@ -150,19 +150,20 @@ func PrintDefaults(fs *flag.FlagSet) {
 }
 
 func main() {
-	if len(os.Args) >= 2 {
+	args := os.Args[1:]
+
+	if len(args) >= 2 {
 		profilingOptions := utils.ProfilingOptions{}
 		doneDebugFlags := false
-		for !doneDebugFlags {
-			switch os.Args[1] {
+		for !doneDebugFlags && len(args) > 0 {
+			switch args[0] {
 			case profilePath:
-				profilingOptions.Path = os.Args[2]
+				profilingOptions.Path = args[1]
 				if _, err := os.Stat(profilingOptions.Path); errors.Is(err, os.ErrNotExist) {
 					panic(errors.Errorf("profile path does not exist: %s", profilingOptions.Path))
 				}
-				os.Args = append([]string{os.Args[0]}, os.Args[3:]...)
 			case profFlag:
-				switch os.Args[2] {
+				switch args[1] {
 				case cpuProf:
 					profilingOptions.CPU = true
 				case memProf:
@@ -172,13 +173,15 @@ func main() {
 				case traceProf:
 					profilingOptions.Trace = true
 				default:
-					panic("Unexpected prof flag: " + os.Args[2])
+					panic("Unexpected prof flag: " + args[1])
 				}
-				os.Args = append([]string{os.Args[0]}, os.Args[3:]...)
 			default:
 				doneDebugFlags = true
 			}
+
+			args = args[2:]
 		}
+		
 		if profilingOptions.HasOptions() {
 			utils.StartProfiling(profilingOptions)
 			defer utils.StopProfiling()
