@@ -80,7 +80,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	// boolean result, we want to convert it from an int back to a boolean.
 	case query.Type_INT8:
 		if sqlTyp == types.Boolean {
-			newVal, _, err := types.Int32.Convert(val)
+			newVal, _, err := types.Int32.Convert(ctx, val)
 			if err != nil {
 				return nil, err
 			}
@@ -97,7 +97,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	// Although Int16 would be a closer fit for some of these types, in Postgres, Int32 is generally the smallest value
 	// used. To maximize overall compatibility, it's better to interpret these values as Int32 instead.
 	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
-		newVal, _, err := types.Int32.Convert(val)
+		newVal, _, err := types.Int32.Convert(ctx, val)
 		if err != nil {
 			return nil, err
 		}
@@ -106,7 +106,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 		return newVal, nil
 	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
-		newVal, _, err := types.Int64.Convert(val)
+		newVal, _, err := types.Int64.Convert(ctx, val)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +145,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 		return nil, errors.Errorf("GMSCast expected type `Timespan`, got `%T`", val)
 	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
-		newVal, _, err := types.LongText.Convert(val)
+		newVal, _, err := types.LongText.Convert(ctx, val)
 		if err != nil {
 			return nil, err
 		}

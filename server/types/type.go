@@ -154,9 +154,7 @@ func (t *DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Co
 }
 
 // Compare implements the types.ExtendedType interface.
-func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
-	// TODO: Add context parameter to Type::Compare
-	ctx := context.Background()
+func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface{}) (int, error) {
 	var err error
 	v1, err = sql.UnwrapAny(ctx, v1)
 	if err != nil {
@@ -288,7 +286,7 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 		bb := v2.([]any)
 		minLength := utils.Min(len(ab), len(bb))
 		for i := 0; i < minLength; i++ {
-			res, err := t.ArrayBaseType().Compare(ab[i], bb[i])
+			res, err := t.ArrayBaseType().Compare(ctx, ab[i], bb[i])
 			if err != nil {
 				return 0, err
 			}
@@ -309,7 +307,7 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 }
 
 // Convert implements the types.ExtendedType interface.
-func (t *DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, error) {
+func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{}, sql.ConvertInRange, error) {
 	if v == nil {
 		return nil, sql.InRange, nil
 	}
