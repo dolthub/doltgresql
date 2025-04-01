@@ -186,7 +186,7 @@ func main() {
 			utils.StartProfiling(profilingOptions)
 			defer utils.StopProfiling()
 		}
-		
+
 		os.Args = append([]string{os.Args[0]}, args...)
 	}
 	ctx := context.Background()
