@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
@@ -99,19 +100,9 @@ func nodeAlterTableCmds(
 			}
 			vitessDdlCmds = append(vitessDdlCmds, statement)
 
-			// Postgres (unlike MySQL) allows an inline FK constraint
-			// when altering a table to add a column. GMS doesn't support
-			// this directly in the ALTER TABLE ADD COLUMN DDL command,
-			// so we break this out into a separate DDL command.
+			// If inline constraints have been specified, set the ConstraintAction so that they get processed
 			if len(statement.TableSpec.Constraints) > 0 {
-				vitessDdlCmds = append(vitessDdlCmds,
-					&vitess.DDL{
-						Action:           "alter",
-						ConstraintAction: "add",
-						Table:            tableName,
-						IfExists:         ifExists,
-						TableSpec:        statement.TableSpec,
-					})
+				statement.ConstraintAction = vitess.AddStr
 			}
 
 		case *tree.AlterTableDropColumn:
@@ -262,7 +253,7 @@ func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tab
 	case tree.DropRestrict:
 		return nil, errors.Errorf("ALTER TABLE DROP COLUMN does not support RESTRICT option")
 	case tree.DropCascade:
-		return nil, errors.Errorf("ALTER TABLE DROP COLUMN does not support CASCADE option")
+		logrus.Warnf("CASCADE option on DROP COLUMN is not yet supported, ignoring")
 	default:
 		return nil, errors.Errorf("ALTER TABLE with unsupported drop behavior %v", node.DropBehavior)
 	}

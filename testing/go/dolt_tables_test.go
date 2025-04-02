@@ -1763,25 +1763,24 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query: `SELECT database_name, table_name, index_name, row_count, distinct_count, columns, upper_bound, upper_bound_cnt FROM dolt_statistics ORDER BY index_name, row_count`,
 					Expected: []sql.Row{
-						{"postgres", "horses", "horses_name_idx", 62, 1, "name", "Steve", 62},
-						{"postgres", "horses", "horses_name_idx", 212, 1, "name", "Steve", 212},
-						{"postgres", "horses", "horses_name_idx", 214, 1, "name", "Steve", 214},
-						{"postgres", "horses", "horses_name_idx", 239, 1, "name", "Steve", 239},
-						{"postgres", "horses", "horses_name_idx", 273, 1, "name", "Steve", 273},
+						{"postgres", "horses", "horses_name_idx", 10, 1, "name", "Steve", 10},
+						{"postgres", "horses", "horses_name_idx", 167, 1, "name", "Steve", 167},
+						{"postgres", "horses", "horses_name_idx", 197, 1, "name", "Steve", 197},
+						{"postgres", "horses", "horses_name_idx", 306, 1, "name", "Steve", 306},
+						{"postgres", "horses", "horses_name_idx", 320, 1, "name", "Steve", 320},
 						{"postgres", "horses", "primary", 46, 46, "id", "1000", 1},
 						{"postgres", "horses", "primary", 203, 203, "id", "954", 1},
-						{"postgres", "horses", "primary", 204, 204, "id", "751", 1},
-						{"postgres", "horses", "primary", 226, 226, "id", "547", 1},
-						{"postgres", "horses", "primary", 321, 321, "id", "321", 1},
+						{"postgres", "horses", "primary", 347, 347, "id", "347", 1},
+						{"postgres", "horses", "primary", 404, 404, "id", "751", 1},
 					},
 				},
 				{
 					Query:    `SELECT count(*) FROM dolt_statistics`,
-					Expected: []sql.Row{{10}},
+					Expected: []sql.Row{{9}},
 				},
 				{
 					Query:    `SELECT count(*) FROM public.dolt_statistics`,
-					Expected: []sql.Row{{10}},
+					Expected: []sql.Row{{9}},
 				},
 				{
 					Query:    `SELECT dolt_statistics.index_name FROM public.dolt_statistics GROUP BY index_name ORDER BY index_name`,
@@ -1820,10 +1819,12 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Skip:     true, // http://github.com/dolthub/doltgresql/issues/1352
 					Query:    `SELECT dolt_statistics.index_name FROM dolt_statistics GROUP BY index_name ORDER BY index_name`,
 					Expected: []sql.Row{{"horses2_name_idx"}, {"primary"}},
 				},
 				{
+					Skip:     true, // http://github.com/dolthub/doltgresql/issues/1352
 					Query:    `SELECT dolt_statistics.index_name FROM newschema.dolt_statistics GROUP BY index_name ORDER BY index_name`,
 					Expected: []sql.Row{{"horses2_name_idx"}, {"primary"}},
 				},

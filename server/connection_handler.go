@@ -25,6 +25,7 @@ import (
 	"net"
 	"os"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -496,7 +497,10 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 
 	// A valid Parse message must have ParameterObjectIDs if there are any binding variables.
 	bindVarTypes := message.ParameterOIDs
-	if len(bindVarTypes) == 0 {
+
+	// Clients can specify an OID of zero to indicate that the type should be inferred. If we
+	// see any zero OIDs, we fall back to extracting the bind var types from the plan.
+	if len(bindVarTypes) == 0 || slices.Contains(bindVarTypes, 0) {
 		// NOTE: This is used for Prepared Statement Tests only.
 		bindVarTypes, err = extractBindVarTypes(analyzedPlan)
 		if err != nil {

@@ -304,6 +304,22 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Add column with inline check constraint",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT, b INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ADD COLUMN c INT NOT NULL DEFAULT 42 CONSTRAINT chk1 CHECK (c > 0);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO test1 VALUES (2, 2, -2);",
+					ExpectedErr: `Check constraint "chk1" violated`,
+				},
+			},
+		},
+		{
 			Name: "Drop Column",
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a INT, b INT, c INT, d INT);",
