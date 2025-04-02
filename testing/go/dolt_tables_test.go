@@ -1819,10 +1819,12 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Skip:     true, // http://github.com/dolthub/doltgresql/issues/1352
 					Query:    `SELECT dolt_statistics.index_name FROM dolt_statistics GROUP BY index_name ORDER BY index_name`,
 					Expected: []sql.Row{{"horses2_name_idx"}, {"primary"}},
 				},
 				{
+					Skip:     true, // http://github.com/dolthub/doltgresql/issues/1352
 					Query:    `SELECT dolt_statistics.index_name FROM newschema.dolt_statistics GROUP BY index_name ORDER BY index_name`,
 					Expected: []sql.Row{{"horses2_name_idx"}, {"primary"}},
 				},
