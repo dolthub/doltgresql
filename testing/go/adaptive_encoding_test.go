@@ -16,8 +16,9 @@ package _go
 
 import (
 	"fmt"
-	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 
 	"github.com/dolthub/go-mysql-server/sql"
 )

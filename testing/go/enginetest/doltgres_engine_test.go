@@ -1972,11 +1972,6 @@ func TestStatsAutoRefreshConcurrency(t *testing.T) {
 	t.Skip("port test from Dolt")
 }
 
-func TestAdaptiveBigBlobs(t *testing.T) {
-	h := newDoltgresServerHarness(t)
-	denginetest.RunAdaptiveBigBlobsTest(t, h)
-}
-
 func skipPreparedTests(t *testing.T) {
 	if skipPrepared {
 		t.Skip("skip prepared")
