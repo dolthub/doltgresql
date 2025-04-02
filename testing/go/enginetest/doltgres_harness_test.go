@@ -31,6 +31,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	gms "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/enginetest"
+	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
@@ -356,9 +357,9 @@ func (d *DoltgresHarness) SnapshotTable(db sql.VersionedDatabase, tableName stri
 	panic("implement me")
 }
 
-func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row, expectedCols []*sql.Column, sch sql.Schema, rows []sql.Row, q string) {
-	widenedRows := enginetest.WidenRows(sch, rows)
-	widenedExpected := enginetest.WidenRows(sch, expected)
+func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row, expectedCols []*sql.Column, sch sql.Schema, rows []sql.Row, q string, wrapBehavior queries.WrapBehavior) {
+	widenedRows := enginetest.WidenRows(t, sch, rows)
+	widenedExpected := enginetest.WidenRows(t, sch, expected)
 
 	upperQuery := strings.ToUpper(q)
 	orderBy := strings.Contains(upperQuery, "ORDER BY ")
@@ -369,10 +370,19 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 
 	for _, widenedRow := range widenedRows {
 		for i, val := range widenedRow {
-			switch val.(type) {
+			switch v := val.(type) {
 			case time.Time:
 				if setZeroTime {
 					widenedRow[i] = time.Unix(0, 0).UTC()
+				}
+			case sql.AnyWrapper:
+				switch wrapBehavior {
+				case queries.WrapBehavior_Unwrap:
+					var err error
+					widenedRow[i], err = sql.UnwrapAny(context.Background(), v)
+					require.NoError(t, err)
+				case queries.WrapBehavior_Hash:
+					widenedRow[i] = v.Hash()
 				}
 			}
 		}
@@ -425,6 +435,7 @@ func convertCountStarDoltLog(t *testing.T, q string, expected []sql.Row, rows []
 }
 
 func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schema, actual []sql.Row, isNilOrEmptySchema bool) {
+	ctx := context.Background()
 	for i, row := range expected {
 		for j := range sch {
 			field := row[j]
@@ -448,12 +459,12 @@ func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schem
 				continue
 			}
 
-			convertedExpected, _, err := sch[j].Type.Convert(expected[i][j])
+			convertedExpected, _, err := sch[j].Type.Convert(ctx, expected[i][j])
 			require.NoError(t, err)
 			expected[i][j] = convertedExpected
 		}
 
-		expected[i] = enginetest.WidenRow(sch, expected[i])
+		expected[i] = enginetest.WidenRow(t, sch, expected[i])
 
 		// OK results from GMS manifest as a nil schema in postgres, only accessible via command tags
 		if isNilOrEmptySchema && len(expected[i]) == 1 {
@@ -663,7 +674,7 @@ func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema,
 		results := make([]sql.Row, 0)
 		for rows.Next() {
 			rows.Scan(columns...)
-			row, err := toRow(schema, columns)
+			row, err := toRow(ctx, schema, columns)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -737,7 +748,7 @@ func (d *DoltgresQueryEngine) getConnection() (*pgx.Conn, error) {
 	return d.conn, nil
 }
 
-func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
+func toRow(ctx *sql.Context, schema sql.Schema, r []interface{}) (sql.Row, error) {
 	row := make(sql.Row, len(schema))
 	for i, col := range schema {
 		val, err := unwrapResultColumn(r[i])
@@ -745,7 +756,7 @@ func toRow(schema sql.Schema, r []interface{}) (sql.Row, error) {
 			return nil, err
 		}
 
-		row[i], _, err = col.Type.Convert(val)
+		row[i], _, err = col.Type.Convert(ctx, val)
 		if err != nil {
 			return nil, err
 		}

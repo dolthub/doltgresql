@@ -76,6 +76,8 @@ func (r *functionRegistry) InternalToRegistryID(functionID id.Function) uint32 {
 
 // GetFunction returns the associated function for the given ID. This will always return a valid function.
 func (r *functionRegistry) GetFunction(id uint32) QuickFunction {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 	f := r.functions[id]
 	if f != nil {
 		return f
@@ -83,8 +85,6 @@ func (r *functionRegistry) GetFunction(id uint32) QuickFunction {
 	if id == 0 {
 		return nil
 	}
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
 	f = r.loadFunction(id)
 	if f == nil {
 		// If we hit this panic, then we're missing a test that uses this function (and we should add that test)

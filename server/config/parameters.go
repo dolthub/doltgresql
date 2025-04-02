@@ -99,12 +99,12 @@ func (p *Parameter) GetDefault() any {
 }
 
 // InitValue implements sql.SystemVariable.
-func (p *Parameter) InitValue(val any, global bool) (sql.SystemVarValue, error) {
+func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
 	if global {
 		// This shouldn't happen, but sanity check
 		return sql.SystemVarValue{}, sql.ErrSystemVariableSessionOnly.New(p.Name)
 	}
-	convertedVal, _, err := p.Type.Convert(val)
+	convertedVal, _, err := p.Type.Convert(ctx, val)
 	if err != nil {
 		return sql.SystemVarValue{}, err
 	}
@@ -123,7 +123,7 @@ func (p *Parameter) InitValue(val any, global bool) (sql.SystemVarValue, error) 
 }
 
 // SetValue implements sql.SystemVariable.
-func (p *Parameter) SetValue(val any, global bool) (sql.SystemVarValue, error) {
+func (p *Parameter) SetValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
 	if global {
 		// This shouldn't happen, but sanity check
 		return sql.SystemVarValue{}, sql.ErrSystemVariableSessionOnly.New(p.Name)
@@ -132,7 +132,7 @@ func (p *Parameter) SetValue(val any, global bool) (sql.SystemVarValue, error) {
 		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
 	}
 	// TODO: Do parsing of units for memory and time parameters
-	return p.InitValue(val, global)
+	return p.InitValue(ctx, val, global)
 }
 
 // IsReadOnly implements sql.SystemVariable.

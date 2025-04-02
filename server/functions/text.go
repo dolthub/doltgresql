@@ -15,12 +15,13 @@
 package functions
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
+	"fmt"
 
-	"github.com/dolthub/doltgresql/utils"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initText registers the functions to the catalog.
@@ -51,7 +52,7 @@ var textout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(string), nil
+		return val, nil
 	},
 }
 
@@ -78,7 +79,13 @@ var textsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		str := val.(string)
+		str, ok, err := sql.Unwrap[string](ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf(`"textsend" requires a string argument, got %T`, val)
+		}
 		writer := utils.NewWriter(uint64(len(str) + 4))
 		writer.String(str)
 		return writer.Data(), nil

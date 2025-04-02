@@ -74,7 +74,7 @@ func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) 
 			}
 
 			// Grab the passed-in variable and convert it to the type we expect
-			exprParamVal, _, err := paramDefinition.Type.Convert(values[i])
+			exprParamVal, _, err := paramDefinition.Type.Convert(ctx, values[i])
 			if err != nil {
 				return nil, err
 			}

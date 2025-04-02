@@ -15,6 +15,7 @@
 package dtables
 
 import (
+	"context"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -52,15 +53,18 @@ func convertRebasePlanStepToRow(planMember rebase.RebasePlanStep) (sql.Row, erro
 }
 
 // convertRowToRebasePlanStep converts a sql.Row to a RebasePlanStep.
-func convertRowToRebasePlanStep(row sql.Row) (rebase.RebasePlanStep, error) {
+func convertRowToRebasePlanStep(ctx context.Context, row sql.Row) (rebase.RebasePlanStep, error) {
 	order, ok := row[0].(float32)
 	if !ok {
 		return rebase.RebasePlanStep{}, errors.Errorf("invalid order value in rebase plan: %v (%T)", row[0], row[0])
 	}
 
-	rebaseAction, ok := row[1].(string)
+	rebaseAction, ok, err := sql.Unwrap[string](ctx, row[1])
+	if err != nil {
+		return rebase.RebasePlanStep{}, err
+	}
 	if !ok {
-		return rebase.RebasePlanStep{}, errors.Errorf("invalid enum value in rebase plan: %v (%T)", row[1], row[1])
+		return rebase.RebasePlanStep{}, errors.Errorf("unexpected type for rebase action: expected string, got: %v (%T)", row[1], row[1])
 	}
 
 	rebaseIdx := dprocedures.RebaseActionEnumType.IndexOf(rebaseAction)
@@ -68,11 +72,27 @@ func convertRowToRebasePlanStep(row sql.Row) (rebase.RebasePlanStep, error) {
 		return rebase.RebasePlanStep{}, errors.Errorf("invalid enum value in rebase plan: %v (%T)", row[1], row[1])
 	}
 
+	commitHash, ok, err := sql.Unwrap[string](ctx, row[2])
+	if err != nil {
+		return rebase.RebasePlanStep{}, err
+	}
+	if !ok {
+		return rebase.RebasePlanStep{}, errors.Errorf("unexpected type for commit hash: expected string, got: %v (%T)", row[2], row[2])
+	}
+
+	commitMsg, ok, err := sql.Unwrap[string](ctx, row[3])
+	if err != nil {
+		return rebase.RebasePlanStep{}, err
+	}
+	if !ok {
+		return rebase.RebasePlanStep{}, errors.Errorf("unexpected type for commit message: expected string, got: %v (%T)", row[3], row[3])
+	}
+
 	return rebase.RebasePlanStep{
 		RebaseOrder: decimal.NewFromFloat32(order),
 		Action:      rebaseAction,
-		CommitHash:  row[2].(string),
-		CommitMsg:   row[3].(string),
+		CommitHash:  commitHash,
+		CommitMsg:   commitMsg,
 	}, nil
 }
 
