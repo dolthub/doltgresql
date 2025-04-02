@@ -525,7 +525,7 @@ func (t *DoltgresType) IsValidForPolymorphicType(target *DoltgresType) bool {
 // Length implements the sql.StringType interface.
 func (t *DoltgresType) Length() int64 {
 	switch t.ID.TypeName() {
-	case "varchar":
+	case "varchar", "bpchar":
 		if t.attTypMod == -1 {
 			return StringUnbounded
 		} else {
@@ -565,6 +565,10 @@ func (t *DoltgresType) MaxCharacterLength() int64 {
 // MaxSerializedWidth implements the types.ExtendedType interface.
 func (t *DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
 	if t.TypLength < 0 {
+		// Length will be 0 for any non-string type, as well as unbounded string types
+		if t.Length() > 0 {
+			return types.ExtendedTypeSerializedWidth_64K
+		}
 		return types.ExtendedTypeSerializedWidth_Unbounded
 	}
 	return types.ExtendedTypeSerializedWidth_64K
