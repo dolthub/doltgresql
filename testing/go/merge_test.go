@@ -1,0 +1,103 @@
+// Copyright 2025 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package _go
+
+import (
+	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
+)
+
+func TestMerge(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "simple merge",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (a INT, b INT, c INT, PRIMARY KEY (a))",
+				"CREATE TABLE t2 (a INT, b INT, c INT, PRIMARY KEY (a))",
+				"INSERT INTO t1 VALUES (1, 2, 3), (4, 5, 6), (7, 8, 9)",
+				"INSERT INTO t2 VALUES (1, 2, 3), (4, 5, 6), (7, 8, 9)",
+				"CALL DOLT_COMMIT('-Am', 'intial commit')",
+				"CALL DOLT_BRANCH('branch1')",
+				"CALL DOLT_BRANCH('branch2')",
+				"CALL DOLT_CHECKOUT('branch1')",
+				"INSERT INTO t1 VALUES (10, 11, 12)",
+				"INSERT INTO t2 VALUES (10, 11, 12)",
+				"CALL DOLT_COMMIT('-Am', 'added 10')",
+				"CALL DOLT_CHECKOUT('branch2')",
+				"INSERT INTO t1 VALUES (20, 21, 22)",
+				"INSERT INTO t2 VALUES (20, 21, 22)",
+				"CALL DOLT_COMMIT('-Am', 'added 20')",
+				"CALL DOLT_CHECKOUT('main')",
+				"CALL DOLT_MERGE('branch1')",
+				"CALL DOLT_MERGE('branch2')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM t1",
+					Expected: []sql.Row{
+						{1, 2, 3},
+						{4, 5, 6},
+						{7, 8, 9},
+						{10, 11, 12},
+						{20, 21, 22},
+					},
+				},
+				{
+					Query: "SELECT * FROM t2",
+					Expected: []sql.Row{
+						{1, 2, 3},
+						{4, 5, 6},
+						{7, 8, 9},
+						{10, 11, 12},
+						{20, 21, 22},
+					},
+				},
+			},
+		},
+		{
+			Name: "merge with check expressions and column defaults",
+			Focus: true,
+			SetUpScript: []string{
+				"CREATE TABLE t1 (a INT, b timestamptz default '2020-01-01 00:00:00'::timestamptz, PRIMARY KEY (a))",
+				"ALTER TABLE t1 ADD CONSTRAINT check_b CHECK (b >= '2020-01-01 00:00:00'::timestamptz)",
+				"INSERT INTO t1 VALUES (1, '2020-01-02 00:00:00'), (2, '2020-01-03 00:00:00')",
+				"CALL DOLT_COMMIT('-Am', 'intial commit')",
+				"CALL DOLT_BRANCH('branch1')",
+				"CALL DOLT_BRANCH('branch2')",
+				"CALL DOLT_CHECKOUT('branch1')",
+				"INSERT INTO t1 VALUES (3, '2020-01-04 00:00:00')",
+				"CALL DOLT_COMMIT('-Am', 'added 3')",
+				"CALL DOLT_CHECKOUT('branch2')",
+				"INSERT INTO t1 VALUES (4, '2020-01-05 00:00:00')",
+				"CALL DOLT_COMMIT('-Am', 'added 4')",
+				"CALL DOLT_CHECKOUT('main')",
+				"CALL DOLT_MERGE('branch1')",
+				"CALL DOLT_MERGE('branch2')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM t1",
+					Expected: []sql.Row{
+						{1, "2020-01-02 00:00:00"},
+						{2, "2020-01-03 00:00:00"},
+						{3, "2020-01-04 00:00:00"},
+						{4, "2020-01-05 00:00:00"},
+					},
+				},
+			},
+		},
+	})
+}
