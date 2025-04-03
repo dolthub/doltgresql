@@ -59,6 +59,11 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					}
 				}
 			}
+		// Some system tables have doltgres schemas, but some don't. To cover any gaps, we wrap those columns here
+		case *expression.GetField:
+			if _, ok := expr.Type().(*pgtypes.DoltgresType); !ok {
+				return pgexprs.NewGMSCast(expr), transform.NewTree, nil
+			}
 		case *sql.ColumnDefaultValue:
 			// Due to how interfaces work, we sometimes pass (*ColumnDefaultValue)(nil), so we have to check for it
 			if expr != nil && expr.Expr != nil {
