@@ -87,3 +87,95 @@ func (p *PostgresParser) ParseOneWithOptions(_ context.Context, query string, _ 
 func (p *PostgresParser) QuoteIdentifier(identifier string) string {
 	return fmt.Sprintf(`"%s"`, strings.ReplaceAll(identifier, `"`, `""`))
 }
+
+type PostgresFormatter struct{}
+
+var _ sql.SchemaFormatter = PostgresFormatter{}
+
+// NewPostgresSchemaFormatter creates a new PostgresFormatter.
+func NewPostgresSchemaFormatter() PostgresFormatter {
+	return PostgresFormatter{}
+}
+
+// GenerateCreateTableStatement implements sql.SchemaFormatter interface.
+func (p PostgresFormatter) GenerateCreateTableStatement(tblName string, colStmts []string, temp, autoInc, tblCharsetName, tblCollName, comment string) string {
+	if comment != "" {
+		// Escape any single quotes in the comment and add the COMMENT keyword
+		comment = strings.ReplaceAll(comment, "'", "''")
+		comment = fmt.Sprintf(" COMMENT='%s'", comment)
+	}
+
+	return fmt.Sprintf(
+		"CREATE%s TABLE %s (\n%s\n)",
+		temp,
+		p.QuoteIdentifier(tblName),
+		strings.Join(colStmts, ",\n"),
+	)
+}
+
+func (p PostgresFormatter) GenerateCreateTableColumnDefinition(col *sql.Column, colDefault, onUpdate string, tableCollation sql.CollationID) string {
+	var colTypeString = col.Type.String()
+	if collationType, ok := col.Type.(sql.TypeWithCollation); ok {
+		colTypeString = collationType.StringWithTableCollation(tableCollation)
+	}
+
+	stmt := fmt.Sprintf("  %s %s", p.QuoteIdentifier(col.Name), colTypeString)
+	if !col.Nullable {
+		stmt = fmt.Sprintf("%s NOT NULL", stmt)
+	}
+
+	if col.Generated != nil {
+		storedStr := " STORED"
+		stmt = fmt.Sprintf("%s GENERATED ALWAYS AS %s%s", stmt, col.Generated.String(), storedStr)
+	}
+
+	if col.Default != nil && col.Generated == nil {
+		stmt = fmt.Sprintf("%s DEFAULT %s", stmt, colDefault)
+	}
+
+	// TODO: comments
+	return stmt
+}
+
+func (p PostgresFormatter) GenerateCreateTablePrimaryKeyDefinition(pkCols []string) string {
+	return fmt.Sprintf("  PRIMARY KEY (%s)", strings.Join(p.QuoteIdentifiers(pkCols), ","))
+}
+
+func (p PostgresFormatter) GenerateCreateTableIndexDefinition(isUnique, isSpatial, isFullText, isVector bool, indexID string, indexCols []string, comment string) string {
+	unique := ""
+	if isUnique {
+		unique = "UNIQUE "
+	}
+
+	key := fmt.Sprintf("  %sKEY %s (%s)", unique, p.QuoteIdentifier(indexID), strings.Join(indexCols, ","))
+	return key
+}
+
+func (p PostgresFormatter) GenerateCreateTableForiegnKeyDefinition(fkName string, fkCols []string, parentTbl string, parentCols []string, onDelete, onUpdate string) string {
+	keyCols := strings.Join(p.QuoteIdentifiers(fkCols), ",")
+	refCols := strings.Join(p.QuoteIdentifiers(parentCols), ",")
+	fkey := fmt.Sprintf("  CONSTRAINT %s FOREIGN KEY (%s) REFERENCES %s (%s)", p.QuoteIdentifier(fkName), keyCols, p.QuoteIdentifier(parentTbl), refCols)
+	if onDelete != "" {
+		fkey = fmt.Sprintf("%s ON DELETE %s", fkey, onDelete)
+	}
+	if onUpdate != "" {
+		fkey = fmt.Sprintf("%s ON UPDATE %s", fkey, onUpdate)
+	}
+	return fkey
+}
+
+func (p PostgresFormatter) GenerateCreateTableCheckConstraintClause(checkName, checkExpr string, enforced bool) string {
+	return fmt.Sprintf("  CONSTRAINT %s CHECK (%s)", p.QuoteIdentifier(checkName), checkExpr)
+}
+
+func (p PostgresFormatter) QuoteIdentifier(identifier string) string {
+	return fmt.Sprintf(`"%s"`, strings.ReplaceAll(identifier, `"`, `""`))
+}
+
+func (p PostgresFormatter) QuoteIdentifiers(ids []string) []string {
+	quoted := make([]string, len(ids))
+	for i, id := range ids {
+		quoted[i] = p.QuoteIdentifier(id)
+	}
+	return quoted
+}
