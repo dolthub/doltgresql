@@ -88,7 +88,7 @@ func (p *PostgresParser) QuoteIdentifier(identifier string) string {
 	return fmt.Sprintf(`"%s"`, strings.ReplaceAll(identifier, `"`, `""`))
 }
 
-type PostgresFormatter struct{}
+type PostgresFormatter struct {}
 
 var _ sql.SchemaFormatter = PostgresFormatter{}
 
@@ -99,12 +99,6 @@ func NewPostgresSchemaFormatter() PostgresFormatter {
 
 // GenerateCreateTableStatement implements sql.SchemaFormatter interface.
 func (p PostgresFormatter) GenerateCreateTableStatement(tblName string, colStmts []string, temp, autoInc, tblCharsetName, tblCollName, comment string) string {
-	if comment != "" {
-		// Escape any single quotes in the comment and add the COMMENT keyword
-		comment = strings.ReplaceAll(comment, "'", "''")
-		comment = fmt.Sprintf(" COMMENT='%s'", comment)
-	}
-
 	return fmt.Sprintf(
 		"CREATE%s TABLE %s (\n%s\n)",
 		temp,
@@ -117,13 +111,13 @@ func (p PostgresFormatter) GenerateCreateTableColumnDefinition(col *sql.Column, 
 	var colTypeString = col.Type.String()
 	if collationType, ok := col.Type.(sql.TypeWithCollation); ok {
 		colTypeString = collationType.StringWithTableCollation(tableCollation)
-	}
-
+	} 
+	
 	stmt := fmt.Sprintf("  %s %s", p.QuoteIdentifier(col.Name), colTypeString)
 	if !col.Nullable {
 		stmt = fmt.Sprintf("%s NOT NULL", stmt)
 	}
-
+	
 	if col.Generated != nil {
 		storedStr := " STORED"
 		stmt = fmt.Sprintf("%s GENERATED ALWAYS AS %s%s", stmt, col.Generated.String(), storedStr)
@@ -141,14 +135,14 @@ func (p PostgresFormatter) GenerateCreateTablePrimaryKeyDefinition(pkCols []stri
 	return fmt.Sprintf("  PRIMARY KEY (%s)", strings.Join(p.QuoteIdentifiers(pkCols), ","))
 }
 
-func (p PostgresFormatter) GenerateCreateTableIndexDefinition(isUnique, isSpatial, isFullText, isVector bool, indexID string, indexCols []string, comment string) string {
-	unique := ""
+func (p PostgresFormatter) GenerateCreateTableIndexDefinition(isUnique, isSpatial, isFullText, isVector bool, indexID string, indexCols []string, comment string) (string, bool) {
 	if isUnique {
-		unique = "UNIQUE "
+		return fmt.Sprintf("  UNIQUE %s (%s)", p.QuoteIdentifier(indexID), strings.Join(indexCols, ",")), true
 	}
 
-	key := fmt.Sprintf("  %sKEY %s (%s)", unique, p.QuoteIdentifier(indexID), strings.Join(indexCols, ","))
-	return key
+	// TODO: this interface is not sufficient for SHOW CREATE TABLE output, where we will need to return multiple
+	//  statements to capture index creation for non-unique indexes
+	return "", false
 }
 
 func (p PostgresFormatter) GenerateCreateTableForiegnKeyDefinition(fkName string, fkCols []string, parentTbl string, parentCols []string, onDelete, onUpdate string) string {
