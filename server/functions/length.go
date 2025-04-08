@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"fmt"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -33,6 +35,13 @@ var length_text = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return int32(len([]rune(val1.(string)))), nil
+		val1str, ok, err := sql.Unwrap[string](ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("unexpected type for length input, expected string, got %T", val1)
+		}
+		return int32(len([]rune(val1str))), nil
 	},
 }

@@ -255,7 +255,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			if err != nil {
 				return nil, err
 			}
-			args[i], _, _ = dt.Convert(args[i])
+			args[i], _, _ = dt.Convert(ctx, args[i])
 		}
 		if args[i] == nil && isStrict {
 			return nil, nil
