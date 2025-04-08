@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"regexp"
 
 	"github.com/cockroachdb/errors"
@@ -52,8 +53,15 @@ var substring_text_int32 = framework.Function2{
 }
 
 // substring_text_int32_fn is a helper function for substr_text_int32 and substring_text_int32.
-func substring_text_int32_fn(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, str any, start any) (any, error) {
-	runes := []rune(str.(string))
+func substring_text_int32_fn(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, input any, start any) (any, error) {
+	str, ok, err := sql.Unwrap[string](ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for substring input, expected string, got %T", str)
+	}
+	runes := []rune(str)
 	if start.(int32) < 1 {
 		start = int32(1)
 	}
@@ -84,10 +92,17 @@ var substring_text_int32_int32 = framework.Function3{
 }
 
 // substring_text_int32_int32_fn is a helper function for substr_text_int32_int32.
-func substring_text_int32_int32_fn(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, str any, startInt any, countInt any) (any, error) {
+func substring_text_int32_int32_fn(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, input any, startInt any, countInt any) (any, error) {
+	str, ok, err := sql.Unwrap[string](ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for substring input, expected string, got %T", str)
+	}
 	start := startInt.(int32)
 	count := countInt.(int32)
-	runes := []rune(str.(string))
+	runes := []rune(str)
 	if count < 0 {
 		return nil, errors.Errorf("negative substring length not allowed")
 	}
@@ -115,13 +130,27 @@ var substring_text_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, str any, pattern any) (any, error) {
-		re, err := regexp.Compile(pattern.(string))
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, input any, pattern any) (any, error) {
+		str, ok, err := sql.Unwrap[string](ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("unexpected type for substring input, expected string, got %T", str)
+		}
+		patternStr, ok, err := sql.Unwrap[string](ctx, pattern)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("unexpected type for substring pattern, expected string, got %T", str)
+		}
+		re, err := regexp.Compile(patternStr)
 		if err != nil {
 			return nil, err
 		}
 
-		match := re.Find([]byte(str.(string)))
+		match := re.Find([]byte(str))
 
 		if match == nil {
 			return nil, nil

@@ -321,7 +321,11 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 			return v, sql.InRange, nil
 		}
 	case "bpchar", "char", "json", "name", "text", "unknown", "varchar":
-		if _, ok := v.(string); ok {
+		_, ok, err := sql.Unwrap[string](ctx, v)
+		if err != nil {
+			return nil, sql.OutOfRange, err
+		}
+		if ok {
 			return v, sql.InRange, nil
 		}
 	case "date", "time", "timestamp", "timestamptz", "timetz":
