@@ -103,5 +103,50 @@ func TestMerge(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:  "merge with unique constraints and foreign keys",
+			Focus: true,
+			SetUpScript: []string{
+				"CREATE TABLE t1 (a INT, b INT, PRIMARY KEY (a), unique (b))",
+				"CREATE TABLE t2 (a INT, b INT, PRIMARY KEY (a), foreign key (b) references t1(b))",
+				"INSERT INTO t1 VALUES (1, 2), (4, 5), (7, 8)",
+				"INSERT INTO t2 VALUES (1, 2), (4, 5), (7, 8)",
+				"CALL DOLT_COMMIT('-Am', 'intial commit')",
+				"CALL DOLT_BRANCH('branch1')",
+				"CALL DOLT_BRANCH('branch2')",
+				"CALL DOLT_CHECKOUT('branch1')",
+				"INSERT INTO t1 VALUES (10, 11)",
+				"INSERT INTO t2 VALUES (10, 11)",
+				"CALL DOLT_COMMIT('-Am', 'added 10')",
+				"CALL DOLT_CHECKOUT('branch2')",
+				"INSERT INTO t1 VALUES (20, 21)",
+				"INSERT INTO t2 VALUES (20, 21)",
+				"CALL DOLT_COMMIT('-Am', 'added 20')",
+				"CALL DOLT_CHECKOUT('main')",
+				"CALL DOLT_MERGE('branch1')",
+				"CALL DOLT_MERGE('branch2')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM t1 order by a",
+					Expected: []sql.Row{
+						{1, "2020-01-02 00:00:00-08"},
+						{2, "2020-01-03 00:00:00-08"},
+						{3, "2020-01-04 00:00:00-08"},
+						{4, "2020-01-05 00:00:00-08"},
+					},
+				},
+				{
+					// make sure the unique constraint is still there
+					Query:       "INSERT INTO t1 VALUES (100, 2)",
+					ExpectedErr: "Check constraint",
+				},
+				{
+					// make sure the foreign key constraint is still there
+					Query:       "INSERT INTO t2 VALUES (100, 200)",
+					ExpectedErr: "Check constraint",
+				},
+			},
+		},
 	})
 }
