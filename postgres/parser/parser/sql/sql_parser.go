@@ -88,7 +88,7 @@ func (p *PostgresParser) QuoteIdentifier(identifier string) string {
 	return fmt.Sprintf(`"%s"`, strings.ReplaceAll(identifier, `"`, `""`))
 }
 
-type PostgresFormatter struct {}
+type PostgresFormatter struct{}
 
 var _ sql.SchemaFormatter = PostgresFormatter{}
 
@@ -111,13 +111,13 @@ func (p PostgresFormatter) GenerateCreateTableColumnDefinition(col *sql.Column, 
 	var colTypeString = col.Type.String()
 	if collationType, ok := col.Type.(sql.TypeWithCollation); ok {
 		colTypeString = collationType.StringWithTableCollation(tableCollation)
-	} 
-	
+	}
+
 	stmt := fmt.Sprintf("  %s %s", p.QuoteIdentifier(col.Name), colTypeString)
 	if !col.Nullable {
 		stmt = fmt.Sprintf("%s NOT NULL", stmt)
 	}
-	
+
 	if col.Generated != nil {
 		storedStr := " STORED"
 		stmt = fmt.Sprintf("%s GENERATED ALWAYS AS %s%s", stmt, col.Generated.String(), storedStr)
