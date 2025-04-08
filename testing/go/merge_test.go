@@ -68,7 +68,7 @@ func TestMerge(t *testing.T) {
 			},
 		},
 		{
-			Name:  "merge with check expressions and column defaults",
+			Name: "merge with check expressions and column defaults",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (a INT, b timestamptz default '2020-01-01 00:00:00'::timestamptz, PRIMARY KEY (a))",
 				"ALTER TABLE t1 ADD CONSTRAINT check_b CHECK (b >= '2020-01-01 00:00:00'::timestamptz)",
@@ -104,8 +104,7 @@ func TestMerge(t *testing.T) {
 			},
 		},
 		{
-			Name:  "merge with unique constraints and foreign keys",
-			Focus: true,
+			Name: "merge with unique constraints and foreign keys",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (a INT, b INT, PRIMARY KEY (a), unique (b))",
 				"CREATE TABLE t2 (a INT, b INT, PRIMARY KEY (a), foreign key (b) references t1(b))",
@@ -130,21 +129,22 @@ func TestMerge(t *testing.T) {
 				{
 					Query: "SELECT * FROM t1 order by a",
 					Expected: []sql.Row{
-						{1, "2020-01-02 00:00:00-08"},
-						{2, "2020-01-03 00:00:00-08"},
-						{3, "2020-01-04 00:00:00-08"},
-						{4, "2020-01-05 00:00:00-08"},
+						{1, 2},
+						{4, 5},
+						{7, 8},
+						{10, 11},
+						{20, 21},
 					},
 				},
 				{
 					// make sure the unique constraint is still there
 					Query:       "INSERT INTO t1 VALUES (100, 2)",
-					ExpectedErr: "Check constraint",
+					ExpectedErr: "unique key",
 				},
 				{
 					// make sure the foreign key constraint is still there
 					Query:       "INSERT INTO t2 VALUES (100, 200)",
-					ExpectedErr: "Check constraint",
+					ExpectedErr: "Foreign key violation",
 				},
 			},
 		},
