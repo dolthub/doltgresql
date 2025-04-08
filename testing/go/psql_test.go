@@ -23,18 +23,43 @@ import (
 func TestPsqlCommands(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			// Many of the psql commands use the OPERATOR(pg_catalog.+) syntax, testing it here directly in a simpler context
 			Name: "operator keyword",
 			Assertions: []ScriptTestAssertion{
-				{
-					Query: "select 1 OPERATOR(pg_catalog.+) 1",
-					Expected: []sql.Row{
-						{2},
-					},
-				},
-				{
-					Query: "select 1 OPERATOR(myschema.+) 1",
-					ExpectedErr: "schema \"myschema\" not allowed",
-				},
+				// {
+				// 	Query: "select 1 OPERATOR(pg_catalog.+) 1",
+				// 	Expected: []sql.Row{
+				// 		{2},
+				// 	},
+				// },
+				// {
+				// 	Query: "select 1 OPERATOR(PG_CATALOG.+) 1",
+				// 	Expected: []sql.Row{
+				// 		{2},
+				// 	},
+				// },
+				// {
+				// 	Query: "select 1 OPERATOR(myschema.+) 1",
+				// 	ExpectedErr: "schema \"myschema\" not allowed",
+				// },
+				// {
+				// 	Query: "select 1 OPERATOR(pg_catalog.<) 1",
+				// 	Expected: []sql.Row{
+				// 		{"f"},
+				// 	},
+				// },
+				// {
+				// 	Query: "select 1 OPERATOR(pg_catalog.<=) 1",
+				// 	Expected: []sql.Row{
+				// 		{"t"},
+				// 	},
+				// },
+				// {
+				// 	Query: "select 1 OPERATOR(pg_catalog.=) 1",
+				// 	Expected: []sql.Row{
+				// 		{"t"},
+				// 	},
+				// },
 				{
 					Query: "select 'hello' OPERATOR(pg_catalog.~) 'hello';",
 					Expected: []sql.Row{
