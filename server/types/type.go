@@ -154,7 +154,17 @@ func (t *DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Co
 }
 
 // Compare implements the types.ExtendedType interface.
-func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
+func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface{}) (int, error) {
+	var err error
+	v1, err = sql.UnwrapAny(ctx, v1)
+	if err != nil {
+		return 0, err
+	}
+	v2, err = sql.UnwrapAny(ctx, v2)
+	if err != nil {
+		return 0, err
+	}
+
 	// TODO: use IoCompare
 	if v1 == nil && v2 == nil {
 		return 0, nil
@@ -276,7 +286,7 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 		bb := v2.([]any)
 		minLength := utils.Min(len(ab), len(bb))
 		for i := 0; i < minLength; i++ {
-			res, err := t.ArrayBaseType().Compare(ab[i], bb[i])
+			res, err := t.ArrayBaseType().Compare(ctx, ab[i], bb[i])
 			if err != nil {
 				return 0, err
 			}
@@ -297,7 +307,7 @@ func (t *DoltgresType) Compare(v1 interface{}, v2 interface{}) (int, error) {
 }
 
 // Convert implements the types.ExtendedType interface.
-func (t *DoltgresType) Convert(v interface{}) (interface{}, sql.ConvertInRange, error) {
+func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{}, sql.ConvertInRange, error) {
 	if v == nil {
 		return nil, sql.InRange, nil
 	}
@@ -466,7 +476,12 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return o.(string), nil
+	var ok bool
+	os, ok, err := sql.Unwrap[string](ctx, o)
+	if !ok {
+		return "", fmt.Errorf("unexpected type for io output, expected string, got %T", val)
+	}
+	return os, err
 }
 
 // IsArrayType returns true if the type is of 'array' category

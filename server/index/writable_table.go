@@ -33,15 +33,15 @@ var _ sql.ProjectedTable = (*WritableDoltgresTable)(nil)
 var _ sql.IndexSearchableTable = (*WritableDoltgresTable)(nil)
 
 // IndexedAccess implements the sql.IndexSearchableTable interface.
-func (dt *WritableDoltgresTable) IndexedAccess(lookup sql.IndexLookup) sql.IndexedTable {
+func (dt *WritableDoltgresTable) IndexedAccess(ctx *sql.Context, lookup sql.IndexLookup) sql.IndexedTable {
 	if dgRanges, ok := lookup.Ranges.(index.DoltgresRangeCollection); ok {
 		return &IndexedWritableDoltgresTable{
-			WritableIndexedDoltTable: dt.WritableDoltTable.IndexedAccess(lookup).(*sqle.WritableIndexedDoltTable),
+			WritableIndexedDoltTable: dt.WritableDoltTable.IndexedAccess(ctx, lookup).(*sqle.WritableIndexedDoltTable),
 			idx:                      lookup.Index,
 			rc:                       dgRanges,
 		}
 	} else {
-		return dt.WritableDoltTable.IndexedAccess(lookup)
+		return dt.WritableDoltTable.IndexedAccess(ctx, lookup)
 	}
 }
 

@@ -101,7 +101,9 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	}
 
 	ssCfg := cfg.ToSqlServerConfig()
-	err = doltservercfg.ApplySystemVariables(ssCfg, sql.SystemVariables)
+	// The sql context can't be passed in because doesn't exist yet.
+	// But since it's only needed to read from the db and the db doesn't exist yet either, this is safe.
+	err = doltservercfg.ApplySystemVariables(nil, ssCfg, sql.SystemVariables)
 	if err != nil {
 		return nil, err
 	}

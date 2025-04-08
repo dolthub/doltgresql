@@ -62,13 +62,13 @@ func convertTupleToIgnoreBoolean(ctx context.Context, valueDesc val.TupleDesc, v
 func getIgnoreTablePatternKey(ctx context.Context, keyDesc val.TupleDesc, keyTuple val.Tuple) (string, error) {
 	extendedTuple := val.NewTupleDescriptorWithArgs(
 		val.TupleDescriptorArgs{Comparator: keyDesc.Comparator(), Handlers: keyDesc.Handlers},
-		val.Type{Enc: val.ExtendedAddrEnc, Nullable: false},
+		val.Type{Enc: val.ExtendedAdaptiveEnc, Nullable: false},
 	)
 	if !keyDesc.Equals(extendedTuple) {
 		return "", fmt.Errorf("dolt_ignore had unexpected key type, this should never happen")
 	}
 
-	keyAddr, ok := keyDesc.GetExtendedAddr(0, keyTuple)
+	keyAddr, ok := keyDesc.GetExtendedAdaptiveValue(0, keyTuple)
 	if !ok {
 		return "", fmt.Errorf("could not read pattern")
 	}
