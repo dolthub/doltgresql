@@ -17,11 +17,14 @@ package _go
 import (
 	"testing"
 
+	"github.com/dolthub/doltgresql/testing/go/testdata"
+
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestBasicIndexing(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+
 		{
 			Name: "Covering Index",
 			SetUpScript: []string{
@@ -968,6 +971,79 @@ func TestBasicIndexing(t *testing.T) {
 					Query: `SELECT "django_content_type"."id", "django_content_type"."app_label", "django_content_type"."model" FROM "django_content_type" WHERE ("django_content_type"."app_label" = 'contenttypes' AND "django_content_type"."model" = 'contenttype') LIMIT 21;`,
 					Expected: []sql.Row{
 						{4, "contenttypes", "contenttype"},
+					},
+				},
+			},
+		},
+		{
+			Name: "Proper range AND + OR handling",
+			SetUpScript: []string{
+				"CREATE TABLE test(pk INTEGER PRIMARY KEY, v1 INTEGER);",
+				"INSERT INTO test VALUES (1, 1),  (2, 3),  (3, 5),  (4, 7),  (5, 9);",
+				"CREATE INDEX v1_idx ON test(v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 BETWEEN 3 AND 5 OR v1 BETWEEN 7 AND 9;",
+					Expected: []sql.Row{
+						{2, 3},
+						{3, 5},
+						{4, 7},
+						{5, 9},
+					},
+				},
+			},
+		},
+		{
+			Name: "Performance Regression Test #1",
+			SetUpScript: []string{
+				"CREATE TABLE sbtest1(id SERIAL, k INTEGER DEFAULT '0' NOT NULL, c CHAR(120) DEFAULT '' NOT NULL, pad CHAR(60) DEFAULT '' NOT NULL, PRIMARY KEY (id))",
+				testdata.INDEX_PERFORMANCE_REGRESSION_INSERTS,
+				"CREATE INDEX k_1 ON sbtest1(k)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT id, k FROM sbtest1 WHERE k BETWEEN 3708 AND 3713 OR k BETWEEN 5041 AND 5046;",
+					Expected: []sql.Row{
+						{2, 5041},
+						{18, 5041},
+						{57, 5046},
+						{58, 5044},
+						{79, 5045},
+						{80, 5041},
+						{81, 5045},
+						{107, 5041},
+						{113, 5044},
+						{153, 5043},
+						{167, 5043},
+						{187, 5044},
+						{210, 5046},
+						{213, 5046},
+						{216, 5041},
+						{222, 5045},
+						{238, 5043},
+						{265, 5042},
+						{269, 5046},
+						{279, 5045},
+						{295, 5042},
+						{298, 5045},
+						{309, 5044},
+						{324, 3710},
+						{348, 5042},
+						{353, 5045},
+						{374, 5045},
+						{390, 5042},
+						{400, 5045},
+						{430, 5045},
+						{445, 5044},
+						{476, 5046},
+						{496, 5045},
+						{554, 5042},
+						{565, 5043},
+						{566, 5045},
+						{571, 5046},
+						{573, 5046},
+						{582, 5043},
 					},
 				},
 			},

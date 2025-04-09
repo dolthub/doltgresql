@@ -82,29 +82,25 @@ func (element *indexBuilderElement) ToRange(ctx *sql.Context) index.DoltgresRang
 			switch columnExpr.strategy {
 			case OperatorStrategyNumber_Less:
 				lastIndexEqual = false
-				startExprs = append(startExprs, pgexprs.NewRawLiteralBool(true))
-				stopExprs = append(stopExprs, framework.GetBinaryFunction(framework.Operator_BinaryGreaterOrEqual).
-					Compile("index_less_stop", columnExpr.column, columnExpr.literal))
+				stopExprs = append(stopExprs, getQuickFunction(framework.GetBinaryFunction(framework.Operator_BinaryGreaterOrEqual).
+					Compile("index_less_stop", columnExpr.column, columnExpr.literal)))
 			case OperatorStrategyNumber_LessEquals:
 				lastIndexEqual = false
-				startExprs = append(startExprs, pgexprs.NewRawLiteralBool(true))
-				stopExprs = append(stopExprs, framework.GetBinaryFunction(framework.Operator_BinaryGreaterThan).
-					Compile("index_less_equals_stop", columnExpr.column, columnExpr.literal))
+				stopExprs = append(stopExprs, getQuickFunction(framework.GetBinaryFunction(framework.Operator_BinaryGreaterThan).
+					Compile("index_less_equals_stop", columnExpr.column, columnExpr.literal)))
 			case OperatorStrategyNumber_Equals:
-				startExprs = append(startExprs, framework.GetBinaryFunction(framework.Operator_BinaryGreaterOrEqual).
-					Compile("index_equals_start", columnExpr.column, columnExpr.literal))
-				stopExprs = append(stopExprs, framework.GetBinaryFunction(framework.Operator_BinaryGreaterThan).
-					Compile("index_equals_stop", columnExpr.column, columnExpr.literal))
+				startExprs = append(startExprs, getQuickFunction(framework.GetBinaryFunction(framework.Operator_BinaryGreaterOrEqual).
+					Compile("index_equals_start", columnExpr.column, columnExpr.literal)))
+				stopExprs = append(stopExprs, getQuickFunction(framework.GetBinaryFunction(framework.Operator_BinaryGreaterThan).
+					Compile("index_equals_stop", columnExpr.column, columnExpr.literal)))
 			case OperatorStrategyNumber_GreaterEquals:
 				lastIndexEqual = false
-				startExprs = append(startExprs, framework.GetBinaryFunction(framework.Operator_BinaryGreaterOrEqual).
-					Compile("index_greater_equals_start", columnExpr.column, columnExpr.literal))
-				stopExprs = append(stopExprs, pgexprs.NewRawLiteralBool(false))
+				startExprs = append(startExprs, getQuickFunction(framework.GetBinaryFunction(framework.Operator_BinaryGreaterOrEqual).
+					Compile("index_greater_equals_start", columnExpr.column, columnExpr.literal)))
 			case OperatorStrategyNumber_Greater:
 				lastIndexEqual = false
-				startExprs = append(startExprs, framework.GetBinaryFunction(framework.Operator_BinaryGreaterThan).
-					Compile("index_greater_start", columnExpr.column, columnExpr.literal))
-				stopExprs = append(stopExprs, pgexprs.NewRawLiteralBool(false))
+				startExprs = append(startExprs, getQuickFunction(framework.GetBinaryFunction(framework.Operator_BinaryGreaterThan).
+					Compile("index_greater_start", columnExpr.column, columnExpr.literal)))
 			}
 		}
 	}
@@ -114,6 +110,34 @@ func (element *indexBuilderElement) ToRange(ctx *sql.Context) index.DoltgresRang
 		for _, expr := range column.exprs {
 			filterExprs = append(filterExprs, expr.original)
 		}
+	}
+	// If either the start or stop expressions are empty, then we'll insert literal boolean expressions.
+	// For start expressions, giving the expression literal "true" will cause the iterator to match the very beginning,
+	// since the binary search algorithm finds the first value where "true" is returned. With the "true" literal, we'll
+	// essentially force the iterator to start from the beginning. When there are multiple expressions, the expression
+	// literal "true" becomes redundant, as search requires that all expressions are "true" for that tuple to be
+	// iterated over.
+	// Stop expressions use the same binary search algorithm that start expressions do, however there is an important
+	// nuance that must be considered. The expression literal "false" will push the iterator to the end, which is what
+	// we want in some scenarios. However, since search needs only a single "false" to push the iterator forward, we can
+	// end up forcing the iterator to push to the end if a single expression literal "false" is present. This causes the
+	// iterator to iterate over too many elements, which can return incorrect results if the range is considered to be a
+	// precise match (which removes the high-level filter as an optimization, or some portion of the high-level filter).
+	//
+	// For a concrete example, let's look at the filter (BETWEEN 4 AND 7). This is equivalent to (x >= 4 AND x <= 7).
+	// We can rewrite these as ranges using set notation, which would be [4, ∞) ∩ (∞, 7].
+	// We can individually represent [4, ∞) as expressions: start(>=4) | stop(false)
+	// We can also represent (∞, 7] as expressions: start(true) | stop(>7)
+	// Combining the expressions naively would give: start(>=4, true) | stop(false, >7)
+	// Although our start expressions will return the correct results, our stop expressions will always be pushed to the
+	// end as the >7 expression is essentially ignored. This is why we only add our literal boolean expressions at the
+	// end.
+	// This makes sense from the set notation perspective as well: [4, ∞) ∩ (∞, 7] === [4, 7]
+	if len(startExprs) == 0 {
+		startExprs = []sql.Expression{pgexprs.NewRawLiteralBool(true)}
+	}
+	if len(stopExprs) == 0 {
+		stopExprs = []sql.Expression{pgexprs.NewRawLiteralBool(false)}
 	}
 	return index.DoltgresRange{
 		StartExpressions:  startExprs,
@@ -133,4 +157,14 @@ func (element *indexBuilderElement) SortStrategiesByRestrictiveness() {
 			return column.exprs[i].strategy.IsMoreRestrictive(column.exprs[j].strategy)
 		})
 	}
+}
+
+// getQuickFunction returns the framework.QuickFunction form of this function, if it exists. If one does not exist, then
+// this returns the original framework.CompiledFunction.
+func getQuickFunction(c *framework.CompiledFunction) sql.FunctionExpression {
+	qf := c.GetQuickFunction()
+	if qf != nil {
+		return qf
+	}
+	return c
 }
