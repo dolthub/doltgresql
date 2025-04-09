@@ -976,6 +976,25 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "Proper range AND + OR handling",
+			SetUpScript: []string{
+				"CREATE TABLE test(pk INTEGER PRIMARY KEY, v1 INTEGER);",
+				"INSERT INTO test VALUES (1, 1),  (2, 3),  (3, 5),  (4, 7),  (5, 9);",
+				"CREATE INDEX v1_idx ON test(v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM test WHERE v1 BETWEEN 3 AND 5 OR v1 BETWEEN 7 AND 9;",
+					Expected: []sql.Row{
+						{2, 3},
+						{3, 5},
+						{4, 7},
+						{5, 9},
+					},
+				},
+			},
+		},
+		{
 			Name: "Performance Regression Test #1",
 			SetUpScript: []string{
 				"CREATE TABLE sbtest1(id SERIAL, k INTEGER DEFAULT '0' NOT NULL, c CHAR(120) DEFAULT '' NOT NULL, pad CHAR(60) DEFAULT '' NOT NULL, PRIMARY KEY (id))",
