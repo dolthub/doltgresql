@@ -217,6 +217,11 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
+					Skip:     true, // TODO: function dolt_clean() does not exist
+					Query:    "SELECT DOLT_CLEAN();",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
 					Query:    "SELECT DOLT_CLEAN('t1');",
 					Expected: []sql.Row{{"{0}"}},
 				},
