@@ -94,9 +94,18 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			}
 		}
 		fallthrough
-	// Although Int16 would be a closer fit for some of these types, in Postgres, Int32 is generally the smallest value
-	// used. To maximize overall compatibility, it's better to interpret these values as Int32 instead.
-	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
+		// In Postgres, Int32 is generally the smallest value returned. But we convert int8 and int16 to this type during 
+		// schema conversion, which means we must do so here as well to avoid runtime panics.
+	case query.Type_INT16:
+		newVal, _, err := types.Int16.Convert(ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := newVal.(int16); !ok {
+			return nil, errors.Errorf("GMSCast expected type `int32`, got `%T`", val)
+		}
+		return newVal, nil
+	case query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
 		newVal, _, err := types.Int32.Convert(ctx, val)
 		if err != nil {
 			return nil, err
