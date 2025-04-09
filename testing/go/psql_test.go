@@ -84,7 +84,7 @@ func TestPsqlCommands(t *testing.T) {
 						"     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
 						"     LEFT JOIN pg_catalog.pg_am am ON am.oid = c.relam " +
 						"WHERE c.relkind IN ('r','p','t','s','') " +
-						"  AND c.relname OPERATOR(pg_catalog.~) '^(test_table)$' " + // COLLATE pg_catalog.default " +
+						"  AND c.relname OPERATOR(pg_catalog.~) '^(test_table)$' COLLATE pg_catalog.default " +
 						"  AND pg_catalog.pg_table_is_visible(c.oid) " +
 						"ORDER BY 1,2;",
 				},
