@@ -58,6 +58,7 @@ func Initialize(dEnv *env.DoltEnv) {
 		cast.Init()
 		framework.Initialize()
 		sql.GlobalParser = pgsql.NewPostgresParser()
+		sql.GlobalSchemaFormatter = pgsql.NewPostgresSchemaFormatter()
 		servercfg.DefaultUnixSocketFilePath = doltgresservercfg.DefaultPostgresUnixSocketFilePath
 		tables.Init()
 		pgcatalog.Init()
