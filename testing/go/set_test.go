@@ -5437,6 +5437,11 @@ var setStmts = []ScriptTest{
 				Query:       "SET server_version_num TO '160001'",
 				ExpectedErr: "is a read only variable",
 			},
+			{
+				Skip:     true, // TODO: unexpected type for io output, expected string, got int64
+				Query:    "SELECT current_setting('server_version_num')",
+				Expected: []sql.Row{{"160001"}},
+			},
 		},
 	},
 	{
