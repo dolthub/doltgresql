@@ -145,6 +145,12 @@ func TestSubqueries(t *testing.T) {
 					Query:       `SELECT ARRAY(SELECT id, id FROM test order by 1);`,
 					ExpectedErr: "only a single column subquery is supported",
 				},
+				{
+					Query: `SELECT array_to_string(ARRAY(SELECT id FROM test order by 1), ',')`,
+					Expected: []sql.Row{
+						{"1,2,3"},
+					},
+				},
 			},
 		},
 	})
