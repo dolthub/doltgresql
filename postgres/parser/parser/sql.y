@@ -2374,7 +2374,7 @@ alter_opt_column_options:
     $$.val = &tree.AlterTableAlterColumnType{
       Column: tree.Name($1),
       ToType: $4.typeReference(),
-      Collation: $5.unresolvedObjectName().String(),
+      Collation: $5.unresolvedObjectName().UnquotedString(),
       Using: $6.expr(),
     }
   }
@@ -2687,7 +2687,7 @@ alter_attribute_action:
       Action: "add",
       ColName: tree.Name($3),
       TypeName: $4.typeReference(),
-      Collate: $5.unresolvedObjectName().String(),
+      Collate: $5.unresolvedObjectName().UnquotedString(),
       DropBehavior: $6.dropBehavior(),
     }
   }
@@ -2714,7 +2714,7 @@ alter_attribute_action:
       Action: "alter",
       ColName: tree.Name($3),
       TypeName: $5.typeReference(),
-      Collate: $6.unresolvedObjectName().String(),
+      Collate: $6.unresolvedObjectName().UnquotedString(),
       DropBehavior: $7.dropBehavior(),
     }
   }
@@ -2724,7 +2724,7 @@ alter_attribute_action:
       Action: "alter",
       ColName: tree.Name($3),
       TypeName: $7.typeReference(),
-      Collate: $8.unresolvedObjectName().String(),
+      Collate: $8.unresolvedObjectName().UnquotedString(),
       DropBehavior: $9.dropBehavior(),
     }
   }
@@ -3837,7 +3837,7 @@ comment_stmt:
   }
 | COMMENT ON COLLATION collation_name IS comment_text
   {
-    $$.val = &tree.Comment{Object: &tree.CommentOnCollation{Name: $4.unresolvedObjectName().String()}, Comment: $6.strPtr()}
+    $$.val = &tree.Comment{Object: &tree.CommentOnCollation{Name: $4.unresolvedObjectName().UnquotedString()}, Comment: $6.strPtr()}
   }
 | COMMENT ON COLUMN column_path IS comment_text
   {
@@ -4183,7 +4183,7 @@ create_domain_stmt:
     $$.val = &tree.CreateDomain{
       TypeName: $3.unresolvedObjectName(),
       DataType: $5.typeReference(),
-      Collate: $6.unresolvedObjectName().String(),
+      Collate: $6.unresolvedObjectName().UnquotedString(),
       Default: $7.expr(),
       Constraints: $8.domainConstraints(),
     }
@@ -8034,17 +8034,17 @@ partition_index_params:
 partition_index_elem:
   name opt_collate opt_opclass
   {
-    $$.val = tree.IndexElem{Column: tree.Name($1), Collation: $2.unresolvedObjectName().String(), OpClass: $3.opClass()}
+    $$.val = tree.IndexElem{Column: tree.Name($1), Collation: $2.unresolvedObjectName().UnquotedString(), OpClass: $3.opClass()}
   }
 | '(' a_expr ')' opt_collate opt_opclass
   {
-    $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4.unresolvedObjectName().String(), OpClass: $5.opClass()}
+    $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4.unresolvedObjectName().UnquotedString(), OpClass: $5.opClass()}
   }
 
 alter_column_def:
   column_name typename opt_collate col_constraint_list
   {
-    tableDef, err := tree.NewColumnTableDef(tree.Name($1), $2.typeReference(), "", $3.unresolvedObjectName().String(), $4.colQuals())
+    tableDef, err := tree.NewColumnTableDef(tree.Name($1), $2.typeReference(), "", $3.unresolvedObjectName().UnquotedString(), $4.colQuals())
     if err != nil {
       return setErr(sqllex, err)
     }
@@ -8057,7 +8057,7 @@ alter_column_def:
 create_table_column_def:
   column_name typename opt_compression opt_collate col_constraint_list
   {
-    tableDef, err := tree.NewColumnTableDef(tree.Name($1), $2.typeReference(), $3, $4.unresolvedObjectName().String(), $5.colQuals())
+    tableDef, err := tree.NewColumnTableDef(tree.Name($1), $2.typeReference(), $3, $4.unresolvedObjectName().UnquotedString(), $5.colQuals())
     if err != nil {
       return setErr(sqllex, err)
     }
@@ -9214,11 +9214,11 @@ opt_type_composite_list:
 type_composite_list:
   name typename opt_collate
   {
-    $$.val = []tree.CompositeTypeElem{{AttrName: $1, Type: $2.typeReference(), Collate: $3.unresolvedObjectName().String()}}
+    $$.val = []tree.CompositeTypeElem{{AttrName: $1, Type: $2.typeReference(), Collate: $3.unresolvedObjectName().UnquotedString()}}
   }
 | type_composite_list ',' name typename opt_collate
   {
-    $$.val = append($1.compositeTypeElems(), tree.CompositeTypeElem{AttrName: $3, Type: $4.typeReference(), Collate: $5.unresolvedObjectName().String()})
+    $$.val = append($1.compositeTypeElems(), tree.CompositeTypeElem{AttrName: $3, Type: $4.typeReference(), Collate: $5.unresolvedObjectName().UnquotedString()})
   }
 
 type_range_optional_list:
@@ -9239,7 +9239,7 @@ type_range_option:
   SUBTYPE_OPCLASS '=' name
   { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeSubtypeOpClass, StrVal: $3} }
 | COLLATION '=' collation_name
-  { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeCollation, StrVal: $3.unresolvedObjectName().String()} }
+  { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeCollation, StrVal: $3.unresolvedObjectName().UnquotedString()} }
 | CANONICAL '=' name
   { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeCanonical, StrVal: $3} }
 | SUBTYPE_DIFF '=' name
@@ -9426,11 +9426,11 @@ index_params:
 index_elem:
   name opt_collate opt_opclass opt_asc_desc opt_nulls_order
   {
-    $$.val = tree.IndexElem{Column: tree.Name($1), Collation: $2.unresolvedObjectName().String(), OpClass: $3.opClass(), Direction: $4.dir(), NullsOrder: $5.nullsOrder()}
+    $$.val = tree.IndexElem{Column: tree.Name($1), Collation: $2.unresolvedObjectName().UnquotedString(), OpClass: $3.opClass(), Direction: $4.dir(), NullsOrder: $5.nullsOrder()}
   }
 | '(' a_expr ')' opt_collate opt_opclass opt_asc_desc opt_nulls_order
   {
-    $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4.unresolvedObjectName().String(), OpClass: $5.opClass(), Direction: $6.dir(), NullsOrder: $7.nullsOrder()}
+    $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4.unresolvedObjectName().UnquotedString(), OpClass: $5.opClass(), Direction: $6.dir(), NullsOrder: $7.nullsOrder()}
   }
 
 opt_opclass:
@@ -12275,7 +12275,7 @@ a_expr:
   }
 | a_expr COLLATE collation_name
   {
-    $$.val = &tree.CollateExpr{Expr: $1.expr(), Locale: $3.unresolvedObjectName().String()}
+    $$.val = &tree.CollateExpr{Expr: $1.expr(), Locale: $3.unresolvedObjectName().UnquotedString()}
   }
 | a_expr AT TIME ZONE a_expr %prec AT
   {

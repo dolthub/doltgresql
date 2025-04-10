@@ -337,6 +337,22 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "create table with collation",
+			SetUpScript: []string{
+				`CREATE TABLE collate_test1 (
+    a int,
+        b text COLLATE "en-x-icu" NOT NULL
+        )`,
+				"insert into collate_test1 (a, b) values (1, 'foo');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select * from collate_test1;",
+					Expected: []sql.Row{{1, "foo"}},
+				},
+			},
+		},
 	})
 }
 
@@ -365,7 +381,6 @@ func TestCreateTableInherit(t *testing.T) {
 						{1, 2, 3, 4},
 					},
 				},
-
 				{
 					Query:    "create table t111 () inherits (t1, t11);",
 					Expected: []sql.Row{},
@@ -380,7 +395,6 @@ func TestCreateTableInherit(t *testing.T) {
 						{1},
 					},
 				},
-
 				{
 					Query:    "create table t1t1 (a int) inherits (t1);",
 					Expected: []sql.Row{},
@@ -395,7 +409,6 @@ func TestCreateTableInherit(t *testing.T) {
 						{1},
 					},
 				},
-
 				{
 					Query:    "create table TT1t1 (A int) inherits (t1);",
 					Expected: []sql.Row{},
