@@ -15,12 +15,11 @@
 package expression
 
 import (
-	"fmt"
-
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 )
 
@@ -48,7 +47,12 @@ func (a ArrayFlatten) Type() sql.Type {
 	sqType := a.Subquery.Type()
 	dt, ok := sqType.(*types.DoltgresType)
 	if !ok {
-		panic(fmt.Sprintf("expected doltgres type, got %T", sqType))
+		// If we don't have a doltgres type, we'll error out at execution time. A special case is the tuple type, 
+		// where we need to choose a single one to avoid erroring out too early.
+		if tt, ok := sqType.(gmstypes.TupleType); ok {
+			return tt[0]
+		}
+		return sqType
 	}
 	return dt.ToArrayType()
 }
@@ -68,6 +72,9 @@ func (a ArrayFlatten) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	sqType := subquery.Type()
 	_, ok = sqType.(*types.DoltgresType)
 	if !ok {
+		if tt, ok := sqType.(gmstypes.TupleType); ok {
+			return nil, errors.Errorf("only a single column subquery is supported in ARRAY(), got %d columns", len(tt))
+		}
 		return nil, errors.Errorf("expected doltgres type, got %T", sqType)
 	}
 	
