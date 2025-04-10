@@ -94,7 +94,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			}
 		}
 		fallthrough
-		// In Postgres, Int32 is generally the smallest value returned. But we convert int8 and int16 to this type during 
+		// In Postgres, Int32 is generally the smallest value returned. But we convert int8 and int16 to this type during
 		// schema conversion, which means we must do so here as well to avoid runtime panics.
 	case query.Type_INT16:
 		newVal, _, err := types.Int16.Convert(ctx, val)

@@ -39,7 +39,7 @@ func TestPsqlCommands(t *testing.T) {
 					},
 				},
 				{
-					Query: "select 1 OPERATOR(myschema.+) 1",
+					Query:       "select 1 OPERATOR(myschema.+) 1",
 					ExpectedErr: "schema \"myschema\" not allowed",
 				},
 				{
