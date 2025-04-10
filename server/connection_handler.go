@@ -1009,6 +1009,7 @@ func (h *ConnectionHandler) sendDescribeResponse(fields []pgproto3.FieldDescript
 
 // handledPSQLCommands handles the special PSQL commands, such as \l and \dt.
 func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) {
+	return false, nil
 	statement = strings.ToLower(statement)
 	// Command: \l
 	if statement == "select d.datname as \"name\",\n       pg_catalog.pg_get_userbyid(d.datdba) as \"owner\",\n       pg_catalog.pg_encoding_to_char(d.encoding) as \"encoding\",\n       d.datcollate as \"collate\",\n       d.datctype as \"ctype\",\n       d.daticulocale as \"icu locale\",\n       case d.datlocprovider when 'c' then 'libc' when 'i' then 'icu' end as \"locale provider\",\n       pg_catalog.array_to_string(d.datacl, e'\\n') as \"access privileges\"\nfrom pg_catalog.pg_database d\norder by 1;" {
