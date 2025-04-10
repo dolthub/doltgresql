@@ -15,12 +15,17 @@
 package expression
 
 import (
+	"fmt"
+
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 )
 
-// ArrayFlatten is an expression that represents the results of a subquery expression as an array 
+// ArrayFlatten is an expression that represents the results of a subquery expression as an array.
+// Currently only subqueries that return a single column are supported.
 type ArrayFlatten struct {
 		Subquery sql.Expression
 }
@@ -28,35 +33,53 @@ type ArrayFlatten struct {
 var _ vitess.Injectable = (*ArrayFlatten)(nil)
 var _ sql.Expression = (*ArrayFlatten)(nil)
 
+// Resolved implements sql.Expression.
 func (a ArrayFlatten) Resolved() bool {
 	return a.Subquery.Resolved()
 }
 
+// String implements sql.Expression.
 func (a ArrayFlatten) String() string {
 	return "ARRAY(" + a.Subquery.String() + ")"
 }
 
+// Type implements sql.Expression.
 func (a ArrayFlatten) Type() sql.Type {
-	return types.AnyArray
+	sqType := a.Subquery.Type()
+	dt, ok := sqType.(*types.DoltgresType)
+	if !ok {
+		panic(fmt.Sprintf("expected doltgres type, got %T", sqType))
+	}
+	return dt.ToArrayType()
 }
 
+// IsNullable implements sql.Expression.
 func (a ArrayFlatten) IsNullable() bool {
 	return false
 }
 
+// Eval implements sql.Expression.
 func (a ArrayFlatten) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
-	result, err := a.Subquery.Eval(ctx, row)
-	if err != nil {
-		return nil, err
+	subquery, ok := a.Subquery.(*plan.Subquery)
+	if !ok {
+		return nil, errors.Errorf("expected subquery, got %T", a.Subquery)
 	}
 	
-	return result, nil
+	sqType := subquery.Type()
+	_, ok = sqType.(*types.DoltgresType)
+	if !ok {
+		return nil, errors.Errorf("expected doltgres type, got %T", sqType)
+	}
+	
+	return subquery.EvalMultiple(ctx, row)
 }
 
+// Children implements sql.Expression.
 func (a ArrayFlatten) Children() []sql.Expression {
 	return []sql.Expression{a.Subquery}
 }
 
+// WithChildren implements sql.Expression.
 func (a ArrayFlatten) WithChildren(children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(a, len(children), 1)
@@ -65,6 +88,7 @@ func (a ArrayFlatten) WithChildren(children ...sql.Expression) (sql.Expression, 
 	return ArrayFlatten{Subquery: children[0]}, nil
 }
 
+// WithResolvedChildren implements vitess.Injectable.
 func (a ArrayFlatten) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(a, len(children), 1)

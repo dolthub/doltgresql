@@ -125,9 +125,9 @@ func TestSubqueries(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT ARRAY(SELECT id FROM test);`,
+					Query: `SELECT ARRAY(SELECT id FROM test order by 1);`,
 					Expected: []sql.Row{
-						{[]interface{}{int32(1), int32(2), int32(3)}},
+						{"{1,2,3}"},
 					},
 				},
 			},
