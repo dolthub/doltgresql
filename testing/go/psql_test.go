@@ -70,7 +70,6 @@ func TestPsqlCommands(t *testing.T) {
 		},
 		{
 			Name: `\dt tablename`,
-			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);",
 			},
@@ -87,6 +86,29 @@ func TestPsqlCommands(t *testing.T) {
 						"  AND c.relname OPERATOR(pg_catalog.~) '^(test_table)$' COLLATE pg_catalog.default " +
 						"  AND pg_catalog.pg_table_is_visible(c.oid) " +
 						"ORDER BY 1,2;",
+				},
+			},
+		},
+		{
+			Name: `\d tablename`,
+			Skip: true, // needs ArrayFlatten
+			SetUpScript: []string{
+				"CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT pol.polname, pol.polpermissive,
+       CASE WHEN pol.polroles = '{0}' THEN NULL ELSE pg_catalog.array_to_string(array(select rolname from pg_catalog.pg_roles where oid = any (pol.polroles) order by 1),',') END,
+       pg_catalog.pg_get_expr(pol.polqual, pol.polrelid),
+       pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid),
+       CASE pol.polcmd
+           WHEN 'r' THEN 'SELECT'
+           WHEN 'a' THEN 'INSERT'
+           WHEN 'w' THEN 'UPDATE'
+           WHEN 'd' THEN 'DELETE'
+           END AS cmd
+FROM pg_catalog.pg_policy pol
+WHERE pol.polrelid = '4131846889' ORDER BY 1;`,
 				},
 			},
 		},
