@@ -116,6 +116,22 @@ func TestSubqueries(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array flatten",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE TABLE test (id INT, c varchar);`,
+				`INSERT INTO test VALUES (1, 'a'), (2, 'b'), (3, 'b');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT ARRAY(SELECT id FROM test);`,
+					Expected: []sql.Row{
+						{[]interface{}{int32(1), int32(2), int32(3)}},
+					},
+				},
+			},
+		},
 	})
 }
 

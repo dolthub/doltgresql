@@ -136,7 +136,14 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Children:   unresolvedChildren,
 		}, nil
 	case *tree.ArrayFlatten:
-		return nil, errors.Errorf("flattening arrays is not yet supported")
+		subquery, err := nodeExpr(ctx, node.Subquery)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{
+			Expression: pgexprs.ArrayFlatten{},
+			Children:   vitess.Exprs{subquery},
+		}, nil
 	case *tree.BinaryExpr:
 		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {

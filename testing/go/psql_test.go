@@ -92,7 +92,7 @@ func TestPsqlCommands(t *testing.T) {
 		},
 		{
 			Name: `\d tablename`,
-			Skip: true, // needs ArrayFlatten
+			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);",
 			},
