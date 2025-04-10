@@ -92,7 +92,6 @@ func TestPsqlCommands(t *testing.T) {
 		},
 		{
 			Name: `\d tablename`,
-			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);",
 			},
