@@ -179,6 +179,14 @@ func TestAlterTable(t *testing.T) {
 					Query:    "INSERT INTO t1 VALUES (1, 1);",
 					Expected: []sql.Row{},
 				},
+				{
+					Query:       "ALTER TABLE t1 DROP CONSTRAINT doesnotexist;",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT IF EXISTS doesnotexist;",
+					Expected: []sql.Row{},
+				},
 			},
 		},
 		{
