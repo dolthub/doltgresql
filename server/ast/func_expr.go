@@ -15,6 +15,8 @@
 package ast
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -23,7 +25,7 @@ import (
 )
 
 // nodeFuncExpr handles *tree.FuncExpr nodes.
-func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (*vitess.FuncExpr, error) {
+func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -36,6 +38,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (*vitess.FuncExpr, error) {
 	if len(node.OrderBy) > 0 {
 		return nil, errors.Errorf("function ORDER BY is not yet supported")
 	}
+	
 	var qualifier vitess.TableIdent
 	var name vitess.ColIdent
 	switch funcRef := node.Func.FunctionReference.(type) {
@@ -69,6 +72,27 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (*vitess.FuncExpr, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// special case for string_agg, which maps to the mysql aggregate function group_concat
+	switch strings.ToLower(name.String()) {
+	case "string_agg":
+		if len(node.Exprs) != 2 {
+			return nil, errors.Errorf("string_agg requires two arguments")
+		}
+		sep, ok := node.Exprs[1].(*tree.StrVal)
+		if !ok {
+			return nil, errors.Errorf("string_agg requires a string separator")
+		}
+		sepString := strings.Trim(sep.String(), "'")
+		
+		return &vitess.GroupConcatExpr{
+			Exprs:     exprs[:1],
+			Separator: vitess.Separator{
+				SeparatorString: sepString,
+			},
+		}, nil
+	}
+
 	return &vitess.FuncExpr{
 		Qualifier: qualifier,
 		Name:      name,
