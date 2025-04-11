@@ -1168,7 +1168,7 @@ type BinaryExpr struct {
 	Operator    BinaryOperator
 	Left, Right Expr
 	// Schema is only set for operators from a particular named schema using the OPERATOR() syntax
-	Schema      Name
+	Schema Name
 
 	typeAnnotation
 	Fn *BinOp
