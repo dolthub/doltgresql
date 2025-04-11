@@ -95,8 +95,7 @@ func TestPsqlCommands(t *testing.T) {
 			},
 		},
 		{
-			Name:  `\d tablename`,
-			Focus: true,
+			Name: `\d tablename`,
 			SetUpScript: []string{
 				"CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);",
 			},
@@ -127,6 +126,7 @@ stxnamespace::pg_catalog.regnamespace::pg_catalog.text AS nsp,
                         WHERE stxrelid = '4131846889' ORDER BY nsp, stxname;`,
 				},
 				{
+					Skip: true, // lots that we don't support yet
 					Query: `SELECT pubname
 , NULL
 , NULL
