@@ -911,6 +911,17 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		ResetVal:  int8(0),
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
+	"default_with_oids": &Parameter{
+		Name:      "default_with_oids",
+		Default:   int8(0),
+		Category:  "Version and Platform Compatibility / Previous PostgreSQL Versions",
+		ShortDesc: "Provided for backwards compatibility; Doltgres does not support OID columns, even if this parameter is enabled.",
+		Context:   ParameterContextUser,
+		Type:      types.NewSystemBoolType("default_with_oids"),
+		Source:    ParameterSourceDefault,
+		ResetVal:  int8(0),
+		Scope:     GetPgsqlScope(PsqlScopeSession),
+	},
 	"dynamic_library_path": &Parameter{
 		Name:      "dynamic_library_path",
 		Default:   "$libdir",
