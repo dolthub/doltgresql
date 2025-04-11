@@ -145,6 +145,11 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Children:   vitess.Exprs{subquery},
 		}, nil
 	case *tree.BinaryExpr:
+		// We will eventually support operators in other schemas, but for now we only can handle built-ins
+		if len(node.Schema) > 0 && node.Schema != "pg_catalog" {
+			return nil, errors.Errorf("schema %q not allowed in OPERATOR syntax", node.Schema)
+		}
+
 		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err
@@ -311,6 +316,11 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.CommentOnColumn:
 		return nil, errors.Errorf("comment on column is not yet supported")
 	case *tree.ComparisonExpr:
+		// We will eventually support operators in other schemas, but for now we only can handle built-ins
+		if len(node.Schema) > 0 && node.Schema != "pg_catalog" {
+			return nil, errors.Errorf("schema %q not allowed in OPERATOR syntax", node.Schema)
+		}
+
 		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err

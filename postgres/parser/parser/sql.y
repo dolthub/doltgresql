@@ -12642,299 +12642,143 @@ a_expr:
 // This is to support particular psql commands that require it.
 | a_expr OPERATOR '(' schema_name '.' '+' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Plus, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Plus, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '-' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Minus, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Minus, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '*' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Mult, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Mult, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '/' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Div, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Div, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' FLOORDIV ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.FloorDiv, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.FloorDiv, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '%' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Mod, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Mod, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '^' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Pow, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Pow, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '#' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Bitxor, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Bitxor, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '&' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Bitand, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Bitand, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '|' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Bitor, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Bitor, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '<' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.ComparisonExpr{Operator: tree.LT, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.LT, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '>' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.ComparisonExpr{Operator: tree.GT, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.GT, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '?' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.ComparisonExpr{Operator: tree.JSONExists, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.JSONExists, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' JSON_SOME_EXISTS ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.ComparisonExpr{Operator: tree.JSONSomeExists, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.JSONSomeExists, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' JSON_ALL_EXISTS ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.ComparisonExpr{Operator: tree.JSONAllExists, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.JSONAllExists, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' '=' ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.ComparisonExpr{Operator: tree.EQ, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.EQ, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' CONCAT ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.Concat, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Concat, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' LSHIFT ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.LShift, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.LShift, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' RSHIFT ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.RShift, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.RShift, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' FETCHVAL ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.JSONFetchVal, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.JSONFetchVal, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' FETCHTEXT ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.JSONFetchText, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.JSONFetchText, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' FETCHVAL_PATH ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.JSONFetchValPath, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.JSONFetchValPath, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' FETCHTEXT_PATH ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.BinaryExpr{Operator: tree.JSONFetchTextPath, Left: $1.expr(), Right: $8.expr()}
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.JSONFetchTextPath, Left: $1.expr(), Right: $8.expr()}
   }
 | a_expr OPERATOR '(' schema_name '.' REMOVE_PATH ')' a_expr
   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("json_remove_path"), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("json_remove_path", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
   }
  | a_expr OPERATOR '(' schema_name '.' INET_CONTAINED_BY_OR_EQUALS ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.FuncExpr{Func: tree.WrapFunction("inet_contained_by_or_equals"), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contained_by_or_equals", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
    }
  | a_expr OPERATOR '(' schema_name '.' AND_AND ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.ComparisonExpr{Operator: tree.Overlaps, Left: $1.expr(), Right: $8.expr()}
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.Overlaps, Left: $1.expr(), Right: $8.expr()}
    }
  | a_expr OPERATOR '(' schema_name '.' INET_CONTAINS_OR_EQUALS ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.FuncExpr{Func: tree.WrapFunction("inet_contains_or_equals"), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contains_or_equals", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
    }
  | a_expr OPERATOR '(' schema_name '.' LESS_EQUALS ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.ComparisonExpr{Operator: tree.LE, Left: $1.expr(), Right: $8.expr()}
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.LE, Left: $1.expr(), Right: $8.expr()}
    }
  | a_expr OPERATOR '(' schema_name '.' GREATER_EQUALS ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.ComparisonExpr{Operator: tree.GE, Left: $1.expr(), Right: $8.expr()}
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.GE, Left: $1.expr(), Right: $8.expr()}
    }
  | a_expr OPERATOR '(' schema_name '.' NOT_EQUALS ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.ComparisonExpr{Operator: tree.NE, Left: $1.expr(), Right: $8.expr()}
-   }
- | a_expr OPERATOR '(' schema_name '.' AND ')' a_expr
-   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.AndExpr{Left: $1.expr(), Right: $8.expr()}
-   }
- | a_expr OPERATOR '(' schema_name '.' OR ')' a_expr
-   {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.OrExpr{Left: $1.expr(), Right: $8.expr()}
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.NE, Left: $1.expr(), Right: $8.expr()}
    }
  | a_expr OPERATOR '(' schema_name '.' '~' ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.ComparisonExpr{Operator: tree.RegMatch, Left: $1.expr(), Right: $8.expr()}
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.RegMatch, Left: $1.expr(), Right: $8.expr()}
    }
  | a_expr OPERATOR '(' schema_name '.' NOT_REGMATCH ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.ComparisonExpr{Operator: tree.NotRegMatch, Left: $1.expr(), Right: $8.expr()}
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.NotRegMatch, Left: $1.expr(), Right: $8.expr()}
    }
  | a_expr OPERATOR '(' schema_name '.' REGIMATCH ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.ComparisonExpr{Operator: tree.RegIMatch, Left: $1.expr(), Right: $8.expr()}
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.RegIMatch, Left: $1.expr(), Right: $8.expr()}
    }
  | a_expr OPERATOR '(' schema_name '.' NOT_REGIMATCH ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.ComparisonExpr{Operator: tree.NotRegIMatch, Left: $1.expr(), Right: $8.expr()}
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.NotRegIMatch, Left: $1.expr(), Right: $8.expr()}
    }
  | a_expr OPERATOR '(' schema_name '.' TEXTSEARCHMATCH ')' a_expr
    {
-    if $4 != "pg_catalog" {
-      sqllex.Error(fmt.Sprintf("schema %q not allowed in OPERATOR syntax", $4))
-      return 1
-    }
-     $$.val = &tree.ComparisonExpr{Operator: tree.TextSearchMatch, Left: $1.expr(), Right: $8.expr()}
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.TextSearchMatch, Left: $1.expr(), Right: $8.expr()}
    }
 
 // Restricted expressions

@@ -6,13 +6,13 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20250409001136-b28b4ee3e89d
+	github.com/dolthub/dolt/go v0.40.5-0.20250411012017-c74433ee514f
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20250327004329-6799764f2dad
-	github.com/dolthub/go-mysql-server v0.19.1-0.20250409213617-66d3d995c931
+	github.com/dolthub/go-mysql-server v0.19.1-0.20250411163327-ecbe045cc8f6
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20250409183615-d8335325e91c
+	github.com/dolthub/vitess v0.0.0-20250410090211-143e6b272ad4
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
@@ -26,7 +26,7 @@ require (
 	github.com/madflojo/testcerts v1.1.1
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/go-wordwrap v1.0.1
-	github.com/pganalyze/pg_query_go/v6 v6.0.0
+	github.com/pganalyze/pg_query_go/v6 v6.1.0
 	github.com/pierrre/geohash v1.0.0
 	github.com/pkg/profile v1.5.0
 	github.com/sergi/go-diff v1.1.0

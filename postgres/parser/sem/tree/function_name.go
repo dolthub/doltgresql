@@ -67,6 +67,13 @@ func WrapFunction(n string) ResolvableFunctionReference {
 	return ResolvableFunctionReference{FunctionReference: un}
 }
 
+// WrapFunctionSchema creates a new ResolvableFunctionReference
+// holding a pre-resolved function. Helper for grammar rules.
+func WrapFunctionSchema(funcName string, schemaName string) ResolvableFunctionReference {
+	un := &UnresolvedName{NumParts: 2, Parts: NameParts{schemaName, funcName}}
+	return ResolvableFunctionReference{FunctionReference: un}
+}
+
 // FunctionReference is the common interface to UnresolvedName and QualifiedFunctionName.
 type FunctionReference interface {
 	fmt.Stringer
