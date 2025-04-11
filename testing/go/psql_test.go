@@ -49,6 +49,10 @@ func TestPsqlCommands(t *testing.T) {
 					},
 				},
 				{
+					Query:       "select 1 OPERATOR(myschema.<) 1",
+					ExpectedErr: "schema \"myschema\" not allowed",
+				},
+				{
 					Query: "select 1 OPERATOR(pg_catalog.<=) 1",
 					Expected: []sql.Row{
 						{"t"},
