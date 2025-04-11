@@ -35,9 +35,6 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	if node.AggType == tree.OrderedSetAgg {
 		return nil, errors.Errorf("WITHIN GROUP is not yet supported")
 	}
-	if len(node.OrderBy) > 0 {
-		return nil, errors.Errorf("function ORDER BY is not yet supported")
-	}
 	
 	var qualifier vitess.TableIdent
 	var name vitess.ColIdent
@@ -85,12 +82,25 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 		}
 		sepString := strings.Trim(sep.String(), "'")
 		
+		var orderBy vitess.OrderBy
+		if len(node.OrderBy) > 0 {
+			orderBy, err = nodeOrderBy(ctx, node.OrderBy)
+			if err != nil {
+				return nil, err
+			}
+		}
+		
 		return &vitess.GroupConcatExpr{
 			Exprs:     exprs[:1],
 			Separator: vitess.Separator{
 				SeparatorString: sepString,
 			},
+			OrderBy: orderBy,
 		}, nil
+	}
+
+	if len(node.OrderBy) > 0 {
+		return nil, errors.Errorf("function ORDER BY is not yet supported")
 	}
 
 	return &vitess.FuncExpr{
