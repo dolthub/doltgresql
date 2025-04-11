@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/shopspring/decimal"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -137,6 +138,11 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.ArrayFlatten:
 		return nil, errors.Errorf("flattening arrays is not yet supported")
 	case *tree.BinaryExpr:
+		// We will eventually support operators in other schemas, but for now we only can handle built-ins
+		if len(node.Schema) > 0 && node.Schema != "pg_catalog" {
+			return nil, errors.Errorf("schema %q not allowed in OPERATOR syntax", node.Schema)
+		}
+
 		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err
@@ -284,7 +290,8 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Exprs: exprs,
 		}, nil
 	case *tree.CollateExpr:
-		return nil, errors.Errorf("collations are not yet supported")
+		logrus.Warnf("collate is not yet supported, ignoring")
+		return nodeExpr(ctx, node.Expr)
 	case *tree.ColumnAccessExpr:
 		return nil, errors.Errorf("(E).x is not yet supported")
 	case *tree.ColumnItem:
@@ -302,6 +309,11 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.CommentOnColumn:
 		return nil, errors.Errorf("comment on column is not yet supported")
 	case *tree.ComparisonExpr:
+		// We will eventually support operators in other schemas, but for now we only can handle built-ins
+		if len(node.Schema) > 0 && node.Schema != "pg_catalog" {
+			return nil, errors.Errorf("schema %q not allowed in OPERATOR syntax", node.Schema)
+		}
+
 		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
 			return nil, err

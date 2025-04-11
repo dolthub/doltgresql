@@ -206,6 +206,11 @@ func (u *UnresolvedObjectName) Format(ctx *FmtCtx) {
 
 func (u *UnresolvedObjectName) String() string { return AsString(u) }
 
+// UnquotedString returns the string representation of the object name without any quotes.
+func (u *UnresolvedObjectName) UnquotedString() string {
+	return AsStringWithFlags(u, FmtBareIdentifiers)
+}
+
 // ToTableName converts the unresolved name to a table name.
 //
 // TODO(radu): the schema and catalog names might not be in the right places; we

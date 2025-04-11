@@ -1134,7 +1134,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.KVOption> role_option password_clause valid_until_clause
 %type <tree.Operator> subquery_op
 %type <*tree.UnresolvedName> func_name func_name_no_crdb_extra
-%type <str> opt_compression opt_collate
+%type <str> opt_compression 
 
 %type <[]tree.CompositeTypeElem> type_composite_list opt_type_composite_list
 %type <tree.RangeTypeOption> type_range_option
@@ -1149,10 +1149,11 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.AlterDomainCmd> alter_domain_cmd
 
 %type <str> cursor_name database_name index_name opt_index_name column_name insert_column_item statistics_name window_name
-%type <str> table_alias_name constraint_name target_name collation_name opt_from_ref_table
+%type <str> table_alias_name constraint_name target_name opt_from_ref_table
+%type <*tree.UnresolvedObjectName> collation_name 
 %type <str> db_object_name_component
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name aggregate_name
-%type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name
+%type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name  opt_collate
 %type <*tree.UnresolvedObjectName> db_object_name_no_keywords simple_db_object_name_no_keywords complex_db_object_name_no_keywords
 %type <[]*tree.UnresolvedObjectName> type_name_list
 %type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name partition_name
@@ -1435,6 +1436,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %left      '+' '-'
 %left      '*' '/' FLOORDIV '%'
 %left      '^'
+%left      OPERATOR
 // Unary Operators
 %left      AT                // sets precedence for AT TIME ZONE
 %left      COLLATE
@@ -2372,7 +2374,7 @@ alter_opt_column_options:
     $$.val = &tree.AlterTableAlterColumnType{
       Column: tree.Name($1),
       ToType: $4.typeReference(),
-      Collation: $5,
+      Collation: $5.unresolvedObjectName().UnquotedString(),
       Using: $6.expr(),
     }
   }
@@ -2685,7 +2687,7 @@ alter_attribute_action:
       Action: "add",
       ColName: tree.Name($3),
       TypeName: $4.typeReference(),
-      Collate: $5,
+      Collate: $5.unresolvedObjectName().UnquotedString(),
       DropBehavior: $6.dropBehavior(),
     }
   }
@@ -2712,7 +2714,7 @@ alter_attribute_action:
       Action: "alter",
       ColName: tree.Name($3),
       TypeName: $5.typeReference(),
-      Collate: $6,
+      Collate: $6.unresolvedObjectName().UnquotedString(),
       DropBehavior: $7.dropBehavior(),
     }
   }
@@ -2722,7 +2724,7 @@ alter_attribute_action:
       Action: "alter",
       ColName: tree.Name($3),
       TypeName: $7.typeReference(),
-      Collate: $8,
+      Collate: $8.unresolvedObjectName().UnquotedString(),
       DropBehavior: $9.dropBehavior(),
     }
   }
@@ -3835,7 +3837,7 @@ comment_stmt:
   }
 | COMMENT ON COLLATION collation_name IS comment_text
   {
-    $$.val = &tree.Comment{Object: &tree.CommentOnCollation{Name: $4}, Comment: $6.strPtr()}
+    $$.val = &tree.Comment{Object: &tree.CommentOnCollation{Name: $4.unresolvedObjectName().UnquotedString()}, Comment: $6.strPtr()}
   }
 | COMMENT ON COLUMN column_path IS comment_text
   {
@@ -4181,7 +4183,7 @@ create_domain_stmt:
     $$.val = &tree.CreateDomain{
       TypeName: $3.unresolvedObjectName(),
       DataType: $5.typeReference(),
-      Collate: $6,
+      Collate: $6.unresolvedObjectName().UnquotedString(),
       Default: $7.expr(),
       Constraints: $8.domainConstraints(),
     }
@@ -8032,17 +8034,17 @@ partition_index_params:
 partition_index_elem:
   name opt_collate opt_opclass
   {
-    $$.val = tree.IndexElem{Column: tree.Name($1), Collation: $2, OpClass: $3.opClass()}
+    $$.val = tree.IndexElem{Column: tree.Name($1), Collation: $2.unresolvedObjectName().UnquotedString(), OpClass: $3.opClass()}
   }
 | '(' a_expr ')' opt_collate opt_opclass
   {
-    $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4, OpClass: $5.opClass()}
+    $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4.unresolvedObjectName().UnquotedString(), OpClass: $5.opClass()}
   }
 
 alter_column_def:
   column_name typename opt_collate col_constraint_list
   {
-    tableDef, err := tree.NewColumnTableDef(tree.Name($1), $2.typeReference(), "", $3, $4.colQuals())
+    tableDef, err := tree.NewColumnTableDef(tree.Name($1), $2.typeReference(), "", $3.unresolvedObjectName().UnquotedString(), $4.colQuals())
     if err != nil {
       return setErr(sqllex, err)
     }
@@ -8055,7 +8057,7 @@ alter_column_def:
 create_table_column_def:
   column_name typename opt_compression opt_collate col_constraint_list
   {
-    tableDef, err := tree.NewColumnTableDef(tree.Name($1), $2.typeReference(), $3, $4, $5.colQuals())
+    tableDef, err := tree.NewColumnTableDef(tree.Name($1), $2.typeReference(), $3, $4.unresolvedObjectName().UnquotedString(), $5.colQuals())
     if err != nil {
       return setErr(sqllex, err)
     }
@@ -9212,11 +9214,11 @@ opt_type_composite_list:
 type_composite_list:
   name typename opt_collate
   {
-    $$.val = []tree.CompositeTypeElem{{AttrName: $1, Type: $2.typeReference(), Collate: $3}}
+    $$.val = []tree.CompositeTypeElem{{AttrName: $1, Type: $2.typeReference(), Collate: $3.unresolvedObjectName().UnquotedString()}}
   }
 | type_composite_list ',' name typename opt_collate
   {
-    $$.val = append($1.compositeTypeElems(), tree.CompositeTypeElem{AttrName: $3, Type: $4.typeReference(), Collate: $5})
+    $$.val = append($1.compositeTypeElems(), tree.CompositeTypeElem{AttrName: $3, Type: $4.typeReference(), Collate: $5.unresolvedObjectName().UnquotedString()})
   }
 
 type_range_optional_list:
@@ -9237,7 +9239,7 @@ type_range_option:
   SUBTYPE_OPCLASS '=' name
   { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeSubtypeOpClass, StrVal: $3} }
 | COLLATION '=' collation_name
-  { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeCollation, StrVal: $3} }
+  { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeCollation, StrVal: $3.unresolvedObjectName().UnquotedString()} }
 | CANONICAL '=' name
   { $$.val = tree.RangeTypeOption{Option: tree.RangeTypeCanonical, StrVal: $3} }
 | SUBTYPE_DIFF '=' name
@@ -9424,11 +9426,11 @@ index_params:
 index_elem:
   name opt_collate opt_opclass opt_asc_desc opt_nulls_order
   {
-    $$.val = tree.IndexElem{Column: tree.Name($1), Collation: $2, OpClass: $3.opClass(), Direction: $4.dir(), NullsOrder: $5.nullsOrder()}
+    $$.val = tree.IndexElem{Column: tree.Name($1), Collation: $2.unresolvedObjectName().UnquotedString(), OpClass: $3.opClass(), Direction: $4.dir(), NullsOrder: $5.nullsOrder()}
   }
 | '(' a_expr ')' opt_collate opt_opclass opt_asc_desc opt_nulls_order
   {
-    $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4, OpClass: $5.opClass(), Direction: $6.dir(), NullsOrder: $7.nullsOrder()}
+    $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4.unresolvedObjectName().UnquotedString(), OpClass: $5.opClass(), Direction: $6.dir(), NullsOrder: $7.nullsOrder()}
   }
 
 opt_opclass:
@@ -9457,7 +9459,12 @@ opclass_option_list:
 
 opt_collate:
   COLLATE collation_name { $$ = $2 }
-| /* EMPTY */ { $$ = "" }
+| /* EMPTY */ 
+  {
+    // TODO: this instantiates a zero-part object name, which then has the empty string for its String() output. It
+    // would probably be better to return a nil object in this case, but that requires deeper changes.  
+    $$.val = tree.NewUnresolvedName().GetUnresolvedObjectName() 
+  }
 
 opt_asc_desc:
   ASC
@@ -12268,7 +12275,7 @@ a_expr:
   }
 | a_expr COLLATE collation_name
   {
-    $$.val = &tree.CollateExpr{Expr: $1.expr(), Locale: $3}
+    $$.val = &tree.CollateExpr{Expr: $1.expr(), Locale: $3.unresolvedObjectName().UnquotedString()}
   }
 | a_expr AT TIME ZONE a_expr %prec AT
   {
@@ -12631,6 +12638,148 @@ a_expr:
 // The UNIQUE predicate is a standard SQL feature but not yet implemented
 // in PostgreSQL (as of 10.5).
 | UNIQUE '(' error { return unimplemented(sqllex, "UNIQUE predicate") }
+// Below here we special-case the OPERATOR(...) syntax only for operators in the pg_catalog schema. 
+// This is to support particular psql commands that require it.
+| a_expr OPERATOR '(' schema_name '.' '+' ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Plus, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '-' ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Minus, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '*' ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Mult, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '/' ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Div, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' FLOORDIV ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.FloorDiv, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '%' ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Mod, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '^' ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Pow, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '#' ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Bitxor, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '&' ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Bitand, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '|' ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Bitor, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '<' ')' a_expr
+  {
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.LT, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '>' ')' a_expr
+  {
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.GT, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '?' ')' a_expr
+  {
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.JSONExists, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' JSON_SOME_EXISTS ')' a_expr
+  {
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.JSONSomeExists, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' JSON_ALL_EXISTS ')' a_expr
+  {
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.JSONAllExists, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' '=' ')' a_expr
+  {
+    $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.EQ, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' CONCAT ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.Concat, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' LSHIFT ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.LShift, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' RSHIFT ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.RShift, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' FETCHVAL ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.JSONFetchVal, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' FETCHTEXT ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.JSONFetchText, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' FETCHVAL_PATH ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.JSONFetchValPath, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' FETCHTEXT_PATH ')' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Schema: tree.Name($4), Operator: tree.JSONFetchTextPath, Left: $1.expr(), Right: $8.expr()}
+  }
+| a_expr OPERATOR '(' schema_name '.' REMOVE_PATH ')' a_expr
+  {
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("json_remove_path", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+  }
+ | a_expr OPERATOR '(' schema_name '.' INET_CONTAINED_BY_OR_EQUALS ')' a_expr
+   {
+     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contained_by_or_equals", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+   }
+ | a_expr OPERATOR '(' schema_name '.' AND_AND ')' a_expr
+   {
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.Overlaps, Left: $1.expr(), Right: $8.expr()}
+   }
+ | a_expr OPERATOR '(' schema_name '.' INET_CONTAINS_OR_EQUALS ')' a_expr
+   {
+     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contains_or_equals", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+   }
+ | a_expr OPERATOR '(' schema_name '.' LESS_EQUALS ')' a_expr
+   {
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.LE, Left: $1.expr(), Right: $8.expr()}
+   }
+ | a_expr OPERATOR '(' schema_name '.' GREATER_EQUALS ')' a_expr
+   {
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.GE, Left: $1.expr(), Right: $8.expr()}
+   }
+ | a_expr OPERATOR '(' schema_name '.' NOT_EQUALS ')' a_expr
+   {
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.NE, Left: $1.expr(), Right: $8.expr()}
+   }
+ | a_expr OPERATOR '(' schema_name '.' '~' ')' a_expr
+   {
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.RegMatch, Left: $1.expr(), Right: $8.expr()}
+   }
+ | a_expr OPERATOR '(' schema_name '.' NOT_REGMATCH ')' a_expr
+   {
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.NotRegMatch, Left: $1.expr(), Right: $8.expr()}
+   }
+ | a_expr OPERATOR '(' schema_name '.' REGIMATCH ')' a_expr
+   {
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.RegIMatch, Left: $1.expr(), Right: $8.expr()}
+   }
+ | a_expr OPERATOR '(' schema_name '.' NOT_REGIMATCH ')' a_expr
+   {
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.NotRegIMatch, Left: $1.expr(), Right: $8.expr()}
+   }
+ | a_expr OPERATOR '(' schema_name '.' TEXTSEARCHMATCH ')' a_expr
+   {
+     $$.val = &tree.ComparisonExpr{Schema: tree.Name($4), Operator: tree.TextSearchMatch, Left: $1.expr(), Right: $8.expr()}
+   }
 
 // Restricted expressions
 //
@@ -14145,7 +14294,7 @@ interval_value:
 
 // Note: newlines between non-terminals matter to the doc generator.
 
-collation_name:        unrestricted_name
+collation_name:        db_object_name
 
 index_name:            unrestricted_name
 
@@ -14328,7 +14477,7 @@ complex_db_object_name:
     if err != nil { return setErr(sqllex, err) }
     $$.val = res
   }
-  
+ 
 complex_db_object_name_no_keywords:
   simple_ident '.' simple_ident
   {

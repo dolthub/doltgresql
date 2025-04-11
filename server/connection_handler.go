@@ -423,6 +423,9 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 
 	query, err := h.convertQuery(message.String)
 	if err != nil {
+		if printErrorStackTraces {
+			fmt.Printf("Error parsing query: %+v\n", err)
+		}
 		return true, err
 	}
 
@@ -474,6 +477,9 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 	// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
 	query, err := h.convertQuery(message.Query)
 	if err != nil {
+		if printErrorStackTraces {
+			fmt.Printf("Error parsing query: %+v\n", err)
+		}
 		return err
 	}
 
