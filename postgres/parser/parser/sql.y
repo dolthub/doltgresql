@@ -5214,11 +5214,15 @@ table_name_list:
 // %Help: ANALYZE - collect table statistics
 // %Category: Misc
 // %Text:
-// ANALYZE <tablename>
+// ANALYZE [<tablename>]
 //
 // %SeeAlso: CREATE STATISTICS
 analyze_stmt:
-  ANALYZE analyze_target
+  ANALYZE
+  {
+    $$.val = &tree.Analyze{}
+  }
+| ANALYZE analyze_target
   {
     $$.val = &tree.Analyze{
       Table: $2.tblExpr(),
