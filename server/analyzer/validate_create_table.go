@@ -103,6 +103,16 @@ func validateIndexes(ctx *sql.Context, sch sql.Schema, idxDefs sql.IndexDefs) er
 	return nil
 }
 
+// schToColMap returns a map of columns, keyed by their name, for the specified
+// schema |sch|.
+func schToColMap(sch sql.Schema) map[string]*sql.Column {
+	colMap := make(map[string]*sql.Column, len(sch))
+	for _, col := range sch {
+		colMap[strings.ToLower(col.Name)] = col
+	}
+	return colMap
+}
+
 // validateIndex ensures that the Index Definition is valid for the table schema.
 // This function will throw errors and warnings as needed.
 // All columns in the index must be:
