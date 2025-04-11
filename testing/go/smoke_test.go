@@ -639,8 +639,7 @@ func TestSmokeTests(t *testing.T) {
 			},
 		},
 		{
-			Name:  "SUM",
-			Focus: true,
+			Name: "SUM",
 			SetUpScript: []string{
 				"CREATE TABLE test(pk SERIAL PRIMARY KEY, v1 INT4);",
 				"INSERT INTO test (v1) VALUES (1), (2), (3), (4), (5);",
