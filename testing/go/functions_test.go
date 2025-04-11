@@ -2105,7 +2105,7 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
-			Name:  "string_agg",
+			Name: "string_agg",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk INT primary key, v1 INT, v2 TEXT);",
 				"INSERT INTO test VALUES (1, 1, 'a'), (2, 2, 'b'), (3, 3, 'c'), (4, 4, 'd'), (5, 5, 'e');",

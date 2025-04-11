@@ -16,17 +16,18 @@ package expression
 
 import (
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 // ArrayFlatten is an expression that represents the results of a subquery expression as an array.
 // Currently only subqueries that return a single column are supported.
 type ArrayFlatten struct {
-		Subquery sql.Expression
+	Subquery sql.Expression
 }
 
 var _ vitess.Injectable = (*ArrayFlatten)(nil)
@@ -47,7 +48,7 @@ func (a ArrayFlatten) Type() sql.Type {
 	sqType := a.Subquery.Type()
 	dt, ok := sqType.(*types.DoltgresType)
 	if !ok {
-		// If we don't have a doltgres type, we'll error out at execution time. A special case is the tuple type, 
+		// If we don't have a doltgres type, we'll error out at execution time. A special case is the tuple type,
 		// where we need to choose a single one to avoid erroring out too early.
 		if tt, ok := sqType.(gmstypes.TupleType); ok {
 			return tt[0]
@@ -68,7 +69,7 @@ func (a ArrayFlatten) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	if !ok {
 		return nil, errors.Errorf("expected subquery, got %T", a.Subquery)
 	}
-	
+
 	sqType := subquery.Type()
 	_, ok = sqType.(*types.DoltgresType)
 	if !ok {
@@ -77,7 +78,7 @@ func (a ArrayFlatten) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		}
 		return nil, errors.Errorf("expected doltgres type, got %T", sqType)
 	}
-	
+
 	return subquery.EvalMultiple(ctx, row)
 }
 
@@ -91,7 +92,7 @@ func (a ArrayFlatten) WithChildren(children ...sql.Expression) (sql.Expression, 
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(a, len(children), 1)
 	}
-	
+
 	return ArrayFlatten{Subquery: children[0]}, nil
 }
 

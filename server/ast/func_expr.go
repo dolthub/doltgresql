@@ -18,7 +18,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -35,7 +34,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	if node.AggType == tree.OrderedSetAgg {
 		return nil, errors.Errorf("WITHIN GROUP is not yet supported")
 	}
-	
+
 	var qualifier vitess.TableIdent
 	var name vitess.ColIdent
 	switch funcRef := node.Func.FunctionReference.(type) {
@@ -81,7 +80,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 			return nil, errors.Errorf("string_agg requires a string separator")
 		}
 		sepString := strings.Trim(sep.String(), "'")
-		
+
 		var orderBy vitess.OrderBy
 		if len(node.OrderBy) > 0 {
 			orderBy, err = nodeOrderBy(ctx, node.OrderBy)
@@ -89,9 +88,9 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 				return nil, err
 			}
 		}
-		
+
 		return &vitess.GroupConcatExpr{
-			Exprs:     exprs[:1],
+			Exprs: exprs[:1],
 			Separator: vitess.Separator{
 				SeparatorString: sepString,
 			},
