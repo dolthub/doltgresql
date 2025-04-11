@@ -74,15 +74,12 @@ func nodeAlterTableDropConstraint(
 		return nil, errors.Errorf("CASCADE is not yet supported for drop constraint")
 	}
 
-	if node.IfExists {
-		return nil, errors.Errorf("IF EXISTS is not yet supported for drop constraint")
-	}
-
 	return &vitess.DDL{
-		Action:           "alter",
-		Table:            tableName,
-		IfExists:         ifExists,
-		ConstraintAction: "drop",
+		Action:             "alter",
+		Table:              tableName,
+		IfExists:           ifExists,
+		ConstraintAction:   "drop",
+		ConstraintIfExists: node.IfExists,
 		TableSpec: &vitess.TableSpec{
 			Constraints: []*vitess.ConstraintDefinition{
 				{Name: node.Constraint.String()},
