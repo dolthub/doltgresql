@@ -1227,7 +1227,7 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					// TODO: users and roles are not supported yet
 					Query: `SELECT pg_get_userbyid(22)`,
 					Expected: []sql.Row{
-						{"unknown OID()"},
+						{"postgres"},
 					},
 				},
 			},
