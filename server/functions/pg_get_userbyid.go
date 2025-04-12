@@ -35,6 +35,6 @@ var pg_get_userbyid_oid = framework.Function1{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: roles are not supported yet
-		return "unknown OID()", nil
+		return "postgres", nil
 	},
 }
