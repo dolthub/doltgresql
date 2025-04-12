@@ -39,6 +39,9 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 	var err error
 	switch columnType := typ.(type) {
 	case *tree.ArrayTypeReference:
+		if uon, ok := columnType.ElementType.(*tree.UnresolvedObjectName); ok {
+			return nodeResolvableTypeReference(ctx, uon)
+		}
 		return nil, nil, errors.Errorf("the given array type is not yet supported")
 	case *tree.OIDTypeReference:
 		return nil, nil, errors.Errorf("referencing types by their OID is not yet supported")

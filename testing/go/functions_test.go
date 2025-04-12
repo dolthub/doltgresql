@@ -1227,7 +1227,7 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					// TODO: users and roles are not supported yet
 					Query: `SELECT pg_get_userbyid(22)`,
 					Expected: []sql.Row{
-						{"unknown OID()"},
+						{"postgres"},
 					},
 				},
 			},
@@ -2101,6 +2101,48 @@ func TestStringFunction(t *testing.T) {
 					Query:    `SELECT substring('Thomas' similar '%#"o_a#"_' escape '#')`,
 					Skip:     true, // syntax error
 					Expected: []sql.Row{{"oma"}},
+				},
+			},
+		},
+		{
+			Name: "string_agg",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT primary key, v1 INT, v2 TEXT);",
+				"INSERT INTO test VALUES (1, 1, 'a'), (2, 2, 'b'), (3, 3, 'c'), (4, 4, 'd'), (5, 5, 'e');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT string_agg(v1::text, ',') FROM test;`,
+					Expected: []sql.Row{
+						{"1,2,3,4,5"},
+					},
+				},
+				{
+					Query: `SELECT string_agg(v2, '|') FROM test;`,
+					Expected: []sql.Row{
+						{"a|b|c|d|e"},
+					},
+				},
+				{
+					Query: `SELECT STRING_AGG(concat(v1::text, v2), ' * ') FROM test;`,
+					Expected: []sql.Row{
+						{"1a * 2b * 3c * 4d * 5e"},
+					},
+				},
+				{
+					Skip:  true, // can't use expressions for separator because GROUP_CONCAT can't at the moment
+					Query: `SELECT STRING_agg(concat(v1::text, v2), CONCAT(' *', ' ') ORDER BY V1 DESC) FROM test;`,
+					Expected: []sql.Row{
+						{"5e * 4d * 3c * 2b * 1a"},
+					},
+				},
+				{
+					Query:       `SELECT STRING_AGG(v2, '*', v1) FROM test;`,
+					ExpectedErr: "string_agg requires two arguments",
+				},
+				{
+					Query:       `SELECT STRING_AGG(v2) FROM test;`,
+					ExpectedErr: "string_agg requires two arguments",
 				},
 			},
 		},

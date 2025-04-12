@@ -32,6 +32,14 @@ teardown() {
     [ "${#lines[@]}" -eq 3 ]
 }
 
+@test 'psql-commands: \dt table' {
+    run query_server --csv -c "\dt test2"
+    echo "$output"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "public,test2,table,postgres" ]] || false
+    [ "${#lines[@]}" -eq 2 ]
+}
+
 @test 'psql-commands: \d' {
     run query_server --csv -c "\d"
     [ "$status" -eq 0 ]
@@ -48,8 +56,9 @@ teardown() {
 @test 'psql-commands: \dn' {
     run query_server --csv -c "\dn"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "public,pg_database_owner" ]] || false
-    [ "${#lines[@]}" -eq 2 ]
+    [[ "$output" =~ "dolt,postgres" ]] || false
+    [[ "$output" =~ "public,postgres" ]] || false
+    [ "${#lines[@]}" -eq 3 ]
 }
 
 @test 'psql-commands: \df' {
