@@ -26,6 +26,7 @@ const (
 	ruleId_TypeSanitizer                   analyzer.RuleId = iota + 1000 // typeSanitizer
 	ruleId_AddDomainConstraints                                          // addDomainConstraints
 	ruleId_AddDomainConstraintsToCasts                                   // addDomainConstraintsToCasts
+	ruleId_ApplyTablesForAnalyzeAllTables                                // applyTablesForAnalyzeAllTables
 	ruleId_AssignInsertCasts                                             // assignInsertCasts
 	ruleId_AssignUpdateCasts                                             // assignUpdateCasts
 	ruleId_ConvertDropPrimaryKeyConstraint                               // convertDropPrimaryKeyConstraint
@@ -60,6 +61,7 @@ func Init() {
 	// TODO: this should be replaced by implementing automatic toast semantics for blob types
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
 		{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths},
+		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
 		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint}},
 		analyzer.OnceBeforeDefault...)
 

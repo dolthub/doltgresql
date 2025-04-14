@@ -28,13 +28,15 @@ func nodeAnalyze(ctx *Context, node *tree.Analyze) (vitess.Statement, error) {
 		return nil, nil
 	}
 
+	// If no tables were specified, return an empty Analyze statement, and the analyzer
+	// will populate all tables to be analyzed.
+	if node.Table == nil {
+		return &vitess.Analyze{}, nil
+	}
+
 	objectName, ok := node.Table.(*tree.UnresolvedObjectName)
 	if !ok {
 		return nil, errors.Errorf("unsupported table type in Analyze node: %T", node.Table)
-	}
-
-	if objectName.Object() == "" && objectName.Schema() == "" && objectName.Catalog() == "" {
-		return nil, errors.Errorf("ANALYZE all tables not supported; must specify a table")
 	}
 
 	return &vitess.Analyze{Tables: []vitess.TableName{
