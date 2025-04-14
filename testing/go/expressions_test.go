@@ -319,6 +319,14 @@ func TestSubscript(t *testing.T) {
 					Expected: []sql.Row{{nil}},
 				},
 				{
+					Query:    `SELECT ARRAY[1, 2, 3][null];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT ARRAY[1, 2, 3][1:3];`,
+					ExpectedErr: "not yet supported",
+				},
+				{
 					Query:       `SELECT ARRAY[1, 2, 3]['abc'];`,
 					ExpectedErr: "integer: unhandled type: string",
 				},
