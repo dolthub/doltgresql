@@ -607,7 +607,26 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		// TODO: figure out if I can delete this
 		return nil, errors.Errorf("this should probably be deleted (internal error, IndexedVar)")
 	case *tree.IndirectionExpr:
-		return nil, errors.Errorf("subscripts are not yet supported")
+		childExpr, err := nodeExpr(ctx, node.Expr)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(node.Indirection) > 1 {
+			return nil, errors.Errorf("multi dimensional array subscripts are not yet supported")
+		} else if node.Indirection[0].Slice {
+			return nil, errors.Errorf("slice subscripts are not yet supported")
+		}
+		
+		indexExpr, err := nodeExpr(ctx, node.Indirection[0].Begin)
+		if err != nil {
+			return nil, err
+		}
+
+		return vitess.InjectedExpr{
+			Expression: &pgexprs.Subscript{},
+			Children:   vitess.Exprs{childExpr, indexExpr},
+		}, nil
 	case *tree.IsNotNullExpr:
 		expr, err := nodeExpr(ctx, node.Expr)
 		if err != nil {
