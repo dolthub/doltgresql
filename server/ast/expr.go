@@ -617,7 +617,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		} else if node.Indirection[0].Slice {
 			return nil, errors.Errorf("slice subscripts are not yet supported")
 		}
-		
+
 		indexExpr, err := nodeExpr(ctx, node.Indirection[0].Begin)
 		if err != nil {
 			return nil, err

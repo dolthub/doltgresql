@@ -323,7 +323,7 @@ func TestSubscript(t *testing.T) {
 					Expected: []sql.Row{{nil}},
 				},
 				{
-					Query:    `SELECT ARRAY[1, 2, 3][1:3];`,
+					Query:       `SELECT ARRAY[1, 2, 3][1:3];`,
 					ExpectedErr: "not yet supported",
 				},
 				{

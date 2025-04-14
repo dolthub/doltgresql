@@ -2320,26 +2320,26 @@ func TestSelectFromFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `select * from dolt_branch('newBranch')`,
+					Query:    `select * from dolt_branch('newBranch')`,
 					Expected: []sql.Row{{0}},
 				},
 				{
-					Query: `select status from dolt_checkout('newBranch')`,
+					Query:    `select status from dolt_checkout('newBranch')`,
 					Expected: []sql.Row{{0}},
 				},
 				{
 					Query: `insert into test values (6, 6, 'f')`,
 				},
 				{
-					Query: `select length(commit_hash) > 0 from (select commit_hash from dolt_commit('-Am', 'added f') as result)`,
+					Query:    `select length(commit_hash) > 0 from (select commit_hash from dolt_commit('-Am', 'added f') as result)`,
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query: "select dolt_checkout('main')",
+					Query:    "select dolt_checkout('main')",
 					Expected: []sql.Row{{0}},
 				},
 				{
-					Query: `select fast_forward, conflicts from dolt_merge('newBranch')`,
+					Query:    `select fast_forward, conflicts from dolt_merge('newBranch')`,
 					Expected: []sql.Row{{"t", 0}},
 				},
 			},
