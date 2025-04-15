@@ -34,7 +34,6 @@ const (
 	ruleId_ReplaceIndexedTables                                          // replaceIndexedTables
 	ruleId_ReplaceNode                                                   // replaceNode
 	ruleId_ReplaceSerial                                                 // replaceSerial
-	ruleId_AddImplicitPrefixLengths                                      // addImplicitPrefixLengths
 	ruleId_InsertContextRootFinalizer                                    // insertContextRootFinalizer
 	ruleId_ResolveType                                                   // resolveType
 	ruleId_ReplaceArithmeticExpressions                                  // replaceArithmeticExpressions
@@ -57,10 +56,7 @@ func Init() {
 		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 	)
 
-	// PostgreSQL doesn't have the concept of prefix lengths, so we add a rule to implicitly add them
-	// TODO: this should be replaced by implementing automatic toast semantics for blob types
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
-		{Id: ruleId_AddImplicitPrefixLengths, Apply: AddImplicitPrefixLengths},
 		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
 		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint}},
 		analyzer.OnceBeforeDefault...)
