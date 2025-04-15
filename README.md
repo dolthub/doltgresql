@@ -32,7 +32,7 @@ is [experimental](#limitations).
 
 # How You Can Help
 
-Doltgres is experimental. We need your feedback to understand how much we should invest in it.
+Doltgres is [Beta](). We need your feedback to understand how much we should invest in it.
 If you are interested in using Doltgres now or in the future, please:
 
 - Star this repo to tell us you are interested.
