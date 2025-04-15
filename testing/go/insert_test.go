@@ -258,5 +258,44 @@ func TestInsert(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "insert with returning",
+			SetUpScript: []string{
+				"CREATE TABLE test (id int primary key);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO public.test (id) VALUES (1) RETURNING id;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "INSERT INTO public.test (id) VALUES (2) RETURNING test.id;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    "INSERT INTO public.test (id) VALUES (3) RETURNING public.test.id;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Skip:     true, // TODO: unable to find field with index 1 in row of 1 columns
+					Query:    "INSERT INTO public.test (id) VALUES ($1) RETURNING id;",
+					BindVars: []any{4},
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Skip:     true, // TODO: unable to find field with index 1 in row of 1 columns
+					Query:    "INSERT INTO public.test (id) VALUES ($1) RETURNING test.id;",
+					BindVars: []any{5},
+					Expected: []sql.Row{{5}},
+				},
+				{
+					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Query:    "INSERT INTO public.test (id) VALUES ($1) RETURNING public.test.id;",
+					BindVars: []any{6},
+					Expected: []sql.Row{{6}},
+				},
+			},
+		},
 	})
 }
