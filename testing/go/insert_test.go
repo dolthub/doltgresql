@@ -262,6 +262,9 @@ func TestInsert(t *testing.T) {
 			Name: "insert with returning",
 			SetUpScript: []string{
 				"CREATE TABLE test (id int primary key);",
+				"CREATE SCHEMA testschema;",
+				"CREATE TABLE testschema.test (id int primary key);",
+				"INSERT INTO testschema.test (id) VALUES (10);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -273,9 +276,12 @@ func TestInsert(t *testing.T) {
 					Expected: []sql.Row{{2}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    "INSERT INTO public.test (id) VALUES (3) RETURNING public.test.id;",
 					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "INSERT INTO testschema.test (id) VALUES (11) RETURNING testschema.test.id;",
+					Expected: []sql.Row{{11}},
 				},
 				{
 					Skip:     true, // TODO: unable to find field with index 1 in row of 1 columns
@@ -290,7 +296,7 @@ func TestInsert(t *testing.T) {
 					Expected: []sql.Row{{5}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
+					Skip:     true, // TODO: unable to find field with index 1 in row of 1 columns
 					Query:    "INSERT INTO public.test (id) VALUES ($1) RETURNING public.test.id;",
 					BindVars: []any{6},
 					Expected: []sql.Row{{6}},

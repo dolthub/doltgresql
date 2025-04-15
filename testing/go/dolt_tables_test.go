@@ -38,7 +38,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"main"}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.branches.name FROM dolt.branches`,
 					Expected: []sql.Row{{"main"}},
 				},
@@ -213,9 +212,8 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"public.test", "id"}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
-					Query:    `SELECT dolt.column_diff.commit_hash FROM dolt.column_diff`,
-					Expected: []sql.Row{},
+					Query:    `SELECT dolt.column_diff.table_name FROM dolt.column_diff`,
+					Expected: []sql.Row{{"public.test"}},
 				},
 				{
 					Query:    `SELECT dolt_column_diff.table_name, dolt_column_diff.column_name FROM dolt_column_diff`,
@@ -291,7 +289,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{2}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.commit_ancestors.parent_index FROM dolt.commit_ancestors`,
 					Expected: []sql.Row{{0}, {0}},
 				},
@@ -469,7 +466,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{2}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.commits.message FROM dolt.commits`,
 					Expected: []sql.Row{{"CREATE DATABASE"}, {"Initialize data repository"}},
 				},
@@ -562,7 +558,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"test", Numeric("1")}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.conflicts.table FROM dolt.conflicts`,
 					Expected: []sql.Row{{"test"}},
 				},
@@ -771,7 +766,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"test", Numeric("2")}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.constraint_violations.table FROM dolt.constraint_violations`,
 					Expected: []sql.Row{{"test"}},
 				},
@@ -982,7 +976,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.docs.doc_name FROM dolt.docs`,
 					Expected: []sql.Row{{"README.md"}},
 				},
@@ -1137,7 +1130,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"public.test"}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.diff.table_name FROM dolt.diff`,
 					Expected: []sql.Row{{"public.test"}},
 				},
@@ -1687,7 +1679,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"f"}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.merge_status.is_merging FROM dolt.merge_status`,
 					Expected: []sql.Row{{"f"}},
 				},
@@ -1924,7 +1915,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.status.table_name FROM dolt.status`,
 					Expected: []sql.Row{{"public.t"}},
 				},
@@ -2005,7 +1995,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"v1"}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.tags.tag_name FROM dolt.tags`,
 					Expected: []sql.Row{{"v1"}},
 				},
@@ -2336,7 +2325,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.remote_branches.name FROM dolt.remote_branches`,
 					Expected: []sql.Row{},
 				},
@@ -2417,7 +2405,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"origin"}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.remotes.name FROM dolt.remotes`,
 					Expected: []sql.Row{{"origin"}},
 				},
@@ -2507,7 +2494,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"test"}},
 				},
 				{
-					Skip:     true, // TODO: referencing items outside the schema or database is not yet supported
 					Query:    `SELECT dolt.schema_conflicts.table_name FROM dolt.schema_conflicts`,
 					Expected: []sql.Row{{"test"}},
 				},
