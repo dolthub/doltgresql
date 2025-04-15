@@ -136,6 +136,7 @@ func Init() {
 	initPgPostmasterStartTime()
 	initPgRelationSize()
 	initPgGetSerialSequence()
+	initPgGetStatisticsobjdefColumns()
 	initPgStatGetNumscans()
 	initPgTableIsVisible()
 	initPgTableSize()

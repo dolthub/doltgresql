@@ -484,6 +484,8 @@ type ComparisonExpr struct {
 	Operator    ComparisonOperator
 	SubOperator ComparisonOperator // used for array operators (when Operator is Any, Some, or All)
 	Left, Right Expr
+	// Schema is only set when using the OPERATOR() syntax
+	Schema Name
 
 	typeAnnotation
 	Fn *CmpOp
@@ -1165,6 +1167,8 @@ func (i BinaryOperator) String() string {
 type BinaryExpr struct {
 	Operator    BinaryOperator
 	Left, Right Expr
+	// Schema is only set for operators from a particular named schema using the OPERATOR() syntax
+	Schema Name
 
 	typeAnnotation
 	Fn *BinOp

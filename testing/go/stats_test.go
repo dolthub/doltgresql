@@ -32,9 +32,6 @@ var StatsTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				// TODO: Postgres will analyze ALL tables if ANALYZE is invoked without a table name, but
-				//       our postgres parser and our analysis code doesn't support this yet.
-				Skip:     true,
 				Query:    "ANALYZE;",
 				Expected: []sql.Row{},
 			},

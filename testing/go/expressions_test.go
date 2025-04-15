@@ -21,7 +21,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-func TestExpressions(t *testing.T) {
+func TestIn(t *testing.T) {
 	RunScriptsWithoutNormalization(t, []ScriptTest{
 		anyTests("ANY"),
 		anyTests("SOME"),
@@ -287,6 +287,81 @@ func TestBinaryLogic(t *testing.T) {
 				{
 					Query:    `SELECT (1 = 1 AND 2 = 2) OR (true);`,
 					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+	})
+}
+
+// Note that our parser is more forgiving of array subscripts than the actual Postgres parser.
+// We can handle this: SELECT ARRAY[1, 2, 3][1]
+// But postgres requires: SELECT (ARRAY[1, 2, 3])[1]
+func TestSubscript(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "array literal",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT ARRAY[1, 2, 3][1];`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT (ARRAY[1, 2, 3])[3];`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    `SELECT (ARRAY[1, 2, 3])[1+1];`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT ARRAY[1, 2, 3][0];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT ARRAY[1, 2, 3][4];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT ARRAY[1, 2, 3][null];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT ARRAY['a', 'b', 'c'][2];`,
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:       `SELECT ARRAY[1, 2, 3][1:3];`,
+					ExpectedErr: "not yet supported",
+				},
+				{
+					Query:       `SELECT ARRAY[1, 2, 3]['abc'];`,
+					ExpectedErr: "integer: unhandled type: string",
+				},
+			},
+		},
+		{
+			Name: "array column",
+			SetUpScript: []string{
+				`CREATE TABLE test (id INT, arr INT[]);`,
+				`INSERT INTO test VALUES (1, ARRAY[1, 2, 3]), (2, ARRAY[4, 5, 6]);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT arr[2] FROM test order by 1;`,
+					Expected: []sql.Row{{2}, {5}},
+				},
+			},
+		},
+		{
+			Name: "array subquery",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT);",
+				"INSERT INTO test VALUES (1), (2), (3);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT (array(select id from test order by 1))[2]`,
+					Expected: []sql.Row{{2}},
 				},
 			},
 		},

@@ -217,6 +217,11 @@ func TestDoltFunctions(t *testing.T) {
 					},
 				},
 				{
+					Skip:     true, // TODO: function dolt_clean() does not exist
+					Query:    "SELECT DOLT_CLEAN();",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
 					Query:    "SELECT DOLT_CLEAN('t1');",
 					Expected: []sql.Row{{"{0}"}},
 				},
@@ -328,27 +333,27 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING')",
 					Expected: []sql.Row{
-						{Numeric("1"), "public.t1", "schema", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
-						{Numeric("2"), "public.t1", "data", "INSERT INTO `t1` (`pk`) VALUES (1);"},
+						{Numeric("1"), "public.t1", "schema", "CREATE TABLE \"t1\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
+						{Numeric("2"), "public.t1", "data", "INSERT INTO \"t1\" (\"pk\") VALUES (1);"},
 					},
 				},
 				{
 					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't1')",
 					Expected: []sql.Row{
-						{Numeric("1"), "public.t1", "schema", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
-						{Numeric("2"), "public.t1", "data", "INSERT INTO `t1` (`pk`) VALUES (1);"},
+						{Numeric("1"), "public.t1", "schema", "CREATE TABLE \"t1\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
+						{Numeric("2"), "public.t1", "data", "INSERT INTO \"t1\" (\"pk\") VALUES (1);"},
 					},
 				},
 				{
 					Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING')",
 					Expected: []sql.Row{
-						{"", "public.t1", "", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+						{"", "public.t1", "", "CREATE TABLE \"t1\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
 					},
 				},
 				{
 					Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING', 't1')",
 					Expected: []sql.Row{
-						{"", "public.t1", "", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+						{"", "public.t1", "", "CREATE TABLE \"t1\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
 					},
 				},
 				{
@@ -445,43 +450,43 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING')",
 					Expected: []sql.Row{
-						{Numeric("1"), "public.t1", "schema", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
-						{Numeric("2"), "public.t1", "data", "INSERT INTO `t1` (`pk`) VALUES (1);"},
-						{Numeric("3"), "testschema.t2", "schema", "CREATE TABLE `t2` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
-						{Numeric("4"), "testschema.t2", "data", "INSERT INTO `t2` (`pk`) VALUES (1);"},
+						{Numeric("1"), "public.t1", "schema", "CREATE TABLE \"t1\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
+						{Numeric("2"), "public.t1", "data", "INSERT INTO \"t1\" (\"pk\") VALUES (1);"},
+						{Numeric("3"), "testschema.t2", "schema", "CREATE TABLE \"t2\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
+						{Numeric("4"), "testschema.t2", "data", "INSERT INTO \"t2\" (\"pk\") VALUES (1);"},
 					},
 				},
 				{
 					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't1')",
 					Expected: []sql.Row{
-						{Numeric("1"), "public.t1", "schema", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
-						{Numeric("2"), "public.t1", "data", "INSERT INTO `t1` (`pk`) VALUES (1);"},
+						{Numeric("1"), "public.t1", "schema", "CREATE TABLE \"t1\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
+						{Numeric("2"), "public.t1", "data", "INSERT INTO \"t1\" (\"pk\") VALUES (1);"},
 					},
 				},
 				{
 					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't2')",
 					Expected: []sql.Row{
-						{Numeric("1"), "testschema.t2", "schema", "CREATE TABLE `t2` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
-						{Numeric("2"), "testschema.t2", "data", "INSERT INTO `t2` (`pk`) VALUES (1);"},
+						{Numeric("1"), "testschema.t2", "schema", "CREATE TABLE \"t2\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
+						{Numeric("2"), "testschema.t2", "data", "INSERT INTO \"t2\" (\"pk\") VALUES (1);"},
 					},
 				},
 				{
 					Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING')",
 					Expected: []sql.Row{
-						{"", "public.t1", "", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
-						{"", "testschema.t2", "", "CREATE TABLE `t2` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+						{"", "public.t1", "", "CREATE TABLE \"t1\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
+						{"", "testschema.t2", "", "CREATE TABLE \"t2\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
 					},
 				},
 				{
 					Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING', 't1')",
 					Expected: []sql.Row{
-						{"", "public.t1", "", "CREATE TABLE `t1` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+						{"", "public.t1", "", "CREATE TABLE \"t1\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
 					},
 				},
 				{
 					Query: "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING', 't2')",
 					Expected: []sql.Row{
-						{"", "testschema.t2", "", "CREATE TABLE `t2` (\n  `pk` integer NOT NULL,\n  PRIMARY KEY (`pk`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;"},
+						{"", "testschema.t2", "", "CREATE TABLE \"t2\" (\n  \"pk\" integer NOT NULL,\n  PRIMARY KEY (\"pk\")\n);"},
 					},
 				},
 				{

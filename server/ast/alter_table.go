@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
@@ -252,7 +253,7 @@ func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tab
 	case tree.DropRestrict:
 		return nil, errors.Errorf("ALTER TABLE DROP COLUMN does not support RESTRICT option")
 	case tree.DropCascade:
-		return nil, errors.Errorf("ALTER TABLE DROP COLUMN does not support CASCADE option")
+		logrus.Warnf("CASCADE option on DROP COLUMN is not yet supported, ignoring")
 	default:
 		return nil, errors.Errorf("ALTER TABLE with unsupported drop behavior %v", node.DropBehavior)
 	}

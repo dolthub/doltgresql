@@ -21,20 +21,20 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initPgGetUserbyid registers the functions to the catalog.
-func initPgGetUserbyid() {
-	framework.RegisterFunction(pg_get_userbyid_oid)
+// initPgGetStatisticsobjdefColumns registers the functions to the catalog.
+func initPgGetStatisticsobjdefColumns() {
+	framework.RegisterFunction(pg_get_statisticsobjdef_columns_oid)
 }
 
-// pg_get_userbyid_oid represents the PostgreSQL system catalog information function.
-var pg_get_userbyid_oid = framework.Function1{
-	Name:               "pg_get_userbyid",
+// pg_get_statisticsobjdef_columns_oid represents the PostgreSQL system catalog information function.
+var pg_get_statisticsobjdef_columns_oid = framework.Function1{
+	Name:               "pg_get_statisticsobjdef_columns",
 	Return:             pgtypes.Text,
 	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: roles are not supported yet
-		return "postgres", nil
+		// TODO: real implementation
+		return "", nil
 	},
 }

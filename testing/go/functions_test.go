@@ -1227,7 +1227,7 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					// TODO: users and roles are not supported yet
 					Query: `SELECT pg_get_userbyid(22)`,
 					Expected: []sql.Row{
-						{"unknown OID()"},
+						{"postgres"},
 					},
 				},
 			},
@@ -2104,6 +2104,48 @@ func TestStringFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "string_agg",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT primary key, v1 INT, v2 TEXT);",
+				"INSERT INTO test VALUES (1, 1, 'a'), (2, 2, 'b'), (3, 3, 'c'), (4, 4, 'd'), (5, 5, 'e');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT string_agg(v1::text, ',') FROM test;`,
+					Expected: []sql.Row{
+						{"1,2,3,4,5"},
+					},
+				},
+				{
+					Query: `SELECT string_agg(v2, '|') FROM test;`,
+					Expected: []sql.Row{
+						{"a|b|c|d|e"},
+					},
+				},
+				{
+					Query: `SELECT STRING_AGG(concat(v1::text, v2), ' * ') FROM test;`,
+					Expected: []sql.Row{
+						{"1a * 2b * 3c * 4d * 5e"},
+					},
+				},
+				{
+					Skip:  true, // can't use expressions for separator because GROUP_CONCAT can't at the moment
+					Query: `SELECT STRING_agg(concat(v1::text, v2), CONCAT(' *', ' ') ORDER BY V1 DESC) FROM test;`,
+					Expected: []sql.Row{
+						{"5e * 4d * 3c * 2b * 1a"},
+					},
+				},
+				{
+					Query:       `SELECT STRING_AGG(v2, '*', v1) FROM test;`,
+					ExpectedErr: "string_agg requires two arguments",
+				},
+				{
+					Query:       `SELECT STRING_AGG(v2) FROM test;`,
+					ExpectedErr: "string_agg requires two arguments",
+				},
+			},
+		},
 	})
 }
 
@@ -2265,6 +2307,40 @@ func TestSelectFromFunctions(t *testing.T) {
 				{
 					Query:    "SELECT * FROM lpad('name'::name, 7, '*');",
 					Expected: []sql.Row{{"***name"}},
+				},
+			},
+		},
+		{
+			Name: "test select  from dolt_ functions",
+			Skip: true, // need a way for single-row functions to declare a schema like table functions do, maybe just by modeling them as table functions in the first place
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT primary key, v1 INT, v2 TEXT);",
+				"INSERT INTO test VALUES (1, 1, 'a'), (2, 2, 'b'), (3, 3, 'c'), (4, 4, 'd'), (5, 5, 'e');",
+				"call dolt_commit('-Am', 'first table');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select * from dolt_branch('newBranch')`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `select status from dolt_checkout('newBranch')`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query: `insert into test values (6, 6, 'f')`,
+				},
+				{
+					Query:    `select length(commit_hash) > 0 from (select commit_hash from dolt_commit('-Am', 'added f') as result)`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "select dolt_checkout('main')",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `select fast_forward, conflicts from dolt_merge('newBranch')`,
+					Expected: []sql.Row{{"t", 0}},
 				},
 			},
 		},

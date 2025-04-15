@@ -18,7 +18,7 @@ import "testing"
 
 func TestAnalyze(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("ANALYZE"),
+		Converts("ANALYZE"),
 		Unimplemented("ANALYZE ( VERBOSE )"),
 		Unimplemented("ANALYZE ( VERBOSE true )"),
 		Unimplemented("ANALYZE ( SKIP_LOCKED )"),
@@ -291,7 +291,7 @@ func TestAnalyze(t *testing.T) {
 		Unimplemented("ANALYZE ( VERBOSE true , SKIP_LOCKED true ) table_name ( column_name , column_name ) , table_name ( column_name , column_name )"),
 		Unimplemented("ANALYZE ( SKIP_LOCKED , SKIP_LOCKED true ) table_name ( column_name , column_name ) , table_name ( column_name , column_name )"),
 		Unimplemented("ANALYZE ( SKIP_LOCKED true , SKIP_LOCKED true ) table_name ( column_name , column_name ) , table_name ( column_name , column_name )"),
-		Unimplemented("ANALYZE"),
+		Converts("ANALYZE"),
 		Unimplemented("ANALYZE VERBOSE"),
 		Converts("ANALYZE table_name"),
 		Unimplemented("ANALYZE VERBOSE table_name"),

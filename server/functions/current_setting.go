@@ -15,8 +15,9 @@
 package functions
 
 import (
-	"github.com/cockroachdb/errors"
+	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -42,7 +43,7 @@ var current_setting = framework.Function1{
 		}
 
 		if variable != nil {
-			return variable, nil
+			return fmt.Sprintf("%v", variable), nil
 		}
 
 		variable, err = ctx.GetSessionVariable(ctx, s)
@@ -51,7 +52,7 @@ var current_setting = framework.Function1{
 		}
 
 		if variable != nil {
-			return variable, nil
+			return fmt.Sprintf("%v", variable), nil
 		}
 
 		return nil, errors.Errorf("unrecognized configuration parameter %s", s)
