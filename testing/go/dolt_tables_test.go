@@ -1753,7 +1753,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 			},
 		},
-		//TODO: turn on statistics	
+		//TODO: turn on statistics
 		//{
 		//	Name: "dolt statistics",
 		//	SetUpScript: []string{
@@ -2077,7 +2077,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Name: "dolt procedures",
+			Name:        "dolt procedures",
 			SetUpScript: []string{
 				// TODO: Create procedure when supported
 			},
