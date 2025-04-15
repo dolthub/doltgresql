@@ -116,6 +116,43 @@ func TestSubqueries(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array flatten",
+			SetUpScript: []string{
+				`CREATE TABLE test (id INT, c varchar);`,
+				`INSERT INTO test VALUES (1, 'a'), (2, 'b'), (3, 'c');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT ARRAY(SELECT id FROM test order by 1);`,
+					Expected: []sql.Row{
+						{"{1,2,3}"},
+					},
+				},
+				{
+					Query: `SELECT ARRAY(SELECT c FROM test order by id limit 1);`,
+					Expected: []sql.Row{
+						{"{a}"},
+					},
+				},
+				{
+					Query: `SELECT ARRAY(SELECT c FROM test order by id desc);`,
+					Expected: []sql.Row{
+						{"{c,b,a}"},
+					},
+				},
+				{
+					Query:       `SELECT ARRAY(SELECT id, id FROM test order by 1);`,
+					ExpectedErr: "only a single column subquery is supported",
+				},
+				{
+					Query: `SELECT array_to_string(ARRAY(SELECT id FROM test order by 1), ',')`,
+					Expected: []sql.Row{
+						{"1,2,3"},
+					},
+				},
+			},
+		},
 	})
 }
 

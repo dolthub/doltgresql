@@ -52,7 +52,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			if _, ok := expr.(framework.Function); !ok {
 				// Some aggregation functions cannot be wrapped due to expectations in the analyzer, so we exclude them here.
 				switch expr.FunctionName() {
-				case "Count", "CountDistinct", "GroupConcat", "JSONObjectAgg", "Sum":
+				case "Count", "CountDistinct", "group_concat", "JSONObjectAgg", "Sum":
 				default:
 					// Some GMS functions wrap Doltgres parameters, so we'll only handle those that return GMS types
 					if _, ok := expr.Type().(*pgtypes.DoltgresType); !ok {
