@@ -293,6 +293,9 @@ func TestBinaryLogic(t *testing.T) {
 	})
 }
 
+// Note that our parser is more forgiving of array subscripts than the actual Postgres parser.
+// We can handle this: SELECT ARRAY[1, 2, 3][1]
+// But postgres requires: SELECT (ARRAY[1, 2, 3])[1]
 func TestSubscript(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -323,12 +326,42 @@ func TestSubscript(t *testing.T) {
 					Expected: []sql.Row{{nil}},
 				},
 				{
+					Query:    `SELECT ARRAY['a', 'b', 'c'][2];`,
+					Expected: []sql.Row{{"b"}},
+				},
+				{
 					Query:       `SELECT ARRAY[1, 2, 3][1:3];`,
 					ExpectedErr: "not yet supported",
 				},
 				{
 					Query:       `SELECT ARRAY[1, 2, 3]['abc'];`,
 					ExpectedErr: "integer: unhandled type: string",
+				},
+			},
+		},
+		{
+			Name: "array column",
+			SetUpScript: []string{
+				`CREATE TABLE test (id INT, arr INT[]);`,
+				`INSERT INTO test VALUES (1, ARRAY[1, 2, 3]), (2, ARRAY[4, 5, 6]);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT arr[2] FROM test order by 1;`,
+					Expected: []sql.Row{{2}, {5}},
+				},
+			},
+		},
+		{
+			Name: "array subquery",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT);",
+				"INSERT INTO test VALUES (1), (2), (3);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT (array(select id from test order by 1))[2]`,
+					Expected: []sql.Row{{2}},
 				},
 			},
 		},

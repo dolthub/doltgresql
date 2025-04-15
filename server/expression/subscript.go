@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/doltgresql/server/types"
 )
 
+// Subscript represents a subscript expression, e.g. `a[1]`.
 type Subscript struct {
 	Child sql.Expression
 	Index sql.Expression
@@ -31,6 +32,7 @@ type Subscript struct {
 var _ vitess.Injectable = (*Subscript)(nil)
 var _ sql.Expression = (*Subscript)(nil)
 
+// NewSubscript creates a new Subscript expression.
 func NewSubscript(child, index sql.Expression) *Subscript {
 	return &Subscript{
 		Child: child,
@@ -38,14 +40,17 @@ func NewSubscript(child, index sql.Expression) *Subscript {
 	}
 }
 
+// Resolved implements the sql.Expression interface.
 func (s Subscript) Resolved() bool {
 	return s.Child.Resolved() && s.Index.Resolved()
 }
 
+// String implements the sql.Expression interface.
 func (s Subscript) String() string {
 	return fmt.Sprintf("%s[%s]", s.Child, s.Index)
 }
 
+// Type implements the sql.Expression interface.
 func (s Subscript) Type() sql.Type {
 	dt, ok := s.Child.Type().(*types.DoltgresType)
 	if !ok {
@@ -54,6 +59,7 @@ func (s Subscript) Type() sql.Type {
 	return dt.ArrayBaseType()
 }
 
+// IsNullable implements the sql.Expression interface.
 func (s Subscript) IsNullable() bool {
 	return true
 }
@@ -97,10 +103,12 @@ func (s Subscript) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	}
 }
 
+// Children implements the sql.Expression interface.
 func (s Subscript) Children() []sql.Expression {
 	return []sql.Expression{s.Child, s.Index}
 }
 
+// WithChildren implements the sql.Expression interface.
 func (s Subscript) WithChildren(children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, fmt.Errorf("expected 2 children, got %d", len(children))
@@ -108,6 +116,7 @@ func (s Subscript) WithChildren(children ...sql.Expression) (sql.Expression, err
 	return NewSubscript(children[0], children[1]), nil
 }
 
+// WithResolvedChildren implements the vitess.Injectable interface.
 func (s Subscript) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 2 {
 		return nil, fmt.Errorf("expected 2 children, got %d", len(children))
