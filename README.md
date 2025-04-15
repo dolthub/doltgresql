@@ -180,7 +180,7 @@ Please follow the [Contributor's Guide](https://github.com/dolthub/doltgresql/bl
 
 # Performance
 
-Dolt is [1.7X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by
+Dolt is [1.1X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by
 a standard suite of Sysbench tests.
 
 We use these same Sysbench tests to benchmark DoltgreSQL and compare the results to PostgreSQL.
