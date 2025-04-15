@@ -2310,5 +2310,39 @@ func TestSelectFromFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "test select  from dolt_ functions",
+			Skip: true, // need a way for single-row functions to declare a schema like table functions do, maybe just by modeling them as table functions in the first place
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT primary key, v1 INT, v2 TEXT);",
+				"INSERT INTO test VALUES (1, 1, 'a'), (2, 2, 'b'), (3, 3, 'c'), (4, 4, 'd'), (5, 5, 'e');",
+				"call dolt_commit('-Am', 'first table');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select * from dolt_branch('newBranch')`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `select status from dolt_checkout('newBranch')`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query: `insert into test values (6, 6, 'f')`,
+				},
+				{
+					Query:    `select length(commit_hash) > 0 from (select commit_hash from dolt_commit('-Am', 'added f') as result)`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "select dolt_checkout('main')",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `select fast_forward, conflicts from dolt_merge('newBranch')`,
+					Expected: []sql.Row{{"t", 0}},
+				},
+			},
+		},
 	})
 }
