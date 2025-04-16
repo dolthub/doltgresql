@@ -191,6 +191,8 @@ func TestInsert(t *testing.T) {
 				"CREATE TABLE t (i serial, j INT)",
 				"CREATE TABLE u (u uuid DEFAULT 'ac1f3e2d-1e4b-4d3e-8b1f-2b7f1e7f0e3d', j INT)",
 				"CREATE TABLE s (v1 varchar DEFAULT 'hello', v2 varchar DEFAULT 'world')",
+				"CREATE SCHEMA ts",
+				"CREATE TABLE ts.t (i serial, j INT)",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -244,6 +246,36 @@ func TestInsert(t *testing.T) {
 					Query:       "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i, doesnotexist(j)",
 					ExpectedErr: "function: 'doesnotexist' not found",
 				},
+				{
+					Query:    "INSERT INTO public.t (j) VALUES (8) RETURNING t.j",
+					Expected: []sql.Row{{8}},
+				},
+				{
+					Query:    "INSERT INTO public.t (j) VALUES (9) RETURNING public.t.j",
+					Expected: []sql.Row{{9}},
+				},
+				{
+					Query:    "INSERT INTO ts.t (j) VALUES (10) RETURNING ts.t.j",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Skip:     true, // TODO: unable to find field with index 2 in row of 2 columns
+					Query:    "INSERT INTO public.t (j) VALUES ($1) RETURNING j;",
+					BindVars: []any{11},
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Skip:     true, // TODO: unable to find field with index 2 in row of 2 columns
+					Query:    "INSERT INTO public.t (j) VALUES ($1) RETURNING t.j;",
+					BindVars: []any{12},
+					Expected: []sql.Row{{12}},
+				},
+				{
+					Skip:     true, // TODO: unable to find field with index 2 in row of 2 columns
+					Query:    "INSERT INTO public.t (j) VALUES ($1) RETURNING public.t.j;",
+					BindVars: []any{13},
+					Expected: []sql.Row{{13}},
+				},
 			},
 		},
 		{
@@ -255,51 +287,6 @@ func TestInsert(t *testing.T) {
 				{
 					Query:    `INSERT INTO "django_migrations" ("app", "name", "applied") VALUES ('contenttypes', '0001_initial', '2025-03-24T19:21:59.690479+00:00'::timestamptz) RETURNING "django_migrations"."id"`,
 					Expected: []sql.Row{{1}},
-				},
-			},
-		},
-		{
-			Name: "insert with returning",
-			SetUpScript: []string{
-				"CREATE TABLE test (id int primary key);",
-				"CREATE SCHEMA testschema;",
-				"CREATE TABLE testschema.test (id int primary key);",
-				"INSERT INTO testschema.test (id) VALUES (10);",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    "INSERT INTO public.test (id) VALUES (1) RETURNING id;",
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    "INSERT INTO public.test (id) VALUES (2) RETURNING test.id;",
-					Expected: []sql.Row{{2}},
-				},
-				{
-					Query:    "INSERT INTO public.test (id) VALUES (3) RETURNING public.test.id;",
-					Expected: []sql.Row{{3}},
-				},
-				{
-					Query:    "INSERT INTO testschema.test (id) VALUES (11) RETURNING testschema.test.id;",
-					Expected: []sql.Row{{11}},
-				},
-				{
-					Skip:     true, // TODO: unable to find field with index 1 in row of 1 columns
-					Query:    "INSERT INTO public.test (id) VALUES ($1) RETURNING id;",
-					BindVars: []any{4},
-					Expected: []sql.Row{{4}},
-				},
-				{
-					Skip:     true, // TODO: unable to find field with index 1 in row of 1 columns
-					Query:    "INSERT INTO public.test (id) VALUES ($1) RETURNING test.id;",
-					BindVars: []any{5},
-					Expected: []sql.Row{{5}},
-				},
-				{
-					Skip:     true, // TODO: unable to find field with index 1 in row of 1 columns
-					Query:    "INSERT INTO public.test (id) VALUES ($1) RETURNING public.test.id;",
-					BindVars: []any{6},
-					Expected: []sql.Row{{6}},
 				},
 			},
 		},
