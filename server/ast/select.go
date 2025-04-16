@@ -110,11 +110,11 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 	case tree.UnqualifiedStar:
 		return &vitess.StarExpr{}, nil
 	case *tree.UnresolvedName:
-		if expr.NumParts > 2 {
-			return nil, errors.Errorf("referencing items outside the schema or database is not yet supported")
-		}
 		if expr.Star {
 			var tableName vitess.TableName
+			if expr.NumParts > 2 {
+				tableName.SchemaQualifier = vitess.NewTableIdent(expr.Parts[2])
+			}
 			if expr.NumParts == 2 {
 				tableName.Name = vitess.NewTableIdent(expr.Parts[1])
 			}
@@ -123,6 +123,9 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 			}, nil
 		} else {
 			var tableName vitess.TableName
+			if expr.NumParts > 2 {
+				tableName.SchemaQualifier = vitess.NewTableIdent(expr.Parts[2])
+			}
 			if expr.NumParts == 2 {
 				tableName.Name = vitess.NewTableIdent(expr.Parts[1])
 			}
