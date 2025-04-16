@@ -111,6 +111,10 @@ func (DoltgresAutoGCBehavior) Enable() bool {
 	return false
 }
 
+func (DoltgresAutoGCBehavior) ArchiveLevel() int {
+	return 0
+}
+
 type DoltgresUserConfig struct {
 	Name     *string `yaml:"name,omitempty" minver:"0.7.4"`
 	Password *string `yaml:"password,omitempty" minver:"0.7.4"`
