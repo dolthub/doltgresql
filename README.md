@@ -1,52 +1,47 @@
-# DoltgreSQL is Dolt for Postgres!
+# Doltgres is Dolt for Postgres!
 
-From the creators of [Dolt](https://www.doltdb.com), the world's first version controlled SQL database,
-DoltgreSQL (aka [Doltgres](https://www.doltgres.com)) is a Postgres-flavored version of Dolt. Doltgres offers all the Git-style log,
-diff, branch, and merge functionality of Dolt on your Postgres database schema and data. Instead of
-connecting with a MySQL client and using MySQL SQL, you connect to Doltgres with a Postgres client and
-use Postgres SQL. Doltgres is like Git and Postgres had a baby.
 
-# Documentation
 
-Doltgres has a [documentation website](https://docs.doltgres.com) with more extensive documentation.
+From the creators of [Dolt](https://www.doltdb.com), the world's first version controlled SQL
+database, comes [Doltgres](https://www.doltgres.com), the Postgres-flavored version of Dolt. It's a
+SQL database that you can branch and merge, fork and clone, push and pull just like a Git
+repository. Connect to your Doltgres server just like any Postgres database to read or modify schema
+and data. Version control functionality is exposed in SQL via system tables, functions, and
+procedures.
 
-# Motivation
+Git versions file, Doltgres versions tables. It's like Git and Postgres had a baby.
 
-Dolt [was built MySQL-flavored](https://www.dolthub.com/blog/2022-03-28-have-postgres-want-dolt/#why-is-dolt-mysql-flavored-anyway).
-There is no MySQL code in Dolt. In 2019, when we were conceiving of Dolt, MySQL was the most popular
-SQL-flavor. Over the past 5 years, the tide has shifted more towards Postgres, especially among
-young companies, Dolt's target market. Potential customers
-[have been clamoring for a Postgres version of Dolt](https://github.com/dolthub/dolt/issues/4840).
+# Doltgres is Beta
 
-Moreover, Dolt was conceived of and built as [Git for Data](https://www.dolthub.com/blog/2020-03-06-so-you-want-git-for-data/).
-Dolt later became a [version controlled database](https://www.dolthub.com/blog/2021-09-17-database-version-control/).
-DoltgreSQL gives us the opportunity to strip out some of the Git for Data pieces like the CLI
-and build directly for the version controlled database use case. With Doltgres, you start a server,
-connect a client, and do everything with SQL, a familiar experience for Postgres users.
+[Doltgres is now Beta quality](https://dolthub.com/blog/2025-04-16-doltgres-goes-beta/), which means
+it's ready for your production use case. There will be bugs and missing features, but [we can fix
+most of them in 24 hours](https://www.dolthub.com/blog/2024-05-15-24-hour-bug-fixes/) if you [file
+an issue]((https://github.com/dolthub/doltgresql/issues).
 
-Doltgres will diverge from Dolt over time to be a focused database version control solution.
-That said, we have a five year head start with Dolt. Dolt is a production-grade version
-controlled database today. [Dolt is 1.0](https://www.dolthub.com/blog/2023-05-05-dolt-1-dot-0/).
-If you are ok with using a MySQL-client, we recommend using Dolt for all use cases. Doltgres
-is [experimental](#limitations).
+The wait is over! Now is the time to [try out Doltgres](#getting-started) and let us know what you
+think. Import your existing Postgres database into Doltgres with `pg_dump` and `psql`, and let us
+know if anything doesn't work.
 
-# How You Can Help
+If you're excited about this project, you can also help speed it along in a few other ways:
 
-Doltgres is experimental. We need your feedback to understand how much we should invest in it.
-If you are interested in using Doltgres now or in the future, please:
-
-- Star this repo to tell us you are interested.
-- [Try Doltgres](#getting-started)
+- Star this repo
 - Create [issues](https://github.com/dolthub/doltgresql/issues) if you find bugs
 - Create [issues](https://github.com/dolthub/doltgresql/issues) for missing functionality you want
-- Contribute code for features you want (see the [Contribution Guide](https://github.com/dolthub/doltgresql/blob/main/CONTRIBUTING.md))
+- Contribute code for features you want (see the [Contribution
+  Guide](https://github.com/dolthub/doltgresql/blob/main/CONTRIBUTING.md))
+- Tell your friends and colleagues
+
+# Full Documentation
+
+Doltgres has a [documentation website](https://docs.doltgres.com) with extensive documentation.
 
 # Getting Started
 
 1. Download the latest release of `doltgres`
 2. Put `doltgres` on your `PATH`
-
-3. Run `doltgres`. This will create a `postgres` user and a `postgres` database in `~/doltgres/databases` (add the `--data-dir` argument or change the `DOLTGRES_DATA_DIR` environment variable to use a different directory).
+3. Run `doltgres`. This will create a `postgres` user and a `postgres` database in
+   `~/doltgres/databases` (use a `config.yaml` file or set the `DOLTGRES_DATA_DIR` environment
+   variable to use a different directory).
 
 ```bash
 $ doltgres
@@ -165,57 +160,58 @@ getting_started=> select * from dolt.log;
 
 Please follow the [Contributor's Guide](https://github.com/dolthub/doltgresql/blob/main/CONTRIBUTING.md#getting-set-up) to learn how to build from source.
 
-# Limitations
+# Limitations and differences from Dolt
 
-- No [Git-style CLI](https://docs.dolthub.com/cli-reference/cli) for version control like in [Dolt](https://github.com/dolthub/dolt), only a SQL interface.
-- Can't push to DoltHub or DoltLab, only custom remotes.
-- Limited support of Postgres-specific types and functions.
-- No Postgres system tables.
-- No authentication or users.
-- Database and schema models are merged.
-- Limited support for SSL connections (non-verified connections only).
+- No [Git-style CLI](https://docs.dolthub.com/cli-reference/cli) for version control like in
+  [Dolt](https://github.com/dolthub/dolt), only a SQL interface.
+- Can't push to DoltHub or DoltLab, only custom remotes (such as on the file system or to S3).
+- Backup and replication are a work in progress.
 - No GSSAPI support.
-- No PostgreSQL functions have been implemented, therefore only MySQL functions may be used.
-- No support for replication, clustering, etc.
+- No extension support yet.
+- Some Postgres syntax, types, functions, and features are not yet implemented. If you encounter a
+  missing feature you need for your application, please [file an issue to let us
+  know](https://github.com/dolthub/doltgresql/issues).
 
 # Performance
 
-Dolt is [1.1X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as measured by
-a standard suite of Sysbench tests.
+Dolt is [1.1X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as
+measured by a standard suite of Sysbench tests.
 
 We use these same Sysbench tests to benchmark DoltgreSQL and compare the results to PostgreSQL.
 
-Here are the benchmarks for DoltgreSQL version `0.12.0`.
+Here are the benchmarks for DoltgreSQL version `0.50.0`. All figures are median latency in
+milliseconds.
 
 <!-- START_LATENCY_RESULTS_TABLE -->
 
-| Read Tests                   | PostgreSQL | DoltgreSQL | Multiple |
-| ---------------------------- | ---------- | ---------- | -------- |
-| covering_index_scan_postgres | 1.82       | 4.25       | 2.3      |
-| groupby_scan_postgres        | 5.37       | 43.39      | 8.1      |
-| index_join_postgres          | 1.96       | 10.65      | 5.4      |
-| index_join_scan_postgres     | 0.74       | 9.56       | 12.9     |
-| index_scan_postgres          | 18.28      | 106.75     | 5.8      |
-| oltp_point_select            | 0.14       | 0.51       | 3.6      |
-| oltp_read_only               | 2.52       | 12.98      | 5.2      |
-| select_random_points         | 0.21       | 1.12       | 5.3      |
-| select_random_ranges         | 0.41       | 1.37       | 3.3      |
-| table_scan_postgres          | 18.28      | 106.75     | 5.8      |
-| types_table_scan_postgres    | 44.98      | 223.34     | 5.0      |
-| reads_mean_multiplier        |            |            | 5.7      |
+| Read Tests                   | Postgres | Doltgres | Multiple |
+| ---                          | ---      | ---      | ---      |
+| covering_index_scan_postgres | 1.89     | 5.28     | 2.8      |
+| groupby_scan_postgres        | 5.28     | 46.63    | 8.8      |
+| index_join_postgres          | 1.96     | 10.09    | 5.1      |
+| index_join_scan_postgres     | 0.67     | 8.9      | 13.3     |
+| index_scan_postgres          | 17.95    | 130.13   | 7.2      |
+| oltp_point_select            | 0.14     | 0.52     | 3.7      |
+| oltp_read_only               | 2.48     | 12.75    | 5.1      |
+| select_random_points         | 0.21     | 1.12     | 5.3      |
+| select_random_ranges         | 0.41     | 1.39     | 3.4      |
+| table_scan_postgres          | 17.95    | 132.49   | 7.4      |
+| types_table_scan_postgres    | 43.39    | 292.6    | 6.7      |
+| reads_mean_multiplier        |          |          | 6.3      |
 
-| Write Tests                  | PostgreSQL | DoltgreSQL | Multiple |
-| ---------------------------- | ---------- | ---------- | -------- |
-| oltp_delete_insert_postgres  | 2.43       | 6.55       | 2.7      |
-| oltp_insert                  | 0.97       | 3.25       | 3.4      |
-| oltp_read_write              | 4.25       | 19.29      | 4.5      |
-| oltp_update_index            | 1.03       | 3.07       | 3.0      |
-| oltp_update_non_index        | 1.03       | 2.97       | 2.9      |
-| oltp_write_only              | 1.64       | 6.32       | 3.9      |
-| types_delete_insert_postgres | 2.03       | 6.21       | 3.1      |
-| writes_mean_multiplier       |            |            | 3.4      |
 
-| Overall Mean Multiple | 4.8 |
+| Write Tests                  | Postgres | Doltgres | Multiple |
+|------------------------------|----------|----------|----------|
+| oltp_delete_insert_postgres  | 2.22     | 6.79     | 3.1      |
+| oltp_insert                  | 1.1      | 3.68     | 3.3      |
+| oltp_read_write              | 4.25     | 20.37    | 4.8      |
+| oltp_update_index            | 1.12     | 3.55     | 3.2      |
+| oltp_update_non_index        | 1.12     | 3.43     | 3.1      |
+| oltp_write_only              | 1.73     | 7.43     | 4.3      |
+| types_delete_insert_postgres | 2.3      | 7.04     | 3.1      |
+| write_mean_multiplier        |          |          | 3.6      |
+
+| Overall Mean Multiple | 5.2 |
 | --------------------- | --- |
 
 <!-- END_LATENCY_RESULTS_TABLE -->
@@ -223,28 +219,26 @@ Here are the benchmarks for DoltgreSQL version `0.12.0`.
 
 # Correctness
 
-Dolt is [100% compatible](https://docs.dolthub.com/sql-reference/benchmarks/correctness) with MySQL based on a
-standard suite of correctness tests called `sqllogictest`.
+Dolt is [100% compatible](https://docs.dolthub.com/sql-reference/benchmarks/correctness) with MySQL
+based on a standard suite of correctness tests called `sqllogictest`.
 
 We use these same tests to measure the correctness of DoltgreSQL.
 
-Here are DoltgreSQL's sqllogictest results for version `0.12.0`. Tests that
-did not run could not complete due to a timeout earlier in the run.
+Here are DoltgreSQL's sqllogictest results for version `0.50.0`. Tests that did not run could not
+complete due to a timeout earlier in the run.
 
 <!-- START_CORRECTNESS_RESULTS_TABLE -->
 
 | Results     | Count   |
-| ----------- | ------- |
+| --          | --      |
 | did not run | 91270   |
-| not ok      | 464029  |
-| ok          | 5135990 |
+| not ok      | 411415  |
+| ok          | 5188604 |
 | timeout     | 16      |
-
 | Total Tests | 5691305 |
-| ----------- | ------- |
 
-| Correctness Percentage | 90.242747 |
-| ---------------------- | --------- |
+| Correctness Percentage | 91.16721 |
+| --                     | --       |
 
 <!-- END_CORRECTNESS_RESULTS_TABLE -->
 <br/>
