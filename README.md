@@ -40,27 +40,29 @@ Doltgres has a [documentation website](https://docs.doltgres.com) with extensive
 1. Download the latest release of `doltgres`
 2. Put `doltgres` on your `PATH`
 3. Run `doltgres`. This will create a `postgres` user and a `postgres` database in
-   `~/doltgres/databases` (use a `config.yaml` file or set the `DOLTGRES_DATA_DIR` environment
-   variable to use a different directory).
+   `~/doltgres/databases`. The default password will be `password`, just like in Postgres. You can
+   use a `config.yaml` file or set the `DOLTGRES_DATA_DIR` environment variable to use a different
+   directory for your databases.
 
 ```bash
 $ doltgres
-Successfully initialized dolt data repository.
-Starting server with Config HP="localhost:5432"|T="28800000"|R="false"|L="info"|S="/tmp/mysql.sock"
+INFO[0000] Server ready. Accepting connections.
 ```
 
-4. Make sure you have Postgres version 15 or higher installed. I used Homebrew to install Postgres on my Mac.
-   This requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path. On Postgres version 14 or lower,
-   `\` commands (ie. `\d`, `\l`) do not yet work with Doltgres. We only need Postgres in order to use PSQL, so feel free to skip this step if you already have a Postgres client. Doltgres does not depend on any Postgres code.
+4. Install Postgres to get the `psql` tool. I used Homebrew to install Postgres on my Mac.  This
+   requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path. We only need Postgres
+   in order to use `psql`, so feel free to skip this step if you already have `psql`, or if you
+   have another Postgres client you use instead.
 
 ```
 export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
 ```
 
-5. Open a new terminal. Connect with the following command: `psql -h localhost -U postgres`. This will connect to the `postgres` database with the `postgres` user. The default password will be `password`.
+5. Open a new terminal. Connect with the following command: `PGPASSWORD=password psql -h localhost
+   -U postgres`. This will connect to the `postgres` database with the `postgres` user.
 
 ```bash
-$ psql -h 127.0.0.1 -U postgres
+$ PGPASSWORD=password psql -h localhost
 psql (15.4 (Homebrew), server 15.0)
 Type "help" for help.
 
