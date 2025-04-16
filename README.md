@@ -16,7 +16,7 @@ Git versions file, Doltgres versions tables. It's like Git and Postgres had a ba
 [Doltgres is now Beta quality](https://dolthub.com/blog/2025-04-16-doltgres-goes-beta/), which means
 it's ready for your production use case. There will be bugs and missing features, but [we can fix
 most of them in 24 hours](https://www.dolthub.com/blog/2024-05-15-24-hour-bug-fixes/) if you [file
-an issue]((https://github.com/dolthub/doltgresql/issues).
+an issue](https://github.com/dolthub/doltgresql/issues).
 
 The wait is over! Now is the time to [try out Doltgres](#getting-started) and let us know what you
 think. Import your existing Postgres database into Doltgres with `pg_dump` and `psql`, and let us
