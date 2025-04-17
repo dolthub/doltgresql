@@ -118,7 +118,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 		if err != nil {
 			return false
 		}
-		
+
 		switch e := expr.(type) {
 		// Subquery doesn't walk its Node child via Expressions, so we must walk it separately here
 		case *plan.Subquery:
