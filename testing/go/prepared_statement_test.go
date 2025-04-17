@@ -31,11 +31,9 @@ func TestPreparedPgCatalog(t *testing.T) {
 }
 
 var preparedStatementTests = []ScriptTest{
-
 	{
 		Name: "Expressions without tables",
 		Assertions: []ScriptTestAssertion{
-
 			{
 				Query:    "SELECT CONCAT($1::text, $2::text)",
 				BindVars: []any{"hello", "world"},
@@ -54,6 +52,7 @@ var preparedStatementTests = []ScriptTest{
 	},
 	{
 		Name: "Expressions with tables",
+		Focus: true,
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = $1);",
