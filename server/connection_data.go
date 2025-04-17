@@ -113,11 +113,16 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 
 	types := make([]uint32, 0)
 	var err error
-	extractBindVars := func(expr sql.Expression) bool {
+	var extractBindVars func(expr sql.Expression) bool
+	extractBindVars = func(expr sql.Expression) bool {
 		if err != nil {
 			return false
 		}
+		
 		switch e := expr.(type) {
+		// Subquery doesn't walk its Node child via Expressions, so we must walk it separately here
+		case *plan.Subquery:
+			transform.InspectExpressions(e.Query, extractBindVars)
 		case *expression.BindVar:
 			var typOid uint32
 			if doltgresType, ok := e.Type().(*pgtypes.DoltgresType); ok {

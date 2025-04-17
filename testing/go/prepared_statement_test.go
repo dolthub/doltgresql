@@ -31,11 +31,9 @@ func TestPreparedPgCatalog(t *testing.T) {
 }
 
 var preparedStatementTests = []ScriptTest{
-
 	{
 		Name: "Expressions without tables",
 		Assertions: []ScriptTestAssertion{
-
 			{
 				Query:    "SELECT CONCAT($1::text, $2::text)",
 				BindVars: []any{"hello", "world"},
@@ -54,15 +52,14 @@ var preparedStatementTests = []ScriptTest{
 	},
 	{
 		Name: "Expressions with tables",
+		Focus: true,
 		Assertions: []ScriptTestAssertion{
 			{
-				Skip:     true, // TODO: expected 0 arguments, got 1
 				Query:    "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = $1);",
 				BindVars: []any{"public"},
 				Expected: []sql.Row{{1}},
 			},
 			{
-				Skip:     true, // TODO: could not determine OID for placeholder v1: unsupported type: EXPRESSION
 				Query:    "SELECT nspname FROM pg_namespace LIMIT $1;",
 				BindVars: []any{1},
 				Expected: []sql.Row{{"dolt"}},
