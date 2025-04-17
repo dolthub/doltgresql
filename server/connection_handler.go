@@ -510,6 +510,9 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 		// NOTE: This is used for Prepared Statement Tests only.
 		bindVarTypes, err = extractBindVarTypes(analyzedPlan)
 		if err != nil {
+			if printErrorStackTraces {
+				fmt.Printf("Error extracting bind var types: %+v\n", err)
+			}
 			return err
 		}
 	}
