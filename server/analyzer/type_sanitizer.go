@@ -17,6 +17,7 @@ package analyzer
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -39,10 +40,23 @@ import (
 // to GMS types, so by taking care of all conversions here, we can ensure that Doltgres only needs to worry about its
 // own types.
 func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	return pgtransform.NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	return pgtransform.NodeExprsWithNodeWithOpaque(node, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		// This can be updated if we find more expressions that return GMS types.
 		// These should eventually be replaced with Doltgres-equivalents over time, rendering this function unnecessary.
 		switch expr := expr.(type) {
+		case *expression.GetField:
+			switch n := n.(type) {
+			case *plan.Project, *plan.Filter, *plan.GroupBy:
+				child := n.Children()[0]
+				// Some dolt_ tables do not have doltgres types for their columns, so we convert them here
+				if rt, ok := child.(*plan.ResolvedTable); ok && strings.HasPrefix(rt.Name(), "dolt_") {
+					// This is a projection on a table, so we can safely convert the type
+					if _, ok := expr.Type().(*pgtypes.DoltgresType); !ok {
+						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
+					}
+				}
+			}
+			return expr, transform.SameTree, nil
 		case *expression.Literal:
 			return typeSanitizerLiterals(ctx, expr)
 		case *expression.Not, *expression.And, *expression.Or, *expression.Like:

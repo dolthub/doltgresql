@@ -23,7 +23,8 @@ import (
 func TestUserSpaceDoltTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "dolt branches",
+			Name:  "dolt branches",
+			Focus: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT name FROM dolt.branches`,
@@ -106,7 +107,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Skip:     true, // this fails because the column type of this table is not a doltgres type, which IN requires
 					Query:    `SELECT "dolt_branches"."name" FROM "dolt_branches" WHERE "dolt_branches"."name" IN ('main') ORDER BY "dolt_branches"."name" DESC LIMIT 21;`,
 					Expected: []sql.Row{{"main"}},
 				},
@@ -1744,8 +1744,8 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 			},
 		},
-		//TODO: turn on statistics
-		//{
+		// TODO: turn on statistics
+		// {
 		//	Name: "dolt statistics",
 		//	SetUpScript: []string{
 		//		"CREATE TABLE horses (id int primary key, name varchar(10));",
@@ -1871,7 +1871,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 		//			Expected: []sql.Row{{"horses", "horses_name_idx"}, {"horses", "primary"}},
 		//		},
 		//	},
-		//},
+		// },
 		{
 			Name: "dolt status",
 			SetUpScript: []string{

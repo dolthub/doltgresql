@@ -15,7 +15,7 @@
 package expression
 
 import (
-	"strconv"
+	"math"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -124,8 +124,12 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 		return newVal, nil
 	case query.Type_UINT64:
+		// Postgres doesn't have a Uint64 type, so we return an int64 with an error if the value is too high
 		if val, ok := val.(uint64); ok {
-			return decimal.NewFromString(strconv.FormatUint(val, 10))
+			if val > math.MaxInt64 {
+				return nil, errors.Errorf("uint64 value out of range: %v", val)
+			}
+			return int64(val), nil
 		}
 		return nil, errors.Errorf("GMSCast expected type `uint64`, got `%T`", val)
 	case query.Type_FLOAT32:
