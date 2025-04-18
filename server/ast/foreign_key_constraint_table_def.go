@@ -62,10 +62,9 @@ func nodeForeignKeyConstraintTableDef(ctx *Context, node *tree.ForeignKeyConstra
 				return nil, errors.Errorf("SET NULL <columns> is not yet supported")
 			}
 		case tree.SetDefault:
-			// GMS doesn't support this as MySQL doesn't support this
 			refActions[i] = vitess.SetDefault
 			if refAction.Columns != nil {
-				return nil, errors.Errorf("SET NULL <columns> is not yet supported")
+				return nil, errors.Errorf("SET DEFAULT <columns> is not yet supported")
 			}
 		case tree.Cascade:
 			refActions[i] = vitess.Cascade

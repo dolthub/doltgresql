@@ -231,8 +231,9 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "incompatible types",
 					},
 					{
-						Skip:  true, // varchar -> text should work, but key detection is broken. Should work when toast types are done
-						Query: "alter table child add constraint fvt foreign key (f) references parent(t);",
+						// varchar -> text should work, but key detection is broken. https://github.com/dolthub/doltgresql/issues/1402
+						Skip:  true,
+						Query: "alter table child add constraint fvt foreign key (v) references parent(t);",
 					},
 					{
 						Query: "alter table child add constraint fvllv foreign key (vl) references parent(vl);",
@@ -241,11 +242,13 @@ func TestForeignKeys(t *testing.T) {
 						Query: "alter table child add constraint fvlv foreign key (vl) references parent(v);",
 					},
 					{
-						Skip:  true, // varchar -> text should work, but key detection is broken. Should work when toast types are done
+						// varchar(100) -> text should work, but key detection is broken. https://github.com/dolthub/doltgresql/issues/1402
+						Skip:  true,
 						Query: "alter table child add constraint fvlt foreign key (vl) references parent(t);",
 					},
 					{
-						Skip:  true, // varchar -> text should work, but key detection is broken. Should work when toast types are done
+						// text -> text should work, but key detection is broken. https://github.com/dolthub/doltgresql/issues/1402
+						Skip:  true,
 						Query: "alter table child add constraint ftt foreign key (t) references parent(t);",
 					},
 					{
@@ -920,6 +923,74 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query:    "ALTER TABLE t33 DROP CONSTRAINT t33_webhook_id_fk_fkey;",
 						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
+				Name: "ON DELETE ... SET DEFAULT",
+				SetUpScript: []string{
+					"CREATE TABLE public.hn_stories (title text NOT NULL, website_url text);",
+					"CREATE TABLE public.websites (url text primary key, title text);",
+					"INSERT into public.websites VALUES ('http://www.dolthub.com', 'foo1'), ('http://www.google.com', 'foo2');",
+					"INSERT into public.hn_stories VALUES ('test1', 'http://www.dolthub.com'), ('test2', 'http://www.google.com');",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `ALTER TABLE ONLY public.hn_stories
+				ADD CONSTRAINT hn_stories_website_url_fkey FOREIGN KEY (website_url) REFERENCES public.websites(url) ON UPDATE CASCADE ON DELETE SET DEFAULT;`,
+						Expected: []sql.Row{},
+					},
+					{
+						Query: "DELETE FROM public.websites WHERE title = 'foo1';",
+					},
+					{
+						Query:    "SELECT * FROM public.hn_stories where title = 'test1';",
+						Expected: []sql.Row{{"test1", nil}},
+					},
+					{
+						Query:    "ALTER TABLE hn_stories ALTER COLUMN website_url SET DEFAULT (title);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query: "DELETE FROM public.websites WHERE title = 'foo2';",
+					},
+					{
+						Query:    "SELECT * FROM public.hn_stories where title = 'test2';",
+						Expected: []sql.Row{{"test2", "test2"}},
+					},
+				},
+			},
+			{
+				Name: "ON UPDATE ... SET DEFAULT",
+				SetUpScript: []string{
+					"CREATE TABLE public.hn_stories (title text NOT NULL, website_url text);",
+					"CREATE TABLE public.websites (url text primary key, title text);",
+					"INSERT into public.websites VALUES ('http://www.dolthub.com', 'foo1'), ('http://www.google.com', 'foo2');",
+					"INSERT into public.hn_stories VALUES ('test1', 'http://www.dolthub.com'), ('test2', 'http://www.google.com');",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `ALTER TABLE ONLY public.hn_stories
+				ADD CONSTRAINT hn_stories_website_url_fkey FOREIGN KEY (website_url) REFERENCES public.websites(url) ON UPDATE SET DEFAULT;`,
+						Expected: []sql.Row{},
+					},
+					{
+						Query: "UPDATE public.websites SET url = 'http://fake.com' WHERE title = 'foo1';",
+					},
+					{
+						Query:    "SELECT * FROM public.hn_stories where title = 'test1';",
+						Expected: []sql.Row{{"test1", nil}},
+					},
+					{
+						Query:    "ALTER TABLE hn_stories ALTER COLUMN website_url SET DEFAULT (title);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query: "UPDATE public.websites SET url = 'http://doltdb.com' WHERE title = 'foo2';",
+					},
+					{
+						Query:    "SELECT * FROM public.hn_stories where title = 'test2';",
+						Expected: []sql.Row{{"test2", "test2"}},
 					},
 				},
 			},
