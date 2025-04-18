@@ -35,8 +35,8 @@ type InSubquery struct {
 
 	// These variables are used so that we can resolve the comparison functions once and reuse them as we iterate over rows.
 	// These are assigned in WithChildren, so refer there for more information.
-	leftLiteral   *Literal
-	rightLiterals []*Literal
+	leftLiteral   *expression.Literal
+	rightLiterals []*expression.Literal
 	compFuncs     []framework.Function
 }
 
@@ -127,7 +127,7 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 // assigned to |compFuncs| during analysis. If the left value is a single scalar, then |row| has a single value as
 // well. Otherwise, (left is a tuple), |row| has a matching number of values.
 func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Row) (bool, error) {
-	in.leftLiteral.value = left
+	in.leftLiteral = left
 	for i, v := range row {
 		in.rightLiterals[i].value = v
 	}
