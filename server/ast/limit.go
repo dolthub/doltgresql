@@ -16,6 +16,7 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -37,6 +38,34 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 	offset, err := nodeExpr(ctx, node.Offset)
 	if err != nil {
 		return nil, err
+	}
+
+	// MySQL bound checking happens in the parser, we must do it manually
+	if injectedExpr, ok := count.(vitess.InjectedExpr); ok {
+		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+			l := literal.LiteralValue()
+			limitValue, err := int64ValueForLimit(l)
+			if err != nil {
+				return nil, err
+			}
+
+			if limitValue < 0 {
+				return nil, errors.Errorf("LIMIT must be greater than or equal to 0")
+			}
+		}
+	}
+	if injectedExpr, ok := offset.(vitess.InjectedExpr); ok {
+		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+			o := literal.LiteralValue()
+			offsetVal, err := int64ValueForLimit(o)
+			if err != nil {
+				return nil, err
+			}
+
+			if offsetVal < 0 {
+				return nil, errors.Errorf("OFFSET must be greater than or equal to 0")
+			}
+		}
 	}
 
 	return &vitess.Limit{

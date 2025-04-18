@@ -611,6 +611,7 @@ func TestScripts(t *testing.T) {
 		"select * from vt where v = cast('def' as char(6));",                                 // incorrect result
 		"select * from vt where v < cast('def' as char(6));",                                 // incorrect result
 		"select * from vt where v >= cast('def' as char(6));",                                // incorrect result
+		"histogram bucket merging error for implementor buckets",                             // with recursive syntax
 	})
 	defer h.Close()
 	enginetest.TestScripts(t, h)
