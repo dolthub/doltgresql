@@ -86,12 +86,13 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 // typeSanitizerLiterals handles literal expressions for TypeSanitizer.
 func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) (sql.Expression, transform.TreeIdentity, error) {
 	// GMS may resolve Doltgres literals and then stick them in GMS literals, so we have to account for that here
+	// TODO: is this necessary any more?
 	if doltgresType, ok := gmsLiteral.Type().(*pgtypes.DoltgresType); ok {
-		return pgexprs.NewUnsafeLiteral(gmsLiteral.Value(), doltgresType), transform.NewTree, nil
+		return pgexprs.NewUnsafeLiteral(gmsLiteral.LiteralValue(), doltgresType), transform.NewTree, nil
 	}
 	switch gmsLiteral.Type().Type() {
 	case query.Type_INT8, query.Type_INT16, query.Type_YEAR:
-		newVal, _, err := types.Int16.Convert(ctx, gmsLiteral.Value())
+		newVal, _, err := types.Int16.Convert(ctx, gmsLiteral.LiteralValue())
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -100,7 +101,7 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		}
 		return pgexprs.NewRawLiteralInt16(newVal.(int16)), transform.NewTree, nil
 	case query.Type_INT24, query.Type_INT32:
-		newVal, _, err := types.Int32.Convert(ctx, gmsLiteral.Value())
+		newVal, _, err := types.Int32.Convert(ctx, gmsLiteral.LiteralValue())
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -109,7 +110,7 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		}
 		return pgexprs.NewRawLiteralInt32(newVal.(int32)), transform.NewTree, nil
 	case query.Type_INT64, query.Type_ENUM:
-		newVal, _, err := types.Int64.Convert(ctx, gmsLiteral.Value())
+		newVal, _, err := types.Int64.Convert(ctx, gmsLiteral.LiteralValue())
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -118,7 +119,7 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		}
 		return pgexprs.NewRawLiteralInt64(newVal.(int64)), transform.NewTree, nil
 	case query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
-		newVal, _, err := types.Uint32.Convert(ctx, gmsLiteral.Value())
+		newVal, _, err := types.Uint32.Convert(ctx, gmsLiteral.LiteralValue())
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -127,7 +128,7 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		}
 		return pgexprs.NewRawLiteralInt64(int64(newVal.(uint32))), transform.NewTree, nil
 	case query.Type_UINT64, query.Type_SET:
-		newVal, _, err := types.Uint64.Convert(ctx, gmsLiteral.Value())
+		newVal, _, err := types.Uint64.Convert(ctx, gmsLiteral.LiteralValue())
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -137,7 +138,7 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		newLiteral, err := pgexprs.NewNumericLiteral(strconv.FormatUint(newVal.(uint64), 10))
 		return newLiteral, transform.NewTree, err
 	case query.Type_FLOAT32:
-		newVal, _, err := types.Float32.Convert(ctx, gmsLiteral.Value())
+		newVal, _, err := types.Float32.Convert(ctx, gmsLiteral.LiteralValue())
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -146,7 +147,7 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		}
 		return pgexprs.NewRawLiteralFloat32(newVal.(float32)), transform.NewTree, nil
 	case query.Type_FLOAT64:
-		newVal, _, err := types.Float64.Convert(ctx, gmsLiteral.Value())
+		newVal, _, err := types.Float64.Convert(ctx, gmsLiteral.LiteralValue())
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -155,13 +156,13 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		}
 		return pgexprs.NewRawLiteralFloat64(newVal.(float64)), transform.NewTree, nil
 	case query.Type_DECIMAL:
-		dec, ok := gmsLiteral.Value().(decimal.Decimal)
+		dec, ok := gmsLiteral.LiteralValue().(decimal.Decimal)
 		if !ok {
-			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected decimal type: %T", gmsLiteral.Value())
+			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected decimal type: %T", gmsLiteral.LiteralValue())
 		}
 		return pgexprs.NewRawLiteralNumeric(dec), transform.NewTree, nil
 	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-		newVal, _, err := types.Datetime.Convert(ctx, gmsLiteral.Value())
+		newVal, _, err := types.Datetime.Convert(ctx, gmsLiteral.LiteralValue())
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -170,13 +171,13 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		}
 		return pgexprs.NewRawLiteralTimestamp(newVal.(time.Time)), transform.NewTree, nil
 	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT:
-		str, ok := gmsLiteral.Value().(string)
+		str, ok := gmsLiteral.LiteralValue().(string)
 		if !ok {
-			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected string type: %T", gmsLiteral.Value())
+			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected string type: %T", gmsLiteral.LiteralValue())
 		}
 		return pgexprs.NewUnknownLiteral(str), transform.NewTree, nil
 	case query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
-		newVal := gmsLiteral.Value()
+		newVal := gmsLiteral.LiteralValue()
 		if newVal == nil {
 			return pgexprs.NewNullLiteral(), transform.NewTree, nil
 		} else if str, ok := newVal.(string); ok {
@@ -184,15 +185,15 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		} else if b, ok := newVal.([]byte); ok {
 			return pgexprs.NewUnknownLiteral(string(b)), transform.NewTree, nil
 		}
-		return nil, transform.NewTree, errors.Errorf("SANITIZER: invalid binary type: %T", gmsLiteral.Value())
+		return nil, transform.NewTree, errors.Errorf("SANITIZER: invalid binary type: %T", gmsLiteral.LiteralValue())
 	case query.Type_JSON:
-		newVal := gmsLiteral.Value()
+		newVal := gmsLiteral.LiteralValue()
 		if newVal == nil {
 			return pgexprs.NewNullLiteral(), transform.NewTree, nil
 		}
 		str, ok := newVal.(string)
 		if !ok {
-			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected string type: %T", gmsLiteral.Value())
+			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected string type: %T", gmsLiteral.LiteralValue())
 		}
 		return pgexprs.NewUnknownLiteral(str), transform.NewTree, nil
 	case query.Type_NULL_TYPE:

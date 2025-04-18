@@ -41,6 +41,7 @@ type Literal struct {
 var _ vitess.Injectable = (*Literal)(nil)
 var _ sql.Expression = (*Literal)(nil)
 var _ framework.LiteralInterface = (*Literal)(nil)
+var _ sql.LiteralExpression = (*Literal)(nil)
 
 // NewNumericLiteral returns a new *Literal containing a NUMERIC value.
 func NewNumericLiteral(numericValue string) (*Literal, error) {
@@ -330,8 +331,8 @@ func (l *Literal) Type() sql.Type {
 	return l.typ
 }
 
-// Value returns the literal value.
-func (l *Literal) Value() any {
+// LiteralValue implements the sql.LiteralExpression interface
+func (l *Literal) LiteralValue() interface{} {
 	return l.value
 }
 
