@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -158,34 +159,34 @@ func NewUnsafeLiteral(val any, t *pgtypes.DoltgresType) *expression.Literal {
 return expression.NewLiteral(val, t)
 }
 
-// // ToVitessLiteral returns the literal as a Vitess literal. This is strictly for situations where GMS is hardcoded to
-// // expect a Vitess literal. This should only be used as a temporary measure, as the GMS code needs to be updated, or the
-// // equivalent functionality should be built into Doltgres (recommend the second approach).
-// func (l *expression.Literal) ToVitessLiteral() *vitess.SQLVal {
-// 	switch l.typ.ID {
-// 	case pgtypes.Bool.ID:
-// 		if l.value.(bool) {
-// 			return vitess.NewIntVal([]byte("1"))
-// 		} else {
-// 			return vitess.NewIntVal([]byte("0"))
-// 		}
-// 	case pgtypes.Int32.ID:
-// 		return vitess.NewIntVal([]byte(strconv.FormatInt(int64(l.value.(int32)), 10)))
-// 	case pgtypes.Int64.ID:
-// 		return vitess.NewIntVal([]byte(strconv.FormatInt(l.value.(int64), 10)))
-// 	case pgtypes.Numeric.ID:
-// 		return vitess.NewFloatVal([]byte(l.value.(decimal.Decimal).String()))
-// 	case pgtypes.Text.ID:
-// 		return vitess.NewStrVal([]byte(l.value.(string)))
-// 	case pgtypes.Unknown.ID:
-// 		if l.value == nil {
-// 			return nil
-// 		} else if str, ok := l.value.(string); ok {
-// 			return vitess.NewStrVal([]byte(str))
-// 		} else {
-// 			panic("unhandled value of 'unknown' type in temporary literal conversion: " + l.typ.String())
-// 		}
-// 	default:
-// 		panic("unhandled type in temporary literal conversion: " + l.typ.String())
-// 	}
-// }
+// ToVitessLiteral returns the literal as a Vitess literal. This is strictly for situations where GMS is hardcoded to
+// expect a Vitess literal. This should only be used as a temporary measure, as the GMS code needs to be updated, or the
+// equivalent functionality should be built into Doltgres (recommend the second approach).
+func ToVitessLiteral(l *expression.Literal) *vitess.SQLVal {
+	switch l.Type().(*pgtypes.DoltgresType).ID {
+	case pgtypes.Bool.ID:
+		if l.Value().(bool) {
+			return vitess.NewIntVal([]byte("1"))
+		} else {
+			return vitess.NewIntVal([]byte("0"))
+		}
+	case pgtypes.Int32.ID:
+		return vitess.NewIntVal([]byte(strconv.FormatInt(int64(l.Value().(int32)), 10)))
+	case pgtypes.Int64.ID:
+		return vitess.NewIntVal([]byte(strconv.FormatInt(l.Value().(int64), 10)))
+	case pgtypes.Numeric.ID:
+		return vitess.NewFloatVal([]byte(l.Value().(decimal.Decimal).String()))
+	case pgtypes.Text.ID:
+		return vitess.NewStrVal([]byte(l.Value().(string)))
+	case pgtypes.Unknown.ID:
+		if l.Value() == nil {
+			return nil
+		} else if str, ok := l.Value().(string); ok {
+			return vitess.NewStrVal([]byte(str))
+		} else {
+			panic("unhandled value of 'unknown' type in temporary literal conversion: " + l.Type().String())
+		}
+	default:
+		panic("unhandled type in temporary literal conversion: " + l.Type().String())
+	}
+}

@@ -16,6 +16,7 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -43,7 +44,7 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 	// GMS is hardcoded to expect vitess.SQLVal for expressions such as `LIMIT 1 OFFSET 1`.
 	// We need to remove the hard dependency, but for now, we'll just convert our literals to a vitess.SQLVal.
 	if injectedExpr, ok := count.(vitess.InjectedExpr); ok {
-		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+		if literal, ok := injectedExpr.Expression.(*expression.Literal); ok {
 			l := literal.Value()
 			limitValue, err := int64ValueForLimit(l)
 			if err != nil {
@@ -54,11 +55,11 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 				return nil, errors.Errorf("LIMIT must be greater than or equal to 0")
 			}
 
-			count = literal.ToVitessLiteral()
+			count = pgexprs.ToVitessLiteral(literal)
 		}
 	}
 	if injectedExpr, ok := offset.(vitess.InjectedExpr); ok {
-		if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
+		if literal, ok := injectedExpr.Expression.(*expression.Literal); ok {
 			o := literal.Value()
 			offsetVal, err := int64ValueForLimit(o)
 			if err != nil {
@@ -69,7 +70,7 @@ func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
 				return nil, errors.Errorf("OFFSET must be greater than or equal to 0")
 			}
 
-			offset = literal.ToVitessLiteral()
+			offset = pgexprs.ToVitessLiteral(literal)
 		}
 	}
 	return &vitess.Limit{

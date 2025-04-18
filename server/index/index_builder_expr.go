@@ -17,8 +17,6 @@ package index
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
-
-	pgexprs "github.com/dolthub/doltgresql/server/expression"
 )
 
 // indexBuilderExpr breaks an expression down such that a range can be constructed from it. In addition, also carries
@@ -27,7 +25,7 @@ type indexBuilderExpr struct {
 	isValid  bool
 	strategy OperatorStrategyNumber
 	column   *expression.GetField
-	literal  *pgexprs.Literal
+	literal  *expression.Literal
 	original sql.Expression
 }
 
