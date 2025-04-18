@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"encoding/json"
 	"math"
 	"time"
 
@@ -167,10 +168,14 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 		return newVal, nil
 	case query.Type_JSON:
-		if val, ok := val.(types.JSONDocument); ok {
-			return val.JSONString()
+		if j, ok := val.(types.JSONDocument); ok {
+			return j.JSONString()
+		} else {
+			// TODO: there are particular dolt tables (dolt_constraint_violations) that return json-marshallable structs
+			//  that we need to handle here like this
+			bytes, err := json.Marshal(val)
+			return string(bytes), err
 		}
-		return nil, errors.Errorf("GMSCast expected type `JSONDocument`, got `%T`", val)
 	case query.Type_NULL_TYPE:
 		return nil, nil
 	case query.Type_GEOMETRY:

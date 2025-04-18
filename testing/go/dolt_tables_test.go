@@ -24,7 +24,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name:  "dolt branches",
-			Focus: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT name FROM dolt.branches`,
@@ -555,7 +554,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_conflicts`,
-					Expected: []sql.Row{{"test", Numeric("1")}},
+					Expected: []sql.Row{{"test", 1}},
 				},
 				{
 					Query:    `SELECT dolt.conflicts.table FROM dolt.conflicts`,
@@ -763,7 +762,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_constraint_violations`,
-					Expected: []sql.Row{{"test", Numeric("2")}},
+					Expected: []sql.Row{{"test", 2}},
 				},
 				{
 					Query:    `SELECT dolt.constraint_violations.table FROM dolt.constraint_violations`,
