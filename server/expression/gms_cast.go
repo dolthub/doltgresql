@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
@@ -163,14 +164,21 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := newVal.(string); !ok {
+		switch newVal := newVal.(type) {
+		case string:
+			return newVal, nil
+		case sql.StringWrapper:
+			return newVal.Unwrap(ctx)
+		default:
 			return nil, errors.Errorf("GMSCast expected type `string`, got `%T`", val)
 		}
-		return newVal, nil
 	case query.Type_JSON:
-		if j, ok := val.(types.JSONDocument); ok {
-			return j.JSONString()
-		} else {
+		switch val := val.(type) {
+		case types.JSONDocument:
+			return val.JSONString()
+		case tree.IndexedJsonDocument:
+			return val.String(), nil
+		default:
 			// TODO: there are particular dolt tables (dolt_constraint_violations) that return json-marshallable structs
 			//  that we need to handle here like this
 			bytes, err := json.Marshal(val)

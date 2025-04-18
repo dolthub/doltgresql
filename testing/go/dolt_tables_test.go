@@ -23,7 +23,7 @@ import (
 func TestUserSpaceDoltTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name:  "dolt branches",
+			Name: "dolt branches",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT name FROM dolt.branches`,
