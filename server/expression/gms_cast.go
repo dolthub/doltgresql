@@ -15,10 +15,12 @@
 package expression
 
 import (
-	"strconv"
+	"encoding/json"
+	"math"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
@@ -124,8 +126,12 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 		return newVal, nil
 	case query.Type_UINT64:
+		// Postgres doesn't have a Uint64 type, so we return an int64 with an error if the value is too high
 		if val, ok := val.(uint64); ok {
-			return decimal.NewFromString(strconv.FormatUint(val, 10))
+			if val > math.MaxInt64 {
+				return nil, errors.Errorf("uint64 value out of range: %v", val)
+			}
+			return int64(val), nil
 		}
 		return nil, errors.Errorf("GMSCast expected type `uint64`, got `%T`", val)
 	case query.Type_FLOAT32:
@@ -158,15 +164,26 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := newVal.(string); !ok {
+		switch newVal := newVal.(type) {
+		case string:
+			return newVal, nil
+		case sql.StringWrapper:
+			return newVal.Unwrap(ctx)
+		default:
 			return nil, errors.Errorf("GMSCast expected type `string`, got `%T`", val)
 		}
-		return newVal, nil
 	case query.Type_JSON:
-		if val, ok := val.(types.JSONDocument); ok {
+		switch val := val.(type) {
+		case types.JSONDocument:
 			return val.JSONString()
+		case tree.IndexedJsonDocument:
+			return val.String(), nil
+		default:
+			// TODO: there are particular dolt tables (dolt_constraint_violations) that return json-marshallable structs
+			//  that we need to handle here like this
+			bytes, err := json.Marshal(val)
+			return string(bytes), err
 		}
-		return nil, errors.Errorf("GMSCast expected type `JSONDocument`, got `%T`", val)
 	case query.Type_NULL_TYPE:
 		return nil, nil
 	case query.Type_GEOMETRY:
