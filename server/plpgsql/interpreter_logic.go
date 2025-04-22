@@ -37,7 +37,7 @@ type InterpretedFunction interface {
 	GetParameterNames() []string
 	GetReturn() *pgtypes.DoltgresType
 	GetStatements() []InterpreterOperation
-	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (rowIter sql.RowIter, err error)
+	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (rows []sql.Row, err error)
 	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
 }
 
@@ -141,11 +141,8 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 					return nil, err
 				}
 			} else {
-				rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+				_, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 				if err != nil {
-					return nil, err
-				}
-				if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
 					return nil, err
 				}
 			}
@@ -185,11 +182,8 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		case OpCode_InsertInto:
 			// TODO: implement
 		case OpCode_Perform:
-			rowIter, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			_, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
-				return nil, err
-			}
-			if _, err = sql.RowIterToRows(ctx, rowIter); err != nil {
 				return nil, err
 			}
 		case OpCode_Raise:
