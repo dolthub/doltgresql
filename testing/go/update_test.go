@@ -94,5 +94,44 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "UPDATE ... RETURNING",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk INT PRIMARY KEY, c1 TEXT);",
+				"INSERT INTO t VALUES (1, 'one');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "UPDATE t SET c1 = '42' RETURNING c1;",
+					Expected: []sql.Row{{"42"}},
+				},
+				{
+					// TODO: * requires extra analysis to expand columns
+					Skip:     true,
+					Query:    "UPDATE t SET c1 = '43' RETURNING *;",
+					Expected: []sql.Row{{1, "43"}},
+				},
+			},
+		},
+		{
+			// TODO: Update joins are not supported yet
+			Skip: true,
+			Name: "UPDATE ... RETURNING with join",
+			SetUpScript: []string{
+				"CREATE TABLE employees (id SERIAL PRIMARY KEY, name TEXT, department_id INT, salary NUMERIC);",
+				"CREATE TABLE departments (id SERIAL PRIMARY KEY, name TEXT, bonus NUMERIC);",
+				"INSERT INTO employees (name, department_id, salary) VALUES ('Alice', 1, 50000), ('Bob', 2, 60000);",
+				"INSERT INTO departments (name, bonus) VALUES ('Engineering', 5000), ('Marketing', 3000);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "UPDATE employees e SET salary = salary + d.bonus FROM departments d WHERE e.department_id = d.id RETURNING e.id, e.name, e.salary;",
+					Expected: []sql.Row{
+						{1, "Alice", 55000},
+						{2, "Bob", 63000},
+					},
+				},
+			},
+		},
 	})
 }

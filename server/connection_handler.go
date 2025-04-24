@@ -1137,21 +1137,31 @@ func returnsRow(query ConvertedQuery) bool {
 	switch query.StatementTag {
 	case "SELECT", "SHOW", "FETCH", "EXPLAIN", "SHOW TABLES":
 		return true
-	case "INSERT":
-		hasReturningClause := false
-		sqlparser.Walk(func(node sqlparser.SQLNode) (kontinue bool, err error) {
-			switch node := node.(type) {
-			case *sqlparser.Insert:
-				if len(node.Returning) > 0 {
-					hasReturningClause = true
-				}
-				return false, nil
-			}
-			// this should be impossible, but just in case
-			return true, nil
-		}, query.AST)
-		return hasReturningClause
+	case "INSERT", "UPDATE", "DELETE":
+		return hasReturningClause(query.AST)
 	default:
 		return false
 	}
+}
+
+// hasReturningClause return true if |statement| has a RETURNING clause defined.
+func hasReturningClause(statement sqlparser.Statement) bool {
+	hasReturningClause := false
+	sqlparser.Walk(func(node sqlparser.SQLNode) (kontinue bool, err error) {
+		switch node := node.(type) {
+		case *sqlparser.Update:
+			if len(node.Returning) > 0 {
+				hasReturningClause = true
+			}
+			return false, nil
+		case *sqlparser.Insert:
+			if len(node.Returning) > 0 {
+				hasReturningClause = true
+			}
+			return false, nil
+		}
+		return true, nil
+	}, statement)
+
+	return hasReturningClause
 }
