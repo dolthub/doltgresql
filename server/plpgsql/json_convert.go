@@ -22,15 +22,33 @@ import (
 
 // jsonConvert handles the conversion from the JSON format into a format that is easier to work with.
 func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
-	block := Block{Label: jsonBlock.Action.StmtBlock.Label}
+	block := Block{
+		TriggerNew: jsonBlock.NewVariableNumber,
+		TriggerOld: jsonBlock.OldVariableNumber,
+		Label:      jsonBlock.Action.StmtBlock.Label,
+	}
 	for _, v := range jsonBlock.Datums {
 		switch {
+		case v.Record != nil:
+			// TODO: support normal record types
+			if int(v.Record.DatumNumber) > len(block.Records) {
+				oldRecords := block.Records
+				block.Records = make([]Record, v.Record.DatumNumber)
+				copy(block.Records, oldRecords)
+			}
+			block.Records[v.Record.DatumNumber-1].Name = v.Record.RefName
+		case v.RecordField != nil:
+			if int(v.RecordField.RecordParentNumber) > len(block.Records) {
+				return Block{}, errors.New("invalid record parent number")
+			}
+			block.Records[v.RecordField.RecordParentNumber-1].Fields = append(
+				block.Records[v.RecordField.RecordParentNumber-1].Fields, v.RecordField.FieldName)
 		case v.Row != nil:
 			if len(v.Row.Fields) != 1 {
 				return Block{}, errors.New("record types are not yet supported")
 			}
 		case v.Variable != nil:
-			block.Variable = append(block.Variable, Variable{
+			block.Variables = append(block.Variables, Variable{
 				Name:        v.Variable.RefName,
 				Type:        strings.ToLower(v.Variable.Type.Type.Name),
 				IsParameter: v.Variable.LineNumber == 0,

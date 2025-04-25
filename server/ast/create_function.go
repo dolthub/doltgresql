@@ -60,7 +60,12 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		case *types.T:
 			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.Name()))
 		default:
-			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.SQLString()))
+			sqlString := strings.ToLower(typ.SQLString())
+			if sqlString == "trigger" {
+				retType = pgtypes.Trigger
+			} else {
+				retType = pgtypes.NewUnresolvedDoltgresType("", sqlString)
+			}
 		}
 	}
 	paramNames := make([]string, len(node.Args))

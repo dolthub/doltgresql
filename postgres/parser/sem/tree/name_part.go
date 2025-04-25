@@ -52,6 +52,11 @@ func (n *Name) Format(ctx *FmtCtx) {
 	}
 }
 
+// IsEmpty returns whether the name is empty.
+func (n *Name) IsEmpty() bool {
+	return n == nil || len(*n) == 0
+}
+
 // NameStringP escapes an identifier stored in a heap string to a SQL
 // identifier, avoiding a heap allocation.
 func NameStringP(s *string) string {
