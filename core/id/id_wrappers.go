@@ -55,6 +55,9 @@ type Sequence Id
 // Table is an Id wrapper for tables. This wrapper must not be returned to the client.
 type Table Id
 
+// Trigger is an Id wrapper for triggers. This wrapper must not be returned to the client.
+type Trigger Id
+
 // Type is an Id wrapper for types. This wrapper must not be returned to the client.
 type Type Id
 
@@ -166,6 +169,14 @@ func NewTable(schemaName string, tableName string) Table {
 		return NullTable
 	}
 	return Table(NewId(Section_Table, schemaName, tableName))
+}
+
+// NewTrigger returns a new Trigger. This wrapper must not be returned to the client.
+func NewTrigger(schemaName string, tableName string, triggerName string) Trigger {
+	if len(schemaName) == 0 && len(tableName) == 0 && len(triggerName) == 0 {
+		return NullTrigger
+	}
+	return Trigger(NewId(Section_Trigger, schemaName, tableName, triggerName))
 }
 
 // NewType returns a new Type. This wrapper must not be returned to the client.
@@ -330,6 +341,21 @@ func (id Table) TableName() string {
 	return Id(id).Segment(1)
 }
 
+// SchemaName returns the schema name of the trigger.
+func (id Trigger) SchemaName() string {
+	return Id(id).Segment(0)
+}
+
+// TableName returns the name of the table that the trigger belongs to.
+func (id Trigger) TableName() string {
+	return Id(id).Segment(1)
+}
+
+// TriggerName returns the trigger's name.
+func (id Trigger) TriggerName() string {
+	return Id(id).Segment(2)
+}
+
 // SchemaName returns the schema name of the type.
 func (id Type) SchemaName() string {
 	return Id(id).Segment(0)
@@ -390,6 +416,9 @@ func (id Sequence) IsValid() bool { return Id(id).IsValid() }
 func (id Table) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
+func (id Trigger) IsValid() bool { return Id(id).IsValid() }
+
+// IsValid returns whether the ID is valid.
 func (id Type) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
@@ -433,6 +462,9 @@ func (id Sequence) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id Table) AsId() Id { return Id(id) }
+
+// AsId returns the unwrapped ID.
+func (id Trigger) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id Type) AsId() Id { return Id(id) }

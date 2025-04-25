@@ -23,6 +23,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/core/typecollection"
 )
 
@@ -33,6 +34,7 @@ type contextValues struct {
 	seqs           *sequences.Collection
 	types          *typecollection.TypeCollection
 	funcs          *functions.Collection
+	trigs          *triggers.Collection
 	pgCatalogCache any
 }
 
@@ -244,6 +246,31 @@ func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection,
 	return cv.seqs, nil
 }
 
+// GetTriggersCollectionFromContext returns the triggers collection from the given context. Will always return a
+// collection if no error is returned.
+func GetTriggersCollectionFromContext(ctx *sql.Context) (*triggers.Collection, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	_, root, err := getRootFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cv.trigs == nil {
+		cv.trigs, err = triggers.LoadTriggers(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+	} else if cv.trigs.DiffersFrom(ctx, root) {
+		cv.trigs, err = triggers.LoadTriggers(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return cv.trigs, nil
+}
+
 // GetTypesCollectionFromContext returns the given type collection from the context.
 // Will always return a collection if no error is returned.
 func GetTypesCollectionFromContext(ctx *sql.Context) (*typecollection.TypeCollection, error) {
@@ -295,6 +322,14 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 		}
 		newRoot = retRoot.(*RootValue)
 		cv.funcs = nil
+	}
+	if cv.trigs != nil && cv.trigs.DiffersFrom(ctx, root) {
+		retRoot, err := cv.trigs.UpdateRoot(ctx, newRoot)
+		if err != nil {
+			return err
+		}
+		newRoot = retRoot.(*RootValue)
+		cv.trigs = nil
 	}
 	if cv.types != nil {
 		retRoot, err := cv.types.UpdateRoot(ctx, newRoot)

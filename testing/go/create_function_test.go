@@ -813,14 +813,13 @@ $$ LANGUAGE plpgsql;`,
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 TEXT);",
 				`CREATE FUNCTION insertion_text() RETURNS TEXT AS $$
-        DECLARE
-            var1 TEXT;
-        BEGIN
-            var1 := 'example';
-            RETURN var1;
-        END;
-        $$ LANGUAGE plpgsql;
-        `,
+DECLARE
+    var1 TEXT;
+BEGIN
+    var1 := 'example';
+    RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{

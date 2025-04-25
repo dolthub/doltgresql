@@ -54,12 +54,21 @@ func InspectNodeExprs(node sql.Node, exprFunc func(expr sql.Expression) bool) bo
 // NodeWithOpaque functions similarly to GMS' NodeWithOpaque function, except it also walks through disjointed nodes.
 func NodeWithOpaque(node sql.Node, nodeFunc gmstransform.NodeFunc) (sql.Node, gmstransform.TreeIdentity, error) {
 	return gmstransform.NodeWithOpaque(node, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
+		treeIdentity := gmstransform.SameTree
 		if disjointedNode, ok := node.(plan.DisjointedChildrenNode); ok {
-			return handleDisjointedNodes(disjointedNode, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
+			var err error
+			node, treeIdentity, err = handleDisjointedNodes(disjointedNode, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
 				return NodeWithOpaque(node, nodeFunc)
 			})
+			if err != nil {
+				return nil, gmstransform.NewTree, err
+			}
 		}
-		return nodeFunc(node)
+		node, newTreeIdentity, err := nodeFunc(node)
+		if err != nil {
+			return nil, gmstransform.NewTree, err
+		}
+		return node, treeIdentity && newTreeIdentity, nil
 	})
 }
 

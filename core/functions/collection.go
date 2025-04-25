@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -268,6 +269,7 @@ func (pgf *Collection) Clone(ctx context.Context) *Collection {
 	return &Collection{
 		accessCache:   maps.Clone(pgf.accessCache),
 		overloadCache: maps.Clone(pgf.overloadCache),
+		idCache:       slices.Clone(pgf.idCache),
 		underlyingMap: pgf.underlyingMap,
 		mapHash:       pgf.mapHash,
 		ns:            pgf.ns,
@@ -286,7 +288,15 @@ func (pgf *Collection) DiffersFrom(ctx context.Context, root objinterface.RootVa
 	if err != nil {
 		return true
 	}
-	return !pgf.mapHash.Equal(hashOnGivenRoot)
+	if pgf.mapHash.Equal(hashOnGivenRoot) {
+		return false
+	}
+	// An empty map should match an uninitialized collection on the root
+	count, err := pgf.underlyingMap.Count()
+	if err == nil && count == 0 && hashOnGivenRoot.IsEmpty() {
+		return false
+	}
+	return true
 }
 
 // reloadCaches writes the underlying map's contents to the caches.
@@ -353,12 +363,12 @@ func (pgf *Collection) tableNameToID(schemaName string, formattedName string) id
 	return id.NewFunction(schemaName, functionName, typeIDs...)
 }
 
-// GetID implements the interface rootobject.RootObject.
+// GetID implements the interface objinterface.RootObject.
 func (function Function) GetID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Functions
 }
 
-// HashOf implements the interface rootobject.RootObject.
+// HashOf implements the interface objinterface.RootObject.
 func (function Function) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := function.Serialize(ctx)
 	if err != nil {
@@ -367,7 +377,7 @@ func (function Function) HashOf(ctx context.Context) (hash.Hash, error) {
 	return hash.Of(data), nil
 }
 
-// Name implements the interface rootobject.RootObject.
+// Name implements the interface objinterface.RootObject.
 func (function Function) Name() doltdb.TableName {
 	return FunctionIDToTableName(function.ID)
 }

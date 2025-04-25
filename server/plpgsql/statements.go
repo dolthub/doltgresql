@@ -16,6 +16,9 @@ package plpgsql
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/cockroachdb/errors"
 	pg_query "github.com/pganalyze/pg_query_go/v6"
@@ -62,10 +65,13 @@ func (stmt Assignment) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 // Block contains a collection of statements, alongside the variables that were declared for the block. Only the
 // top-level block will contain parameter variables.
 type Block struct {
-	Variable []Variable
-	Body     []Statement
-	Label    string
-	IsLoop   bool
+	TriggerNew int32 // When non-zero, indicates that the NEW record exists for use with triggers
+	TriggerOld int32 // When non-zero, indicates that the OLD record exists for use with triggers
+	Variables  []Variable
+	Records    []Record
+	Body       []Statement
+	Label      string
+	IsLoop     bool
 }
 
 var _ Statement = Block{}
@@ -73,7 +79,7 @@ var _ Statement = Block{}
 // OperationSize implements the interface Statement.
 func (stmt Block) OperationSize() int32 {
 	total := int32(2) // We start with 2 since we'll have ScopeBegin and ScopeEnd
-	for _, variable := range stmt.Variable {
+	for _, variable := range stmt.Variables {
 		if !variable.IsParameter {
 			total++
 		}
@@ -102,7 +108,7 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 		PrimaryData: stmt.Label,
 		Target:      loop,
 	})
-	for _, variable := range stmt.Variable {
+	for _, variable := range stmt.Variables {
 		if !variable.IsParameter {
 			*ops = append(*ops, InterpreterOperation{
 				OpCode:      OpCode_Declare,
@@ -111,6 +117,13 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 			})
 		}
 		stack.NewVariableWithValue(variable.Name, nil, nil)
+	}
+	for _, record := range stmt.Records {
+		var fakeSch sql.Schema
+		for _, fieldName := range record.Fields {
+			fakeSch = append(fakeSch, &sql.Column{Name: fieldName})
+		}
+		stack.NewRecord(record.Name, fakeSch, nil)
 	}
 	for _, innerStmt := range stmt.Body {
 		if err := innerStmt.AppendOperations(ops, stack); err != nil {
@@ -279,6 +292,12 @@ func (r Raise) AppendOperations(ops *[]InterpreterOperation, _ *InterpreterStack
 	return nil
 }
 
+// Record represents a record (along with known fields for future access). These are exclusively found within Block.
+type Record struct {
+	Name   string
+	Fields []string
+}
+
 // Return represents a RETURN statement.
 type Return struct {
 	Expression string
@@ -334,11 +353,31 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 	}
 
 	varMap := stack.ListVariables()
-	for _, token := range scanResult.Tokens {
+	for i := 0; i < len(scanResult.Tokens); i++ {
+		token := scanResult.Tokens[i]
 		substring := expression[token.Start:token.End]
-		if _, ok := varMap[substring]; ok {
-			referencedVars = append(referencedVars, substring)
-			newExpression += fmt.Sprintf("$%d ", len(referencedVars))
+		// varMap lowercases everything, so we'll lowercase our substring to enable case-insensitivity
+		if fieldNames, ok := varMap[strings.ToLower(substring)]; ok {
+			// If there's a '.', then we'll check if this is accessing a record's field (`NEW.val1` for example)
+			if len(fieldNames) > 0 && i+2 < len(scanResult.Tokens) && scanResult.Tokens[i+1].Token == '.' {
+				possibleFieldSubstring := expression[scanResult.Tokens[i+2].Start:scanResult.Tokens[i+2].End]
+				for _, fieldName := range fieldNames {
+					if fieldName == strings.ToLower(possibleFieldSubstring) {
+						substring += "." + fieldName
+						i += 2
+						break
+					}
+				}
+			}
+			// Variables cannot have a '(' after their name as that would classify them as functions, so we have to
+			// explicitly check for that. This is because variables and functions can share names, for example:
+			// SELECT COUNT(*) INTO count FROM table_name;
+			if i+1 >= len(scanResult.Tokens) || scanResult.Tokens[i+1].Token != '(' {
+				referencedVars = append(referencedVars, substring)
+				newExpression += fmt.Sprintf("$%d ", len(referencedVars))
+			} else {
+				newExpression += substring + " "
+			}
 		} else {
 			newExpression += substring + " "
 		}

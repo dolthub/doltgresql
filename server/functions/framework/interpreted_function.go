@@ -105,10 +105,10 @@ func (InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgsql.Int
 	if len(bindings) > 0 {
 		for i, bindingName := range bindings {
 			variable := stack.GetVariable(bindingName)
-			if variable == nil {
+			if variable.Type == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", bindingName)
 			}
-			formattedVar, err := variable.Type.FormatValue(variable.Value)
+			formattedVar, err := variable.Type.FormatValue(*variable.Value)
 			if err != nil {
 				return nil, err
 			}
@@ -140,6 +140,9 @@ func (InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgsql.Int
 		if targetType == nil {
 			return rows[0][0], nil
 		}
+		if rows[0][0] == nil {
+			return nil, nil
+		}
 		fromType, ok := sch[0].Type.(*pgtypes.DoltgresType)
 		if !ok {
 			fromType, err = pgtypes.FromGmsTypeToDoltgresType(sch[0].Type)
@@ -161,10 +164,10 @@ func (InterpretedFunction) QueryMultiReturn(ctx *sql.Context, stack plpgsql.Inte
 	if len(bindings) > 0 {
 		for i, bindingName := range bindings {
 			variable := stack.GetVariable(bindingName)
-			if variable == nil {
+			if variable.Type == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", bindingName)
 			}
-			formattedVar, err := variable.Type.FormatValue(variable.Value)
+			formattedVar, err := variable.Type.FormatValue(*variable.Value)
 			if err != nil {
 				return nil, err
 			}

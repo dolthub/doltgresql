@@ -40,7 +40,7 @@ func Parse(fullCreateFunctionString string) ([]InterpreterOperation, error) {
 	if err != nil {
 		return nil, err
 	}
-	ops := make([]InterpreterOperation, 0, len(block.Body)+len(block.Variable))
+	ops := make([]InterpreterOperation, 0, len(block.Body)+len(block.Variables))
 	stack := NewInterpreterStack(nil)
 	if err = block.AppendOperations(&ops, &stack); err != nil {
 		return nil, err

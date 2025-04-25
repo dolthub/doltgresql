@@ -16,6 +16,7 @@ package plpgsql
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
@@ -24,15 +25,27 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// InterpreterVariable is a variable that lives on the stack.
-type InterpreterVariable struct {
+// interpreterVariable is a variable that lives on the stack. This will hold an actual value, but will not be directly
+// interacted with. InterpreterVariableReference are, instead, the avenue of interaction as a variable may be an
+// aggregate type (such as a record).
+type interpreterVariable struct {
+	Record sql.Schema
+	Type   *pgtypes.DoltgresType
+	Value  any
+}
+
+// InterpreterVariableReference is a reference to a variable that lives on the stack. If the type is not null, then it
+// is valid to dereference the value for assignment. We make use of references rather than directly interacting with
+// the variables as this allows for interacting with sections of aggregate types (such as record) as well as normal
+// variable interaction.
+type InterpreterVariableReference struct {
 	Type  *pgtypes.DoltgresType
-	Value any
+	Value *any
 }
 
 // InterpreterScopeDetails contains all of the details that are relevant to a particular scope.
 type InterpreterScopeDetails struct {
-	variables map[string]*InterpreterVariable
+	variables map[string]*interpreterVariable
 	label     string
 }
 
@@ -50,7 +63,7 @@ func NewInterpreterStack(runner analyzer.StatementRunner) InterpreterStack {
 	stack := utils.NewStack[*InterpreterScopeDetails]()
 	// This first push represents the function base, including parameters
 	stack.Push(&InterpreterScopeDetails{
-		variables: make(map[string]*InterpreterVariable),
+		variables: make(map[string]*interpreterVariable),
 	})
 	return InterpreterStack{
 		stack:  stack,
@@ -82,24 +95,72 @@ func (is *InterpreterStack) GetCurrentLabel() string {
 
 // GetVariable traverses the stack (starting from the top) to find a variable with a matching name. Returns nil if no
 // variable was found.
-func (is *InterpreterStack) GetVariable(name string) *InterpreterVariable {
+func (is *InterpreterStack) GetVariable(name string) InterpreterVariableReference {
+	// TODO: handle nested record access
+	fieldName := ""
+	if strings.Count(name, ".") == 1 {
+		splitName := strings.Split(name, ".")
+		name = splitName[0]
+		fieldName = splitName[1]
+	}
 	for i := 0; i < is.stack.Len(); i++ {
 		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
-			return iv
+			if len(fieldName) == 0 {
+				return InterpreterVariableReference{
+					Type:  iv.Type,
+					Value: &iv.Value,
+				}
+			} else if len(iv.Record) > 0 {
+				fieldIdx := iv.Record.IndexOf(fieldName, iv.Record[0].Source)
+				if fieldIdx == -1 {
+					// TODO: implement this as a proper error for missing record field rather than the generic "variable not found"
+					return InterpreterVariableReference{}
+				}
+				return InterpreterVariableReference{
+					Type:  iv.Record[fieldIdx].Type.(*pgtypes.DoltgresType),
+					Value: &(iv.Value.(sql.Row)[fieldIdx]),
+				}
+			} else {
+				// Can't access fields on an empty record
+				return InterpreterVariableReference{}
+			}
 		}
 	}
-	return nil
+	return InterpreterVariableReference{}
 }
 
-// ListVariables returns a map with the names of all variables.
-func (is *InterpreterStack) ListVariables() map[string]struct{} {
-	seen := make(map[string]struct{})
+// ListVariables returns a map with the names of all variables. The attached slice represents field names for records.
+// All names are lowercased.
+func (is *InterpreterStack) ListVariables() map[string][]string {
+	seen := make(map[string][]string)
 	for i := 0; i < is.stack.Len(); i++ {
-		for varName := range is.stack.PeekDepth(i).variables {
-			seen[varName] = struct{}{}
+		for varName, iv := range is.stack.PeekDepth(i).variables {
+			var fieldNames []string
+			if len(iv.Record) > 0 {
+				for _, col := range iv.Record {
+					fieldNames = append(fieldNames, strings.ToLower(col.Name))
+				}
+			}
+			seen[strings.ToLower(varName)] = fieldNames
 		}
 	}
 	return seen
+}
+
+// NewRecord creates a new record in the current scope. If a record with the same name exists in a previous scope, then
+// that record will be shadowed until the current scope exits.
+func (is *InterpreterStack) NewRecord(name string, sch sql.Schema, val sql.Row) {
+	// TODO: this is currently implemented only for the specific record types used in triggers: OLD and NEW
+	var newVal sql.Row
+	if val != nil {
+		newVal = make(sql.Row, len(val))
+		copy(newVal, val)
+	}
+	is.stack.Peek().variables[name] = &interpreterVariable{
+		Record: sch,
+		Type:   pgtypes.Trigger, // TODO: we need to implement the RECORD pseudotype and replace the TRIGGER type here
+		Value:  newVal,
+	}
 }
 
 // NewVariable creates a new variable in the current scope. If a variable with the same name exists in a previous scope,
@@ -110,7 +171,7 @@ func (is *InterpreterStack) NewVariable(name string, typ *pgtypes.DoltgresType) 
 
 // NewVariableWithValue creates a new variable in the current scope, setting its initial value to the one given.
 func (is *InterpreterStack) NewVariableWithValue(name string, typ *pgtypes.DoltgresType, val any) {
-	is.stack.Peek().variables[name] = &InterpreterVariable{
+	is.stack.Peek().variables[name] = &interpreterVariable{
 		Type:  typ,
 		Value: val,
 	}
@@ -118,14 +179,20 @@ func (is *InterpreterStack) NewVariableWithValue(name string, typ *pgtypes.Doltg
 
 // NewVariableAlias creates a new variable alias, named |alias|, in the current frame of this stack,
 // pointing to the specified |variable|.
-func (is *InterpreterStack) NewVariableAlias(alias string, variable *InterpreterVariable) {
-	is.stack.Peek().variables[alias] = variable
+func (is *InterpreterStack) NewVariableAlias(alias string, target string) {
+	for i := 0; i < is.stack.Len(); i++ {
+		if iv, ok := is.stack.PeekDepth(i).variables[target]; ok {
+			// TODO: this won't work for RECORD types
+			is.stack.Peek().variables[alias] = iv
+			break
+		}
+	}
 }
 
 // PushScope creates a new scope.
 func (is *InterpreterStack) PushScope() {
 	is.stack.Push(&InterpreterScopeDetails{
-		variables: make(map[string]*InterpreterVariable),
+		variables: make(map[string]*interpreterVariable),
 	})
 }
 
@@ -139,10 +206,10 @@ func (is *InterpreterStack) PopScope() {
 // variable cannot be found.
 func (is *InterpreterStack) SetVariable(ctx *sql.Context, name string, val any) error {
 	iv := is.GetVariable(name)
-	if iv == nil {
+	if iv.Type == nil {
 		return fmt.Errorf("variable `%s` could not be found", name)
 	}
-	iv.Value = val
+	*iv.Value = val
 	return nil
 }
 

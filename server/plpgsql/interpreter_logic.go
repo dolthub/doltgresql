@@ -48,7 +48,6 @@ var GetTypesCollectionFromContext func(ctx *sql.Context) (*typecollection.TypeCo
 // Call runs the contained operations on the given runner.
 func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.StatementRunner, paramsAndReturn []*pgtypes.DoltgresType, vals []any) (any, error) {
 	// Set up the initial state of the function
-	counter := -1 // We increment before accessing, so start at -1
 	stack := NewInterpreterStack(runner)
 	// Add the parameters
 	parameterTypes := iFunc.GetParameters()
@@ -59,6 +58,24 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 	for i := range vals {
 		stack.NewVariableWithValue(parameterNames[i], parameterTypes[i], vals[i])
 	}
+	return call(ctx, iFunc, stack)
+}
+
+// TriggerCall runs the contained trigger operations on the given runner.
+func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.StatementRunner, sch sql.Schema, oldRow sql.Row, newRow sql.Row) (any, error) {
+	// Set up the initial state of the function
+	stack := NewInterpreterStack(runner)
+	// Add the special variables
+	// TODO: there are way more than just NEW and OLD -> https://www.postgresql.org/docs/15/plpgsql-trigger.html
+	stack.NewRecord("OLD", sch, oldRow)
+	stack.NewRecord("NEW", sch, newRow)
+	return call(ctx, iFunc, stack)
+}
+
+// call runs the contained operations on the given runner.
+func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (any, error) {
+	// We increment before accessing, so start at -1
+	counter := -1
 	// Run the statements
 	statements := iFunc.GetStatements()
 	for {
@@ -73,13 +90,13 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		switch operation.OpCode {
 		case OpCode_Alias:
 			iv := stack.GetVariable(operation.PrimaryData)
-			if iv == nil {
+			if iv.Type == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", operation.PrimaryData)
 			}
-			stack.NewVariableAlias(operation.Target, iv)
+			stack.NewVariableAlias(operation.Target, operation.PrimaryData)
 		case OpCode_Assign:
 			iv := stack.GetVariable(operation.Target)
-			if iv == nil {
+			if iv.Type == nil {
 				return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
 			}
 			retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iv.Type, operation.SecondaryData)
@@ -129,7 +146,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		case OpCode_Execute:
 			if len(operation.Target) > 0 {
 				target := stack.GetVariable(operation.Target)
-				if target == nil {
+				if target.Type == nil {
 					return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
 				}
 				retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, target.Type, operation.SecondaryData)
@@ -211,6 +228,17 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 		case OpCode_Return:
 			if len(operation.PrimaryData) == 0 {
 				return nil, nil
+			}
+			// TODO: handle record types properly, we'll special case triggers for now
+			if iFunc.GetReturn().ID == pgtypes.Trigger.ID && len(operation.SecondaryData) == 1 {
+				normalized := strings.ReplaceAll(strings.ToLower(operation.PrimaryData), " ", "")
+				if normalized == "select$1;" {
+					if strings.EqualFold(operation.SecondaryData[0], "new") {
+						return *stack.GetVariable("NEW").Value, nil
+					} else if strings.EqualFold(operation.SecondaryData[0], "old") {
+						return *stack.GetVariable("OLD").Value, nil
+					}
+				}
 			}
 			return iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
 		case OpCode_ScopeBegin:
