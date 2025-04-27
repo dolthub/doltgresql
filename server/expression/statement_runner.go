@@ -16,18 +16,18 @@ package expression
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/procedures"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // StatementRunner is an expression that can be added to a node to grab the statement runner.
 type StatementRunner struct {
-	Runner analyzer.StatementRunner
+	Runner sql.StatementRunner
 }
 
 var _ sql.Expression = StatementRunner{}
-var _ analyzer.Interpreter = StatementRunner{}
+var _ procedures.InterpreterExpr = StatementRunner{}
 
 // Children implements the sql.Expression interface.
 func (StatementRunner) Children() []sql.Expression {
@@ -50,7 +50,7 @@ func (StatementRunner) Resolved() bool {
 }
 
 // SetStatementRunner implements the sql.Expression interface.
-func (sr StatementRunner) SetStatementRunner(ctx *sql.Context, runner analyzer.StatementRunner) sql.Expression {
+func (sr StatementRunner) SetStatementRunner(ctx *sql.Context, runner sql.StatementRunner) sql.Expression {
 	sr.Runner = runner
 	return sr
 }

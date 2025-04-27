@@ -16,11 +16,11 @@ package framework
 
 import (
 	"fmt"
+	"github.com/dolthub/go-mysql-server/sql/procedures"
 	"strings"
 
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"gopkg.in/src-d/go-errors.v1"
 
@@ -48,13 +48,13 @@ type CompiledFunction struct {
 	overload      overloadMatch
 	originalTypes []*pgtypes.DoltgresType
 	callResolved  []*pgtypes.DoltgresType
-	runner        analyzer.StatementRunner
+	runner        sql.StatementRunner
 	stashedErr    error
 }
 
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
-var _ analyzer.Interpreter = (*CompiledFunction)(nil)
+var _ procedures.InterpreterExpr = (*CompiledFunction)(nil)
 
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
@@ -68,7 +68,7 @@ func newCompiledFunctionInternal(
 	overloads *Overloads,
 	fnOverloads []Overload,
 	isOperator bool,
-	runner analyzer.StatementRunner,
+	runner sql.StatementRunner,
 ) *CompiledFunction {
 	c := &CompiledFunction{
 		Name:        name,
@@ -327,7 +327,7 @@ func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Express
 }
 
 // SetStatementRunner implements the interface analyzer.Interpreter.
-func (c *CompiledFunction) SetStatementRunner(ctx *sql.Context, runner analyzer.StatementRunner) sql.Expression {
+func (c *CompiledFunction) SetStatementRunner(ctx *sql.Context, runner sql.StatementRunner) sql.Expression {
 	c.runner = runner
 	return c
 }

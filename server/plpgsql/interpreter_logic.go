@@ -21,7 +21,6 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -46,7 +45,7 @@ type InterpretedFunction interface {
 var GetTypesCollectionFromContext func(ctx *sql.Context) (*typecollection.TypeCollection, error)
 
 // Call runs the contained operations on the given runner.
-func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.StatementRunner, paramsAndReturn []*pgtypes.DoltgresType, vals []any) (any, error) {
+func Call(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunner, paramsAndReturn []*pgtypes.DoltgresType, vals []any) (any, error) {
 	// Set up the initial state of the function
 	stack := NewInterpreterStack(runner)
 	// Add the parameters
@@ -62,7 +61,7 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.Statement
 }
 
 // TriggerCall runs the contained trigger operations on the given runner.
-func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner analyzer.StatementRunner, sch sql.Schema, oldRow sql.Row, newRow sql.Row) (any, error) {
+func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunner, sch sql.Schema, oldRow sql.Row, newRow sql.Row) (any, error) {
 	// Set up the initial state of the function
 	stack := NewInterpreterStack(runner)
 	// Add the special variables
