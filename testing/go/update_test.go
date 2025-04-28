@@ -102,8 +102,8 @@ func TestUpdate(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "UPDATE t SET c1 = '42' RETURNING c1;",
-					Expected: []sql.Row{{"42"}},
+					Query:    "UPDATE t SET pk = pk+1, c1 = '42' RETURNING c1, pk, pk * 2;",
+					Expected: []sql.Row{{"42", 2, 4}},
 				},
 				{
 					// TODO: * requires extra analysis to expand columns
