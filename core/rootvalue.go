@@ -28,12 +28,14 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/storage"
+	"github.com/dolthub/doltgresql/core/triggers"
 )
 
 const (
@@ -523,50 +525,74 @@ func (root *RootValue) RemoveTables(
 			return nil, err
 		}
 		newRoot = newRoot.withStorage(newStorage)
-
-		collection, err := sequences.LoadSequences(ctx, newRoot)
+		// Sequences should be dropped when their owning tables are dropped
+		seqColl, err := sequences.LoadSequences(ctx, newRoot)
 		if err != nil {
 			return nil, err
 		}
 		for _, tableName := range tables {
-			seqs, err := collection.GetSequencesWithTable(ctx, tableName)
+			seqs, err := seqColl.GetSequencesWithTable(ctx, tableName)
 			if err != nil {
 				return nil, err
 			}
 			if len(seqs) > 0 {
 				for _, seq := range seqs {
-					if err = collection.DropSequence(ctx, seq.Id); err != nil {
+					if err = seqColl.DropSequence(ctx, seq.Id); err != nil {
 						return nil, err
 					}
 				}
 			}
 		}
-		retRoot, err := collection.UpdateRoot(ctx, newRoot)
+		retRoot, err := seqColl.UpdateRoot(ctx, newRoot)
 		if err != nil {
 			return nil, err
 		}
 		newRoot = retRoot.(*RootValue)
-
-		if skipFKHandling {
-			return newRoot, nil
-		}
-		fkc, err := newRoot.GetForeignKeyCollection(ctx)
+		// Triggers should also be dropped when their target tables are dropped
+		trigColl, err := triggers.LoadTriggers(ctx, newRoot)
 		if err != nil {
 			return nil, err
 		}
-		if allowDroppingFKReferenced {
-			err = fkc.RemoveAndUnresolveTables(ctx, newRoot, tables...)
-		} else {
-			err = fkc.RemoveTables(ctx, tables...)
+		droppedTrigger := false
+		for _, tableName := range tables {
+			for _, trigID := range trigColl.GetTriggerIDsForTable(ctx, id.NewTable(tableName.Schema, tableName.Name)) {
+				droppedTrigger = true
+				if err = trigColl.DropTrigger(ctx, trigID); err != nil {
+					return nil, err
+				}
+			}
 		}
+		if sqlCtx, ok := ctx.(*sql.Context); ok && droppedTrigger {
+			// We're not updating the cached values, so we'll remove those
+			if cv, err := getContextValues(sqlCtx); err == nil {
+				cv.trigs = nil
+			}
+		}
+		retRoot, err = trigColl.UpdateRoot(ctx, newRoot)
 		if err != nil {
 			return nil, err
 		}
-		newRootInterface, err := newRoot.PutForeignKeyCollection(ctx, fkc)
-		if err != nil {
-			return nil, err
+		newRoot = retRoot.(*RootValue)
+		// Handle foreign keys
+		if !skipFKHandling {
+			fkc, err := newRoot.GetForeignKeyCollection(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if allowDroppingFKReferenced {
+				err = fkc.RemoveAndUnresolveTables(ctx, newRoot, tables...)
+			} else {
+				err = fkc.RemoveTables(ctx, tables...)
+			}
+			if err != nil {
+				return nil, err
+			}
+			newRootInterface, err := newRoot.PutForeignKeyCollection(ctx, fkc)
+			if err != nil {
+				return nil, err
+			}
+			newRoot = newRootInterface.(*RootValue)
 		}
-		newRoot = newRootInterface.(*RootValue)
 	}
 
 	// Then we'll handle root objects

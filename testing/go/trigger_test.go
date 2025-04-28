@@ -546,5 +546,45 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "DELETE TABLE deletes attached triggers",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+BEGIN
+	NEW.v1 := NEW.v1 || '_';
+	RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+				`CREATE TRIGGER test_trigger2 BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();",
+					ExpectedErr: "already exists",
+				},
+				{
+					Query:       "CREATE TRIGGER test_trigger2 BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();",
+					ExpectedErr: "already exists",
+				},
+				{
+					Query:    "DROP TABLE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER test_trigger2 BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
