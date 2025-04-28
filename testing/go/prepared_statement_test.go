@@ -64,6 +64,12 @@ var preparedStatementTests = []ScriptTest{
 				BindVars: []any{1},
 				Expected: []sql.Row{{"dolt"}},
 			},
+			{
+				Skip:     true, // TODO: ERROR: unsupported syntax: <nil>
+				Query:    "SELECT nspname FROM pg_namespace OFFSET $1;",
+				BindVars: []any{1},
+				Expected: []sql.Row{{"dolt"}},
+			},
 		},
 	},
 	{

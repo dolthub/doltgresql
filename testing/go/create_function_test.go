@@ -808,5 +808,32 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "INSERT values from function",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TEXT);",
+				`CREATE FUNCTION insertion_text() RETURNS TEXT AS $$
+DECLARE
+    var1 TEXT;
+BEGIN
+    var1 := 'example';
+    RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO test VALUES (insertion_text()), (insertion_text());",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{"example"},
+						{"example"},
+					},
+				},
+			},
+		},
 	})
 }

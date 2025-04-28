@@ -71,6 +71,8 @@ const (
 	NullSequence Sequence = ""
 	// NullTable is an empty, invalid ID. This is exactly equivalent to Null.
 	NullTable Table = ""
+	// NullTrigger is an empty, invalid ID. This is exactly equivalent to Null.
+	NullTrigger Trigger = ""
 	// NullType is an empty, invalid ID. This is exactly equivalent to Null.
 	NullType Type = ""
 	// NullView is an empty, invalid ID. This is exactly equivalent to Null.

@@ -262,7 +262,7 @@ var IDToBuiltInDoltgresType = map[id.Type]*DoltgresType{
 	toInternal("timestamptz"):      TimestampTZ,
 	toInternal("timetz"):           TimeTZ,
 	toInternal("tinterval"):        Unknown,
-	toInternal("trigger"):          Unknown,
+	toInternal("trigger"):          Trigger,
 	toInternal("tsm_handler"):      Unknown,
 	toInternal("tsquery"):          Unknown,
 	toInternal("tsrange"):          Unknown,

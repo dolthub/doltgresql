@@ -33,6 +33,7 @@ const (
 	RootObjectID_Sequences
 	RootObjectID_Types
 	RootObjectID_Functions
+	RootObjectID_Triggers
 )
 
 // Collection is a collection of root objects.

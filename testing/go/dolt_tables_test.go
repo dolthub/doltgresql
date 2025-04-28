@@ -106,7 +106,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Skip:     true, // this fails because the column type of this table is not a doltgres type, which IN requires
 					Query:    `SELECT "dolt_branches"."name" FROM "dolt_branches" WHERE "dolt_branches"."name" IN ('main') ORDER BY "dolt_branches"."name" DESC LIMIT 21;`,
 					Expected: []sql.Row{{"main"}},
 				},
@@ -555,7 +554,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_conflicts`,
-					Expected: []sql.Row{{"test", Numeric("1")}},
+					Expected: []sql.Row{{"test", 1}},
 				},
 				{
 					Query:    `SELECT dolt.conflicts.table FROM dolt.conflicts`,
@@ -763,7 +762,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_constraint_violations`,
-					Expected: []sql.Row{{"test", Numeric("2")}},
+					Expected: []sql.Row{{"test", 2}},
 				},
 				{
 					Query:    `SELECT dolt.constraint_violations.table FROM dolt.constraint_violations`,
@@ -1744,8 +1743,8 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 			},
 		},
-		//TODO: turn on statistics
-		//{
+		// TODO: turn on statistics
+		// {
 		//	Name: "dolt statistics",
 		//	SetUpScript: []string{
 		//		"CREATE TABLE horses (id int primary key, name varchar(10));",
@@ -1871,7 +1870,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 		//			Expected: []sql.Row{{"horses", "horses_name_idx"}, {"horses", "primary"}},
 		//		},
 		//	},
-		//},
+		// },
 		{
 			Name: "dolt status",
 			SetUpScript: []string{

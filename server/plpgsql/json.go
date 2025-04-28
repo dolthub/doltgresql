@@ -39,8 +39,10 @@ type datatype struct {
 
 // datum exists to match the expected JSON format.
 type datum struct {
-	Row      *plpgSQL_row `json:"PLpgSQL_row"`
-	Variable *plpgSQL_var `json:"PLpgSQL_var"`
+	Record      *plpgSQL_rec      `json:"PLpgSQL_rec"`
+	RecordField *plpgSQL_recfield `json:"PLpgSQL_recfield"`
+	Row         *plpgSQL_row      `json:"PLpgSQL_row"`
+	Variable    *plpgSQL_var      `json:"PLpgSQL_var"`
 }
 
 // elsif exists to match the expected JSON format.
@@ -66,8 +68,10 @@ type function struct {
 
 // plpgSQL_block exists to match the expected JSON format.
 type plpgSQL_block struct {
-	Datums []datum `json:"datums"`
-	Action action  `json:"action"`
+	NewVariableNumber int32   `json:"new_varno"`
+	OldVariableNumber int32   `json:"old_varno"`
+	Datums            []datum `json:"datums"`
+	Action            action  `json:"action"`
 }
 
 // plpgSQL_expr exists to match the expected JSON format.
@@ -81,6 +85,18 @@ type plpgSQL_if_elsif struct {
 	Condition  cond        `json:"cond"`
 	Then       []statement `json:"stmts"`
 	LineNumber int32       `json:"lineno"`
+}
+
+// plpgSQL_rec exists to match the expected JSON format.
+type plpgSQL_rec struct {
+	RefName     string `json:"refname"`
+	DatumNumber int32  `json:"dno"`
+}
+
+// plpgSQL_recfield exists to match the expected JSON format.
+type plpgSQL_recfield struct {
+	FieldName          string `json:"fieldname"`
+	RecordParentNumber int32  `json:"recparentno"`
 }
 
 // plpgSQL_row exists to match the expected JSON format.

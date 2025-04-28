@@ -100,7 +100,6 @@ func TestGettingStartedGuide(t *testing.T) {
 					},
 				},
 				{
-					Skip:     true, // This returns no rows for some reason. See https://github.com/dolthub/doltgresql/issues/1063
 					Query:    "select * from employees_teams where employee_id='0' and team_id='1';",
 					Expected: []sql.Row{{1, 0}},
 				},

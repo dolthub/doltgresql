@@ -26,6 +26,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/core/typecollection"
 )
 
@@ -36,6 +37,7 @@ var (
 		&sequences.Collection{},
 		&typecollection.TypeCollection{},
 		&functions.Collection{},
+		&triggers.Collection{},
 	}
 )
 
