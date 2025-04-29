@@ -53,110 +53,110 @@ func NewIntegerLiteral(integerValue string) (*expression.Literal, error) {
 
 // NewNullLiteral returns a new *expression.Literal containing a null value.
 func NewNullLiteral() *expression.Literal {
-return expression.NewLiteral(nil, pgtypes.Unknown)
+	return expression.NewLiteral(nil, pgtypes.Unknown)
 }
 
 // NewUnknownLiteral returns a new *expression.Literal containing a UNKNOWN type value.
 func NewUnknownLiteral(stringValue string) *expression.Literal {
-return expression.NewLiteral(stringValue, pgtypes.Unknown)
+	return expression.NewLiteral(stringValue, pgtypes.Unknown)
 }
 
 // NewTextLiteral returns a new *expression.Literal containing a TEXT type value.
 // This should be used for internal uses when the type of the value is certain.
 func NewTextLiteral(stringValue string) *expression.Literal {
-return expression.NewLiteral(stringValue, pgtypes.Text)
+	return expression.NewLiteral(stringValue, pgtypes.Text)
 }
 
 // NewIntervalLiteral returns a new *expression.Literal containing a INTERVAL value.
 func NewIntervalLiteral(duration duration.Duration) *expression.Literal {
-return expression.NewLiteral(duration, pgtypes.Interval)
+	return expression.NewLiteral(duration, pgtypes.Interval)
 }
 
 // NewJSONLiteral returns a new *expression.Literal containing a JSON value. This is different from JSONB.
 func NewJSONLiteral(jsonValue string) *expression.Literal {
-return expression.NewLiteral(jsonValue, pgtypes.Json)
+	return expression.NewLiteral(jsonValue, pgtypes.Json)
 }
 
 // NewRawLiteralBool returns a new *expression.Literal containing a boolean value.
 func NewRawLiteralBool(val bool) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Bool)
+	return expression.NewLiteral(val, pgtypes.Bool)
 }
 
 // NewRawLiteralInt16 returns a new *expression.Literal containing an int16 value.
 func NewRawLiteralInt16(val int16) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Int16)
+	return expression.NewLiteral(val, pgtypes.Int16)
 }
 
 // NewRawLiteralInt32 returns a new *expression.Literal containing an int32 value.
 func NewRawLiteralInt32(val int32) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Int32)
+	return expression.NewLiteral(val, pgtypes.Int32)
 }
 
 // NewRawLiteralInt64 returns a new *expression.Literal containing an int64 value.
 func NewRawLiteralInt64(val int64) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Int64)
+	return expression.NewLiteral(val, pgtypes.Int64)
 }
 
 // NewRawLiteralFloat32 returns a new *expression.Literal containing a float32 value.
 func NewRawLiteralFloat32(val float32) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Float32)
+	return expression.NewLiteral(val, pgtypes.Float32)
 }
 
 // NewRawLiteralFloat64 returns a new *expression.Literal containing a float64 value.
 func NewRawLiteralFloat64(val float64) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Float64)
+	return expression.NewLiteral(val, pgtypes.Float64)
 }
 
 // NewRawLiteralNumeric returns a new *expression.Literal containing a decimal.Decimal value.
 func NewRawLiteralNumeric(val decimal.Decimal) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Numeric)
+	return expression.NewLiteral(val, pgtypes.Numeric)
 }
 
 // NewRawLiteralDate returns a new *expression.Literal containing a DATE value.
 func NewRawLiteralDate(date time.Time) *expression.Literal {
-return expression.NewLiteral(date, pgtypes.Date)
+	return expression.NewLiteral(date, pgtypes.Date)
 }
 
 // NewRawLiteralTime returns a new *expression.Literal containing a TIME value.
 func NewRawLiteralTime(t time.Time) *expression.Literal {
-return expression.NewLiteral(t, pgtypes.Time)
+	return expression.NewLiteral(t, pgtypes.Time)
 }
 
 // NewRawLiteralTimeTZ returns a new *expression.Literal containing a TIMETZ value.
 func NewRawLiteralTimeTZ(ttz time.Time) *expression.Literal {
-return expression.NewLiteral(ttz, pgtypes.TimeTZ)
+	return expression.NewLiteral(ttz, pgtypes.TimeTZ)
 }
 
 // NewRawLiteralTimestamp returns a new *expression.Literal containing a TIMESTAMP value. This is the variant without a time zone.
 func NewRawLiteralTimestamp(val time.Time) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Timestamp)
+	return expression.NewLiteral(val, pgtypes.Timestamp)
 }
 
 // NewRawLiteralTimestampTZ returns a new *expression.Literal containing a TIMESTAMPTZ value. This is the variant with a time zone.
 func NewRawLiteralTimestampTZ(val time.Time) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.TimestampTZ)
+	return expression.NewLiteral(val, pgtypes.TimestampTZ)
 }
 
 // NewRawLiteralJSON returns a new *expression.Literal containing a JSON value.
 func NewRawLiteralJSON(val string) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Json)
+	return expression.NewLiteral(val, pgtypes.Json)
 }
 
 // NewRawLiteralOid returns a new *expression.Literal containing a OID value.
 func NewRawLiteralOid(val id.Id) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Oid)
+	return expression.NewLiteral(val, pgtypes.Oid)
 }
 
 // NewRawLiteralUuid returns a new *expression.Literal containing a UUID value.
 func NewRawLiteralUuid(val uuid.UUID) *expression.Literal {
-return expression.NewLiteral(val, pgtypes.Uuid)
+	return expression.NewLiteral(val, pgtypes.Uuid)
 }
 
 // NewUnsafeLiteral returns a new *expression.Literal containing the given value and type. This should almost never be used, as
 // it does not perform any checking and circumvents type safety, which may lead to hard-to-debug errors. This is
 // currently only used within the analyzer, and will likely be removed in the future.
 func NewUnsafeLiteral(val any, t *pgtypes.DoltgresType) *expression.Literal {
-return expression.NewLiteral(val, t)
+	return expression.NewLiteral(val, t)
 }
 
 // ToVitessLiteral returns the literal as a Vitess literal. This is strictly for situations where GMS is hardcoded to

@@ -201,7 +201,7 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 		sch := sq.Query.Schema()
 		leftLiteral := expression.NewLiteral(nil, leftType)
 		rightLiterals := make([]*expression.Literal, len(sch))
-		compFuncs := make([]framework.Function, len(sch))	
+		compFuncs := make([]framework.Function, len(sch))
 		allValidChildren := true
 		for i, rightCol := range sch {
 			rightType, ok := rightCol.Type.(*pgtypes.DoltgresType)
