@@ -16,8 +16,9 @@ package framework
 
 import (
 	"fmt"
-	"github.com/dolthub/go-mysql-server/sql/procedures"
 	"strings"
+
+	"github.com/dolthub/go-mysql-server/sql/procedures"
 
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
