@@ -27,10 +27,10 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
-	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	"github.com/dolthub/doltgresql/server/plpgsql"
 )
 
 // Collection contains a collection of triggers.
@@ -83,8 +83,8 @@ type Trigger struct {
 	Function            id.Function
 	Timing              TriggerTiming
 	Events              []TriggerEvent
-	ForEachRow          bool           // When false, represents FOR EACH STATEMENT
-	When                sql.Expression // TODO: should this be PLpgSQL operations?
+	ForEachRow          bool // When false, represents FOR EACH STATEMENT
+	When                []plpgsql.InterpreterOperation
 	Deferrable          TriggerDeferrable
 	ReferencedTableName id.Table // FROM referenced_table_name
 	Constraint          bool

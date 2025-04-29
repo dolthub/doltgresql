@@ -15,17 +15,25 @@
 package ast
 
 import (
+	"fmt"
+	"regexp"
+
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/triggers"
-	pgnodes "github.com/dolthub/doltgresql/server/node"
-
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
+	"github.com/dolthub/doltgresql/server/plpgsql"
 )
 
+// createTriggerWhenCapture is a regex that should only capture the contents of the WHEN expression. Although a bit
+// complex, this is done to ensure that the capture group contains only the WHEN expression and nothing else.
+var createTriggerWhenCapture = regexp.MustCompile(`(?is)create\s+(?:or\s+replace\s+)?(?:constraint\s+)?trigger\s+.*\s+for\s+(?:each\s+)?(?:row|statement)\s+when\s+\((.*)\)\s+execute\s+(?:function|procedure).*`)
+
 // nodeCreateTrigger handles *tree.CreateTrigger nodes.
-func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (vitess.Statement, error) {
+func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (_ vitess.Statement, err error) {
 	if node.Constraint {
 		return NotYetSupportedError("CREATE CONSTRAINT TRIGGER is not yet supported")
 	}
@@ -76,6 +84,26 @@ func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (vitess.Statement
 			return NotYetSupportedError("UNKNOWN EVENT TYPE is not yet supported for CREATE TRIGGER")
 		}
 	}
+	// WHEN expressions seem to behave identically to interpreted functions, so we'll parse them as interpreted functions.
+	// To do this, we need the raw string, and we wrap it as though it were a trigger function (which has special logic
+	// for handling NEW and OLD rows). Using a regex for this rather than modifying the parser may seem suboptimal, but
+	// we want to retain the parser validation of using an expression, however we cannot rely on the expression's
+	// String() function to return the **exact** same string, so we capture it with a regex.
+	var whenOps []plpgsql.InterpreterOperation
+	if node.When != nil {
+		matches := createTriggerWhenCapture.FindStringSubmatch(ctx.originalQuery)
+		if len(matches) != 2 {
+			return nil, errors.New("unable to parse WHEN expression from CREATE TRIGGER")
+		}
+		whenOps, err = plpgsql.Parse(fmt.Sprintf(`CREATE FUNCTION when_wrapper() RETURNS TRIGGER AS $$
+BEGIN
+	RETURN %s;
+END;
+$$ LANGUAGE plpgsql;`, matches[1]))
+		if err != nil {
+			return nil, err
+		}
+	}
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateTrigger(
 			id.NewTrigger(node.OnTable.Schema(), node.OnTable.Table(), node.Name.String()),
@@ -84,7 +112,7 @@ func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (vitess.Statement
 			timing,
 			events,
 			node.ForEachRow,
-			nil, // TODO: node.When (expr)
+			whenOps,
 			node.Args.ToStrings(),
 			ctx.originalQuery,
 		),
