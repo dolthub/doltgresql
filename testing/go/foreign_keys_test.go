@@ -231,8 +231,6 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "incompatible types",
 					},
 					{
-						// varchar -> text should work, but key detection is broken. https://github.com/dolthub/doltgresql/issues/1402
-						Skip:  true,
 						Query: "alter table child add constraint fvt foreign key (v) references parent(t);",
 					},
 					{
@@ -242,13 +240,9 @@ func TestForeignKeys(t *testing.T) {
 						Query: "alter table child add constraint fvlv foreign key (vl) references parent(v);",
 					},
 					{
-						// varchar(100) -> text should work, but key detection is broken. https://github.com/dolthub/doltgresql/issues/1402
-						Skip:  true,
 						Query: "alter table child add constraint fvlt foreign key (vl) references parent(t);",
 					},
 					{
-						// text -> text should work, but key detection is broken. https://github.com/dolthub/doltgresql/issues/1402
-						Skip:  true,
 						Query: "alter table child add constraint ftt foreign key (t) references parent(t);",
 					},
 					{
