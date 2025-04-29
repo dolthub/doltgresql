@@ -112,9 +112,10 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 	}
 	// Next we'll assign our evaluated values to the expressions that the comparison functions reference
-	it.staticLiteral = expression.NewLiteral(left, it.staticLiteral.Type())
+	// Note that the compiled functions already have a reference to this literal, so we have to edit it in place
+	it.staticLiteral.Val = left
 	for i, rightValue := range rightValues {
-		it.arrayLiterals[i] = expression.NewLiteral(rightValue, it.arrayLiterals[i].Type())
+		it.arrayLiterals[i].Val = rightValue
 	}
 
 	// Now we can loop over all of the comparison functions, as they'll reference their respective values

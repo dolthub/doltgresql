@@ -127,9 +127,10 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 // assigned to |compFuncs| during analysis. If the left value is a single scalar, then |row| has a single value as
 // well. Otherwise, (left is a tuple), |row| has a matching number of values.
 func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Row) (bool, error) {
-	in.leftLiteral = expression.NewLiteral(left, in.leftLiteral.Type())
+	// Note that we have to edit the literals in place, since the comparison functions reference them directly.
+	in.leftLiteral.Val = left
 	for i, v := range row {
-		in.rightLiterals[i] = expression.NewLiteral(v, in.rightLiterals[i].Type())
+		in.rightLiterals[i].Val = v
 	}
 
 	for _, compFunc := range in.compFuncs {
@@ -200,7 +201,7 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 		sch := sq.Query.Schema()
 		leftLiteral := expression.NewLiteral(nil, leftType)
 		rightLiterals := make([]*expression.Literal, len(sch))
-		compFuncs := make([]framework.Function, len(sch))
+		compFuncs := make([]framework.Function, len(sch))	
 		allValidChildren := true
 		for i, rightCol := range sch {
 			rightType, ok := rightCol.Type.(*pgtypes.DoltgresType)
