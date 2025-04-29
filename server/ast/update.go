@@ -24,16 +24,21 @@ import (
 )
 
 // nodeUpdate handles *tree.Update nodes.
-func nodeUpdate(ctx *Context, node *tree.Update) (*vitess.Update, error) {
+func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err error) {
 	if node == nil {
 		return nil, nil
 	}
 	ctx.Auth().PushAuthType(auth.AuthType_UPDATE)
 	defer ctx.Auth().PopAuthType()
 
-	if _, ok := node.Returning.(*tree.NoReturningClause); !ok {
-		return nil, errors.Errorf("RETURNING is not yet supported")
+	var returningExprs vitess.SelectExprs
+	if returning, ok := node.Returning.(*tree.ReturningExprs); ok {
+		returningExprs, err = nodeSelectExprs(ctx, tree.SelectExprs(*returning))
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	if len(node.From) > 0 {
 		return nil, errors.Errorf("FROM is not yet supported")
 	}
@@ -68,5 +73,6 @@ func nodeUpdate(ctx *Context, node *tree.Update) (*vitess.Update, error) {
 		Where:      where,
 		OrderBy:    orderBy,
 		Limit:      limit,
+		Returning:  returningExprs,
 	}, nil
 }
