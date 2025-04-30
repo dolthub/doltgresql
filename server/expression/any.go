@@ -143,9 +143,10 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 	}
 
 	// Next we'll assign our evaluated values to the expressions that the comparison functions reference
-	a.staticLiteral = expression.NewLiteral(left, a.staticLiteral.Type())
+	// Note that the compiled function has a reference to the staticLiteral and arrayLiterals, so we must alter them in place
+	a.staticLiteral.Val = left
 	for i, rightValue := range rightValues {
-		a.arrayLiterals[i] = expression.NewLiteral(rightValue, a.arrayLiterals[i].Type())
+		a.arrayLiterals[i].Val = rightValue
 	}
 	// Now we can loop over all comparison functions, as they'll reference their respective values
 	for _, compFunc := range a.compFuncs {
@@ -193,9 +194,10 @@ func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}
 	}
 
 	// Next we'll assign our evaluated values to the expressions that the comparison function reference
-	a.staticLiteral = expression.NewLiteral(left, a.staticLiteral.Type())
+	// Note that the compiled function has a reference to the staticLiteral and arrayLiteral, so we must alter them in place
+	a.staticLiteral.Val = left
 	for _, rightValue := range rightValues {
-		a.arrayLiteral = expression.NewLiteral(rightValue, a.arrayLiteral.Type())
+		a.arrayLiteral.Val = rightValue
 		result, err := a.compFunc.Eval(ctx, row)
 		if err != nil {
 			return nil, err
