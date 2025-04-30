@@ -20,7 +20,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/rowexec"
 
 	"github.com/dolthub/doltgresql/core/triggers"
@@ -170,7 +169,7 @@ type triggerExecutionIter struct {
 	whens     []framework.InterpretedFunction
 	split     TriggerExecutionRowHandling
 	treturn   TriggerExecutionRowHandling
-	runner    analyzer.StatementRunner
+	runner    sql.StatementRunner
 	sch       sql.Schema
 	source    sql.RowIter
 }

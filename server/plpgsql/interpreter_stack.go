@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -54,12 +53,12 @@ type InterpreterScopeDetails struct {
 // general purpose.
 type InterpreterStack struct {
 	stack   *utils.Stack[*InterpreterScopeDetails]
-	runner  analyzer.StatementRunner
+	runner  sql.StatementRunner
 	labelID int
 }
 
 // NewInterpreterStack creates a new InterpreterStack.
-func NewInterpreterStack(runner analyzer.StatementRunner) InterpreterStack {
+func NewInterpreterStack(runner sql.StatementRunner) InterpreterStack {
 	stack := utils.NewStack[*InterpreterScopeDetails]()
 	// This first push represents the function base, including parameters
 	stack.Push(&InterpreterScopeDetails{
@@ -77,7 +76,7 @@ func (is *InterpreterStack) Details() *InterpreterScopeDetails {
 }
 
 // Runner returns the runner that is being used for the function's execution.
-func (is *InterpreterStack) Runner() analyzer.StatementRunner {
+func (is *InterpreterStack) Runner() sql.StatementRunner {
 	return is.runner
 }
 
