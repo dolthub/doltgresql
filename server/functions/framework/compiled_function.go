@@ -18,11 +18,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dolthub/go-mysql-server/sql/procedures"
-
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/procedures"
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/server/plpgsql"
