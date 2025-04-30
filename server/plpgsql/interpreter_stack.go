@@ -18,9 +18,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // interpreterVariable is a variable that lives on the stack. This will hold an actual value, but will not be directly
