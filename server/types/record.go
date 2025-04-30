@@ -18,7 +18,9 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 )
 
-// Record is the record type, similar to a row.
+// Record is a generic, anonymous record type, without field type information supplied yet. When used with RecordExpr,
+// the field type information will be created once the field expressions are analyzed and type information is available,
+// and a new DoltgresType instance will be created with the field type information populated.
 var Record = &DoltgresType{
 	ID:            toInternal("record"),
 	TypLength:     -1,
@@ -51,5 +53,12 @@ var Record = &DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("btrecordcmp", toInternal("record"), toInternal("record")),
+	CompareFunc:   toFuncID("-"),
+}
+
+// RecordValue holds the value of a single field in a record, including type information for the
+// field value.
+type RecordValue struct {
+	Value any
+	Type  *DoltgresType
 }

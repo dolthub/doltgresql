@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
+	"github.com/dolthub/doltgresql/server/compare"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -70,6 +71,7 @@ func initBinaryGreaterThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, timestamptz_gt_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, timestamptz_gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, timetz_gt)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, record_gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, uuid_gt)
 }
 
@@ -514,6 +516,17 @@ var timetz_gt = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimeTZ.Compare(ctx, val1.(time.Time), val2.(time.Time))
 		return res == 1, err
+	},
+}
+
+// record_gt represents the PostgreSQL function of the same name, taking the same parameters.
+var record_gt = framework.Function2{
+	Name:       "record_gt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Record, pgtypes.Record},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		return compare.CompareRecords(ctx, framework.Operator_BinaryGreaterThan, val1, val2)
 	},
 }
 

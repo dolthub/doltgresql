@@ -22,6 +22,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // nodeAlterTable handles *tree.AlterTable nodes.
@@ -316,6 +317,10 @@ func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColum
 	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType)
 	if err != nil {
 		return nil, err
+	}
+
+	if resolvedType == pgtypes.Record {
+		return nil, errors.Errorf(`column "%s" has pseudo-type record`, node.Column.String())
 	}
 
 	return &vitess.DDL{

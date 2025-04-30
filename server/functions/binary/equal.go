@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
+	"github.com/dolthub/doltgresql/server/compare"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -61,6 +62,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, oideq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, texteqname)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, text_eq)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, record_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, time_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, timestamp_eq_date)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, timestamp_eq)
@@ -420,6 +422,17 @@ var text_eq = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(ctx, val1, val2)
 		return res == 0, err
+	},
+}
+
+// record_eq represents the PostgreSQL function of the same name, taking the same parameters.
+var record_eq = framework.Function2{
+	Name:       "record_eq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Record, pgtypes.Record},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		return compare.CompareRecords(ctx, framework.Operator_BinaryEqual, val1, val2)
 	},
 }
 

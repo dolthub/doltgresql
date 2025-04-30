@@ -16,6 +16,7 @@ package types
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 
 	cerrors "github.com/cockroachdb/errors"
@@ -152,26 +153,59 @@ func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool b
 			if baseType.ID == Bool.ID && trimBool {
 				str = string(str[0])
 			}
-			shouldQuote := false
-			for _, r := range str {
-				switch r {
-				case ' ', ',', '{', '}', '\\', '"':
-					shouldQuote = true
-				}
-			}
-			if shouldQuote || strings.EqualFold(str, "NULL") {
-				sb.WriteRune('"')
-				sb.WriteString(strings.ReplaceAll(str, `"`, `\"`))
-				sb.WriteRune('"')
-			} else {
-				sb.WriteString(str)
-			}
+			sb.WriteString(quoteString(str))
 		} else {
 			sb.WriteString("NULL")
 		}
 	}
 	sb.WriteRune('}')
 	return sb.String(), nil
+}
+
+// RecordToString is used for the record_out function, to serialize record values for wire transfer.
+// |fields| contains the values to serialize.
+func RecordToString(ctx *sql.Context, fields []RecordValue) (any, error) {
+	sb := strings.Builder{}
+	sb.WriteRune('(')
+	for i, value := range fields {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+
+		if value.Value == nil {
+			continue
+		}
+
+		str, err := value.Type.IoOutput(ctx, value.Value)
+		if err != nil {
+			return "", err
+		}
+		if value.Type.ID == Bool.ID {
+			str = string(str[0])
+		}
+
+		sb.WriteString(quoteString(str))
+	}
+	sb.WriteRune(')')
+
+	return sb.String(), nil
+}
+
+// quoteString determines if |s| needs to be quoted, by looking for special characters like ' ' or ',',
+// and if so, quotes the string and returns it. If quoting is not needed, then |s| is returned as is.
+func quoteString(s string) string {
+	shouldQuote := false
+	for _, r := range s {
+		switch r {
+		case ' ', ',', '{', '}', '\\', '"':
+			shouldQuote = true
+		}
+	}
+	if shouldQuote || strings.EqualFold(s, "NULL") {
+		return fmt.Sprintf(`"%s"`, strings.ReplaceAll(s, `"`, `\"`))
+	} else {
+		return s
+	}
 }
 
 // toInternal returns an Internal ID for the given type. This is only used for the built-in types, since they all share
