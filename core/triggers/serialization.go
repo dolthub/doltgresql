@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/plpgsql"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -37,7 +38,6 @@ func (trigger Trigger) Serialize(ctx context.Context) ([]byte, error) {
 	writer.Id(trigger.Function.AsId())
 	writer.Uint8(uint8(trigger.Timing))
 	writer.Bool(trigger.ForEachRow)
-	// TODO: writer.Unknown(trigger.When)
 	writer.Uint8(uint8(trigger.Deferrable))
 	writer.Id(trigger.ReferencedTableName.AsId())
 	writer.Bool(trigger.Constraint)
@@ -45,6 +45,16 @@ func (trigger Trigger) Serialize(ctx context.Context) ([]byte, error) {
 	writer.String(trigger.NewTransitionName)
 	writer.StringSlice(trigger.Arguments)
 	writer.String(trigger.Definition)
+	// Write the WHEN operations
+	writer.VariableUint(uint64(len(trigger.When)))
+	for _, op := range trigger.When {
+		writer.Uint16(uint16(op.OpCode))
+		writer.String(op.PrimaryData)
+		writer.StringSlice(op.SecondaryData)
+		writer.String(op.Target)
+		writer.Int32(int32(op.Index))
+		writer.StringMap(op.Options)
+	}
 	// Write the events
 	writer.VariableUint(uint64(len(trigger.Events)))
 	for _, event := range trigger.Events {
@@ -73,7 +83,6 @@ func DeserializeTrigger(ctx context.Context, data []byte) (Trigger, error) {
 	t.Function = id.Function(reader.Id())
 	t.Timing = TriggerTiming(reader.Uint8())
 	t.ForEachRow = reader.Bool()
-	// TODO: trigger.When = reader.Unknown()
 	t.Deferrable = TriggerDeferrable(reader.Uint8())
 	t.ReferencedTableName = id.Table(reader.Id())
 	t.Constraint = reader.Bool()
@@ -81,6 +90,19 @@ func DeserializeTrigger(ctx context.Context, data []byte) (Trigger, error) {
 	t.NewTransitionName = reader.String()
 	t.Arguments = reader.StringSlice()
 	t.Definition = reader.String()
+	// Read the WHEN operations
+	opCount := reader.VariableUint()
+	t.When = make([]plpgsql.InterpreterOperation, opCount)
+	for opIdx := uint64(0); opIdx < opCount; opIdx++ {
+		op := plpgsql.InterpreterOperation{}
+		op.OpCode = plpgsql.OpCode(reader.Uint16())
+		op.PrimaryData = reader.String()
+		op.SecondaryData = reader.StringSlice()
+		op.Target = reader.String()
+		op.Index = int(reader.Int32())
+		op.Options = reader.StringMap()
+		t.When[opIdx] = op
+	}
 	// Read the events
 	eventCount := reader.VariableUint()
 	t.Events = make([]TriggerEvent, eventCount)
