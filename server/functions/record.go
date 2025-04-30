@@ -15,12 +15,13 @@
 package functions
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
+	"fmt"
 
-	"github.com/dolthub/doltgresql/utils"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initRecord registers the functions to the catalog.
@@ -51,9 +52,12 @@ var record_out = framework.Function1{
 	Return:     pgtypes.Cstring,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Record},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		return val.(string), nil
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
+		values, ok := val.([]any)
+		if !ok {
+			return nil, fmt.Errorf("expected []any, but got %T", val)
+		}
+		return pgtypes.RecordToString(ctx, values, t[0].FieldTypes)
 	},
 }
 

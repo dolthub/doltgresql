@@ -69,6 +69,7 @@ func initBinaryNotEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, timestamptz_ne_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, timestamptz_ne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, timetz_ne)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, record_ne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, uuid_ne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, xidneqint4)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, xidneq)
@@ -514,6 +515,24 @@ var timetz_ne = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimeTZ.Compare(ctx, val1.(time.Time), val2.(time.Time))
+		return res != 0, err
+	},
+}
+
+// record_ne represents the PostgreSQL function of the same name, taking the same parameters.
+var record_ne = framework.Function2{
+	Name:       "record_ne",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Record, pgtypes.Record},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		if err := pgtypes.ValidateEqualRecordFieldCount(val1, val2); err != nil {
+			return nil, err
+		}
+		if !pgtypes.CanCompareRecordValuesForNotEquals(val1, val2) {
+			return nil, nil
+		}
+		res, err := pgtypes.Record.Compare(ctx, val1, val2)
 		return res != 0, err
 	},
 }
