@@ -546,5 +546,98 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "DELETE TABLE deletes attached triggers",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+BEGIN
+	NEW.v1 := NEW.v1 || '_';
+	RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+				`CREATE TRIGGER test_trigger2 BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();",
+					ExpectedErr: "already exists",
+				},
+				{
+					Query:       "CREATE TRIGGER test_trigger2 BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();",
+					ExpectedErr: "already exists",
+				},
+				{
+					Query:    "DROP TABLE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TRIGGER test_trigger2 BEFORE UPDATE ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "WHEN on BEFORE INSERT",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				`CREATE FUNCTION trigger_func1() RETURNS TRIGGER AS $$
+BEGIN
+	NEW.v1 := NEW.pk::text || '_' || NEW.v1;
+	RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION trigger_func2() RETURNS TRIGGER AS $$
+BEGIN
+	NEW.v1 := NEW.v1 || '_' || NEW.pk::text;
+	RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger1 BEFORE INSERT ON test FOR EACH ROW WHEN (NEW.pk < 1) EXECUTE FUNCTION trigger_func1();`,
+				`CREATE TRIGGER test_trigger2 BEFORE INSERT ON test FOR EACH ROW WHEN (NEW.pk > 1) EXECUTE FUNCTION trigger_func2();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO test VALUES (0, 'hi'), (1, 'there'), (2, 'dude');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM test;",
+					Expected: []sql.Row{
+						{0, "0_hi"},
+						{1, "there"},
+						{2, "dude_2"},
+					},
+				},
+			},
+		},
+		{
+			Name: "WHEN with non-boolean expression",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+BEGIN
+	NEW.v1 := NEW.pk::text || '_' || NEW.v1;
+	RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW WHEN (NEW.pk + 1) EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO test VALUES (1, 'hi'), (2, 'there');",
+					ExpectedErr: "argument of WHEN must be type boolean",
+				},
+			},
+		},
 	})
 }
