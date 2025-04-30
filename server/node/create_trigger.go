@@ -21,12 +21,12 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/core/functions"
-	"github.com/dolthub/doltgresql/core/triggers"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
-
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/triggers"
+	"github.com/dolthub/doltgresql/server/plpgsql"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // CreateTrigger implements CREATE TRIGGER.
@@ -37,7 +37,7 @@ type CreateTrigger struct {
 	Timing     triggers.TriggerTiming
 	Events     []triggers.TriggerEvent
 	ForEachRow bool
-	When       sql.Expression
+	When       []plpgsql.InterpreterOperation
 	Arguments  []string
 	Definition string
 }
@@ -53,7 +53,7 @@ func NewCreateTrigger(
 	timing triggers.TriggerTiming,
 	events []triggers.TriggerEvent,
 	forEachRow bool,
-	when sql.Expression,
+	when []plpgsql.InterpreterOperation,
 	arguments []string,
 	definition string) *CreateTrigger {
 	return &CreateTrigger{
@@ -125,7 +125,7 @@ func (c *CreateTrigger) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 		Timing:              c.Timing,
 		Events:              c.Events,
 		ForEachRow:          c.ForEachRow,
-		When:                nil,
+		When:                c.When,
 		Deferrable:          triggers.TriggerDeferrable_NotDeferrable,
 		ReferencedTableName: "",
 		Constraint:          false,

@@ -16,10 +16,10 @@ package node
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/rowexec"
 
 	"github.com/dolthub/doltgresql/core/triggers"
@@ -83,14 +83,24 @@ func (te *TriggerExecution) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, e
 		return sourceIter, nil
 	}
 	trigFuncs := make([]framework.InterpretedFunction, len(te.Triggers))
+	whens := make([]framework.InterpretedFunction, len(te.Triggers))
 	for i, trig := range te.Triggers {
 		trigFuncs[i], err = te.loadTriggerFunction(ctx, trig)
 		if err != nil {
 			return nil, err
 		}
+		// If we have a WHEN expression, then we need to build a "function" to execute the expression
+		if len(trig.When) > 0 {
+			whens[i] = framework.InterpretedFunction{
+				ID:         trigFuncs[i].ID, // Assign the same ID just so we have a valid one for later
+				ReturnType: pgtypes.Bool,
+				Statements: trig.When,
+			}
+		}
 	}
 	return &triggerExecutionIter{
 		functions: trigFuncs,
+		whens:     whens,
 		split:     te.Split,
 		treturn:   te.Return,
 		runner:    te.Runner.Runner,
@@ -156,9 +166,10 @@ func (te *TriggerExecution) loadTriggerFunction(ctx *sql.Context, trigger trigge
 // triggerExecutionIter is the iterator for TriggerExecution.
 type triggerExecutionIter struct {
 	functions []framework.InterpretedFunction
+	whens     []framework.InterpretedFunction
 	split     TriggerExecutionRowHandling
 	treturn   TriggerExecutionRowHandling
-	runner    analyzer.StatementRunner
+	runner    sql.StatementRunner
 	sch       sql.Schema
 	source    sql.RowIter
 }
@@ -185,7 +196,25 @@ func (t *triggerExecutionIter) Next(ctx *sql.Context) (sql.Row, error) {
 	case TriggerExecutionRowHandling_New:
 		newRow = nextRow
 	}
-	for _, function := range t.functions {
+	for funcIdx, function := range t.functions {
+		if t.whens[funcIdx].ID.IsValid() {
+			whenValue, err := plpgsql.TriggerCall(ctx, t.whens[funcIdx], t.runner, t.sch, oldRow, newRow)
+			if err != nil {
+				if strings.Contains(err.Error(), "no valid cast for return value") {
+					// TODO: this error should technically be caught during parsing, but interpreted functions don't
+					//  have the ability to determine types during parsing yet (also applies to the same error below)
+					return nil, fmt.Errorf("argument of WHEN must be type boolean")
+				}
+				return nil, err
+			}
+			whenBool, ok := whenValue.(bool)
+			if !ok {
+				return nil, fmt.Errorf("argument of WHEN must be type boolean")
+			}
+			if !whenBool {
+				continue
+			}
+		}
 		returnedValue, err := plpgsql.TriggerCall(ctx, function, t.runner, t.sch, oldRow, newRow)
 		if err != nil {
 			return nil, err
