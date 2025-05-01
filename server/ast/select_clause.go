@@ -16,6 +16,7 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -141,8 +142,8 @@ PostJoinRewrite:
 								for _, fExpr := range funcExpr.Exprs {
 									if aliasedExpr, ok := fExpr.(*vitess.AliasedExpr); ok {
 										if injectedExpr, ok := aliasedExpr.Expr.(vitess.InjectedExpr); ok {
-											if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
-												aliasedExpr.Expr = literal.ToVitessLiteral()
+											if literal, ok := injectedExpr.Expression.(*expression.Literal); ok {
+												aliasedExpr.Expr = pgexprs.ToVitessLiteral(literal)
 											}
 										}
 									}

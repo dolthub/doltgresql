@@ -16,6 +16,7 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -69,8 +70,8 @@ func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 		// the query, which is not a requirement for Postgres. Whenever we add that functionality, we also need to
 		// remove the dependency on vitess.SQLVal. For now, we'll just convert our literals to a vitess.SQLVal.
 		if injectedExpr, ok := expr.(vitess.InjectedExpr); ok {
-			if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
-				expr = literal.ToVitessLiteral()
+			if literal, ok := injectedExpr.Expression.(*expression.Literal); ok {
+				expr = pgexprs.ToVitessLiteral(literal)
 			}
 		}
 		orderBys[i] = &vitess.Order{

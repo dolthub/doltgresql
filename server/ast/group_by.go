@@ -15,6 +15,7 @@
 package ast
 
 import (
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
@@ -41,8 +42,8 @@ func nodeGroupBy(ctx *Context, node tree.GroupBy) (vitess.GroupBy, error) {
 		// the query, which is not a requirement for Postgres. Whenever we add that functionality, we also need to
 		// remove the dependency on vitess.SQLVal. For now, we'll just convert our literals to a vitess.SQLVal.
 		if injectedExpr, ok := groupBys[i].(vitess.InjectedExpr); ok {
-			if literal, ok := injectedExpr.Expression.(*pgexprs.Literal); ok {
-				groupBys[i] = literal.ToVitessLiteral()
+			if literal, ok := injectedExpr.Expression.(*expression.Literal); ok {
+				groupBys[i] = pgexprs.ToVitessLiteral(literal)
 			}
 		}
 	}

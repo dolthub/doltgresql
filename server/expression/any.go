@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -39,16 +40,16 @@ type AnyExpr struct {
 // subqueryAnyExpr represents the resolved comparison functions for a plan.Subquery.
 type subqueryAnyExpr struct {
 	rightSub      *plan.Subquery
-	staticLiteral *Literal
-	arrayLiterals []*Literal
+	staticLiteral *expression.Literal
+	arrayLiterals []*expression.Literal
 	compFuncs     []framework.Function
 }
 
 // expressionAnyExpr represents the resolved comparison function for a sql.Expression.
 type expressionAnyExpr struct {
 	rightExpr     sql.Expression
-	staticLiteral *Literal
-	arrayLiteral  *Literal
+	staticLiteral *expression.Literal
+	arrayLiteral  *expression.Literal
 	compFunc      framework.Function
 }
 
@@ -130,7 +131,7 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 		}
 
 		for i := len(a.arrayLiterals); i < len(rightValues); i++ {
-			arrayLiteral := &Literal{typ: a.arrayLiterals[0].typ}
+			arrayLiteral := expression.NewLiteral(nil, a.arrayLiterals[0].Type())
 			a.arrayLiterals = append(a.arrayLiterals, arrayLiteral)
 			compFunc := framework.GetBinaryFunction(op).Compile("internal_any_comparison", a.staticLiteral, a.arrayLiterals[i])
 			a.compFuncs = append(a.compFuncs, compFunc)
@@ -142,9 +143,10 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 	}
 
 	// Next we'll assign our evaluated values to the expressions that the comparison functions reference
-	a.staticLiteral.value = left
+	// Note that the compiled function has a reference to the staticLiteral and arrayLiterals, so we must alter them in place
+	a.staticLiteral.Val = left
 	for i, rightValue := range rightValues {
-		a.arrayLiterals[i].value = rightValue
+		a.arrayLiterals[i].Val = rightValue
 	}
 	// Now we can loop over all comparison functions, as they'll reference their respective values
 	for _, compFunc := range a.compFuncs {
@@ -192,9 +194,10 @@ func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}
 	}
 
 	// Next we'll assign our evaluated values to the expressions that the comparison function reference
-	a.staticLiteral.value = left
+	// Note that the compiled function has a reference to the staticLiteral and arrayLiteral, so we must alter them in place
+	a.staticLiteral.Val = left
 	for _, rightValue := range rightValues {
-		a.arrayLiteral.value = rightValue
+		a.arrayLiteral.Val = rightValue
 		result, err := a.compFunc.Eval(ctx, row)
 		if err != nil {
 			return nil, err
@@ -293,12 +296,12 @@ func anySubqueryWithChildren(anyExpr *AnyExpr, sub *plan.Subquery) (sql.Expressi
 
 	if leftType, ok := anyExpr.leftExpr.Type().(*pgtypes.DoltgresType); ok {
 		// Resolve comparison functions once and reuse the functions in Eval.
-		staticLiteral := &Literal{typ: leftType}
-		arrayLiterals := make([]*Literal, len(subTypes))
+		staticLiteral := expression.NewLiteral(nil, leftType)
+		arrayLiterals := make([]*expression.Literal, len(subTypes))
 		// Each expression may be a different type (which is valid), so we need a comparison function for each expression.
 		compFuncs := make([]framework.Function, len(subTypes))
 		for i, rightType := range subTypes {
-			arrayLiterals[i] = &Literal{typ: rightType}
+			arrayLiterals[i] = expression.NewLiteral(nil, rightType)
 			compFuncs[i] = framework.GetBinaryFunction(op).Compile("internal_any_comparison", staticLiteral, arrayLiterals[i])
 			if compFuncs[i] == nil {
 				return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
@@ -334,8 +337,8 @@ func anyExpressionWithChildren(anyExpr *AnyExpr) (sql.Expression, error) {
 
 	if leftType, ok := anyExpr.leftExpr.Type().(*pgtypes.DoltgresType); ok {
 		// Resolve comparison function once and reuse the function in Eval.
-		staticLiteral := &Literal{typ: leftType}
-		arrayLiteral := &Literal{typ: rightType}
+		staticLiteral := expression.NewLiteral(nil, leftType)
+		arrayLiteral := expression.NewLiteral(nil, rightType)
 		compFunc := framework.GetBinaryFunction(op).Compile("internal_any_comparison", staticLiteral, arrayLiteral)
 		if compFunc == nil {
 			return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())

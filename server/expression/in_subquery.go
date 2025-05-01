@@ -35,8 +35,8 @@ type InSubquery struct {
 
 	// These variables are used so that we can resolve the comparison functions once and reuse them as we iterate over rows.
 	// These are assigned in WithChildren, so refer there for more information.
-	leftLiteral   *Literal
-	rightLiterals []*Literal
+	leftLiteral   *expression.Literal
+	rightLiterals []*expression.Literal
 	compFuncs     []framework.Function
 }
 
@@ -127,9 +127,10 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 // assigned to |compFuncs| during analysis. If the left value is a single scalar, then |row| has a single value as
 // well. Otherwise, (left is a tuple), |row| has a matching number of values.
 func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Row) (bool, error) {
-	in.leftLiteral.value = left
+	// Note that we have to edit the literals in place, since the comparison functions reference them directly.
+	in.leftLiteral.Val = left
 	for i, v := range row {
-		in.rightLiterals[i].value = v
+		in.rightLiterals[i].Val = v
 	}
 
 	for _, compFunc := range in.compFuncs {
@@ -198,8 +199,8 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 
 		// We need a comparison function for each type in the query result
 		sch := sq.Query.Schema()
-		leftLiteral := &Literal{typ: leftType}
-		rightLiterals := make([]*Literal, len(sch))
+		leftLiteral := expression.NewLiteral(nil, leftType)
+		rightLiterals := make([]*expression.Literal, len(sch))
 		compFuncs := make([]framework.Function, len(sch))
 		allValidChildren := true
 		for i, rightCol := range sch {
@@ -208,7 +209,7 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 				allValidChildren = false
 				break
 			}
-			rightLiterals[i] = &Literal{typ: rightType}
+			rightLiterals[i] = expression.NewLiteral(nil, rightType)
 			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", leftLiteral, rightLiterals[i])
 			if compFuncs[i] == nil {
 				return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())

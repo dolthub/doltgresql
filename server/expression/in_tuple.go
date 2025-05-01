@@ -33,8 +33,8 @@ type InTuple struct {
 
 	// These variables are used so that we can resolve the comparison functions once and reuse them as we iterate over rows.
 	// These are assigned in WithChildren, so refer there for more information.
-	staticLiteral *Literal
-	arrayLiterals []*Literal
+	staticLiteral *expression.Literal
+	arrayLiterals []*expression.Literal
 	compFuncs     []framework.Function
 }
 
@@ -112,9 +112,10 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 	}
 	// Next we'll assign our evaluated values to the expressions that the comparison functions reference
-	it.staticLiteral.value = left
+	// Note that the compiled functions already have a reference to this literal, so we have to edit it in place
+	it.staticLiteral.Val = left
 	for i, rightValue := range rightValues {
-		it.arrayLiterals[i].value = rightValue
+		it.arrayLiterals[i].Val = rightValue
 	}
 
 	// Now we can loop over all of the comparison functions, as they'll reference their respective values
@@ -195,8 +196,8 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 		// the parameters, and assigning the values to our own literals, we do not have to worry. This offers a
 		// significant speedup as function resolution is very expensive, so we want to do it as few times as possible
 		// (preferably once).
-		staticLiteral := &Literal{typ: leftType}
-		arrayLiterals := make([]*Literal, len(rightTuple))
+		staticLiteral := expression.NewLiteral(nil, leftType)
+		arrayLiterals := make([]*expression.Literal, len(rightTuple))
 		// Each expression may be a different type (which is valid), so we need a comparison function for each expression.
 		compFuncs := make([]framework.Function, len(rightTuple))
 		allValidChildren := true
@@ -206,7 +207,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 				allValidChildren = false
 				break
 			}
-			arrayLiterals[i] = &Literal{typ: rightType}
+			arrayLiterals[i] = expression.NewLiteral(nil, rightType)
 			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", staticLiteral, arrayLiterals[i])
 			if compFuncs[i] == nil {
 				return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())

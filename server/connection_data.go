@@ -113,15 +113,32 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 
 	types := make([]uint32, 0)
 	var err error
-	extractBindVars := func(expr sql.Expression) bool {
+	var extractBindVars func(n sql.Node, expr sql.Expression) bool
+	extractBindVars = func(n sql.Node, expr sql.Expression) bool {
 		if err != nil {
 			return false
 		}
+
 		switch e := expr.(type) {
+		// Subquery doesn't walk its Node child via Expressions, so we must walk it separately here
+		case *plan.Subquery:
+			transform.InspectExpressionsWithNode(e.Query, extractBindVars)
 		case *expression.BindVar:
 			var typOid uint32
 			if doltgresType, ok := e.Type().(*pgtypes.DoltgresType); ok {
 				typOid = id.Cache().ToOID(doltgresType.ID.AsId())
+			} else if _, ok := e.Type().(sql.DeferredType); ok {
+				// for a deferred type, we can make a guess to its type based on the containing node
+				switch n.(type) {
+				case *plan.Limit:
+					typOid = uint32(oid.T_int4)
+				default:
+					typOid, err = VitessTypeToObjectID(e.Type().Type())
+					if err != nil {
+						err = errors.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
+						return false
+					}
+				}
 			} else {
 				// TODO: should remove usage non doltgres type
 				typOid, err = VitessTypeToObjectID(e.Type().Type())
@@ -159,11 +176,10 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				return false
 			}
 		}
-
 		return true
 	}
 
-	transform.InspectExpressions(inspectNode, extractBindVars)
+	transform.InspectExpressionsWithNode(inspectNode, extractBindVars)
 	return types, err
 }
 
