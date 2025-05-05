@@ -26,6 +26,9 @@ import (
 
 // DropRootObject implements the interface objinterface.Collection.
 func (pgf *Collection) DropRootObject(ctx context.Context, identifier id.Id) error {
+	if pgf.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
 	if identifier.Section() != id.Section_Function {
 		return errors.Errorf(`function %s does not exist`, identifier.String())
 	}
@@ -62,6 +65,11 @@ func (pgf *Collection) IDToTableName(identifier id.Id) doltdb.TableName {
 	return FunctionIDToTableName(id.Function(identifier))
 }
 
+// IsReadOnly implements the interface objinterface.Collection.
+func (pgf *Collection) IsReadOnly() bool {
+	return pgf.isReadOnly
+}
+
 // IterAll implements the interface objinterface.Collection.
 func (pgf *Collection) IterAll(ctx context.Context, callback func(rootObj objinterface.RootObject) (stop bool, err error)) error {
 	return pgf.IterateFunctions(ctx, func(f Function) (stop bool, err error) {
@@ -78,6 +86,9 @@ func (pgf *Collection) IterIDs(ctx context.Context, callback func(identifier id.
 
 // PutRootObject implements the interface objinterface.Collection.
 func (pgf *Collection) PutRootObject(ctx context.Context, rootObj objinterface.RootObject) error {
+	if pgf.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
 	f, ok := rootObj.(Function)
 	if !ok {
 		return errors.Newf("invalid function root object: %T", rootObj)
@@ -87,6 +98,9 @@ func (pgf *Collection) PutRootObject(ctx context.Context, rootObj objinterface.R
 
 // RenameRootObject implements the interface objinterface.Collection.
 func (pgf *Collection) RenameRootObject(ctx context.Context, oldName id.Id, newName id.Id) error {
+	if pgf.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
 	if !oldName.IsValid() || !newName.IsValid() || oldName.Section() != newName.Section() || oldName.Section() != id.Section_Function {
 		return errors.New("cannot rename function due to invalid name")
 	}
@@ -114,6 +128,11 @@ func (pgf *Collection) ResolveName(ctx context.Context, name doltdb.TableName) (
 		return doltdb.TableName{}, id.Null, err
 	}
 	return FunctionIDToTableName(rawID), rawID.AsId(), nil
+}
+
+// SetReadOnly implements the interface objinterface.Collection.
+func (pgf *Collection) SetReadOnly() {
+	pgf.isReadOnly = true
 }
 
 // TableNameToID implements the interface objinterface.Collection.

@@ -17,8 +17,6 @@ package triggers
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"sort"
 	"strings"
 
@@ -41,6 +39,7 @@ type Collection struct {
 	mapHash       hash.Hash                 // This is cached so that we don't have to calculate the hash every time
 	underlyingMap prolly.AddressMap
 	ns            tree.NodeStore
+	isReadOnly    bool
 }
 
 // TriggerTiming specifies the timing of the trigger's execution.
@@ -106,6 +105,7 @@ func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree
 		mapHash:       hash.Hash{},
 		underlyingMap: underlyingMap,
 		ns:            ns,
+		isReadOnly:    false,
 	}
 	return collection, collection.reloadCaches(ctx)
 }
@@ -158,6 +158,10 @@ func (pgt *Collection) HasTrigger(ctx context.Context, trigID id.Trigger) bool {
 
 // AddTrigger adds a new trigger.
 func (pgt *Collection) AddTrigger(ctx context.Context, t Trigger) error {
+	if pgt.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
+
 	// First we'll check to see if it exists
 	if _, ok := pgt.accessCache[t.ID]; ok {
 		return errors.Errorf(`trigger "%s" for relation "%s" already exists`, t.ID.TriggerName(), t.ID.TableName())
@@ -187,6 +191,9 @@ func (pgt *Collection) AddTrigger(ctx context.Context, t Trigger) error {
 
 // DropTrigger drops an existing trigger.
 func (pgt *Collection) DropTrigger(ctx context.Context, trigIDs ...id.Trigger) error {
+	if pgt.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
 	if len(trigIDs) == 0 {
 		return nil
 	}
@@ -275,15 +282,18 @@ func (pgt *Collection) IterateTriggers(ctx context.Context, callback func(t Trig
 	return nil
 }
 
-// Clone returns a new *Collection with the same contents as the original.
+// Clone returns a new *Collection with the same contents as the original. The returned collection will never be
+// read-only.
 func (pgt *Collection) Clone(ctx context.Context) *Collection {
+	// We don't need to clone or copy the internal caches, as they're always rebuilt and therefore never modified
 	return &Collection{
-		accessCache:   maps.Clone(pgt.accessCache),
-		tableCache:    maps.Clone(pgt.tableCache),
-		idCache:       slices.Clone(pgt.idCache),
+		accessCache:   pgt.accessCache,
+		tableCache:    pgt.tableCache,
+		idCache:       pgt.idCache,
 		underlyingMap: pgt.underlyingMap,
 		mapHash:       pgt.mapHash,
 		ns:            pgt.ns,
+		isReadOnly:    false,
 	}
 }
 
@@ -317,8 +327,8 @@ func (pgt *Collection) reloadCaches(ctx context.Context) error {
 		return err
 	}
 
-	clear(pgt.accessCache)
-	clear(pgt.tableCache)
+	pgt.accessCache = make(map[id.Trigger]Trigger, count)
+	pgt.tableCache = make(map[id.Table][]id.Trigger, count)
 	pgt.mapHash = pgt.underlyingMap.HashOf()
 	pgt.idCache = make([]id.Trigger, 0, count)
 

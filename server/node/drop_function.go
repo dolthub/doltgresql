@@ -121,7 +121,7 @@ func (d *DropFunction) RowIter(ctx *sql.Context, r sql.Row) (iter sql.RowIter, e
 
 		// TODO: Check to see if this function is used by anything before dropping
 
-		collection, err := core.GetFunctionsCollectionFromContext(ctx)
+		collection, err := core.GetFunctionsCollectionFromContext(ctx, true)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +148,7 @@ func (d *DropFunction) WithResolvedChildren(children []any) (any, error) {
 // will be returned if it exists. If multiple functions match, but they all have parameters, then
 // an error message about the name not being unique will be returned.
 func (d *DropFunction) findFunctionByName(ctx *sql.Context, routineName string) (functions.Function, error) {
-	collection, err := core.GetFunctionsCollectionFromContext(ctx)
+	collection, err := core.GetFunctionsCollectionFromContext(ctx, false)
 	if err != nil {
 		return functions.Function{}, err
 	}
@@ -183,7 +183,7 @@ func (d *DropFunction) findFunctionByName(ctx *sql.Context, routineName string) 
 // ID using the optional catalog and schema name, the routine name, and the specified parameter
 // types. If a function matching that signature is found, it will be returned.
 func (d *DropFunction) findFunctionBySignature(ctx *sql.Context, routineWithArgs tree.RoutineWithArgs) (functions.Function, error) {
-	collection, err := core.GetFunctionsCollectionFromContext(ctx)
+	collection, err := core.GetFunctionsCollectionFromContext(ctx, false)
 	if err != nil {
 		return functions.Function{}, err
 	}

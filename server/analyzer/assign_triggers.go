@@ -106,7 +106,7 @@ func getTriggerInformation(ctx *sql.Context, node sql.Node) (sch sql.Schema, bef
 	if !ok {
 		return nil, nil, nil, nil
 	}
-	trigCollection, err := core.GetTriggersCollectionFromContext(ctx)
+	trigCollection, err := core.GetTriggersCollectionFromContext(ctx, false)
 	if err != nil {
 		return nil, nil, nil, err
 	}

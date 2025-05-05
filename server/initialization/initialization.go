@@ -22,7 +22,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
+	corefunctions "github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/rootobject"
+	coretriggers "github.com/dolthub/doltgresql/core/triggers"
 	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/auth"
@@ -64,4 +66,6 @@ func Initialize(dEnv *env.DoltEnv) {
 		dtables.Init()
 		dprocedures.Init()
 	})
+	corefunctions.ResetCache()
+	coretriggers.ResetCache()
 }

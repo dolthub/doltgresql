@@ -34,7 +34,7 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 	if !core.IsContextValid(ctx) {
 		return nil, false
 	}
-	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx)
+	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, false)
 	if err != nil {
 		return nil, false
 	}

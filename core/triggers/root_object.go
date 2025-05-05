@@ -26,6 +26,9 @@ import (
 
 // DropRootObject implements the interface objinterface.Collection.
 func (pgt *Collection) DropRootObject(ctx context.Context, identifier id.Id) error {
+	if pgt.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
 	if identifier.Section() != id.Section_Trigger {
 		return errors.Errorf(`trigger %s does not exist`, identifier.String())
 	}
@@ -62,6 +65,11 @@ func (pgt *Collection) IDToTableName(identifier id.Id) doltdb.TableName {
 	return TriggerIDToTableName(id.Trigger(identifier))
 }
 
+// IsReadOnly implements the interface objinterface.Collection.
+func (pgt *Collection) IsReadOnly() bool {
+	return pgt.isReadOnly
+}
+
 // IterAll implements the interface objinterface.Collection.
 func (pgt *Collection) IterAll(ctx context.Context, callback func(rootObj objinterface.RootObject) (stop bool, err error)) error {
 	return pgt.IterateTriggers(ctx, func(t Trigger) (stop bool, err error) {
@@ -78,6 +86,9 @@ func (pgt *Collection) IterIDs(ctx context.Context, callback func(identifier id.
 
 // PutRootObject implements the interface objinterface.Collection.
 func (pgt *Collection) PutRootObject(ctx context.Context, rootObj objinterface.RootObject) error {
+	if pgt.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
 	t, ok := rootObj.(Trigger)
 	if !ok {
 		return errors.Newf("invalid trigger root object: %T", rootObj)
@@ -87,6 +98,9 @@ func (pgt *Collection) PutRootObject(ctx context.Context, rootObj objinterface.R
 
 // RenameRootObject implements the interface objinterface.Collection.
 func (pgt *Collection) RenameRootObject(ctx context.Context, oldName id.Id, newName id.Id) error {
+	if pgt.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
 	if !oldName.IsValid() || !newName.IsValid() || oldName.Section() != newName.Section() || oldName.Section() != id.Section_Trigger {
 		return errors.New("cannot rename trigger due to invalid name")
 	}
@@ -110,6 +124,11 @@ func (pgt *Collection) ResolveName(ctx context.Context, name doltdb.TableName) (
 		return doltdb.TableName{}, id.Null, err
 	}
 	return TriggerIDToTableName(rawID), rawID.AsId(), nil
+}
+
+// SetReadOnly implements the interface objinterface.Collection.
+func (pgt *Collection) SetReadOnly() {
+	pgt.isReadOnly = true
 }
 
 // TableNameToID implements the interface objinterface.Collection.

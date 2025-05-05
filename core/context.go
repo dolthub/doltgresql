@@ -202,8 +202,9 @@ func GetSqlTableFromContext(ctx *sql.Context, databaseName string, tableName dol
 }
 
 // GetFunctionsCollectionFromContext returns the functions collection from the given context. Will always return a
-// collection if no error is returned.
-func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection, error) {
+// collection if no error is returned. `writable` should only be true when the collection is intended to be modified
+// immediately.
+func GetFunctionsCollectionFromContext(ctx *sql.Context, writable bool) (*functions.Collection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
@@ -213,15 +214,18 @@ func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection,
 		return nil, err
 	}
 	if cv.funcs == nil {
-		cv.funcs, err = functions.LoadFunctions(ctx, root)
+		cv.funcs, err = functions.LoadFunctionsFromCache(ctx, root)
 		if err != nil {
 			return nil, err
 		}
 	} else if cv.funcs.DiffersFrom(ctx, root) {
-		cv.funcs, err = functions.LoadFunctions(ctx, root)
+		cv.funcs, err = functions.LoadFunctionsFromCache(ctx, root)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if writable && cv.funcs.IsReadOnly() {
+		cv.funcs = cv.funcs.Clone(ctx)
 	}
 	return cv.funcs, nil
 }
@@ -248,7 +252,7 @@ func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection,
 
 // GetTriggersCollectionFromContext returns the triggers collection from the given context. Will always return a
 // collection if no error is returned.
-func GetTriggersCollectionFromContext(ctx *sql.Context) (*triggers.Collection, error) {
+func GetTriggersCollectionFromContext(ctx *sql.Context, writable bool) (*triggers.Collection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
@@ -258,15 +262,18 @@ func GetTriggersCollectionFromContext(ctx *sql.Context) (*triggers.Collection, e
 		return nil, err
 	}
 	if cv.trigs == nil {
-		cv.trigs, err = triggers.LoadTriggers(ctx, root)
+		cv.trigs, err = triggers.LoadTriggersFromCache(ctx, root)
 		if err != nil {
 			return nil, err
 		}
 	} else if cv.trigs.DiffersFrom(ctx, root) {
-		cv.trigs, err = triggers.LoadTriggers(ctx, root)
+		cv.trigs, err = triggers.LoadTriggersFromCache(ctx, root)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if writable && cv.trigs.IsReadOnly() {
+		cv.trigs = cv.trigs.Clone(ctx)
 	}
 	return cv.trigs, nil
 }

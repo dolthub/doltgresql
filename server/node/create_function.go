@@ -88,7 +88,7 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	for i, typ := range c.ParameterTypes {
 		idTypes[i] = typ.ID
 	}
-	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx)
+	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, true)
 	if err != nil {
 		return nil, err
 	}

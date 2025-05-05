@@ -17,8 +17,6 @@ package functions
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -40,6 +38,7 @@ type Collection struct {
 	mapHash       hash.Hash                     // This is cached so that we don't have to calculate the hash every time
 	underlyingMap prolly.AddressMap
 	ns            tree.NodeStore
+	isReadOnly    bool
 }
 
 // Function represents a created function.
@@ -67,6 +66,7 @@ func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree
 		mapHash:       hash.Hash{},
 		underlyingMap: underlyingMap,
 		ns:            ns,
+		isReadOnly:    false,
 	}
 	return collection, collection.reloadCaches(ctx)
 }
@@ -102,6 +102,10 @@ func (pgf *Collection) HasFunction(ctx context.Context, funcID id.Function) bool
 
 // AddFunction adds a new function.
 func (pgf *Collection) AddFunction(ctx context.Context, f Function) error {
+	if pgf.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
+
 	// First we'll check to see if it exists
 	if _, ok := pgf.accessCache[f.ID]; ok {
 		return errors.Errorf(`function "%s" already exists with same argument types`, f.ID.FunctionName())
@@ -131,6 +135,9 @@ func (pgf *Collection) AddFunction(ctx context.Context, f Function) error {
 
 // DropFunction drops an existing function.
 func (pgf *Collection) DropFunction(ctx context.Context, funcIDs ...id.Function) error {
+	if pgf.isReadOnly {
+		return errors.New("cannot modify a read-only collection")
+	}
 	if len(funcIDs) == 0 {
 		return nil
 	}
@@ -264,15 +271,18 @@ func (pgf *Collection) IterateFunctions(ctx context.Context, callback func(f Fun
 	return nil
 }
 
-// Clone returns a new *Collection with the same contents as the original.
+// Clone returns a new *Collection with the same contents as the original. The returned collection will never be
+// read-only.
 func (pgf *Collection) Clone(ctx context.Context) *Collection {
+	// We don't need to clone or copy the internal caches, as they're always rebuilt and therefore never modified
 	return &Collection{
-		accessCache:   maps.Clone(pgf.accessCache),
-		overloadCache: maps.Clone(pgf.overloadCache),
-		idCache:       slices.Clone(pgf.idCache),
+		accessCache:   pgf.accessCache,
+		overloadCache: pgf.overloadCache,
+		idCache:       pgf.idCache,
 		underlyingMap: pgf.underlyingMap,
 		mapHash:       pgf.mapHash,
 		ns:            pgf.ns,
+		isReadOnly:    false,
 	}
 }
 
@@ -306,8 +316,8 @@ func (pgf *Collection) reloadCaches(ctx context.Context) error {
 		return err
 	}
 
-	clear(pgf.accessCache)
-	clear(pgf.overloadCache)
+	pgf.accessCache = make(map[id.Function]Function, count)
+	pgf.overloadCache = make(map[id.Function][]id.Function, count)
 	pgf.mapHash = pgf.underlyingMap.HashOf()
 	pgf.idCache = make([]id.Function, 0, count)
 

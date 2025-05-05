@@ -110,7 +110,7 @@ func (c *CreateTrigger) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 	if function.ReturnType != pgtypes.Trigger.ID {
 		return nil, errors.Errorf(`function %s must return type trigger`, function.ID.FunctionName())
 	}
-	trigCollection, err := core.GetTriggersCollectionFromContext(ctx)
+	trigCollection, err := core.GetTriggersCollectionFromContext(ctx, true)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (c *CreateTrigger) WithResolvedChildren(children []any) (any, error) {
 func loadFunction(ctx *sql.Context, funcCollection *functions.Collection, funcID id.Function) (functions.Function, error) {
 	var err error
 	if funcCollection == nil {
-		funcCollection, err = core.GetFunctionsCollectionFromContext(ctx)
+		funcCollection, err = core.GetFunctionsCollectionFromContext(ctx, false)
 		if err != nil {
 			return functions.Function{}, err
 		}
