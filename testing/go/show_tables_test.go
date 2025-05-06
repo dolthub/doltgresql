@@ -343,11 +343,58 @@ func TestShowIndexes(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SHOW INDEXES FROM t1`,
+					Query: `SHOW indexes FROM t1`,
 					Expected: []sql.Row{
 						{"t1", 0, "PRIMARY", 1, "a", nil, 0, nil, nil, "", "BTREE", "", "", "YES", nil},
 						{"t1", 1, "idx_name", 1, "name", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
 						{"t1", 1, "idx_value", 1, "value", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestShowDatabasesAndSchemas(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "show databases",
+			SetUpScript: []string{
+				`CREATE DATABASE db1`,
+				`CREATE DATABASE db2`,
+				`CREATE SCHEMA schema1`,
+				`CREATE SCHEMA schema2`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW databases`,
+					Expected: []sql.Row{
+						{"db1"},
+						{"db2"},
+						{"information_schema"},
+						{"postgres"},
+					},
+				},
+				{
+					Query: `show SCHEMAS`,
+					Expected: []sql.Row{
+						{"schema1"},
+						{"schema2"},
+						{"public"},
+					},
+				},
+				{
+					Query: `show SCHEMAS FROM postgres`,
+					Expected: []sql.Row{
+						{"schema1"},
+						{"schema2"},
+						{"public"},
+					},
+				},
+				{
+					Query: `show SCHEMAS FROM db1`,
+					Expected: []sql.Row{
+						{"public"},
 					},
 				},
 			},
