@@ -17,6 +17,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,13 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/jackc/pgx/v5/pgproto3"
+)
+
+// These are used to redirect and restore output for the "fmt" package
+var (
+	stdout  *os.File
+	stderr  *os.File
+	nullout *os.File
 )
 
 // ReplayOptions contain all of the options that may be given to Replay. This is a replacement for a long argument list.
@@ -38,9 +46,21 @@ type ReplayOptions struct {
 
 // Replay will replay the given messages onto the Doltgres server running on the given port.
 func Replay(options ReplayOptions) (*ReplayTracker, error) {
+	// The tests seem to run faster if we disable writing to stdout during normal server operation
+	if stdout == nil {
+		stdout = os.Stdout
+		stderr = os.Stderr
+		nullout = os.NewFile(0, os.DevNull)
+	}
+	defer func() {
+		os.Stdout = stdout
+		os.Stderr = stderr
+	}()
 	tracker := NewReplayTracker(options.File)
 	reader := NewMessageReader(FilterMessages(options.Messages))
 	fmt.Println("-------------------- ", tracker.File, " --------------------")
+	os.Stdout = nullout
+	os.Stderr = nullout
 ListenerLoop:
 	for !reader.IsEmpty() {
 		connection, err := NewConnection("127.0.0.1:"+strconv.Itoa(options.Port), reader, 15*time.Second)
@@ -441,7 +461,9 @@ ListenerLoop:
 				}
 			case *pgproto3.Query:
 				if options.PrintQueries {
+					os.Stdout = stdout
 					fmt.Println("QUERY: " + message.String)
+					os.Stdout = nullout
 				}
 				if options.FailPSQL {
 					if strings.HasPrefix(message.String, "SELECT c2.relname, i.indisprimary, i.indisunique, i.indisclustered, i.indisvalid, pg_catalog.pg_get_indexdef(i.indexrelid, 0, true),") {
