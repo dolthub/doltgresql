@@ -296,3 +296,38 @@ func TestShowTables(t *testing.T) {
 		},
 	})
 }
+
+func TestShowCreateTable(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "show create table",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
+				`CREATE TABle t2 (b SERIAL PRIMARY KEY, time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW CREATE TABLE t1`,
+					Expected: []sql.Row{
+						{"t1", `CREATE TABLE "t1" (
+  "a" integer NOT NULL,
+  "name" text,
+  PRIMARY KEY ("a")
+)`},
+					},
+				},
+				{
+					Query: `SHOW CREATE TABLE T2`,
+					Expected: []sql.Row{
+						{"t2", `CREATE TABLE "t2" (
+  "b" integer NOT NULL DEFAULT (nextval('public.t2_b_seq')),
+  "time" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY ("b")
+)`,
+						},
+					},
+				},
+			},
+		},
+	})
+}
