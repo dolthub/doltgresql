@@ -331,3 +331,26 @@ func TestShowCreateTable(t *testing.T) {
 		},
 	})
 }
+
+func TestShowIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "show indexes",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT, value int)`,
+				`CREATE INDEX idx_name ON t1(name)`,
+				`CREATE INDEX idx_value ON t1(value)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW INDEXES FROM t1`,
+					Expected: []sql.Row{
+						{"t1", 0, "PRIMARY", 1, "a", nil, 0, nil, nil, "", "BTREE", "", "", "YES", nil},
+						{"t1", 1, "idx_name", 1, "name", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
+						{"t1", 1, "idx_value", 1, "value", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
+					},
+				},
+			},
+		},
+	})
+}

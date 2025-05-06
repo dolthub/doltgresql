@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,14 @@ func nodeShowIndexes(ctx *Context, node *tree.ShowIndexes) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("SHOW INDEX is not yet supported")
+
+	tblName, err := nodeUnresolvedObjectName(ctx, node.Table)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vitess.Show{
+		Type:                   "index",
+		Table:                  tblName,
+	}, nil
 }

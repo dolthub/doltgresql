@@ -1135,7 +1135,7 @@ func (h *ConnectionHandler) send(message pgproto3.BackendMessage) error {
 // returnsRow returns whether the query returns set of rows such as SELECT and FETCH statements.
 func returnsRow(query ConvertedQuery) bool {
 	switch query.StatementTag {
-	case "SELECT", "SHOW", "FETCH", "EXPLAIN", "SHOW TABLES", "SHOW CREATE":
+	case "SELECT", "SHOW", "FETCH", "EXPLAIN", "SHOW TABLES", "SHOW CREATE", "SHOW INDEXES FROM TABLE":
 		return true
 	case "INSERT", "UPDATE", "DELETE":
 		return hasReturningClause(query.AST)
