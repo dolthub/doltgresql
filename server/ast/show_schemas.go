@@ -27,7 +27,7 @@ func nodeShowSchemas(ctx *Context, node *tree.ShowSchemas) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewShowSchemas(bareIdentifier(node.Database)),
 		Children:  nil,

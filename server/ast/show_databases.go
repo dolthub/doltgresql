@@ -25,7 +25,7 @@ func nodeShowDatabases(ctx *Context, node *tree.ShowDatabases) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return &vitess.Show{
 		Type: vitess.KeywordString(vitess.DATABASES),
 	}, nil

@@ -16,6 +16,7 @@ package node
 
 import (
 	"github.com/cockroachdb/errors"
+
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/types"
 
@@ -61,23 +62,23 @@ func (s *ShowSchemas) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 			return nil, errors.New("no database selected (this is a bug)")
 		}
 	}
-	
+
 	db, err := core.GetSqlDatabaseFromContext(ctx, database)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if db == nil {
 		return nil, errors.New("database not found: " + database)
 	}
-	
+
 	sdb, ok := db.(sql.SchemaDatabase)
 	if !ok {
 		// This handles any database that doesn't support schemas (such as some system databases)
 		// TODO: mirror the postgres behavior of returning, every database should have schemas
 		return sql.RowsToRowIter(), nil
 	}
-	
+
 	schemas, err := sdb.AllSchemas(ctx)
 	if err != nil {
 		return nil, err
@@ -87,7 +88,7 @@ func (s *ShowSchemas) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 	for i, schema := range schemas {
 		rows[i] = sql.Row{schema.SchemaName()}
 	}
-	
+
 	return sql.RowsToRowIter(rows...), nil
 }
 

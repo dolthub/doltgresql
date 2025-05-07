@@ -27,7 +27,7 @@ func nodeShowSequences(ctx *Context, node *tree.ShowSequences) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	
+
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewShowSequences(bareIdentifier(node.Database)),
 	}, nil

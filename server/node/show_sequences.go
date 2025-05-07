@@ -16,6 +16,7 @@ package node
 
 import (
 	"github.com/cockroachdb/errors"
+
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/types"
@@ -62,12 +63,12 @@ func (s *ShowSequences) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 			return nil, errors.New("no database selected (this is a bug)")
 		}
 	}
-	
+
 	seqs, err := core.GetSequencesCollectionFromContextForDatabase(ctx, database)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var rows []sql.Row
 	err = seqs.IterateSequences(ctx, func(seq *sequences.Sequence) (stop bool, err error) {
 		name := seq.Name()
@@ -77,7 +78,7 @@ func (s *ShowSequences) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return sql.RowsToRowIter(rows...), nil
 }
 

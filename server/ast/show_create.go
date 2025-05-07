@@ -30,9 +30,9 @@ func nodeShowCreate(ctx *Context, node *tree.ShowCreate) (vitess.Statement, erro
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &vitess.Show{
-		Type:                   vitess.CreateTableStr,
-		Table:                  tableName,
+		Type:  vitess.CreateTableStr,
+		Table: tableName,
 	}, nil
 }

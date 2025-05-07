@@ -62,7 +62,7 @@ func getRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error
 // getRootFromContextForDatabase returns the working session's root from the context for a specific database, along with the session.
 func getRootFromContextForDatabase(ctx *sql.Context, database string) (*dsess.DoltSession, *RootValue, error) {
 	session := dsess.DSessFromSess(ctx.Session)
-	
+
 	if len(database) == 0 {
 		database = ctx.GetCurrentDatabase()
 	}
@@ -241,7 +241,7 @@ func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection,
 }
 
 // GetSequencesCollectionFromContextForDatabase returns the given sequence collection from the context for the database
-// named. If no database is provided, the context's current database is used. 
+// named. If no database is provided, the context's current database is used.
 // Will always return a collection if no error is returned.
 func GetSequencesCollectionFromContextForDatabase(ctx *sql.Context, database string) (*sequences.Collection, error) {
 	cv, err := getContextValues(ctx)

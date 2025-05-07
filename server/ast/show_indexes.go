@@ -32,7 +32,7 @@ func nodeShowIndexes(ctx *Context, node *tree.ShowIndexes) (vitess.Statement, er
 	}
 
 	return &vitess.Show{
-		Type:                   "index",
-		Table:                  tblName,
+		Type:  "index",
+		Table: tblName,
 	}, nil
 }
