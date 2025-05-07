@@ -17,13 +17,14 @@ package node
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/types"
 
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// ShowSchemas is a node that implements the SHOW SCHEMAS	statement.
-type ShowSchemas struct {
+// ShowSequences is a node that implements the SHOW SCHEMAS	statement.
+type ShowSequences struct {
 	// TODO: we need planbuilder integration to support SHOW SCHEMAS, rather than getting everything at runtime
 	database string
 }
@@ -31,29 +32,29 @@ type ShowSchemas struct {
 var _ sql.ExecSourceRel = (*DropTable)(nil)
 
 // NewDropTable returns a new *DropTable.
-func NewShowSchemas(database string) *ShowSchemas {
-	return &ShowSchemas{
+func NewShowSequences(database string) *ShowSequences {
+	return &ShowSequences{
 		database: database,
 	}
 }
 
 // Children implements the interface sql.ExecSourceRel.
-func (s *ShowSchemas) Children() []sql.Node {
+func (s *ShowSequences) Children() []sql.Node {
 	return []sql.Node{}
 }
 
 // IsReadOnly implements the interface sql.ExecSourceRel.
-func (s *ShowSchemas) IsReadOnly() bool {
+func (s *ShowSequences) IsReadOnly() bool {
 	return true
 }
 
 // Resolved implements the interface sql.ExecSourceRel.
-func (s *ShowSchemas) Resolved() bool {
+func (s *ShowSequences) Resolved() bool {
 	return true
 }
 
 // RowIter implements the interface sql.ExecSourceRel.
-func (s *ShowSchemas) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+func (s *ShowSequences) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	database := s.database
 	if database == "" {
 		database = ctx.GetCurrentDatabase()
@@ -62,59 +63,49 @@ func (s *ShowSchemas) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 		}
 	}
 	
-	db, err := core.GetSqlDatabaseFromContext(ctx, database)
+	seqs, err := core.GetSequencesCollectionFromContextForDatabase(ctx, database)
 	if err != nil {
 		return nil, err
 	}
 	
-	if db == nil {
-		return nil, errors.New("database not found: " + database)
-	}
-	
-	sdb, ok := db.(sql.SchemaDatabase)
-	if !ok {
-		// This handles any database that doesn't support schemas (such as some system databases)
-		// TODO: mirror the postgres behavior of returning, every database should have schemas
-		return sql.RowsToRowIter(), nil
-	}
-	
-	schemas, err := sdb.AllSchemas(ctx)
+	var rows []sql.Row
+	err = seqs.IterateSequences(ctx, func(seq *sequences.Sequence) (stop bool, err error) {
+		name := seq.Name()
+		rows = append(rows, sql.Row{name.Schema, name.Name})
+		return false, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	rows := make([]sql.Row, len(schemas))
-	for i, schema := range schemas {
-		rows[i] = sql.Row{schema.SchemaName()}
 	}
 	
 	return sql.RowsToRowIter(rows...), nil
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (s *ShowSchemas) Schema() sql.Schema {
+func (s *ShowSequences) Schema() sql.Schema {
 	return sql.Schema{
-		{Name: "schema_name", Type: types.Text, Source: "show schemas"},
+		{Name: "sequence_schema", Type: types.Text, Source: "show sequences"},
+		{Name: "sequence_name", Type: types.Text, Source: "show sequences"},
 	}
 }
 
 // String implements the interface sql.ExecSourceRel.
-func (s *ShowSchemas) String() string {
+func (s *ShowSequences) String() string {
 	if s.database == "" {
-		return "SHOW SCHEMAS FROM " + s.database
+		return "SHOW SEQUENCES FROM " + s.database
 	}
-	return "SHOW SCHEMAS"
+	return "SHOW SEQUENCES"
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (s *ShowSchemas) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (s *ShowSequences) WithChildren(children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
 		return nil, errors.New("SHOW SCHEMAS does not support children")
 	}
 	return s, nil
 }
 
-func (s *ShowSchemas) WithResolvedChildren(children []any) (any, error) {
+func (s *ShowSequences) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, errors.New("SHOW SCHEMAS does not support children")
 	}

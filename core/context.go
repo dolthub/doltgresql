@@ -56,14 +56,22 @@ func getContextValues(ctx *sql.Context) (*contextValues, error) {
 
 // getRootFromContext returns the working session's root from the context, along with the session.
 func getRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error) {
+	return getRootFromContextForDatabase(ctx, "")
+}
+
+// getRootFromContextForDatabase returns the working session's root from the context for a specific database, along with the session.
+func getRootFromContextForDatabase(ctx *sql.Context, database string) (*dsess.DoltSession, *RootValue, error) {
 	session := dsess.DSessFromSess(ctx.Session)
-	// Does this handle the current schema as well?
-	state, ok, err := session.LookupDbState(ctx, ctx.GetCurrentDatabase())
+	
+	if len(database) == 0 {
+		database = ctx.GetCurrentDatabase()
+	}
+	state, ok, err := session.LookupDbState(ctx, database)
 	if err != nil {
 		return nil, nil, err
 	}
 	if !ok {
-		return nil, nil, errors.Errorf("cannot find the database while fetching root from context")
+		return nil, nil, sql.ErrDatabaseNotFound.New(database)
 	}
 	return session, state.WorkingRoot().(*RootValue), nil
 }
@@ -226,15 +234,22 @@ func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection,
 	return cv.funcs, nil
 }
 
-// GetSequencesCollectionFromContext returns the given sequence collection from the context. Will always return a collection if
-// no error is returned.
+// GetSequencesCollectionFromContext returns the given sequence collection from the context for the current database.
+// Will always return a collection if no error is returned.
 func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection, error) {
+	return GetSequencesCollectionFromContextForDatabase(ctx, "")
+}
+
+// GetSequencesCollectionFromContextForDatabase returns the given sequence collection from the context for the database
+// named. If no database is provided, the context's current database is used. 
+// Will always return a collection if no error is returned.
+func GetSequencesCollectionFromContextForDatabase(ctx *sql.Context, database string) (*sequences.Collection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if cv.seqs == nil {
-		_, root, err := getRootFromContext(ctx)
+		_, root, err := getRootFromContextForDatabase(ctx, database)
 		if err != nil {
 			return nil, err
 		}

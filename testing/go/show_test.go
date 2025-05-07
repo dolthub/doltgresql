@@ -327,6 +327,10 @@ func TestShowCreateTable(t *testing.T) {
 						},
 					},
 				},
+				{
+					Query:       `SHOW CREATE TABLE dne`,
+					ExpectedErr: "not found",
+				},
 			},
 		},
 	})
@@ -349,6 +353,10 @@ func TestShowIndexes(t *testing.T) {
 						{"t1", 1, "idx_name", 1, "name", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
 						{"t1", 1, "idx_value", 1, "value", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
 					},
+				},
+				{
+					Query:       `SHOW indexes FROM dne`,
+					ExpectedErr: "not found",
 				},
 			},
 		},
@@ -405,6 +413,59 @@ func TestShowDatabasesAndSchemas(t *testing.T) {
 						{"information_schema"},
 						{"public"},
 					},
+				},
+				{
+					Query:       `show SCHEMAS FROM dne`,
+					ExpectedErr: "not found",
+				},
+			},
+		},
+	})
+}
+
+func TestShowSequences(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "show sequences",
+			SetUpScript: []string{
+				`CREATE SEQUENCE seq1`,
+				`CREATE SEQUENCE seq2`,
+				`CREATE SCHEMA schema1`,
+				`CREATE SEQUENCE schema1.seq3`,
+				`CREATE DATABASE db1`,
+				`USE db1`,
+				`CREATE SEQUENCE seq4`,
+				`CREATE SCHEMA schema2`,
+				`CREATE SEQUENCE schema2.seq5`,
+				`use postgres`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW SEQUENCES`,
+					Expected: []sql.Row{
+						{"public", "seq1"},
+						{"public", "seq2"},
+						{"schema1", "seq3"},
+					},
+				},
+				{
+					Query: `SHOW SEQUENCES from postgres`,
+					Expected: []sql.Row{
+						{"public", "seq1"},
+						{"public", "seq2"},
+						{"schema1", "seq3"},
+					},
+				},
+				{
+					Query: `SHOW SEQUENCES FROM db1`,
+					Expected: []sql.Row{
+						{"public", "seq4"},
+						{"schema2", "seq5"},
+					},
+				},
+				{
+					Query:       `SHOW SEQUENCES FROM dne`,
+					ExpectedErr: "not found",
 				},
 			},
 		},
