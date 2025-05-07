@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,9 @@ func nodeShowSchemas(ctx *Context, node *tree.ShowSchemas) (vitess.Statement, er
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("SHOW SCHEMAS is not yet supported")
+	
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewShowSchemas(bareIdentifier(node.Database)),
+		Children:  nil,
+	}, nil
 }

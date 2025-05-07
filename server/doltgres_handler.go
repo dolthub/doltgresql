@@ -625,6 +625,9 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 
 	err := eg.Wait()
 	if err != nil {
+		if printErrorStackTraces {
+			fmt.Printf("error running query: %+v\n", err)
+		}
 		ctx.GetLogger().WithError(err).Warn("error running query")
 		return nil, false, err
 	}

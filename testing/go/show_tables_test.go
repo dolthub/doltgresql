@@ -378,6 +378,9 @@ func TestShowDatabasesAndSchemas(t *testing.T) {
 				{
 					Query: `show SCHEMAS`,
 					Expected: []sql.Row{
+						{"dolt"},
+						{"pg_catalog"},
+						{"information_schema"},
 						{"schema1"},
 						{"schema2"},
 						{"public"},
@@ -386,6 +389,9 @@ func TestShowDatabasesAndSchemas(t *testing.T) {
 				{
 					Query: `show SCHEMAS FROM postgres`,
 					Expected: []sql.Row{
+						{"dolt"},
+						{"pg_catalog"},
+						{"information_schema"},
 						{"schema1"},
 						{"schema2"},
 						{"public"},
@@ -394,6 +400,9 @@ func TestShowDatabasesAndSchemas(t *testing.T) {
 				{
 					Query: `show SCHEMAS FROM db1`,
 					Expected: []sql.Row{
+						{"dolt"},
+						{"pg_catalog"},
+						{"information_schema"},
 						{"public"},
 					},
 				},
