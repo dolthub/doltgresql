@@ -906,6 +906,39 @@ func TestSequences(t *testing.T) {
 			},
 		},
 		{
+			Name: "insert on a different branch",
+			Skip: true, // currently dies on creating the sequence on a non-current DB table
+			SetUpScript: []string{
+				"create table test (pk serial primary key, v1 int);",
+				"insert into test (v1) values (2), (3), (5), (7), (11);",
+				"call dolt_branch('b1');",
+				`create table "postgres/b1".public.test2 (pk serial primary key, v1 int);`,
+				`insert into "postgres/b1".public.test2 (v1) values (2), (3), (5), (7), (11);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT pk FROM test ORDER BY v1;",
+					Expected: []sql.Row{
+						{1},
+						{2},
+						{3},
+						{4},
+						{5},
+					},
+				},
+				{
+					Query: `SELECT pk FROM "postgres/b1".public.test2 ORDER BY v1;`,
+					Expected: []sql.Row{
+						{1},
+						{2},
+						{3},
+						{4},
+						{5},
+					},
+				},
+			},
+		},
+		{
 			Name: "dolt_add, dolt_branch, dolt_checkout, dolt_commit, dolt_reset",
 			Assertions: []ScriptTestAssertion{
 				{
