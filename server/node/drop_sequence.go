@@ -78,7 +78,7 @@ func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		}
 		return nil, errors.Errorf(`sequence "%s" does not exist`, c.sequence)
 	}
-	// TODO: we always use the current database for this operation, but it should also be possible drop a sequence in 
+	// TODO: we always use the current database for this operation, but it should also be possible drop a sequence in
 	//  a different DB (e.g. on a different branch)
 	collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 	if err != nil {

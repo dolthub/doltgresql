@@ -151,7 +151,7 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 		if err != nil {
 			return "error loading sequences: " + err.Error()
 		}
-		
+
 		seqs.IterateSequences(ctx, func(seq *sequences.Sequence) (stop bool, err error) {
 			buf.WriteString("Sequence ")
 			buf.WriteString(seq.Name().String())
@@ -181,7 +181,7 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 			buf.WriteString("\n")
 			return false, nil
 		})
-		
+
 	}
 
 	return buf.String()

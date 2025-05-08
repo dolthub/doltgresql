@@ -22,11 +22,12 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/core/typecollection"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // contextValues contains a set of cached data passed alongside the context. This data is considered temporary
@@ -331,7 +332,7 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 	if err != nil {
 		return err
 	}
-	
+
 	newRoot := root
 	if cv.seqs != nil && cv.seqs[db] != nil {
 		retRoot, err := cv.seqs[db].UpdateRoot(ctx, newRoot)
@@ -341,7 +342,7 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 		newRoot = retRoot.(*RootValue)
 		cv.seqs = nil
 	}
-	
+
 	if cv.funcs != nil && cv.funcs.DiffersFrom(ctx, root) {
 		retRoot, err := cv.funcs.UpdateRoot(ctx, newRoot)
 		if err != nil {
@@ -350,7 +351,7 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 		newRoot = retRoot.(*RootValue)
 		cv.funcs = nil
 	}
-	
+
 	if cv.trigs != nil && cv.trigs.DiffersFrom(ctx, root) {
 		retRoot, err := cv.trigs.UpdateRoot(ctx, newRoot)
 		if err != nil {
@@ -359,7 +360,7 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 		newRoot = retRoot.(*RootValue)
 		cv.trigs = nil
 	}
-	
+
 	if cv.types != nil {
 		retRoot, err := cv.types.UpdateRoot(ctx, newRoot)
 		if err != nil {
