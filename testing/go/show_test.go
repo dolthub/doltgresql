@@ -440,22 +440,22 @@ func TestShowSequences(t *testing.T) {
 				`use postgres`,
 			},
 			Assertions: []ScriptTestAssertion{
-				// {
-				// 	Query: `SHOW SEQUENCES`,
-				// 	Expected: []sql.Row{
-				// 		{"public", "seq1"},
-				// 		{"public", "seq2"},
-				// 		{"schema1", "seq3"},
-				// 	},
-				// },
-				// {
-				// 	Query: `SHOW SEQUENCES from postgres`,
-				// 	Expected: []sql.Row{
-				// 		{"public", "seq1"},
-				// 		{"public", "seq2"},
-				// 		{"schema1", "seq3"},
-				// 	},
-				// },
+				{
+					Query: `SHOW SEQUENCES`,
+					Expected: []sql.Row{
+						{"public", "seq1"},
+						{"public", "seq2"},
+						{"schema1", "seq3"},
+					},
+				},
+				{
+					Query: `SHOW SEQUENCES from postgres`,
+					Expected: []sql.Row{
+						{"public", "seq1"},
+						{"public", "seq2"},
+						{"schema1", "seq3"},
+					},
+				},
 				{
 					Query: `SHOW SEQUENCES FROM db1`,
 					Expected: []sql.Row{
@@ -463,10 +463,10 @@ func TestShowSequences(t *testing.T) {
 						{"schema2", "seq5"},
 					},
 				},
-				// {
-				// 	Query:       `SHOW SEQUENCES FROM dne`,
-				// 	ExpectedErr: "not found",
-				// },
+				{
+					Query:       `SHOW SEQUENCES FROM dne`,
+					ExpectedErr: "not found",
+				},
 			},
 		},
 	})

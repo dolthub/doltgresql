@@ -22,13 +22,11 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/sirupsen/logrus"
-
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/core/typecollection"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // contextValues contains a set of cached data passed alongside the context. This data is considered temporary
@@ -318,74 +316,95 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 	}
 
 	// We need to update the root for all databases used by this context. This logic parallels what happens during
-	// transaction commit in the dolt/sqle layer, where we check each branch state to see if it's dirty 
+	// transaction commit in the dolt/sqle layer, where we check each branch state to see if it's dirty
 	for _, db := range databasesInContext(ctx, cv) {
-		session, root, err := getRootFromContextForDatabase(ctx, db)
+		err := updateSessionRootForDatabase(ctx, db, cv)
 		if err != nil {
 			return err
 		}
-		newRoot := root
-		if cv.seqs != nil && cv.seqs[db] != nil {
-			retRoot, err := cv.seqs[db].UpdateRoot(ctx, newRoot)
-			if err != nil {
-				return err
-			}
-			newRoot = retRoot.(*RootValue)
-			cv.seqs = nil
-		}
-		if cv.funcs != nil && cv.funcs.DiffersFrom(ctx, root) {
-			retRoot, err := cv.funcs.UpdateRoot(ctx, newRoot)
-			if err != nil {
-				return err
-			}
-			newRoot = retRoot.(*RootValue)
-			cv.funcs = nil
-		}
-		if cv.trigs != nil && cv.trigs.DiffersFrom(ctx, root) {
-			retRoot, err := cv.trigs.UpdateRoot(ctx, newRoot)
-			if err != nil {
-				return err
-			}
-			newRoot = retRoot.(*RootValue)
-			cv.trigs = nil
-		}
-		if cv.types != nil {
-			retRoot, err := cv.types.UpdateRoot(ctx, newRoot)
-			if err != nil {
-				return err
-			}
-			newRoot = retRoot.(*RootValue)
-			cv.types = nil
-		}
-		if newRoot != root {
-			newHash, err := newRoot.HashOf()
-			if err != nil {
-				return err
-			}
-
-			oldHash, err := root.HashOf()
-			if err != nil {
-				return err
-			}
-
-			if newHash == oldHash {
-				continue
-			} else {
-				logrus.Errorf("new root: %s", newRoot.DebugString(ctx, true))
-				logrus.Errorf("old root: %s", root.DebugString(ctx, true))
-			}
-
-			if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
-				// TODO: We need a way to see if the session has a writeable working root
-				// (new interface method on session probably), and avoid setting it if so
-				if errors.Is(err, doltdb.ErrOperationNotSupportedInDetachedHead) {
-					return nil
-				}
-				return err
-			}
-		}
 	}
 	return nil
+}
+
+func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues) error {
+	session, root, err := getRootFromContextForDatabase(ctx, db)
+	if err != nil {
+		return err
+	}
+	newRoot := root
+	if cv.seqs != nil && cv.seqs[db] != nil {
+		retRoot, err := cv.seqs[db].UpdateRoot(ctx, newRoot)
+		if err != nil {
+			return err
+		}
+		newRoot = retRoot.(*RootValue)
+		cv.seqs = nil
+	}
+	if cv.funcs != nil && cv.funcs.DiffersFrom(ctx, root) {
+		retRoot, err := cv.funcs.UpdateRoot(ctx, newRoot)
+		if err != nil {
+			return err
+		}
+		newRoot = retRoot.(*RootValue)
+		cv.funcs = nil
+	}
+	if cv.trigs != nil && cv.trigs.DiffersFrom(ctx, root) {
+		retRoot, err := cv.trigs.UpdateRoot(ctx, newRoot)
+		if err != nil {
+			return err
+		}
+		newRoot = retRoot.(*RootValue)
+		cv.trigs = nil
+	}
+	if cv.types != nil {
+		retRoot, err := cv.types.UpdateRoot(ctx, newRoot)
+		if err != nil {
+			return err
+		}
+		newRoot = retRoot.(*RootValue)
+		cv.types = nil
+	}
+
+	// Setting the session working root doesn't do a check to see if anything actually changed or not before marking that
+	// branch state dirty, and dolt only allows a single dirty working set per commit. So it's important here to only
+	// update the session root if something actually changed for that db.
+	if err, rootChanged := rootValueChanged(newRoot, root); rootChanged {
+		if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
+			// TODO: We need a way to see if the session has a writeable working root
+			// (new interface method on session probably), and avoid setting it if so
+			if errors.Is(err, doltdb.ErrOperationNotSupportedInDetachedHead) {
+				return nil
+			}
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// rootValueChanged returns whether the new root value is different from the old one
+func rootValueChanged(newRoot *RootValue, root *RootValue) (error, bool) {
+	if newRoot == root {
+		return nil, false
+	}
+
+	newHash, err := newRoot.HashOf()
+	if err != nil {
+		return err, false
+	}
+
+	oldHash, err := root.HashOf()
+	if err != nil {
+		return err, false
+	}
+
+	if newHash == oldHash {
+		return nil, false
+	}
+
+	return nil, true
 }
 
 func databasesInContext(ctx *sql.Context, cv *contextValues) []string {
