@@ -39,12 +39,12 @@ var globalRegistry = &registry{
 type Listener interface {
 	// OperationPerformer is a function that performs the given operation on the original ID. Some operations, such as
 	// renames, will use the new ID.
-	OperationPerformer(ctx *sql.Context, operation Operation, originalID Id, newID Id) error
+	OperationPerformer(ctx *sql.Context, operation Operation, databaseName string, originalID Id, newID Id) error
 	// OperationValidator is a function that validates the given operation on the original ID. Some operations, such as
 	// renames, will use the new ID. A validator is not required, and is intended for operations that may be relatively
 	// expensive to perform, but able to check quickly for failures. In addition, validators should not perform any
 	// modifications. If a validator is not required, then this should just return nil.
-	OperationValidator(ctx *sql.Context, operation Operation, originalID Id, newID Id) error
+	OperationValidator(ctx *sql.Context, operation Operation, databaseName string, originalID Id, newID Id) error
 }
 
 // RegisterListener registers the given listener for the given sections.
@@ -67,9 +67,9 @@ func RegisterListener(listener Listener, sections ...Section) {
 
 // PerformOperation calls all registered performers that are associated with the given section. This does not call any
 // validators, which should be done using ValidateOperation. This returns the first error that is encountered.
-func PerformOperation(ctx *sql.Context, targetSection Section, operation Operation, originalID Id, newID Id) error {
+func PerformOperation(ctx *sql.Context, targetSection Section, operation Operation, databaseName string, originalID Id, newID Id) error {
 	for _, listener := range globalRegistry.listeners[targetSection] {
-		if err := listener.OperationPerformer(ctx, operation, originalID, newID); err != nil {
+		if err := listener.OperationPerformer(ctx, operation, databaseName, originalID, newID); err != nil {
 			return err
 		}
 	}
@@ -79,9 +79,9 @@ func PerformOperation(ctx *sql.Context, targetSection Section, operation Operati
 }
 
 // ValidateOperation calls all registered validators that are associated with the given section.
-func ValidateOperation(ctx *sql.Context, targetSection Section, operation Operation, originalID Id, newID Id) error {
+func ValidateOperation(ctx *sql.Context, targetSection Section, operation Operation, databaseName string, originalID Id, newID Id) error {
 	for _, listener := range globalRegistry.listeners[targetSection] {
-		if err := listener.OperationValidator(ctx, operation, originalID, newID); err != nil {
+		if err := listener.OperationValidator(ctx, operation, databaseName, originalID, newID); err != nil {
 			return err
 		}
 	}

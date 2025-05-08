@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/triggers"
@@ -102,13 +103,20 @@ func getTriggerInformation(ctx *sql.Context, node sql.Node) (sch sql.Schema, bef
 	default:
 		return nil, nil, nil, nil
 	}
+
+	schTbl, ok := tbl.(sql.DatabaseSchemaTable)
+	if !ok {
+		return nil, nil, nil, errors.Newf(`table "%s" does not specify a schema`, tbl.Name())
+	}
+
+	trigCollection, err := core.GetTriggersCollectionFromContext(ctx, schTbl.DatabaseSchema().Name())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	tblID, ok, _ := id.GetFromTable(ctx, tbl)
 	if !ok {
 		return nil, nil, nil, nil
-	}
-	trigCollection, err := core.GetTriggersCollectionFromContext(ctx)
-	if err != nil {
-		return nil, nil, nil, err
 	}
 	allTrigs := trigCollection.GetTriggersForTable(ctx, tblID)
 	// Return early if there are no triggers for the table

@@ -29,7 +29,7 @@ type sequenceIDListener struct{}
 var _ id.Listener = sequenceIDListener{}
 
 // OperationValidator is the internal ID validator for sequences.
-func (sequenceIDListener) OperationValidator(ctx *sql.Context, operation id.Operation, originalID id.Id, newID id.Id) error {
+func (sequenceIDListener) OperationValidator(ctx *sql.Context, operation id.Operation, databaseName string, originalID id.Id, newID id.Id) error {
 	switch originalID.Section() {
 	case id.Section_ColumnDefault, id.Section_Table:
 		switch operation {
@@ -45,7 +45,7 @@ func (sequenceIDListener) OperationValidator(ctx *sql.Context, operation id.Oper
 
 // OperationPerformer is the internal ID performer for sequences, which modifies the sequence collection in response to
 // the given operation and section of the original ID.
-func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Operation, originalID id.Id, newID id.Id) error {
+func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Operation, databaseName string, originalID id.Id, newID id.Id) error {
 	switch originalID.Section() {
 	case id.Section_ColumnDefault:
 		originalIDCol := id.ColumnDefault(originalID)
@@ -53,7 +53,7 @@ func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Oper
 		case id.Operation_Rename:
 			return nil
 		case id.Operation_Delete, id.Operation_Delete_Cascade:
-			collection, err := GetSequencesCollectionFromContext(ctx)
+			collection, err := GetSequencesCollectionFromContext(ctx, databaseName)
 			if err != nil {
 				return err
 			}
@@ -79,7 +79,7 @@ func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Oper
 		originalIDTable := id.Table(originalID)
 		switch operation {
 		case id.Operation_Rename, id.Operation_Delete, id.Operation_Delete_Cascade:
-			collection, err := GetSequencesCollectionFromContext(ctx)
+			collection, err := GetSequencesCollectionFromContext(ctx, databaseName)
 			if err != nil {
 				return err
 			}

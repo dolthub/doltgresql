@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/sequences"
@@ -234,16 +235,10 @@ func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection,
 	return cv.funcs, nil
 }
 
-// GetSequencesCollectionFromContext returns the given sequence collection from the context for the current database.
-// Will always return a collection if no error is returned.
-func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection, error) {
-	return GetSequencesCollectionFromContextForDatabase(ctx, "")
-}
-
-// GetSequencesCollectionFromContextForDatabase returns the given sequence collection from the context for the database
+// GetSequencesCollectionFromContext returns the given sequence collection from the context for the database
 // named. If no database is provided, the context's current database is used.
 // Will always return a collection if no error is returned.
-func GetSequencesCollectionFromContextForDatabase(ctx *sql.Context, database string) (*sequences.Collection, error) {
+func GetSequencesCollectionFromContext(ctx *sql.Context, database string) (*sequences.Collection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
@@ -263,12 +258,12 @@ func GetSequencesCollectionFromContextForDatabase(ctx *sql.Context, database str
 
 // GetTriggersCollectionFromContext returns the triggers collection from the given context. Will always return a
 // collection if no error is returned.
-func GetTriggersCollectionFromContext(ctx *sql.Context) (*triggers.Collection, error) {
+func GetTriggersCollectionFromContext(ctx *sql.Context, database string) (*triggers.Collection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
 	}
-	_, root, err := getRootFromContext(ctx)
+	_, root, err := getRootFromContextForDatabase(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -355,6 +350,23 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 		cv.types = nil
 	}
 	if newRoot != root {
+		newHash, err := newRoot.HashOf()
+		if err != nil {
+			return err
+		}
+		
+		oldHash, err := root.HashOf()
+		if err != nil {
+			return err
+		}
+		
+		if newHash == oldHash {
+			return nil
+		} else {
+			logrus.Errorf("new root: %s", newRoot.DebugString(ctx, true))
+			logrus.Errorf("old root: %s", root.DebugString(ctx, true))
+		}
+		
 		if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
 			// TODO: We need a way to see if the session has a writeable working root
 			// (new interface method on session probably), and avoid setting it if so
