@@ -15,6 +15,9 @@
 package core
 
 import (
+	"maps"
+	"slices"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -32,7 +35,7 @@ import (
 // and may be refreshed at any point, including during the middle of a query. Callers should not assume that
 // data stored in contextValues is persisted, and other types of data should not be added to contextValues.
 type contextValues struct {
-	seqs           *sequences.Collection
+	seqs           map[string]*sequences.Collection
 	types          *typecollection.TypeCollection
 	funcs          *functions.Collection
 	trigs          *triggers.Collection
@@ -244,16 +247,17 @@ func GetSequencesCollectionFromContext(ctx *sql.Context, database string) (*sequ
 		return nil, err
 	}
 	if cv.seqs == nil {
+		cv.seqs = make(map[string]*sequences.Collection)
 		_, root, err := getRootFromContextForDatabase(ctx, database)
 		if err != nil {
 			return nil, err
 		}
-		cv.seqs, err = sequences.LoadSequences(ctx, root)
+		cv.seqs[database], err = sequences.LoadSequences(ctx, root)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return cv.seqs, nil
+	return cv.seqs[database], nil
 }
 
 // GetTriggersCollectionFromContext returns the triggers collection from the given context. Will always return a
@@ -312,69 +316,86 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 	if !ok {
 		return nil
 	}
-	session, root, err := getRootFromContext(ctx)
-	if err != nil {
-		return err
-	}
-	newRoot := root
-	if cv.seqs != nil {
-		retRoot, err := cv.seqs.UpdateRoot(ctx, newRoot)
+
+	// We need to update the root for all databases used by this context. This logic parallels what happens during
+	// transaction commit in the dolt/sqle layer, where we check each branch state to see if it's dirty 
+	for _, db := range databasesInContext(ctx, cv) {
+		session, root, err := getRootFromContextForDatabase(ctx, db)
 		if err != nil {
 			return err
 		}
-		newRoot = retRoot.(*RootValue)
-		cv.seqs = nil
-	}
-	if cv.funcs != nil && cv.funcs.DiffersFrom(ctx, root) {
-		retRoot, err := cv.funcs.UpdateRoot(ctx, newRoot)
-		if err != nil {
-			return err
-		}
-		newRoot = retRoot.(*RootValue)
-		cv.funcs = nil
-	}
-	if cv.trigs != nil && cv.trigs.DiffersFrom(ctx, root) {
-		retRoot, err := cv.trigs.UpdateRoot(ctx, newRoot)
-		if err != nil {
-			return err
-		}
-		newRoot = retRoot.(*RootValue)
-		cv.trigs = nil
-	}
-	if cv.types != nil {
-		retRoot, err := cv.types.UpdateRoot(ctx, newRoot)
-		if err != nil {
-			return err
-		}
-		newRoot = retRoot.(*RootValue)
-		cv.types = nil
-	}
-	if newRoot != root {
-		newHash, err := newRoot.HashOf()
-		if err != nil {
-			return err
-		}
-		
-		oldHash, err := root.HashOf()
-		if err != nil {
-			return err
-		}
-		
-		if newHash == oldHash {
-			return nil
-		} else {
-			logrus.Errorf("new root: %s", newRoot.DebugString(ctx, true))
-			logrus.Errorf("old root: %s", root.DebugString(ctx, true))
-		}
-		
-		if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
-			// TODO: We need a way to see if the session has a writeable working root
-			// (new interface method on session probably), and avoid setting it if so
-			if errors.Is(err, doltdb.ErrOperationNotSupportedInDetachedHead) {
-				return nil
+		newRoot := root
+		if cv.seqs != nil && cv.seqs[db] != nil {
+			retRoot, err := cv.seqs[db].UpdateRoot(ctx, newRoot)
+			if err != nil {
+				return err
 			}
-			return err
+			newRoot = retRoot.(*RootValue)
+			cv.seqs = nil
+		}
+		if cv.funcs != nil && cv.funcs.DiffersFrom(ctx, root) {
+			retRoot, err := cv.funcs.UpdateRoot(ctx, newRoot)
+			if err != nil {
+				return err
+			}
+			newRoot = retRoot.(*RootValue)
+			cv.funcs = nil
+		}
+		if cv.trigs != nil && cv.trigs.DiffersFrom(ctx, root) {
+			retRoot, err := cv.trigs.UpdateRoot(ctx, newRoot)
+			if err != nil {
+				return err
+			}
+			newRoot = retRoot.(*RootValue)
+			cv.trigs = nil
+		}
+		if cv.types != nil {
+			retRoot, err := cv.types.UpdateRoot(ctx, newRoot)
+			if err != nil {
+				return err
+			}
+			newRoot = retRoot.(*RootValue)
+			cv.types = nil
+		}
+		if newRoot != root {
+			newHash, err := newRoot.HashOf()
+			if err != nil {
+				return err
+			}
+
+			oldHash, err := root.HashOf()
+			if err != nil {
+				return err
+			}
+
+			if newHash == oldHash {
+				continue
+			} else {
+				logrus.Errorf("new root: %s", newRoot.DebugString(ctx, true))
+				logrus.Errorf("old root: %s", root.DebugString(ctx, true))
+			}
+
+			if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
+				// TODO: We need a way to see if the session has a writeable working root
+				// (new interface method on session probably), and avoid setting it if so
+				if errors.Is(err, doltdb.ErrOperationNotSupportedInDetachedHead) {
+					return nil
+				}
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func databasesInContext(ctx *sql.Context, cv *contextValues) []string {
+	dbs := make(map[string]struct{})
+	if cv.seqs != nil {
+		for db := range cv.seqs {
+			dbs[db] = struct{}{}
+		}
+	}
+	dbs[ctx.GetCurrentDatabase()] = struct{}{}
+
+	return slices.Sorted(maps.Keys(dbs))
 }
