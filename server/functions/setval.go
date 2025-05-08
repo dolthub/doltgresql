@@ -53,7 +53,8 @@ var setval_text_int64_boolean = framework.Function3{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error) {
-		collection, err := core.GetSequencesCollectionFromContext(ctx)
+		// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
+		collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 		if err != nil {
 			return nil, err
 		}

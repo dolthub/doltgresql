@@ -64,7 +64,7 @@ func (s *ShowSequences) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 		}
 	}
 
-	seqs, err := core.GetSequencesCollectionFromContextForDatabase(ctx, database)
+	seqs, err := core.GetSequencesCollectionFromContext(ctx, database)
 	if err != nil {
 		return nil, err
 	}

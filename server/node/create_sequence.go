@@ -124,7 +124,9 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		}
 	}
 	// Create the sequence since we know it's completely valid
-	collection, err := core.GetSequencesCollectionFromContext(ctx)
+	// TODO: we always create the sequence in the current database, but there's no need to require this, and in fact we
+	//  need to support it to create a sequence on another branch than the current one
+	collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 	if err != nil {
 		return nil, err
 	}
