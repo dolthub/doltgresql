@@ -242,11 +242,18 @@ func (it *InTuple) WithResolvedChildren(children []any) (any, error) {
 	if !ok {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
-	right, ok := children[1].(expression.Tuple)
-	if !ok {
-		return nil, errors.Errorf("expected vitess child to be an expression tuple but has type `%T`", children[1])
+
+	switch right := children[1].(type) {
+	case expression.Tuple:
+		return it.WithChildren(left, right)
+	case *RecordExpr:
+		// TODO: For now, if we see a RecordExpr come in, we convert it to a vitess Tuple representation, so that
+		//       the existing in_tuple code can work with it. Alternatively, we could change in_tuple to always
+		//       work directly with a Record expression.
+		return it.WithChildren(left, expression.Tuple(right.exprs))
+	default:
+		return nil, errors.Errorf("expected child to be a RecordExpr or vitess Tuple but has type `%T`", children[1])
 	}
-	return it.WithChildren(left, right)
 }
 
 // Left implements the expression.BinaryExpression interface.

@@ -15,41 +15,52 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
-// Record is the record type, similar to a row.
-var Record = &DoltgresType{
-	ID:            toInternal("record"),
-	TypLength:     -1,
-	PassedByVal:   false,
-	TypType:       TypeType_Pseudo,
-	TypCategory:   TypeCategory_PseudoTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_record"),
-	InputFunc:     toFuncID("record_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("record_out", toInternal("record")),
-	ReceiveFunc:   toFuncID("record_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-	SendFunc:      toFuncID("record_send", toInternal("record")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Double,
-	Storage:       TypeStorage_Extended,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("btrecordcmp", toInternal("record"), toInternal("record")),
+// NewAnonymousRecordType creates a new type for an anonymous record, whose fields have the types
+// specified in |fieldTypes|.
+func NewAnonymousRecordType(fieldTypes []sql.Type) *DoltgresType {
+	return &DoltgresType{
+		ID:            toInternal("record"),
+		TypLength:     -1,
+		PassedByVal:   false,
+		FieldTypes:    fieldTypes,
+		TypType:       TypeType_Pseudo,
+		TypCategory:   TypeCategory_PseudoTypes,
+		IsPreferred:   false,
+		IsDefined:     true,
+		Delimiter:     ",",
+		RelID:         id.Null,
+		SubscriptFunc: toFuncID("-"),
+		Elem:          id.NullType,
+		Array:         toInternal("_record"),
+		InputFunc:     toFuncID("record_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+		OutputFunc:    toFuncID("record_out", toInternal("record")),
+		ReceiveFunc:   toFuncID("record_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+		SendFunc:      toFuncID("record_send", toInternal("record")),
+		ModInFunc:     toFuncID("-"),
+		ModOutFunc:    toFuncID("-"),
+		AnalyzeFunc:   toFuncID("-"),
+		Align:         TypeAlignment_Double,
+		Storage:       TypeStorage_Extended,
+		NotNull:       false,
+		BaseTypeID:    id.NullType,
+		TypMod:        -1,
+		NDims:         0,
+		TypCollation:  id.NullCollation,
+		DefaulBin:     "",
+		Default:       "",
+		Acl:           nil,
+		Checks:        nil,
+		attTypMod:     -1,
+		CompareFunc:   toFuncID("btrecordcmp", toInternal("record"), toInternal("record")),
+	}
 }
+
+// Record is a generic, anonymous record type, without field type information supplied yet. When used with RecordExpr,
+// the field type information will be created once the field expressions are analyzed and type information is available,
+// and a new DoltgresType instance will be created with the field type information populated.
+var Record = NewAnonymousRecordType(nil)

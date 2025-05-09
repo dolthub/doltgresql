@@ -16,6 +16,7 @@ package types
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 
 	cerrors "github.com/cockroachdb/errors"
@@ -152,20 +153,7 @@ func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool b
 			if baseType.ID == Bool.ID && trimBool {
 				str = string(str[0])
 			}
-			shouldQuote := false
-			for _, r := range str {
-				switch r {
-				case ' ', ',', '{', '}', '\\', '"':
-					shouldQuote = true
-				}
-			}
-			if shouldQuote || strings.EqualFold(str, "NULL") {
-				sb.WriteRune('"')
-				sb.WriteString(strings.ReplaceAll(str, `"`, `\"`))
-				sb.WriteRune('"')
-			} else {
-				sb.WriteString(str)
-			}
+			sb.WriteString(quoteString(str))
 		} else {
 			sb.WriteString("NULL")
 		}
@@ -174,8 +162,178 @@ func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool b
 	return sb.String(), nil
 }
 
+// RecordToString is used for the record_out function, to serialize record values for wire transfer.
+// |fields| contains the values to serialize, and |fieldTypes| defines the types used to serialize
+// the fields.
+func RecordToString(ctx *sql.Context, fields []any, fieldTypes []sql.Type) (any, error) {
+	if len(fieldTypes) != len(fields) {
+		return nil, fmt.Errorf("expected %d record fields, but got %d values", len(fieldTypes), len(fields))
+	}
+
+	sb := strings.Builder{}
+	sb.WriteRune('(')
+	for i, value := range fields {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+
+		if value == nil {
+			continue
+		}
+
+		fieldType := fieldTypes[i]
+		doltgresType, ok := fieldType.(*DoltgresType)
+		if !ok {
+			return nil, fmt.Errorf("expected a DoltgresType, but got %T", fieldType)
+		}
+		str, err := doltgresType.IoOutput(ctx, value)
+		if err != nil {
+			return "", err
+		}
+		if doltgresType.ID == Bool.ID {
+			str = string(str[0])
+		}
+
+		sb.WriteString(quoteString(str))
+	}
+	sb.WriteRune(')')
+
+	return sb.String(), nil
+}
+
+// quoteString determines if |s| needs to be quoted, by looking for special characters like ' ' or ',',
+// and if so, quotes the string and returns it. If quoting is not needed, then |s| is returned as is.
+func quoteString(s string) string {
+	shouldQuote := false
+	for _, r := range s {
+		switch r {
+		case ' ', ',', '{', '}', '\\', '"':
+			shouldQuote = true
+		}
+	}
+	if shouldQuote || strings.EqualFold(s, "NULL") {
+		return fmt.Sprintf(`"%s"`, strings.ReplaceAll(s, `"`, `\"`))
+	} else {
+		return s
+	}
+}
+
 // toInternal returns an Internal ID for the given type. This is only used for the built-in types, since they all share
 // the same schema (pg_catalog).
 func toInternal(typeName string) id.Type {
 	return id.NewType("pg_catalog", typeName)
+}
+
+// ValidateEqualRecordFieldCount checks that |val1| and |val2| are slices representing the values
+// in a record and that they have the same number of values in each. If a different count of values
+// is detected, then an error is returned.
+func ValidateEqualRecordFieldCount(val1 any, val2 any) error {
+	t1, ok1 := val1.([]any)
+	t2, ok2 := val2.([]any)
+	if !ok1 {
+		return fmt.Errorf("expected record value, but got %T", val1)
+	}
+	if !ok2 {
+		return fmt.Errorf("expected record value, but got %T", val2)
+	}
+
+	if len(t1) != len(t2) {
+		return fmt.Errorf("unequal number of entries in row expressions")
+	}
+
+	return nil
+}
+
+// RecordValueHasNull returns true if the specified |record| is a slice of values and any
+// of those values are nil.
+func RecordValueHasNull(record any) bool {
+	value, ok := record.([]interface{})
+	if !ok {
+		return false
+	}
+
+	for _, v := range value {
+		if v == nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// CanCompareRecordValues returns true if |val1| and |val2| are valid slices, representing the values
+// in a record, and there is enough certainty in their fields to determine less than and greater than
+// comparison. When a record comparison is performed without enough certainty, the comparison returns
+// NULL. The two records must have the same number of fields, otherwise false is returned. If no fields
+// are NULL, then the two record values can be compared. If NULL fields are present, then there must be
+// at least one non-equal field in the record values BEFORE any NULL value in order for there to be
+// enough certainty to return a non-NULL result from a less than or greater than comparison.
+func CanCompareRecordValues(val1 any, val2 any) bool {
+	t1, ok1 := val1.([]any)
+	t2, ok2 := val2.([]any)
+	if !ok1 || !ok2 {
+		return false
+	}
+
+	if len(t1) != len(t2) {
+		return false
+	}
+
+	// To compare two records, we need to have at least one field before any NULL values in the record,
+	// where the record where both sides are NOT null and where the values are NOT equal.
+	hasNonEqualField := false
+	hasNull := false
+	for i := 0; i < len(t1); i++ {
+		if t1[i] == nil || t2[i] == nil {
+			hasNull = true
+
+			// If we see a NULL field before non-equal fields, then we know there is not enough
+			// information to return a definitive result in a less than or greater than comparison.
+			if !hasNonEqualField {
+				return false
+			}
+		}
+
+		if t1[i] != nil && t2[i] != nil && t1[i] != t2[i] {
+			hasNonEqualField = true
+
+			// If we haven't seen a NULL value yet, we know this is safe to compare.
+			if !hasNull {
+				return true
+			}
+		}
+	}
+
+	// At this point, all non-NULL fields are equal, so we can only compare
+	// the two record values if they don't contain any NULL fields.
+	return !hasNull
+}
+
+// CanCompareRecordValuesForNotEquals returns true if |val1| and |val2| are valid slices, representing
+// the values in a record, and there is enough certainty in their fields to determine a not equal
+// comparison. When a record comparison is performed without enough certainty, the comparison returns
+// NULL. The two records must have the same number of fields, otherwise false is returned. If no fields
+// are NULL, then the two record values can be compared. To compare two records for non-equality, there
+// must be at least one field anywhere in the record where both sides are not NULL and where the values
+// are not equal.
+func CanCompareRecordValuesForNotEquals(val1 any, val2 any) bool {
+	t1, ok1 := val1.([]any)
+	t2, ok2 := val2.([]any)
+	if !ok1 || !ok2 {
+		return false
+	}
+
+	if len(t1) != len(t2) {
+		return false
+	}
+
+	// In order to compare two records for non-equality, we need to have at least one field anywhere
+	// in the record where both sides are NOT null and where the values are NOT equal.
+	for i := 0; i < len(t1); i++ {
+		if t1[i] != nil && t2[i] != nil && t1[i] != t2[i] {
+			return true
+		}
+	}
+
+	return false
 }

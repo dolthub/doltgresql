@@ -70,6 +70,7 @@ func initBinaryGreaterThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, timestamptz_gt_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, timestamptz_gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, timetz_gt)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, record_gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, uuid_gt)
 }
 
@@ -513,6 +514,24 @@ var timetz_gt = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.TimeTZ.Compare(ctx, val1.(time.Time), val2.(time.Time))
+		return res == 1, err
+	},
+}
+
+// record_gt represents the PostgreSQL function of the same name, taking the same parameters.
+var record_gt = framework.Function2{
+	Name:       "record_gt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Record, pgtypes.Record},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		if err := pgtypes.ValidateEqualRecordFieldCount(val1, val2); err != nil {
+			return nil, err
+		}
+		if !pgtypes.CanCompareRecordValues(val1, val2) {
+			return nil, nil
+		}
+		res, err := pgtypes.Record.Compare(ctx, val1, val2)
 		return res == 1, err
 	},
 }
