@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -104,12 +103,15 @@ func getTriggerInformation(ctx *sql.Context, node sql.Node) (sch sql.Schema, bef
 		return nil, nil, nil, nil
 	}
 
+	dbName := ctx.GetCurrentDatabase()
+	// TODO: some dolt tables don't implement this interface, so we use the current db for now
+	// An alternative would be to get the resolved table and use the db there.
 	schTbl, ok := tbl.(sql.DatabaseSchemaTable)
-	if !ok {
-		return nil, nil, nil, errors.Newf(`table "%s" does not specify a schema`, tbl.Name())
+	if ok {
+		dbName = schTbl.DatabaseSchema().Name()
 	}
 
-	trigCollection, err := core.GetTriggersCollectionFromContext(ctx, schTbl.DatabaseSchema().Name())
+	trigCollection, err := core.GetTriggersCollectionFromContext(ctx, dbName)
 	if err != nil {
 		return nil, nil, nil, err
 	}
