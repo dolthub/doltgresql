@@ -300,10 +300,12 @@ func TestShowTables(t *testing.T) {
 func TestShowCreateTable(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "show create table",
+			Name:  "show create table",
+			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
 				`CREATE TABle t2 (b SERIAL PRIMARY KEY, time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+				`CREATE TABLE t3 (a timestamp PRIMARY KEY, name varchar(100))`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -325,6 +327,16 @@ func TestShowCreateTable(t *testing.T) {
   PRIMARY KEY ("b")
 )`,
 						},
+					},
+				},
+				{
+					Query: `SHOW CREATE TABLE t3`,
+					Expected: []sql.Row{
+						{"t3", `CREATE TABLE "t3" (
+  "a" timestamp NOT NULL,
+  "name" varchar(100),
+  PRIMARY KEY ("a")
+)`},
 					},
 				},
 				{

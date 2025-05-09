@@ -30,9 +30,9 @@ type ShowSequences struct {
 	database string
 }
 
-var _ sql.ExecSourceRel = (*DropTable)(nil)
+var _ sql.ExecSourceRel = (*ShowSequences)(nil)
 
-// NewDropTable returns a new *DropTable.
+// NewShowSequences returns a new ShowSequences.
 func NewShowSequences(database string) *ShowSequences {
 	return &ShowSequences{
 		database: database,
@@ -106,6 +106,7 @@ func (s *ShowSequences) WithChildren(children ...sql.Node) (sql.Node, error) {
 	return s, nil
 }
 
+// WithResolvedChildren implements the interface vitess.InjectedStatement.
 func (s *ShowSequences) WithResolvedChildren(children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, errors.New("SHOW SCHEMAS does not support children")
