@@ -34,7 +34,8 @@ import (
 // and may be refreshed at any point, including during the middle of a query. Callers should not assume that
 // data stored in contextValues is persisted, and other types of data should not be added to contextValues.
 type contextValues struct {
-	seqs           map[string]*sequences.Collection
+	seqs map[string]*sequences.Collection
+	// TODO: all these collection fields need to be mapped by database name as seqs above
 	types          *typecollection.TypeCollection
 	funcs          *functions.Collection
 	trigs          *triggers.Collection
