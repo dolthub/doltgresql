@@ -300,7 +300,7 @@ func TestShowTables(t *testing.T) {
 func TestShowCreateTable(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name:  "show create table",
+			Name: "show create table",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
 				`CREATE TABle t2 (b SERIAL PRIMARY KEY, time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
