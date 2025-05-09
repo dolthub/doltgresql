@@ -296,3 +296,189 @@ func TestShowTables(t *testing.T) {
 		},
 	})
 }
+
+func TestShowCreateTable(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "show create table",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
+				`CREATE TABle t2 (b SERIAL PRIMARY KEY, time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+				`CREATE TABLE t3 (a timestamp PRIMARY KEY, name varchar(100))`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW CREATE TABLE t1`,
+					Expected: []sql.Row{
+						{"t1", `CREATE TABLE "t1" (
+  "a" integer NOT NULL,
+  "name" text,
+  PRIMARY KEY ("a")
+)`},
+					},
+				},
+				{
+					Query: `SHOW CREATE TABLE T2`,
+					Expected: []sql.Row{
+						{"t2", `CREATE TABLE "t2" (
+  "b" integer NOT NULL DEFAULT (nextval('public.t2_b_seq')),
+  "time" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY ("b")
+)`,
+						},
+					},
+				},
+				{
+					Query: `SHOW CREATE TABLE t3`,
+					Expected: []sql.Row{
+						{"t3", `CREATE TABLE "t3" (
+  "a" timestamp NOT NULL,
+  "name" varchar(100),
+  PRIMARY KEY ("a")
+)`},
+					},
+				},
+				{
+					Query:       `SHOW CREATE TABLE dne`,
+					ExpectedErr: "not found",
+				},
+			},
+		},
+	})
+}
+
+func TestShowIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "show indexes",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT, value int)`,
+				`CREATE INDEX idx_name ON t1(name)`,
+				`CREATE INDEX idx_value ON t1(value)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW indexes FROM t1`,
+					Expected: []sql.Row{
+						{"t1", 0, "PRIMARY", 1, "a", nil, 0, nil, nil, "", "BTREE", "", "", "YES", nil},
+						{"t1", 1, "idx_name", 1, "name", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
+						{"t1", 1, "idx_value", 1, "value", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
+					},
+				},
+				{
+					Query:       `SHOW indexes FROM dne`,
+					ExpectedErr: "not found",
+				},
+			},
+		},
+	})
+}
+
+func TestShowDatabasesAndSchemas(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "show databases",
+			SetUpScript: []string{
+				`CREATE DATABASE db1`,
+				`CREATE DATABASE db2`,
+				`CREATE SCHEMA schema1`,
+				`CREATE SCHEMA schema2`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW databases`,
+					Expected: []sql.Row{
+						{"db1"},
+						{"db2"},
+						{"information_schema"},
+						{"postgres"},
+					},
+				},
+				{
+					Query: `show SCHEMAS`,
+					Expected: []sql.Row{
+						{"dolt"},
+						{"pg_catalog"},
+						{"information_schema"},
+						{"schema1"},
+						{"schema2"},
+						{"public"},
+					},
+				},
+				{
+					Query: `show SCHEMAS FROM postgres`,
+					Expected: []sql.Row{
+						{"dolt"},
+						{"pg_catalog"},
+						{"information_schema"},
+						{"schema1"},
+						{"schema2"},
+						{"public"},
+					},
+				},
+				{
+					Query: `show SCHEMAS FROM db1`,
+					Expected: []sql.Row{
+						{"dolt"},
+						{"pg_catalog"},
+						{"information_schema"},
+						{"public"},
+					},
+				},
+				{
+					Query:       `show SCHEMAS FROM dne`,
+					ExpectedErr: "not found",
+				},
+			},
+		},
+	})
+}
+
+func TestShowSequences(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "show sequences",
+			SetUpScript: []string{
+				`CREATE SEQUENCE seq1`,
+				`CREATE SEQUENCE seq2`,
+				`CREATE SCHEMA schema1`,
+				`CREATE SEQUENCE schema1.seq3`,
+				`CREATE DATABASE db1`,
+				`USE db1`,
+				`CREATE SEQUENCE seq4`,
+				`CREATE SCHEMA schema2`,
+				`CREATE SEQUENCE schema2.seq5`,
+				`use postgres`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW SEQUENCES`,
+					Expected: []sql.Row{
+						{"public", "seq1"},
+						{"public", "seq2"},
+						{"schema1", "seq3"},
+					},
+				},
+				{
+					Query: `SHOW SEQUENCES from postgres`,
+					Expected: []sql.Row{
+						{"public", "seq1"},
+						{"public", "seq2"},
+						{"schema1", "seq3"},
+					},
+				},
+				{
+					Query: `SHOW SEQUENCES FROM db1`,
+					Expected: []sql.Row{
+						{"public", "seq4"},
+						{"schema2", "seq5"},
+					},
+				},
+				{
+					Query:       `SHOW SEQUENCES FROM dne`,
+					ExpectedErr: "not found",
+				},
+			},
+		},
+	})
+}

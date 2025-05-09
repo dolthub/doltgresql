@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,6 +25,14 @@ func nodeShowCreate(ctx *Context, node *tree.ShowCreate) (vitess.Statement, erro
 	if node == nil {
 		return nil, nil
 	}
-	//TODO: this isn't supported in Postgres, but the parser has support for it as an extension. Should we keep it?
-	return nil, errors.Errorf("SHOW CREATE is not yet supported")
+
+	tableName, err := nodeUnresolvedObjectName(ctx, node.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vitess.Show{
+		Type:  vitess.CreateTableStr,
+		Table: tableName,
+	}, nil
 }

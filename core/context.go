@@ -15,6 +15,9 @@
 package core
 
 import (
+	"maps"
+	"slices"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -31,7 +34,8 @@ import (
 // and may be refreshed at any point, including during the middle of a query. Callers should not assume that
 // data stored in contextValues is persisted, and other types of data should not be added to contextValues.
 type contextValues struct {
-	seqs           *sequences.Collection
+	seqs map[string]*sequences.Collection
+	// TODO: all these collection fields need to be mapped by database name as seqs above
 	types          *typecollection.TypeCollection
 	funcs          *functions.Collection
 	trigs          *triggers.Collection
@@ -56,14 +60,22 @@ func getContextValues(ctx *sql.Context) (*contextValues, error) {
 
 // getRootFromContext returns the working session's root from the context, along with the session.
 func getRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error) {
+	return getRootFromContextForDatabase(ctx, "")
+}
+
+// getRootFromContextForDatabase returns the working session's root from the context for a specific database, along with the session.
+func getRootFromContextForDatabase(ctx *sql.Context, database string) (*dsess.DoltSession, *RootValue, error) {
 	session := dsess.DSessFromSess(ctx.Session)
-	// Does this handle the current schema as well?
-	state, ok, err := session.LookupDbState(ctx, ctx.GetCurrentDatabase())
+
+	if len(database) == 0 {
+		database = ctx.GetCurrentDatabase()
+	}
+	state, ok, err := session.LookupDbState(ctx, database)
 	if err != nil {
 		return nil, nil, err
 	}
 	if !ok {
-		return nil, nil, errors.Errorf("cannot find the database while fetching root from context")
+		return nil, nil, sql.ErrDatabaseNotFound.New(database)
 	}
 	return session, state.WorkingRoot().(*RootValue), nil
 }
@@ -226,34 +238,36 @@ func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection,
 	return cv.funcs, nil
 }
 
-// GetSequencesCollectionFromContext returns the given sequence collection from the context. Will always return a collection if
-// no error is returned.
-func GetSequencesCollectionFromContext(ctx *sql.Context) (*sequences.Collection, error) {
+// GetSequencesCollectionFromContext returns the given sequence collection from the context for the database
+// named. If no database is provided, the context's current database is used.
+// Will always return a collection if no error is returned.
+func GetSequencesCollectionFromContext(ctx *sql.Context, database string) (*sequences.Collection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if cv.seqs == nil {
-		_, root, err := getRootFromContext(ctx)
+		cv.seqs = make(map[string]*sequences.Collection)
+		_, root, err := getRootFromContextForDatabase(ctx, database)
 		if err != nil {
 			return nil, err
 		}
-		cv.seqs, err = sequences.LoadSequences(ctx, root)
+		cv.seqs[database], err = sequences.LoadSequences(ctx, root)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return cv.seqs, nil
+	return cv.seqs[database], nil
 }
 
 // GetTriggersCollectionFromContext returns the triggers collection from the given context. Will always return a
 // collection if no error is returned.
-func GetTriggersCollectionFromContext(ctx *sql.Context) (*triggers.Collection, error) {
+func GetTriggersCollectionFromContext(ctx *sql.Context, database string) (*triggers.Collection, error) {
 	cv, err := getContextValues(ctx)
 	if err != nil {
 		return nil, err
 	}
-	_, root, err := getRootFromContext(ctx)
+	_, root, err := getRootFromContextForDatabase(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -302,19 +316,34 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 	if !ok {
 		return nil
 	}
-	session, root, err := getRootFromContext(ctx)
+
+	// We need to update the root for all databases used by this context. This logic parallels what happens during
+	// transaction commit in the dolt/sqle layer, where we check each branch state to see if it's dirty
+	for _, db := range databasesInContext(ctx, cv) {
+		err := updateSessionRootForDatabase(ctx, db, cv)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues) error {
+	session, root, err := getRootFromContextForDatabase(ctx, db)
 	if err != nil {
 		return err
 	}
+
 	newRoot := root
-	if cv.seqs != nil {
-		retRoot, err := cv.seqs.UpdateRoot(ctx, newRoot)
+	if cv.seqs != nil && cv.seqs[db] != nil {
+		retRoot, err := cv.seqs[db].UpdateRoot(ctx, newRoot)
 		if err != nil {
 			return err
 		}
 		newRoot = retRoot.(*RootValue)
 		cv.seqs = nil
 	}
+
 	if cv.funcs != nil && cv.funcs.DiffersFrom(ctx, root) {
 		retRoot, err := cv.funcs.UpdateRoot(ctx, newRoot)
 		if err != nil {
@@ -323,6 +352,7 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 		newRoot = retRoot.(*RootValue)
 		cv.funcs = nil
 	}
+
 	if cv.trigs != nil && cv.trigs.DiffersFrom(ctx, root) {
 		retRoot, err := cv.trigs.UpdateRoot(ctx, newRoot)
 		if err != nil {
@@ -331,6 +361,7 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 		newRoot = retRoot.(*RootValue)
 		cv.trigs = nil
 	}
+
 	if cv.types != nil {
 		retRoot, err := cv.types.UpdateRoot(ctx, newRoot)
 		if err != nil {
@@ -339,7 +370,11 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 		newRoot = retRoot.(*RootValue)
 		cv.types = nil
 	}
-	if newRoot != root {
+
+	// Setting the session working root doesn't do a check to see if anything actually changed or not before marking that
+	// branch state dirty, and dolt only allows a single dirty working set per commit. So it's important here to only
+	// update the session root if something actually changed for that db.
+	if err, rootChanged := rootValueChanged(newRoot, root); rootChanged {
 		if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
 			// TODO: We need a way to see if the session has a writeable working root
 			// (new interface method on session probably), and avoid setting it if so
@@ -348,6 +383,44 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 			}
 			return err
 		}
+	} else if err != nil {
+		return err
 	}
+
 	return nil
+}
+
+// rootValueChanged returns whether the new root value is different from the old one
+func rootValueChanged(newRoot *RootValue, root *RootValue) (error, bool) {
+	if newRoot == root {
+		return nil, false
+	}
+
+	newHash, err := newRoot.HashOf()
+	if err != nil {
+		return err, false
+	}
+
+	oldHash, err := root.HashOf()
+	if err != nil {
+		return err, false
+	}
+
+	if newHash == oldHash {
+		return nil, false
+	}
+
+	return nil, true
+}
+
+func databasesInContext(ctx *sql.Context, cv *contextValues) []string {
+	dbs := make(map[string]struct{})
+	if cv.seqs != nil {
+		for db := range cv.seqs {
+			dbs[db] = struct{}{}
+		}
+	}
+	dbs[ctx.GetCurrentDatabase()] = struct{}{}
+
+	return slices.Sorted(maps.Keys(dbs))
 }

@@ -110,7 +110,7 @@ func (c *CreateTrigger) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 	if function.ReturnType != pgtypes.Trigger.ID {
 		return nil, errors.Errorf(`function %s must return type trigger`, function.ID.FunctionName())
 	}
-	trigCollection, err := core.GetTriggersCollectionFromContext(ctx)
+	trigCollection, err := core.GetTriggersCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 	if err != nil {
 		return nil, err
 	}

@@ -48,7 +48,8 @@ var nextval_text = framework.Function1{
 			return nil, err
 		}
 
-		collection, err := core.GetSequencesCollectionFromContext(ctx)
+		// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
+		collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +75,8 @@ var nextval_regclass = framework.Function1{
 			return nil, err
 		}
 
-		collection, err := core.GetSequencesCollectionFromContext(ctx)
+		// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
+		collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 		if err != nil {
 			return nil, err
 		}

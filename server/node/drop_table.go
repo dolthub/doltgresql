@@ -62,6 +62,7 @@ func (c *DropTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 
 	for _, table := range c.gmsDropTable.Tables {
+		var dbName string
 		var schemaName string
 		var tableName string
 		switch table := table.(type) {
@@ -71,15 +72,16 @@ func (c *DropTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 				return nil, err
 			}
 			tableName = table.Name()
+			dbName = table.Database().Name()
 		default:
 			return nil, errors.Errorf("encountered unexpected table type `%T` during DROP TABLE", table)
 		}
 
 		tableID := id.NewTable(schemaName, tableName).AsId()
-		if err = id.ValidateOperation(ctx, id.Section_Table, id.Operation_Delete, tableID, id.Null); err != nil {
+		if err = id.ValidateOperation(ctx, id.Section_Table, id.Operation_Delete, dbName, tableID, id.Null); err != nil {
 			return nil, err
 		}
-		if err = id.PerformOperation(ctx, id.Section_Table, id.Operation_Delete, tableID, id.Null); err != nil {
+		if err = id.PerformOperation(ctx, id.Section_Table, id.Operation_Delete, dbName, tableID, id.Null); err != nil {
 			return nil, err
 		}
 	}
