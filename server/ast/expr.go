@@ -821,25 +821,48 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case tree.UnqualifiedStar:
 		return nil, errors.Errorf("* syntax is not yet supported in this context")
 	case *tree.UnresolvedName:
-		if node.NumParts > 2 {
-			return nil, errors.Errorf("referencing items outside the schema or database is not yet supported")
-		}
-		if node.Star {
-			return nil, errors.Errorf("name resolution on this statement is not yet supported")
-		}
-		var tableName vitess.TableName
-		if node.NumParts == 2 {
-			tableName.Name = vitess.NewTableIdent(node.Parts[1])
-		}
-		return &vitess.ColName{
-			Name:      vitess.NewColIdent(node.Parts[0]),
-			Qualifier: tableName,
-		}, nil
+		return unresolvedNameToColName(node)
 	case nil:
 		return nil, nil
 	default:
 		return nil, errors.Errorf("unknown expression: `%T`", node)
 	}
+}
+
+// unresolvedNameToColName converts a tree.UnresolvedName to a vitess.ColName with the appropriate name qualifiers set.
+func unresolvedNameToColName(name *tree.UnresolvedName) (*vitess.ColName, error) {
+	if name.Star {
+		return nil, errors.Errorf("* syntax is not yet supported in this context")
+	}
+
+	var tableName vitess.TableName
+	switch name.NumParts{
+	case 4:
+		tableName = vitess.TableName{
+			Name: vitess.NewTableIdent(name.Parts[1]),
+			SchemaQualifier: vitess.NewTableIdent(name.Parts[2]),
+			DbQualifier: vitess.NewTableIdent(name.Parts[3]),
+		}
+	case 3:
+		tableName = vitess.TableName{
+			Name: vitess.NewTableIdent(name.Parts[1]),
+			SchemaQualifier: vitess.NewTableIdent(name.Parts[2]),
+		}
+	case 2:
+		tableName = vitess.TableName{
+			Name: vitess.NewTableIdent(name.Parts[1]),
+		}
+	case 1:
+		// no table name
+	default:
+		return nil, errors.Errorf("invalid name: %s", name)
+	}
+	
+	return &vitess.ColName{
+		Name:          vitess.NewColIdent(name.Parts[0]),
+		Qualifier:     tableName,
+		StoredProcVal: nil,
+	}, nil
 }
 
 // translateConvertType translates the *vitess.ConvertType expression given to a new one, substituting type names as
