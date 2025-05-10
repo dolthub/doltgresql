@@ -110,36 +110,24 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 	case tree.UnqualifiedStar:
 		return &vitess.StarExpr{}, nil
 	case *tree.UnresolvedName:
+		colName, err := unresolvedNameToColName(expr)
+		if err != nil {
+			return nil, err
+		}
+
 		if expr.Star {
-			var tableName vitess.TableName
-			if expr.NumParts > 2 {
-				tableName.SchemaQualifier = vitess.NewTableIdent(expr.Parts[2])
-			}
-			if expr.NumParts == 2 {
-				tableName.Name = vitess.NewTableIdent(expr.Parts[1])
-			}
 			return &vitess.StarExpr{
-				TableName: tableName,
-			}, nil
-		} else {
-			var tableName vitess.TableName
-			if expr.NumParts > 2 {
-				tableName.SchemaQualifier = vitess.NewTableIdent(expr.Parts[2])
-			}
-			if expr.NumParts == 2 {
-				tableName.Name = vitess.NewTableIdent(expr.Parts[1])
-			}
-			// We don't set the InputExpression for ColName expressions. This matches the behavior in vitess's
-			// post-processing found in ast.go. Input expressions are load bearing for some parts of plan building
-			// so we need to match the behavior exactly.
-			return &vitess.AliasedExpr{
-				Expr: &vitess.ColName{
-					Name:      vitess.NewColIdent(expr.Parts[0]),
-					Qualifier: tableName,
-				},
-				As: vitess.NewColIdent(string(node.As)),
+				TableName: colName.Qualifier,
 			}, nil
 		}
+
+		// We don't set the InputExpression for ColName expressions. This matches the behavior in vitess's
+		// post-processing found in ast.go. Input expressions are load bearing for some parts of plan building
+		// so we need to match the behavior exactly.
+		return &vitess.AliasedExpr{
+			Expr: colName,
+			As:   vitess.NewColIdent(string(node.As)),
+		}, nil
 	default:
 		vitessExpr, err := nodeExpr(ctx, expr)
 		if err != nil {
