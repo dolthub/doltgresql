@@ -4067,7 +4067,7 @@ func TestPgCatalogQueries(t *testing.T) {
 			Name: "sqlalchemy query",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT pg_catalog.pg_attribute.attname AS name, pg_catalog.format_type(pg_catalog.pg_attribute.atttypid, pg_catalog.pg_attribute.atttypmod) AS format_type, (SELECT pg_catalog.pg_get_expr(pg_catalog.pg_attrdef.adbin, pg_catalog.pg_attrdef.adrelid) AS pg_get_expr_1 
+					Query: `SELECT pg_catalog.pg_attribute.attname AS name, pg_catalog.format_type(pg_catalog.pg_attribute.atttypid, pg_catalog.pg_attribute.atttypmod) AS format_type, (SELECT pg_catalog.pg_get_expr(pg_catalog.pg_attrdef.adbin, pg_catalog.pg_attrdef.adrelid) AS pg_get_expr_1 
 FROM pg_catalog.pg_attrdef 
 WHERE pg_catalog.pg_attrdef.adrelid = pg_catalog.pg_attribute.attrelid AND pg_catalog.pg_attrdef.adnum = pg_catalog.pg_attribute.attnum AND pg_catalog.pg_attribute.atthasdef) AS "default", pg_catalog.pg_attribute.attnotnull AS not_null, pg_catalog.pg_class.relname AS table_name, pg_catalog.pg_description.description AS comment, pg_catalog.pg_attribute.attgenerated AS generated, (SELECT json_build_object('always', pg_catalog.pg_attribute.attidentity = 'a', 'start', pg_catalog.pg_sequence.seqstart, 'increment', pg_catalog.pg_sequence.seqincrement, 'minvalue', pg_catalog.pg_sequence.seqmin, 'maxvalue', pg_catalog.pg_sequence.seqmax, 'cache', pg_catalog.pg_sequence.seqcache, 'cycle', pg_catalog.pg_sequence.seqcycle) AS json_build_object_1 
 FROM pg_catalog.pg_sequence 

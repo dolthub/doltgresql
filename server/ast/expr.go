@@ -858,8 +858,8 @@ func unresolvedNameToColName(name *tree.UnresolvedName) (*vitess.ColName, error)
 	}
 
 	return &vitess.ColName{
-		Name:          vitess.NewColIdent(name.Parts[0]),
-		Qualifier:     tableName,
+		Name:      vitess.NewColIdent(name.Parts[0]),
+		Qualifier: tableName,
 	}, nil
 }
 
