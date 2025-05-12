@@ -132,6 +132,8 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				switch n.(type) {
 				case *plan.Limit:
 					typOid = uint32(oid.T_int4)
+				case *plan.Offset:
+					typOid = uint32(oid.T_int4)
 				default:
 					typOid, err = VitessTypeToObjectID(e.Type().Type())
 					if err != nil {

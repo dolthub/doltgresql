@@ -32,7 +32,7 @@ func TestPreparedPgCatalog(t *testing.T) {
 
 var preparedStatementTests = []ScriptTest{
 	{
-		Name:        "Expressions without tables",
+		Name: "Expressions without tables",
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SELECT CONCAT($1::text, $2::text)",
@@ -71,10 +71,13 @@ var preparedStatementTests = []ScriptTest{
 				Expected: []sql.Row{{"dolt"}},
 			},
 			{
-				Skip:     true, // TODO: ERROR: unsupported syntax: <nil>
 				Query:    "SELECT nspname FROM pg_namespace OFFSET $1;",
 				BindVars: []any{1},
-				Expected: []sql.Row{{"dolt"}},
+				Expected: []sql.Row{
+					{"information_schema"},
+					{"pg_catalog"},
+					{"public"},
+				},
 			},
 		},
 	},
