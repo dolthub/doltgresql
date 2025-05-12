@@ -74,6 +74,8 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					}
 				}
 			}
+		case *plan.ExistsSubquery:
+			return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 		case *sql.ColumnDefaultValue:
 			// Due to how interfaces work, we sometimes pass (*ColumnDefaultValue)(nil), so we have to check for it
 			if expr != nil && expr.Expr != nil {

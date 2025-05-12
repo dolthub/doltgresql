@@ -241,6 +241,8 @@ func VitessTypeToObjectID(typ query.Type) (uint32, error) {
 		return uint32(oid.T_text), nil // NULL is treated as TEXT on the wire
 	case query.Type_ENUM:
 		return uint32(oid.T_text), nil // TODO: temporary solution until we support CREATE TYPE
+	case query.Type_EXPRESSION:
+		return uint32(oid.T_text), nil // this most closely matches the behavior in postgres, which treats any unresolved type as a string (unless it has special handling)
 	default:
 		return 0, errors.Errorf("unsupported type: %s", typ)
 	}
