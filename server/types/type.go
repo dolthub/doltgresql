@@ -483,7 +483,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	var ok bool
 	os, ok, err := sql.Unwrap[string](ctx, o)
 	if !ok {
-		return "", fmt.Errorf("unexpected type for io output, expected string, got %T", val)
+		return "", errors.Errorf("unexpected type for io output, expected string, got %T", val)
 	}
 	return os, err
 }

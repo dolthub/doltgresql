@@ -835,5 +835,39 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "create function on different branch",
+			Skip: true, // several issues prevent this from working yet
+			SetUpScript: []string{
+				`CREATE FUNCTION f1(input TEXT) RETURNS TEXT AS $$
+BEGIN
+	RETURN input || '_extra';
+END;
+$$ LANGUAGE plpgsql;`,
+				`call dolt_branch('b1');`,
+				`CREATE FUNCTION "postgres/b1".public.f1(input INT4) RETURNS INT4 AS $$
+BEGIN
+	RETURN input + 11;
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT f1('abcd');`,
+					Expected: []sql.Row{{"abcd_extra"}},
+				},
+				{
+					Query:    `SELECT "postgres/b1".public.f1(55);`,
+					Expected: []sql.Row{{66}},
+				},
+				{
+					Query: `call dolt_checkout('b1');`,
+				},
+				{
+					Query:    `SELECT f1(55);`,
+					Expected: []sql.Row{{66}},
+				},
+			},
+		},
 	})
 }

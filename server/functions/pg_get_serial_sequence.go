@@ -96,8 +96,13 @@ var pg_get_serial_sequence_text_text = framework.Function2{
 		}
 		column := tableSchema[columnIndex]
 
+		stbl, ok := table.(sql.DatabaseSchemaTable)
+		if !ok {
+			return nil, errors.Errorf("table %s does not implement sql.DatabaseSchemaTable", tableName)
+		}
+
 		// Find any sequence associated with the column
-		sequenceCollection, err := core.GetSequencesCollectionFromContext(ctx)
+		sequenceCollection, err := core.GetSequencesCollectionFromContext(ctx, stbl.DatabaseSchema().Name())
 		if err != nil {
 			return nil, err
 		}

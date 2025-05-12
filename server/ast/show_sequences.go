@@ -15,7 +15,7 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -27,5 +27,8 @@ func nodeShowSequences(ctx *Context, node *tree.ShowSequences) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("SHOW SEQUENCES is not yet supported")
+
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewShowSequences(bareIdentifier(node.Database)),
+	}, nil
 }

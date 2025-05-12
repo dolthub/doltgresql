@@ -146,6 +146,42 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 				return false, nil
 			})
 		}
+
+		seqs, err := sequences.LoadSequences(ctx, root)
+		if err != nil {
+			return "error loading sequences: " + err.Error()
+		}
+
+		seqs.IterateSequences(ctx, func(seq *sequences.Sequence) (stop bool, err error) {
+			buf.WriteString("Sequence ")
+			buf.WriteString(seq.Name().String())
+			buf.WriteString(": ")
+			buf.WriteString("OwnerColumn: ")
+			buf.WriteString(seq.OwnerColumn)
+			buf.WriteString(" OwnerTable: ")
+			buf.WriteString(seq.OwnerTable.AsId().String())
+			buf.WriteString(" Increment: ")
+			buf.WriteString(strconv.FormatInt(seq.Increment, 10))
+			buf.WriteString(" Current: ")
+			buf.WriteString(strconv.FormatInt(seq.Current, 10))
+			buf.WriteString(" Start: ")
+			buf.WriteString(strconv.FormatInt(seq.Start, 10))
+			buf.WriteString(" Min: ")
+			buf.WriteString(strconv.FormatInt(seq.Minimum, 10))
+			buf.WriteString(" Max: ")
+			buf.WriteString(strconv.FormatInt(seq.Maximum, 10))
+			buf.WriteString(" Cache: ")
+			buf.WriteString(strconv.FormatInt(seq.Cache, 10))
+			buf.WriteString(" Cycle: ")
+			buf.WriteString(strconv.FormatBool(seq.Cycle))
+			buf.WriteString(" DataTypeID: ")
+			buf.WriteString(seq.DataTypeID.AsId().String())
+			buf.WriteString(" DataTypeName: ")
+			buf.WriteString(seq.DataTypeID.AsId().String())
+			buf.WriteString("\n")
+			return false, nil
+		})
+
 	}
 
 	return buf.String()

@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -27,5 +25,8 @@ func nodeShowDatabases(ctx *Context, node *tree.ShowDatabases) (vitess.Statement
 	if node == nil {
 		return nil, nil
 	}
-	return nil, errors.Errorf("SHOW DATABASES is not yet supported")
+
+	return &vitess.Show{
+		Type: vitess.KeywordString(vitess.DATABASES),
+	}, nil
 }
