@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -45,7 +46,7 @@ var _ sql.Expression = (*InSubquery)(nil)
 var _ expression.BinaryExpression = (*InSubquery)(nil)
 
 // nilKey is the hash of a row with a single nil value.
-var nilKey, _ = sql.HashOf(nil, sql.NewRow(nil))
+var nilKey, _ = sql.HashOf(context.TODO(), sql.NewRow(nil))
 
 // NewInSubquery returns a new *InSubquery.
 func NewInSubquery() *InSubquery {
