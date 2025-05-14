@@ -48,6 +48,13 @@ var preparedStatementTests = []ScriptTest{
 					{3},
 				},
 			},
+			{
+				Query:    "select $1 as test",
+				BindVars: []any{"hello"},
+				Expected: []sql.Row{
+					{"hello"},
+				},
+			},
 		},
 	},
 	{
@@ -56,7 +63,7 @@ var preparedStatementTests = []ScriptTest{
 			{
 				Query:    "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = $1);",
 				BindVars: []any{"public"},
-				Expected: []sql.Row{{1}},
+				Expected: []sql.Row{{"t"}},
 			},
 			{
 				Query:    "SELECT nspname FROM pg_namespace LIMIT $1;",
@@ -64,10 +71,13 @@ var preparedStatementTests = []ScriptTest{
 				Expected: []sql.Row{{"dolt"}},
 			},
 			{
-				Skip:     true, // TODO: ERROR: unsupported syntax: <nil>
 				Query:    "SELECT nspname FROM pg_namespace OFFSET $1;",
 				BindVars: []any{1},
-				Expected: []sql.Row{{"dolt"}},
+				Expected: []sql.Row{
+					{"information_schema"},
+					{"pg_catalog"},
+					{"public"},
+				},
 			},
 		},
 	},
