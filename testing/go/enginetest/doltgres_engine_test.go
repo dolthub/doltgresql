@@ -1109,7 +1109,13 @@ func TestLargeJsonObjects(t *testing.T) {
 func TestTransactions(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
-	denginetest.RunTransactionTests(t, h)
+	denginetest.RunTransactionTests(t, h, false)
+}
+
+func TestTransactionsPrepared(t *testing.T) {
+	t.Skip()
+	h := newDoltgresServerHarness(t)
+	denginetest.RunTransactionTests(t, h, true)
 }
 
 func TestBranchTransactions(t *testing.T) {
