@@ -373,9 +373,15 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 					Expression: pgexprs.NewInSubquery(),
 					Children:   vitess.Exprs{left, right},
 				}, nil
-			default:
-				return nil, errors.Errorf("right side of IN expression is not a tuple or subquery, got %T", right)
+			case vitess.InjectedExpr:
+				if _, ok := right.Expression.(*pgexprs.RecordExpr); ok {
+					return vitess.InjectedExpr{
+						Expression: pgexprs.NewInTuple(),
+						Children:   vitess.Exprs{left, vitess.ValTuple(right.Children)},
+					}, nil
+				}
 			}
+			return nil, errors.Errorf("right side of IN expression is not a tuple or subquery, got %T", right)
 		case tree.NotIn:
 			innerExpr := vitess.InjectedExpr{
 				Expression: pgexprs.NewInTuple(),
@@ -776,15 +782,16 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		if len(node.Labels) > 0 {
 			return nil, errors.Errorf("tuple labels are not yet supported")
 		}
-		if node.Row {
-			return nil, errors.Errorf("ROW keyword for tuples not yet supported")
-		}
 
 		valTuple, err := nodeExprs(ctx, node.Exprs)
 		if err != nil {
 			return nil, err
 		}
-		return vitess.ValTuple(valTuple), nil
+
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRecordExpr(),
+			Children:   valTuple,
+		}, nil
 	case *tree.TupleStar:
 		return nil, errors.Errorf("(E).* is not yet supported")
 	case *tree.UnaryExpr:
