@@ -45,6 +45,11 @@ type FunctionInterface interface {
 	enforceInterfaceInheritance(error)
 }
 
+type AggregateFunctionInterface interface {
+	FunctionInterface
+	sql.Aggregation
+}
+
 // Function0 is a function that does not take any parameters.
 type Function0 struct {
 	Name               string
@@ -280,3 +285,75 @@ func (f Function4) InternalID() id.Id {
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function4) enforceInterfaceInheritance(error) {}
+
+// Func1Aggregate is a function that takes one parameter and is an aggregate function.
+type Func1Aggregate struct {
+	Function0
+}
+
+func (f Func1Aggregate) Resolved() bool {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) String() string {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) Type() sql.Type {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) IsNullable() bool {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) Children() []sql.Expression {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) Id() sql.ColumnId {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) WithId(columnId sql.ColumnId) sql.IdExpression {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) NewWindowFunction() (sql.WindowFunction, error) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) WithWindow(window *sql.WindowDefinition) sql.WindowAdaptableExpression {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) Window() *sql.WindowDefinition {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (f Func1Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
+	// TODO implement me
+	panic("implement me")
+}
+
+var _ AggregateFunction = Func1Aggregate{}

@@ -28,12 +28,45 @@ import (
 // Catalog contains all of the PostgreSQL functions.
 var Catalog = map[string][]FunctionInterface{}
 
+// AggregateCatalog contains all of the PostgreSQL aggregate functions.
+var AggregateCatalog = map[string][]AggregateFunction{}
+
 // initializedFunctions simply states whether Initialize has been called yet.
 var initializedFunctions = false
 
 // RegisterFunction registers the given function, so that it will be usable from a running server. This should be called
 // from within an init().
 func RegisterFunction(f FunctionInterface) {
+	if initializedFunctions {
+		panic("attempted to register a function after the init() phase")
+	}
+	switch f := f.(type) {
+	case Function0:
+		name := strings.ToLower(f.Name)
+		Catalog[name] = append(Catalog[name], f)
+	case Function1:
+		name := strings.ToLower(f.Name)
+		Catalog[name] = append(Catalog[name], f)
+	case Function2:
+		name := strings.ToLower(f.Name)
+		Catalog[name] = append(Catalog[name], f)
+	case Function3:
+		name := strings.ToLower(f.Name)
+		Catalog[name] = append(Catalog[name], f)
+	case Function4:
+		name := strings.ToLower(f.Name)
+		Catalog[name] = append(Catalog[name], f)
+	case InterpretedFunction:
+		name := strings.ToLower(f.ID.FunctionName())
+		Catalog[name] = append(Catalog[name], f)
+	default:
+		panic("unhandled function type")
+	}
+}
+
+// RegisterFunction registers the given function, so that it will be usable from a running server. This should be called
+// from within an init().
+func RegisterAggregateFunction(f AggregateFunctionInterface) {
 	if initializedFunctions {
 		panic("attempted to register a function after the init() phase")
 	}

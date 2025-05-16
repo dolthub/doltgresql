@@ -20,6 +20,22 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestSimple(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "left",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT left('abc', 1);`,
+					Expected: []sql.Row{
+						{"a"},
+					},
+				},
+			},
+		},
+	})
+}
+
 // https://www.postgresql.org/docs/15/functions-math.html
 func TestFunctionsMath(t *testing.T) {
 	RunScripts(t, []ScriptTest{
