@@ -36,11 +36,12 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// DoltgresType represents a single type.
-// TODO: the serialization logic always serializes every field for built-in types, which is kind of silly. They are
+// DoltgresType represents a single type. Many of these fields map directly to the type definitions in the pg_types
+// system table. See https://www.postgresql.org/docs/current/catalog-pg-type.html for more information.
 //
-//	effectively hard-coded. We could serialize much more cheaply by only serializing values which can't be derived
-//	(for custom types) and hard-coding everything else.
+// TODO: the serialization logic always serializes every field for built-in types, which is kind of silly. They are
+// effectively hard-coded. We could serialize much more cheaply by only serializing values which can't be derived
+// (for custom types) and hard-coding everything else.
 type DoltgresType struct {
 	ID          id.Type
 	TypType     TypeType
@@ -55,10 +56,10 @@ type DoltgresType struct {
 	SubscriptFunc uint32
 	Elem          id.Type
 	Array         id.Type
-	InputFunc     uint32
-	OutputFunc    uint32
-	ReceiveFunc   uint32
-	SendFunc      uint32
+	InputFunc     uint32 // for deserializing a text representation
+	OutputFunc    uint32 // for serializing a text representation
+	ReceiveFunc   uint32 // for deserializing a binary representation
+	SendFunc      uint32 // for serializing a binary representation
 	ModInFunc     uint32
 	ModOutFunc    uint32
 	AnalyzeFunc   uint32
@@ -469,7 +470,7 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	var o any
 	var err error
-	if t.ModInFunc != 0 || t.IsArrayType() {
+	if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
 		send := globalFunctionRegistry.GetFunction(t.OutputFunc)
 		resolvedTypes := send.ResolvedTypes()
 		resolvedTypes[0] = t
@@ -492,6 +493,12 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 func (t *DoltgresType) IsArrayType() bool {
 	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType) ||
 		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
+}
+
+// IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a
+// user-created composite type.
+func (t *DoltgresType) IsCompositeType() bool {
+	return t.ID.TypeName() == "record" || t.TypType == TypeType_Composite
 }
 
 // IsEmptyType returns true if the type is not valid.

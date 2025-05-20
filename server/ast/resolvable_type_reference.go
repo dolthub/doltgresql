@@ -72,6 +72,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 			return nil, nil, errors.Errorf("geography types are not yet supported")
 		} else {
 			switch columnType.Oid() {
+			case oid.T_record:
+				resolvedType = pgtypes.Record
 			case oid.T_bool:
 				resolvedType = pgtypes.Bool
 			case oid.T_bytea:

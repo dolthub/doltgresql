@@ -42,6 +42,10 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		return nil, err
 	}
 
+	if resolvedType == pgtypes.Record {
+		return nil, errors.Errorf(`column "%s" has pseudo-type record`, node.Name.String())
+	}
+
 	var isNull vitess.BoolVal
 	var isNotNull vitess.BoolVal
 	switch node.Nullable.Nullability {

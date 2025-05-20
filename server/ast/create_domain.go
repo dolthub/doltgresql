@@ -22,6 +22,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // nodeCreateDomain handles *tree.CreateDomain nodes.
@@ -37,6 +38,11 @@ func nodeCreateDomain(ctx *Context, node *tree.CreateDomain) (vitess.Statement, 
 	if err != nil {
 		return nil, err
 	}
+
+	if dataType == pgtypes.Record {
+		return nil, errors.Errorf(`"record" is not a valid base type for a domain`)
+	}
+
 	if node.Collate != "" {
 		return nil, errors.Errorf("domain collation is not yet supported")
 	}
