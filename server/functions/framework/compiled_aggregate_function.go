@@ -155,10 +155,10 @@ type arrayAggBuffer struct {
 	elements []any
 }
 
-func newArrayAggBuffer() *arrayAggBuffer {
+func newArrayAggBuffer() (sql.AggregationBuffer, error) {
 	return &arrayAggBuffer{
 		elements: make([]any, 0),
-	}
+	}, nil
 }
 
 func (a *arrayAggBuffer) Dispose() {}
@@ -176,7 +176,7 @@ func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
 }
 
 func (c *CompiledAggregateFunction) NewBuffer() (sql.AggregationBuffer, error) {
-	return newArrayAggBuffer(), nil
+	return newArrayAggBuffer()
 }
 
 func (c *CompiledAggregateFunction) Id() sql.ColumnId {

@@ -45,9 +45,10 @@ type FunctionInterface interface {
 	enforceInterfaceInheritance(error)
 }
 
+// AggregateFunction is an interface for PostgreSQL aggregate functions
 type AggregateFunctionInterface interface {
 	FunctionInterface
-	sql.Aggregation
+	NewBuffer() (sql.AggregationBuffer, error)
 }
 
 // Function0 is a function that does not take any parameters.
@@ -288,72 +289,34 @@ func (f Function4) enforceInterfaceInheritance(error) {}
 
 // Func1Aggregate is a function that takes one parameter and is an aggregate function.
 type Func1Aggregate struct {
-	Function0
-}
-
-func (f Func1Aggregate) Resolved() bool {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) String() string {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) Type() sql.Type {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) IsNullable() bool {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) Children() []sql.Expression {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) Id() sql.ColumnId {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) WithId(columnId sql.ColumnId) sql.IdExpression {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) NewWindowFunction() (sql.WindowFunction, error) {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) WithWindow(window *sql.WindowDefinition) sql.WindowAdaptableExpression {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (f Func1Aggregate) Window() *sql.WindowDefinition {
-	// TODO implement me
-	panic("implement me")
+	Function1
+	NewAggBuffer func() (sql.AggregationBuffer, error) 
 }
 
 func (f Func1Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
-	// TODO implement me
-	panic("implement me")
+	return f.NewAggBuffer()
 }
 
-var _ AggregateFunction = Func1Aggregate{}
+// Func2Aggregate is a function that takes one parameter and is an aggregate function.
+type Func2Aggregate struct {
+	Function2
+	NewAggBuffer func() (sql.AggregationBuffer, error)
+}
+
+func (f Func2Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
+	return f.NewAggBuffer()
+}
+
+// Func3Aggregate is a function that takes one parameter and is an aggregate function.
+type Func3Aggregate struct {
+	Function3
+	NewAggBuffer func() (sql.AggregationBuffer, error)
+}
+
+func (f Func3Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
+	return f.NewAggBuffer()
+}
+
+var _ AggregateFunctionInterface = Func1Aggregate{}
+var _ AggregateFunctionInterface = Func2Aggregate{}
+var _ AggregateFunctionInterface = Func3Aggregate{}

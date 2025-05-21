@@ -15,6 +15,7 @@
 package framework
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -64,33 +65,24 @@ func RegisterFunction(f FunctionInterface) {
 	}
 }
 
-// RegisterFunction registers the given function, so that it will be usable from a running server. This should be called
+// RegisterAggregateFunction registers the given function, so that it will be usable from a running server. This should be called
 // from within an init().
 func RegisterAggregateFunction(f AggregateFunctionInterface) {
 	if initializedFunctions {
 		panic("attempted to register a function after the init() phase")
 	}
 	switch f := f.(type) {
-	case Function0:
+	case Func1Aggregate:
 		name := strings.ToLower(f.Name)
 		Catalog[name] = append(Catalog[name], f)
-	case Function1:
+	case Func2Aggregate:
 		name := strings.ToLower(f.Name)
 		Catalog[name] = append(Catalog[name], f)
-	case Function2:
+	case Func3Aggregate:
 		name := strings.ToLower(f.Name)
-		Catalog[name] = append(Catalog[name], f)
-	case Function3:
-		name := strings.ToLower(f.Name)
-		Catalog[name] = append(Catalog[name], f)
-	case Function4:
-		name := strings.ToLower(f.Name)
-		Catalog[name] = append(Catalog[name], f)
-	case InterpretedFunction:
-		name := strings.ToLower(f.ID.FunctionName())
 		Catalog[name] = append(Catalog[name], f)
 	default:
-		panic("unhandled function type")
+		panic(fmt.Sprintf("unhandled function type %T", f))
 	}
 }
 

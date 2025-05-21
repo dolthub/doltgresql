@@ -20,15 +20,19 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-func TestSimple(t *testing.T) {
+func TestAggregateFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "left",
+			Name: "array_agg",
+			SetUpScript: []string{
+				`CREATE TABLE test (pk INT primary key, v1 INT, v2 INT);`,
+				`INSERT INTO test VALUES (1, 1, 2), (2, 3, 4), (3, 5, 6);`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT left('abc', 1);`,
+					Query: `SELECT array_agg(v1) FROM test;`,
 					Expected: []sql.Row{
-						{"a"},
+						{[]int64{1, 3, 5}},
 					},
 				},
 			},
