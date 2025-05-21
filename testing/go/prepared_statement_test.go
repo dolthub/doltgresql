@@ -425,6 +425,19 @@ var preparedStatementTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "insert returning",
+		SetUpScript: []string{
+			"CREATE TABLE test (id serial, name text)",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `INSERT INTO test (name) VALUES ($1) RETURNING id;`,
+				BindVars: []any{"test_name"},
+				Expected: []sql.Row{{1}},
+			},
+		},
+	},
 }
 
 var pgCatalogTests = []ScriptTest{
