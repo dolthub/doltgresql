@@ -15,10 +15,13 @@
 package framework
 
 import (
+	"strings"
+
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 )
 
 // AggregateFunction is an expression that represents CompiledAggregateFunction
@@ -48,19 +51,19 @@ func newCompiledAggregateFunctionInternal(
 	overloads *Overloads,
 	fnOverloads []Overload,
 ) *CompiledAggregateFunction {
-	
+
 	cf := newCompiledFunctionInternal(name, args, overloads, fnOverloads, false, nil)
 	c := &CompiledAggregateFunction{
 		CompiledFunction: cf,
 	}
-	
+
 	return c
 }
 
 // Eval implements the interface sql.Expression.
 func (c *CompiledAggregateFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	// TODO: probably should be an error?
-	
+
 	// If we have a stashed error, then we should return that now. Errors are stashed when they're supposed to be
 	// returned during the call to Eval. This helps to ensure consistency with how errors are returned in Postgres.
 	if c.stashedErr != nil {
@@ -148,8 +151,33 @@ func (c *CompiledAggregateFunction) WithChildren(children ...sql.Expression) (sq
 	return newCompiledAggregateFunctionInternal(c.Name, children, c.overloads, c.fnOverloads), nil
 }
 
+// SetStatementRunner implements the interface analyzer.Interpreter.
+func (c *CompiledAggregateFunction) SetStatementRunner(ctx *sql.Context, runner sql.StatementRunner) sql.Expression {
+	nc := *c
+	nc.runner = runner
+	return &nc
+}
+
 // specificFuncImpl implements the interface sql.Expression.
 func (*CompiledAggregateFunction) specificFuncImpl() {}
+
+func (c *CompiledAggregateFunction) DebugString() string {
+	sb := strings.Builder{}
+	sb.WriteString("CompiledAggregateFunction:")
+	sb.WriteString(c.Name + "(")
+	for i, param := range c.Arguments {
+		// Aliases will output the string "x as x", which is an artifact of how we build the AST, so we'll bypass it
+		if alias, ok := param.(*expression.Alias); ok {
+			param = alias.Child
+		}
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(sql.DebugString(param))
+	}
+	sb.WriteString(")")
+	return sb.String()
+}
 
 type arrayAggBuffer struct {
 	elements []any
