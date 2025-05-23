@@ -623,6 +623,22 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "2D array",
+		Skip: true, // multiple dimensions not supported yet
+		SetUpScript: []string{
+			"CREATE TABLE t_varchar (id INTEGER primary key, v1 CHARACTER VARYING[][]);",
+			"INSERT INTO t_varchar VALUES (1, '{{abcdefghij, NULL}, {1234, abc}}'), (2, ARRAY['ab''cdef', 'what', 'is,hi', 'wh\"at', '}', '{', '{}']);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_varchar ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{abcdefghij,NULL}"},
+					{2, `{ab'cdef,what,"is,hi","wh\"at","}","{","{}"}`},
+				},
+			},
+		},
+	}, {
 		Name: "Cidr type",
 		Skip: true,
 		SetUpScript: []string{

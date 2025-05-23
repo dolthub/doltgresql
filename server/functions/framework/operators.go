@@ -72,16 +72,16 @@ var (
 	unaryFunctions = map[unaryFunction]Function1{}
 	// binaryFunctions is a map from a binaryFunction signature to the associated function.
 	binaryFunctions = map[binaryFunction]Function2{}
-	// unaryAggregateOverloads is a map from an operator to an Overload deducer that is the aggregate of all functions
+	// unaryOperatorOverloads is a map from an operator to an Overload deducer that is the aggregate of all functions
 	// for that operator.
-	unaryAggregateOverloads = map[Operator]*Overloads{}
-	// binaryAggregateOverloads is a map from an operator to an Overload deducer that is the aggregate of all functions
+	unaryOperatorOverloads = map[Operator]*Overloads{}
+	// binaryOperatorOverloads is a map from an operator to an Overload deducer that is the aggregate of all functions
 	// for that operator.
-	binaryAggregateOverloads = map[Operator]*Overloads{}
-	// unaryAggregatePermutations contains all of the permutations for each unary operator.
-	unaryAggregatePermutations = map[Operator][]Overload{}
-	// unaryAggregatePermutations contains all of the permutations for each binary operator.
-	binaryAggregatePermutations = map[Operator][]Overload{}
+	binaryOperatorOverloads = map[Operator]*Overloads{}
+	// unaryOperatorPermutations contains all of the permutations for each unary operator.
+	unaryOperatorPermutations = map[Operator][]Overload{}
+	// unaryOperatorPermutations contains all of the permutations for each binary operator.
+	binaryOperatorPermutations = map[Operator][]Overload{}
 )
 
 // RegisterUnaryFunction registers the given function, so that it will be usable from a running server. This should
@@ -127,8 +127,8 @@ func RegisterBinaryFunction(operator Operator, f Function2) {
 func GetUnaryFunction(operator Operator) IntermediateFunction {
 	// Returns nil if not found, which is fine as IntermediateFunction will handle the nil deducer
 	return IntermediateFunction{
-		Functions:    unaryAggregateOverloads[operator],
-		AllOverloads: unaryAggregatePermutations[operator],
+		Functions:    unaryOperatorOverloads[operator],
+		AllOverloads: unaryOperatorPermutations[operator],
 		IsOperator:   true,
 	}
 }
@@ -137,8 +137,8 @@ func GetUnaryFunction(operator Operator) IntermediateFunction {
 func GetBinaryFunction(operator Operator) IntermediateFunction {
 	// Returns nil if not found, which is fine as IntermediateFunction will handle the nil deducer
 	return IntermediateFunction{
-		Functions:    binaryAggregateOverloads[operator],
-		AllOverloads: binaryAggregatePermutations[operator],
+		Functions:    binaryOperatorOverloads[operator],
+		AllOverloads: binaryOperatorPermutations[operator],
 		IsOperator:   true,
 	}
 }

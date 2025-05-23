@@ -17,6 +17,7 @@ package analyzer
 import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 )
 
 // IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
@@ -101,6 +102,23 @@ func initEngine() {
 	// place to put it. Our foreign key validation logic is different from MySQL's, and since it's not an analyzer rule
 	// we can't swap out a rule like the rest of the logic in this package, we have to do a function swap.
 	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
+
+	planbuilder.IsAggregateFunc = IsAggregateFunc
+}
+
+// IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by
+// MySQL plus some postgres specific ones.
+func IsAggregateFunc(name string) bool {
+	if planbuilder.IsMySQLAggregateFuncName(name) {
+		return true
+	}
+
+	switch name {
+	case "array_agg":
+		return true
+	}
+
+	return false
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.

@@ -20,6 +20,48 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+func TestAggregateFunctions(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "array_agg",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (pk INT primary key, t timestamp, v varchar, f float[]);`,
+				`INSERT INTO t1 VALUES 
+                   (1, '2023-01-01 00:00:00', 'a', '{1.0, 2.0}'),
+                   (2, '2023-01-02 00:00:00', 'b', '{3.0, 4.0}'),
+                   (3, '2023-01-03 00:00:00', 'c', '{5.0, 6.0}');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT array_agg(pk) FROM t1;`,
+					Expected: []sql.Row{
+						{"{1,2,3}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(t) FROM t1;`,
+					Expected: []sql.Row{
+						{`{"2023-01-01 00:00:00","2023-01-02 00:00:00","2023-01-03 00:00:00"}`},
+					},
+				},
+				{
+					Query: `SELECT array_agg(v) FROM t1;`,
+					Expected: []sql.Row{
+						{"{a,b,c}"},
+					},
+				},
+				{
+					Skip:  true, // Higher-level arrays don't work because they panic during output
+					Query: `SELECT array_agg(f) FROM t1;`,
+					Expected: []sql.Row{
+						{"{{1.0,2.0},{3.0,4.0},{5.0,6.0}}"},
+					},
+				},
+			},
+		},
+	})
+}
+
 // https://www.postgresql.org/docs/15/functions-math.html
 func TestFunctionsMath(t *testing.T) {
 	RunScripts(t, []ScriptTest{
