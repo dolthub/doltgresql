@@ -30,7 +30,7 @@ import (
 var Catalog = map[string][]FunctionInterface{}
 
 // AggregateCatalog contains all of the PostgreSQL aggregate functions.
-var AggregateCatalog = map[string][]AggregateFunction{}
+var AggregateCatalog = map[string][]AggregateFunctionInterface{}
 
 // initializedFunctions simply states whether Initialize has been called yet.
 var initializedFunctions = false
@@ -74,13 +74,13 @@ func RegisterAggregateFunction(f AggregateFunctionInterface) {
 	switch f := f.(type) {
 	case Func1Aggregate:
 		name := strings.ToLower(f.Name)
-		Catalog[name] = append(Catalog[name], f)
+		AggregateCatalog[name] = append(AggregateCatalog[name], f)
 	case Func2Aggregate:
 		name := strings.ToLower(f.Name)
-		Catalog[name] = append(Catalog[name], f)
+		AggregateCatalog[name] = append(AggregateCatalog[name], f)
 	case Func3Aggregate:
 		name := strings.ToLower(f.Name)
-		Catalog[name] = append(Catalog[name], f)
+		AggregateCatalog[name] = append(AggregateCatalog[name], f)
 	default:
 		panic(fmt.Sprintf("unhandled function type %T", f))
 	}
@@ -101,6 +101,7 @@ func Initialize() {
 	replaceGmsBuiltIns()
 	validateFunctions()
 	compileFunctions()
+	compileAggs()
 }
 
 // replaceGmsBuiltIns replaces all GMS built-ins that have conflicting names with PostgreSQL functions.
@@ -179,6 +180,28 @@ func compileNonOperatorFunction(funcName string, overloads []FunctionInterface) 
 	namedCatalog[funcName] = overloads
 }
 
+// compileNonOperatorFunction creates a CompiledFunction for each overload of the given function.
+func compileNonOperatorAggFunction(funcName string, overloads []AggregateFunctionInterface) {
+	overloadTree := NewOverloads()
+	for _, functionOverload := range overloads {
+		if err := overloadTree.Add(functionOverload); err != nil {
+			panic(err)
+		}
+	}
+
+	// Store the compiled function into the engine's built-in functions
+	// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
+	createFunc := func(params ...sql.Expression) (sql.Expression, error) {
+		return NewCompiledFunction(funcName, params, overloadTree, false), nil
+	}
+	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
+		Name: funcName,
+		Fn:   createFunc,
+	})
+	compiledCatalog[funcName] = createFunc
+	namedCatalog[funcName] = overloads
+}
+
 // compileFunctions creates a CompiledFunction for each overload of each function in the catalog.
 func compileFunctions() {
 	for funcName, overloads := range Catalog {
@@ -190,10 +213,10 @@ func compileFunctions() {
 	// special rules, so it's far more efficient to reuse it for operators. Operators are also a special case since they
 	// all have different names, while standard overload deducers work on a function-name basis.
 	for signature, functionOverload := range unaryFunctions {
-		overloads, ok := unaryAggregateOverloads[signature.Operator]
+		overloads, ok := unaryOperatorOverloads[signature.Operator]
 		if !ok {
 			overloads = NewOverloads()
-			unaryAggregateOverloads[signature.Operator] = overloads
+			unaryOperatorOverloads[signature.Operator] = overloads
 		}
 		if err := overloads.Add(functionOverload); err != nil {
 			panic(err)
@@ -201,10 +224,10 @@ func compileFunctions() {
 	}
 
 	for signature, functionOverload := range binaryFunctions {
-		overloads, ok := binaryAggregateOverloads[signature.Operator]
+		overloads, ok := binaryOperatorOverloads[signature.Operator]
 		if !ok {
 			overloads = NewOverloads()
-			binaryAggregateOverloads[signature.Operator] = overloads
+			binaryOperatorOverloads[signature.Operator] = overloads
 		}
 		if err := overloads.Add(functionOverload); err != nil {
 			panic(err)
@@ -212,10 +235,50 @@ func compileFunctions() {
 	}
 
 	// Add all permutations for the unary and binary operators
-	for operator, overload := range unaryAggregateOverloads {
-		unaryAggregatePermutations[operator] = overload.overloadsForParams(1)
+	for operator, overload := range unaryOperatorOverloads {
+		unaryOperatorPermutations[operator] = overload.overloadsForParams(1)
 	}
-	for operator, overload := range binaryAggregateOverloads {
-		binaryAggregatePermutations[operator] = overload.overloadsForParams(2)
+	for operator, overload := range binaryOperatorOverloads {
+		binaryOperatorPermutations[operator] = overload.overloadsForParams(2)
+	}
+}
+
+func compileAggs() {
+	for funcName, overloads := range AggregateCatalog {
+		compileNonOperatorFunction(funcName, overloads)
+	}
+
+	// Build the overload for all unary and binary functions based on their operator. This will be used for fallback if
+	// an exact match is not found. Compiled functions (which wrap the overload deducer) handle upcasting and other
+	// special rules, so it's far more efficient to reuse it for operators. Operators are also a special case since they
+	// all have different names, while standard overload deducers work on a function-name basis.
+	for signature, functionOverload := range unaryFunctions {
+		overloads, ok := unaryOperatorOverloads[signature.Operator]
+		if !ok {
+			overloads = NewOverloads()
+			unaryOperatorOverloads[signature.Operator] = overloads
+		}
+		if err := overloads.Add(functionOverload); err != nil {
+			panic(err)
+		}
+	}
+
+	for signature, functionOverload := range binaryFunctions {
+		overloads, ok := binaryOperatorOverloads[signature.Operator]
+		if !ok {
+			overloads = NewOverloads()
+			binaryOperatorOverloads[signature.Operator] = overloads
+		}
+		if err := overloads.Add(functionOverload); err != nil {
+			panic(err)
+		}
+	}
+
+	// Add all permutations for the unary and binary operators
+	for operator, overload := range unaryOperatorOverloads {
+		unaryOperatorPermutations[operator] = overload.overloadsForParams(1)
+	}
+	for operator, overload := range binaryOperatorOverloads {
+		binaryOperatorPermutations[operator] = overload.overloadsForParams(2)
 	}
 }
