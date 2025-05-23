@@ -191,7 +191,7 @@ func compileAggFunction(funcName string, overloads []AggregateFunctionInterface)
 	// Store the compiled function into the engine's built-in functions
 	// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
 	createFunc := func(params ...sql.Expression) (sql.Expression, error) {
-		return NewCompiledFunction(funcName, params, overloadTree, false), nil
+		return NewCompiledAggregateFunction(funcName, params, overloadTree), nil
 	}
 	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
 		Name: funcName,

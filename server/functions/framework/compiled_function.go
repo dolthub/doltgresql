@@ -307,7 +307,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	case InterpretedFunction:
 		return plpgsql.Call(ctx, f, c.runner, c.callResolved, args)
 	default:
-		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval")
+		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval %T", f)
 	}
 }
 
