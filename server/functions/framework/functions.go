@@ -48,6 +48,7 @@ type FunctionInterface interface {
 // AggregateFunction is an interface for PostgreSQL aggregate functions
 type AggregateFunctionInterface interface {
 	FunctionInterface
+	// TODO: this maybe needs to take the place of the Callable function
 	NewBuffer() (sql.AggregationBuffer, error)
 }
 

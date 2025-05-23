@@ -722,19 +722,3 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []*pgtypes.Doltgre
 
 // specificFuncImpl implements the interface sql.Expression.
 func (*CompiledFunction) specificFuncImpl() {}
-
-func init() {
-	RegisterAggregateFunction(Func1Aggregate{
-		Function1: Function1{
-			Name:       "array_agg",
-			Return:     pgtypes.AnyArray,
-			Parameters: [1]*pgtypes.DoltgresType{
-				pgtypes.AnyElement,
-			},
-			Callable: func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-				return nil, nil
-			},
-		},
-		NewAggBuffer: newArrayAggBuffer,
-	})
-}
