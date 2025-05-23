@@ -25,14 +25,35 @@ func TestAggregateFunctions(t *testing.T) {
 		{
 			Name: "array_agg",
 			SetUpScript: []string{
-				`CREATE TABLE test (pk INT primary key, v1 INT, v2 INT);`,
-				`INSERT INTO test VALUES (1, 1, 2), (2, 3, 4), (3, 5, 6);`,
+				`CREATE TABLE t1 (pk INT primary key, t timestamp, v varchar, f float[]);`,
+				`INSERT INTO t1 VALUES 
+                   (1, '2023-01-01 00:00:00', 'a', '{1.0, 2.0}'),
+                   (2, '2023-01-02 00:00:00', 'b', '{3.0, 4.0}'),
+                   (3, '2023-01-03 00:00:00', 'c', '{5.0, 6.0}');`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT array_agg(v1) FROM test;`,
+					Query: `SELECT array_agg(pk) FROM t1;`,
 					Expected: []sql.Row{
-						{"{1,3,5}"},
+						{"{1,2,3}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(t) FROM t1;`,
+					Expected: []sql.Row{
+						{`{"2023-01-01 00:00:00","2023-01-02 00:00:00","2023-01-03 00:00:00"}`},
+					},
+				},
+				{
+					Query: `SELECT array_agg(v) FROM t1;`,
+					Expected: []sql.Row{
+						{"{a,b,c}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(f) FROM t1;`,
+					Expected: []sql.Row{
+						{"{{1.0,2.0},{3.0,4.0},{5.0,6.0}}"},
 					},
 				},
 			},
