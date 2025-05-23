@@ -32,7 +32,7 @@ func TestAggregateFunctions(t *testing.T) {
 				{
 					Query: `SELECT array_agg(v1) FROM test;`,
 					Expected: []sql.Row{
-						{[]int64{1, 3, 5}},
+						{"{1,3,5}"},
 					},
 				},
 			},
