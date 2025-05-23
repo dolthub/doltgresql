@@ -65,6 +65,8 @@ type ConnectionHandler struct {
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
 	// COPY DATA messages from the client to import data into tables.
 	copyFromStdinState *copyFromStdinState
+	// inTransaction is set to true with BEGIN query and false with COMMIT query.
+	inTransaction bool
 }
 
 // Set this env var to disable panic handling in the connection, which is useful when debugging a panic
@@ -448,6 +450,10 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 // and any error that occurred while handling the query.
 func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (handled bool, endOfMessages bool, err error) {
 	switch stmt := query.AST.(type) {
+	case *sqlparser.Begin:
+		h.inTransaction = true
+	case *sqlparser.Commit:
+		h.inTransaction = false
 	case *sqlparser.Deallocate:
 		// TODO: handle ALL keyword
 		return true, true, h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
@@ -1032,10 +1038,15 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 // query. A nil error should be provided if this is being called naturally.
 func (h *ConnectionHandler) endOfMessages(err error) {
 	if err != nil {
+		// TODO: is ReadyForQueryTransactionIndicator_FailedTransactionBlock used here?
 		h.sendError(err)
 	}
+	ti := ReadyForQueryTransactionIndicator_Idle
+	if h.inTransaction {
+		ti = ReadyForQueryTransactionIndicator_TransactionBlock
+	}
 	if sendErr := h.send(&pgproto3.ReadyForQuery{
-		TxStatus: byte(ReadyForQueryTransactionIndicator_Idle),
+		TxStatus: byte(ti),
 	}); sendErr != nil {
 		// We panic here for the same reason as above.
 		panic(sendErr)

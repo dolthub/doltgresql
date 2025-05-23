@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // nodeCreateType handles *tree.CreateType nodes.
@@ -43,6 +44,11 @@ func nodeCreateType(ctx *Context, node *tree.CreateType) (vitess.Statement, erro
 			if err != nil {
 				return nil, err
 			}
+
+			if dataType == pgtypes.Record {
+				return nil, errors.Errorf(`column "%s" has pseudo-type record`, t.AttrName)
+			}
+
 			typs[i] = pgnodes.CompositeAsType{
 				AttrName:  t.AttrName,
 				Typ:       dataType,
