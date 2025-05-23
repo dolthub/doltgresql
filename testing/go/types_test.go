@@ -638,7 +638,7 @@ var typesTests = []ScriptTest{
 				},
 			},
 		},
-	},	{
+	}, {
 		Name: "Cidr type",
 		Skip: true,
 		SetUpScript: []string{

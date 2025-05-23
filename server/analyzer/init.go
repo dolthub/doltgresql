@@ -102,7 +102,7 @@ func initEngine() {
 	// place to put it. Our foreign key validation logic is different from MySQL's, and since it's not an analyzer rule
 	// we can't swap out a rule like the rest of the logic in this package, we have to do a function swap.
 	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
-	
+
 	planbuilder.IsAggregateFunc = IsAggregateFunc
 }
 
@@ -112,12 +112,12 @@ func IsAggregateFunc(name string) bool {
 	if planbuilder.IsMySQLAggregateFuncName(name) {
 		return true
 	}
-	
+
 	switch name {
 	case "array_agg":
 		return true
 	}
-	
+
 	return false
 }
 

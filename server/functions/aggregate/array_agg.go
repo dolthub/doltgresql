@@ -15,9 +15,10 @@
 package aggregate
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // initArrayAgg registers the functions to the catalog.
@@ -63,4 +64,3 @@ func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
 	a.elements = append(a.elements, row[0])
 	return nil
 }
-

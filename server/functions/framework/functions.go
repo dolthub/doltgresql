@@ -291,7 +291,7 @@ func (f Function4) enforceInterfaceInheritance(error) {}
 // Func1Aggregate is a function that takes one parameter and is an aggregate function.
 type Func1Aggregate struct {
 	Function1
-	NewAggBuffer func() (sql.AggregationBuffer, error) 
+	NewAggBuffer func() (sql.AggregationBuffer, error)
 }
 
 func (f Func1Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
