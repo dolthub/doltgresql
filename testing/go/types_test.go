@@ -2233,9 +2233,9 @@ var typesTests = []ScriptTest{
 		Name: "Regtype type",
 		Assertions: []ScriptTestAssertion{
 			{
-				Skip:  true, // TODO: Column should be regtype, not "integer"
-				Query: `SELECT 'integer'::regtype;`,
-				Cols:  []string{"regtype"},
+				Skip:             true, // TODO: Column should be regtype, not "integer"
+				Query:            `SELECT 'integer'::regtype;`,
+				ExpectedColNames: []string{"regtype"},
 				Expected: []sql.Row{
 					{"integer"},
 				},

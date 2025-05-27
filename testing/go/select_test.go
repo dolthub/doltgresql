@@ -41,7 +41,7 @@ func TestSelect(t *testing.T) {
 						{2, "王哥", 20},
 						{3, "张哥", 22},
 					},
-					Cols: []string{
+					ExpectedColNames: []string{
 						"id",
 						"name",
 						"age",
@@ -54,7 +54,7 @@ func TestSelect(t *testing.T) {
 						{1, "峰哥", 18},
 						{2, "王哥", 20},
 					},
-					Cols: []string{
+					ExpectedColNames: []string{
 						"id",
 						"name",
 						"age",
