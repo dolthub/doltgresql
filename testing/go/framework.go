@@ -112,8 +112,8 @@ type ScriptTestAssertion struct {
 	// This is checked only if no Expected is defined
 	ExpectedTag string
 
-	// Cols is used to check the column names returned from the server.
-	Cols []string
+	// ExpectedColNames is used to check the column names returned from the server.
+	ExpectedColNames []string
 
 	// CopyFromSTDIN is used to test the COPY FROM STDIN command.
 	CopyFromStdInFile string
@@ -224,10 +224,10 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 				readRows, err := ReadRows(rows, normalizeRows)
 				require.NoError(t, err)
 
-				if assertion.Cols != nil {
+				if assertion.ExpectedColNames != nil {
 					fields := rows.FieldDescriptions()
-					if assert.Len(t, fields, len(assertion.Cols), "expected length of columns") {
-						for i, col := range assertion.Cols {
+					if assert.Len(t, fields, len(assertion.ExpectedColNames), "expected length of columns") {
+						for i, col := range assertion.ExpectedColNames {
 							assert.Equal(t, col, fields[i].Name)
 						}
 					}

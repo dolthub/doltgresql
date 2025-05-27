@@ -26,20 +26,24 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			Name: "dolt branches",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT name FROM dolt.branches`,
-					Expected: []sql.Row{{"main"}},
+					Query:            `SELECT name FROM dolt.branches`,
+					ExpectedColNames: []string{"name"},
+					Expected:         []sql.Row{{"main"}},
 				},
 				{
-					Query:    `SELECT name FROM dolt_branches`,
-					Expected: []sql.Row{{"main"}},
+					Query:            `SELECT name FROM dolt_branches`,
+					ExpectedColNames: []string{"name"},
+					Expected:         []sql.Row{{"main"}},
 				},
 				{
-					Query:    `SELECT branches.name FROM dolt.branches`,
-					Expected: []sql.Row{{"main"}},
+					Query:            `SELECT branches.name FROM dolt.branches`,
+					ExpectedColNames: []string{"name"},
+					Expected:         []sql.Row{{"main"}},
 				},
 				{
-					Query:    `SELECT dolt.branches.name FROM dolt.branches`,
-					Expected: []sql.Row{{"main"}},
+					Query:            `SELECT dolt.branches.name FROM dolt.branches`,
+					ExpectedColNames: []string{"name"},
+					Expected:         []sql.Row{{"main"}},
 				},
 				{
 					Query:    `SELECT dolt_branches.name FROM dolt_branches`,

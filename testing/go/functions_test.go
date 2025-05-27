@@ -40,8 +40,8 @@ func TestFunctionsMath(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT round(cbrt(v1)::numeric, 10), round(cbrt(v2)::numeric, 10), round(cbrt(v3)::numeric, 10) FROM test ORDER BY pk;`,
-					Cols:  []string{"round", "round", "round"},
+					Query:            `SELECT round(cbrt(v1)::numeric, 10), round(cbrt(v2)::numeric, 10), round(cbrt(v3)::numeric, 10) FROM test ORDER BY pk;`,
+					ExpectedColNames: []string{"round", "round", "round"},
 					Expected: []sql.Row{
 						{Numeric("-1.0000000000"), Numeric("-1.2599210499"), Numeric("-1.4422495703")},
 						{Numeric("1.9129311828"), Numeric("2.2239800906"), Numeric("2.3513346877")},
@@ -53,15 +53,15 @@ func TestFunctionsMath(t *testing.T) {
 					ExpectedErr: "function cbrt(varchar(255)) does not exist",
 				},
 				{
-					Query: `SELECT cbrt('64');`,
-					Cols:  []string{"cbrt"},
+					Query:            `SELECT cbrt('64');`,
+					ExpectedColNames: []string{"cbrt"},
 					Expected: []sql.Row{
 						{4.0},
 					},
 				},
 				{
-					Query: `SELECT round(cbrt('64'));`,
-					Cols:  []string{"round"},
+					Query:            `SELECT round(cbrt('64'));`,
+					ExpectedColNames: []string{"round"},
 					Expected: []sql.Row{
 						{4.0},
 					},
@@ -76,8 +76,8 @@ func TestFunctionsMath(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT gcd(v1, 10), gcd(v2, 20) FROM test ORDER BY pk;`,
-					Cols:  []string{"gcd", "gcd"},
+					Query:            `SELECT gcd(v1, 10), gcd(v2, 20) FROM test ORDER BY pk;`,
+					ExpectedColNames: []string{"gcd", "gcd"},
 					Expected: []sql.Row{
 						{2, 4},
 						{10, 4},
@@ -93,22 +93,22 @@ func TestFunctionsMath(t *testing.T) {
 					ExpectedErr: "function gcd(varchar(255), integer) does not exist",
 				},
 				{
-					Query: `SELECT gcd(36, '48');`,
-					Cols:  []string{"gcd"},
+					Query:            `SELECT gcd(36, '48');`,
+					ExpectedColNames: []string{"gcd"},
 					Expected: []sql.Row{
 						{12},
 					},
 				},
 				{
-					Query: `SELECT gcd('36', 48);`,
-					Cols:  []string{"gcd"},
+					Query:            `SELECT gcd('36', 48);`,
+					ExpectedColNames: []string{"gcd"},
 					Expected: []sql.Row{
 						{12},
 					},
 				},
 				{
-					Query: `SELECT gcd(1, 0), gcd(0, 1), gcd(0, 0);`,
-					Cols:  []string{"gcd", "gcd", "gcd"},
+					Query:            `SELECT gcd(1, 0), gcd(0, 1), gcd(0, 0);`,
+					ExpectedColNames: []string{"gcd", "gcd", "gcd"},
 					Expected: []sql.Row{
 						{1, 1, 0},
 					},
@@ -123,8 +123,8 @@ func TestFunctionsMath(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT lcm(v1, 10), lcm(v2, 20) FROM test ORDER BY pk;`,
-					Cols:  []string{"lcm", "lcm"},
+					Query:            `SELECT lcm(v1, 10), lcm(v2, 20) FROM test ORDER BY pk;`,
+					ExpectedColNames: []string{"lcm", "lcm"},
 					Expected: []sql.Row{
 						{10, 20},
 						{10, 60},
@@ -172,8 +172,8 @@ func TestFunctionsOID(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT to_regclass('testing');`,
-					Cols:  []string{"to_regclass"},
+					Query:            `SELECT to_regclass('testing');`,
+					ExpectedColNames: []string{"to_regclass"},
 					Expected: []sql.Row{
 						{"testing"},
 					},
@@ -226,8 +226,8 @@ func TestFunctionsOID(t *testing.T) {
 			Name: "to_regproc",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT to_regproc('acos');`,
-					Cols:  []string{"to_regproc"},
+					Query:            `SELECT to_regproc('acos');`,
+					ExpectedColNames: []string{"to_regproc"},
 					Expected: []sql.Row{
 						{"acos"},
 					},
@@ -256,8 +256,8 @@ func TestFunctionsOID(t *testing.T) {
 			Name: "to_regtype",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT to_regtype('integer');`,
-					Cols:  []string{"to_regtype"},
+					Query:            `SELECT to_regtype('integer');`,
+					ExpectedColNames: []string{"to_regtype"},
 					Expected: []sql.Row{
 						{"integer"},
 					},
@@ -370,8 +370,8 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Database: "test",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT current_database();`,
-					Cols:  []string{"current_database"},
+					Query:            `SELECT current_database();`,
+					ExpectedColNames: []string{"current_database"},
 					Expected: []sql.Row{
 						{"test"},
 					},
@@ -399,9 +399,9 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Database: "test",
 			Assertions: []ScriptTestAssertion{
 				{
-					Skip:  true, // TODO: current_catalog currently returns current_database column name
-					Query: `SELECT current_catalog;`,
-					Cols:  []string{"current_catalog"},
+					Skip:             true, // TODO: current_catalog currently returns current_database column name
+					Query:            `SELECT current_catalog;`,
+					ExpectedColNames: []string{"current_catalog"},
 					Expected: []sql.Row{
 						{"test"},
 					},
@@ -434,9 +434,9 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Name: "current_schema",
 			Assertions: []ScriptTestAssertion{
 				{
-					Skip:  true, // TODO: current_schema currently returns column name in quotes
-					Query: `SELECT current_schema();`,
-					Cols:  []string{"\"current_schema\""},
+					Skip:             true, // TODO: current_schema currently returns column name in quotes
+					Query:            `SELECT current_schema();`,
+					ExpectedColNames: []string{"\"current_schema\""},
 					Expected: []sql.Row{
 						{"public"},
 					},
@@ -508,8 +508,8 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Name: "current_schemas",
 			Assertions: []ScriptTestAssertion{
 				{ // TODO: Not sure why Postgres does not display "$user", which is postgres here
-					Query: `SELECT current_schemas(true);`,
-					Cols:  []string{"current_schemas"},
+					Query:            `SELECT current_schemas(true);`,
+					ExpectedColNames: []string{"current_schemas"},
 					Expected: []sql.Row{
 						{"{pg_catalog,public}"},
 					},
@@ -562,8 +562,8 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Name: "version",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT version();`,
-					Cols:  []string{"version"},
+					Query:            `SELECT version();`,
+					ExpectedColNames: []string{"version"},
 					Expected: []sql.Row{
 						{"PostgreSQL 15.5"},
 					},
@@ -574,8 +574,8 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Name: "col_description",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT col_description(100, 1);`,
-					Cols:  []string{"col_description"},
+					Query:            `SELECT col_description(100, 1);`,
+					ExpectedColNames: []string{"col_description"},
 					Expected: []sql.Row{
 						{""},
 					},
@@ -594,9 +594,9 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:  true, // TODO: Implement column object comments
-					Query: `SELECT col_description('test_table'::regclass, 1);`,
-					Cols:  []string{"col_description"},
+					Skip:             true, // TODO: Implement column object comments
+					Query:            `SELECT col_description('test_table'::regclass, 1);`,
+					ExpectedColNames: []string{"col_description"},
 					Expected: []sql.Row{
 						{"This is col id"},
 					},
@@ -607,8 +607,8 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Name: "obj_description",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT obj_description(100, 'pg_class');`,
-					Cols:  []string{"obj_description"},
+					Query:            `SELECT obj_description(100, 'pg_class');`,
+					ExpectedColNames: []string{"obj_description"},
 					Expected: []sql.Row{
 						{""},
 					},
@@ -618,9 +618,9 @@ func TestSystemInformationFunctions(t *testing.T) {
 					ExpectedErr: `function "does-not-exist" does not exist`,
 				},
 				{
-					Skip:  true, // TODO: Implement database object comments
-					Query: `SELECT obj_description('sinh'::regproc, 'pg_proc');`,
-					Cols:  []string{"col_description"},
+					Skip:             true, // TODO: Implement database object comments
+					Query:            `SELECT obj_description('sinh'::regproc, 'pg_proc');`,
+					ExpectedColNames: []string{"col_description"},
 					Expected: []sql.Row{
 						{"hyperbolic sine"},
 					},
@@ -631,8 +631,8 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Name: "shobj_description",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT shobj_description(100, 'pg_class');`,
-					Cols:  []string{"shobj_description"},
+					Query:            `SELECT shobj_description(100, 'pg_class');`,
+					ExpectedColNames: []string{"shobj_description"},
 					Expected: []sql.Row{
 						{""},
 					},
@@ -656,7 +656,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query: `SELECT shobj_description(
                  (SELECT oid FROM pg_tablespace WHERE spcname = 'tblspc_2'),
                  'pg_tablespace');`,
-					Cols: []string{"shobj_description"},
+					ExpectedColNames: []string{"shobj_description"},
 					Expected: []sql.Row{
 						{"Store a few of the things"},
 					},
@@ -668,8 +668,8 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				// Without typemod
 				{
-					Query: `SELECT format_type('integer'::regtype, null);`,
-					Cols:  []string{"format_type"},
+					Query:            `SELECT format_type('integer'::regtype, null);`,
+					ExpectedColNames: []string{"format_type"},
 					Expected: []sql.Row{
 						{"integer"},
 					},
@@ -809,15 +809,15 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 				// OID does not exist
 				{
-					Query: `SELECT format_type(874938247, 20);`,
-					Cols:  []string{"format_type"},
+					Query:            `SELECT format_type(874938247, 20);`,
+					ExpectedColNames: []string{"format_type"},
 					Expected: []sql.Row{
 						{"???"},
 					},
 				},
 				{
-					Query: `SELECT format_type(874938247, null);`,
-					Cols:  []string{"format_type"},
+					Query:            `SELECT format_type(874938247, null);`,
+					ExpectedColNames: []string{"format_type"},
 					Expected: []sql.Row{
 						{"???"},
 					},
@@ -835,13 +835,13 @@ func TestSystemInformationFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT pg_get_constraintdef(845743985);`,
-					Cols:     []string{"pg_get_constraintdef"},
-					Expected: []sql.Row{{""}},
+					Query:            `SELECT pg_get_constraintdef(845743985);`,
+					ExpectedColNames: []string{"pg_get_constraintdef"},
+					Expected:         []sql.Row{{""}},
 				},
 				{
-					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing'::regclass;`,
-					Cols:  []string{"pg_get_constraintdef"},
+					Query:            `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing'::regclass;`,
+					ExpectedColNames: []string{"pg_get_constraintdef"},
 					Expected: []sql.Row{
 						{"PRIMARY KEY (pk)"},
 						{"UNIQUE (v1)"},
@@ -880,15 +880,15 @@ func TestSystemInformationFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Skip:     true, // TODO: pg_attrdef.adbin not implemented
-					Query:    `SELECT pg_get_expr(adbin, adrelid) FROM pg_catalog.pg_attrdef WHERE adrelid = 'temperature'::regclass;`,
-					Cols:     []string{"pg_get_expr"},
-					Expected: []sql.Row{{"(celsius * 9 / 5 + 32)"}},
+					Skip:             true, // TODO: pg_attrdef.adbin not implemented
+					Query:            `SELECT pg_get_expr(adbin, adrelid) FROM pg_catalog.pg_attrdef WHERE adrelid = 'temperature'::regclass;`,
+					ExpectedColNames: []string{"pg_get_expr"},
+					Expected:         []sql.Row{{"(celsius * 9 / 5 + 32)"}},
 				},
 				{
-					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
-					Cols:     []string{"indexrelid", "pg_get_expr"},
-					Expected: []sql.Row{{3757635986, nil}},
+					Query:            `SELECT indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					ExpectedColNames: []string{"indexrelid", "pg_get_expr"},
+					Expected:         []sql.Row{{3757635986, nil}},
 				},
 				{
 					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, true) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
@@ -927,28 +927,28 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 				{
 					// No sequence for column returns null
-					Query:    `SELECT pg_get_serial_sequence('t0', 'id');`,
-					Cols:     []string{"pg_get_serial_sequence"},
-					Expected: []sql.Row{{nil}},
+					Query:            `SELECT pg_get_serial_sequence('t0', 'id');`,
+					ExpectedColNames: []string{"pg_get_serial_sequence"},
+					Expected:         []sql.Row{{nil}},
 				},
 				{
-					Query:    `SELECT pg_get_serial_sequence('public.t1', 'id');`,
-					Cols:     []string{"pg_get_serial_sequence"},
-					Expected: []sql.Row{{"public.t1_id_seq"}},
+					Query:            `SELECT pg_get_serial_sequence('public.t1', 'id');`,
+					ExpectedColNames: []string{"pg_get_serial_sequence"},
+					Expected:         []sql.Row{{"public.t1_id_seq"}},
 				},
 				{
 					// Test with no schema specified
-					Query:    `SELECT pg_get_serial_sequence('t1', 'id');`,
-					Cols:     []string{"pg_get_serial_sequence"},
-					Expected: []sql.Row{{"public.t1_id_seq"}},
+					Query:            `SELECT pg_get_serial_sequence('t1', 'id');`,
+					ExpectedColNames: []string{"pg_get_serial_sequence"},
+					Expected:         []sql.Row{{"public.t1_id_seq"}},
 				},
 				{
 					// TODO: This test shouldn't pass until we're able to use
 					//       ALTER SEQUENCE OWNED BY to set the owning column.
-					Skip:     true,
-					Query:    `SELECT pg_get_serial_sequence('t2', 'id');`,
-					Cols:     []string{"pg_get_serial_sequence"},
-					Expected: []sql.Row{{"public.t2_id_seq"}},
+					Skip:             true,
+					Query:            `SELECT pg_get_serial_sequence('t2', 'id');`,
+					ExpectedColNames: []string{"pg_get_serial_sequence"},
+					Expected:         []sql.Row{{"public.t2_id_seq"}},
 				},
 			},
 		},
@@ -961,20 +961,20 @@ func TestJsonFunctions(t *testing.T) {
 			Name: "json_build_array",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT json_build_array(1, 2, 3);`,
-					Cols:     []string{"json_build_array"},
-					Expected: []sql.Row{{`[1,2,3]`}},
+					Query:            `SELECT json_build_array(1, 2, 3);`,
+					ExpectedColNames: []string{"json_build_array"},
+					Expected:         []sql.Row{{`[1,2,3]`}},
 				},
 				{
-					Query:    `SELECT json_build_array(1, '2', 3);`,
-					Cols:     []string{"json_build_array"},
-					Expected: []sql.Row{{`[1,"2",3]`}},
+					Query:            `SELECT json_build_array(1, '2', 3);`,
+					ExpectedColNames: []string{"json_build_array"},
+					Expected:         []sql.Row{{`[1,"2",3]`}},
 				},
 				{
-					Query:    `SELECT json_build_array();`,
-					Skip:     true, // variadic functions can't handle 0 arguments right now
-					Cols:     []string{"json_build_array"},
-					Expected: []sql.Row{{`[]`}},
+					Query:            `SELECT json_build_array();`,
+					Skip:             true, // variadic functions can't handle 0 arguments right now
+					ExpectedColNames: []string{"json_build_array"},
+					Expected:         []sql.Row{{`[]`}},
 				},
 			},
 		},
@@ -982,18 +982,18 @@ func TestJsonFunctions(t *testing.T) {
 			Name: "json_build_object",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT json_build_object('a', 2, 'b', 4);`,
-					Cols:     []string{"json_build_object"},
-					Expected: []sql.Row{{`{"a":2,"b":4}`}},
+					Query:            `SELECT json_build_object('a', 2, 'b', 4);`,
+					ExpectedColNames: []string{"json_build_object"},
+					Expected:         []sql.Row{{`{"a":2,"b":4}`}},
 				},
 				{
 					Query:       `SELECT json_build_object('a', 2, 'b');`,
 					ExpectedErr: "even number",
 				},
 				{
-					Query:    `SELECT json_build_object(1, 2, 'b', 3);`,
-					Cols:     []string{"json_build_object"},
-					Expected: []sql.Row{{`{"1":2,"b":3}`}},
+					Query:            `SELECT json_build_object(1, 2, 'b', 3);`,
+					ExpectedColNames: []string{"json_build_object"},
+					Expected:         []sql.Row{{`{"1":2,"b":3}`}},
 				},
 			},
 		},
@@ -1001,20 +1001,20 @@ func TestJsonFunctions(t *testing.T) {
 			Name: "jsonb_build_array",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT jsonb_build_array(1, 2, 3);`,
-					Cols:     []string{"jsonb_build_array"},
-					Expected: []sql.Row{{`[1, 2, 3]`}},
+					Query:            `SELECT jsonb_build_array(1, 2, 3);`,
+					ExpectedColNames: []string{"jsonb_build_array"},
+					Expected:         []sql.Row{{`[1, 2, 3]`}},
 				},
 				{
-					Query:    `SELECT jsonb_build_array(1, '2', 3);`,
-					Cols:     []string{"jsonb_build_array"},
-					Expected: []sql.Row{{`[1, "2", 3]`}},
+					Query:            `SELECT jsonb_build_array(1, '2', 3);`,
+					ExpectedColNames: []string{"jsonb_build_array"},
+					Expected:         []sql.Row{{`[1, "2", 3]`}},
 				},
 				{
-					Query:    `SELECT jsonb_build_array();`,
-					Skip:     true, // variadic functions can't handle 0 arguments right now
-					Cols:     []string{"jsonb_build_array"},
-					Expected: []sql.Row{{`[]`}},
+					Query:            `SELECT jsonb_build_array();`,
+					Skip:             true, // variadic functions can't handle 0 arguments right now
+					ExpectedColNames: []string{"jsonb_build_array"},
+					Expected:         []sql.Row{{`[]`}},
 				},
 			},
 		},
@@ -1022,18 +1022,18 @@ func TestJsonFunctions(t *testing.T) {
 			Name: "jsonb_build_object",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT jsonb_build_object('a', 2, 'b', 4);`,
-					Cols:     []string{"jsonb_build_object"},
-					Expected: []sql.Row{{`{"a": 2, "b": 4}`}},
+					Query:            `SELECT jsonb_build_object('a', 2, 'b', 4);`,
+					ExpectedColNames: []string{"jsonb_build_object"},
+					Expected:         []sql.Row{{`{"a": 2, "b": 4}`}},
 				},
 				{
 					Query:       `SELECT jsonb_build_object('a', 2, 'b');`,
 					ExpectedErr: "even number",
 				},
 				{
-					Query:    `SELECT jsonb_build_object(1, 2, 'b', 3);`,
-					Cols:     []string{"jsonb_build_object"},
-					Expected: []sql.Row{{`{"1": 2, "b": 3}`}},
+					Query:            `SELECT jsonb_build_object(1, 2, 'b', 3);`,
+					ExpectedColNames: []string{"jsonb_build_object"},
+					Expected:         []sql.Row{{`{"1": 2, "b": 3}`}},
 				},
 			},
 		},
@@ -1050,15 +1050,15 @@ func TestArrayFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Skip:     true, // TODO: Should return no rows instead of empty row
-					Query:    `SELECT unnest(val1) FROM testing WHERE id=1;`,
-					Cols:     []string{"unnest"},
-					Expected: []sql.Row{},
+					Skip:             true, // TODO: Should return no rows instead of empty row
+					Query:            `SELECT unnest(val1) FROM testing WHERE id=1;`,
+					ExpectedColNames: []string{"unnest"},
+					Expected:         []sql.Row{},
 				},
 				{
-					Query:    `SELECT unnest(val1) FROM testing WHERE id=2;`,
-					Cols:     []string{"unnest"},
-					Expected: []sql.Row{{1}},
+					Query:            `SELECT unnest(val1) FROM testing WHERE id=2;`,
+					ExpectedColNames: []string{"unnest"},
+					Expected:         []sql.Row{{1}},
 				},
 				{
 					Skip:     true, // TODO: Support unnesting multiple values
