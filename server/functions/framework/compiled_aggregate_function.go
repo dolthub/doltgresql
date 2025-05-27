@@ -44,7 +44,7 @@ func NewCompiledAggregateFunction(name string, args []sql.Expression, functions 
 	return newCompiledAggregateFunctionInternal(name, args, functions, functions.overloadsForParams(len(args)), newBuffer)
 }
 
-// newCompiledFunctionInternal is called internally, which skips steps that may have already been processed.
+// newCompiledAggregateFunctionInternal is called internally, which skips steps that may have already been processed.
 func newCompiledAggregateFunctionInternal(name string, args []sql.Expression, overloads *Overloads, fnOverloads []Overload, newBuffer func() (sql.AggregationBuffer, error)) *CompiledAggregateFunction {
 	cf := newCompiledFunctionInternal(name, args, overloads, fnOverloads, false, nil)
 	c := &CompiledAggregateFunction{
@@ -97,28 +97,35 @@ func (c *CompiledAggregateFunction) DebugString() string {
 	sb.WriteString(")")
 	return sb.String()
 }
+
+// NewBuffer implements the interface sql.Aggregation.
 func (c *CompiledAggregateFunction) NewBuffer() (sql.AggregationBuffer, error) {
 	return c.newBuffer()
 }
 
+// Id implements the interface sql.Aggregation.
 func (c *CompiledAggregateFunction) Id() sql.ColumnId {
 	return c.aggId
 }
 
+// WithId implements the interface sql.Aggregation.
 func (c *CompiledAggregateFunction) WithId(id sql.ColumnId) sql.IdExpression {
 	nc := *c
 	nc.aggId = id
 	return &nc
 }
 
+// NewWindowFunction implements the interface sql.WindowAdaptableExpression.
 func (c *CompiledAggregateFunction) NewWindowFunction() (sql.WindowFunction, error) {
 	panic("windows are not implemented yet")
 }
 
+// WithWindow implements the interface sql.WindowAdaptableExpression.
 func (c *CompiledAggregateFunction) WithWindow(window *sql.WindowDefinition) sql.WindowAdaptableExpression {
 	panic("windows are not implemented yet")
 }
 
+// Window implements the interface sql.WindowAdaptableExpression.
 func (c *CompiledAggregateFunction) Window() *sql.WindowDefinition {
 	panic("windows are not implemented yet")
 }

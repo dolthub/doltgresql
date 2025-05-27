@@ -75,12 +75,6 @@ func RegisterAggregateFunction(f AggregateFunctionInterface) {
 	case Func1Aggregate:
 		name := strings.ToLower(f.Name)
 		AggregateCatalog[name] = append(AggregateCatalog[name], f)
-	case Func2Aggregate:
-		name := strings.ToLower(f.Name)
-		AggregateCatalog[name] = append(AggregateCatalog[name], f)
-	case Func3Aggregate:
-		name := strings.ToLower(f.Name)
-		AggregateCatalog[name] = append(AggregateCatalog[name], f)
 	default:
 		panic(fmt.Sprintf("unhandled function type %T", f))
 	}

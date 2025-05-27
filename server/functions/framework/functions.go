@@ -298,26 +298,4 @@ func (f Func1Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
 	return f.NewAggBuffer()
 }
 
-// Func2Aggregate is a function that takes one parameter and is an aggregate function.
-type Func2Aggregate struct {
-	Function2
-	NewAggBuffer func() (sql.AggregationBuffer, error)
-}
-
-func (f Func2Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
-	return f.NewAggBuffer()
-}
-
-// Func3Aggregate is a function that takes one parameter and is an aggregate function.
-type Func3Aggregate struct {
-	Function3
-	NewAggBuffer func() (sql.AggregationBuffer, error)
-}
-
-func (f Func3Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
-	return f.NewAggBuffer()
-}
-
 var _ AggregateFunctionInterface = Func1Aggregate{}
-var _ AggregateFunctionInterface = Func2Aggregate{}
-var _ AggregateFunctionInterface = Func3Aggregate{}
