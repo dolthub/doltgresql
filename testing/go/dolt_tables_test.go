@@ -27,18 +27,22 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT name FROM dolt.branches`,
+					Cols:     []string{"name"},
 					Expected: []sql.Row{{"main"}},
 				},
 				{
 					Query:    `SELECT name FROM dolt_branches`,
+					Cols:     []string{"name"},
 					Expected: []sql.Row{{"main"}},
 				},
 				{
 					Query:    `SELECT branches.name FROM dolt.branches`,
+					Cols:     []string{"name"},
 					Expected: []sql.Row{{"main"}},
 				},
 				{
 					Query:    `SELECT dolt.branches.name FROM dolt.branches`,
+					Cols:     []string{"name"},
 					Expected: []sql.Row{{"main"}},
 				},
 				{
@@ -2065,7 +2069,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Name:        "dolt procedures",
+			Name: "dolt procedures",
 			SetUpScript: []string{
 				// TODO: Create procedure when supported
 			},
