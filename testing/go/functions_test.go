@@ -1218,94 +1218,94 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				},
 			},
 		},
-	{
-		Name: "pg_type_is_visible",
-		SetUpScript: []string{
-			"CREATE SCHEMA myschema;",
-			"SET search_path TO myschema;",
-			"CREATE DOMAIN mydomain AS text;",
-			"CREATE TYPE myenum AS ENUM ('a', 'b', 'c');",
-			"CREATE SCHEMA testschema;",
-			"SET search_path TO testschema;",
-			"CREATE DOMAIN test_domain AS int;",
-			"CREATE TYPE test_enum AS ENUM ('x', 'y', 'z');",
-		},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query: `SELECT t.oid, t.typname, n.nspname FROM pg_catalog.pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname='myschema' OR n.nspname='testschema' ORDER BY t.typname;`,
-				Expected: []sql.Row{
-					{4183151504, "_mydomain", "myschema"},
-					{2179370508, "_myenum", "myschema"},
-					{2560281972, "_test_domain", "testschema"},
-					{2798112218, "_test_enum", "testschema"},
-					{340132571, "mydomain", "myschema"},
-					{1684884017, "myenum", "myschema"},
-					{2272253470, "test_domain", "testschema"},
-					{1117094145, "test_enum", "testschema"},
+		{
+			Name: "pg_type_is_visible",
+			SetUpScript: []string{
+				"CREATE SCHEMA myschema;",
+				"SET search_path TO myschema;",
+				"CREATE DOMAIN mydomain AS text;",
+				"CREATE TYPE myenum AS ENUM ('a', 'b', 'c');",
+				"CREATE SCHEMA testschema;",
+				"SET search_path TO testschema;",
+				"CREATE DOMAIN test_domain AS int;",
+				"CREATE TYPE test_enum AS ENUM ('x', 'y', 'z');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT t.oid, t.typname, n.nspname FROM pg_catalog.pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname='myschema' OR n.nspname='testschema' ORDER BY t.typname;`,
+					Expected: []sql.Row{
+						{4183151504, "_mydomain", "myschema"},
+						{2179370508, "_myenum", "myschema"},
+						{2560281972, "_test_domain", "testschema"},
+						{2798112218, "_test_enum", "testschema"},
+						{340132571, "mydomain", "myschema"},
+						{1684884017, "myenum", "myschema"},
+						{2272253470, "test_domain", "testschema"},
+						{1117094145, "test_enum", "testschema"},
+					},
+				},
+				{
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{"testschema"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible(2272253470);`, // test_domain from testschema
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible(1117094145);`, // test_enum from testschema
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible(340132571);`, // mydomain from myschema
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible(1684884017);`, // myenum from myschema
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SET search_path = 'myschema';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{"myschema"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible(340132571);`, // mydomain from myschema
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible(1684884017);`, // myenum from myschema
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible(2272253470);`, // test_domain from testschema
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible(1117094145);`, // test_enum from testschema
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible(999999);`, // non-existent type oid
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SET search_path = 'pg_catalog';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible('text'::regtype::oid);`, // built-in type should be visible in pg_catalog
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_type_is_visible('int4'::regtype::oid);`, // built-in type should be visible in pg_catalog
+					Expected: []sql.Row{{"t"}},
 				},
 			},
-			{
-				Query:    `SHOW search_path;`,
-				Expected: []sql.Row{{"testschema"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible(2272253470);`, // test_domain from testschema
-				Expected: []sql.Row{{"t"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible(1117094145);`, // test_enum from testschema
-				Expected: []sql.Row{{"t"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible(340132571);`, // mydomain from myschema
-				Expected: []sql.Row{{"f"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible(1684884017);`, // myenum from myschema
-				Expected: []sql.Row{{"f"}},
-			},
-			{
-				Query:    `SET search_path = 'myschema';`,
-				Expected: []sql.Row{},
-			},
-			{
-				Query:    `SHOW search_path;`,
-				Expected: []sql.Row{{"myschema"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible(340132571);`, // mydomain from myschema
-				Expected: []sql.Row{{"t"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible(1684884017);`, // myenum from myschema
-				Expected: []sql.Row{{"t"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible(2272253470);`, // test_domain from testschema
-				Expected: []sql.Row{{"f"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible(1117094145);`, // test_enum from testschema
-				Expected: []sql.Row{{"f"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible(999999);`, // non-existent type oid
-				Expected: []sql.Row{{"f"}},
-			},
-			{
-				Query:    `SET search_path = 'pg_catalog';`,
-				Expected: []sql.Row{},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible('text'::regtype::oid);`, // built-in type should be visible in pg_catalog
-				Expected: []sql.Row{{"t"}},
-			},
-			{
-				Query:    `SELECT pg_type_is_visible('int4'::regtype::oid);`, // built-in type should be visible in pg_catalog
-				Expected: []sql.Row{{"t"}},
-			},
 		},
-	},
 	})
 }
 

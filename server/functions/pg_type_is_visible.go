@@ -37,29 +37,29 @@ var pg_type_is_visible = framework.Function1{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		oidVal := val.(id.Id)
-		
+
 		// Check if this is a valid type ID
 		if !id.Cache().Exists(oidVal) {
 			return false, nil
 		}
-		
+
 		// Get the schema name where the type is defined
 		// For type IDs, the first segment contains the schema name
 		schemaName := oidVal.Segment(0)
-		
+
 		// Get the current search path
 		searchPath, err := resolve.SearchPath(ctx)
 		if err != nil {
 			return false, err
 		}
-		
+
 		// Check if the schema is in the search path
 		for _, path := range searchPath {
 			if path == schemaName {
 				return true, nil
 			}
 		}
-		
+
 		return false, nil
 	},
 }
