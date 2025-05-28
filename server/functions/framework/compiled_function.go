@@ -307,7 +307,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	case InterpretedFunction:
 		return plpgsql.Call(ctx, f, c.runner, c.callResolved, args)
 	default:
-		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval")
+		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval %T", f)
 	}
 }
 
@@ -328,8 +328,9 @@ func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Express
 
 // SetStatementRunner implements the interface analyzer.Interpreter.
 func (c *CompiledFunction) SetStatementRunner(ctx *sql.Context, runner sql.StatementRunner) sql.Expression {
-	c.runner = runner
-	return c
+	nc := *c
+	nc.runner = runner
+	return &nc
 }
 
 // GetQuickFunction returns the QuickFunction form of this function, if it exists. If one does not exist, then this

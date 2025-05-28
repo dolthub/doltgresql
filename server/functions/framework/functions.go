@@ -45,6 +45,13 @@ type FunctionInterface interface {
 	enforceInterfaceInheritance(error)
 }
 
+// AggregateFunction is an interface for PostgreSQL aggregate functions
+type AggregateFunctionInterface interface {
+	FunctionInterface
+	// TODO: this maybe needs to take the place of the Callable function
+	NewBuffer() (sql.AggregationBuffer, error)
+}
+
 // Function0 is a function that does not take any parameters.
 type Function0 struct {
 	Name               string
@@ -280,3 +287,15 @@ func (f Function4) InternalID() id.Id {
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function4) enforceInterfaceInheritance(error) {}
+
+// Func1Aggregate is a function that takes one parameter and is an aggregate function.
+type Func1Aggregate struct {
+	Function1
+	NewAggBuffer func() (sql.AggregationBuffer, error)
+}
+
+func (f Func1Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
+	return f.NewAggBuffer()
+}
+
+var _ AggregateFunctionInterface = Func1Aggregate{}

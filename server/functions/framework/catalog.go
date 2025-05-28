@@ -15,6 +15,7 @@
 package framework
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -27,6 +28,9 @@ import (
 
 // Catalog contains all of the PostgreSQL functions.
 var Catalog = map[string][]FunctionInterface{}
+
+// AggregateCatalog contains all of the PostgreSQL aggregate functions.
+var AggregateCatalog = map[string][]AggregateFunctionInterface{}
 
 // initializedFunctions simply states whether Initialize has been called yet.
 var initializedFunctions = false
@@ -61,6 +65,21 @@ func RegisterFunction(f FunctionInterface) {
 	}
 }
 
+// RegisterAggregateFunction registers the given function, so that it will be usable from a running server. This should be called
+// from within an init().
+func RegisterAggregateFunction(f AggregateFunctionInterface) {
+	if initializedFunctions {
+		panic("attempted to register a function after the init() phase")
+	}
+	switch f := f.(type) {
+	case Func1Aggregate:
+		name := strings.ToLower(f.Name)
+		AggregateCatalog[name] = append(AggregateCatalog[name], f)
+	default:
+		panic(fmt.Sprintf("unhandled function type %T", f))
+	}
+}
+
 // Initialize handles the initialization of the catalog by overwriting the built-in GMS functions, since they do not
 // apply to PostgreSQL (and functions of the same name often have different behavior).
 func Initialize() {
@@ -76,6 +95,7 @@ func Initialize() {
 	replaceGmsBuiltIns()
 	validateFunctions()
 	compileFunctions()
+	compileAggs()
 }
 
 // replaceGmsBuiltIns replaces all GMS built-ins that have conflicting names with PostgreSQL functions.
@@ -151,7 +171,29 @@ func compileNonOperatorFunction(funcName string, overloads []FunctionInterface) 
 		Fn:   createFunc,
 	})
 	compiledCatalog[funcName] = createFunc
-	namedCatalog[funcName] = overloads
+}
+
+// compileNonOperatorFunction creates a CompiledFunction for each overload of the given function.
+func compileAggFunction(funcName string, overloads []AggregateFunctionInterface) {
+	var newBuffer func() (sql.AggregationBuffer, error)
+	overloadTree := NewOverloads()
+	for _, functionOverload := range overloads {
+		newBuffer = functionOverload.NewBuffer
+		if err := overloadTree.Add(functionOverload); err != nil {
+			panic(err)
+		}
+	}
+
+	// Store the compiled function into the engine's built-in functions
+	// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
+	createFunc := func(params ...sql.Expression) (sql.Expression, error) {
+		return NewCompiledAggregateFunction(funcName, params, overloadTree, newBuffer), nil
+	}
+	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
+		Name: funcName,
+		Fn:   createFunc,
+	})
+	compiledCatalog[funcName] = createFunc
 }
 
 // compileFunctions creates a CompiledFunction for each overload of each function in the catalog.
@@ -165,10 +207,10 @@ func compileFunctions() {
 	// special rules, so it's far more efficient to reuse it for operators. Operators are also a special case since they
 	// all have different names, while standard overload deducers work on a function-name basis.
 	for signature, functionOverload := range unaryFunctions {
-		overloads, ok := unaryAggregateOverloads[signature.Operator]
+		overloads, ok := unaryOperatorOverloads[signature.Operator]
 		if !ok {
 			overloads = NewOverloads()
-			unaryAggregateOverloads[signature.Operator] = overloads
+			unaryOperatorOverloads[signature.Operator] = overloads
 		}
 		if err := overloads.Add(functionOverload); err != nil {
 			panic(err)
@@ -176,10 +218,10 @@ func compileFunctions() {
 	}
 
 	for signature, functionOverload := range binaryFunctions {
-		overloads, ok := binaryAggregateOverloads[signature.Operator]
+		overloads, ok := binaryOperatorOverloads[signature.Operator]
 		if !ok {
 			overloads = NewOverloads()
-			binaryAggregateOverloads[signature.Operator] = overloads
+			binaryOperatorOverloads[signature.Operator] = overloads
 		}
 		if err := overloads.Add(functionOverload); err != nil {
 			panic(err)
@@ -187,10 +229,16 @@ func compileFunctions() {
 	}
 
 	// Add all permutations for the unary and binary operators
-	for operator, overload := range unaryAggregateOverloads {
-		unaryAggregatePermutations[operator] = overload.overloadsForParams(1)
+	for operator, overload := range unaryOperatorOverloads {
+		unaryOperatorPermutations[operator] = overload.overloadsForParams(1)
 	}
-	for operator, overload := range binaryAggregateOverloads {
-		binaryAggregatePermutations[operator] = overload.overloadsForParams(2)
+	for operator, overload := range binaryOperatorOverloads {
+		binaryOperatorPermutations[operator] = overload.overloadsForParams(2)
+	}
+}
+
+func compileAggs() {
+	for funcName, overloads := range AggregateCatalog {
+		compileAggFunction(funcName, overloads)
 	}
 }
