@@ -81,9 +81,7 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		if cnt > 0 {
 			for _, schema := range schemas {
 				if schema != PgCatalogName {
-					for _, typ := range userTypes[schema] {
-						allTypes = append(allTypes, typ)
-					}
+					allTypes = append(allTypes, userTypes[schema]...)
 				}
 			}
 		}
@@ -166,38 +164,38 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	typAcl := []any(nil)
 
 	return sql.Row{
-		typ.ID.AsId(),                            //oid
-		typ.Name(),                               //typname
-		iter.schemas[typ.ID.SchemaName()].AsId(), //typnamespace
-		id.Null,                                  //typowner
-		typ.TypLength,                            //typlen
-		typ.PassedByVal,                          //typbyval
-		string(typ.TypType),                      //typtype
-		string(typ.TypCategory),                  //typcategory
-		typ.IsPreferred,                          //typispreferred
-		typ.IsDefined,                            //typisdefined
-		typ.Delimiter,                            //typdelim
-		typ.RelID,                                //typrelid
-		typ.SubscriptFuncName(),                  //typsubscript
-		typ.Elem.AsId(),                          //typelem
-		typ.Array.AsId(),                         //typarray
-		typ.InputFuncName(),                      //typinput
-		typ.OutputFuncName(),                     //typoutput
-		typ.ReceiveFuncName(),                    //typreceive
-		typ.SendFuncName(),                       //typsend
-		typ.ModInFuncName(),                      //typmodin
-		typ.ModOutFuncName(),                     //typmodout
-		typ.AnalyzeFuncName(),                    //typanalyze
-		string(typ.Align),                        //typalign
-		string(typ.Storage),                      //typstorage
-		typ.NotNull,                              //typnotnull
-		typ.BaseTypeID.AsId(),                    //typbasetype
-		typ.TypMod,                               //typtypmod
-		typ.NDims,                                //typndims
-		typ.TypCollation.AsId(),                  //typcollation
-		typ.DefaulBin,                            //typdefaultbin
-		typ.Default,                              //typdefault
-		typAcl,                                   //typacl
+		typ.ID.AsId(),                            // oid
+		typ.Name(),                               // typname
+		iter.schemas[typ.ID.SchemaName()].AsId(), // typnamespace
+		id.Null,                                  // typowner
+		typ.TypLength,                            // typlen
+		typ.PassedByVal,                          // typbyval
+		string(typ.TypType),                      // typtype
+		string(typ.TypCategory),                  // typcategory
+		typ.IsPreferred,                          // typispreferred
+		typ.IsDefined,                            // typisdefined
+		typ.Delimiter,                            // typdelim
+		typ.RelID,                                // typrelid
+		typ.SubscriptFuncName(),                  // typsubscript
+		typ.Elem.AsId(),                          // typelem
+		typ.Array.AsId(),                         // typarray
+		typ.InputFuncName(),                      // typinput
+		typ.OutputFuncName(),                     // typoutput
+		typ.ReceiveFuncName(),                    // typreceive
+		typ.SendFuncName(),                       // typsend
+		typ.ModInFuncName(),                      // typmodin
+		typ.ModOutFuncName(),                     // typmodout
+		typ.AnalyzeFuncName(),                    // typanalyze
+		string(typ.Align),                        // typalign
+		string(typ.Storage),                      // typstorage
+		typ.NotNull,                              // typnotnull
+		typ.BaseTypeID.AsId(),                    // typbasetype
+		typ.TypMod,                               // typtypmod
+		typ.NDims,                                // typndims
+		typ.TypCollation.AsId(),                  // typcollation
+		typ.DefaulBin,                            // typdefaultbin
+		typ.Default,                              // typdefault
+		typAcl,                                   // typacl
 	}, nil
 }
 
