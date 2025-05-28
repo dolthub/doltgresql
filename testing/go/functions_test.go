@@ -1233,30 +1233,16 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: `SELECT n.oid, n.nspname from pg_namespace n `,
-				Expected: []sql.Row{
-					{1008006765, "mydomain", "myschema"},
-					{1007481340, "myenum", "myschema"},
-					{1683890184, "test_domain", "testschema"},
-					{1682341507, "test_enum", "testschema"},
-				},
-			},
-			{
-				Query: `SELECT t.oid, t.typname, t.typnamespace FROM pg_catalog.pg_type t ORDER BY t.typname;`,
-				Expected: []sql.Row{
-					{1008006765, "mydomain", "myschema"},
-					{1007481340, "myenum", "myschema"},
-					{1683890184, "test_domain", "testschema"},
-					{1682341507, "test_enum", "testschema"},
-				},
-			},
-			{
 				Query: `SELECT t.oid, t.typname, n.nspname FROM pg_catalog.pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname='myschema' OR n.nspname='testschema' ORDER BY t.typname;`,
 				Expected: []sql.Row{
-					{1008006765, "mydomain", "myschema"},
-					{1007481340, "myenum", "myschema"},
-					{1683890184, "test_domain", "testschema"},
-					{1682341507, "test_enum", "testschema"},
+					{4183151504, "_mydomain", "myschema"},
+					{2179370508, "_myenum", "myschema"},
+					{2560281972, "_test_domain", "testschema"},
+					{2798112218, "_test_enum", "testschema"},
+					{340132571, "mydomain", "myschema"},
+					{1684884017, "myenum", "myschema"},
+					{2272253470, "test_domain", "testschema"},
+					{1117094145, "test_enum", "testschema"},
 				},
 			},
 			{
@@ -1264,19 +1250,19 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				Expected: []sql.Row{{"testschema"}},
 			},
 			{
-				Query:    `SELECT pg_type_is_visible(1683890184);`, // test_domain from testschema
+				Query:    `SELECT pg_type_is_visible(2272253470);`, // test_domain from testschema
 				Expected: []sql.Row{{"t"}},
 			},
 			{
-				Query:    `SELECT pg_type_is_visible(1682341507);`, // test_enum from testschema
+				Query:    `SELECT pg_type_is_visible(1117094145);`, // test_enum from testschema
 				Expected: []sql.Row{{"t"}},
 			},
 			{
-				Query:    `SELECT pg_type_is_visible(1008006765);`, // mydomain from myschema
+				Query:    `SELECT pg_type_is_visible(340132571);`, // mydomain from myschema
 				Expected: []sql.Row{{"f"}},
 			},
 			{
-				Query:    `SELECT pg_type_is_visible(1007481340);`, // myenum from myschema
+				Query:    `SELECT pg_type_is_visible(1684884017);`, // myenum from myschema
 				Expected: []sql.Row{{"f"}},
 			},
 			{
@@ -1288,19 +1274,19 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				Expected: []sql.Row{{"myschema"}},
 			},
 			{
-				Query:    `SELECT pg_type_is_visible(1008006765);`, // mydomain from myschema
+				Query:    `SELECT pg_type_is_visible(340132571);`, // mydomain from myschema
 				Expected: []sql.Row{{"t"}},
 			},
 			{
-				Query:    `SELECT pg_type_is_visible(1007481340);`, // myenum from myschema
+				Query:    `SELECT pg_type_is_visible(1684884017);`, // myenum from myschema
 				Expected: []sql.Row{{"t"}},
 			},
 			{
-				Query:    `SELECT pg_type_is_visible(1683890184);`, // test_domain from testschema
+				Query:    `SELECT pg_type_is_visible(2272253470);`, // test_domain from testschema
 				Expected: []sql.Row{{"f"}},
 			},
 			{
-				Query:    `SELECT pg_type_is_visible(1682341507);`, // test_enum from testschema
+				Query:    `SELECT pg_type_is_visible(1117094145);`, // test_enum from testschema
 				Expected: []sql.Row{{"f"}},
 			},
 			{
