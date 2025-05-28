@@ -15,12 +15,10 @@
 package functions
 
 import (
-	"strings"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
-	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -38,19 +36,26 @@ var pg_type_is_visible = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		typeId := id.Cache().ToInternal(val.(uint32))
-		if !typeId.IsValid() {
+		oidVal := val.(id.Id)
+		
+		// Check if this is a valid type ID
+		if !id.Cache().Exists(oidVal) {
 			return false, nil
 		}
 		
+		// Get the schema name where the type is defined
+		// For type IDs, the first segment contains the schema name
+		schemaName := oidVal.Segment(0)
+		
+		// Get the current search path
 		searchPath, err := resolve.SearchPath(ctx)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
-
-		typ := id.Type(typeId)
-		for _, schema := range searchPath {
-			if strings.EqualFold(schema, typ.SchemaName()) {
+		
+		// Check if the schema is in the search path
+		for _, path := range searchPath {
+			if path == schemaName {
 				return true, nil
 			}
 		}
