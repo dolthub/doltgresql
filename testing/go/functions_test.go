@@ -1220,7 +1220,6 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 		},
 	{
 		Name: "pg_type_is_visible",
-		Focus: true,
 		SetUpScript: []string{
 			"CREATE SCHEMA myschema;",
 			"SET search_path TO myschema;",

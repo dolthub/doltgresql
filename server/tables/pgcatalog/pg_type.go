@@ -66,6 +66,8 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		}
 
 		allTypes := pgtypes.GetAllBuitInTypes()
+
+		// TODO: why are we serializing pg_catalog types in the user type collection
 		typeColl, err := core.GetTypesCollectionFromContext(ctx)
 		if err != nil {
 			return nil, err
@@ -78,8 +80,10 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		
 		if cnt > 0 {
 			for _, schema := range schemas {
-				for _, typ := range userTypes[schema] {
-					allTypes = append(allTypes, typ)
+				if schema != PgCatalogName {
+					for _, typ := range userTypes[schema] {
+						allTypes = append(allTypes, typ)
+					}
 				}
 			}
 		}

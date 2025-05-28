@@ -3809,7 +3809,7 @@ func TestPgType(t *testing.T) {
 			Name: "pg_type",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'float8';`,
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'float8' order by 1;`,
 					Expected: []sql.Row{{701, "float8", 11, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 1022, "float8in", "float8out", "float8recv", "float8send", "-", "-", "-", "d", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
 				},
 				{ // Different cases and quoted, so it fails
