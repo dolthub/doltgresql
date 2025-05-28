@@ -17,6 +17,7 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -51,14 +52,12 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		return nil, err
 	}
 
+	schemasToOid := make(map[string]id.Namespace)
 	if pgCatalogCache.types == nil {
 		var pgCatalogOid id.Id
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
-				if schema.Item.SchemaName() == PgCatalogName {
-					pgCatalogOid = schema.OID.AsId()
-					return false, nil
-				}
+				schemasToOid[schema.Item.SchemaName()] = schema.OID
 				return true, nil
 			},
 		})
@@ -66,14 +65,34 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return nil, err
 		}
 
-		types := pgtypes.GetAllBuitInTypes()
-		pgCatalogCache.types = types
+		allTypes := pgtypes.GetAllBuitInTypes()
+		typeColl, err := core.GetTypesCollectionFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		userTypes, schemas, cnt, err := typeColl.GetAllTypes(ctx)
+		if err != nil {
+			return nil, err
+		}
+		
+		if cnt > 0 {
+			for _, schema := range schemas {
+				for _, typ := range userTypes[schema] {
+					allTypes = append(allTypes, typ)
+				}
+			}
+		}
+		
+		pgCatalogCache.types = allTypes
+		pgCatalogCache.schemasToOid = schemasToOid
 		pgCatalogCache.pgCatalogOid = pgCatalogOid
 	}
 
 	return &pgTypeRowIter{
 		pgCatalogOid: pgCatalogCache.pgCatalogOid,
 		types:        pgCatalogCache.types,
+		schemas:      pgCatalogCache.schemasToOid,
 		idx:          0,
 	}, nil
 }
@@ -127,6 +146,7 @@ type pgTypeRowIter struct {
 	pgCatalogOid id.Id
 	types        []*pgtypes.DoltgresType
 	idx          int
+	schemas      map[string]id.Namespace
 }
 
 var _ sql.RowIter = (*pgTypeRowIter)(nil)
@@ -144,7 +164,7 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	return sql.Row{
 		typ.ID.AsId(),           //oid
 		typ.Name(),              //typname
-		iter.pgCatalogOid,       //typnamespace
+		iter.schemas[typ.ID.SchemaName()].AsId(), //typnamespace
 		id.Null,                 //typowner
 		typ.TypLength,           //typlen
 		typ.PassedByVal,         //typbyval

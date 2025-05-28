@@ -1220,6 +1220,7 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 		},
 	{
 		Name: "pg_type_is_visible",
+		Focus: true,
 		SetUpScript: []string{
 			"CREATE SCHEMA myschema;",
 			"SET search_path TO myschema;",
@@ -1231,6 +1232,24 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 			"CREATE TYPE test_enum AS ENUM ('x', 'y', 'z');",
 		},
 		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT n.oid, n.nspname from pg_namespace n `,
+				Expected: []sql.Row{
+					{1008006765, "mydomain", "myschema"},
+					{1007481340, "myenum", "myschema"},
+					{1683890184, "test_domain", "testschema"},
+					{1682341507, "test_enum", "testschema"},
+				},
+			},
+			{
+				Query: `SELECT t.oid, t.typname, t.typnamespace FROM pg_catalog.pg_type t ORDER BY t.typname;`,
+				Expected: []sql.Row{
+					{1008006765, "mydomain", "myschema"},
+					{1007481340, "myenum", "myschema"},
+					{1683890184, "test_domain", "testschema"},
+					{1682341507, "test_enum", "testschema"},
+				},
+			},
 			{
 				Query: `SELECT t.oid, t.typname, n.nspname FROM pg_catalog.pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname='myschema' OR n.nspname='testschema' ORDER BY t.typname;`,
 				Expected: []sql.Row{
