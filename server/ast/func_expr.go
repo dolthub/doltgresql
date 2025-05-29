@@ -41,13 +41,12 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	case *tree.FunctionDefinition:
 		name = vitess.NewColIdent(funcRef.Name)
 	case *tree.UnresolvedName:
-		if funcRef.NumParts > 2 {
-			return nil, errors.Errorf("referencing items outside the schema or database is not yet supported")
+		colName, err := unresolvedNameToColName(funcRef)
+		if err != nil {
+			return nil, err
 		}
-		if funcRef.NumParts == 2 {
-			qualifier = vitess.NewTableIdent(funcRef.Parts[1])
-		}
-		name = vitess.NewColIdent(funcRef.Parts[0])
+		
+		name = colName.Name
 	default:
 		return nil, errors.Errorf("unknown function reference")
 	}
@@ -69,8 +68,8 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 		return nil, err
 	}
 
-	// special case for string_agg, which maps to the mysql aggregate function group_concat
 	switch strings.ToLower(name.String()) {
+	// special case for string_agg, which maps to the mysql aggregate function group_concat
 	case "string_agg":
 		if len(node.Exprs) != 2 {
 			return nil, errors.Errorf("string_agg requires two arguments")
@@ -96,6 +95,16 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 			},
 			OrderBy: orderBy,
 		}, nil
+	case "array_agg":
+		var orderBy vitess.OrderBy
+		if len(node.OrderBy) > 0 {
+			orderBy, err = nodeOrderBy(ctx, node.OrderBy)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		
 	}
 
 	if len(node.OrderBy) > 0 {
