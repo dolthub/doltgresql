@@ -3809,7 +3809,7 @@ func TestPgType(t *testing.T) {
 			Name: "pg_type",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'float8';`,
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'float8' order by 1;`,
 					Expected: []sql.Row{{701, "float8", 11, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 1022, "float8in", "float8out", "float8recv", "float8send", "-", "-", "-", "d", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
 				},
 				{ // Different cases and quoted, so it fails
@@ -3832,7 +3832,13 @@ func TestPgType(t *testing.T) {
 					},
 				},
 				{
-					Skip: true, // TODO: use regproc type instead of text type.
+					Query: `SELECT t1.oid, t1.typname as basetype, t2.typname as arraytype, t2.typsubscript
+					FROM   pg_type t1 LEFT JOIN pg_type t2 ON (t1.typarray = t2.oid)
+					WHERE  t1.typarray <> 0 AND (t2.oid IS NULL OR t2.typsubscript::regproc <> 'array_subscript_handler'::regproc);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip: true, // TODO: ERROR: function internal_binary_operator_func_<>(text, regproc) does not exist
 					Query: `SELECT t1.oid, t1.typname as basetype, t2.typname as arraytype, t2.typsubscript
 					FROM   pg_type t1 LEFT JOIN pg_type t2 ON (t1.typarray = t2.oid)
 					WHERE  t1.typarray <> 0 AND (t2.oid IS NULL OR t2.typsubscript <> 'array_subscript_handler'::regproc);`,
@@ -3918,7 +3924,6 @@ func TestPgType(t *testing.T) {
 			},
 		},
 		{
-			Skip: true,
 			Name: "user defined type",
 			SetUpScript: []string{
 				`CREATE DOMAIN domain_type AS INTEGER NOT NULL;`,
@@ -3926,24 +3931,20 @@ func TestPgType(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: should have unique OID for the type and array type
-					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'domain_type';`,
-					Expected: []sql.Row{{23, "domain_type", 1879048194, 0, 4, "t", "d", "N", "f", "t", ",", 0, "-", 0, 0, "domain_in", "int4out", "domain_recv", "int4send", "-", "-", "-", "i", "p", "t", 23, -1, 0, 0, "", "", "{}"}},
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'domain_type' order by 1;`,
+					Expected: []sql.Row{{2382076519, "domain_type", 2200, 0, 4, "t", "d", "N", "f", "t", ",", 0, "-", 0, 1297970968, "domain_in", "int4out", "domain_recv", "int4send", "-", "-", "-", "i", "p", "t", 23, -1, 0, 0, "", "", "{}"}},
 				},
 				{
-					// TODO: should have unique OID for the type and element type
-					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_domain_type';`,
-					Expected: []sql.Row{{0, "_domain_type", 1879048194, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 23, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_domain_type' order by 1;`,
+					Expected: []sql.Row{{1297970968, "_domain_type", 2200, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 2382076519, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
 				},
 				{
-					// TODO: should have unique OID for the type and array type
-					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'enum_type';`,
-					Expected: []sql.Row{{0, "enum_type", 1879048194, 0, 4, "t", "e", "E", "f", "t", ",", 0, "-", 0, 0, "enum_in", "enum_out", "enum_recv", "enum_send", "-", "-", "-", "i", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'enum_type' order by 1;`,
+					Expected: []sql.Row{{2310414518, "enum_type", 2200, 0, 4, "t", "e", "E", "f", "t", ",", 0, "-", 0, 4245115549, "enum_in", "enum_out", "enum_recv", "enum_send", "-", "-", "-", "i", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
 				},
 				{
-					// TODO: should have unique OID for the type and element type
-					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_enum_type';`,
-					Expected: []sql.Row{{0, "_enum_type", 1879048194, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 0, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_enum_type' order by 1;`,
+					Expected: []sql.Row{{4245115549, "_enum_type", 2200, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 2310414518, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
 				},
 			},
 		},

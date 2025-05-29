@@ -71,7 +71,7 @@ type pgCatalogCache struct {
 
 	// pg_types
 	types        []*pgtypes.DoltgresType
-	pgCatalogOid id.Id
+	schemasToOid map[string]id.Namespace
 
 	// pg_tables
 	tables       []sql.Table

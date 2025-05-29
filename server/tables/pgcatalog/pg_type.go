@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
@@ -51,14 +52,11 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		return nil, err
 	}
 
+	schemasToOid := make(map[string]id.Namespace)
 	if pgCatalogCache.types == nil {
-		var pgCatalogOid id.Id
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
-				if schema.Item.SchemaName() == PgCatalogName {
-					pgCatalogOid = schema.OID.AsId()
-					return false, nil
-				}
+				schemasToOid[schema.Item.SchemaName()] = schema.OID
 				return true, nil
 			},
 		})
@@ -66,15 +64,35 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return nil, err
 		}
 
-		types := pgtypes.GetAllBuitInTypes()
-		pgCatalogCache.types = types
-		pgCatalogCache.pgCatalogOid = pgCatalogOid
+		allTypes := pgtypes.GetAllBuitInTypes()
+
+		// TODO: why are we serializing pg_catalog types in the user type collection
+		typeColl, err := core.GetTypesCollectionFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		userTypes, schemas, cnt, err := typeColl.GetAllTypes(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if cnt > 0 {
+			for _, schema := range schemas {
+				if schema != PgCatalogName {
+					allTypes = append(allTypes, userTypes[schema]...)
+				}
+			}
+		}
+
+		pgCatalogCache.types = allTypes
+		pgCatalogCache.schemasToOid = schemasToOid
 	}
 
 	return &pgTypeRowIter{
-		pgCatalogOid: pgCatalogCache.pgCatalogOid,
-		types:        pgCatalogCache.types,
-		idx:          0,
+		types:   pgCatalogCache.types,
+		schemas: pgCatalogCache.schemasToOid,
+		idx:     0,
 	}, nil
 }
 
@@ -124,9 +142,9 @@ var pgTypeSchema = sql.Schema{
 
 // pgTypeRowIter is the sql.RowIter for the pg_type table.
 type pgTypeRowIter struct {
-	pgCatalogOid id.Id
-	types        []*pgtypes.DoltgresType
-	idx          int
+	types   []*pgtypes.DoltgresType
+	idx     int
+	schemas map[string]id.Namespace
 }
 
 var _ sql.RowIter = (*pgTypeRowIter)(nil)
@@ -142,38 +160,38 @@ func (iter *pgTypeRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	typAcl := []any(nil)
 
 	return sql.Row{
-		typ.ID.AsId(),           //oid
-		typ.Name(),              //typname
-		iter.pgCatalogOid,       //typnamespace
-		id.Null,                 //typowner
-		typ.TypLength,           //typlen
-		typ.PassedByVal,         //typbyval
-		string(typ.TypType),     //typtype
-		string(typ.TypCategory), //typcategory
-		typ.IsPreferred,         //typispreferred
-		typ.IsDefined,           //typisdefined
-		typ.Delimiter,           //typdelim
-		typ.RelID,               //typrelid
-		typ.SubscriptFuncName(), //typsubscript
-		typ.Elem.AsId(),         //typelem
-		typ.Array.AsId(),        //typarray
-		typ.InputFuncName(),     //typinput
-		typ.OutputFuncName(),    //typoutput
-		typ.ReceiveFuncName(),   //typreceive
-		typ.SendFuncName(),      //typsend
-		typ.ModInFuncName(),     //typmodin
-		typ.ModOutFuncName(),    //typmodout
-		typ.AnalyzeFuncName(),   //typanalyze
-		string(typ.Align),       //typalign
-		string(typ.Storage),     //typstorage
-		typ.NotNull,             //typnotnull
-		typ.BaseTypeID.AsId(),   //typbasetype
-		typ.TypMod,              //typtypmod
-		typ.NDims,               //typndims
-		typ.TypCollation.AsId(), //typcollation
-		typ.DefaulBin,           //typdefaultbin
-		typ.Default,             //typdefault
-		typAcl,                  //typacl
+		typ.ID.AsId(),                            // oid
+		typ.Name(),                               // typname
+		iter.schemas[typ.ID.SchemaName()].AsId(), // typnamespace
+		id.Null,                                  // typowner
+		typ.TypLength,                            // typlen
+		typ.PassedByVal,                          // typbyval
+		string(typ.TypType),                      // typtype
+		string(typ.TypCategory),                  // typcategory
+		typ.IsPreferred,                          // typispreferred
+		typ.IsDefined,                            // typisdefined
+		typ.Delimiter,                            // typdelim
+		typ.RelID,                                // typrelid
+		typ.SubscriptFuncName(),                  // typsubscript
+		typ.Elem.AsId(),                          // typelem
+		typ.Array.AsId(),                         // typarray
+		typ.InputFuncName(),                      // typinput
+		typ.OutputFuncName(),                     // typoutput
+		typ.ReceiveFuncName(),                    // typreceive
+		typ.SendFuncName(),                       // typsend
+		typ.ModInFuncName(),                      // typmodin
+		typ.ModOutFuncName(),                     // typmodout
+		typ.AnalyzeFuncName(),                    // typanalyze
+		string(typ.Align),                        // typalign
+		string(typ.Storage),                      // typstorage
+		typ.NotNull,                              // typnotnull
+		typ.BaseTypeID.AsId(),                    // typbasetype
+		typ.TypMod,                               // typtypmod
+		typ.NDims,                                // typndims
+		typ.TypCollation.AsId(),                  // typcollation
+		typ.DefaulBin,                            // typdefaultbin
+		typ.Default,                              // typdefault
+		typAcl,                                   // typacl
 	}, nil
 }
 
