@@ -54,7 +54,6 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 	schemasToOid := make(map[string]id.Namespace)
 	if pgCatalogCache.types == nil {
-		var pgCatalogOid id.Id
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
 				schemasToOid[schema.Item.SchemaName()] = schema.OID
@@ -88,14 +87,12 @@ func (p PgTypeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 		pgCatalogCache.types = allTypes
 		pgCatalogCache.schemasToOid = schemasToOid
-		pgCatalogCache.pgCatalogOid = pgCatalogOid
 	}
 
 	return &pgTypeRowIter{
-		pgCatalogOid: pgCatalogCache.pgCatalogOid,
-		types:        pgCatalogCache.types,
-		schemas:      pgCatalogCache.schemasToOid,
-		idx:          0,
+		types:   pgCatalogCache.types,
+		schemas: pgCatalogCache.schemasToOid,
+		idx:     0,
 	}, nil
 }
 
@@ -145,10 +142,9 @@ var pgTypeSchema = sql.Schema{
 
 // pgTypeRowIter is the sql.RowIter for the pg_type table.
 type pgTypeRowIter struct {
-	pgCatalogOid id.Id
-	types        []*pgtypes.DoltgresType
-	idx          int
-	schemas      map[string]id.Namespace
+	types   []*pgtypes.DoltgresType
+	idx     int
+	schemas map[string]id.Namespace
 }
 
 var _ sql.RowIter = (*pgTypeRowIter)(nil)
