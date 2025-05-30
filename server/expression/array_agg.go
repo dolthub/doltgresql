@@ -163,10 +163,10 @@ func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 		}
 	}
 	
-	// convert to []interface for return
+	// convert to []interface for return. The last element in each row is the one we want to return, the rest are sort fields.
 	result := make([]interface{}, len(a.elements))
 	for i, row := range a.elements {
-		result[i] = row[0]
+		result[i] = row[(len(row) - 1)]
 	}
 	
 	return result, nil
