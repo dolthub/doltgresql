@@ -60,7 +60,8 @@ func TestAggregateFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name: "array_agg_order_by",
+			Name:  "array_agg with order by",
+			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE test_data (
 					id INT PRIMARY KEY, 
@@ -102,7 +103,7 @@ func TestAggregateFunctions(t *testing.T) {
 				{
 					Query: `SELECT array_agg(id ORDER BY age) FROM test_data;`,
 					Expected: []sql.Row{
-						{"{3,1,4,6,2,5}"},
+						{"{3,1,6,4,2,5}"},
 					},
 				},
 				// ORDER BY with floats

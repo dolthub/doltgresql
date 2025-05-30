@@ -173,7 +173,27 @@ func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 }
 
 func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
-	// TODO: unwrap
-	a.elements = append(a.elements, row)
+	evalRow, err := evalExprs(ctx, a.a.selectExprs, row)
+	if err != nil {
+		return err
+	}
+
+	// TODO: unwrap values as necessary
+	// Append the current value to the end of the row. We want to preserve the row's original structure
+	// for sort ordering in the final step.
+	a.elements = append(a.elements, append(row, nil, evalRow[0]))
 	return nil
+}
+
+func evalExprs(ctx *sql.Context, exprs []sql.Expression, row sql.Row) (sql.Row, error) {
+	result := make(sql.Row, len(exprs))
+	for i, expr := range exprs {
+		var err error
+		result[i], err = expr.Eval(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
 }
