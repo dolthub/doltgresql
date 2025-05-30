@@ -52,7 +52,7 @@ func (a *ArrayAgg) Resolved() bool {
 
 func (a *ArrayAgg) String() string {
 	sb := strings.Builder{}
-	sb.WriteString("group_concat(")
+	sb.WriteString("array_agg(")
 
 	if a.selectExprs != nil {
 		var exprs = make([]string, len(a.selectExprs))
