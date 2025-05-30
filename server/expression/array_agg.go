@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/dolthub/doltgresql/server/types"
@@ -125,33 +126,54 @@ func (a *ArrayAgg) Window() *sql.WindowDefinition {
 
 func (a *ArrayAgg) NewBuffer() (sql.AggregationBuffer, error) {
 	return &arrayAggBuffer{
-		elements: make([]any, 0),
+		elements: make([]sql.Row, 0),
 		a: a,
 	}, nil
 }
 
 type arrayAggBuffer struct {
-	elements []any
+	elements []sql.Row
 	a        *ArrayAgg
 }
 
 func newArrayAggBuffer(a *ArrayAgg) (sql.AggregationBuffer, error) {
 	return &arrayAggBuffer{
-		elements: make([]any, 0),
+		elements: make([]sql.Row, 0),
 		a:        a,
 	}, nil
 }
 
 func (a *arrayAggBuffer) Dispose() {}
 
-func (a *arrayAggBuffer) Eval(context *sql.Context) (interface{}, error) {
+func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 	if len(a.elements) == 0 {
 		return nil, nil
 	}
-	return a.elements, nil
+	
+	if a.a.orderBy != nil {
+		sorter := &expression.Sorter{
+			SortFields: a.a.orderBy,
+			Rows:       a.elements,
+			Ctx:        ctx,
+		}
+
+		sort.Stable(sorter)
+		if sorter.LastError != nil {
+			return nil, sorter.LastError
+		}
+	}
+	
+	// convert to []interface for return
+	result := make([]interface{}, len(a.elements))
+	for i, row := range a.elements {
+		result[i] = row[0]
+	}
+	
+	return result, nil
 }
 
 func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
-	a.elements = append(a.elements, row[0])
+	// TODO: unwrap
+	a.elements = append(a.elements, row)
 	return nil
 }

@@ -86,7 +86,6 @@ func TestAggregateFunctions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				// Basic ORDER BY ASC
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY age ASC) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Charlie,Alice,Frank,Diana,Bob,Eve}"},
@@ -94,7 +93,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// Basic ORDER BY DESC
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY age DESC) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Eve,Bob,Diana,Frank,Alice,Charlie}"},
@@ -102,7 +100,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with integers
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(id ORDER BY age) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{3,1,4,6,2,5}"},
@@ -110,7 +107,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with floats
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY score DESC) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Alice,Eve,Charlie,Frank,Diana,Bob}"},
@@ -118,7 +114,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with timestamps
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY created_at ASC) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Bob,Charlie,Alice,Diana,Eve,Frank}"},
@@ -126,7 +121,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with VARCHAR/CHAR
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(age ORDER BY name) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{25,30,22,28,35,26}"},
@@ -134,7 +128,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// Multiple columns in ORDER BY
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY category ASC, age DESC) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Frank,Alice,Charlie,Eve,Bob,Diana}"},
@@ -142,7 +135,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with mixed ASC/DESC
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(id ORDER BY category ASC, score DESC) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{1,3,6,5,2,4}"},
@@ -150,7 +142,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with expression
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY age * 2) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Charlie,Alice,Frank,Diana,Bob,Eve}"},
@@ -158,7 +149,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with string concatenation
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(age ORDER BY category || name) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{25,22,26,35,30,28}"},
@@ -166,7 +156,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with CASE expression
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY CASE WHEN age > 27 THEN 1 ELSE 0 END, age) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Charlie,Alice,Frank,Diana,Bob,Eve}"},
@@ -174,7 +163,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with NULL values (NULLS FIRST behavior)
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY nullable_field) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Bob,Diana,Alice,Charlie,Eve,Frank}"},
@@ -182,7 +170,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with GROUP BY
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT category, array_agg(name ORDER BY age) FROM test_data GROUP BY category ORDER BY category;`,
 					Expected: []sql.Row{
 						{"A", "{Charlie,Alice,Frank}"},
@@ -192,7 +179,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with DISTINCT values
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(DISTINCT value ORDER BY value DESC) FROM duplicate_test;`,
 					Expected: []sql.Row{
 						{"{date,cherry,banana,apple}"},
@@ -200,7 +186,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with subquery correlation
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT category, array_agg(name ORDER BY (SELECT COUNT(*) FROM test_data t2 WHERE t2.category = test_data.category AND t2.age < test_data.age)) FROM test_data GROUP BY category ORDER BY category;`,
 					Expected: []sql.Row{
 						{"A", "{Charlie,Alice,Frank}"},
@@ -210,7 +195,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with COALESCE for NULL handling
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY COALESCE(nullable_field, 'zzz')) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Alice,Charlie,Eve,Frank,Bob,Diana}"},
@@ -218,7 +202,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// Complex ORDER BY with multiple expressions
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY LENGTH(name) DESC, name ASC) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Charlie,Alice,Diana,Frank,Bob,Eve}"},
@@ -226,7 +209,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with aggregated values in grouped context
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT category, array_agg(name ORDER BY score - (SELECT AVG(score) FROM test_data t2 WHERE t2.category = test_data.category)) FROM test_data GROUP BY category ORDER BY category;`,
 					Expected: []sql.Row{
 						{"A", "{Frank,Charlie,Alice}"},
@@ -236,7 +218,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with date functions
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY EXTRACT(hour FROM created_at)) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Diana,Bob,Alice,Charlie,Eve,Frank}"},
@@ -244,7 +225,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// Empty result set
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY age) FROM test_data WHERE age > 100;`,
 					Expected: []sql.Row{
 						{nil},
@@ -252,7 +232,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with boolean expression
 				{
-					Skip:  true, // ORDER BY not implemented yet
 					Query: `SELECT array_agg(name ORDER BY age > 27, age) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Charlie,Alice,Frank,Diana,Bob,Eve}"},
