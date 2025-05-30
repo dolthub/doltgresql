@@ -17,6 +17,7 @@ package expression
 import (
 	"strings"
 
+	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -34,7 +35,7 @@ var _ vitess.Injectable = (*ArrayAgg)(nil)
 // WithResolvedChildren returns a new ArrayAgg with the provided children as its select expressions.
 // The last child is expected to be the order by expressions.
 func (a *ArrayAgg) WithResolvedChildren(children []any) (any, error) {
-	a.selectExprs = make([]sql.Expression, 0, len(children)-1)
+	a.selectExprs = make([]sql.Expression, len(children)-1)
 	for i := 0; i < len(children) - 1; i++ {
 		a.selectExprs[i] = children[i].(sql.Expression)
 	}
@@ -75,8 +76,8 @@ func (a *ArrayAgg) String() string {
 }
 
 func (a *ArrayAgg) Type() sql.Type {
-	// TODO: array type
-	return a.selectExprs[0].Type()
+	dt := a.selectExprs[0].Type().(*types.DoltgresType)
+	return dt.ToArrayType()
 }
 
 func (a *ArrayAgg) IsNullable() bool {
