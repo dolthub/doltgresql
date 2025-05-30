@@ -18,10 +18,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 type ArrayAgg struct {
@@ -37,10 +38,10 @@ var _ vitess.Injectable = (*ArrayAgg)(nil)
 // The last child is expected to be the order by expressions.
 func (a *ArrayAgg) WithResolvedChildren(children []any) (any, error) {
 	a.selectExprs = make([]sql.Expression, len(children)-1)
-	for i := 0; i < len(children) - 1; i++ {
+	for i := 0; i < len(children)-1; i++ {
 		a.selectExprs[i] = children[i].(sql.Expression)
 	}
-	
+
 	a.orderBy = children[len(children)-1].(sql.SortFields)
 	return a, nil
 }
@@ -127,7 +128,7 @@ func (a *ArrayAgg) Window() *sql.WindowDefinition {
 func (a *ArrayAgg) NewBuffer() (sql.AggregationBuffer, error) {
 	return &arrayAggBuffer{
 		elements: make([]sql.Row, 0),
-		a: a,
+		a:        a,
 	}, nil
 }
 
@@ -149,7 +150,7 @@ func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 	if len(a.elements) == 0 {
 		return nil, nil
 	}
-	
+
 	if a.a.orderBy != nil {
 		sorter := &expression.Sorter{
 			SortFields: a.a.orderBy,
@@ -162,13 +163,13 @@ func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 			return nil, sorter.LastError
 		}
 	}
-	
+
 	// convert to []interface for return. The last element in each row is the one we want to return, the rest are sort fields.
 	result := make([]interface{}, len(a.elements))
 	for i, row := range a.elements {
 		result[i] = row[(len(row) - 1)]
 	}
-	
+
 	return result, nil
 }
 

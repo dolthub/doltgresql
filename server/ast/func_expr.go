@@ -18,10 +18,10 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 )
 
 // nodeFuncExpr handles *tree.FuncExpr nodes.
@@ -46,7 +46,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		
+
 		name = colName.Name
 	default:
 		return nil, errors.Errorf("unknown function reference")
@@ -104,14 +104,14 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 				return nil, err
 			}
 		}
-		
+
 		return &vitess.OrderedInjectedExpr{
 			InjectedExpr: vitess.InjectedExpr{
-				Expression: &pgexprs.ArrayAgg{},
-				SelectExprChildren:   exprs,
-				Auth:       vitess.AuthInformation{},
+				Expression:         &pgexprs.ArrayAgg{},
+				SelectExprChildren: exprs,
+				Auth:               vitess.AuthInformation{},
 			},
-			OrderBy:      orderBy,
+			OrderBy: orderBy,
 		}, nil
 	}
 
