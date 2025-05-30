@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -103,8 +104,15 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 				return nil, err
 			}
 		}
-
 		
+		return &vitess.OrderedInjectedExpr{
+			InjectedExpr: vitess.InjectedExpr{
+				Expression: &pgexprs.ArrayAgg{},
+				SelectExprChildren:   exprs,
+				Auth:       vitess.AuthInformation{},
+			},
+			OrderBy:      orderBy,
+		}, nil
 	}
 
 	if len(node.OrderBy) > 0 {
