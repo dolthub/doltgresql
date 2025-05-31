@@ -59,6 +59,177 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array_agg with order by",
+			SetUpScript: []string{
+				`CREATE TABLE test_data (
+					id INT PRIMARY KEY, 
+					name VARCHAR(50), 
+					age INT, 
+					score FLOAT, 
+					created_at TIMESTAMP, 
+					category CHAR(1),
+					nullable_field VARCHAR(20)
+				);`,
+				`INSERT INTO test_data VALUES 
+					(1, 'Alice', 25, 95.5, '2023-01-03 10:00:00', 'A', 'value1'),
+					(2, 'Bob', 30, 87.2, '2023-01-01 09:30:00', 'B', NULL),
+					(3, 'Charlie', 22, 92.8, '2023-01-02 11:15:00', 'A', 'value2'),
+					(4, 'Diana', 28, 88.9, '2023-01-04 08:45:00', 'C', NULL),
+					(5, 'Eve', 35, 94.1, '2023-01-05 14:20:00', 'B', 'value3'),
+					(6, 'Frank', 26, 89.3, '2023-01-06 16:30:00', 'A', 'value4');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				// Basic ORDER BY ASC
+				{
+					Query: `SELECT array_agg(name ORDER BY age ASC) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Charlie,Alice,Frank,Diana,Bob,Eve}"},
+					},
+				},
+				// Basic ORDER BY DESC
+				{
+					Query: `SELECT array_agg(name ORDER BY age DESC) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Eve,Bob,Diana,Frank,Alice,Charlie}"},
+					},
+				},
+				// ORDER BY with integers
+				{
+					Query: `SELECT array_agg(id ORDER BY age) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{3,1,6,4,2,5}"},
+					},
+				},
+				// ORDER BY with floats
+				{
+					Query: `SELECT array_agg(name ORDER BY score DESC) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Alice,Eve,Charlie,Frank,Diana,Bob}"},
+					},
+				},
+				// ORDER BY with timestamps
+				{
+					Query: `SELECT array_agg(name ORDER BY created_at ASC) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Bob,Charlie,Alice,Diana,Eve,Frank}"},
+					},
+				},
+				// ORDER BY with VARCHAR/CHAR
+				{
+					Query: `SELECT array_agg(age ORDER BY name) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{25,30,22,28,35,26}"},
+					},
+				},
+				// Multiple columns in ORDER BY
+				{
+					Query: `SELECT array_agg(name ORDER BY category ASC, age DESC) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Frank,Alice,Charlie,Eve,Bob,Diana}"},
+					},
+				},
+				// ORDER BY with mixed ASC/DESC
+				{
+					Query: `SELECT array_agg(id ORDER BY category ASC, score DESC) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{1,3,6,5,2,4}"},
+					},
+				},
+				// ORDER BY with expression
+				{
+					Query: `SELECT array_agg(name ORDER BY age * 2) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Charlie,Alice,Frank,Diana,Bob,Eve}"},
+					},
+				},
+				// ORDER BY with string concatenation
+				{
+					Query: `SELECT array_agg(age ORDER BY category || name) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{25,22,26,30,35,28}"},
+					},
+				},
+				// ORDER BY with CASE expression
+				{
+					Query: `SELECT array_agg(name ORDER BY CASE WHEN age > 27 THEN 1 ELSE 0 END, age) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Charlie,Alice,Frank,Diana,Bob,Eve}"},
+					},
+				},
+				// ORDER BY with NULL values (NULLS FIRST behavior)
+				{
+					Query: `SELECT array_agg(name ORDER BY nullable_field) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Bob,Diana,Alice,Charlie,Eve,Frank}"},
+					},
+				},
+				// ORDER BY with GROUP BY
+				{
+					Query: `SELECT category, array_agg(name ORDER BY age) FROM test_data GROUP BY category ORDER BY category;`,
+					Expected: []sql.Row{
+						{"A", "{Charlie,Alice,Frank}"},
+						{"B", "{Bob,Eve}"},
+						{"C", "{Diana}"},
+					},
+				},
+				// ORDER BY with subquery correlation
+				{
+					Skip:  true, // incorrect result
+					Query: `SELECT category, array_agg(name ORDER BY (SELECT COUNT(*) FROM test_data t2 WHERE t2.category = test_data.category AND t2.age < test_data.age)) FROM test_data GROUP BY category ORDER BY category;`,
+					Expected: []sql.Row{
+						{"A", "{Charlie,Alice,Frank}"},
+						{"B", "{Bob,Eve}"},
+						{"C", "{Diana}"},
+					},
+				},
+				// ORDER BY with COALESCE for NULL handling
+				{
+					Query: `SELECT array_agg(name ORDER BY COALESCE(nullable_field, 'zzz')) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Alice,Charlie,Eve,Frank,Bob,Diana}"},
+					},
+				},
+				// Complex ORDER BY with multiple expressions
+				{
+					Query: `SELECT array_agg(name ORDER BY LENGTH(name) DESC, name ASC) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Charlie,Alice,Diana,Frank,Bob,Eve}"},
+					},
+				},
+				// ORDER BY with aggregated values in grouped context
+				{
+					Skip:  true, // incorrect result
+					Query: `SELECT category, array_agg(name ORDER BY score - (SELECT AVG(score) FROM test_data t2 WHERE t2.category = test_data.category)) FROM test_data GROUP BY category ORDER BY category;`,
+					Expected: []sql.Row{
+						{"A", "{Frank,Charlie,Alice}"},
+						{"B", "{Bob,Eve}"},
+						{"C", "{Diana}"},
+					},
+				},
+				// ORDER BY with date functions
+				{
+					Query: `SELECT array_agg(name ORDER BY EXTRACT(hour FROM created_at)) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Diana,Bob,Alice,Charlie,Eve,Frank}"},
+					},
+				},
+				// Empty result set
+				{
+					Query: `SELECT array_agg(name ORDER BY age) FROM test_data WHERE age > 100;`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				// ORDER BY with boolean expression
+				{
+					Query: `SELECT array_agg(name ORDER BY age > 27, age) FROM test_data;`,
+					Expected: []sql.Row{
+						{"{Charlie,Alice,Frank,Diana,Bob,Eve}"},
+					},
+				},
+			},
+		},
 	})
 }
 
