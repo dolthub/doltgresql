@@ -55,10 +55,3 @@ var Record = &DoltgresType{
 	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
 }
-
-// RecordValue holds the value of a single field in a record, including type information for the
-// field value.
-type RecordValue struct {
-	Value any
-	Type  *DoltgresType
-}

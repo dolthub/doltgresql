@@ -257,20 +257,14 @@ func TestRecords(t *testing.T) {
 			Name: "ROW() casting and type inference",
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: ERROR: unknown type with oid: 2249
-					Skip:     true,
 					Query:    "SELECT ROW(1, 'a')::record;",
 					Expected: []sql.Row{{"(1,a)"}},
 				},
 				{
-					// TODO: This does not return an error yet
-					Skip:        true,
 					Query:       "SELECT ROW(1, 2) = ROW(1, 'two');",
 					ExpectedErr: "invalid input syntax",
 				},
 				{
-					// TODO: interface conversion panic
-					Skip:     true,
 					Query:    "SELECT ROW(1, 2) = ROW(1, '2');",
 					Expected: []sql.Row{{"t"}},
 				},
@@ -312,20 +306,16 @@ func TestRecords(t *testing.T) {
 					ExpectedErr: "unequal number of entries",
 				},
 				{
-					// TODO: expression.IsNull in GMS is used in this evaluation, but returns
-					//       false for this case, because the record evaluates to []any{nil}
-					//       instead of just nil.
-					Skip:     true,
-					Query:    "SELECT ROW(NULL) IS NULL",
-					Expected: []sql.Row{{"t"}},
+					Query:    "SELECT NULL::record IS NULL",
+					Expected: []sql.Row{{1}},
 				},
 				{
-					// TODO: expression.IsNull in GMS is used in this evaluation, but returns
-					//       false for this case, because the record evaluates to []any{nil}
-					//       instead of just nil.
-					Skip:     true,
+					Query:    "SELECT ROW(NULL) IS NULL",
+					Expected: []sql.Row{{1}},
+				},
+				{
 					Query:    "SELECT ROW(NULL, NULL, NULL) IS NULL;",
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{1}},
 				},
 				{
 					Query:    "SELECT ROW(NULL, 42, NULL) IS NULL;",
@@ -336,10 +326,6 @@ func TestRecords(t *testing.T) {
 					Expected: []sql.Row{{0}},
 				},
 				{
-					// TODO: expression.IsNull in GMS is used in this evaluation (wrapped with
-					//       an expression.Not), but returns true for this case, because the record
-					//       evaluates to []any{nil} instead of just nil.
-					Skip:     true,
 					Query:    "SELECT ROW(NULL) IS NOT NULL;",
 					Expected: []sql.Row{{"f"}},
 				},

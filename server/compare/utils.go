@@ -19,9 +19,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // CompareRecords compares two record values using the specified comparison operator, |op| and returns a result
@@ -128,13 +128,13 @@ func CompareRecords(ctx *sql.Context, op framework.Operator, v1 interface{}, v2 
 
 // checkRecordArgs asserts that |v1| and |v2| are both []pgtypes.RecordValue, and that they have the same number of
 // elements, then returns them. If any problems were detected, an error is returnd instead.
-func checkRecordArgs(v1, v2 interface{}) (leftRecord, rightRecord []pgtypes.RecordValue, err error) {
-	leftRecord, ok1 := v1.([]pgtypes.RecordValue)
-	rightRecord, ok2 := v2.([]pgtypes.RecordValue)
+func checkRecordArgs(v1, v2 interface{}) (leftRecord, rightRecord []types.TupleValue, err error) {
+	leftRecord, ok1 := v1.([]types.TupleValue)
+	rightRecord, ok2 := v2.([]types.TupleValue)
 	if !ok1 {
-		return nil, nil, fmt.Errorf("expected a RecordValue, but got %T", v1)
+		return nil, nil, fmt.Errorf("expected a TupleValue, but got %T", v1)
 	} else if !ok2 {
-		return nil, nil, fmt.Errorf("expected a RecordValue, but got %T", v2)
+		return nil, nil, fmt.Errorf("expected a TupleValue, but got %T", v2)
 	}
 
 	if len(leftRecord) != len(rightRecord) {
