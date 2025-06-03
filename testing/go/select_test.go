@@ -62,5 +62,23 @@ func TestSelect(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "SELECT with no select expressions",
+			SetUpScript: []string{
+				"CREATE TABLE mytable (pk int primary key);",
+				"INSERT INTO mytable VALUES (1), (2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select from mytable;",
+					Expected: []sql.Row{{}, {}},
+				},
+				{
+					// https://github.com/dolthub/doltgresql/issues/1470
+					Query:    "SELECT EXISTS (SELECT FROM mytable where pk > 0);",
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
 	})
 }

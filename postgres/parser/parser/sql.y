@@ -1074,7 +1074,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <[]tree.StorageParam> storage_parameter_list opt_table_with opt_with_storage_parameter_list attribution_list
 
 %type <*tree.Select> select_no_parens
-%type <tree.SelectStatement> select_clause select_with_parens simple_select values_clause table_clause simple_select_clause
+%type <tree.SelectStatement> select_clause select_with_parens simple_select empty_select values_clause table_clause simple_select_clause
 %type <tree.LockingClause> for_locking_clause opt_for_locking_clause for_locking_items
 %type <*tree.LockingItem> for_locking_item
 %type <tree.LockingStrength> for_locking_strength
@@ -10582,9 +10582,27 @@ select_clause:
 //   SELECT ... [ { INTERSECT | UNION | EXCEPT } [ ALL | DISTINCT ] <selectclause> ]
 simple_select:
   simple_select_clause // EXTEND WITH HELP: SELECT
+| empty_select
 | values_clause        // EXTEND WITH HELP: VALUES
 | table_clause         // EXTEND WITH HELP: TABLE
 | set_operation
+
+// Postgres allows select expressions to be omitted, when causes the select statement to
+// return empty rows for any matches. Changing the existing select rules to make from_list
+// optional cause shift/reduce conflicts, so this rule was added to work around that.
+empty_select:
+  SELECT FROM from_list opt_where_clause
+    group_clause having_clause window_clause
+  {
+    $$.val = &tree.SelectClause{
+      Exprs:   make(tree.SelectExprs, 0, 0),
+      From:    tree.From{Tables: $3.tblExprs()},
+      Where:   tree.NewWhere(tree.AstWhere, $4.expr()),
+      GroupBy: $5.groupBy(),
+      Having:  tree.NewWhere(tree.AstHaving, $6.expr()),
+      Window:  $7.window(),
+    }
+  }
 
 // %Help: SELECT - retrieve rows from a data source and compute a result
 // %Category: DML
