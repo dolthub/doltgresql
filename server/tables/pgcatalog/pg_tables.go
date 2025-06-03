@@ -17,6 +17,9 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions"
@@ -65,13 +68,22 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return nil, err
 		}
 		pgCatalogCache.tables = tables
-		pgCatalogCache.tableSchemas = tableSchemas
+	}
+
+	_, root, err := core.GetRootFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	systemTables, err := doltdb.GetGeneratedSystemTables(ctx, root)
+	if err != nil {
+		return nil, err
 	}
 
 	return &pgTablesRowIter{
-		tables:  pgCatalogCache.tables,
-		schemas: pgCatalogCache.tableSchemas,
-		idx:     0,
+		userTables:  pgCatalogCache.tables,
+		systemTableNames: systemTables,
+		idx:         0,
 	}, nil
 }
 
@@ -97,44 +109,63 @@ var pgTablesSchema = sql.Schema{
 
 // pgTablesRowIter is the sql.RowIter for the pg_tables table.
 type pgTablesRowIter struct {
-	tables  []sql.Table
-	schemas []string
-	idx     int
+	// userTable are the set of user-defined tables
+	userTables       []sql.Table
+	// systemTableNames is the names of all system tables
+	systemTableNames []doltdb.TableName
+	// idx is the current index in the iteration through both slices
+	idx              int
 }
 
 var _ sql.RowIter = (*pgTablesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if iter.idx >= len(iter.tables) {
+	if iter.idx >= len(iter.userTables)+len(iter.systemTableNames) {
 		return nil, io.EOF
 	}
 	iter.idx++
-	table := iter.tables[iter.idx-1]
-	schema := iter.schemas[iter.idx-1]
 
-	hasIndexes := false
-	if it, ok := table.(sql.IndexAddressable); ok {
-		idxs, err := it.GetIndexes(ctx)
-		if err != nil {
-			return nil, err
-		}
+	var tableName string
+	var hasIndexes bool
+	var schema string
 
-		if len(idxs) > 0 {
-			hasIndexes = true
+	if iter.idx <= len(iter.userTables) {
+		table := iter.userTables[iter.idx-1]
+		// For user tables, we can get the schema and table name directly
+		dst, ok := table.(sql.DatabaseSchemaTable)
+		if !ok {
+			return nil, errors.Errorf("table %T does not implement sql.DatabaseSchemaTable", table)
 		}
+		
+		schema = dst.DatabaseSchema().Name()
+		tableName = table.Name()
+		
+		if it, ok := table.(sql.IndexAddressable); ok {
+			idxs, err := it.GetIndexes(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			if len(idxs) > 0 {
+				hasIndexes = true
+			}
+		}
+	} else {
+		tblName := iter.systemTableNames[iter.idx-len(iter.userTables)]
+		tableName = tblName.Name
+		schema = tblName.Schema
 	}
 
-	// TODO: Implement the rest of these pg_tables columns
 	return sql.Row{
-		schema,       // schemaname
-		table.Name(), // tablename
-		"",           // tableowner
-		"",           // tablespace
-		hasIndexes,   // hasindexes
-		false,        // hasrules
-		false,        // hastriggers
-		false,        // rowsecurity
+		schema,     // schemaname
+		tableName,  // tablename
+		"postgres", // tableowner
+		nil,        // tablespace
+		hasIndexes, // hasindexes
+		false,      // hasrules  // TODO
+		false,      // hastriggers // TODO
+		false,      // rowsecurity
 	}, nil
 }
 

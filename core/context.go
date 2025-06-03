@@ -58,8 +58,8 @@ func getContextValues(ctx *sql.Context) (*contextValues, error) {
 	return cv, nil
 }
 
-// getRootFromContext returns the working session's root from the context, along with the session.
-func getRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error) {
+// GetRootFromContext returns the working session's root from the context, along with the session.
+func GetRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error) {
 	return getRootFromContextForDatabase(ctx, "")
 }
 
@@ -120,7 +120,7 @@ func SetPgCatalogCache(ctx *sql.Context, pgCatalogCache any) error {
 
 // GetDoltTableFromContext returns the Dolt table from the context. Returns nil if no table was found.
 func GetDoltTableFromContext(ctx *sql.Context, tableName doltdb.TableName) (*doltdb.Table, error) {
-	_, root, err := getRootFromContext(ctx)
+	_, root, err := GetRootFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +220,7 @@ func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection,
 	if err != nil {
 		return nil, err
 	}
-	_, root, err := getRootFromContext(ctx)
+	_, root, err := GetRootFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +293,7 @@ func GetTypesCollectionFromContext(ctx *sql.Context) (*typecollection.TypeCollec
 		return nil, err
 	}
 	if cv.types == nil {
-		_, root, err := getRootFromContext(ctx)
+		_, root, err := GetRootFromContext(ctx)
 		if err != nil {
 			return nil, err
 		}
