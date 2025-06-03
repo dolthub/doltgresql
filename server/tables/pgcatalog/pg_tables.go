@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -73,7 +74,7 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return nil, err
 		}
 
-		systemTables, err := doltdb.GetGeneratedSystemTables(ctx, root)
+		systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
 		if err != nil {
 			return nil, err
 		}
