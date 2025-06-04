@@ -17,7 +17,6 @@ package pgcatalog
 import (
 	"io"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/doltgresql/core"
@@ -126,21 +125,25 @@ func (iter *pgTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	if iter.idx >= len(iter.userTables)+len(iter.systemTableNames) {
 		return nil, io.EOF
 	}
-	iter.idx++
+	defer func() {
+		iter.idx++
+	}()
 
 	var tableName string
 	var hasIndexes bool
 	var schema string
 
-	if iter.idx <= len(iter.userTables) {
-		table := iter.userTables[iter.idx-1]
+	if iter.idx < len(iter.userTables) {
+		table := iter.userTables[iter.idx]
 		// For user tables, we can get the schema and table name directly
 		dst, ok := table.(sql.DatabaseSchemaTable)
-		if !ok {
-			return nil, errors.Errorf("table %T does not implement sql.DatabaseSchemaTable", table)
+		if ok {
+			schema = dst.DatabaseSchema().SchemaName()
+		} else {
+			// this is usually an info schema table
+			schema = "information_schema"
 		}
 		
-		schema = dst.DatabaseSchema().Name()
 		tableName = table.Name()
 		
 		if it, ok := table.(sql.IndexAddressable); ok {
