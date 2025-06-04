@@ -83,6 +83,7 @@ func Init() {
 	initCbrt()
 	initCeil()
 	initCharLength()
+	initCheckEstimatedRows()
 	initChr()
 	initColDescription()
 	initCos()
