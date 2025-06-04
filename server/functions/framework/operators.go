@@ -50,6 +50,7 @@ const (
 	Operator_BinaryJSONTopLevel                        // ?
 	Operator_BinaryJSONTopLevelAny                     // ?|
 	Operator_BinaryJSONTopLevelAll                     // ?&
+	Operator_BinaryTextSearch                          // @@
 	Operator_UnaryPlus                                 // +
 	Operator_UnaryMinus                                // -
 )
@@ -180,6 +181,8 @@ func (o Operator) String() string {
 		return "<"
 	case Operator_BinaryLessOrEqual:
 		return "<="
+	case Operator_BinaryTextSearch:
+		return "@@"
 	default:
 		return "unknown operator"
 	}

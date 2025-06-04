@@ -33,5 +33,6 @@ func Init() {
 	initBinaryPlus()
 	initBinaryShiftLeft()
 	initBinaryShiftRight()
+	initBinaryTextSearch()
 	initJSON()
 }
