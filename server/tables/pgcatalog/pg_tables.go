@@ -20,11 +20,10 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/go-mysql-server/sql"
-
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // PgTablesName is a constant to the pg_tables name.
@@ -135,12 +134,11 @@ func (iter *pgTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	if iter.idx < len(iter.userTables) {
 		table := iter.userTables[iter.idx]
-		// For user tables, we can get the schema and table name directly
-		dst, ok := table.(sql.DatabaseSchemaTable)
-		if ok {
-			schema = dst.DatabaseSchema().SchemaName()
-		} else {
-			// this is usually an info schema table
+		
+		switch table := table.(type) {
+		case sql.DatabaseSchemaTable:
+			schema = table.DatabaseSchema().SchemaName()
+		default:
 			schema = "information_schema"
 		}
 		

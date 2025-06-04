@@ -21,16 +21,19 @@ import (
 // VirtualTable represents a table that does not enforce any particular storage of its data.
 type VirtualTable struct {
 	handler Handler
+	schema sql.DatabaseSchema
 }
 
 var _ sql.DebugStringer = (*VirtualTable)(nil)
 var _ sql.PrimaryKeyTable = (*VirtualTable)(nil)
 var _ sql.Table = (*VirtualTable)(nil)
+var _ sql.DatabaseSchemaTable = (*VirtualTable)(nil)
 
 // NewVirtualTable creates a new *VirtualTable from the given Handler.
-func NewVirtualTable(handler Handler) *VirtualTable {
+func NewVirtualTable(handler Handler, schema sql.DatabaseSchema) *VirtualTable {
 	return &VirtualTable{
 		handler: handler,
+		schema:  schema,
 	}
 }
 
@@ -74,4 +77,8 @@ func (tbl *VirtualTable) Schema() sql.Schema {
 // String implements the interface sql.Table.
 func (tbl *VirtualTable) String() string {
 	return tbl.Name()
+}
+
+func (tbl *VirtualTable) DatabaseSchema() sql.DatabaseSchema {
+	return tbl.schema
 }

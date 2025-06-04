@@ -3505,6 +3505,8 @@ func TestPgTables(t *testing.T) {
 		{
 			Name: "pg_tables",
 			SetUpScript: []string{
+				`create table t1 (pk int primary key, v1 int);`,
+				`create table t2 (pk int primary key, v1 int);`,
 				`CREATE SCHEMA testschema;`,
 				`SET search_path TO testschema;`,
 				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
@@ -3531,12 +3533,15 @@ func TestPgTables(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query: "SELECT schemaname, tablename FROM PG_catalog.pg_TABLES WHERE schemaname != 'information_schema' ORDER BY tablename DESC LIMIT 3;",
+					Query: "SELECT schemaname, tablename FROM PG_catalog.pg_TABLES WHERE schemaname not in ('information_schema', 'dolt') ORDER BY tablename DESC LIMIT 3;",
 					Expected: []sql.Row{
 						{"testschema", "testing"},
 						{"pg_catalog", "pg_views"},
 						{"pg_catalog", "pg_user_mappings"},
 					},
+				},
+				{
+					
 				},
 			},
 		},
