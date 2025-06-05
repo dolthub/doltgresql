@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -103,6 +105,25 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		_, root, err := core.GetRootFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, tblName := range systemTables {
+			classes = append(classes, pgClass{
+				name:       tblName.Name,
+				hasIndexes: false,
+				kind:       "r",
+			})
+		}
+		
 		pgCatalogCache.pgClasses = classes
 	}
 
