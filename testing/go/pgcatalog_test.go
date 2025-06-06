@@ -4184,3 +4184,86 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
 		},
 	})
 }
+
+func TestSystemTablesInPgcatalog(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_tables",
+			SetUpScript: []string{
+				`CREATE SCHEMA s1;`,
+				`CREATE TABLE s1.t1 (pk INT primary key, v1 INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select * from pg_catalog.pg_tables where schemaname not in ('information_schema', 'pg_catalog') order by schemaname, tablename;",
+					Expected: []sql.Row{
+						{"dolt", "branches", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "commit_ancestors", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "commits", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "conflicts", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "constraint_violations", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "dolt_backups", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "dolt_help", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "log", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "remote_branches", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "remotes", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"dolt", "status", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_branches", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_column_diff", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_commit_ancestors", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_commits", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_conflicts", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_constraint_violations", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_diff", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_ignore", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_log", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_merge_status", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_rebase", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_remote_branches", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_remotes", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_schema_conflicts", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_statistics", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_status", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"public", "dolt_tags", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_branches", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_column_diff", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_commit_ancestors", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_commit_diff_t1", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_commits", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_conflicts", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_conflicts_t1", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_constraint_violations", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_constraint_violations_t1", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_diff", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_diff_t1", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_history_t1", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_ignore", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_log", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_merge_status", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_rebase", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_remote_branches", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_remotes", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_schema_conflicts", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_statistics", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_status", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_tags", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "dolt_workspace_t1", "postgres", interface{}(nil), "f", "f", "f", "f"},
+						{"s1", "t1", "postgres", interface{}(nil), "t", "f", "f", "f"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_class",
+			SetUpScript: []string{
+				`CREATE SCHEMA s1;`,
+				`CREATE TABLE s1.t1 (pk INT primary key, v1 INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `select * from pg_class where relkind in ('r', 'p', 'f', 'v', 'm') and relnamespace not in (select oid from pg_namespace where nspname in ('information_schema', 'pg_catalog')) order by relnamespace, relname;`,
+				},
+			},
+		},
+	})
+}
