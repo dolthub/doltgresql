@@ -134,6 +134,7 @@ func Init() {
 	initPgIndexesSize()
 	initPgIsInRecovery()
 	initPgPostmasterStartTime()
+	initPgRelationIsPublishable()
 	initPgRelationSize()
 	initPgGetSerialSequence()
 	initPgGetStatisticsobjdefColumns()

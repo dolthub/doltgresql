@@ -59,8 +59,6 @@ var bpcharin = framework.Function3{
 		input, runeLength := truncateString(input, maxChars)
 		if runeLength > maxChars {
 			return input, errors.Errorf("value too long for type varying(%v)", maxChars)
-		} else if runeLength < maxChars {
-			return input + strings.Repeat(" ", int(maxChars-runeLength)), nil
 		} else {
 			return input, nil
 		}
