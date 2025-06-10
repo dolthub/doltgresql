@@ -361,36 +361,43 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryNotEqual),
 				Children:   vitess.Exprs{left, right},
 			}, nil
-		case tree.In:
+		case tree.In, tree.NotIn:
+			var innerExpression vitess.InjectedExpr
 			switch right := right.(type) {
 			case vitess.ValTuple:
-				return vitess.InjectedExpr{
+				innerExpression = vitess.InjectedExpr{
 					Expression: pgexprs.NewInTuple(),
 					Children:   vitess.Exprs{left, right},
-				}, nil
+				}
 			case *vitess.Subquery:
-				return vitess.InjectedExpr{
+				innerExpression = vitess.InjectedExpr{
 					Expression: pgexprs.NewInSubquery(),
 					Children:   vitess.Exprs{left, right},
-				}, nil
+				}
 			case vitess.InjectedExpr:
 				if _, ok := right.Expression.(*pgexprs.RecordExpr); ok {
-					return vitess.InjectedExpr{
+					innerExpression = vitess.InjectedExpr{
 						Expression: pgexprs.NewInTuple(),
 						Children:   vitess.Exprs{left, vitess.ValTuple(right.Children)},
-					}, nil
+					}
 				}
 			}
-			return nil, errors.Errorf("right side of IN expression is not a tuple or subquery, got %T", right)
-		case tree.NotIn:
-			innerExpr := vitess.InjectedExpr{
-				Expression: pgexprs.NewInTuple(),
-				Children:   vitess.Exprs{left, right},
+
+			if innerExpression.Expression == nil {
+				return nil, errors.Errorf("right side of IN expression is not a tuple or subquery, got %T", right)
 			}
-			return vitess.InjectedExpr{
-				Expression: pgexprs.NewNot(),
-				Children:   vitess.Exprs{innerExpr},
-			}, nil
+			
+			switch node.Operator {
+			case tree.In:
+				return innerExpression, nil
+			case tree.NotIn:
+				return vitess.InjectedExpr{
+					Expression: pgexprs.NewNot(),
+					Children:   vitess.Exprs{innerExpression},
+				}, nil
+			default:
+				return nil, errors.Errorf("unknown comparison operator used")
+			}
 		case tree.Like:
 			operator = vitess.LikeStr
 		case tree.NotLike:
