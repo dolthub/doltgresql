@@ -4254,8 +4254,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 			},
 		},
 		{
-			Name:  "pg_class",
-			Focus: true,
+			Name: "pg_class",
 			SetUpScript: []string{
 				`CREATE SCHEMA s1;`,
 				`CREATE TABLE s1.t1 (pk INT primary key, v1 INT);`,
@@ -4318,6 +4317,18 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1670572237, "remotes", 1882653564, "r"},
 						{3431637196, "status", 1882653564, "r"},
 					},
+				},
+			},
+		},
+		{
+			Name: "pg_attr",
+			SetUpScript: []string{
+				`CREATE SCHEMA s1;`,
+				`CREATE TABLE s1.t1 (pk INT primary key, v1 INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `select attrelid, attname, atttypid, attnum, attnotnull, atthasdef, attisdropped from pg_catalog.pg_attribute where attrelid in (select oid from pg_catalog.pg_class where relnamespace not in (select oid from pg_namespace where nspname in ('information_schema', 'pg_catalog'))) order by attrelid, attnum;`,
 				},
 			},
 		},
