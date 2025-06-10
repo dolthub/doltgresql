@@ -118,12 +118,13 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 		for _, tblName := range systemTables {
 			classes = append(classes, pgClass{
+				oid:        id.NewTable(tblName.Schema, tblName.Name).AsId(),
 				name:       tblName.Name,
-				hasIndexes: false,
+				schemaOid:  id.NewNamespace(tblName.Schema).AsId(),
 				kind:       "r",
 			})
 		}
-		
+
 		pgCatalogCache.pgClasses = classes
 	}
 
