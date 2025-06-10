@@ -4321,7 +4321,8 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 			},
 		},
 		{
-			Name: "pg_attr",
+			Name: "pg_attribute",
+			Focus: true,
 			SetUpScript: []string{
 				`CREATE SCHEMA s1;`,
 				`CREATE TABLE s1.t1 (pk INT primary key, v1 INT);`,

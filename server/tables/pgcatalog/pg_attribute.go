@@ -17,6 +17,8 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -69,6 +71,32 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		_, root, err := core.GetRootFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+
+		db := ctx.GetCurrentDatabase()
+		for _, tblName := range systemTables {
+			tbl, err := core.GetSqlTableFromContext(ctx, db, tblName)
+			if err != nil {
+				return nil, err
+			}
+
+			schema := tbl.Schema()
+			for i, col := range schema {
+				cols = append(cols, col)
+				colIdxs = append(colIdxs, i)
+				tableOIDs = append(tableOIDs, id.NewTable(tblName.Schema, tblName.Name).AsId())
+			}
+		}
+
 		pgCatalogCache.attributeCols = cols
 		pgCatalogCache.attributeColIdxs = colIdxs
 		pgCatalogCache.attributeTableOIDs = tableOIDs
