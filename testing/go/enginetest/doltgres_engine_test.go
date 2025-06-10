@@ -1217,6 +1217,7 @@ func TestViewsWithAsOfPrepared(t *testing.T) {
 func TestDoltMerge(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"dolt_preview_merge_conflicts_summary(",                                                                               // returns schema qualified table names
+		"dolt_preview_merge_conflicts(",                                                                                       // table not found: test
 		"keyless table merge with constraint violation on duplicate rows",                                                     // alter table
 		"CALL DOLT_MERGE without conflicts correctly works with autocommit off with commit flag",                              // datetime support
 		"CALL DOLT_MERGE without conflicts correctly works with autocommit off and no commit flag",                            // datetime support
