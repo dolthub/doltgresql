@@ -95,6 +95,15 @@ func getTriggerInformation(ctx *sql.Context, node sql.Node) (sch sql.Schema, bef
 			return nil, nil, nil, err
 		}
 	case *plan.Update:
+		// TODO: If there is a JoinNode in here, then don't bother calling GetUpdatable, because
+		//       it doesn't currently return a type that can be used to query trigger information.
+		//       We need to rework the plan.GetUpdatable() API to support returning multiple
+		//       update targets and to return types that are compatible with the interfaces
+		//       Doltgres needs in order to populate trigger information.
+		if hasJoinNode(node) {
+			return nil, nil, nil, nil
+		}
+
 		tbl, err = plan.GetUpdatable(node.Child)
 		if err != nil {
 			return nil, nil, nil, err
@@ -166,6 +175,18 @@ func getTriggerInformation(ctx *sql.Context, node sql.Node) (sch sql.Schema, bef
 		}
 	}
 	return tbl.Schema(), beforeTrigs, afterTrigs, nil
+}
+
+// hasJoinNode returns true if |node| or any child is a JoinNode.
+func hasJoinNode(node sql.Node) bool {
+	updateJoinFound := false
+	transform.Inspect(node, func(n sql.Node) bool {
+		if _, ok := n.(*plan.JoinNode); ok {
+			updateJoinFound = true
+		}
+		return !updateJoinFound
+	})
+	return updateJoinFound
 }
 
 // getTriggerSource returns the trigger's source node.

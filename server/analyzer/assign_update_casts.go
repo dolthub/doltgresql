@@ -15,8 +15,9 @@
 package analyzer
 
 import (
-	"github.com/cockroachdb/errors"
+	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -49,6 +50,24 @@ func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		if !ok {
 			return nil, transform.NewTree, errors.Errorf("UPDATE: assumption that Foreign Key child is always UpdateSource is incorrect: %T", child.OriginalNode)
 		}
+		newUpdateSource, err := assignUpdateCastsHandleSource(updateSource)
+		if err != nil {
+			return nil, transform.NewTree, err
+		}
+		newHandler, err := child.WithChildren(newUpdateSource)
+		if err != nil {
+			return nil, transform.NewTree, err
+		}
+		newUpdate, err = update.WithChildren(newHandler)
+		if err != nil {
+			return nil, transform.NewTree, err
+		}
+	case *plan.UpdateJoin:
+		updateSource, ok := child.Child.(*plan.UpdateSource)
+		if !ok {
+			return nil, transform.NewTree, fmt.Errorf("UPDATE: unknown source type: %T", child.Child)
+		}
+
 		newUpdateSource, err := assignUpdateCastsHandleSource(updateSource)
 		if err != nil {
 			return nil, transform.NewTree, err
