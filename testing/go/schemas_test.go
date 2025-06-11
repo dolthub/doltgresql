@@ -754,7 +754,7 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
-				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema';",
+				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname not in ('pg_catalog', 'information_schema', 'dolt') and left(tablename, 5) <> 'dolt_';",
 				Expected: []sql.Row{
 					{"myschema", "mytbl"},
 				},
@@ -828,7 +828,7 @@ var SchemaTests = []ScriptTest{
 				},
 			},
 			{
-				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema';",
+				Query: "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname not in ('pg_catalog', 'information_schema', 'dolt') and left(tablename, 5) <> 'dolt_';",
 				Expected: []sql.Row{
 					{"myschema", "mytbl"},
 					{"newbranchschema", "mytbl2"},
