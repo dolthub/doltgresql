@@ -386,7 +386,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			if innerExpression.Expression == nil {
 				return nil, errors.Errorf("right side of IN expression is not a tuple or subquery, got %T", right)
 			}
-			
+
 			switch node.Operator {
 			case tree.In:
 				return innerExpression, nil

@@ -19,11 +19,12 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // PgTablesName is a constant to the pg_tables name.
@@ -80,9 +81,9 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		pgCatalogCache.tables = tables
 		pgCatalogCache.systemTables = systemTables
 	}
-	
+
 	return &pgTablesRowIter{
-		userTables:  pgCatalogCache.tables,
+		userTables:       pgCatalogCache.tables,
 		systemTableNames: pgCatalogCache.systemTables,
 	}, nil
 }
@@ -110,11 +111,11 @@ var pgTablesSchema = sql.Schema{
 // pgTablesRowIter is the sql.RowIter for the pg_tables table.
 type pgTablesRowIter struct {
 	// userTable are the set of user-defined tables
-	userTables       []sql.Table
+	userTables []sql.Table
 	// systemTableNames is the names of all system tables
 	systemTableNames []doltdb.TableName
 	// idx is the current index in the iteration through both slices
-	idx              int
+	idx int
 }
 
 var _ sql.RowIter = (*pgTablesRowIter)(nil)
@@ -134,16 +135,16 @@ func (iter *pgTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	if iter.idx < len(iter.userTables) {
 		table := iter.userTables[iter.idx]
-		
+
 		switch table := table.(type) {
 		case sql.DatabaseSchemaTable:
 			schema = table.DatabaseSchema().SchemaName()
 		default:
 			schema = "information_schema"
 		}
-		
+
 		tableName = table.Name()
-		
+
 		if it, ok := table.(sql.IndexAddressable); ok {
 			idxs, err := it.GetIndexes(ctx)
 			if err != nil {
