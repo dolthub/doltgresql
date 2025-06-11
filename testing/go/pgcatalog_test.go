@@ -4129,6 +4129,14 @@ FROM pg_catalog.pg_sequence
 WHERE pg_catalog.pg_attribute.attidentity != '' AND pg_catalog.pg_sequence.seqrelid = CAST(CAST(pg_catalog.pg_get_serial_sequence(CAST(CAST(pg_catalog.pg_attribute.attrelid AS REGCLASS) AS TEXT), pg_catalog.pg_attribute.attname) AS REGCLASS) AS OID)) AS identity_options 
 FROM pg_catalog.pg_class LEFT OUTER JOIN pg_catalog.pg_attribute ON pg_catalog.pg_class.oid = pg_catalog.pg_attribute.attrelid AND pg_catalog.pg_attribute.attnum > 0 AND NOT pg_catalog.pg_attribute.attisdropped LEFT OUTER JOIN pg_catalog.pg_description ON pg_catalog.pg_description.objoid = pg_catalog.pg_attribute.attrelid AND pg_catalog.pg_description.objsubid = pg_catalog.pg_attribute.attnum JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
 WHERE pg_catalog.pg_class.relkind = ANY (ARRAY['r', 'p', 'f', 'v', 'm']) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != 'pg_catalog' AND pg_catalog.pg_class.relname IN ('dolt_log') ORDER BY pg_catalog.pg_class.relname, pg_catalog.pg_attribute.attnum`,
+					Expected: []sql.Row{
+						{"commit_hash", "text", nil, "t", "dolt_log", nil, "", nil},
+						{"committer", "text", nil, "t", "dolt_log", nil, "", nil},
+						{"email", "text", nil, "t", "dolt_log", nil, "", nil},
+						{"date", "timestamp without time zone", nil, "t", "dolt_log", nil, "", nil},
+						{"message", "text", nil, "t", "dolt_log", nil, "", nil},
+						{"commit_order", "bigint", nil, "t", "dolt_log", nil, "", nil},
+					},
 				},
 				{
 					Query: `SELECT pg_catalog.pg_type.typname AS name,
@@ -4179,6 +4187,14 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
        AND pg_catalog.pg_namespace.nspname != 'pg_catalog' 
        AND pg_catalog.pg_class.relname IN ('dolt_log') 
        ORDER BY pg_catalog.pg_class.relname, pg_catalog.pg_attribute.attnum`,
+					Expected: []sql.Row{
+						{"commit_hash", "text", nil, "t", "dolt_log", nil, "", nil},
+						{"committer", "text", nil, "t", "dolt_log", nil, "", nil},
+						{"email", "text", nil, "t", "dolt_log", nil, "", nil},
+						{"date", "timestamp without time zone", nil, "t", "dolt_log", nil, "", nil},
+						{"message", "text", nil, "t", "dolt_log", nil, "", nil},
+						{"commit_order", "bigint", nil, "t", "dolt_log", nil, "", nil},
+					},
 				},
 			},
 		},
