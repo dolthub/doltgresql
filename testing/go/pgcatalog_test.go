@@ -474,7 +474,7 @@ func TestPgClass(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query: "SELECT relname FROM PG_catalog.pg_CLASS ORDER BY relname ASC LIMIT 3;",
+					Query: "SELECT relname FROM PG_catalog.pg_CLASS where relnamespace not in (select oid from pg_namespace where nspname = 'dolt') ORDER BY relname ASC LIMIT 3;",
 					Expected: []sql.Row{
 						{"administrable_role_authorizations"},
 						{"applicable_roles"},
@@ -482,7 +482,7 @@ func TestPgClass(t *testing.T) {
 					},
 				},
 				{
-					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'testschema' ORDER BY relname;",
+					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'testschema' and left(relname, 5) <> 'dolt_' ORDER BY relname;",
 					Expected: []sql.Row{
 						{"testing"},
 						{"testing_pkey"},
