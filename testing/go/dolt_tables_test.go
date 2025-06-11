@@ -24,6 +24,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "dolt branches",
+			Focus: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:            `SELECT name FROM dolt.branches`,
@@ -32,6 +33,11 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:            `SELECT name FROM dolt_branches`,
+					ExpectedColNames: []string{"name"},
+					Expected:         []sql.Row{{"main"}},
+				},
+				{
+					Query:            `SELECT name FROM public.dolt_branches`,
 					ExpectedColNames: []string{"name"},
 					Expected:         []sql.Row{{"main"}},
 				},

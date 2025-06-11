@@ -17,6 +17,8 @@ package pgcatalog
 import (
 	"io"
 
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -86,6 +88,10 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 		for _, tblName := range systemTables {
 			tbl, err := core.GetSqlTableFromContext(ctx, db, tblName)
 			if err != nil {
+				// Some of the system tables exist conditionally when accessed, so just skip them in this case
+				if errors.Is(doltdb.ErrTableNotFound, err) {
+					continue
+				}
 				return nil, err
 			}
 
