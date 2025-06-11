@@ -24,7 +24,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "dolt branches",
-			Focus: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:            `SELECT name FROM dolt.branches`,
