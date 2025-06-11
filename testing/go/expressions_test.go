@@ -101,8 +101,7 @@ func TestIn(t *testing.T) {
 			},
 		},
 		{
-			Name:  "NOT IN",
-			Focus: true,
+			Name: "NOT IN",
 			SetUpScript: []string{
 				`CREATE TABLE test (id INT);`,
 				`INSERT INTO test VALUES (1), (3), (2);`,
