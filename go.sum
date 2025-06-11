@@ -256,8 +256,8 @@ github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5Xh
 github.com/docker/go-units v0.4.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 h1:IdqX7J8vi/Kn3T3Ee0VzqnLqwFmgA2hr8WZETPcQjfM=
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12/go.mod h1:rN7X8BHwkjPcfMQQ2QTAq/xM3leUSGLfb+1Js7Y6TVo=
-github.com/dolthub/dolt/go v0.40.5-0.20250610173122-93301be37322 h1:a1RFFm9S7evoi52dDLYalO4dJ0ODZp0fpDzeGaRnMmU=
-github.com/dolthub/dolt/go v0.40.5-0.20250610173122-93301be37322/go.mod h1:bCnd7kgVzluInixqje/NRPwykkjStWr8bLM+O8q6YB4=
+github.com/dolthub/dolt/go v0.40.5-0.20250611211258-467545966928 h1:EYSNpmmKT7snTv/J8ewmohvv5acDUPHp8Xd3ia7fbns=
+github.com/dolthub/dolt/go v0.40.5-0.20250611211258-467545966928/go.mod h1:UPgK+onv/BSLTCOuBoua7sX0vsanev+oUUddErw9fOQ=
 github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d h1:gO9+wrmNHXukPNCO1tpfCcXIdMlW/qppbUStfLvqz/U=
 github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20241119094239-f4e529af734d/go.mod h1:L5RDYZbC9BBWmoU2+TjTekeqqhFXX5EqH9ln00O0stY=
 github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 h1:u3PMzfF8RkKd3lB9pZ2bfn0qEG+1Gms9599cr0REMww=
