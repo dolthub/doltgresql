@@ -106,23 +106,25 @@ func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return nil, err
 		}
 
-		_, root, err := core.GetRootFromContext(ctx)
-		if err != nil {
-			return nil, err
-		}
+		if includeSystemTables {
+			_, root, err := core.GetRootFromContext(ctx)
+			if err != nil {
+				return nil, err
+			}
 
-		systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
-		if err != nil {
-			return nil, err
-		}
+			systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
+			if err != nil {
+				return nil, err
+			}
 
-		for _, tblName := range systemTables {
-			classes = append(classes, pgClass{
-				oid:       id.NewTable(tblName.Schema, tblName.Name).AsId(),
-				name:      tblName.Name,
-				schemaOid: id.NewNamespace(tblName.Schema).AsId(),
-				kind:      "r",
-			})
+			for _, tblName := range systemTables {
+				classes = append(classes, pgClass{
+					oid:       id.NewTable(tblName.Schema, tblName.Name).AsId(),
+					name:      tblName.Name,
+					schemaOid: id.NewNamespace(tblName.Schema).AsId(),
+					kind:      "r",
+				})
+			}
 		}
 
 		pgCatalogCache.pgClasses = classes

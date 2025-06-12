@@ -68,18 +68,20 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return nil, err
 		}
 
-		_, root, err := core.GetRootFromContext(ctx)
-		if err != nil {
-			return nil, err
-		}
+		if includeSystemTables {
+			_, root, err := core.GetRootFromContext(ctx)
+			if err != nil {
+				return nil, err
+			}
 
-		systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
-		if err != nil {
-			return nil, err
+			systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
+			if err != nil {
+				return nil, err
+			}
+			pgCatalogCache.systemTables = systemTables
 		}
 
 		pgCatalogCache.tables = tables
-		pgCatalogCache.systemTables = systemTables
 	}
 
 	return &pgTablesRowIter{

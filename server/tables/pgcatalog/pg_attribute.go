@@ -74,32 +74,34 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 			return nil, err
 		}
 
-		_, root, err := core.GetRootFromContext(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
-		if err != nil {
-			return nil, err
-		}
-
-		db := ctx.GetCurrentDatabase()
-		for _, tblName := range systemTables {
-			tbl, err := core.GetSqlTableFromContext(ctx, db, tblName)
+		if includeSystemTables {
+			_, root, err := core.GetRootFromContext(ctx)
 			if err != nil {
-				// Some of the system tables exist conditionally when accessed, so just skip them in this case
-				if errors.Is(doltdb.ErrTableNotFound, err) {
-					continue
-				}
 				return nil, err
 			}
 
-			schema := tbl.Schema()
-			for i, col := range schema {
-				cols = append(cols, col)
-				colIdxs = append(colIdxs, i)
-				tableOIDs = append(tableOIDs, id.NewTable(tblName.Schema, tblName.Name).AsId())
+			systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
+			if err != nil {
+				return nil, err
+			}
+
+			db := ctx.GetCurrentDatabase()
+			for _, tblName := range systemTables {
+				tbl, err := core.GetSqlTableFromContext(ctx, db, tblName)
+				if err != nil {
+					// Some of the system tables exist conditionally when accessed, so just skip them in this case
+					if errors.Is(doltdb.ErrTableNotFound, err) {
+						continue
+					}
+					return nil, err
+				}
+
+				schema := tbl.Schema()
+				for i, col := range schema {
+					cols = append(cols, col)
+					colIdxs = append(colIdxs, i)
+					tableOIDs = append(tableOIDs, id.NewTable(tblName.Schema, tblName.Name).AsId())
+				}
 			}
 		}
 
