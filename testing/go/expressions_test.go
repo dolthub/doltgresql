@@ -100,6 +100,52 @@ func TestIn(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "NOT IN",
+			SetUpScript: []string{
+				`CREATE TABLE test (id INT);`,
+				`INSERT INTO test VALUES (1), (3), (2);`,
+
+				`CREATE TABLE test2 (id INT, test_id INT, txt text);`,
+				`INSERT INTO test2 VALUES (1, 1, 'foo'), (2, 10, 'bar'), (3, 2, 'baz');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM test WHERE id NOT IN (2, 3, 4, 5);`,
+					Expected: []sql.Row{{int32(1)}},
+				},
+				{
+					Query:    `SELECT * FROM test2 WHERE test_id NOT IN (SELECT * FROM test WHERE id = 2);`,
+					Expected: []sql.Row{{int32(1), int32(1), "foo"}, {int32(2), int32(10), "bar"}},
+				},
+				{
+					Query: `SELECT * FROM test2 WHERE test_id NOT IN (SELECT * FROM test WHERE id > 0);`,
+					Expected: []sql.Row{
+						{int32(2), int32(10), "bar"},
+					},
+				},
+				{
+					Query:    `SELECT 4 NOT IN (null, 1, 2, 3);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT NULL NOT IN (null, 1, 2, 3);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT 4 NOT IN (1, 2, 3);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 4 NOT IN (1, 2, 3, 4);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT concat('a', 'b') NOT in ('a', 'b');`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
 	})
 }
 

@@ -258,7 +258,7 @@ func TestInfoSchemaColumns(t *testing.T) {
 					},
 				},
 				{
-					Query:    `SELECT p.oid AS oid, p.relname AS table_name, n.nspname as table_schema FROM pg_class AS p JOIN pg_namespace AS n ON p.relnamespace=n.oid WHERE n.nspname='public' AND p.relkind='r';`,
+					Query:    `SELECT p.oid AS oid, p.relname AS table_name, n.nspname as table_schema FROM pg_class AS p JOIN pg_namespace AS n ON p.relnamespace=n.oid WHERE (n.nspname='public' AND p.relkind='r') AND left(relname, 5) <> 'dolt_';`,
 					Expected: []sql.Row{{2957635223, "test_table", "public"}},
 				},
 				{

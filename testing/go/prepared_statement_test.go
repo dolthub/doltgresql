@@ -468,7 +468,7 @@ var pgCatalogTests = []ScriptTest{
 			{
 				Query:    `SELECT * FROM "pg_catalog"."pg_tables" WHERE tablename=$1;`,
 				BindVars: []any{"testing"},
-				Expected: []sql.Row{{"public", "testing", "", "", "t", "f", "f", "f"}},
+				Expected: []sql.Row{{"public", "testing", "postgres", nil, "t", "f", "f", "f"}},
 			},
 			{
 				Query:    `SELECT count(*) FROM "pg_catalog"."pg_tables" WHERE schemaname=$1;`,
@@ -488,12 +488,12 @@ var pgCatalogTests = []ScriptTest{
 				Query: `SELECT c.oid,d.description,pg_catalog.pg_get_expr(c.relpartbound, c.oid) as partition_expr,  pg_catalog.pg_get_partkeydef(c.oid) as partition_key 
 FROM pg_catalog.pg_class c
 LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_class'::regclass
-WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c');`,
+WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c') and c.oid not in (select oid from pg_catalog.pg_class where left(relname, 5) = 'dolt_');`,
 				BindVars: []any{2638679668},
 				Expected: []sql.Row{{1712283605, nil, nil, ""}},
 			},
 			{
-				Query:    `select c.oid,pg_catalog.pg_total_relation_size(c.oid) as total_rel_size,pg_catalog.pg_relation_size(c.oid) as rel_size FROM pg_class c WHERE c.relnamespace=$1;`,
+				Query:    `select c.oid,pg_catalog.pg_total_relation_size(c.oid) as total_rel_size,pg_catalog.pg_relation_size(c.oid) as rel_size FROM pg_class c WHERE c.relnamespace=$1 and c.oid not in (select oid from pg_catalog.pg_class where left(relname, 5) = 'dolt_');`,
 				BindVars: []any{2638679668},
 				Expected: []sql.Row{{444447634, 0, 0}, {1712283605, 0, 0}},
 			},

@@ -22,7 +22,7 @@ import (
 // GetCurrentSchema returns the current schema used by the context. Defaults to "public" if the context does not specify
 // a schema.
 func GetCurrentSchema(ctx *sql.Context) (string, error) {
-	_, root, err := getRootFromContext(ctx)
+	_, root, err := GetRootFromContext(ctx)
 	if err != nil {
 		return "", nil
 	}

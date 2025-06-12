@@ -29,7 +29,6 @@ teardown() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
-    [ "${#lines[@]}" -eq 3 ]
 }
 
 @test 'psql-commands: \dt table' {
@@ -46,8 +45,7 @@ teardown() {
     [[ "$output" =~ "public,test1,table,postgres" ]] || false
     [[ "$output" =~ "public,test2,table,postgres" ]] || false
     [[ "$output" =~ "public,testview,view,postgres" ]] || false
-    [ "${#lines[@]}" -eq 4 ]
-}
+ }
 
 @test 'psql-commands: \d table' {
     skip "this command has not yet been implemented"

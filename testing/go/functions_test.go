@@ -1340,15 +1340,15 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='testschema';`,
+					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE (n.nspname='myschema' OR n.nspname='testschema') AND left(relname, 5) <> 'dolt_' order by relname;`,
 					Expected: []sql.Row{
-						{3983475213, "myview", "myschema"},
 						{3905781870, "mytable", "myschema"},
-						{1539973141, "test_seq", "testschema"},
-						{3508950454, "test_table_pkey", "testschema"},
+						{3983475213, "myview", "myschema"},
 						{3057657334, "test_index", "testschema"},
-						{521883837, "v1", "testschema"},
+						{1539973141, "test_seq", "testschema"},
 						{1952237395, "test_table", "testschema"},
+						{3508950454, "test_table_pkey", "testschema"},
+						{521883837, "v1", "testschema"},
 					},
 				},
 				{
@@ -1542,7 +1542,7 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname='myschema' OR n.nspname='public';`,
+					Query: `SELECT c.oid, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE (n.nspname='myschema' OR n.nspname='public') and left(relname, 5) <> 'dolt_';`,
 					Expected: []sql.Row{
 						{2707638987, "test_view", "public"},
 						{1397286223, "test", "public"},

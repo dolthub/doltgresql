@@ -14,11 +14,17 @@
 
 package pgcatalog
 
+import "os"
+
 // PgCatalogName is a constant to the pg_catalog name.
 const PgCatalogName = "pg_catalog"
 
+// includeSystemTables is a flag to determine whether to include system tables in the pg_catalog tables.
+var includeSystemTables = true
+
 // Init initializes everything necessary for the pg_catalog tables.
 func Init() {
+	InitIncludeSystemTables()
 	InitPgAggregate()
 	InitPgAm()
 	InitPgAmop()
@@ -158,4 +164,12 @@ func Init() {
 	InitPgUserMapping()
 	InitPgUserMappings()
 	InitPgViews()
+}
+
+func InitIncludeSystemTables() {
+	if _, ok := os.LookupEnv("REGRESSION_TESTING"); ok {
+		// In CI regression tests, we exclude system tables to make them faster.
+		// None of them rely on the presence of system tables.
+		includeSystemTables = false
+	}
 }
