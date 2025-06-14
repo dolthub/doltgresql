@@ -97,7 +97,7 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 	// TODO: it might be possible for the left value to hash to a different value than the right even though they pass
 	//  an equality check. We need to perform a type conversion here to catch this case.
-	key, err := hash.HashOf(ctx, nil, sql.NewRow(left))
+	key, err := hash.HashOf(ctx, sql.Schema{&sql.Column{Type: in.leftExpr.Type()}}, sql.NewRow(left))
 	if err != nil {
 		return nil, err
 	}
