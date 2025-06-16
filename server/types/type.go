@@ -373,6 +373,11 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.(uuid.UUID); ok {
 			return v, sql.InRange, nil
 		}
+	case "numeric":
+		if f, ok := v.(float64); ok {
+			return decimal.NewFromFloat(f), sql.InRange, nil
+		}
+		return v, sql.InRange, nil
 	default:
 		return v, sql.InRange, nil
 	}

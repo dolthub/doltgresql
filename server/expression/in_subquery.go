@@ -74,9 +74,11 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	// To comply with the SQL standard, IN() returns NULL not only if the expression on the left hand side is NULL, but
 	// also if no match is found in the list and one of the expressions in the list is NULL.
 	leftNull := left == nil
+	lTyp := in.Left().Type()
+	rTyp := in.Right().Type()
 
-	if types.NumColumns(in.Left().Type()) != types.NumColumns(in.Right().Type()) {
-		return nil, sql.ErrInvalidOperandColumns.New(types.NumColumns(in.Left().Type()), types.NumColumns(in.Right().Type()))
+	if types.NumColumns(lTyp) != types.NumColumns(rTyp) {
+		return nil, sql.ErrInvalidOperandColumns.New(types.NumColumns(lTyp), types.NumColumns(rTyp))
 	}
 
 	right := in.rightExpr
@@ -97,7 +99,9 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 	// TODO: it might be possible for the left value to hash to a different value than the right even though they pass
 	//  an equality check. We need to perform a type conversion here to catch this case.
-	key, err := hash.HashOf(ctx, sql.Schema{&sql.Column{Type: in.leftExpr.Type()}}, sql.NewRow(left))
+	// TODO: type conversions for numeric types can panic.
+	// TODO: this should be rType to match properly
+	key, err := hash.HashOf(ctx, sql.Schema{&sql.Column{Type: lTyp}}, sql.NewRow(left))
 	if err != nil {
 		return nil, err
 	}
