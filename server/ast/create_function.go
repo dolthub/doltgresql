@@ -33,21 +33,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	if err != nil {
 		return nil, err
 	}
-	// We only support PL/pgSQL for now, so we'll verify that first
-	if languageOption, ok := options[tree.OptionLanguage]; ok {
-		if strings.ToLower(languageOption.Language) != "plpgsql" {
-			return nil, errors.Errorf("CREATE FUNCTION only supports PL/pgSQL for now")
-		}
-	} else {
-		return nil, errors.Errorf("CREATE FUNCTION does not define an input language")
-	}
-	// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
-	// This parser also requires the full `CREATE FUNCTION` string, so we'll pass that.
-	parsedBody, err := plpgsql.Parse(ctx.originalQuery)
-	if err != nil {
-		return nil, err
-	}
-	// Grab the rest of the information that we'll need to create the function
+	// Grab the general information that we'll need to create the function
 	tableName := node.Name.ToTableName()
 	schemaName := tableName.Schema()
 	if len(schemaName) == 0 {
@@ -79,6 +65,37 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.SQLString()))
 		}
 	}
+	var strict bool
+	if nullInputOption, ok := options[tree.OptionNullInput]; ok {
+		if nullInputOption.NullInput == tree.ReturnsNullOnNullInput || nullInputOption.NullInput == tree.StrictNullInput {
+			strict = true
+		}
+	}
+	// We only support PL/pgSQL and C for now, so we verify that here
+	var parsedBody []plpgsql.InterpreterOperation
+	var extensionName, extensionSymbol string
+	if languageOption, ok := options[tree.OptionLanguage]; ok {
+		switch strings.ToLower(languageOption.Language) {
+		case "plpgsql":
+			// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
+			// This parser also requires the full `CREATE FUNCTION` string, so we'll pass that.
+			parsedBody, err = plpgsql.Parse(ctx.originalQuery)
+			if err != nil {
+				return nil, err
+			}
+		case "c":
+			symbolOption, ok := options[tree.OptionAs2]
+			if !ok {
+				return nil, errors.Errorf("LANGUAGE C is only supported when providing both the module name and symbol")
+			}
+			extensionName = symbolOption.ObjFile
+			extensionSymbol = symbolOption.LinkSymbol
+		default:
+			return nil, errors.Errorf("CREATE FUNCTION only supports PL/pgSQL for now")
+		}
+	} else {
+		return nil, errors.Errorf("CREATE FUNCTION does not define an input language")
+	}
 	// Returns the stored procedure call with all options
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateFunction(
@@ -88,8 +105,10 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			retType,
 			paramNames,
 			paramTypes,
-			true, // TODO: implement strict check
+			strict,
 			ctx.originalQuery,
+			extensionName,
+			extensionSymbol,
 			parsedBody,
 		),
 		Children: nil,

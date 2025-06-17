@@ -18,10 +18,10 @@ import "testing"
 
 func TestCreateExtension(t *testing.T) {
 	tests := []QueryParses{
-		Parses("CREATE EXTENSION extension_name"),
-		Parses("CREATE EXTENSION IF NOT EXISTS extension_name"),
-		Parses("CREATE EXTENSION extension_name WITH"),
-		Parses("CREATE EXTENSION IF NOT EXISTS extension_name WITH"),
+		Converts("CREATE EXTENSION extension_name"),
+		Converts("CREATE EXTENSION IF NOT EXISTS extension_name"),
+		Converts("CREATE EXTENSION extension_name WITH"),
+		Converts("CREATE EXTENSION IF NOT EXISTS extension_name WITH"),
 		Parses("CREATE EXTENSION extension_name SCHEMA schema_name"),
 		Parses("CREATE EXTENSION IF NOT EXISTS extension_name SCHEMA schema_name"),
 		Parses("CREATE EXTENSION extension_name WITH SCHEMA schema_name"),
