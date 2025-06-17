@@ -59,6 +59,8 @@ const (
 	NullDatabase Database = ""
 	// NullEnumLabel is an empty, invalid ID. This is exactly equivalent to Null.
 	NullEnumLabel EnumLabel = ""
+	// NullExtension is an empty, invalid ID. This is exactly equivalent to Null.
+	NullExtension Extension = ""
 	// NullForeignKey is an empty, invalid ID. This is exactly equivalent to Null.
 	NullForeignKey ForeignKey = ""
 	// NullFunction is an empty, invalid ID. This is exactly equivalent to Null.

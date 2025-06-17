@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/triggers"
@@ -39,6 +40,7 @@ type contextValues struct {
 	types          *typecollection.TypeCollection
 	funcs          *functions.Collection
 	trigs          *triggers.Collection
+	exts           *extensions.Collection
 	pgCatalogCache any
 }
 
@@ -213,6 +215,31 @@ func GetSqlTableFromContext(ctx *sql.Context, databaseName string, tableName dol
 	return nil, nil
 }
 
+// GetExtensionsCollectionFromContext returns the extensions collection from the given context. Will always return a
+// collection if no error is returned.
+func GetExtensionsCollectionFromContext(ctx *sql.Context, database string) (*extensions.Collection, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	_, root, err := getRootFromContextForDatabase(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if cv.exts == nil {
+		cv.exts, err = extensions.LoadExtensions(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+	} else if cv.exts.DiffersFrom(ctx, root) {
+		cv.exts, err = extensions.LoadExtensions(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return cv.exts, nil
+}
+
 // GetFunctionsCollectionFromContext returns the functions collection from the given context. Will always return a
 // collection if no error is returned.
 func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection, error) {
@@ -360,6 +387,15 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 		}
 		newRoot = retRoot.(*RootValue)
 		cv.trigs = nil
+	}
+
+	if cv.exts != nil && cv.exts.DiffersFrom(ctx, root) {
+		retRoot, err := cv.exts.UpdateRoot(ctx, newRoot)
+		if err != nil {
+			return err
+		}
+		newRoot = retRoot.(*RootValue)
+		cv.exts = nil
 	}
 
 	if cv.types != nil {

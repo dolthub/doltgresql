@@ -11,6 +11,7 @@ require (
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20250327004329-6799764f2dad
 	github.com/dolthub/go-mysql-server v0.20.1-0.20250609235012-75f15bbda63a
+	github.com/dolthub/pg_extension v0.0.0-20250617034731-28245107b718
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20250609213846-75541d7ef20a
 	github.com/fatih/color v1.13.0
