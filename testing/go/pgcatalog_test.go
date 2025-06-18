@@ -4219,7 +4219,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{"dolt", "constraint_violations", "postgres", nil, "f", "f", "f", "f"},
 						{"dolt", "dolt_backups", "postgres", nil, "f", "f", "f", "f"},
 						{"dolt", "dolt_help", "postgres", nil, "f", "f", "f", "f"},
-						{"dolt", "dolt_stashes", "postgres", nil, "f", "f", "f", "f"}, 
+						{"dolt", "dolt_stashes", "postgres", nil, "f", "f", "f", "f"},
 						{"dolt", "log", "postgres", nil, "f", "f", "f", "f"},
 						{"dolt", "remote_branches", "postgres", nil, "f", "f", "f", "f"},
 						{"dolt", "remotes", "postgres", nil, "f", "f", "f", "f"},

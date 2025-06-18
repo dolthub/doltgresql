@@ -40,7 +40,7 @@ type ReplayOptions struct {
 func Replay(options ReplayOptions) (*ReplayTracker, error) {
 	tracker := NewReplayTracker(options.File)
 	reader := NewMessageReader(FilterMessages(options.Messages))
-	
+
 	t := time.Now()
 	fmt.Println("-------------------- ", tracker.File, " --------------------")
 ListenerLoop:
@@ -673,7 +673,7 @@ ListenerLoop:
 		}
 		connection.Close()
 	}
-	
+
 	elapsed := time.Since(t)
 	fmt.Printf("-------------------- %s done in %fs --------------------", tracker.File, elapsed.Seconds())
 	return tracker, nil
