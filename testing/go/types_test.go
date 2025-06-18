@@ -367,6 +367,20 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query: "SELECT length(v1) FROM t_character ORDER BY id;",
+				Expected: []sql.Row{
+					{5},
+					{5},
+					{3},
+					{0},
+					{nil},
+				},
+			},
+			{
+				Query:    `SELECT char(20) 'characters' || ' and text' AS "Concat char to unknown type";`,
+				Expected: []sql.Row{{"characters and text"}},
+			},
+			{
 				Query: "SELECT true::char, false::char;",
 				Expected: []sql.Row{
 					{"t", "f"},
@@ -390,13 +404,19 @@ var typesTests = []ScriptTest{
 		Name: "Character key",
 		SetUpScript: []string{
 			"CREATE TABLE t_character (id CHAR(5) primary key, v1 CHARACTER(5));",
-			"INSERT INTO t_character VALUES ('abcde', 'fghjk'), ('vwxyz', '12345')",
+			"INSERT INTO t_character VALUES ('abcde', 'fghjk'), ('vwxyz', '12345'), ('vwxy', '1234')",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_character WHERE ID = 'vwxyz' ORDER BY id;",
 				Expected: []sql.Row{
 					{"vwxyz", "12345"},
+				},
+			},
+			{
+				Query: "SELECT length(id) FROM t_character;",
+				Expected: []sql.Row{
+					{5}, {5}, {4},
 				},
 			},
 		},

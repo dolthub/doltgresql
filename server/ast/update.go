@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -39,9 +37,6 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 		}
 	}
 
-	if len(node.From) > 0 {
-		return nil, errors.Errorf("FROM is not yet supported")
-	}
 	with, err := nodeWith(ctx, node.With)
 	if err != nil {
 		return nil, err
@@ -50,6 +45,27 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 	if err != nil {
 		return nil, err
 	}
+
+	tableExprs := vitess.TableExprs{table}
+	if len(node.From) > 0 {
+		vitessTableExprs := make(vitess.TableExprs, len(node.From))
+		for i, tableExpr := range node.From {
+			vitessTableExpr, err := nodeTableExpr(ctx, tableExpr)
+			if err != nil {
+				return nil, err
+			}
+			vitessTableExprs[i] = vitessTableExpr
+		}
+
+		tableExprs = []vitess.TableExpr{
+			&vitess.JoinTableExpr{
+				Join:      vitess.JoinStr,
+				LeftExpr:  buildJoinTableExpressionTree(ctx, vitessTableExprs),
+				RightExpr: table,
+			},
+		}
+	}
+
 	exprs, err := nodeUpdateExprs(ctx, node.Exprs)
 	if err != nil {
 		return nil, err
@@ -67,7 +83,7 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 		return nil, err
 	}
 	return &vitess.Update{
-		TableExprs: vitess.TableExprs{table},
+		TableExprs: tableExprs,
 		With:       with,
 		Exprs:      exprs,
 		Where:      where,
@@ -75,4 +91,24 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 		Limit:      limit,
 		Returning:  returningExprs,
 	}, nil
+}
+
+// buildJoinTableExpressionTree returns an expression tree of JoinTableExprs with |tableExprs| as the
+// leaf nodes. If |tableExprs| is empty or nil, then nil is returned.
+func buildJoinTableExpressionTree(ctx *Context, tableExprs vitess.TableExprs) vitess.TableExpr {
+	switch len(tableExprs) {
+	case 0:
+		return nil
+	case 1:
+		return tableExprs[0]
+	case 2:
+		return &vitess.JoinTableExpr{
+			Join:      vitess.JoinStr,
+			LeftExpr:  tableExprs[0],
+			RightExpr: tableExprs[1],
+		}
+	default:
+		subtree := buildJoinTableExpressionTree(ctx, tableExprs[0:2])
+		return buildJoinTableExpressionTree(ctx, append(tableExprs[2:], subtree))
+	}
 }
