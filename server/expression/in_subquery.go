@@ -99,8 +99,7 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 	// TODO: it might be possible for the left value to hash to a different value than the right even though they pass
 	//  an equality check. We need to perform a type conversion here to catch this case.
-	// TODO: type conversions for numeric types can panic.
-	// TODO: this should be rType to match properly
+	// TODO: hash.HashOf expects the right type, which doesn't align with we currently do it.
 	key, err := hash.HashOf(ctx, sql.Schema{&sql.Column{Type: lTyp}}, sql.NewRow(left))
 	if err != nil {
 		return nil, err
