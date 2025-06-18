@@ -3583,6 +3583,7 @@ func TestPgTables(t *testing.T) {
 						{"dolt", "constraint_violations"},
 						{"dolt", "dolt_backups"},
 						{"dolt", "dolt_help"},
+						{"dolt", "dolt_stashes"},
 						{"dolt", "log"},
 						{"dolt", "remote_branches"},
 						{"dolt", "remotes"},
@@ -4206,6 +4207,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 				`CREATE SCHEMA s1;`,
 				`CREATE TABLE s1.t1 (pk INT primary key, v1 INT);`,
 			},
+			// TODO: some of these dolt_ table names are wrong, see https://github.com/dolthub/doltgresql/issues/1560
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "select * from pg_catalog.pg_tables where schemaname not in ('information_schema', 'pg_catalog') order by schemaname, tablename;",
@@ -4217,6 +4219,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{"dolt", "constraint_violations", "postgres", nil, "f", "f", "f", "f"},
 						{"dolt", "dolt_backups", "postgres", nil, "f", "f", "f", "f"},
 						{"dolt", "dolt_help", "postgres", nil, "f", "f", "f", "f"},
+						{"dolt", "dolt_stashes", "postgres", nil, "f", "f", "f", "f"}, 
 						{"dolt", "log", "postgres", nil, "f", "f", "f", "f"},
 						{"dolt", "remote_branches", "postgres", nil, "f", "f", "f", "f"},
 						{"dolt", "remotes", "postgres", nil, "f", "f", "f", "f"},
@@ -4268,6 +4271,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					// TODO: some of these dolt_ table names are wrong, see https://github.com/dolthub/doltgresql/issues/1560
 					Query: `select oid, relname, relnamespace, relkind from pg_class where relnamespace not in (select oid from pg_namespace where nspname in ('information_schema', 'pg_catalog')) order by relnamespace, relname;`,
 					Expected: []sql.Row{
 						{458530874, "dolt_branches", 2200, "r"},
@@ -4313,6 +4317,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1967026500, "constraint_violations", 1882653564, "r"},
 						{1167248682, "dolt_backups", 1882653564, "r"},
 						{629684363, "dolt_help", 1882653564, "r"},
+						{1384122262, "dolt_stashes", 1882653564, "r"},
 						{909123395, "log", 1882653564, "r"},
 						{148630507, "remote_branches", 1882653564, "r"},
 						{1670572237, "remotes", 1882653564, "r"},
@@ -4442,6 +4447,11 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1218627310, "num_conflicts", 20, 2, "t", "f", "f"},
 						{1322753784, "table", 25, 1, "t", "f", "f"},
 						{1322753784, "num_violations", 20, 2, "t", "f", "f"},
+						{1384122262, "name", 25, 1, "t", "f", "f"},
+						{1384122262, "stash_id", 25, 2, "t", "f", "f"},
+						{1384122262, "branch", 25, 3, "t", "f", "f"},
+						{1384122262, "hash", 25, 4, "t", "f", "f"},
+						{1384122262, "commit_message", 25, 5, "f", "f", "f"},
 						{1555944102, "commit_hash", 25, 1, "t", "f", "f"},
 						{1555944102, "parent_hash", 25, 2, "t", "f", "f"},
 						{1555944102, "parent_index", 23, 3, "t", "f", "f"},
