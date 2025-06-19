@@ -104,6 +104,7 @@ func Init() {
 	initFormatType()
 	initGcd()
 	initGenRandomUuid()
+	initGenerateSeries()
 	initInitcap()
 	initLcm()
 	initLeft()
