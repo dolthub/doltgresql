@@ -223,6 +223,14 @@ func (c *CompiledFunction) IsNonDeterministic() bool {
 	return true
 }
 
+// IsSRF returns whether this function is a set returning function.
+func (c *CompiledFunction) IsSRF() bool {
+	if c.overload.Valid() {
+		return c.overload.Function().IsSRF()
+	}
+	return false
+}
+
 // IsVariadic returns whether this function has any variadic parameters.
 func (c *CompiledFunction) IsVariadic() bool {
 	if c.overload.Valid() {
