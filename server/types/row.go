@@ -15,8 +15,9 @@
 package types
 
 import (
-	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Row is a pseudo-type that is solely used as a return type for TRIGGER functions.
@@ -53,10 +54,6 @@ var Row = &DoltgresType{
 	Checks:        nil,
 	attTypMod:     -1,
 	CompareFunc:   toFuncID("-"),
-}
-
-type SetRow struct {
-	returnType *DoltgresType
 }
 
 type RowValues struct {

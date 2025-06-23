@@ -15,11 +15,11 @@
 package functions
 
 import (
-	"gopkg.in/src-d/go-errors.v1"
 	"math"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
+	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
