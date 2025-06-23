@@ -15,14 +15,13 @@
 package analyzer
 
 import (
-	node2 "github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
-
+	pgnode "github.com/dolthub/doltgresql/server/node"
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
 )
 
@@ -35,10 +34,13 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	hasSRF := false
 	funcName := ""
 	var function sql.Expression
+	var tempType sql.Type
 	node, same, err := pgtransform.NodeExprsWithNodeWithOpaque(node, func(node sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 			funcName = compiledFunction.Name
 			hasSRF = compiledFunction.IsSRF()
+			// TODO: need a way to get the return type from the function
+			tempType = compiledFunction.Arguments[0].Type()
 			if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
 				function = quickFunction
 				return quickFunction, transform.NewTree, nil
@@ -53,8 +55,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		return nil, transform.NewTree, err
 	}
 	if hasSRF {
-
-		node = node2.NewSetReturningFunctionTable(funcName, function)
+		node = pgnode.NewSetReturningFunctionTable(funcName, function, tempType)
 	}
 
 	return node, same, nil

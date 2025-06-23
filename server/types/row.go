@@ -60,28 +60,28 @@ type SetRow struct {
 }
 
 type RowValues struct {
-	values []any         // pointer??
-	dt     *DoltgresType // array of types? if it's multiple type, it should be composite type
-	count  int32
+	values     []any
+	returnType *DoltgresType
+	count      int64
 }
 
-func NewRowValues(values []any, dt *DoltgresType, count int32) *RowValues {
+func NewRowValues(values []any, dt *DoltgresType, count int64) *RowValues {
 	return &RowValues{
-		values: values,
-		dt:     dt,
-		count:  count,
+		values:     values,
+		returnType: dt,
+		count:      count,
 	}
 }
 
-func (s *RowValues) Count() int32 {
+func (s *RowValues) Count() int64 {
 	return s.count
 }
 
 func (s *RowValues) Type() sql.Type {
-	return s.dt
+	return s.returnType
 }
 
-func (s *RowValues) GetRow(ctx *sql.Context, i int32) (any, error) {
+func (s *RowValues) GetRow(ctx *sql.Context, i int64) (any, error) {
 	if i >= s.count {
 		return "", nil // TODO: should error
 	}

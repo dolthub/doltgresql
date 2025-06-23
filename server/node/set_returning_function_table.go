@@ -33,10 +33,14 @@ type SetReturningFunctionTable struct {
 	function sql.Expression
 }
 
-func NewSetReturningFunctionTable(name string, e sql.Expression) *SetReturningFunctionTable {
-	// todo set schema
+func NewSetReturningFunctionTable(name string, e sql.Expression, returnType sql.Type) *SetReturningFunctionTable {
+	sch := []*sql.Column{{
+		Name: name,
+		Type: returnType,
+	}}
 	return &SetReturningFunctionTable{
 		Name:     name,
+		sch:      sch,
 		function: e,
 	}
 }
@@ -79,7 +83,7 @@ func (srf *SetReturningFunctionTable) RowIter(ctx *sql.Context, r sql.Row) (sql.
 		return sql.RowsToRowIter(), nil
 	} else if rv, ok := val.(*pgtypes.RowValues); ok {
 		srf.sch = []*sql.Column{{
-			Name: rv.Type().String(),
+			Name: srf.Name,
 			Type: rv.Type(),
 		}}
 		return NewSetRowIter(rv), nil
@@ -104,7 +108,7 @@ var _ sql.RowIter = (*SetRowIter)(nil)
 
 type SetRowIter struct {
 	values *pgtypes.RowValues
-	idx    int32
+	idx    int64
 }
 
 func NewSetRowIter(values *pgtypes.RowValues) *SetRowIter {

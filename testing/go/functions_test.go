@@ -2659,5 +2659,14 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "set returning function: generate_series",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT generate_series(1,6,2)`,
+					Expected: []sql.Row{{1}, {3}, {5}},
+				},
+			},
+		},
 	})
 }
