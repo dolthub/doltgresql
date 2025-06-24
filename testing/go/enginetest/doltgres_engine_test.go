@@ -1366,6 +1366,7 @@ func TestDoltCheckout(t *testing.T) {
 		"Checkout tables from commit",
 		"dolt_checkout with new branch forcefully",                        // string primary key ordering broken
 		"dolt_checkout with new branch forcefully with dirty working set", // string primary key ordering broken
+		"dolt_checkout with tracking branch and table with same name",     // UseLocalFileSystem did not create remote dir
 	})
 	denginetest.RunDoltCheckoutTests(t, h)
 }
