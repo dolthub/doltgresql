@@ -103,7 +103,7 @@ func TestCreateTable(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					// TODO: the correct error message: `new row for relation "products" violates check constraint "products_chk_al8efblh"`
+					// TODO: the correct error message: `new row for relation "products" violates check constraint "products_chk_rqcthh8j"`
 					Query:       "insert into products values ('peach', 1.20, 1.80);",
 					ExpectedErr: `Check constraint "products_chk_`,
 				},
