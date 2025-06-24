@@ -36,6 +36,11 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected:         []sql.Row{{"main"}},
 				},
 				{
+					Query:            `SELECT name FROM public.dolt_branches`,
+					ExpectedColNames: []string{"name"},
+					Expected:         []sql.Row{{"main"}},
+				},
+				{
 					Query:            `SELECT branches.name FROM dolt.branches`,
 					ExpectedColNames: []string{"name"},
 					Expected:         []sql.Row{{"main"}},

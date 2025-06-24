@@ -35,7 +35,7 @@ func (d Database) GetTableInsensitive(ctx *sql.Context, tblName string) (sql.Tab
 	// exact search.
 	if tableMap, ok := handlers[d.db.Schema()]; ok {
 		if handler, ok := tableMap[tblName]; ok {
-			return NewVirtualTable(handler), true, nil
+			return NewVirtualTable(handler, d.db), true, nil
 		}
 	}
 	return nil, false, nil

@@ -1687,6 +1687,7 @@ func TestDoltCommit(t *testing.T) {
 		"CALL DOLT_COMMIT('-amend') works to add changes to a commit",
 		"CALL DOLT_COMMIT('-amend') works to remove changes from a commit",
 		"CALL DOLT_COMMIT('-amend') works to update a merge commit",
+		"CALL DOLT_COMMIT('--amend') works on initial commit",
 	})
 	denginetest.RunDoltCommitTests(t, harness)
 }

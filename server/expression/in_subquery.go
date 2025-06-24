@@ -15,12 +15,12 @@
 package expression
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/hash"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -46,7 +46,7 @@ var _ sql.Expression = (*InSubquery)(nil)
 var _ expression.BinaryExpression = (*InSubquery)(nil)
 
 // nilKey is the hash of a row with a single nil value.
-var nilKey, _ = sql.HashOf(context.TODO(), sql.NewRow(nil))
+var nilKey, _ = hash.HashOf(nil, nil, sql.NewRow(nil))
 
 // NewInSubquery returns a new *InSubquery.
 func NewInSubquery() *InSubquery {
@@ -97,7 +97,7 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 	// TODO: it might be possible for the left value to hash to a different value than the right even though they pass
 	//  an equality check. We need to perform a type conversion here to catch this case.
-	key, err := sql.HashOf(ctx, sql.NewRow(left))
+	key, err := hash.HashOf(ctx, nil, sql.NewRow(left))
 	if err != nil {
 		return nil, err
 	}
