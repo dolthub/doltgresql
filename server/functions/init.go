@@ -105,6 +105,7 @@ func Init() {
 	initGcd()
 	initGenRandomUuid()
 	initGenerateSeries()
+	initGenerateSubscripts()
 	initInitcap()
 	initLcm()
 	initLeft()

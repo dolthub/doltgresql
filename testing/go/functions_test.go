@@ -2668,5 +2668,21 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "generate_subscripts",
+			Focus: true,
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk INT primary key, v1 INT[]);",
+				"INSERT INTO t1 VALUES (1, ARRAY[1, 2, 3]), (2, ARRAY[4, 5]), (3, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select generate_subscripts(a, 1) from t1 where pk = 1",
+					Expected: []sql.Row{
+						{1}, {2}, {3},
+					},
+				},
+			},
+		},
 	})
 }
