@@ -2677,7 +2677,7 @@ func TestSetReturningFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "select generate_subscripts(a, 1) from t1 where pk = 1",
+					Query: "select generate_subscripts(v1, 1) from t1 where pk = 1",
 					Expected: []sql.Row{
 						{1}, {2}, {3},
 					},
