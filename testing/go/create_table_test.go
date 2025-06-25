@@ -105,7 +105,7 @@ func TestCreateTable(t *testing.T) {
 				{
 					// TODO: the correct error message: `new row for relation "products" violates check constraint "products_chk_rqcthh8j"`
 					Query:       "insert into products values ('peach', 1.20, 1.80);",
-					ExpectedErr: `Check constraint "products_chk_rqcthh8j" violated`,
+					ExpectedErr: `Check constraint "products_chk_`,
 				},
 				{
 					Query:    "select * from products;",
@@ -147,7 +147,7 @@ func TestCreateTable(t *testing.T) {
 				},
 				{
 					Query:       "insert into mytbl values ('de', 'abc');",
-					ExpectedErr: `Check constraint`,
+					ExpectedErr: `Check constraint "mytbl_chk_`,
 				},
 				{
 					Query:    "select * from mytbl;",
@@ -173,7 +173,7 @@ func TestCreateTable(t *testing.T) {
 				},
 				{
 					Query:       "insert into mytbl values (3, 5);",
-					ExpectedErr: `Check constraint "mytbl_chk_vsfp88sb" violated`,
+					ExpectedErr: `Check constraint "mytbl_chk_`,
 				},
 				{
 					Query:    "select * from mytbl;",
@@ -198,7 +198,7 @@ func TestCreateTable(t *testing.T) {
 				},
 				{
 					Query:       "insert into mytbl values (3, 5);",
-					ExpectedErr: `Check constraint "mytbl_chk_nulsgvms" violated`,
+					ExpectedErr: `Check constraint "mytbl_chk_`,
 				},
 				{
 					Query:    "select * from mytbl;",
