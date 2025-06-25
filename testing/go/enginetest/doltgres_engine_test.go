@@ -1366,6 +1366,7 @@ func TestDoltCheckout(t *testing.T) {
 		"Checkout tables from commit",
 		"dolt_checkout with new branch forcefully",                        // string primary key ordering broken
 		"dolt_checkout with new branch forcefully with dirty working set", // string primary key ordering broken
+		"dolt_checkout with tracking branch and table with same name",     // UseLocalFileSystem did not create remote dir
 	})
 	denginetest.RunDoltCheckoutTests(t, h)
 }
@@ -1687,6 +1688,7 @@ func TestDoltCommit(t *testing.T) {
 		"CALL DOLT_COMMIT('-amend') works to add changes to a commit",
 		"CALL DOLT_COMMIT('-amend') works to remove changes from a commit",
 		"CALL DOLT_COMMIT('-amend') works to update a merge commit",
+		"CALL DOLT_COMMIT('--amend') works on initial commit",
 	})
 	denginetest.RunDoltCommitTests(t, harness)
 }

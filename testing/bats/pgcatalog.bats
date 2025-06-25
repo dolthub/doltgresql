@@ -22,7 +22,7 @@ teardown() {
   [[ "$output" =~ "postgres" ]] || false
   [ "${#lines[@]}" -eq 2 ]
 
-  run query_server --csv -c "SELECT attname FROM pg_catalog.pg_attribute WHERE attname = 'pk';"
+  run query_server --csv -c "SELECT attname FROM pg_catalog.pg_attribute WHERE attname = 'pk' and attrelid not in (select oid from pg_catalog.pg_class where left(relname, 5) = 'dolt_');"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "attname" ]] || false
   [[ "$output" =~ "pk" ]] || false
