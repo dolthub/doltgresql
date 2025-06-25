@@ -2657,14 +2657,40 @@ func TestSetReturningFunctions(t *testing.T) {
 					Query:    `SELECT generate_series(1,3)`,
 					Expected: []sql.Row{{1}, {2}, {3}},
 				},
-			},
-		},
-		{
-			Name: "set returning function: generate_series",
-			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT generate_series(1,6,2)`,
 					Expected: []sql.Row{{1}, {3}, {5}},
+				},
+				{
+					Query: `SELECT generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
+					Expected: []sql.Row{
+						{"2008-03-01 00:00:00"},
+						{"2008-03-01 10:00:00"},
+						{"2008-03-01 20:00:00"},
+						{"2008-03-02 06:00:00"},
+					},
+				},
+			},
+		},
+		{
+			Name: "set returning function as table function: generate_series",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select * from generate_series(1,3)`,
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+				{
+					Query:    `select sum(null::int4) from generate_series(1,3);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query: `SELECT * from generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
+					Expected: []sql.Row{
+						{"2008-03-01 00:00:00"},
+						{"2008-03-01 10:00:00"},
+						{"2008-03-01 20:00:00"},
+						{"2008-03-02 06:00:00"},
+					},
 				},
 			},
 		},

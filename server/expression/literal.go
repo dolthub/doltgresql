@@ -82,11 +82,6 @@ func NewRawLiteralBool(val bool) *expression.Literal {
 	return expression.NewLiteral(val, pgtypes.Bool)
 }
 
-// NewRawLiteralInt16 returns a new *expression.Literal containing an int16 value.
-func NewRawLiteralInt16(val int16) *expression.Literal {
-	return expression.NewLiteral(val, pgtypes.Int16)
-}
-
 // NewRawLiteralInt32 returns a new *expression.Literal containing an int32 value.
 func NewRawLiteralInt32(val int32) *expression.Literal {
 	return expression.NewLiteral(val, pgtypes.Int32)

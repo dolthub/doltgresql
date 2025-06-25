@@ -15,12 +15,16 @@
 package functions
 
 import (
+	"fmt"
+	"io"
 	"math"
+	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -35,12 +39,13 @@ func initGenerateSeries() {
 	framework.RegisterFunction(generate_series_int64_int64_int64)
 	framework.RegisterFunction(generate_series_numeric_numeric)
 	framework.RegisterFunction(generate_series_numeric_numeric_numeric)
+	framework.RegisterFunction(generate_series_timestamp_timestamp_interval)
 }
 
 // generate_series_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_series_int32_int32 = framework.Function2{
 	Name:       "generate_series",
-	Return:     pgtypes.Row,
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.Int32),
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
 	SRF:        true,
@@ -59,14 +64,21 @@ var generate_series_int32_int32 = framework.Function2{
 			rows[i] = start
 			start += step
 		}
-		return pgtypes.NewRowValues(rows, pgtypes.Int32, count), nil
+
+		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
+			// TODO: sanity check?
+			if idx >= count {
+				return nil, io.EOF
+			}
+			return sql.Row{rows[idx]}, nil
+		}), nil
 	},
 }
 
 // generate_series_int32_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_series_int32_int32_int32 = framework.Function3{
 	Name:       "generate_series",
-	Return:     pgtypes.Row,
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.Int32),
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
 	SRF:        true,
@@ -96,14 +108,20 @@ var generate_series_int32_int32_int32 = framework.Function3{
 			}
 		}
 
-		return pgtypes.NewRowValues(rows, pgtypes.Int32, count), nil
+		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
+			// TODO: sanity check?
+			if idx >= count {
+				return nil, io.EOF
+			}
+			return sql.Row{rows[idx]}, nil
+		}), nil
 	},
 }
 
 // generate_series_int64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_series_int64_int64 = framework.Function2{
 	Name:       "generate_series",
-	Return:     pgtypes.Row,
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.Int64),
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
 	SRF:        true,
@@ -122,14 +140,20 @@ var generate_series_int64_int64 = framework.Function2{
 			rows[i] = start
 			start += step
 		}
-		return pgtypes.NewRowValues(rows, pgtypes.Int64, count), nil
+		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
+			// TODO: sanity check?
+			if idx >= count {
+				return nil, io.EOF
+			}
+			return sql.Row{rows[idx]}, nil
+		}), nil
 	},
 }
 
 // generate_series_int64_int64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_series_int64_int64_int64 = framework.Function3{
 	Name:       "generate_series",
-	Return:     pgtypes.Row,
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.Int64),
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
 	SRF:        true,
@@ -159,14 +183,20 @@ var generate_series_int64_int64_int64 = framework.Function3{
 			}
 		}
 
-		return pgtypes.NewRowValues(rows, pgtypes.Int64, count), nil
+		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
+			// TODO: sanity check?
+			if idx >= count {
+				return nil, io.EOF
+			}
+			return sql.Row{rows[idx]}, nil
+		}), nil
 	},
 }
 
 // generate_series_numeric_numeric represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_series_numeric_numeric = framework.Function2{
 	Name:       "generate_series",
-	Return:     pgtypes.Row,
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.Numeric),
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	SRF:        true,
@@ -185,14 +215,20 @@ var generate_series_numeric_numeric = framework.Function2{
 			rows[i] = start
 			start = start.Add(step)
 		}
-		return pgtypes.NewRowValues(rows, pgtypes.Numeric, count), nil
+		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
+			// TODO: sanity check?
+			if idx >= count {
+				return nil, io.EOF
+			}
+			return sql.Row{rows[idx]}, nil
+		}), nil
 	},
 }
 
 // generate_series_numeric_numeric_numeric represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_series_numeric_numeric_numeric = framework.Function3{
 	Name:       "generate_series",
-	Return:     pgtypes.Row,
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.Numeric),
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	SRF:        true,
@@ -223,6 +259,50 @@ var generate_series_numeric_numeric_numeric = framework.Function3{
 			}
 		}
 
-		return pgtypes.NewRowValues(rows, pgtypes.Numeric, count), nil
+		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
+			// TODO: sanity check?
+			if idx >= count {
+				return nil, io.EOF
+			}
+			return sql.Row{rows[idx]}, nil
+		}), nil
+	},
+}
+
+// generate_series_timestamp_timestamp_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var generate_series_timestamp_timestamp_interval = framework.Function3{
+	Name:       "generate_series",
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.Timestamp),
+	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Timestamp, pgtypes.Interval},
+	Strict:     true,
+	SRF:        true,
+	Callable: func(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+		start := val1.(time.Time)
+		finish := val2.(time.Time)
+		step := val3.(duration.Duration)
+		stepInt, ok := step.AsInt64()
+		if !ok {
+			// TODO: overflown
+			return nil, fmt.Errorf("step argument of generate_series function is overflown")
+		}
+
+		count := int64(math.Floor((finish.Sub(start).Seconds() + float64(stepInt)) / float64(stepInt)))
+
+		rows := make([]any, count)
+		if start.After(finish) {
+			return nil, nil
+		}
+
+		for i := 0; start.Before(finish); i++ {
+			rows[i] = start
+			start = start.Add(time.Duration(stepInt) * time.Second)
+		}
+		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
+			// TODO: sanity check?
+			if idx >= count {
+				return nil, io.EOF
+			}
+			return sql.Row{rows[idx]}, nil
+		}), nil
 	},
 }
