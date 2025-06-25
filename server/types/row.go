@@ -15,12 +15,14 @@
 package types
 
 import (
+	"io"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
 
-// Row is a pseudo-type that is solely used as a return type for TRIGGER functions.
+// Row is a pseudo-type that is solely used as a return type for set returning functions.
 var Row = &DoltgresType{
 	ID:            toInternal("row"),
 	TypLength:     int16(-1),
@@ -56,31 +58,43 @@ var Row = &DoltgresType{
 	CompareFunc:   toFuncID("-"),
 }
 
-type RowValues struct {
-	values     []any
-	returnType *DoltgresType
-	count      int64
+// RowTypeWithReturnType returns Row type with Elem set to given type id.
+// We reuse the Elem field to store the given type as it's only used for array types, which it's safely checked if
+// the type is array type before used.
+func RowTypeWithReturnType(baseType *DoltgresType) *DoltgresType {
+	rt := *Row
+	rt.Elem = baseType.ID
+	return &rt
 }
 
-func NewRowValues(values []any, dt *DoltgresType, count int64) *RowValues {
-	return &RowValues{
-		values:     values,
-		returnType: dt,
-		count:      count,
+var _ sql.RowIter = (*SetReturningFunctionRowIter)(nil)
+
+// SetReturningFunctionRowIter is used for value returned from functions that return multiple rows.
+type SetReturningFunctionRowIter struct {
+	count  int64
+	idx    int64
+	getVal func(ctx *sql.Context, idx int64) (sql.Row, error)
+}
+
+// NewSetReturningFunctionRowIter creates a new SetReturningFunctionRowIter as value returned from set returning functions that return Row Type.
+func NewSetReturningFunctionRowIter(ct int64, getVal func(ctx *sql.Context, idx int64) (sql.Row, error)) *SetReturningFunctionRowIter {
+	return &SetReturningFunctionRowIter{
+		count:  ct,
+		idx:    0,
+		getVal: getVal,
 	}
 }
 
-func (s *RowValues) Count() int64 {
-	return s.count
-}
-
-func (s *RowValues) Type() sql.Type {
-	return s.returnType
-}
-
-func (s *RowValues) GetRow(ctx *sql.Context, i int64) (any, error) {
-	if i >= s.count {
-		return "", nil // TODO: should error
+// Next implements the interface sql.RowIter.
+func (s *SetReturningFunctionRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	if s.idx >= s.count {
+		return nil, io.EOF
 	}
-	return s.values[i], nil
+	s.idx++
+	return s.getVal(ctx, s.idx-1)
+}
+
+// Close implements the interface sql.RowIter.
+func (s *SetReturningFunctionRowIter) Close(_ *sql.Context) error {
+	return nil
 }

@@ -35,9 +35,6 @@ var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
 // ErrTypeDoesNotExist is returned when using given type that does not exist.
 var ErrTypeDoesNotExist = errors.NewKind(`type "%s" does not exist`)
 
-// ErrFunctionDoesNotExist is returned when a specified function does not exist.
-var ErrFunctionDoesNotExist = errors.NewKind(`function %s does not exist`)
-
 // ErrUnhandledType is returned when the type of value does not match given type.
 var ErrUnhandledType = errors.NewKind(`%s: unhandled type: %T`)
 
@@ -73,13 +70,13 @@ func FromGmsType(typ sql.Type) *DoltgresType {
 // It errors if GMS type is not handled.
 func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 	switch typ.Type() {
-	case query.Type_INT8, query.Type_INT16:
+	case query.Type_INT8:
 		// Special treatment for boolean types when we can detect them
 		if typ == types.Boolean {
 			return Bool, nil
 		}
-		return Int16, nil
-	case query.Type_INT24, query.Type_INT32:
+		return Int32, nil
+	case query.Type_INT16, query.Type_INT24, query.Type_INT32:
 		return Int32, nil
 	case query.Type_INT64:
 		return Int64, nil
@@ -99,8 +96,10 @@ func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 		return Text, nil
 	case query.Type_DATETIME, query.Type_TIMESTAMP:
 		return Timestamp, nil
-	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
+	case query.Type_CHAR, query.Type_VARCHAR, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
 		return Text, nil
+	case query.Type_TEXT:
+		return Unknown, nil
 	case query.Type_JSON:
 		return Json, nil
 	case query.Type_ENUM:

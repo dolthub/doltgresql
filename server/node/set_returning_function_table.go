@@ -16,9 +16,6 @@ package node
 
 import (
 	"fmt"
-	"io"
-
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 
 	"github.com/dolthub/go-mysql-server/sql"
 )
@@ -33,35 +30,40 @@ type SetReturningFunctionTable struct {
 	function sql.Expression
 }
 
-func NewSetReturningFunctionTable(name string, e sql.Expression, returnType sql.Type) *SetReturningFunctionTable {
-	sch := []*sql.Column{{
-		Name: name,
-		Type: returnType,
-	}}
+func NewSetReturningFunctionTable(ctx *sql.Context, name string, e sql.Expression) (*SetReturningFunctionTable, error) {
+	t := e.Type()
 	return &SetReturningFunctionTable{
-		Name:     name,
-		sch:      sch,
+		Name: name,
+		sch: []*sql.Column{{
+			Name: name,
+			Type: t,
+		}},
 		function: e,
-	}
+	}, nil
 }
 
+// Resolved implements the ExecSourceRel interface.
 func (srf *SetReturningFunctionTable) Resolved() bool {
 	return true
 }
 
+// String implements the ExecSourceRel interface.
 func (srf *SetReturningFunctionTable) String() string {
 	// TODO
 	return fmt.Sprintf("set returning function %s", srf.Name)
 }
 
+// Schema implements the ExecSourceRel interface.
 func (srf *SetReturningFunctionTable) Schema() sql.Schema {
 	return srf.sch
 }
 
+// Children implements the ExecSourceRel interface.
 func (srf *SetReturningFunctionTable) Children() []sql.Node {
 	return nil
 }
 
+// WithChildren implements the ExecSourceRel interface.
 func (srf *SetReturningFunctionTable) WithChildren(children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
 		return nil, sql.ErrInvalidChildrenNumber.New(srf, len(children), 0)
@@ -69,32 +71,32 @@ func (srf *SetReturningFunctionTable) WithChildren(children ...sql.Node) (sql.No
 	return srf, nil
 }
 
+// IsReadOnly implements the ExecSourceRel interface.
 func (srf *SetReturningFunctionTable) IsReadOnly() bool {
 	return true
 }
 
+// RowIter implements the ExecSourceRel interface.
 func (srf *SetReturningFunctionTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	val, err := srf.function.Eval(ctx, r)
 	if err != nil {
 		return nil, err
 	}
-	if val == nil {
-		// TODO
+	if rv, ok := val.(sql.RowIter); ok {
+		return rv, nil
+	} else if val == nil {
 		return sql.RowsToRowIter(), nil
-	} else if rv, ok := val.(*pgtypes.RowValues); ok {
-		srf.sch = []*sql.Column{{
-			Name: srf.Name,
-			Type: rv.Type(),
-		}}
-		return NewSetRowIter(rv), nil
+	} else {
+		return nil, fmt.Errorf("expected row iter, found %T", val)
 	}
-	return sql.RowsToRowIter(), nil // TODO
 }
 
+// Expressions implements the Expressioner interface.
 func (srf *SetReturningFunctionTable) Expressions() []sql.Expression {
 	return []sql.Expression{srf.function}
 }
 
+// WithExpressions implements the Expressioner interface.
 func (srf *SetReturningFunctionTable) WithExpressions(exprs ...sql.Expression) (sql.Node, error) {
 	if len(exprs) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(srf, len(exprs), 1)
@@ -102,34 +104,4 @@ func (srf *SetReturningFunctionTable) WithExpressions(exprs ...sql.Expression) (
 	np := *srf
 	np.function = exprs[0]
 	return &np, nil
-}
-
-var _ sql.RowIter = (*SetRowIter)(nil)
-
-type SetRowIter struct {
-	values *pgtypes.RowValues
-	idx    int64
-}
-
-func NewSetRowIter(values *pgtypes.RowValues) *SetRowIter {
-	return &SetRowIter{
-		values: values,
-	}
-}
-
-func (s *SetRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if s.idx >= s.values.Count() {
-		return nil, io.EOF
-	}
-	s.idx++
-
-	val, err := s.values.GetRow(ctx, s.idx-1)
-	if err != nil {
-		return nil, err
-	}
-	return sql.Row{val}, nil
-}
-
-func (s *SetRowIter) Close(_ *sql.Context) error {
-	return nil
 }

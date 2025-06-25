@@ -156,7 +156,7 @@ func (c *CompiledFunction) Resolved() bool {
 		}
 	}
 	// We don't error until evaluation time, so we need to tell the engine we're resolved if there was a stashed error
-	return c.stashedErr != nil || c.overload.Valid()
+	return c.stashedErr == nil || c.overload.Valid()
 }
 
 // StashedError returns the stashed error if one exists. Otherwise, returns nil.
@@ -202,7 +202,8 @@ func (c *CompiledFunction) OverloadString(types []*pgtypes.DoltgresType) string 
 // Type implements the interface sql.Expression.
 func (c *CompiledFunction) Type() sql.Type {
 	if len(c.callResolved) > 0 {
-		return c.callResolved[len(c.callResolved)-1]
+		rt := c.callResolved[len(c.callResolved)-1]
+		return getTypeIfRowType(c.IsSRF(), rt)
 	}
 	// Compilation must have errored, so we'll return the unknown type
 	return pgtypes.Unknown
@@ -354,6 +355,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 			Name:         c.Name,
 			Argument:     c.Arguments[0],
 			IsStrict:     c.overload.Function().IsStrict(),
+			IsSRF:        c.IsSRF(),
 			callResolved: ([2]*pgtypes.DoltgresType)(c.callResolved),
 			function:     f,
 		}
@@ -362,6 +364,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 			Name:         c.Name,
 			Arguments:    ([2]sql.Expression)(c.Arguments),
 			IsStrict:     c.overload.Function().IsStrict(),
+			IsSRF:        c.IsSRF(),
 			callResolved: ([3]*pgtypes.DoltgresType)(c.callResolved),
 			function:     f,
 		}
@@ -370,6 +373,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 			Name:         c.Name,
 			Arguments:    ([3]sql.Expression)(c.Arguments),
 			IsStrict:     c.overload.Function().IsStrict(),
+			IsSRF:        c.IsSRF(),
 			callResolved: ([4]*pgtypes.DoltgresType)(c.callResolved),
 			function:     f,
 		}
@@ -730,3 +734,15 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []*pgtypes.Doltgre
 
 // specificFuncImpl implements the interface sql.Expression.
 func (*CompiledFunction) specificFuncImpl() {}
+
+// getTypeIfRowType returns the underlying type if it's Row Type;
+// otherwise, it returns the type that is passed.
+func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) sql.Type {
+	if isSRF {
+		// TODO: need support for used defined types
+		if typ, ok := pgtypes.IDToBuiltInDoltgresType[t.Elem]; ok {
+			return typ
+		}
+	}
+	return t
+}

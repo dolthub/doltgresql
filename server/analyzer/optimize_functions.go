@@ -34,16 +34,10 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	hasSRF := false
 	funcName := ""
 	var function sql.Expression
-	var tempType sql.Type
 	node, same, err := pgtransform.NodeExprsWithNodeWithOpaque(node, func(node sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 			funcName = compiledFunction.Name
 			hasSRF = compiledFunction.IsSRF()
-			if hasSRF {
-				// TODO: need a way to get the return type from the function
-				//  this is temporary way to get the return type
-				tempType = compiledFunction.Arguments[0].Type()
-			}
 			if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
 				function = quickFunction
 				return quickFunction, transform.NewTree, nil
@@ -58,7 +52,10 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		return nil, transform.NewTree, err
 	}
 	if hasSRF {
-		node = pgnode.NewSetReturningFunctionTable(funcName, function, tempType)
+		node, err = pgnode.NewSetReturningFunctionTable(ctx, funcName, function)
+		if err != nil {
+			return nil, transform.NewTree, err
+		}
 	}
 
 	return node, same, nil
