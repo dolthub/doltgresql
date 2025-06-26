@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 
+	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -38,6 +39,7 @@ var (
 		&typecollection.TypeCollection{},
 		&functions.Collection{},
 		&triggers.Collection{},
+		&extensions.Collection{},
 	}
 )
 

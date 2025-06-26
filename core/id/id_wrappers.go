@@ -34,6 +34,9 @@ type Database Id
 // EnumLabel is an Id wrapper for enum labels. This wrapper must not be returned to the client.
 type EnumLabel Id
 
+// Extension is an Id wrapper for extensions. This wrapper must not be returned to the client.
+type Extension Id
+
 // ForeignKey is an Id wrapper for foreign keys. This wrapper must not be returned to the client.
 type ForeignKey Id
 
@@ -110,6 +113,14 @@ func NewEnumLabel(parent Type, label string) EnumLabel {
 		return NullEnumLabel
 	}
 	return EnumLabel(NewId(Section_EnumLabel, string(parent), label))
+}
+
+// NewExtension returns a new Extension. This wrapper must not be returned to the client.
+func NewExtension(name string) Extension {
+	if len(name) == 0 {
+		return NullExtension
+	}
+	return Extension(NewId(Section_Extension, name))
 }
 
 // NewForeignKey returns a new ForeignKey. This wrapper must not be returned to the client.
@@ -255,6 +266,11 @@ func (id EnumLabel) Label() string {
 	return Id(id).Segment(1)
 }
 
+// Name returns the name of the extension.
+func (id Extension) Name() string {
+	return Id(id).Segment(0)
+}
+
 // ForeignKeyName returns the foreign key's name.
 func (id ForeignKey) ForeignKeyName() string {
 	return Id(id).Segment(2)
@@ -395,6 +411,9 @@ func (id Database) IsValid() bool { return Id(id).IsValid() }
 func (id EnumLabel) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
+func (id Extension) IsValid() bool { return Id(id).IsValid() }
+
+// IsValid returns whether the ID is valid.
 func (id ForeignKey) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
@@ -441,6 +460,9 @@ func (id Database) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id EnumLabel) AsId() Id { return Id(id) }
+
+// AsId returns the unwrapped ID.
+func (id Extension) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id ForeignKey) AsId() Id { return Id(id) }
