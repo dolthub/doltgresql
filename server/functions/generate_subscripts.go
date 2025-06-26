@@ -45,6 +45,6 @@ var generate_subscripts = framework.Function2{
 			rows[i] = int32(i + 1)
 		}
 		
-		return pgtypes.NewRowValues(rows, pgtypes.Int32, int64(len(rows))), nil
+		return nil, nil // pgtypes.NewRowValues(rows, pgtypes.Int32, int64(len(rows))), nil
 	},
 }
