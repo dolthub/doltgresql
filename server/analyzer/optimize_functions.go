@@ -31,10 +31,14 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	if scope != nil && scope.CurrentNodeIsFromSubqueryExpression {
 		return node, transform.SameTree, nil
 	}
+	projectNode, ok := node.(*plan.Project)
+	if !ok {
+		return node, transform.SameTree, nil
+	}
 	hasSRF := false
 	funcName := ""
 	var function sql.Expression
-	node, same, err := pgtransform.NodeExprsWithNodeWithOpaque(node, func(node sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	node, same, err := pgtransform.NodeExprsWithNodeWithOpaque(projectNode, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 			funcName = compiledFunction.Name
 			hasSRF = compiledFunction.IsSRF()
