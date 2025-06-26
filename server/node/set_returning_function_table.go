@@ -25,18 +25,17 @@ var _ sql.ExecSourceRel = (*SetReturningFunctionTable)(nil)
 
 // SetReturningFunctionTable is a node for set returning function.
 type SetReturningFunctionTable struct {
-	Name     string
+	name     string
 	sch      sql.Schema
 	function sql.Expression
 }
 
 func NewSetReturningFunctionTable(ctx *sql.Context, name string, e sql.Expression) (*SetReturningFunctionTable, error) {
-	t := e.Type()
 	return &SetReturningFunctionTable{
-		Name: name,
+		name: name,
 		sch: []*sql.Column{{
 			Name: name,
-			Type: t,
+			Type: e.Type(),
 		}},
 		function: e,
 	}, nil
@@ -50,7 +49,7 @@ func (srf *SetReturningFunctionTable) Resolved() bool {
 // String implements the ExecSourceRel interface.
 func (srf *SetReturningFunctionTable) String() string {
 	// TODO
-	return fmt.Sprintf("set returning function %s", srf.Name)
+	return fmt.Sprintf("set returning function %s", srf.name)
 }
 
 // Schema implements the ExecSourceRel interface.

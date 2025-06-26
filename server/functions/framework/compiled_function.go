@@ -156,7 +156,7 @@ func (c *CompiledFunction) Resolved() bool {
 		}
 	}
 	// We don't error until evaluation time, so we need to tell the engine we're resolved if there was a stashed error
-	return c.stashedErr == nil || c.overload.Valid()
+	return c.stashedErr != nil || c.overload.Valid()
 }
 
 // StashedError returns the stashed error if one exists. Otherwise, returns nil.
@@ -725,6 +725,10 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []*pgtypes.Doltgre
 			dt, err := pgtypes.FromGmsTypeToDoltgresType(param.Type())
 			if err != nil {
 				return nil, err
+			}
+			// text type need be interpreted as unknown to be resolved into type that a function fits with.
+			if dt == pgtypes.Text {
+				dt = pgtypes.Unknown
 			}
 			originalTypes[i] = dt
 		}

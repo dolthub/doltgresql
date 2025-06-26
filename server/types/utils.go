@@ -96,10 +96,8 @@ func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 		return Text, nil
 	case query.Type_DATETIME, query.Type_TIMESTAMP:
 		return Timestamp, nil
-	case query.Type_CHAR, query.Type_VARCHAR, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
+	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
 		return Text, nil
-	case query.Type_TEXT:
-		return Unknown, nil
 	case query.Type_JSON:
 		return Json, nil
 	case query.Type_ENUM:
