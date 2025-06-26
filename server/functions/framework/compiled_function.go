@@ -202,7 +202,8 @@ func (c *CompiledFunction) OverloadString(types []*pgtypes.DoltgresType) string 
 // Type implements the interface sql.Expression.
 func (c *CompiledFunction) Type() sql.Type {
 	if len(c.callResolved) > 0 {
-		return c.callResolved[len(c.callResolved)-1]
+		rt := c.callResolved[len(c.callResolved)-1]
+		return getTypeIfRowType(c.IsSRF(), rt)
 	}
 	// Compilation must have errored, so we'll return the unknown type
 	return pgtypes.Unknown
@@ -221,6 +222,14 @@ func (c *CompiledFunction) IsNonDeterministic() bool {
 	}
 	// Compilation must have errored, so we'll just return true
 	return true
+}
+
+// IsSRF returns whether this function is a set returning function.
+func (c *CompiledFunction) IsSRF() bool {
+	if c.overload.Valid() {
+		return c.overload.Function().IsSRF()
+	}
+	return false
 }
 
 // IsVariadic returns whether this function has any variadic parameters.
@@ -346,6 +355,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 			Name:         c.Name,
 			Argument:     c.Arguments[0],
 			IsStrict:     c.overload.Function().IsStrict(),
+			IsSRF:        c.IsSRF(),
 			callResolved: ([2]*pgtypes.DoltgresType)(c.callResolved),
 			function:     f,
 		}
@@ -354,6 +364,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 			Name:         c.Name,
 			Arguments:    ([2]sql.Expression)(c.Arguments),
 			IsStrict:     c.overload.Function().IsStrict(),
+			IsSRF:        c.IsSRF(),
 			callResolved: ([3]*pgtypes.DoltgresType)(c.callResolved),
 			function:     f,
 		}
@@ -362,6 +373,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 			Name:         c.Name,
 			Arguments:    ([3]sql.Expression)(c.Arguments),
 			IsStrict:     c.overload.Function().IsStrict(),
+			IsSRF:        c.IsSRF(),
 			callResolved: ([4]*pgtypes.DoltgresType)(c.callResolved),
 			function:     f,
 		}
@@ -714,6 +726,10 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []*pgtypes.Doltgre
 			if err != nil {
 				return nil, err
 			}
+			// text type need be interpreted as unknown to be resolved into type that a function fits with.
+			if dt == pgtypes.Text {
+				dt = pgtypes.Unknown
+			}
 			originalTypes[i] = dt
 		}
 	}
@@ -722,3 +738,15 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []*pgtypes.Doltgre
 
 // specificFuncImpl implements the interface sql.Expression.
 func (*CompiledFunction) specificFuncImpl() {}
+
+// getTypeIfRowType returns the underlying type if it's Row Type;
+// otherwise, it returns the type that is passed.
+func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) sql.Type {
+	if isSRF {
+		// TODO: need support for used defined types
+		if typ, ok := pgtypes.IDToBuiltInDoltgresType[t.Elem]; ok {
+			return typ
+		}
+	}
+	return t
+}

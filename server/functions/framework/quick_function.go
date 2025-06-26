@@ -43,6 +43,7 @@ type QuickFunction1 struct {
 	Name         string
 	Argument     sql.Expression
 	IsStrict     bool
+	IsSRF        bool
 	callResolved [2]*pgtypes.DoltgresType
 	function     Function1
 }
@@ -76,7 +77,7 @@ func (q *QuickFunction1) String() string {
 
 // Type implements the interface sql.Expression.
 func (q *QuickFunction1) Type() sql.Type {
-	return q.callResolved[1]
+	return getTypeIfRowType(q.IsSRF, q.callResolved[1])
 }
 
 // IsNullable implements the interface sql.Expression.
@@ -124,6 +125,7 @@ func (q *QuickFunction1) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any
 		Name:         q.Name,
 		Argument:     q.Argument,
 		IsStrict:     q.IsStrict,
+		IsSRF:        q.IsSRF,
 		callResolved: [2]*pgtypes.DoltgresType(newTypes),
 		function:     q.function,
 	}
@@ -157,6 +159,7 @@ type QuickFunction2 struct {
 	Name         string
 	Arguments    [2]sql.Expression
 	IsStrict     bool
+	IsSRF        bool
 	callResolved [3]*pgtypes.DoltgresType
 	function     Function2
 }
@@ -190,7 +193,7 @@ func (q *QuickFunction2) String() string {
 
 // Type implements the interface sql.Expression.
 func (q *QuickFunction2) Type() sql.Type {
-	return q.callResolved[2]
+	return getTypeIfRowType(q.IsSRF, q.callResolved[2])
 }
 
 // IsNullable implements the interface sql.Expression.
@@ -242,6 +245,7 @@ func (q *QuickFunction2) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any
 		Name:         q.Name,
 		Arguments:    q.Arguments,
 		IsStrict:     q.IsStrict,
+		IsSRF:        q.IsSRF,
 		callResolved: [3]*pgtypes.DoltgresType(newTypes),
 		function:     q.function,
 	}
@@ -276,6 +280,7 @@ type QuickFunction3 struct {
 	Name         string
 	Arguments    [3]sql.Expression
 	IsStrict     bool
+	IsSRF        bool
 	callResolved [4]*pgtypes.DoltgresType
 	function     Function3
 }
@@ -309,7 +314,7 @@ func (q *QuickFunction3) String() string {
 
 // Type implements the interface sql.Expression.
 func (q *QuickFunction3) Type() sql.Type {
-	return q.callResolved[3]
+	return getTypeIfRowType(q.IsSRF, q.callResolved[3])
 }
 
 // IsNullable implements the interface sql.Expression.
@@ -361,6 +366,7 @@ func (q *QuickFunction3) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any
 		Name:         q.Name,
 		Arguments:    q.Arguments,
 		IsStrict:     q.IsStrict,
+		IsSRF:        q.IsSRF,
 		callResolved: [4]*pgtypes.DoltgresType(newTypes),
 		function:     q.function,
 	}

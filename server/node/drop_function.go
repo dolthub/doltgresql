@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	parsertypes "github.com/dolthub/doltgresql/postgres/parser/types"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -115,7 +116,7 @@ func (d *DropFunction) RowIter(ctx *sql.Context, r sql.Row) (iter sql.RowIter, e
 				sess.Notice(noticeResponse)
 				return sql.RowsToRowIter(), nil
 			} else {
-				return nil, types.ErrFunctionDoesNotExist.New(formatRoutineName(routineWithArgs))
+				return nil, framework.ErrFunctionDoesNotExist.New(formatRoutineName(routineWithArgs))
 			}
 		}
 

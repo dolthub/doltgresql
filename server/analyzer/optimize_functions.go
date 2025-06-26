@@ -21,7 +21,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
-
+	pgnode "github.com/dolthub/doltgresql/server/node"
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
 )
 
@@ -31,12 +31,36 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	if scope != nil && scope.CurrentNodeIsFromSubqueryExpression {
 		return node, transform.SameTree, nil
 	}
-	return pgtransform.NodeExprsWithNodeWithOpaque(node, func(node sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	projectNode, ok := node.(*plan.Project)
+	if !ok {
+		return node, transform.SameTree, nil
+	}
+	hasSRF := false
+	funcName := ""
+	var function sql.Expression
+	node, same, err := pgtransform.NodeExprsWithNodeWithOpaque(projectNode, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
+			funcName = compiledFunction.Name
+			hasSRF = compiledFunction.IsSRF()
 			if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
+				function = quickFunction
 				return quickFunction, transform.NewTree, nil
+			} else {
+				function = compiledFunction
 			}
 		}
 		return expr, transform.SameTree, nil
 	})
+
+	if err != nil {
+		return nil, transform.NewTree, err
+	}
+	if hasSRF {
+		node, err = pgnode.NewSetReturningFunctionTable(ctx, funcName, function)
+		if err != nil {
+			return nil, transform.NewTree, err
+		}
+	}
+
+	return node, same, nil
 }

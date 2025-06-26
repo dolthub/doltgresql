@@ -106,16 +106,7 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		return pgexprs.NewUnsafeLiteral(gmsLiteral.Value(), doltgresType), transform.NewTree, nil
 	}
 	switch gmsLiteral.Type().Type() {
-	case query.Type_INT8, query.Type_INT16, query.Type_YEAR:
-		newVal, _, err := types.Int16.Convert(ctx, gmsLiteral.Value())
-		if err != nil {
-			return nil, transform.NewTree, err
-		}
-		if newVal == nil {
-			return pgexprs.NewNullLiteral(), transform.NewTree, nil
-		}
-		return pgexprs.NewRawLiteralInt16(newVal.(int16)), transform.NewTree, nil
-	case query.Type_INT24, query.Type_INT32:
+	case query.Type_INT8, query.Type_INT16, query.Type_YEAR, query.Type_INT24, query.Type_INT32:
 		newVal, _, err := types.Int32.Convert(ctx, gmsLiteral.Value())
 		if err != nil {
 			return nil, transform.NewTree, err
