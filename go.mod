@@ -11,6 +11,7 @@ require (
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20250327004329-6799764f2dad
 	github.com/dolthub/go-mysql-server v0.20.1-0.20250624080248-cf1535b26d81
+	github.com/dolthub/pg_extension v0.0.0-20250617034731-28245107b718
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20250611225316-90a5898bfe26
 	github.com/fatih/color v1.13.0
@@ -182,3 +183,5 @@ require (
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/pganalyze/pg_query_go/v6 => github.com/dolthub/pg_query_go/v6 v6.0.0-20250626091117-1a35371f675b

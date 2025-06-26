@@ -22,24 +22,13 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// nodeCreateExtension handles *tree.CreateExtension nodes.
-func nodeCreateExtension(ctx *Context, node *tree.CreateExtension) (vitess.Statement, error) {
-	if len(node.Schema) > 0 {
-		return NotYetSupportedError("SCHEMA is not yet supported")
-	}
-	if len(node.Version) > 0 {
-		return NotYetSupportedError("VERSION is not yet supported")
-	}
-	if node.Cascade {
-		return NotYetSupportedError("CASCADE is not yet supported")
-	}
+// nodeDropExtension handles *tree.DropExtension nodes.
+func nodeDropExtension(ctx *Context, node *tree.DropExtension) (vitess.Statement, error) {
 	return vitess.InjectedStatement{
-		Statement: pgnodes.NewCreateExtension(
-			string(node.Name),
-			node.IfNotExists,
-			node.Schema,
-			node.Version,
-			node.Cascade,
+		Statement: pgnodes.NewDropExtension(
+			node.Names.ToStrings(),
+			node.IfExists,
+			node.DropBehavior == tree.DropCascade,
 		),
 		Children: nil,
 	}, nil

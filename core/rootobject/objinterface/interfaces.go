@@ -34,6 +34,7 @@ const (
 	RootObjectID_Types
 	RootObjectID_Functions
 	RootObjectID_Triggers
+	RootObjectID_Extensions
 )
 
 // Collection is a collection of root objects.
