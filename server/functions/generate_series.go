@@ -17,7 +17,6 @@ package functions
 import (
 	"fmt"
 	"io"
-	"math"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -53,24 +52,15 @@ var generate_series_int32_int32 = framework.Function2{
 		start := val1.(int32)
 		finish := val2.(int32)
 		step := int32(1) // by default
-		count := int64(math.Floor(float64(finish-start+step) / float64(step)))
-
-		rows := make([]any, count)
-		if start > finish {
-			return nil, nil
-		}
-
-		for i := 0; start <= finish; i++ {
-			rows[i] = start
-			start += step
-		}
-
-		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
-			// TODO: sanity check?
-			if idx >= count {
+		
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			defer func() {
+				start += step
+			}()
+			if start > finish {
 				return nil, io.EOF
 			}
-			return sql.Row{rows[idx]}, nil
+			return sql.Row{start}, nil
 		}), nil
 	},
 }
@@ -89,31 +79,15 @@ var generate_series_int32_int32_int32 = framework.Function3{
 		if step == 0 {
 			return nil, ErrStepSizeCannotEqualZero.New()
 		}
-		count := int64(math.Floor(float64(finish-start+step) / float64(step)))
 
-		if step > 0 && start > finish || step < 0 && start < finish {
-			return nil, nil
-		}
-
-		rows := make([]any, count)
-		if step > 0 {
-			for i := 0; start <= finish; i++ {
-				rows[i] = start
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			defer func() {
 				start += step
-			}
-		} else {
-			for i := 0; start >= finish; i++ {
-				rows[i] = start
-				start += step
-			}
-		}
-
-		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
-			// TODO: sanity check?
-			if idx >= count {
+			}()
+			if start > finish {
 				return nil, io.EOF
 			}
-			return sql.Row{rows[idx]}, nil
+			return sql.Row{start}, nil
 		}), nil
 	},
 }
@@ -129,23 +103,15 @@ var generate_series_int64_int64 = framework.Function2{
 		start := val1.(int64)
 		finish := val2.(int64)
 		step := int64(1) // by default
-		count := int64(math.Floor(float64(finish-start+step) / float64(step)))
 
-		rows := make([]any, count)
-		if start > finish {
-			return nil, nil
-		}
-
-		for i := 0; start <= finish; i++ {
-			rows[i] = start
-			start += step
-		}
-		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
-			// TODO: sanity check?
-			if idx >= count {
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			defer func() {
+				start += step
+			}()
+			if start > finish {
 				return nil, io.EOF
 			}
-			return sql.Row{rows[idx]}, nil
+			return sql.Row{start}, nil
 		}), nil
 	},
 }
@@ -164,31 +130,15 @@ var generate_series_int64_int64_int64 = framework.Function3{
 		if step == 0 {
 			return nil, ErrStepSizeCannotEqualZero.New()
 		}
-		count := int64(math.Floor(float64(finish-start+step) / float64(step)))
 
-		if step > 0 && start > finish || step < 0 && start < finish {
-			return nil, nil
-		}
-
-		rows := make([]any, count)
-		if step > 0 {
-			for i := 0; start <= finish; i++ {
-				rows[i] = start
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			defer func() {
 				start += step
-			}
-		} else {
-			for i := 0; start >= finish; i++ {
-				rows[i] = start
-				start += step
-			}
-		}
-
-		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
-			// TODO: sanity check?
-			if idx >= count {
+			}()
+			if start > finish {
 				return nil, io.EOF
 			}
-			return sql.Row{rows[idx]}, nil
+			return sql.Row{start}, nil
 		}), nil
 	},
 }
@@ -204,23 +154,15 @@ var generate_series_numeric_numeric = framework.Function2{
 		start := val1.(decimal.Decimal)
 		finish := val2.(decimal.Decimal)
 		step := decimal.NewFromInt(1) // by default
-		count := (finish.Sub(start).Add(step)).Div(step).Floor().IntPart()
-
-		rows := make([]any, count)
-		if start.GreaterThan(finish) {
-			return nil, nil
-		}
-
-		for i := 0; start.GreaterThanOrEqual(finish); i++ {
-			rows[i] = start
-			start = start.Add(step)
-		}
-		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
-			// TODO: sanity check?
-			if idx >= count {
+		
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			defer func() {
+				start = start.Add(step)
+			}()
+			if start.GreaterThan(finish) {
 				return nil, io.EOF
 			}
-			return sql.Row{rows[idx]}, nil
+			return sql.Row{start}, nil
 		}), nil
 	},
 }
@@ -240,31 +182,14 @@ var generate_series_numeric_numeric_numeric = framework.Function3{
 			return nil, ErrStepSizeCannotEqualZero.New()
 		}
 
-		count := (finish.Sub(start).Add(step)).Div(step).Floor().IntPart()
-
-		if step.GreaterThan(decimal.Zero) && start.GreaterThan(finish) || step.LessThan(decimal.Zero) && start.LessThan(finish) {
-			return nil, nil
-		}
-
-		rows := make([]any, count)
-		if step.GreaterThan(decimal.Zero) {
-			for i := 0; start.GreaterThanOrEqual(finish); i++ {
-				rows[i] = start
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			defer func() {
 				start = start.Add(step)
-			}
-		} else {
-			for i := 0; start.LessThanOrEqual(finish); i++ {
-				rows[i] = start
-				start = start.Add(step)
-			}
-		}
-
-		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
-			// TODO: sanity check?
-			if idx >= count {
+			}()
+			if start.GreaterThan(finish) {
 				return nil, io.EOF
 			}
-			return sql.Row{rows[idx]}, nil
+			return sql.Row{start}, nil
 		}), nil
 	},
 }
@@ -286,23 +211,14 @@ var generate_series_timestamp_timestamp_interval = framework.Function3{
 			return nil, fmt.Errorf("step argument of generate_series function is overflown")
 		}
 
-		count := int64(math.Floor((finish.Sub(start).Seconds() + float64(stepInt)) / float64(stepInt)))
-
-		rows := make([]any, count)
-		if start.After(finish) {
-			return nil, nil
-		}
-
-		for i := 0; start.Before(finish); i++ {
-			rows[i] = start
-			start = start.Add(time.Duration(stepInt) * time.Second)
-		}
-		return pgtypes.NewSetReturningFunctionRowIter(count, func(ctx *sql.Context, idx int64) (sql.Row, error) {
-			// TODO: sanity check?
-			if idx >= count {
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			defer func() {
+				start = start.Add(time.Duration(stepInt) * time.Second)
+			}()
+			if start.After(finish) {
 				return nil, io.EOF
 			}
-			return sql.Row{rows[idx]}, nil
+			return sql.Row{start}, nil
 		}), nil
 	},
 }

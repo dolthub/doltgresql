@@ -15,8 +15,6 @@
 package types
 
 import (
-	"io"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -71,28 +69,19 @@ var _ sql.RowIter = (*SetReturningFunctionRowIter)(nil)
 
 // SetReturningFunctionRowIter is used for value returned from functions that return multiple rows.
 type SetReturningFunctionRowIter struct {
-	count  int64
-	idx    int64
-	getVal func(ctx *sql.Context, idx int64) (sql.Row, error)
+	next func(ctx *sql.Context) (sql.Row, error)
 }
 
 // NewSetReturningFunctionRowIter creates a new SetReturningFunctionRowIter as value returned from set returning functions that return Row Type.
-// TODO: take a next func rather than an index counter
-func NewSetReturningFunctionRowIter(ct int64, getVal func(ctx *sql.Context, idx int64) (sql.Row, error)) *SetReturningFunctionRowIter {
+func NewSetReturningFunctionRowIter(next func(ctx *sql.Context) (sql.Row, error)) *SetReturningFunctionRowIter {
 	return &SetReturningFunctionRowIter{
-		count:  ct,
-		idx:    0,
-		getVal: getVal,
+		next: next,
 	}
 }
 
 // Next implements the interface sql.RowIter.
 func (s *SetReturningFunctionRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if s.idx >= s.count {
-		return nil, io.EOF
-	}
-	s.idx++
-	return s.getVal(ctx, s.idx-1)
+	return s.next(ctx)
 }
 
 // Close implements the interface sql.RowIter.

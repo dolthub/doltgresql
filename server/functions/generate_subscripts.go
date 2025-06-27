@@ -41,18 +41,14 @@ var generate_subscripts = framework.Function2{
 		if dimension != 1 {
 			return nil, sql.ErrUnsupportedFeature.New("generate_subscripts only supports 1-dimensional arrays")
 		}
-
-		rows := make([]any, len(arr))
-		for i := range arr {
-			rows[i] = int32(i + 1)
-		}
 		
-		return pgtypes.NewSetReturningFunctionRowIter(int64(len(rows)), func(ctx *sql.Context, idx int64) (sql.Row, error) {
-			// TODO: sanity check?
-			if idx >= int64(len(rows)) {
+		var i = 0
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			i++
+			if i > len(arr) {
 				return nil, io.EOF
 			}
-			return sql.Row{rows[idx]}, nil
+			return sql.Row{int32(i)}, nil
 		}), nil
 	},
 }
