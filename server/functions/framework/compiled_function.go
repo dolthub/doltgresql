@@ -52,9 +52,18 @@ type CompiledFunction struct {
 	stashedErr    error
 }
 
+func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	eval, err := c.Eval(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	return eval.(sql.RowIter), nil
+}
+
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 var _ procedures.InterpreterExpr = (*CompiledFunction)(nil)
+var _ sql.RowIterExpression = (*CompiledFunction)(nil)
 
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {

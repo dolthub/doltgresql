@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"io"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -28,7 +30,7 @@ func initGenerateSubscripts() {
 // generate_series_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_subscripts = framework.Function2{
 	Name:       "generate_subscripts",
-	Return:     pgtypes.Row,
+	Return:     pgtypes.Int32,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32},
 	Strict:     true,
 	SRF:        true,
@@ -45,6 +47,12 @@ var generate_subscripts = framework.Function2{
 			rows[i] = int32(i + 1)
 		}
 		
-		return nil, nil // pgtypes.NewRowValues(rows, pgtypes.Int32, int64(len(rows))), nil
+		return pgtypes.NewSetReturningFunctionRowIter(int64(len(rows)), func(ctx *sql.Context, idx int64) (sql.Row, error) {
+			// TODO: sanity check?
+			if idx >= int64(len(rows)) {
+				return nil, io.EOF
+			}
+			return sql.Row{rows[idx]}, nil
+		}), nil
 	},
 }
