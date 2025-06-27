@@ -2812,6 +2812,25 @@ func TestSetReturningFunctions(t *testing.T) {
 					},
 				},
 			},
+			{
+				Name: "set generation with other func calls",
+				Skip: true, // nextval is broken in this context, not sure why yet
+				SetUpScript: []string{
+					"CREATE sequence test_seq START WITH 1 INCREMENT BY 3;",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT generate_series(1, 5), nextval('test_seq')`,
+						Expected: []sql.Row{
+							{1, 1},
+							{2, 4},
+							{3, 7},
+							{4, 10},
+							{5, 13},
+						},
+					},
+				},
+			},
 		},
 	)
 }
