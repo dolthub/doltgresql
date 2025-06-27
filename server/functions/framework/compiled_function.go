@@ -52,14 +52,6 @@ type CompiledFunction struct {
 	stashedErr    error
 }
 
-func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	eval, err := c.Eval(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-	return eval.(sql.RowIter), nil
-}
-
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 var _ procedures.InterpreterExpr = (*CompiledFunction)(nil)
@@ -327,6 +319,24 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	default:
 		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval %T", f)
 	}
+}
+
+// EvalRowIter implements sql.RowIterExpression
+func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	eval, err := c.Eval(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	switch eval := eval.(type) {
+	case sql.RowIter:
+		return eval, nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, cerrors.Errorf("function %s returned a value of type %T, which is not a RowIter", c.Name, eval)
+	}
+	return eval.(sql.RowIter), nil
 }
 
 // Children implements the interface sql.Expression.

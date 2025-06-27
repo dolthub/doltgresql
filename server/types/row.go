@@ -77,6 +77,7 @@ type SetReturningFunctionRowIter struct {
 }
 
 // NewSetReturningFunctionRowIter creates a new SetReturningFunctionRowIter as value returned from set returning functions that return Row Type.
+// TODO: take a next func rather than an index counter
 func NewSetReturningFunctionRowIter(ct int64, getVal func(ctx *sql.Context, idx int64) (sql.Row, error)) *SetReturningFunctionRowIter {
 	return &SetReturningFunctionRowIter{
 		count:  ct,

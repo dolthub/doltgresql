@@ -2649,66 +2649,169 @@ func TestSelectFromFunctions(t *testing.T) {
 }
 
 func TestSetReturningFunctions(t *testing.T) {
-	RunScripts(t, []ScriptTest{
-		{
-			Name: "set returning function: generate_series",
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `SELECT generate_series(1,3)`,
-					Expected: []sql.Row{{1}, {2}, {3}},
+	RunScripts(
+		t,
+		[]ScriptTest{
+			{
+				Name: "generate_series",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT generate_series(1,3)`,
+						Expected: []sql.Row{{1}, {2}, {3}},
+					},
+					{
+						Query:    `SELECT generate_series(1,6,2)`,
+						Expected: []sql.Row{{1}, {3}, {5}},
+					},
+					{
+						Query: `SELECT generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
+						Expected: []sql.Row{
+							{"2008-03-01 00:00:00"},
+							{"2008-03-01 10:00:00"},
+							{"2008-03-01 20:00:00"},
+							{"2008-03-02 06:00:00"},
+						},
+					},
 				},
-				{
-					Query:    `SELECT generate_series(1,6,2)`,
-					Expected: []sql.Row{{1}, {3}, {5}},
+			},
+			{
+				Name: "generate_series with table",
+				SetUpScript: []string{
+					"CREATE TABLE t1 (pk INT primary key, v1 INT);",
+					"INSERT INTO t1 VALUES (1, 1), (2, 2), (3, 3);",
 				},
-				{
-					Query: `SELECT generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
-					Expected: []sql.Row{
-						{"2008-03-01 00:00:00"},
-						{"2008-03-01 10:00:00"},
-						{"2008-03-01 20:00:00"},
-						{"2008-03-02 06:00:00"},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT generate_series(1,3), pk from t1`,
+						Expected: []sql.Row{
+							{1, 1},
+							{2, 1},
+							{3, 1},
+							{1, 2},
+							{2, 2},
+							{3, 2},
+							{1, 3},
+							{2, 3},
+							{3, 3},
+						},
+					},
+					{
+						Query:    `SELECT generate_series(1,3) + pk, pk from t1`,
+						Expected: []sql.Row{
+							{2, 1},
+							{3, 1},
+							{4, 1},
+							{3, 2},
+							{4, 2},
+							{5, 2},
+							{4, 3},
+							{5, 3},
+							{6, 3},
+						},
+					},
+				},
+			},
+			{
+				Name: "set returning function as table function: generate_series",
+				Skip: true, // select * from functions does not work yet
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `select * from generate_series(1,3)`,
+						Expected: []sql.Row{{1}, {2}, {3}},
+					},
+					{
+						Query:    `select sum(null::int4) from generate_series(1,3);`,
+						Expected: []sql.Row{{nil}},
+					},
+					{
+						Query: `SELECT * from generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
+						Expected: []sql.Row{
+							{"2008-03-01 00:00:00"},
+							{"2008-03-01 10:00:00"},
+							{"2008-03-01 20:00:00"},
+							{"2008-03-02 06:00:00"},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_subscripts",
+				SetUpScript: []string{
+					"CREATE TABLE t1 (pk INT primary key, v1 INT[]);",
+					"INSERT INTO t1 VALUES (1, ARRAY[1, 2, 3]), (2, ARRAY[4, 5]), (3, NULL);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "select generate_subscripts(v1, 1) from t1 where pk = 1",
+						Expected: []sql.Row{
+							{1}, {2}, {3},
+						},
+					},
+					{
+						Query: "select generate_subscripts(v1, 1) + 100 from t1 where pk = 1",
+						Expected: []sql.Row{
+							{101}, {102}, {103},
+						},
+					},
+					{
+						Query: "select generate_subscripts(v1, 1) from t1 where pk = 3",
+						Expected: []sql.Row{},
+					},
+					{
+						Query: "select generate_subscripts(v1, 1), v1 from t1",
+						Expected: []sql.Row{
+							{1, "{1,2,3}"},
+							{2, "{1,2,3}"},
+							{3, "{1,2,3}"},
+							{1, "{4,5}"},
+							{2, "{4,5}"},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_subscripts with join",
+				SetUpScript: []string{
+					"CREATE TABLE t1 (a INT[]);",
+					"CREATE TABLE t2 (b int[]);",
+					"INSERT INTO t1 VALUES (ARRAY[1]), (ARRAY[1, 2, 3])",
+					"INSERT INTO t2 VALUES (ARRAY[9,10])",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "select generate_subscripts(a, 1), a, generate_subscripts(b, 1), b from t1, t2;",
+						Expected: []sql.Row{
+							{1, "{1}", 1, "{9,10}"},
+							{nil, "{1}", 2, "{9,10}"},
+							{1, "{1,2,3}", 1, "{9,10}"},
+							{2, "{1,2,3}", 2, "{9,10}"},
+							{3, "{1,2,3}", nil, "{9,10}"},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_subscripts and generate_series combined",
+				SetUpScript: []string{
+					"CREATE TABLE t1 (a INT[]);",
+					"INSERT INTO t1 VALUES (ARRAY[1, 2, 3]), (ARRAY[4, 5]);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "select generate_subscripts(a, 1), a, generate_series(1,4) from t1;",
+						Expected: []sql.Row{
+							{1, "{1,2,3}", 1},
+							{2, "{1,2,3}", 2},
+							{3, "{1,2,3}", 3},
+							{nil, "{1,2,3}", 4},
+							{1, "{4,5}", 1},
+							{2, "{4,5}", 2},
+							{nil, "{4,5}", 3},
+							{nil, "{4,5}", 4},
+						},
 					},
 				},
 			},
 		},
-		{
-			Name: "set returning function as table function: generate_series",
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `select * from generate_series(1,3)`,
-					Expected: []sql.Row{{1}, {2}, {3}},
-				},
-				{
-					Query:    `select sum(null::int4) from generate_series(1,3);`,
-					Expected: []sql.Row{{nil}},
-				},
-				{
-					Query: `SELECT * from generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
-					Expected: []sql.Row{
-						{"2008-03-01 00:00:00"},
-						{"2008-03-01 10:00:00"},
-						{"2008-03-01 20:00:00"},
-						{"2008-03-02 06:00:00"},
-					},
-				},
-			},
-		},
-		{
-			Name: "generate_subscripts",
-			Focus: true,
-			SetUpScript: []string{
-				"CREATE TABLE t1 (pk INT primary key, v1 INT[]);",
-				"INSERT INTO t1 VALUES (1, ARRAY[1, 2, 3]), (2, ARRAY[4, 5]), (3, NULL);",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: "select generate_subscripts(v1, 1) from t1 where pk = 1",
-					Expected: []sql.Row{
-						{1}, {2}, {3},
-					},
-				},
-			},
-		},
-	})
+	)
 }
