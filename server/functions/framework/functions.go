@@ -39,6 +39,9 @@ type FunctionInterface interface {
 	// IsStrict returns whether the function is STRICT, which means if any parameter is NULL, then it returns NULL.
 	// Otherwise, if it's not, the NULL input must be handled by user.
 	IsStrict() bool
+	// IsSRF returns whether the function is set returning function, meaning whether the function returns one or more
+	// rows as a result.
+	IsSRF() bool
 	// InternalID returns the ID associated with this function.
 	InternalID() id.Id
 	// enforceInterfaceInheritance is a special function that ensures only the expected types inherit this interface.
@@ -58,6 +61,7 @@ type Function0 struct {
 	Return             *pgtypes.DoltgresType
 	IsNonDeterministic bool
 	Strict             bool
+	SRF                bool
 	Callable           func(ctx *sql.Context) (any, error)
 }
 
@@ -70,6 +74,7 @@ type Function1 struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
+	SRF                bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error)
 }
 
@@ -83,6 +88,7 @@ type Function2 struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
+	SRF                bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error)
 }
 
@@ -96,6 +102,7 @@ type Function3 struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
+	SRF                bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [4]*pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error)
 }
 
@@ -109,6 +116,7 @@ type Function4 struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
+	SRF                bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [5]*pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any) (any, error)
 }
 
@@ -139,6 +147,9 @@ func (f Function0) NonDeterministic() bool { return f.IsNonDeterministic }
 
 // IsStrict implements the FunctionInterface interface.
 func (f Function0) IsStrict() bool { return f.Strict }
+
+// IsSRF implements the FunctionInterface interface.
+func (f Function0) IsSRF() bool { return f.SRF }
 
 // InternalID implements the FunctionInterface interface.
 func (f Function0) InternalID() id.Id {
@@ -175,6 +186,9 @@ func (f Function1) NonDeterministic() bool { return f.IsNonDeterministic }
 // IsStrict implements the FunctionInterface interface.
 func (f Function1) IsStrict() bool { return f.Strict }
 
+// IsSRF implements the FunctionInterface interface.
+func (f Function1) IsSRF() bool { return f.SRF }
+
 // InternalID implements the FunctionInterface interface.
 func (f Function1) InternalID() id.Id {
 	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID).AsId()
@@ -209,6 +223,9 @@ func (f Function2) NonDeterministic() bool { return f.IsNonDeterministic }
 
 // IsStrict implements the FunctionInterface interface.
 func (f Function2) IsStrict() bool { return f.Strict }
+
+// IsSRF implements the FunctionInterface interface.
+func (f Function2) IsSRF() bool { return f.SRF }
 
 // InternalID implements the FunctionInterface interface.
 func (f Function2) InternalID() id.Id {
@@ -245,6 +262,9 @@ func (f Function3) NonDeterministic() bool { return f.IsNonDeterministic }
 // IsStrict implements the FunctionInterface interface.
 func (f Function3) IsStrict() bool { return f.Strict }
 
+// IsSRF implements the FunctionInterface interface.
+func (f Function3) IsSRF() bool { return f.SRF }
+
 // InternalID implements the FunctionInterface interface.
 func (f Function3) InternalID() id.Id {
 	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID, f.Parameters[2].ID).AsId()
@@ -279,6 +299,9 @@ func (f Function4) NonDeterministic() bool { return f.IsNonDeterministic }
 
 // IsStrict implements the FunctionInterface interface.
 func (f Function4) IsStrict() bool { return f.Strict }
+
+// IsSRF implements the FunctionInterface interface.
+func (f Function4) IsSRF() bool { return f.SRF }
 
 // InternalID implements the FunctionInterface interface.
 func (f Function4) InternalID() id.Id {

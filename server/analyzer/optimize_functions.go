@@ -21,22 +21,38 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
-
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
 )
 
-// OptimizeFunctions replaces all functions that fit specific criteria with their optimized variants.
+// OptimizeFunctions replaces all functions that fit specific criteria with their optimized variants. Also handles 
+// SRFs (set-returning functions) by setting the `IncludesNestedIters` flag on the Project node if any SRF is found.
 func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	// This is supposed to be one of the last rules to run. Subqueries break that assumption, so we skip this rule in such cases.
 	if scope != nil && scope.CurrentNodeIsFromSubqueryExpression {
 		return node, transform.SameTree, nil
 	}
-	return pgtransform.NodeExprsWithNodeWithOpaque(node, func(node sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	projectNode, ok := node.(*plan.Project)
+	if !ok {
+		return node, transform.SameTree, nil
+	}
+	hasSRF := false
+	node, same, err := pgtransform.NodeExprsWithNodeWithOpaque(projectNode, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
+			hasSRF = compiledFunction.IsSRF()
 			if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
 				return quickFunction, transform.NewTree, nil
 			}
 		}
 		return expr, transform.SameTree, nil
 	})
+
+	if err != nil {
+		return nil, transform.NewTree, err
+	}
+
+	if hasSRF {
+		node = projectNode.WithIncludesNestedIters(true)
+	}
+
+	return node, same, nil
 }
