@@ -339,6 +339,11 @@ func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter
 	return eval.(sql.RowIter), nil
 }
 
+// ReturnsRowIter implements the interface sql.RowIterExpression
+func (c *CompiledFunction) ReturnsRowIter() bool {
+	return c.IsSRF()
+}
+
 // Children implements the interface sql.Expression.
 func (c *CompiledFunction) Children() []sql.Expression {
 	return c.Arguments
