@@ -38,7 +38,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	hasSRF := false
 	node, same, err := pgtransform.NodeExprsWithNodeWithOpaque(projectNode, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
-			hasSRF = compiledFunction.IsSRF()
+			hasSRF = hasSRF || compiledFunction.IsSRF()
 			if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
 				return quickFunction, transform.NewTree, nil
 			}
