@@ -1263,7 +1263,6 @@ func TestArrayFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Skip:             true, // TODO: Should return no rows instead of empty row
 					Query:            `SELECT unnest(val1) FROM testing WHERE id=1;`,
 					ExpectedColNames: []string{"unnest"},
 					Expected:         []sql.Row{},
@@ -1274,7 +1273,6 @@ func TestArrayFunctions(t *testing.T) {
 					Expected:         []sql.Row{{1}},
 				},
 				{
-					Skip:     true, // TODO: Support unnesting multiple values
 					Query:    `SELECT unnest(val1) FROM testing WHERE id=3;`,
 					Expected: []sql.Row{{1}, {2}},
 				},
@@ -2814,7 +2812,6 @@ func TestSetReturningFunctions(t *testing.T) {
 			},
 			{
 				Name: "set generation with other func calls",
-				Skip: true, // nextval is broken in this context, not sure why yet
 				SetUpScript: []string{
 					"CREATE sequence test_seq START WITH 1 INCREMENT BY 3;",
 				},
