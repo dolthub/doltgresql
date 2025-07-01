@@ -4274,6 +4274,38 @@ WHERE pg_catalog.pg_index.indrelid IN (3491847678)
   AND NOT pg_catalog.pg_index.indisprimary
 ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 				},
+				{
+					Skip: true, // bool_and not working yet 
+					Query: `SELECT attr.conrelid,
+       array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
+       attr.conname,
+       min(attr.description) AS description,
+       bool_and(pg_catalog.pg_index.indnullsnotdistinct) AS indnullsnotdistinct
+FROM (SELECT con.conrelid AS conrelid,
+             con.conname AS conname,
+             con.conindid AS conindid,
+             con.description AS description,
+             con.ord AS ord, pg_catalog.pg_attribute.attname AS attname
+      FROM pg_catalog.pg_attribute 
+          JOIN (SELECT pg_catalog.pg_constraint.conrelid AS conrelid,
+                       pg_catalog.pg_constraint.conname AS conname,
+                       pg_catalog.pg_constraint.conindid AS conindid,
+                       unnest(pg_catalog.pg_constraint.conkey) AS attnum,
+                       generate_subscripts(pg_catalog.pg_constraint.conkey, 1) AS ord,
+                       pg_catalog.pg_description.description AS description
+                FROM pg_catalog.pg_constraint 
+                    LEFT OUTER JOIN pg_catalog.pg_description 
+                        ON pg_catalog.pg_description.objoid = pg_catalog.pg_constraint.oid
+                WHERE pg_catalog.pg_constraint.contype = 'u'
+                  AND pg_catalog.pg_constraint.conrelid IN (3491847678)) AS con
+              ON pg_catalog.pg_attribute.attnum = con.attnum
+                     AND pg_catalog.pg_attribute.attrelid = con.conrelid
+      WHERE con.conrelid IN (3491847678)) AS attr
+    JOIN pg_catalog.pg_index 
+        ON attr.conindid = pg_catalog.pg_index.indexrelid
+GROUP BY attr.conrelid, attr.conname
+ORDER BY attr.conrelid, attr.conname`,
+				},
 			},
 		},
 	})
