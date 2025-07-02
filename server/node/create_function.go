@@ -20,8 +20,8 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
-
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -29,15 +29,17 @@ import (
 
 // CreateFunction implements CREATE FUNCTION.
 type CreateFunction struct {
-	FunctionName   string
-	SchemaName     string
-	Replace        bool
-	ReturnType     *pgtypes.DoltgresType
-	ParameterNames []string
-	ParameterTypes []*pgtypes.DoltgresType
-	Strict         bool
-	Statements     []plpgsql.InterpreterOperation
-	Definition     string
+	FunctionName    string
+	SchemaName      string
+	Replace         bool
+	ReturnType      *pgtypes.DoltgresType
+	ParameterNames  []string
+	ParameterTypes  []*pgtypes.DoltgresType
+	Strict          bool
+	Statements      []plpgsql.InterpreterOperation
+	ExtensionName   string
+	ExtensionSymbol string
+	Definition      string
 }
 
 var _ sql.ExecSourceRel = (*CreateFunction)(nil)
@@ -53,17 +55,21 @@ func NewCreateFunction(
 	paramTypes []*pgtypes.DoltgresType,
 	strict bool,
 	definition string,
+	extensionName string,
+	extensionSymbol string,
 	statements []plpgsql.InterpreterOperation) *CreateFunction {
 	return &CreateFunction{
-		FunctionName:   functionName,
-		SchemaName:     schemaName,
-		Replace:        replace,
-		ReturnType:     retType,
-		ParameterNames: paramNames,
-		ParameterTypes: paramTypes,
-		Strict:         strict,
-		Statements:     statements,
-		Definition:     definition,
+		FunctionName:    functionName,
+		SchemaName:      schemaName,
+		Replace:         replace,
+		ReturnType:      retType,
+		ParameterNames:  paramNames,
+		ParameterTypes:  paramTypes,
+		Strict:          strict,
+		Statements:      statements,
+		ExtensionName:   extensionName,
+		ExtensionSymbol: extensionSymbol,
+		Definition:      definition,
 	}
 }
 
@@ -102,6 +108,19 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			return nil, err
 		}
 	}
+	var extName string
+	if len(c.ExtensionName) > 0 {
+		ext, err := extensions.GetExtension(c.ExtensionName)
+		if err != nil {
+			return nil, err
+		}
+		ident := extensions.CreateLibraryIdentifier(c.ExtensionName, ext.Control.DefaultVersion)
+		_, err = extensions.GetExtensionFunction(extensions.CreateLibraryIdentifier(c.ExtensionName, ext.Control.DefaultVersion), c.ExtensionSymbol)
+		if err != nil {
+			return nil, err
+		}
+		extName = string(ident)
+	}
 	err = funcCollection.AddFunction(ctx, functions.Function{
 		ID:                 funcID,
 		ReturnType:         c.ReturnType.ID,
@@ -111,6 +130,8 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		IsNonDeterministic: true,
 		Strict:             c.Strict,
 		Definition:         c.Definition,
+		ExtensionName:      extName,
+		ExtensionSymbol:    c.ExtensionSymbol,
 		Operations:         c.Statements,
 	})
 	if err != nil {

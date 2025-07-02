@@ -26,3 +26,6 @@ scripts/mini_sysbench
 # ignore doltgres db created
 doltgres
 postgres
+
+# ignore extensions output
+core/extensions/pg_extension/output

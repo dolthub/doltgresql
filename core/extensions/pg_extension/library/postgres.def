@@ -1,0 +1,26 @@
+LIBRARY "postgres.exe"
+EXPORTS
+  ; ---- functions ----
+  DirectFunctionCall1Coll      = pg_extension.DirectFunctionCall1Coll
+  errcode                      = pg_extension.errcode
+  errfinish                    = pg_extension.errfinish
+  errmsg                       = pg_extension.errmsg
+  errmsg_internal              = pg_extension.errmsg_internal
+  errstart                     = pg_extension.errstart
+  errstart_cold                = pg_extension.errstart_cold
+  MemoryContextAlloc           = pg_extension.MemoryContextAlloc
+  MemoryContextAllocExtended   = pg_extension.MemoryContextAllocExtended
+  palloc                       = pg_extension.palloc
+  palloc0                      = pg_extension.palloc0
+  palloc_extended              = pg_extension.palloc_extended
+  pg_cryptohash_create         = pg_extension.pg_cryptohash_create
+  pg_cryptohash_error          = pg_extension.pg_cryptohash_error
+  pg_cryptohash_final          = pg_extension.pg_cryptohash_final
+  pg_cryptohash_free           = pg_extension.pg_cryptohash_free
+  pg_cryptohash_init           = pg_extension.pg_cryptohash_init
+  pg_cryptohash_update         = pg_extension.pg_cryptohash_update
+  pg_detoast_datum_packed      = pg_extension.pg_detoast_datum_packed
+  strlcpy                      = pg_extension.strlcpy
+  text_to_cstring              = pg_extension.text_to_cstring
+  uuid_in                      = pg_extension.uuid_in
+  uuid_out                     = pg_extension.uuid_out
