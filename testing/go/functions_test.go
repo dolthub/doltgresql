@@ -175,7 +175,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with subquery correlation
 				{
-					Skip:  true, // incorrect result
 					Query: `SELECT category, array_agg(name ORDER BY (SELECT COUNT(*) FROM test_data t2 WHERE t2.category = test_data.category AND t2.age < test_data.age)) FROM test_data GROUP BY category ORDER BY category;`,
 					Expected: []sql.Row{
 						{"A", "{Charlie,Alice,Frank}"},
@@ -199,7 +198,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with aggregated values in grouped context
 				{
-					Skip:  true, // incorrect result
 					Query: `SELECT category, array_agg(name ORDER BY score - (SELECT AVG(score) FROM test_data t2 WHERE t2.category = test_data.category)) FROM test_data GROUP BY category ORDER BY category;`,
 					Expected: []sql.Row{
 						{"A", "{Frank,Charlie,Alice}"},
