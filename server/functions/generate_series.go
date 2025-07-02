@@ -52,7 +52,7 @@ var generate_series_int32_int32 = framework.Function2{
 		start := val1.(int32)
 		finish := val2.(int32)
 		step := int32(1) // by default
-		
+
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 			defer func() {
 				start += step
@@ -154,7 +154,7 @@ var generate_series_numeric_numeric = framework.Function2{
 		start := val1.(decimal.Decimal)
 		finish := val2.(decimal.Decimal)
 		step := decimal.NewFromInt(1) // by default
-		
+
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 			defer func() {
 				start = start.Add(step)

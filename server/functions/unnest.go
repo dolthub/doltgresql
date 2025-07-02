@@ -43,7 +43,7 @@ var unnest = framework.Function1{
 			defer func() {
 				i++
 			}()
-			
+
 			if i >= len(valArr) {
 				return nil, io.EOF
 			}

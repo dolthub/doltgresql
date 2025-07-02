@@ -258,9 +258,9 @@ func TestAggregateFunctions(t *testing.T) {
 					},
 				},
 				{
-					// Panic on type mixing, the logic for mixed types is hard-coded in GMS plan builder, needs 
+					// Panic on type mixing, the logic for mixed types is hard-coded in GMS plan builder, needs
 					// to be configurable. Postgres rejects this plan because of the type differences
-					Skip: true,
+					Skip:  true,
 					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1 ELSE v2 END) FROM t2;`,
 					Expected: []sql.Row{
 						{"{a,b,30}"},
@@ -2718,7 +2718,7 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 				Assertions: []ScriptTestAssertion{
 					{
-						Query:    `SELECT generate_series(1,3), pk from t1`,
+						Query: `SELECT generate_series(1,3), pk from t1`,
 						Expected: []sql.Row{
 							{1, 1},
 							{2, 1},
@@ -2732,7 +2732,7 @@ func TestSetReturningFunctions(t *testing.T) {
 						},
 					},
 					{
-						Query:    `SELECT generate_series(1,3) + pk, pk from t1`,
+						Query: `SELECT generate_series(1,3) + pk, pk from t1`,
 						Expected: []sql.Row{
 							{2, 1},
 							{3, 1},
@@ -2790,7 +2790,7 @@ func TestSetReturningFunctions(t *testing.T) {
 						},
 					},
 					{
-						Query: "select generate_subscripts(v1, 1) from t1 where pk = 3",
+						Query:    "select generate_subscripts(v1, 1) from t1 where pk = 3",
 						Expected: []sql.Row{},
 					},
 					{
@@ -2855,7 +2855,7 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 				Assertions: []ScriptTestAssertion{
 					{
-						Query:    `SELECT generate_series(1, 5), nextval('test_seq')`,
+						Query: `SELECT generate_series(1, 5), nextval('test_seq')`,
 						Expected: []sql.Row{
 							{1, 1},
 							{2, 4},

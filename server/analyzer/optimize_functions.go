@@ -24,7 +24,7 @@ import (
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
 )
 
-// OptimizeFunctions replaces all functions that fit specific criteria with their optimized variants. Also handles 
+// OptimizeFunctions replaces all functions that fit specific criteria with their optimized variants. Also handles
 // SRFs (set-returning functions) by setting the `IncludesNestedIters` flag on the Project node if any SRF is found.
 func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	// This is supposed to be one of the last rules to run. Subqueries break that assumption, so we skip this rule in such cases.

@@ -17,9 +17,10 @@ package functions
 import (
 	"io"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // initGenerateSeries registers the functions to the catalog.
@@ -37,11 +38,11 @@ var generate_subscripts = framework.Function2{
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		arr := val1.([]any)
 		dimension := val2.(int32)
-		
+
 		if dimension != 1 {
 			return nil, sql.ErrUnsupportedFeature.New("generate_subscripts only supports 1-dimensional arrays")
 		}
-		
+
 		var i = 0
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 			i++
