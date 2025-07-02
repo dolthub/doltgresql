@@ -65,6 +65,7 @@ var timestamp_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Timestamp},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// TODO: need to format time in BC
 		return val.(time.Time).Format("2006-01-02 15:04:05.999999999"), nil
 	},
 }
