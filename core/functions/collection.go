@@ -52,6 +52,8 @@ type Function struct {
 	IsNonDeterministic bool
 	Strict             bool
 	Definition         string
+	ExtensionName      string // Only used when this is an extension function
+	ExtensionSymbol    string // Only used when this is an extension function
 	Operations         []plpgsql.InterpreterOperation
 }
 

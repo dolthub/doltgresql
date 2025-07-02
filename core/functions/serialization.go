@@ -32,7 +32,7 @@ func (function Function) Serialize(ctx context.Context) ([]byte, error) {
 
 	// Write all of the functions to the writer
 	writer := utils.NewWriter(256)
-	writer.VariableUint(0) // Version
+	writer.VariableUint(1) // Version
 	// Write the function data
 	writer.Id(function.ID.AsId())
 	writer.Id(function.ReturnType.AsId())
@@ -52,6 +52,9 @@ func (function Function) Serialize(ctx context.Context) ([]byte, error) {
 		writer.Int32(int32(op.Index))
 		writer.StringMap(op.Options)
 	}
+	// Write version 1 data
+	writer.String(function.ExtensionName)
+	writer.String(function.ExtensionSymbol)
 	// Returns the data
 	return writer.Data(), nil
 }
@@ -64,7 +67,7 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 	}
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
-	if version != 0 {
+	if version > 1 {
 		return Function{}, errors.Errorf("version %d of functions is not supported, please upgrade the server", version)
 	}
 
@@ -90,6 +93,10 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 		op.Index = int(reader.Int32())
 		op.Options = reader.StringMap()
 		f.Operations[opIdx] = op
+	}
+	if version == 1 {
+		f.ExtensionName = reader.String()
+		f.ExtensionSymbol = reader.String()
 	}
 	if !reader.IsEmpty() {
 		return Function{}, errors.Errorf("extra data found while deserializing a function")

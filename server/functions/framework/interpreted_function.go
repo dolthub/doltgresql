@@ -90,11 +90,6 @@ func (iFunc InterpretedFunction) IsSRF() bool {
 	return iFunc.SRF
 }
 
-// Return implements the interface plan.Interpreter.
-func (iFunc InterpretedFunction) Return(ctx *sql.Context) sql.Type {
-	return iFunc.ReturnType
-}
-
 // NonDeterministic implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) NonDeterministic() bool {
 	return iFunc.IsNonDeterministic

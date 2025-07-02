@@ -2625,7 +2625,7 @@ var typesTests = []ScriptTest{
 		Name: "Time without time zone type",
 		SetUpScript: []string{
 			"CREATE TABLE t_time_without_zone (id INTEGER primary key, v1 TIME);",
-			"INSERT INTO t_time_without_zone VALUES (1, '12:34:56'), (2, '23:45:01');",
+			"INSERT INTO t_time_without_zone VALUES (1, '12:34:56'), (2, '23:45:01'), (3, '02:03 EDT');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -2633,6 +2633,7 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "12:34:56"},
 					{2, "23:45:01"},
+					{3, "02:03:00"},
 				},
 			},
 			{
@@ -2640,6 +2641,7 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"12:34:56"},
 					{"23:45:01"},
+					{"02:03:00"},
 				},
 			},
 			{
@@ -2679,7 +2681,7 @@ var typesTests = []ScriptTest{
 		Name: "Time with time zone type",
 		SetUpScript: []string{
 			"CREATE TABLE t_time_with_zone (id INTEGER primary key, v1 TIME WITH TIME ZONE);",
-			"INSERT INTO t_time_with_zone VALUES (1, '12:34:56 UTC'), (2, '23:45:01-0200');",
+			"INSERT INTO t_time_with_zone VALUES (1, '12:34:56 UTC'), (2, '23:45:01-0200'), (3, '2025-06-03 02:03 EDT');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -2687,6 +2689,7 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "12:34:56+00"},
 					{2, "23:45:01-02"},
+					{3, "02:03:00-04"},
 				},
 			},
 			{

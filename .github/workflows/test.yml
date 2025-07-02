@@ -24,6 +24,10 @@ jobs:
       run: ./build.sh
       working-directory: ./postgres/parser
       shell: bash
+    - name: Setup PostgreSQL
+      uses: tj-actions/install-postgresql@v3
+      with:
+        postgresql-version: 15
     - name: Test
       if: ${{ matrix.platform != 'ubuntu-latest' }}
       run: go test -skip="TestReplication" $(go list ./... | grep -v enginetest)
