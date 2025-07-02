@@ -24,6 +24,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/procedures"
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/core/extensions"
+	"github.com/dolthub/doltgresql/core/extensions/pg_extension"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -306,6 +308,36 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return f.Callable(ctx, ([5]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3])
 	case InterpretedFunction:
 		return plpgsql.Call(ctx, f, c.runner, c.callResolved, args)
+	case CFunction:
+		cfunc, err := extensions.GetExtensionFunction(f.ExtensionName, f.ExtensionSymbol)
+		if err != nil {
+			return nil, err
+		}
+		cargs := make([]pg_extension.NullableDatum, len(args))
+		for i, argType := range f.ParameterTypes { // TODO: ParameterTypes does not account for variadic parameters
+			cConvFunc, ok := cConversionToDatumMap[argType.ID]
+			if !ok {
+				return nil, cerrors.Errorf("no conversion function from Go to C for `%s`", argType.ID.TypeName())
+			}
+			cargs[i], err = cConvFunc(args[i])
+			if err != nil {
+				return nil, err
+			}
+		}
+		result, isNotNull := pg_extension.CallFmgrFunction(cfunc.Ptr, cargs...)
+		if isNotNull {
+			cConvFunc, ok := cConversionFromDatumMap[f.ReturnType.ID]
+			if !ok {
+				return nil, cerrors.Errorf("no conversion function from C to Go for `%s`", f.ReturnType.ID.TypeName())
+			}
+			retVal, err := cConvFunc(result)
+			if err != nil {
+				return nil, err
+			}
+			return retVal, nil
+		} else {
+			return nil, nil
+		}
 	default:
 		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval %T", f)
 	}

@@ -17,6 +17,8 @@ package framework
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/extensions"
+
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -64,17 +66,32 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 				return nil, false
 			}
 		}
-		if err = overloadTree.Add(InterpretedFunction{
-			ID:                 overload.ID,
-			ReturnType:         returnType,
-			ParameterNames:     overload.ParameterNames,
-			ParameterTypes:     paramTypes,
-			Variadic:           overload.Variadic,
-			IsNonDeterministic: overload.IsNonDeterministic,
-			Strict:             overload.Strict,
-			Statements:         overload.Operations,
-		}); err != nil {
-			return nil, false
+		if len(overload.ExtensionName) > 0 {
+			if err = overloadTree.Add(CFunction{
+				ID:                 overload.ID,
+				ReturnType:         returnType,
+				ParameterTypes:     paramTypes,
+				Variadic:           overload.Variadic,
+				IsNonDeterministic: overload.IsNonDeterministic,
+				Strict:             overload.Strict,
+				ExtensionName:      extensions.LibraryIdentifier(overload.ExtensionName),
+				ExtensionSymbol:    overload.ExtensionSymbol,
+			}); err != nil {
+				return nil, false
+			}
+		} else {
+			if err = overloadTree.Add(InterpretedFunction{
+				ID:                 overload.ID,
+				ReturnType:         returnType,
+				ParameterNames:     overload.ParameterNames,
+				ParameterTypes:     paramTypes,
+				Variadic:           overload.Variadic,
+				IsNonDeterministic: overload.IsNonDeterministic,
+				Strict:             overload.Strict,
+				Statements:         overload.Operations,
+			}); err != nil {
+				return nil, false
+			}
 		}
 	}
 	return sql.FunctionN{
