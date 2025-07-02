@@ -151,9 +151,8 @@ func (l *intervalLexer) consumeUnit(skipCharacter byte) string {
 	}
 
 	if offset == l.offset {
-		l.err = pgerror.Newf(
-			pgcode.InvalidDatetimeFormat, "interval: missing unit at position %d: %q", offset, l.str)
-		return ""
+		// a number directly after T without a unit specifier like H, M, or S defaults to seconds
+		return "S"
 	}
 	return l.str[offset:l.offset]
 }
