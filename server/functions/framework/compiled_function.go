@@ -336,7 +336,6 @@ func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter
 	default:
 		return nil, cerrors.Errorf("function %s returned a value of type %T, which is not a RowIter", c.Name, eval)
 	}
-	return eval.(sql.RowIter), nil
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression
