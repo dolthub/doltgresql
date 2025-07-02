@@ -230,6 +230,44 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array agg with case statement",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk INT primary key, v1 INT, v2 INT);",
+				"INSERT INTO t1 VALUES (1, 10, 20), (2, 30, 40), (3, 50, 60);",
+				"CREATE TABLE t2 (pk INT primary key, v1 INT, v2 TEXT);",
+				"INSERT INTO t2 VALUES (1, 10, 'a'), (2, 20, 'b'), (3, 30, 'c');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1 ELSE NULL END) FROM t1;`,
+					Expected: []sql.Row{
+						{"{NULL,30,50}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(CASE WHEN v1 >= 20 THEN v2 ELSE NULL END) FROM t2;`,
+					Expected: []sql.Row{
+						{"{NULL,b,c}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1::text ELSE v2 END) FROM t2;`,
+					Expected: []sql.Row{
+						{"{a,b,30}"},
+					},
+				},
+				{
+					// Panic on type mixing, the logic for mixed types is hard-coded in GMS plan builder, needs 
+					// to be configurable. Postgres rejects this plan because of the type differences
+					Skip: true,
+					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1 ELSE v2 END) FROM t2;`,
+					Expected: []sql.Row{
+						{"{a,b,30}"},
+					},
+				},
+			},
+		},
 	})
 }
 

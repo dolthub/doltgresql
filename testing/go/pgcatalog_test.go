@@ -4275,7 +4275,7 @@ WHERE pg_catalog.pg_index.indrelid IN (3491847678)
 ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 				},
 				{
-					Skip: true, // bool_and not working yet 
+					Skip: true, // bool_and not working yet
 					Query: `SELECT attr.conrelid,
        array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
        attr.conname,
