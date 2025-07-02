@@ -14,7 +14,7 @@ set -o pipefail
 apt-get update && apt-get install -y p7zip-full pigz curl xz-utils mingw-w64 clang-15
 
 cd /
-curl -o optcross.tar.xz https://dolthub-tools.s3.us-west-2.amazonaws.com/optcross/"$(uname -m)"-linux_20240425_0.0.1.tar.xz
+curl -o optcross.tar.xz https://dolthub-tools.s3.us-west-2.amazonaws.com/optcross/"$(uname -m)"-linux_20250327_0.0.3.tar.xz
 tar Jxf optcross.tar.xz
 export PATH=/opt/cross/bin:"$PATH"
 
@@ -40,8 +40,8 @@ platform_as["windows-amd64"]="x86_64-w64-mingw32-as"
 declare -A platform_go_ldflags
 platform_go_ldflags["linux-arm64"]="-linkmode external -s -w"
 platform_go_ldflags["linux-amd64"]="-linkmode external -s -w"
-platform_go_ldflags["darwin-arm64"]="-s -w -compressdwarf=false"
-platform_go_ldflags["darwin-amd64"]="-s -w -compressdwarf=false"
+platform_go_ldflags["darwin-arm64"]="-s -w -compressdwarf=false -extldflags -Wl,-platform_version,macos,12.0,14.4"
+platform_go_ldflags["darwin-amd64"]="-s -w -compressdwarf=false -extldflags -Wl,-platform_version,macos,12.0,14.4"
 platform_go_ldflags["windows-amd64"]="-s -w"
 
 declare -A platform_cgo_ldflags
@@ -51,7 +51,7 @@ platform_cgo_ldflags["darwin-arm64"]=""
 platform_cgo_ldflags["darwin-amd64"]=""
 # Stack smash protection lib is built into clang for unix platforms,
 # but on Windows we need to pull in the separate ssp library
-platform_cgo_ldflags["windows-amd64"]="-lssp"
+platform_cgo_ldflags["windows-amd64"]="-Wl,-Bstatic -lssp"
 
 for tuple in $OS_ARCH_TUPLES; do
   os=`echo $tuple | sed 's/-.*//'`
