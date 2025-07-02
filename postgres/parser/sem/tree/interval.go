@@ -180,7 +180,7 @@ var isoTimeUnitMap = map[string]duration.Duration{
 	"H": duration.MakeDuration(time.Hour.Nanoseconds(), 0, 0),
 }
 
-const errInvalidSQLDuration = "invalid input syntax for type interval %s"
+const errInvalidSQLDuration = `invalid input syntax for type interval: "%s"`
 
 type parsedIndex uint8
 

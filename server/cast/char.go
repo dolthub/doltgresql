@@ -51,7 +51,7 @@ func charExplicit() {
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
 			if err != nil {
-				return nil, errors.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+				return nil, pgtypes.ErrInvalidSyntaxForType.New(targetType.String(), val.(string))
 			}
 			if out > 2147483647 || out < -2147483648 {
 				return nil, errors.Errorf("value %q is out of range for type %s", val.(string), targetType.String())

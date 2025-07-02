@@ -1579,6 +1579,10 @@ var typesTests = []ScriptTest{
 				Query:       "SELECT v1::oid FROM t_name WHERE id=1;",
 				ExpectedErr: "invalid input syntax for type",
 			},
+			{
+				Query:       "SELECT interval '1 2' day to second;",
+				ExpectedErr: "invalid input syntax for type interval: ",
+			},
 			// Cast to Name from types
 			{
 				Query: "SELECT ('abc'::char(3))::name, ('abc'::varchar)::name, ('abc'::text)::name;",
