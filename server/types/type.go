@@ -676,7 +676,7 @@ func (t *DoltgresType) SerializedCompare(ctx context.Context, v1 []byte, v2 []by
 
 // IsNullType implements the sql.NullType interface.
 func (t *DoltgresType) IsNullType() bool {
-	return t == Null
+	return t.ID.TypeName() == "unknown"
 }
 
 // SQL implements the types.ExtendedType interface.

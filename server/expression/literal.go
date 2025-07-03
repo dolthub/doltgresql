@@ -53,7 +53,7 @@ func NewIntegerLiteral(integerValue string) (*expression.Literal, error) {
 
 // NewNullLiteral returns a new *expression.Literal containing a null value.
 func NewNullLiteral() *expression.Literal {
-	return expression.NewLiteral(nil, pgtypes.Null)
+	return expression.NewLiteral(nil, pgtypes.Unknown)
 }
 
 // NewUnknownLiteral returns a new *expression.Literal containing a UNKNOWN type value.
