@@ -781,10 +781,6 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []*pgtypes.Doltgre
 			if err != nil {
 				return nil, err
 			}
-			// text type need be interpreted as unknown to be resolved into type that a function fits with.
-			if dt == pgtypes.Text {
-				dt = pgtypes.Unknown
-			}
 			originalTypes[i] = dt
 		}
 	}

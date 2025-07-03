@@ -90,6 +90,8 @@ type DoltgresType struct {
 }
 
 var _ types.ExtendedType = &DoltgresType{}
+var _ sql.NullType = &DoltgresType{}
+var _ sql.StringType = &DoltgresType{}
 
 // NewUnresolvedDoltgresType returns DoltgresType that is not resolved.
 // The type will have the schema and name defined with given values, with IsUnresolved == true.
@@ -670,6 +672,11 @@ func (t *DoltgresType) SerializedCompare(ctx context.Context, v1 []byte, v2 []by
 		return serializedStringCompare(v1, v2), nil
 	}
 	return bytes.Compare(v1, v2), nil
+}
+
+// IsNullType implements the sql.NullType interface.
+func (t *DoltgresType) IsNullType() bool {
+	return t.ID.TypeName() == "unknown"
 }
 
 // SQL implements the types.ExtendedType interface.
