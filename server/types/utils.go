@@ -161,7 +161,7 @@ func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool b
 
 // RecordToString is used for the record_out function, to serialize record values for wire transfer.
 // |fields| contains the values to serialize.
-func RecordToString(ctx *sql.Context, fields []types.TupleValue) (any, error) {
+func RecordToString(ctx *sql.Context, fields []RecordValue) (any, error) {
 	sb := strings.Builder{}
 	sb.WriteRune('(')
 	for i, value := range fields {

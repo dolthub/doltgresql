@@ -19,7 +19,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -65,7 +64,7 @@ func (t *RecordExpr) IsNullable() bool {
 
 // Eval implements the sql.Expression interface.
 func (t *RecordExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
-	vals := make([]types.TupleValue, len(t.exprs))
+	vals := make([]pgtypes.RecordValue, len(t.exprs))
 	for i, expr := range t.exprs {
 		val, err := expr.Eval(ctx, row)
 		if err != nil {
@@ -76,7 +75,7 @@ func (t *RecordExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		if !ok {
 			return nil, fmt.Errorf("expected a DoltgresType, but got %T", expr.Type())
 		}
-		vals[i] = types.TupleValue{
+		vals[i] = pgtypes.RecordValue{
 			Value: val,
 			Type:  typ,
 		}
