@@ -31,7 +31,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	if scope != nil && scope.CurrentNodeIsFromSubqueryExpression {
 		return node, transform.SameTree, nil
 	}
-	
+
 	return pgtransform.NodeWithOpaque(node, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		hasSRF := false
 
@@ -39,7 +39,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		if !ok {
 			return n, transform.SameTree, nil
 		}
-		
+
 		n, same, err := pgtransform.NodeExprsWithOpaque(n, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 				hasSRF = hasSRF || compiledFunction.IsSRF()
@@ -49,12 +49,12 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			}
 			return expr, transform.SameTree, nil
 		})
-		
+
 		if hasSRF && !projectNode.IncludesNestedIters {
 			// n = projectNode.WithIncludesNestedIters(true)
 			n = n.(*plan.Project).WithIncludesNestedIters(true)
 		}
-		
+
 		return n, same, err
 	})
 }

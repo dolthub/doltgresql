@@ -2713,7 +2713,7 @@ func TestSetReturningFunctions(t *testing.T) {
 			{
 				Name: "nested generate_series",
 				// Nested SRF expressions cause an infinite loop, skipped in regression tests.
-				// Challenging to fix with the current expression eval architecture and very marginal as a use case. 
+				// Challenging to fix with the current expression eval architecture and very marginal as a use case.
 				Skip: true,
 				Assertions: []ScriptTestAssertion{
 					{
