@@ -307,27 +307,39 @@ func TestRecords(t *testing.T) {
 				},
 				{
 					Query:    "SELECT NULL::record IS NULL",
-					Expected: []sql.Row{{1}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT ROW(NULL) IS NULL",
-					Expected: []sql.Row{{1}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT ROW(NULL, NULL, NULL) IS NULL;",
-					Expected: []sql.Row{{1}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT ROW(NULL, 42, NULL) IS NULL;",
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    "SELECT ROW(42) IS NULL",
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    "SELECT ROW(NULL) IS NOT NULL;",
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    "SELECT ROW(NULL, NULL) IS NOT NULL;",
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    "SELECT ROW(NULL, 1) IS NOT NULL;",
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 1) IS NOT NULL;",
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    "SELECT ROW(42) IS NOT NULL;",

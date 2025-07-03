@@ -18,7 +18,6 @@ import (
 	"fmt"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -52,9 +51,9 @@ var record_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Record},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		values, ok := val.([]types.TupleValue)
+		values, ok := val.([]pgtypes.RecordValue)
 		if !ok {
-			return nil, fmt.Errorf("expected []TupleValue, but got %T", val)
+			return nil, fmt.Errorf("expected []RecordValue, but got %T", val)
 		}
 		return pgtypes.RecordToString(ctx, values)
 	},
@@ -78,9 +77,9 @@ var record_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Record},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		values, ok := val.([]types.TupleValue)
+		values, ok := val.([]pgtypes.RecordValue)
 		if !ok {
-			return nil, fmt.Errorf("expected []TupleValue, but got %T", val)
+			return nil, fmt.Errorf("expected []RecordValue, but got %T", val)
 		}
 		output, err := pgtypes.RecordToString(ctx, values)
 		if err != nil {
