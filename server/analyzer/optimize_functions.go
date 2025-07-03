@@ -31,28 +31,30 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	if scope != nil && scope.CurrentNodeIsFromSubqueryExpression {
 		return node, transform.SameTree, nil
 	}
-	projectNode, ok := node.(*plan.Project)
-	if !ok {
-		return node, transform.SameTree, nil
-	}
-	hasSRF := false
-	node, same, err := pgtransform.NodeExprsWithNodeWithOpaque(projectNode, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
-		if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
-			hasSRF = hasSRF || compiledFunction.IsSRF()
-			if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
-				return quickFunction, transform.NewTree, nil
-			}
+	
+	return pgtransform.NodeWithOpaque(node, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+		hasSRF := false
+
+		projectNode, ok := n.(*plan.Project)
+		if !ok {
+			return n, transform.SameTree, nil
 		}
-		return expr, transform.SameTree, nil
+		
+		n, same, err := pgtransform.NodeExprsWithOpaque(n, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
+				hasSRF = hasSRF || compiledFunction.IsSRF()
+				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
+					return quickFunction, transform.NewTree, nil
+				}
+			}
+			return expr, transform.SameTree, nil
+		})
+		
+		if hasSRF && !projectNode.IncludesNestedIters {
+			// n = projectNode.WithIncludesNestedIters(true)
+			n = n.(*plan.Project).WithIncludesNestedIters(true)
+		}
+		
+		return n, same, err
 	})
-
-	if err != nil {
-		return nil, transform.NewTree, err
-	}
-
-	if hasSRF {
-		node = projectNode.WithIncludesNestedIters(true)
-	}
-
-	return node, same, nil
 }

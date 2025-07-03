@@ -2711,6 +2711,43 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 			{
+				Name: "nested generate_series",
+				// Nested SRF expressions cause an infinite loop, skipped in regression tests.
+				// Challenging to fix with the current expression eval architecture and very marginal as a use case. 
+				Skip: true,
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `SELECT generate_series(1, generate_series(1, 3))`,
+						Expected: []sql.Row{
+							{1}, {1}, {2}, {1}, {2}, {3},
+						},
+					},
+				},
+			},
+			{
+				Name: "limit, offset, sort",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `SELECT a, generate_series(1,2) FROM (VALUES(1),(2),(3)) r(a) LIMIT 2 OFFSET 2;`,
+						Expected: []sql.Row{
+							{2, 1},
+							{2, 2},
+						},
+					},
+					{
+						Query: `SELECT a, generate_series(1,2) FROM (VALUES(1),(2),(3)) r(a) ORDER BY 1;`,
+						Expected: []sql.Row{
+							{1, 1},
+							{1, 2},
+							{2, 1},
+							{2, 2},
+							{3, 1},
+							{3, 2},
+						},
+					},
+				},
+			},
+			{
 				Name: "generate_series with table",
 				SetUpScript: []string{
 					"CREATE TABLE t1 (pk INT primary key, v1 INT);",
