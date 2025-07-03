@@ -501,11 +501,11 @@ func (fe *fieldExtract) interpretNumber(numbers []numberChunk, idx int, textMont
 				// Example: "MM DD HH::MM:SS YY"
 				//                 ^^
 				return fe.SetChunk(fieldHour, chunk)
-			} else if !fe.Wants(fieldHour) && fe.Wants(fieldMinute) && idx < len(numbers)-1 && numbers[idx+1].separator == ':' {
+			} else if !fe.Wants(fieldHour) && fe.Wants(fieldMinute) && chunk.separator == ':' {
 				// Example: "MM DD HH::MM:SS YY"
 				//                     ^^
 				return fe.SetChunk(fieldMinute, chunk)
-			} else if !fe.Wants(fieldHour) && !fe.Wants(fieldMinute) && fe.Wants(fieldSecond) && idx < len(numbers)-1 {
+			} else if !fe.Wants(fieldHour) && !fe.Wants(fieldMinute) && fe.Wants(fieldSecond) && chunk.separator == ':' {
 				// Example: "MM DD HH::MM:SS YY"
 				//                        ^^
 				return fe.SetChunk(fieldSecond, chunk)
