@@ -197,7 +197,7 @@ func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
 	// TODO: unwrap values as necessary
 	// Append the current value to the end of the row. We want to preserve the row's original structure
 	// for sort ordering in the final step.
-	a.elements = append(a.elements, append(row, nil, evalRow[0]))
+	a.elements = append(a.elements, append(row, evalRow[0]))
 	return nil
 }
 
