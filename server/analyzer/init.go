@@ -114,7 +114,7 @@ func IsAggregateFunc(name string) bool {
 	}
 
 	switch name {
-	case "array_agg":
+	case "array_agg", "bool_and":
 		return true
 	}
 

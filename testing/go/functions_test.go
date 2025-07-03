@@ -23,6 +23,20 @@ import (
 func TestAggregateFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "bool_and",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE TABLE t1 (pk INT primary key, v1 BOOLEAN, v2 BOOLEAN);`,
+				`INSERT INTO t1 VALUES (1, true, false), (2, true, true), (3, true, true);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:        `SELECT bool_and(v1), bool_and(v2) FROM t1;`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+			},
+		},
+		{
 			Name: "array_agg",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (pk INT primary key, t timestamp, v varchar, f float[]);`,

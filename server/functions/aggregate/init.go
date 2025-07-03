@@ -15,5 +15,5 @@
 package aggregate
 
 func Init() {
-	initArrayAgg()
+	initBoolAnd()
 }

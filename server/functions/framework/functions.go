@@ -52,7 +52,7 @@ type FunctionInterface interface {
 type AggregateFunctionInterface interface {
 	FunctionInterface
 	// TODO: this maybe needs to take the place of the Callable function
-	NewBuffer() (sql.AggregationBuffer, error)
+	NewBuffer([]sql.Expression) (sql.AggregationBuffer, error)
 }
 
 // Function0 is a function that does not take any parameters.
@@ -317,7 +317,7 @@ type Func1Aggregate struct {
 	NewAggBuffer func() (sql.AggregationBuffer, error)
 }
 
-func (f Func1Aggregate) NewBuffer() (sql.AggregationBuffer, error) {
+func (f Func1Aggregate) NewBuffer([]sql.Expression) (sql.AggregationBuffer, error) {
 	return f.NewAggBuffer()
 }
 

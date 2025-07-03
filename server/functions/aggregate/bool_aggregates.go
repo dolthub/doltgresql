@@ -22,45 +22,43 @@ import (
 )
 
 // initArrayAgg registers the functions to the catalog.
-func initArrayAgg() {
-	framework.RegisterAggregateFunction(array_agg)
+func initBoolAnd() {
+	framework.RegisterAggregateFunction(boolAnd)
 }
 
-// array_agg represents the PostgreSQL array_agg function.
-var array_agg = framework.Func1Aggregate{
+// boolAnd represents the PostgreSQL boolAnd function.
+var boolAnd = framework.Func1Aggregate{
 	Function1: framework.Function1{
-		Name:   "array_agg",
-		Return: pgtypes.AnyArray,
+		Name:   "bool_and",
+		Return: pgtypes.Bool,
 		Parameters: [1]*pgtypes.DoltgresType{
-			pgtypes.AnyElement,
+			pgtypes.Bool,
 		},
 		Callable: func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 			return nil, nil
 		},
 	},
-	NewAggBuffer: newArrayAggBuffer,
+	NewAggBuffer: newBoolBuffer,
 }
 
-type arrayAggBuffer struct {
-	elements []any
+type boolAndBuffer struct {
+	expr sql.Expression
+	b bool
 }
 
-func newArrayAggBuffer() (sql.AggregationBuffer, error) {
-	return &arrayAggBuffer{
-		elements: make([]any, 0),
+func newBoolBuffer() (sql.AggregationBuffer, error) {
+	return &boolAndBuffer{
+		b: true,
 	}, nil
 }
 
-func (a *arrayAggBuffer) Dispose() {}
+func (a *boolAndBuffer) Dispose() {}
 
-func (a *arrayAggBuffer) Eval(context *sql.Context) (interface{}, error) {
-	if len(a.elements) == 0 {
-		return nil, nil
-	}
-	return a.elements, nil
+func (a *boolAndBuffer) Eval(context *sql.Context) (interface{}, error) {
+	return a.b, nil
 }
 
-func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
-	a.elements = append(a.elements, row[0])
+func (a *boolAndBuffer) Update(ctx *sql.Context, row sql.Row) error {
+	a.b = a.b && row[0].(bool)
 	return nil
 }
