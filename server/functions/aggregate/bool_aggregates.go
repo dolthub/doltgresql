@@ -45,7 +45,6 @@ type boolAndBuffer struct {
 	expr sql.Expression
 	b bool
 	sawOne bool
-	sawNil bool
 }
 
 func newBoolBuffer(exprs []sql.Expression) (sql.AggregationBuffer, error) {
@@ -58,26 +57,23 @@ func newBoolBuffer(exprs []sql.Expression) (sql.AggregationBuffer, error) {
 func (a *boolAndBuffer) Dispose() {}
 
 func (a *boolAndBuffer) Eval(context *sql.Context) (interface{}, error) {
+	if !a.sawOne {
+		return nil, nil
+	}
 	return a.b, nil
 }
 
 func (a *boolAndBuffer) Update(ctx *sql.Context, row sql.Row) error {
-	a.sawOne = true
-
-	if a.sawNil {
-		return nil
-	}
-
 	eval, err := a.expr.Eval(ctx, row)
 	if err != nil {
 		return err
 	}
 
 	if eval == nil {
-		a.sawNil = true
 		return nil
 	}
-	
+
+	a.sawOne = true
 	a.b = a.b && eval.(bool)
 	return nil
 }

@@ -28,11 +28,48 @@ func TestAggregateFunctions(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE TABLE t1 (pk INT primary key, v1 BOOLEAN, v2 BOOLEAN);`,
 				`INSERT INTO t1 VALUES (1, true, false), (2, true, true), (3, true, true);`,
+				`CREATE TABLE t2 (v1 BOOLEAN);`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:        `SELECT bool_and(v1), bool_and(v2) FROM t1;`,
 					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query: 			`SELECT bool_and(v1 and v2) FROM t1;`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: 			`SELECT bool_and(v1 and v2) FROM t1 where v1 and v2;`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: 			`SELECT bool_and(v1) FROM t1 where pk > 10;`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: 			`SELECT bool_and(a) FROM (VALUES(true),(false),(null)) r(a);`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: 			`SELECT bool_and(a) FROM (VALUES(null),(true),(null)) r(a);`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: 			`SELECT bool_and(v1) FROM t2`,
+					Expected: []sql.Row{
+						{nil},
+					},
 				},
 			},
 		},
