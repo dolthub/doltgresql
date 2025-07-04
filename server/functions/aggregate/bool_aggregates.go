@@ -44,10 +44,13 @@ var boolAnd = framework.Func1Aggregate{
 type boolAndBuffer struct {
 	expr sql.Expression
 	b bool
+	sawOne bool
+	sawNil bool
 }
 
-func newBoolBuffer() (sql.AggregationBuffer, error) {
+func newBoolBuffer(exprs []sql.Expression) (sql.AggregationBuffer, error) {
 	return &boolAndBuffer{
+		expr: exprs[0],
 		b: true,
 	}, nil
 }
@@ -59,6 +62,22 @@ func (a *boolAndBuffer) Eval(context *sql.Context) (interface{}, error) {
 }
 
 func (a *boolAndBuffer) Update(ctx *sql.Context, row sql.Row) error {
-	a.b = a.b && row[0].(bool)
+	a.sawOne = true
+
+	if a.sawNil {
+		return nil
+	}
+
+	eval, err := a.expr.Eval(ctx, row)
+	if err != nil {
+		return err
+	}
+
+	if eval == nil {
+		a.sawNil = true
+		return nil
+	}
+	
+	a.b = a.b && eval.(bool)
 	return nil
 }
