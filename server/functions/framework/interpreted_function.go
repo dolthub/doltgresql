@@ -38,6 +38,7 @@ type InterpretedFunction struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
+	SRF                bool
 	Statements         []plpgsql.InterpreterOperation
 }
 
@@ -82,6 +83,11 @@ func (iFunc InterpretedFunction) InternalID() id.Id {
 // IsStrict implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) IsStrict() bool {
 	return iFunc.Strict
+}
+
+// IsSRF implements the interface FunctionInterface.
+func (iFunc InterpretedFunction) IsSRF() bool {
+	return iFunc.SRF
 }
 
 // NonDeterministic implements the interface FunctionInterface.

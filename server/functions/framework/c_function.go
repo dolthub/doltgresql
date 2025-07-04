@@ -75,5 +75,10 @@ func (cFunc CFunction) VariadicIndex() int {
 	return -1
 }
 
+// ISRF implements the interface FunctionInterface.
+func (cFunc CFunction) IsSRF() bool {
+	return false
+}
+
 // enforceInterfaceInheritance implements the interface FunctionInterface.
 func (cFunc CFunction) enforceInterfaceInheritance(error) {}

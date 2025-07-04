@@ -27,6 +27,7 @@ import (
 // evaluation. This will only apply to very specific functions that are generally performance-critical.
 type QuickFunction interface {
 	Function
+	sql.RowIterExpression
 	// CallVariadic is the variadic form of the Call function that is specific to each implementation of QuickFunction.
 	// The implementation will not verify that the correct number of arguments have been passed.
 	CallVariadic(ctx *sql.Context, args ...any) (interface{}, error)
@@ -43,6 +44,7 @@ type QuickFunction1 struct {
 	Name         string
 	Argument     sql.Expression
 	IsStrict     bool
+	IsSRF        bool
 	callResolved [2]*pgtypes.DoltgresType
 	function     Function1
 }
@@ -76,7 +78,7 @@ func (q *QuickFunction1) String() string {
 
 // Type implements the interface sql.Expression.
 func (q *QuickFunction1) Type() sql.Type {
-	return q.callResolved[1]
+	return getTypeIfRowType(q.IsSRF, q.callResolved[1])
 }
 
 // IsNullable implements the interface sql.Expression.
@@ -99,6 +101,28 @@ func (q *QuickFunction1) Eval(ctx *sql.Context, row sql.Row) (interface{}, error
 		return nil, nil
 	}
 	return q.function.Callable(ctx, q.callResolved, arg)
+}
+
+// EvalRowIter implements the interface sql.RowIterExpression.
+func (q *QuickFunction1) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	eval, err := q.Eval(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	switch eval := eval.(type) {
+	case sql.RowIter:
+		return eval, nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, errors.Errorf("function %s returned a value of type %T, which is not a RowIter", q.Name, eval)
+	}
+}
+
+// ReturnsRowIter implements the interface sql.RowIterExpression.
+func (q *QuickFunction1) ReturnsRowIter() bool {
+	return q.IsSRF
 }
 
 // Call directly calls the underlying function with the given arguments. This does not perform any form of NULL checking
@@ -124,6 +148,7 @@ func (q *QuickFunction1) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any
 		Name:         q.Name,
 		Argument:     q.Argument,
 		IsStrict:     q.IsStrict,
+		IsSRF:        q.IsSRF,
 		callResolved: [2]*pgtypes.DoltgresType(newTypes),
 		function:     q.function,
 	}
@@ -157,6 +182,7 @@ type QuickFunction2 struct {
 	Name         string
 	Arguments    [2]sql.Expression
 	IsStrict     bool
+	IsSRF        bool
 	callResolved [3]*pgtypes.DoltgresType
 	function     Function2
 }
@@ -190,7 +216,7 @@ func (q *QuickFunction2) String() string {
 
 // Type implements the interface sql.Expression.
 func (q *QuickFunction2) Type() sql.Type {
-	return q.callResolved[2]
+	return getTypeIfRowType(q.IsSRF, q.callResolved[2])
 }
 
 // IsNullable implements the interface sql.Expression.
@@ -219,6 +245,28 @@ func (q *QuickFunction2) Eval(ctx *sql.Context, row sql.Row) (interface{}, error
 	return q.function.Callable(ctx, q.callResolved, args[0], args[1])
 }
 
+// EvalRowIter implements the interface sql.RowIterExpression.
+func (q *QuickFunction2) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	eval, err := q.Eval(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	switch eval := eval.(type) {
+	case sql.RowIter:
+		return eval, nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, errors.Errorf("function %s returned a value of type %T, which is not a RowIter", q.Name, eval)
+	}
+}
+
+// ReturnsRowIter implements the interface sql.RowIterExpression.
+func (q *QuickFunction2) ReturnsRowIter() bool {
+	return q.IsSRF
+}
+
 // Call directly calls the underlying function with the given arguments. This does not perform any form of NULL checking
 // as it is assumed that it was done prior to this call. It also does not validate any types. This exists purely for
 // performance, when we can guarantee that the input is always valid and well-formed.
@@ -242,6 +290,7 @@ func (q *QuickFunction2) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any
 		Name:         q.Name,
 		Arguments:    q.Arguments,
 		IsStrict:     q.IsStrict,
+		IsSRF:        q.IsSRF,
 		callResolved: [3]*pgtypes.DoltgresType(newTypes),
 		function:     q.function,
 	}
@@ -276,6 +325,7 @@ type QuickFunction3 struct {
 	Name         string
 	Arguments    [3]sql.Expression
 	IsStrict     bool
+	IsSRF        bool
 	callResolved [4]*pgtypes.DoltgresType
 	function     Function3
 }
@@ -309,7 +359,7 @@ func (q *QuickFunction3) String() string {
 
 // Type implements the interface sql.Expression.
 func (q *QuickFunction3) Type() sql.Type {
-	return q.callResolved[3]
+	return getTypeIfRowType(q.IsSRF, q.callResolved[3])
 }
 
 // IsNullable implements the interface sql.Expression.
@@ -338,6 +388,28 @@ func (q *QuickFunction3) Eval(ctx *sql.Context, row sql.Row) (interface{}, error
 	return q.function.Callable(ctx, q.callResolved, args[0], args[1], args[2])
 }
 
+// EvalRowIter implements the interface sql.RowIterExpression.
+func (q *QuickFunction3) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	eval, err := q.Eval(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	switch eval := eval.(type) {
+	case sql.RowIter:
+		return eval, nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, errors.Errorf("function %s returned a value of type %T, which is not a RowIter", q.Name, eval)
+	}
+}
+
+// ReturnsRowIter implements the interface sql.RowIterExpression.
+func (q *QuickFunction3) ReturnsRowIter() bool {
+	return q.IsSRF
+}
+
 // Call directly calls the underlying function with the given arguments. This does not perform any form of NULL checking
 // as it is assumed that it was done prior to this call. It also does not validate any types. This exists purely for
 // performance, when we can guarantee that the input is always valid and well-formed.
@@ -361,6 +433,7 @@ func (q *QuickFunction3) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any
 		Name:         q.Name,
 		Arguments:    q.Arguments,
 		IsStrict:     q.IsStrict,
+		IsSRF:        q.IsSRF,
 		callResolved: [4]*pgtypes.DoltgresType(newTypes),
 		function:     q.function,
 	}
