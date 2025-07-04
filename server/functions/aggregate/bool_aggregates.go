@@ -58,16 +58,16 @@ var boolOr = framework.Func1Aggregate{
 }
 
 type boolAggBuffer struct {
-	expr sql.Expression
-	b bool
+	expr   sql.Expression
+	b      bool
 	sawOne bool
-	isAnd bool
+	isAnd  bool
 }
 
 func newBoolAndBuffer(exprs []sql.Expression) (sql.AggregationBuffer, error) {
 	return &boolAggBuffer{
-		expr: exprs[0],
-		b: true,
+		expr:  exprs[0],
+		b:     true,
 		isAnd: true,
 	}, nil
 }

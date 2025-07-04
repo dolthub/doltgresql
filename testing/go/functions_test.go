@@ -80,7 +80,7 @@ func TestAggregateFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name:  "bool_or",
+			Name: "bool_or",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (pk INT primary key, v1 BOOLEAN, v2 BOOLEAN);`,
 				`INSERT INTO t1 VALUES (1, false, false), (2, true, true), (3, true, false);`,

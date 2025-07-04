@@ -29,7 +29,7 @@ type AggregateFunction interface {
 	specificFuncImpl()
 }
 
-type NewBufferFn func([]sql.Expression) (sql.AggregationBuffer, error) 
+type NewBufferFn func([]sql.Expression) (sql.AggregationBuffer, error)
 
 // CompiledAggregateFunction is an expression that represents a fully-analyzed PostgreSQL aggregate function.
 type CompiledAggregateFunction struct {
