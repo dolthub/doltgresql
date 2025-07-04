@@ -15,6 +15,8 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
@@ -56,9 +58,9 @@ var Record = &DoltgresType{
 	CompareFunc:   toFuncID("-"),
 }
 
-// RecordValue holds the value of a single field in a record, including type information for the
-// field value.
+// RecordValue represents a single value in a record, along with its
+// associated type.
 type RecordValue struct {
 	Value any
-	Type  *DoltgresType
+	Type  sql.Type
 }
