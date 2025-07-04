@@ -24,7 +24,6 @@ func TestAggregateFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "bool_and",
-			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE t1 (pk INT primary key, v1 BOOLEAN, v2 BOOLEAN);`,
 				`INSERT INTO t1 VALUES (1, true, false), (2, true, true), (3, true, true);`,
@@ -32,48 +31,96 @@ func TestAggregateFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:        `SELECT bool_and(v1), bool_and(v2) FROM t1;`,
+					Query:    `SELECT bool_and(v1), bool_and(v2) FROM t1;`,
 					Expected: []sql.Row{{"t", "f"}},
 				},
 				{
-					Query: 			`SELECT bool_and(v1 and v2) FROM t1;`,
+					Query: `SELECT bool_and(v1 and v2) FROM t1;`,
 					Expected: []sql.Row{
 						{"f"},
 					},
 				},
 				{
-					Query: 			`SELECT bool_and(v1 and v2) FROM t1 where v1 and v2;`,
+					Query: `SELECT bool_and(v1 and v2) FROM t1 where v1 and v2;`,
 					Expected: []sql.Row{
 						{"t"},
 					},
 				},
 				{
-					Query: 			`SELECT bool_and(v1) FROM t1 where pk > 10;`,
+					Query: `SELECT bool_and(v1) FROM t1 where pk > 10;`,
 					Expected: []sql.Row{
 						{nil},
 					},
 				},
 				{
-					Skip: true, // building a values-derived table's type fails here, postgres is more permissive
-					Query: 			`SELECT bool_and(a) FROM (VALUES(true),(false),(null)) r(a);`,
+					Skip:  true, // building a values-derived table's type fails here, postgres is more permissive
+					Query: `SELECT bool_and(a) FROM (VALUES(true),(false),(null)) r(a);`,
 					Expected: []sql.Row{
 						{"f"},
 					},
 				},
 				{
-					Query: 			`SELECT bool_and(a) FROM (VALUES(true),(false),(null::bool)) r(a);`,
+					Query: `SELECT bool_and(a) FROM (VALUES(true),(false),(null::bool)) r(a);`,
 					Expected: []sql.Row{
 						{"f"},
 					},
 				},
 				{
-					Query: 			`SELECT bool_and(a) FROM (VALUES(null::bool),(true),(null::bool)) r(a);`,
+					Query: `SELECT bool_and(a) FROM (VALUES(null::bool),(true),(null::bool)) r(a);`,
 					Expected: []sql.Row{
 						{"t"},
 					},
 				},
 				{
-					Query: 			`SELECT bool_and(v1) FROM t2`,
+					Query: `SELECT bool_and(v1) FROM t2`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+		{
+			Name:  "bool_or",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (pk INT primary key, v1 BOOLEAN, v2 BOOLEAN);`,
+				`INSERT INTO t1 VALUES (1, false, false), (2, true, true), (3, true, false);`,
+				`CREATE TABLE t2 (v1 BOOLEAN);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT bool_or(v1), bool_or(v2) FROM t1;`,
+					Expected: []sql.Row{{"t", "t"}},
+				},
+				{
+					Query:    `SELECT bool_or(v1), bool_or(v2) FROM t1 where pk <> 2;`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query: `SELECT bool_or(v1 and v2) FROM t1;`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_or(v1) FROM t1 where pk > 10;`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: `SELECT bool_or(a) FROM (VALUES(true),(false),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_or(a) FROM (VALUES(null::bool),(false),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: `SELECT bool_or(v1) FROM t2`,
 					Expected: []sql.Row{
 						{nil},
 					},
