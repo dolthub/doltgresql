@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2025 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,31 +23,33 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initUnnest registers the functions to the catalog.
-func initUnnest() {
-	framework.RegisterFunction(unnest)
+// initGenerateSeries registers the functions to the catalog.
+func initGenerateSubscripts() {
+	framework.RegisterFunction(generate_subscripts)
 }
 
-// unnest represents the PostgreSQL function of the same name, taking the same parameters.
-var unnest = framework.Function1{
-	Name:       "unnest",
-	Return:     pgtypes.AnyElement, // TODO: Should return setof AnyElement
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
+// generate_series_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var generate_subscripts = framework.Function2{
+	Name:       "generate_subscripts",
+	Return:     pgtypes.Int32,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32},
 	Strict:     true,
 	SRF:        true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		valArr := val1.([]interface{})
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		arr := val1.([]any)
+		dimension := val2.(int32)
+
+		if dimension != 1 {
+			return nil, sql.ErrUnsupportedFeature.New("generate_subscripts only supports 1-dimensional arrays")
+		}
 
 		var i = 0
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() {
-				i++
-			}()
-
-			if i >= len(valArr) {
+			i++
+			if i > len(arr) {
 				return nil, io.EOF
 			}
-			return sql.Row{valArr[i]}, nil
+			return sql.Row{int32(i)}, nil
 		}), nil
 	},
 }

@@ -103,4 +103,6 @@ WHERE pg_class.oid=indexrelid
 	AND pg_class_2.relname = 'clstr_tst'
 	AND indisclustered;`,
 	`SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid = i.indrelid AND conindid = i.indexrelid`,
+	`SELECT generate_series(1, generate_series(1, 3))`,
+	`SELECT generate_series(generate_series(1,3), generate_series(2, 4));`,
 }
