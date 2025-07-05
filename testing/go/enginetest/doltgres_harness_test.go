@@ -692,7 +692,7 @@ func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema,
 			return nil, nil, nil, rows.Err()
 		}
 
-		if dmlResult, ok := getDmlResult(rows); ok {
+		if dmlResult, ok := getDmlResult(rows, query); ok {
 			// we can only capture the last command tag in the case there were multiple queries
 			resultRows = []sql.Row{dmlResult}
 		}
@@ -704,7 +704,7 @@ func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema,
 var emptyCommandTag = pgconn.NewCommandTag("")
 
 // getDmlResult returns a Row representing the result of a DML operation, or nil if the operation was not a DML operation.
-func getDmlResult(rows pgx.Rows) (sql.Row, bool) {
+func getDmlResult(rows pgx.Rows, query string) (sql.Row, bool) {
 	tag := rows.CommandTag()
 	if tag == emptyCommandTag {
 		return nil, false
@@ -728,6 +728,12 @@ func getDmlResult(rows pgx.Rows) (sql.Row, bool) {
 	case strings.HasPrefix(tag.String(), "ALTER TABLE"):
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "TRUNCATE"):
+		return sql.NewRow(gmstypes.NewOkResult(0)), true
+	case strings.HasPrefix(tag.String(), "SET"):
+		// for some reason, `USE <db>` queries have a SET command tag?
+		if strings.HasPrefix(strings.ToLower(query), "use") {
+			return nil, false
+		}
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	default:
 		return nil, false
