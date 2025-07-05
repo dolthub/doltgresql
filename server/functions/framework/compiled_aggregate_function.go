@@ -29,23 +29,25 @@ type AggregateFunction interface {
 	specificFuncImpl()
 }
 
+type NewBufferFn func([]sql.Expression) (sql.AggregationBuffer, error)
+
 // CompiledAggregateFunction is an expression that represents a fully-analyzed PostgreSQL aggregate function.
 type CompiledAggregateFunction struct {
 	*CompiledFunction
 	aggId     sql.ColumnId
-	newBuffer func() (sql.AggregationBuffer, error)
+	newBuffer NewBufferFn
 }
 
 var _ AggregateFunction = (*CompiledAggregateFunction)(nil)
 
 // NewCompiledAggregateFunction returns a newly compiled function.
 // TODO: newBuffer probably needs to be parameterized in the overloads
-func NewCompiledAggregateFunction(name string, args []sql.Expression, functions *Overloads, newBuffer func() (sql.AggregationBuffer, error)) *CompiledAggregateFunction {
+func NewCompiledAggregateFunction(name string, args []sql.Expression, functions *Overloads, newBuffer NewBufferFn) *CompiledAggregateFunction {
 	return newCompiledAggregateFunctionInternal(name, args, functions, functions.overloadsForParams(len(args)), newBuffer)
 }
 
 // newCompiledAggregateFunctionInternal is called internally, which skips steps that may have already been processed.
-func newCompiledAggregateFunctionInternal(name string, args []sql.Expression, overloads *Overloads, fnOverloads []Overload, newBuffer func() (sql.AggregationBuffer, error)) *CompiledAggregateFunction {
+func newCompiledAggregateFunctionInternal(name string, args []sql.Expression, overloads *Overloads, fnOverloads []Overload, newBuffer NewBufferFn) *CompiledAggregateFunction {
 	cf := newCompiledFunctionInternal(name, args, overloads, fnOverloads, false, nil)
 	c := &CompiledAggregateFunction{
 		CompiledFunction: cf,
@@ -100,7 +102,7 @@ func (c *CompiledAggregateFunction) DebugString() string {
 
 // NewBuffer implements the interface sql.Aggregation.
 func (c *CompiledAggregateFunction) NewBuffer() (sql.AggregationBuffer, error) {
-	return c.newBuffer()
+	return c.newBuffer(c.Arguments)
 }
 
 // Id implements the interface sql.Aggregation.
