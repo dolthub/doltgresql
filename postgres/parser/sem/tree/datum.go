@@ -976,7 +976,7 @@ type DTimestamp struct {
 func MakeDTimestamp(t time.Time, precision time.Duration) (*DTimestamp, error) {
 	ret := t.Round(precision)
 	if ret.After(MaxSupportedTime) || ret.Before(MinSupportedTime) {
-		return nil, errors.Newf("timestamp %q exceeds supported timestamp bounds", ret.Format(time.RFC3339))
+		return nil, errors.Newf("timestamp out of range: %q", ret.Format(time.RFC3339))
 	}
 	return &DTimestamp{Time: ret}, nil
 }
@@ -1010,7 +1010,13 @@ func ParseDTimestamp(
 	now := relativeParseTime(ctx)
 	t, dependsOnContext, err := pgdate.ParseTimestampWithoutTimezone(now, pgdate.ParseModeYMD, s)
 	if err != nil {
-		return nil, false, err
+		t, dependsOnContext, err = pgdate.ParseTimestampWithoutTimezone(now, pgdate.ParseModeDMY, s)
+		if err != nil {
+			t, dependsOnContext, err = pgdate.ParseTimestampWithoutTimezone(now, pgdate.ParseModeMDY, s)
+			if err != nil {
+				return nil, false, err
+			}
+		}
 	}
 	d, err := MakeDTimestamp(t, precision)
 	return d, dependsOnContext, err
@@ -1080,7 +1086,13 @@ func ParseDTimestampTZ(ctx ParseTimeContext, s string, precision time.Duration, 
 	now := relativeParseTime(ctx).In(loc)
 	t, dependsOnContext, err := pgdate.ParseTimestamp(now, pgdate.ParseModeYMD, s)
 	if err != nil {
-		return nil, false, err
+		t, dependsOnContext, err = pgdate.ParseTimestamp(now, pgdate.ParseModeDMY, s)
+		if err != nil {
+			t, dependsOnContext, err = pgdate.ParseTimestamp(now, pgdate.ParseModeMDY, s)
+			if err != nil {
+				return nil, false, err
+			}
+		}
 	}
 	// Always normalize time to the current location.
 	d, err := MakeDTimestampTZ(t, precision)

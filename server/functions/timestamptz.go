@@ -75,6 +75,7 @@ var timestamptz_out = framework.Function1{
 		}
 		t := val.(time.Time).In(serverLoc)
 		_, offset := t.Zone()
+		// TODO: need to format time in BC
 		if offset%3600 != 0 {
 			return t.Format("2006-01-02 15:04:05.999999999-07:00"), nil
 		} else {

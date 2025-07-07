@@ -496,6 +496,20 @@ func (fe *fieldExtract) interpretNumber(numbers []numberChunk, idx int, textMont
 		//                 ^^^^
 		// Handle MDY, DMY formats.
 		if chunk.magnitude <= 2 {
+			// peek next separator to indentify whether this is HMS or Y
+			if fe.Wants(fieldHour) && idx < len(numbers)-1 && numbers[idx+1].separator == ':' {
+				// Example: "MM DD HH::MM:SS YY"
+				//                 ^^
+				return fe.SetChunk(fieldHour, chunk)
+			} else if !fe.Wants(fieldHour) && fe.Wants(fieldMinute) && chunk.separator == ':' {
+				// Example: "MM DD HH::MM:SS YY"
+				//                     ^^
+				return fe.SetChunk(fieldMinute, chunk)
+			} else if !fe.Wants(fieldHour) && !fe.Wants(fieldMinute) && fe.Wants(fieldSecond) && chunk.separator == ':' {
+				// Example: "MM DD HH::MM:SS YY"
+				//                        ^^
+				return fe.SetChunk(fieldSecond, chunk)
+			}
 			fe.tweakYear = true
 		}
 		return fe.SetChunk(fieldYear, chunk)
