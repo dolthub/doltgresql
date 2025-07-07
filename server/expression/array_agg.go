@@ -33,6 +33,7 @@ type ArrayAgg struct {
 
 var _ sql.Aggregation = (*ArrayAgg)(nil)
 var _ vitess.Injectable = (*ArrayAgg)(nil)
+var _ sql.OrderedAggregation = (*ArrayAgg)(nil)
 
 // WithResolvedChildren returns a new ArrayAgg with the provided children as its select expressions.
 // The last child is expected to be the order by expressions.
@@ -98,6 +99,10 @@ func (a *ArrayAgg) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 // Children implements sql.Expression
 func (a *ArrayAgg) Children() []sql.Expression {
 	return append(a.selectExprs, a.orderBy.ToExpressions()...)
+}
+
+func (a *ArrayAgg) OutputExpressions() []sql.Expression {
+	return a.selectExprs
 }
 
 // WithChildren implements sql.Expression
@@ -192,7 +197,7 @@ func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
 	// TODO: unwrap values as necessary
 	// Append the current value to the end of the row. We want to preserve the row's original structure
 	// for sort ordering in the final step.
-	a.elements = append(a.elements, append(row, nil, evalRow[0]))
+	a.elements = append(a.elements, append(row, evalRow[0]))
 	return nil
 }
 

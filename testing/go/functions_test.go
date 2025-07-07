@@ -23,6 +23,111 @@ import (
 func TestAggregateFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "bool_and",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (pk INT primary key, v1 BOOLEAN, v2 BOOLEAN);`,
+				`INSERT INTO t1 VALUES (1, true, false), (2, true, true), (3, true, true);`,
+				`CREATE TABLE t2 (v1 BOOLEAN);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT bool_and(v1), bool_and(v2) FROM t1;`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query: `SELECT bool_and(v1 and v2) FROM t1;`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(v1 and v2) FROM t1 where v1 and v2;`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(v1) FROM t1 where pk > 10;`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Skip:  true, // building a values-derived table's type fails here, postgres is more permissive
+					Query: `SELECT bool_and(a) FROM (VALUES(true),(false),(null)) r(a);`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(a) FROM (VALUES(true),(false),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(a) FROM (VALUES(null::bool),(true),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(v1) FROM t2`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "bool_or",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (pk INT primary key, v1 BOOLEAN, v2 BOOLEAN);`,
+				`INSERT INTO t1 VALUES (1, false, false), (2, true, true), (3, true, false);`,
+				`CREATE TABLE t2 (v1 BOOLEAN);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT bool_or(v1), bool_or(v2) FROM t1;`,
+					Expected: []sql.Row{{"t", "t"}},
+				},
+				{
+					Query:    `SELECT bool_or(v1), bool_or(v2) FROM t1 where pk <> 2;`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query: `SELECT bool_or(v1 and v2) FROM t1;`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_or(v1) FROM t1 where pk > 10;`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: `SELECT bool_or(a) FROM (VALUES(true),(false),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_or(a) FROM (VALUES(null::bool),(false),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: `SELECT bool_or(v1) FROM t2`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+		{
 			Name: "array_agg",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (pk INT primary key, t timestamp, v varchar, f float[]);`,
@@ -175,7 +280,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with subquery correlation
 				{
-					Skip:  true, // incorrect result
 					Query: `SELECT category, array_agg(name ORDER BY (SELECT COUNT(*) FROM test_data t2 WHERE t2.category = test_data.category AND t2.age < test_data.age)) FROM test_data GROUP BY category ORDER BY category;`,
 					Expected: []sql.Row{
 						{"A", "{Charlie,Alice,Frank}"},
@@ -199,7 +303,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with aggregated values in grouped context
 				{
-					Skip:  true, // incorrect result
 					Query: `SELECT category, array_agg(name ORDER BY score - (SELECT AVG(score) FROM test_data t2 WHERE t2.category = test_data.category)) FROM test_data GROUP BY category ORDER BY category;`,
 					Expected: []sql.Row{
 						{"A", "{Frank,Charlie,Alice}"},
