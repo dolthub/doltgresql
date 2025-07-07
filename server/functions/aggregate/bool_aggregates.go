@@ -42,7 +42,7 @@ var boolAnd = framework.Func1Aggregate{
 	NewAggBuffer: newBoolAndBuffer,
 }
 
-// boolAnd represents the PostgreSQL bool_or function.
+// boolOr represents the PostgreSQL bool_or function.
 var boolOr = framework.Func1Aggregate{
 	Function1: framework.Function1{
 		Name:   "bool_or",
@@ -57,6 +57,7 @@ var boolOr = framework.Func1Aggregate{
 	NewAggBuffer: newBoolOrBuffer,
 }
 
+// boolAggBuffer is an aggregation buffer for boolean logic aggregates
 type boolAggBuffer struct {
 	expr   sql.Expression
 	b      bool
@@ -64,6 +65,9 @@ type boolAggBuffer struct {
 	isAnd  bool
 }
 
+var _ sql.AggregationBuffer = (*boolAggBuffer)(nil)
+
+// newBoolAndBuffer creates a new aggregation buffer for the bool_and aggregate function.
 func newBoolAndBuffer(exprs []sql.Expression) (sql.AggregationBuffer, error) {
 	return &boolAggBuffer{
 		expr:  exprs[0],
@@ -72,14 +76,17 @@ func newBoolAndBuffer(exprs []sql.Expression) (sql.AggregationBuffer, error) {
 	}, nil
 }
 
+// newBoolOrBuffer creates a new aggregation buffer for the bool_or aggregate function.
 func newBoolOrBuffer(exprs []sql.Expression) (sql.AggregationBuffer, error) {
 	return &boolAggBuffer{
 		expr: exprs[0],
 	}, nil
 }
 
+// Dispose implements the sql.AggregationBuffer interface.
 func (a *boolAggBuffer) Dispose() {}
 
+// Eval implements the sql.AggregationBuffer interface.
 func (a *boolAggBuffer) Eval(context *sql.Context) (interface{}, error) {
 	if !a.sawOne {
 		return nil, nil
@@ -87,6 +94,7 @@ func (a *boolAggBuffer) Eval(context *sql.Context) (interface{}, error) {
 	return a.b, nil
 }
 
+// Update implements the sql.AggregationBuffer interface.
 func (a *boolAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
 	eval, err := a.expr.Eval(ctx, row)
 	if err != nil {
