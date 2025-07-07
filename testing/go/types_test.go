@@ -950,6 +950,10 @@ var typesTests = []ScriptTest{
 				Query:    `SELECT CAST(interval '02:03' AS time) AS "02:03:00";`,
 				Expected: []sql.Row{{"02:03:00"}},
 			},
+			{
+				Query:    `select interval 'PT2562047789';`,
+				Expected: []sql.Row{{"711679:56:29"}},
+			},
 		},
 	},
 	{
@@ -1574,6 +1578,10 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT v1::oid FROM t_name WHERE id=1;",
 				ExpectedErr: "invalid input syntax for type",
+			},
+			{
+				Query:       "SELECT interval '1 2' day to second;",
+				ExpectedErr: "invalid input syntax for type interval: ",
 			},
 			// Cast to Name from types
 			{
