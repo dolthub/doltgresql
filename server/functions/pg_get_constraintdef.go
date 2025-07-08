@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -55,7 +54,7 @@ var pg_get_constraintdef_oid_bool = framework.Function2{
 		oidVal := val1.(id.Id)
 		pretty := val2.(bool)
 		if pretty {
-			return "", errors.Errorf("pretty printing is not yet supported")
+			ctx.Warn(0, "pretty printing is not yet supported")
 		}
 		def, err := getConstraintDef(ctx, oidVal)
 		if err != nil {
@@ -82,9 +81,10 @@ func getConstraintDef(ctx *sql.Context, oidVal id.Id) (string, error) {
 			return false, nil
 		},
 		ForeignKey: func(ctx *sql.Context, schema ItemSchema, table ItemTable, fk ItemForeignKey) (cont bool, err error) {
+			// Note the postgres doesn't include the name of a foreign key when printing it via pg_get_constraintdef
+			// The spacing here is also significant, as certain tools (SQLAlchemy) use regex to parse
 			result = fmt.Sprintf(
-				"FOREIGN KEY %s (%s) REFERENCES %s (%s)",
-				fk.Item.Name,
+				"FOREIGN KEY (%s) REFERENCES %s(%s)",
 				getColumnNamesString(fk.Item.Columns),
 				fk.Item.ParentTable,
 				getColumnNamesString(fk.Item.ParentColumns),
