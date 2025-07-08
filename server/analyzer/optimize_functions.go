@@ -50,6 +50,8 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		})
 
 		if hasSRF {
+			// Under some conditions, there will be no quick-function replacement, but changing the Project node to include
+			// nested iterators is still a change we need to tell the transform functions about.
 			same = transform.NewTree
 			n = n.(*plan.Project).WithIncludesNestedIters(true)
 		}

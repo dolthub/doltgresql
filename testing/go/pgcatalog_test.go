@@ -4118,7 +4118,7 @@ func TestPgCatalogQueries(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "sqlalchemy queries",
-			SetUpScript: []string {
+			SetUpScript: []string{
 				`create table t1 (a int primary key, b int not null)`,
 			},
 			Assertions: []ScriptTestAssertion{
@@ -4338,6 +4338,9 @@ ORDER BY attr.conrelid, attr.conname`,
                           WHERE con.conrelid IN (select oid from pg_class where relname='t1')) AS attr
                      GROUP BY attr.conrelid, attr.conname
                      ORDER BY attr.conrelid, attr.conname`,
+					Expected: []sql.Row{
+						{1249736862, "{a}", "t1_pkey", nil, nil},
+					},
 				},
 			},
 		},
