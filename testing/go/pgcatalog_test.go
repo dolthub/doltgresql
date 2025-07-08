@@ -4118,6 +4118,9 @@ func TestPgCatalogQueries(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "sqlalchemy queries",
+			SetUpScript: []string {
+				`create table t1 (a int primary key, b int not null)`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_attribute.attname AS name, pg_catalog.format_type(pg_catalog.pg_attribute.atttypid, pg_catalog.pg_attribute.atttypmod) AS format_type, (SELECT pg_catalog.pg_get_expr(pg_catalog.pg_attrdef.adbin, pg_catalog.pg_attrdef.adrelid) AS pg_get_expr_1 
@@ -4275,7 +4278,6 @@ WHERE pg_catalog.pg_index.indrelid IN (3491847678)
 ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 				},
 				{
-					Skip: true, // bool_and not working yet
 					Query: `SELECT attr.conrelid,
        array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
        attr.conname,
@@ -4305,6 +4307,37 @@ FROM (SELECT con.conrelid AS conrelid,
         ON attr.conindid = pg_catalog.pg_index.indexrelid
 GROUP BY attr.conrelid, attr.conname
 ORDER BY attr.conrelid, attr.conname`,
+				},
+				{
+					Query: `SELECT attr.conrelid,
+       array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
+       attr.conname,
+       min(attr.description) AS description,
+       NULL AS extra FROM
+                         (SELECT con.conrelid AS conrelid,
+                                 con.conname AS conname,
+                                 con.conindid AS conindid,
+                                 con.description AS description,
+                                 con.ord AS ord,
+                                 pg_catalog.pg_attribute.attname AS attname
+                          FROM pg_catalog.pg_attribute 
+                              JOIN (SELECT pg_catalog.pg_constraint.conrelid AS conrelid,
+                                           pg_catalog.pg_constraint.conname AS conname,
+                                           pg_catalog.pg_constraint.conindid AS conindid,
+                                           unnest(pg_catalog.pg_constraint.conkey) AS attnum,
+                                           generate_subscripts(pg_catalog.pg_constraint.conkey, 1) AS ord,
+                                           pg_catalog.pg_description.description AS description
+                                    FROM pg_catalog.pg_constraint
+                                        LEFT OUTER JOIN pg_catalog.pg_description
+                                            ON pg_catalog.pg_description.objoid = pg_catalog.pg_constraint.oid
+                                    WHERE pg_catalog.pg_constraint.contype = 'p'
+                                      AND pg_catalog.pg_constraint.conrelid IN (select oid from pg_class where relname='t1'))
+                                  AS con
+                                  ON pg_catalog.pg_attribute.attnum = con.attnum
+                                         AND pg_catalog.pg_attribute.attrelid = con.conrelid
+                          WHERE con.conrelid IN (select oid from pg_class where relname='t1')) AS attr
+                     GROUP BY attr.conrelid, attr.conname
+                     ORDER BY attr.conrelid, attr.conname`,
 				},
 			},
 		},
