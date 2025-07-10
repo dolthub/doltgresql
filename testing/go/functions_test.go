@@ -1204,7 +1204,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing2'::regclass;`,
 					Expected: []sql.Row{
-						{"FOREIGN KEY testing2_pktesting_fkey (pktesting) REFERENCES testing (pk)"},
+						{"FOREIGN KEY (pktesting) REFERENCES testing(pk)"},
 						{"PRIMARY KEY (pk)"},
 					},
 				},
@@ -1215,8 +1215,10 @@ func TestSystemInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query:       `SELECT pg_get_constraintdef(oid, true) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
-					ExpectedErr: "pretty printing is not yet supported",
+					Query: `SELECT pg_get_constraintdef(oid, true) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
+					Expected: []sql.Row{
+						{"PRIMARY KEY (pk1, pk2)"},
+					},
 				},
 				{
 					Query: `SELECT pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,

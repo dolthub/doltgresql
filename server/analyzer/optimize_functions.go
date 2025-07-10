@@ -33,14 +33,13 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	}
 
 	return pgtransform.NodeWithOpaque(node, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
-		hasSRF := false
-
-		projectNode, ok := n.(*plan.Project)
+		_, ok := n.(*plan.Project)
 		if !ok {
 			return n, transform.SameTree, nil
 		}
 
-		n, same, err := pgtransform.NodeExprsWithOpaque(n, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		hasSRF := false
+		n, same, err := transform.NodeExprs(n, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 				hasSRF = hasSRF || compiledFunction.IsSRF()
 				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
@@ -50,8 +49,10 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			return expr, transform.SameTree, nil
 		})
 
-		if hasSRF && !projectNode.IncludesNestedIters {
-			// n = projectNode.WithIncludesNestedIters(true)
+		if hasSRF {
+			// Under some conditions, there will be no quick-function replacement, but changing the Project node to include
+			// nested iterators is still a change we need to tell the transform functions about.
+			same = transform.NewTree
 			n = n.(*plan.Project).WithIncludesNestedIters(true)
 		}
 
