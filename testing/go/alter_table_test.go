@@ -528,7 +528,7 @@ func TestAlterTable(t *testing.T) {
 				},
 				{
 					Query:    "SELECT conname AS constraint_name, pg_get_constraintdef(oid) AS constraint_definition FROM pg_constraint WHERE conrelid = 't'::regclass AND contype='f';",
-					Expected: []sql.Row{{"t_c1_fkey", "FOREIGN KEY t_c1_fkey (c1) REFERENCES parent (id)"}},
+					Expected: []sql.Row{{"t_c1_fkey", "FOREIGN KEY (c1) REFERENCES parent(id)"}},
 				},
 				{
 					Query:       "INSERT INTO t VALUES ('abc', 123);",
