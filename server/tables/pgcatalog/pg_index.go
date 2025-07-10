@@ -179,8 +179,8 @@ func cacheIndexMetadata(ctx *sql.Context, cache *pgCatalogCache) error {
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			indexes = append(indexes, index.Item)
+			indexSchemas = append(indexSchemas, schema.Item.SchemaName())
 			if tableSchemas[table.OID.AsId()] == nil {
-				indexSchemas = append(indexSchemas, schema.Item.SchemaName())
 				tableSchemas[table.OID.AsId()] = table.Item.Schema()
 			}
 			indexOIDs = append(indexOIDs, index.OID.AsId())
