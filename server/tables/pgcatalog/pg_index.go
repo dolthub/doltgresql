@@ -94,7 +94,7 @@ var pgIndexSchema = sql.Schema{
 	{Name: "indkey", Type: pgtypes.Int16Array, Default: nil, Nullable: false, Source: PgIndexName},     // TODO: type int2vector
 	{Name: "indcollation", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgIndexName}, // TODO: type oidvector
 	{Name: "indclass", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgIndexName},     // TODO: type oidvector
-	{Name: "indoption", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgIndexName},        // TODO: type int2vector
+	{Name: "indoption", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgIndexName},        // TODO: type int2vector. Declared as the serialized form so it can be read by clients expecting text, but this is a hacky temp solution
 	{Name: "indexprs", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName},          // TODO: type pg_node_tree, collation C
 	{Name: "indpred", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName},           // TODO: type pg_node_tree, collation C
 }
