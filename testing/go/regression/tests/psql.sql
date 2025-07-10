@@ -1364,7 +1364,7 @@ ROLLBACK;
 SELECT 'ok' AS "begin" \;
 CREATE TABLE psql_comics(s TEXT) \;
 INSERT INTO psql_comics VALUES ('Calvin'), ('hobbes') \;
-COPY psql_comics FROM STDIN \;
+COPY psql_comics (s) FROM STDIN \;
 UPDATE psql_comics SET s = 'Hobbes' WHERE s = 'hobbes' \;
 DELETE FROM psql_comics WHERE s = 'Moe' \;
 COPY psql_comics TO STDOUT \;

@@ -15,7 +15,7 @@ CREATE TABLE aggtest (
 );
 
 \set filename :abs_srcdir '/data/agg.data'
-COPY aggtest FROM :'filename';
+COPY aggtest (a, b) FROM :'filename';
 
 ANALYZE aggtest;
 
@@ -231,7 +231,7 @@ SELECT
   BIT_XOR(i8) AS "?"
 FROM bitwise_test;
 
-COPY bitwise_test FROM STDIN NULL 'null';
+COPY bitwise_test (i2, i4, i8, i, x, y) FROM STDIN NULL 'null';
 1	1	1	1	1	B0101
 3	3	3	null	2	B0100
 7	7	7	3	4	B1100
@@ -305,7 +305,7 @@ SELECT
   BOOL_OR(b3)    AS "n"
 FROM bool_test;
 
-COPY bool_test FROM STDIN NULL 'null';
+COPY bool_test (b1, b2, b3, b4) FROM STDIN NULL 'null';
 TRUE	null	FALSE	null
 FALSE	TRUE	null	null
 null	TRUE	FALSE	null
