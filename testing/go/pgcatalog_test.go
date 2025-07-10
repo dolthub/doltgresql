@@ -1144,11 +1144,11 @@ func TestPgIndex(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_index";`,
+					Query: `SELECT * FROM "pg_catalog"."pg_index" order by 1;`,
 					Expected: []sql.Row{
-						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
-						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
-						{3185790121, 1784425749, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
+						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
+						{3185790121, 1784425749, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1,2}", "{}", "{}", "0", nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
