@@ -37,7 +37,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		if !ok {
 			return n, transform.SameTree, nil
 		}
-		
+
 		hasSRF := false
 		n, same, err := transform.NodeExprs(n, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
