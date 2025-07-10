@@ -4120,6 +4120,8 @@ func TestPgCatalogQueries(t *testing.T) {
 			Name: "sqlalchemy queries",
 			SetUpScript: []string{
 				`create table t1 (a int primary key, b int not null)`,
+				`create table t2 (a int primary key, b int not null)`,
+				`create index on t2 (b)`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -4340,6 +4342,60 @@ ORDER BY attr.conrelid, attr.conname`,
                      ORDER BY attr.conrelid, attr.conname`,
 					Expected: []sql.Row{
 						{1249736862, "{a}", "t1_pkey", nil, nil},
+					},
+				},
+				{
+					Query: `SELECT pg_catalog.pg_index.indrelid,
+       cls_idx.relname AS relname_index,
+       pg_catalog.pg_index.indisunique,
+       pg_catalog.pg_constraint.conrelid IS NOT NULL AS has_constraint,
+       pg_catalog.pg_index.indoption,
+       cls_idx.reloptions,
+       pg_catalog.pg_am.amname,
+       CASE WHEN (pg_catalog.pg_index.indpred IS NOT NULL)
+           THEN pg_catalog.pg_get_expr(pg_catalog.pg_index.indpred, pg_catalog.pg_index.indrelid)
+           END AS filter_definition,
+       pg_catalog.pg_index.indnkeyatts,
+       pg_catalog.pg_index.indnullsnotdistinct,
+       idx_cols.elements,
+       idx_cols.elements_is_expr
+FROM pg_catalog.pg_index
+    JOIN pg_catalog.pg_class AS cls_idx 
+        ON pg_catalog.pg_index.indexrelid = cls_idx.oid
+    JOIN pg_catalog.pg_am ON cls_idx.relam = pg_catalog.pg_am.oid
+    LEFT OUTER JOIN 
+    (SELECT idx_attr.indexrelid AS indexrelid,
+            min(idx_attr.indrelid) AS min_1,
+            array_agg(idx_attr.element ORDER BY idx_attr.ord) AS elements,
+            array_agg(idx_attr.is_expr ORDER BY idx_attr.ord) AS elements_is_expr
+     FROM (SELECT idx.indexrelid AS indexrelid,
+                  idx.indrelid AS indrelid,
+                  idx.ord AS ord,
+                  CASE WHEN (idx.attnum = 0)
+                      THEN pg_catalog.pg_get_indexdef(idx.indexrelid, idx.ord + 1, true)
+                      ELSE CAST(pg_catalog.pg_attribute.attname AS TEXT)
+                      END AS element,
+               idx.attnum = 0 AS is_expr 
+           FROM (SELECT pg_catalog.pg_index.indexrelid AS indexrelid,
+                        pg_catalog.pg_index.indrelid AS indrelid,
+                        unnest(pg_catalog.pg_index.indkey) AS attnum,
+                        generate_subscripts(pg_catalog.pg_index.indkey, 1) AS ord
+                 FROM pg_catalog.pg_index 
+                 WHERE NOT pg_catalog.pg_index.indisprimary 
+                   AND pg_catalog.pg_index.indrelid IN (select oid from pg_class where relname='t2')) AS idx
+               LEFT OUTER JOIN pg_catalog.pg_attribute
+                   ON pg_catalog.pg_attribute.attnum = idx.attnum
+                          AND pg_catalog.pg_attribute.attrelid = idx.indrelid
+           WHERE idx.indrelid IN (select oid from pg_class where relname='t2')) AS idx_attr GROUP BY idx_attr.indexrelid) AS idx_cols
+        ON pg_catalog.pg_index.indexrelid = idx_cols.indexrelid
+    LEFT OUTER JOIN pg_catalog.pg_constraint
+        ON pg_catalog.pg_index.indrelid = pg_catalog.pg_constraint.conrelid
+               AND pg_catalog.pg_index.indexrelid = pg_catalog.pg_constraint.conindid
+               AND pg_catalog.pg_constraint.contype = ANY (ARRAY['p', 'u', 'x']) 
+WHERE pg_catalog.pg_index.indrelid IN (select oid from pg_class where relname='t2')
+  AND NOT pg_catalog.pg_index.indisprimary ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
+					Expected: []sql.Row{
+						{1496157034, "b", "f", "f", "0", nil, "btree", nil, 0, "f", "{b}", "{f}"},
 					},
 				},
 			},
