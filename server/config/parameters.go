@@ -100,10 +100,6 @@ func (p *Parameter) GetDefault() any {
 
 // InitValue implements sql.SystemVariable.
 func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
-	if global {
-		// This shouldn't happen, but sanity check
-		return sql.SystemVarValue{}, sql.ErrSystemVariableSessionOnly.New(p.Name)
-	}
 	convertedVal, _, err := p.Type.Convert(ctx, val)
 	if err != nil {
 		return sql.SystemVarValue{}, err
@@ -124,10 +120,6 @@ func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.Syste
 
 // SetValue implements sql.SystemVariable.
 func (p *Parameter) SetValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
-	if global {
-		// This shouldn't happen, but sanity check
-		return sql.SystemVarValue{}, sql.ErrSystemVariableSessionOnly.New(p.Name)
-	}
 	if p.IsReadOnly() {
 		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
 	}
