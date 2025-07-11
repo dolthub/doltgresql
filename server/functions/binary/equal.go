@@ -468,9 +468,15 @@ var numeric_eq = framework.Function2{
 }
 
 // oideq_callable is the callable logic for the oideq function.
+// This method doesn't use DotlgresType.Compare because it's on the critical path for many tooling queries that
+// examine the pg_catalog tables.
 func oideq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.Oid.Compare(ctx, val1.(id.Id), val2.(id.Id))
-	return res == 0, err
+	if val1 == nil || val2 == nil {
+		return false, nil
+	}
+
+	val1id, val2id := val1.(id.Id), val2.(id.Id)
+	return val1id == val2id, nil
 }
 
 // oideq represents the PostgreSQL function of the same name, taking the same parameters.
