@@ -1614,14 +1614,14 @@ COPY copy_rel_to TO STDOUT WITH DELIMITER ','; --fail - permission denied
 -- Check COPY FROM as Superuser/owner.
 RESET SESSION AUTHORIZATION;
 SET row_security TO OFF;
-COPY copy_t FROM STDIN; --ok
+COPY copy_t (a, b) FROM STDIN; --ok
 1	abc
 2	bcd
 3	cde
 4	def
 \.
 SET row_security TO ON;
-COPY copy_t FROM STDIN; --ok
+COPY copy_t (a, b) FROM STDIN; --ok
 1	abc
 2	bcd
 3	cde
@@ -1631,14 +1631,14 @@ COPY copy_t FROM STDIN; --ok
 -- Check COPY FROM as user with permissions.
 SET SESSION AUTHORIZATION regress_rls_bob;
 SET row_security TO OFF;
-COPY copy_t FROM STDIN; --fail - would be affected by RLS.
+COPY copy_t (a, b) FROM STDIN; --fail - would be affected by RLS.
 SET row_security TO ON;
-COPY copy_t FROM STDIN; --fail - COPY FROM not supported by RLS.
+COPY copy_t (a, b) FROM STDIN; --fail - COPY FROM not supported by RLS.
 
 -- Check COPY FROM as user with permissions and BYPASSRLS
 SET SESSION AUTHORIZATION regress_rls_exempt_user;
 SET row_security TO ON;
-COPY copy_t FROM STDIN; --ok
+COPY copy_t (a, b) FROM STDIN; --ok
 1	abc
 2	bcd
 3	cde
@@ -1648,9 +1648,9 @@ COPY copy_t FROM STDIN; --ok
 -- Check COPY FROM as user without permissions.
 SET SESSION AUTHORIZATION regress_rls_carol;
 SET row_security TO OFF;
-COPY copy_t FROM STDIN; --fail - permission denied.
+COPY copy_t (a, b) FROM STDIN; --fail - permission denied.
 SET row_security TO ON;
-COPY copy_t FROM STDIN; --fail - permission denied.
+COPY copy_t (a, b) FROM STDIN; --fail - permission denied.
 
 RESET SESSION AUTHORIZATION;
 DROP TABLE copy_t;

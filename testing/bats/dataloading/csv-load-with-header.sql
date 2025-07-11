@@ -2,7 +2,7 @@ BEGIN;
 
 CREATE TABLE tbl1 (pk int primary key, c1 varchar(100), c2 varchar(250));
 
-COPY tbl1 FROM STDIN (FORMAT CSV, HEADER TRUE);
+COPY tbl1 (pk, c1, c2) FROM STDIN (FORMAT CSV, HEADER TRUE);
 pk,c1,c2
 1,green,
 2,"blue","a

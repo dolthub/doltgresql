@@ -37,7 +37,7 @@ func TestCopy(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             "COPY test_info FROM STDIN WITH (HEADER);",
+					Query:             "COPY test_info (id, info, test_pk) FROM STDIN WITH (HEADER);",
 					CopyFromStdInFile: "tab-load-with-header.sql",
 				},
 				{
@@ -96,7 +96,7 @@ func TestCopy(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             "COPY tbl1 FROM STDIN WITH (HEADER)",
+					Query:             "COPY tbl1 (pk, ts) FROM STDIN WITH (HEADER)",
 					CopyFromStdInFile: "tab-load-with-timestamp-col.sql",
 				},
 				{
@@ -116,7 +116,7 @@ func TestCopy(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             "COPY tbl1 FROM STDIN (FORMAT CSV)",
+					Query:             "COPY tbl1 (pk, c1, c2) FROM STDIN (FORMAT CSV)",
 					CopyFromStdInFile: "csv-load-basic-cases.sql",
 				},
 				{
@@ -142,7 +142,7 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             " COPY tbl1 FROM STDIN (FORMAT CSV, HEADER TRUE);",
+					Query:             " COPY tbl1 (pk, c1, c2) FROM STDIN (FORMAT CSV, HEADER TRUE);",
 					CopyFromStdInFile: "csv-load-with-header.sql",
 				},
 				{
@@ -188,7 +188,7 @@ bar`, "baz", 16},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             "COPY tbl1 FROM STDIN (FORMAT CSV);",
+					Query:             "COPY tbl1 (pk, c1, c2) FROM STDIN (FORMAT CSV);",
 					CopyFromStdInFile: "csv-load-multi-chunk.sql",
 				},
 				{
@@ -208,7 +208,7 @@ bar`, "baz", 16},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:             "COPY test_info FROM STDIN (FORMAT CSV, HEADER TRUE, DELIMITER '|');",
+					Query:             "COPY test_info (id, info, test_pk) FROM STDIN (FORMAT CSV, HEADER TRUE, DELIMITER '|');",
 					CopyFromStdInFile: "psv-load.sql",
 				},
 				{
@@ -228,7 +228,7 @@ bar`, "baz", 16},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:            fmt.Sprintf("COPY tbl1 FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					Query:            fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					SkipResultsCheck: true,
 				},
 				{
@@ -282,7 +282,7 @@ bar`, "baz"},
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: fmt.Sprintf("COPY test_info FROM '%s' WITH (HEADER)", filepath.Join(absTestDataDir, "tab-load-with-header.sql")),
+					Query: fmt.Sprintf("COPY test_info (id, info, test_pk) FROM '%s' WITH (HEADER)", filepath.Join(absTestDataDir, "tab-load-with-header.sql")),
 				},
 				{
 					Query: "SELECT * FROM test_info order by 1;",
@@ -362,7 +362,7 @@ bar`, "baz"},
 			Name: "read only table",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:       fmt.Sprintf("COPY dolt_log FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
+					Query:       fmt.Sprintf("COPY dolt_log (commit_hash, committer, email, date, message, commit_order) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					ExpectedErr: "table doesn't support INSERT INTO",
 				},
 			},

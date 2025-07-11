@@ -706,7 +706,7 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query:       "insert into pg_attribute values (1);",
-					ExpectedErr: "number of values does not match number of columns provided",
+					ExpectedErr: "Column count doesn't match value count at row 1",
 				},
 				{
 					Query:    "insert into public.pg_attribute values (1);",
