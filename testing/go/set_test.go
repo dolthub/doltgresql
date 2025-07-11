@@ -40,32 +40,32 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"America/Los_Angeles"}},
 			},
 			{
-				Query:    "SET timezone TO '+00:00';",
-				Expected: []sql.Row{},
+				Query:       "SET timezone TO '+00:00';",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"+00:00"}},
 			},
 			{
-				Query:    "SET TIME ZONE LOCAL;",
-				Expected: []sql.Row{},
+				Query:       "SET TIME ZONE LOCAL;",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"America/Los_Angeles"}},
 			},
 			{
-				Query:    "SET TIME ZONE '+00:00';",
-				Expected: []sql.Row{},
+				Query:       "SET TIME ZONE '+00:00';",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"+00:00"}},
 			},
 			{
-				Query:    "SET TIME ZONE DEFAULT;",
-				Expected: []sql.Row{},
+				Query:       "SET TIME ZONE DEFAULT;",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW timezone",
@@ -86,24 +86,24 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"\"$user\", public,"}},
 			},
 			{
-				Query:    "SET SCHEMA 'postgres';",
-				Expected: []sql.Row{},
+				Query:       "SET SCHEMA 'postgres';",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW search_path",
 				Expected: []sql.Row{{"postgres"}},
 			},
 			{
-				Query:    "SET search_path = public, pg_catalog;",
-				Expected: []sql.Row{},
+				Query:       "SET search_path = public, pg_catalog;",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW search_path",
 				Expected: []sql.Row{{"public, pg_catalog"}},
 			},
 			{
-				Query:    "SET search_path = postgres;",
-				Expected: []sql.Row{},
+				Query:       "SET search_path = postgres;",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW search_path",
@@ -124,16 +124,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"UTF8"}},
 			},
 			{
-				Query:    "SET NAMES 'LATIN1';",
-				Expected: []sql.Row{},
+				Query:       "SET NAMES 'LATIN1';",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW client_encoding;",
 				Expected: []sql.Row{{"LATIN1"}},
 			},
 			{
-				Query:    "SET client_encoding = DEFAULT;",
-				Expected: []sql.Row{},
+				Query:       "SET client_encoding = DEFAULT;",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW client_encoding;",
@@ -154,8 +154,8 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(0)}},
 			},
 			{
-				Query:    "SET SEED 1;",
-				Expected: []sql.Row{},
+				Query:       "SET SEED 1;",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_seed",
@@ -176,16 +176,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET allow_in_place_tablespaces TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET allow_in_place_tablespaces TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW allow_in_place_tablespaces",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET allow_in_place_tablespaces TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET allow_in_place_tablespaces TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW allow_in_place_tablespaces",
@@ -206,16 +206,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET allow_system_table_mods TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET allow_system_table_mods TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW allow_system_table_mods",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET allow_system_table_mods TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET allow_system_table_mods TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW allow_system_table_mods",
@@ -236,16 +236,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"psql"}},
 			},
 			{
-				Query:    "SET application_name TO 'postgresql'",
-				Expected: []sql.Row{},
+				Query:       "SET application_name TO 'postgresql'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW application_name",
 				Expected: []sql.Row{{"postgresql"}},
 			},
 			{
-				Query:    "SET application_name TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET application_name TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW application_name",
@@ -356,16 +356,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET array_nulls TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET array_nulls TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW array_nulls",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET array_nulls TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET array_nulls TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW array_nulls",
@@ -656,16 +656,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET backend_flush_after TO '256'",
-				Expected: []sql.Row{},
+				Query:       "SET backend_flush_after TO '256'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW backend_flush_after",
 				Expected: []sql.Row{{int64(256)}},
 			},
 			{
-				Query:    "SET backend_flush_after TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET backend_flush_after TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW backend_flush_after",
@@ -686,16 +686,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"safe_encoding"}},
 			},
 			{
-				Query:    "SET backslash_quote TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET backslash_quote TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW backslash_quote",
 				Expected: []sql.Row{{"on"}},
 			},
 			{
-				Query:    "SET backslash_quote TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET backslash_quote TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW backslash_quote",
@@ -716,16 +716,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET backtrace_functions TO 'default'",
-				Expected: []sql.Row{},
+				Query:       "SET backtrace_functions TO 'default'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW backtrace_functions",
 				Expected: []sql.Row{{"default"}},
 			},
 			{
-				Query:    "SET backtrace_functions TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET backtrace_functions TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW backtrace_functions",
@@ -872,16 +872,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"hex"}},
 			},
 			{
-				Query:    "SET bytea_output TO 'escape'",
-				Expected: []sql.Row{},
+				Query:       "SET bytea_output TO 'escape'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW bytea_output",
 				Expected: []sql.Row{{"escape"}},
 			},
 			{
-				Query:    "SET bytea_output TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET bytea_output TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW bytea_output",
@@ -902,16 +902,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET check_function_bodies TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET check_function_bodies TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW check_function_bodies",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET check_function_bodies TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET check_function_bodies TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW check_function_bodies",
@@ -1004,16 +1004,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET client_connection_check_interval TO 10",
-				Expected: []sql.Row{},
+				Query:       "SET client_connection_check_interval TO 10",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW client_connection_check_interval",
 				Expected: []sql.Row{{int64(10)}},
 			},
 			{
-				Query:    "SET client_connection_check_interval TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET client_connection_check_interval TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW client_connection_check_interval",
@@ -1034,16 +1034,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"UTF8"}},
 			},
 			{
-				Query:    "SET client_encoding TO 'LATIN1'",
-				Expected: []sql.Row{},
+				Query:       "SET client_encoding TO 'LATIN1'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW client_encoding",
 				Expected: []sql.Row{{"LATIN1"}},
 			},
 			{
-				Query:    "SET client_encoding TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET client_encoding TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW client_encoding",
@@ -1064,16 +1064,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"notice"}},
 			},
 			{
-				Query:    "SET client_min_messages TO 'log'",
-				Expected: []sql.Row{},
+				Query:       "SET client_min_messages TO 'log'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW client_min_messages",
 				Expected: []sql.Row{{"log"}},
 			},
 			{
-				Query:    "SET client_min_messages TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET client_min_messages TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW client_min_messages",
@@ -1112,16 +1112,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET commit_delay TO 100000",
-				Expected: []sql.Row{},
+				Query:       "SET commit_delay TO 100000",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW commit_delay",
 				Expected: []sql.Row{{int64(100000)}},
 			},
 			{
-				Query:    "SET commit_delay TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET commit_delay TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW commit_delay",
@@ -1142,16 +1142,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(5)}},
 			},
 			{
-				Query:    "SET commit_siblings TO '1000'",
-				Expected: []sql.Row{},
+				Query:       "SET commit_siblings TO '1000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW commit_siblings",
 				Expected: []sql.Row{{int64(1000)}},
 			},
 			{
-				Query:    "SET commit_siblings TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET commit_siblings TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW commit_siblings",
@@ -1172,16 +1172,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"auto"}},
 			},
 			{
-				Query:    "SET compute_query_id TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET compute_query_id TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW compute_query_id",
 				Expected: []sql.Row{{"on"}},
 			},
 			{
-				Query:    "SET compute_query_id TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET compute_query_id TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW compute_query_id",
@@ -1220,16 +1220,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"partition"}},
 			},
 			{
-				Query:    "SET constraint_exclusion TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET constraint_exclusion TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW constraint_exclusion",
 				Expected: []sql.Row{{"on"}},
 			},
 			{
-				Query:    "SET constraint_exclusion TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET constraint_exclusion TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW constraint_exclusion",
@@ -1250,16 +1250,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(0.005)}},
 			},
 			{
-				Query:    "SET cpu_index_tuple_cost TO '0.01'",
-				Expected: []sql.Row{},
+				Query:       "SET cpu_index_tuple_cost TO '0.01'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW cpu_index_tuple_cost",
 				Expected: []sql.Row{{float64(0.01)}},
 			},
 			{
-				Query:    "SET cpu_index_tuple_cost TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET cpu_index_tuple_cost TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW cpu_index_tuple_cost",
@@ -1280,16 +1280,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(0.0025)}},
 			},
 			{
-				Query:    "SET cpu_operator_cost TO '0.005'",
-				Expected: []sql.Row{},
+				Query:       "SET cpu_operator_cost TO '0.005'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW cpu_operator_cost",
 				Expected: []sql.Row{{float64(0.005)}},
 			},
 			{
-				Query:    "SET cpu_operator_cost TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET cpu_operator_cost TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW cpu_operator_cost",
@@ -1310,16 +1310,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(0.01)}},
 			},
 			{
-				Query:    "SET cpu_tuple_cost TO '0.02'",
-				Expected: []sql.Row{},
+				Query:       "SET cpu_tuple_cost TO '0.02'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW cpu_tuple_cost",
 				Expected: []sql.Row{{float64(0.02)}},
 			},
 			{
-				Query:    "SET cpu_tuple_cost TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET cpu_tuple_cost TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW cpu_tuple_cost",
@@ -1340,16 +1340,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET createrole_self_grant TO 'inherit'",
-				Expected: []sql.Row{},
+				Query:       "SET createrole_self_grant TO 'inherit'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW createrole_self_grant",
 				Expected: []sql.Row{{"inherit"}},
 			},
 			{
-				Query:    "SET createrole_self_grant TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET createrole_self_grant TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW createrole_self_grant",
@@ -1370,16 +1370,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(0.1)}},
 			},
 			{
-				Query:    "SET cursor_tuple_fraction TO '0.2'",
-				Expected: []sql.Row{},
+				Query:       "SET cursor_tuple_fraction TO '0.2'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW cursor_tuple_fraction",
 				Expected: []sql.Row{{float64(0.2)}},
 			},
 			{
-				Query:    "SET cursor_tuple_fraction TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET cursor_tuple_fraction TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW cursor_tuple_fraction",
@@ -1472,16 +1472,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"ISO, MDY"}},
 			},
 			{
-				Query:    "SET DateStyle TO 'ISO, DMY'",
-				Expected: []sql.Row{},
+				Query:       "SET DateStyle TO 'ISO, DMY'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW DateStyle",
 				Expected: []sql.Row{{"ISO, DMY"}},
 			},
 			{
-				Query:    "SET DateStyle TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET DateStyle TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW DateStyle",
@@ -1520,16 +1520,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(1000)}},
 			},
 			{
-				Query:    "SET deadlock_timeout TO '2000'",
-				Expected: []sql.Row{},
+				Query:       "SET deadlock_timeout TO '2000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW deadlock_timeout",
 				Expected: []sql.Row{{int64(2000)}},
 			},
 			{
-				Query:    "SET deadlock_timeout TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET deadlock_timeout TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW deadlock_timeout",
@@ -1568,8 +1568,8 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET debug_discard_caches TO '0'", // cannot set it to anything other than 0
-				Expected: []sql.Row{},
+				Query:       "SET debug_discard_caches TO '0'", // cannot set it to anything other than 0
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_discard_caches",
@@ -1608,16 +1608,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"buffered"}},
 			},
 			{
-				Query:    "SET debug_logical_replication_streaming TO 'immediate'",
-				Expected: []sql.Row{},
+				Query:       "SET debug_logical_replication_streaming TO 'immediate'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_logical_replication_streaming",
 				Expected: []sql.Row{{"immediate"}},
 			},
 			{
-				Query:    "SET debug_logical_replication_streaming TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET debug_logical_replication_streaming TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_logical_replication_streaming",
@@ -1638,16 +1638,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"off"}},
 			},
 			{
-				Query:    "SET debug_parallel_query TO 'regress'",
-				Expected: []sql.Row{},
+				Query:       "SET debug_parallel_query TO 'regress'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_parallel_query",
 				Expected: []sql.Row{{"regress"}},
 			},
 			{
-				Query:    "SET debug_parallel_query TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET debug_parallel_query TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_parallel_query",
@@ -1668,16 +1668,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET debug_pretty_print TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET debug_pretty_print TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_pretty_print",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET debug_pretty_print TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET debug_pretty_print TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_pretty_print",
@@ -1698,16 +1698,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET debug_print_parse TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET debug_print_parse TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_print_parse",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET debug_print_parse TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET debug_print_parse TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_print_parse",
@@ -1728,16 +1728,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET debug_print_plan TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET debug_print_plan TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_print_plan",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET debug_print_plan TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET debug_print_plan TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_print_plan",
@@ -1758,16 +1758,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET debug_print_rewritten TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET debug_print_rewritten TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_print_rewritten",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET debug_print_rewritten TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET debug_print_rewritten TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW debug_print_rewritten",
@@ -1788,16 +1788,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET default_statistics_target TO '10000'",
-				Expected: []sql.Row{},
+				Query:       "SET default_statistics_target TO '10000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_statistics_target",
 				Expected: []sql.Row{{int64(10000)}},
 			},
 			{
-				Query:    "SET default_statistics_target TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET default_statistics_target TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_statistics_target",
@@ -1818,8 +1818,8 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"heap"}},
 			},
 			{
-				Query:    "SET default_table_access_method TO 'heap'",
-				Expected: []sql.Row{},
+				Query:       "SET default_table_access_method TO 'heap'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_table_access_method",
@@ -1840,16 +1840,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET default_tablespace TO 'pg_default'",
-				Expected: []sql.Row{},
+				Query:       "SET default_tablespace TO 'pg_default'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_tablespace",
 				Expected: []sql.Row{{"pg_default"}},
 			},
 			{
-				Query:    "SET default_tablespace TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET default_tablespace TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_tablespace",
@@ -1870,16 +1870,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"pg_catalog.english"}},
 			},
 			{
-				Query:    "SET default_text_search_config TO 'pg_catalog.spanish'",
-				Expected: []sql.Row{},
+				Query:       "SET default_text_search_config TO 'pg_catalog.spanish'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_text_search_config",
 				Expected: []sql.Row{{"pg_catalog.spanish"}},
 			},
 			{
-				Query:    "SET default_text_search_config TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET default_text_search_config TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_text_search_config",
@@ -1900,16 +1900,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"pglz"}},
 			},
 			{
-				Query:    "SET default_toast_compression TO 'lz4'",
-				Expected: []sql.Row{},
+				Query:       "SET default_toast_compression TO 'lz4'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_toast_compression",
 				Expected: []sql.Row{{"lz4"}},
 			},
 			{
-				Query:    "SET default_toast_compression TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET default_toast_compression TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_toast_compression",
@@ -1930,16 +1930,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET default_transaction_deferrable TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET default_transaction_deferrable TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_transaction_deferrable",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET default_transaction_deferrable TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET default_transaction_deferrable TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_transaction_deferrable",
@@ -1960,16 +1960,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"read committed"}},
 			},
 			{
-				Query:    "SET default_transaction_isolation TO 'serializable'",
-				Expected: []sql.Row{},
+				Query:       "SET default_transaction_isolation TO 'serializable'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_transaction_isolation",
 				Expected: []sql.Row{{"serializable"}},
 			},
 			{
-				Query:    "SET default_transaction_isolation TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET default_transaction_isolation TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_transaction_isolation",
@@ -1990,16 +1990,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET default_transaction_read_only TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET default_transaction_read_only TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_transaction_read_only",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET default_transaction_read_only TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET default_transaction_read_only TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW default_transaction_read_only",
@@ -2020,16 +2020,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"$libdir"}},
 			},
 			{
-				Query:    "SET dynamic_library_path TO ''",
-				Expected: []sql.Row{},
+				Query:       "SET dynamic_library_path TO ''",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW dynamic_library_path",
 				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET dynamic_library_path TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET dynamic_library_path TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW dynamic_library_path",
@@ -2068,16 +2068,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(524288)}},
 			},
 			{
-				Query:    "SET effective_cache_size TO '400000'",
-				Expected: []sql.Row{},
+				Query:       "SET effective_cache_size TO '400000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW effective_cache_size",
 				Expected: []sql.Row{{int64(400000)}},
 			},
 			{
-				Query:    "SET effective_cache_size TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET effective_cache_size TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW effective_cache_size",
@@ -2098,16 +2098,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET effective_io_concurrency TO '100'",
-				Expected: []sql.Row{},
+				Query:       "SET effective_io_concurrency TO '100'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW effective_io_concurrency",
 				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET effective_io_concurrency TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET effective_io_concurrency TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW effective_io_concurrency",
@@ -2128,16 +2128,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_async_append TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_async_append TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_async_append",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_async_append TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_async_append TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_async_append",
@@ -2158,16 +2158,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_bitmapscan TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_bitmapscan TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_bitmapscan",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_bitmapscan TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_bitmapscan TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_bitmapscan",
@@ -2188,16 +2188,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_gathermerge TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_gathermerge TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_gathermerge",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_gathermerge TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_gathermerge TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_gathermerge",
@@ -2218,16 +2218,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_hashagg TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_hashagg TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_hashagg",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_hashagg TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_hashagg TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_hashagg",
@@ -2248,16 +2248,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_hashjoin TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_hashjoin TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_hashjoin",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_hashjoin TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_hashjoin TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_hashjoin",
@@ -2278,16 +2278,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_incremental_sort TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_incremental_sort TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_incremental_sort",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_incremental_sort TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_incremental_sort TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_incremental_sort",
@@ -2308,16 +2308,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_indexonlyscan TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_indexonlyscan TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_indexonlyscan",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_indexonlyscan TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_indexonlyscan TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_indexonlyscan",
@@ -2338,16 +2338,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_indexscan TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_indexscan TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_indexscan",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_indexscan TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_indexscan TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_indexscan",
@@ -2368,16 +2368,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_material TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_material TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_material",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_material TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_material TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_material",
@@ -2398,16 +2398,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_memoize TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_memoize TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_memoize",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_memoize TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_memoize TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_memoize",
@@ -2428,16 +2428,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_mergejoin TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_mergejoin TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_mergejoin",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_mergejoin TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_mergejoin TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_mergejoin",
@@ -2458,16 +2458,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_nestloop TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_nestloop TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_nestloop",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_nestloop TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_nestloop TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_nestloop",
@@ -2488,16 +2488,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_parallel_append TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_parallel_append TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_parallel_append",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_parallel_append TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_parallel_append TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_parallel_append",
@@ -2518,16 +2518,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_parallel_hash TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_parallel_hash TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_parallel_hash",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_parallel_hash TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_parallel_hash TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_parallel_hash",
@@ -2548,16 +2548,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_partition_pruning TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_partition_pruning TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_partition_pruning",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_partition_pruning TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_partition_pruning TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_partition_pruning",
@@ -2578,16 +2578,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_partitionwise_aggregate TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_partitionwise_aggregate TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_partitionwise_aggregate",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_partitionwise_aggregate TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_partitionwise_aggregate TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_partitionwise_aggregate",
@@ -2608,16 +2608,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_partitionwise_join TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_partitionwise_join TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_partitionwise_join",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_partitionwise_join TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_partitionwise_join TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_partitionwise_join",
@@ -2638,16 +2638,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_presorted_aggregate TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_presorted_aggregate TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_presorted_aggregate",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_presorted_aggregate TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_presorted_aggregate TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_presorted_aggregate",
@@ -2668,16 +2668,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_seqscan TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_seqscan TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_seqscan",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_seqscan TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_seqscan TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_seqscan",
@@ -2698,16 +2698,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_sort TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_sort TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_sort",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_sort TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_sort TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_sort",
@@ -2728,16 +2728,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET enable_tidscan TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET enable_tidscan TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_tidscan",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET enable_tidscan TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET enable_tidscan TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW enable_tidscan",
@@ -2758,16 +2758,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET escape_string_warning TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET escape_string_warning TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW escape_string_warning",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET escape_string_warning TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET escape_string_warning TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW escape_string_warning",
@@ -2806,16 +2806,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET exit_on_error TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET exit_on_error TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW exit_on_error",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET exit_on_error TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET exit_on_error TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW exit_on_error",
@@ -2854,16 +2854,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(1)}},
 			},
 			{
-				Query:    "SET extra_float_digits TO -10",
-				Expected: []sql.Row{},
+				Query:       "SET extra_float_digits TO -10",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW extra_float_digits",
 				Expected: []sql.Row{{int64(-10)}},
 			},
 			{
-				Query:    "SET extra_float_digits TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET extra_float_digits TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW extra_float_digits",
@@ -2884,16 +2884,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(8)}},
 			},
 			{
-				Query:    "SET from_collapse_limit TO 100",
-				Expected: []sql.Row{},
+				Query:       "SET from_collapse_limit TO 100",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW from_collapse_limit",
 				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET from_collapse_limit TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET from_collapse_limit TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW from_collapse_limit",
@@ -2950,16 +2950,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET geqo TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET geqo TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET geqo TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET geqo TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo",
@@ -2980,16 +2980,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(5)}},
 			},
 			{
-				Query:    "SET geqo_effort TO 10",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_effort TO 10",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_effort",
 				Expected: []sql.Row{{int64(10)}},
 			},
 			{
-				Query:    "SET geqo_effort TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_effort TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_effort",
@@ -3010,16 +3010,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET geqo_generations TO '100'",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_generations TO '100'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_generations",
 				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET geqo_generations TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_generations TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_generations",
@@ -3044,16 +3044,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET geqo_pool_size TO 1",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_pool_size TO 1",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_pool_size",
 				Expected: []sql.Row{{int64(1)}},
 			},
 			{
-				Query:    "SET geqo_pool_size TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_pool_size TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_pool_size",
@@ -3074,16 +3074,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(0)}},
 			},
 			{
-				Query:    "SET geqo_seed TO 0.2",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_seed TO 0.2",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_seed",
 				Expected: []sql.Row{{float64(0.2)}},
 			},
 			{
-				Query:    "SET geqo_seed TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_seed TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_seed",
@@ -3104,16 +3104,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(2)}},
 			},
 			{
-				Query:    "SET geqo_selection_bias TO 1.7",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_selection_bias TO 1.7",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_selection_bias",
 				Expected: []sql.Row{{float64(1.7)}},
 			},
 			{
-				Query:    "SET geqo_selection_bias TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_selection_bias TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_selection_bias",
@@ -3134,16 +3134,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(12)}},
 			},
 			{
-				Query:    "SET geqo_threshold TO 22",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_threshold TO 22",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_threshold",
 				Expected: []sql.Row{{int64(22)}},
 			},
 			{
-				Query:    "SET geqo_threshold TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET geqo_threshold TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW geqo_threshold",
@@ -3164,16 +3164,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET gin_fuzzy_search_limit TO 2",
-				Expected: []sql.Row{},
+				Query:       "SET gin_fuzzy_search_limit TO 2",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW gin_fuzzy_search_limit",
 				Expected: []sql.Row{{int64(2)}},
 			},
 			{
-				Query:    "SET gin_fuzzy_search_limit TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET gin_fuzzy_search_limit TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW gin_fuzzy_search_limit",
@@ -3194,16 +3194,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(4096)}},
 			},
 			{
-				Query:    "SET gin_pending_list_limit TO '4000'",
-				Expected: []sql.Row{},
+				Query:       "SET gin_pending_list_limit TO '4000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW gin_pending_list_limit",
 				Expected: []sql.Row{{int64(4000)}},
 			},
 			{
-				Query:    "SET gin_pending_list_limit TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET gin_pending_list_limit TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW gin_pending_list_limit",
@@ -3242,16 +3242,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(2)}},
 			},
 			{
-				Query:    "SET hash_mem_multiplier TO 20.1",
-				Expected: []sql.Row{},
+				Query:       "SET hash_mem_multiplier TO 20.1",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW hash_mem_multiplier",
 				Expected: []sql.Row{{float64(20.1)}},
 			},
 			{
-				Query:    "SET hash_mem_multiplier TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET hash_mem_multiplier TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW hash_mem_multiplier",
@@ -3362,16 +3362,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"warning"}},
 			},
 			{
-				Query:    "SET icu_validation_level TO 'disabled'",
-				Expected: []sql.Row{},
+				Query:       "SET icu_validation_level TO 'disabled'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW icu_validation_level",
 				Expected: []sql.Row{{"disabled"}},
 			},
 			{
-				Query:    "SET icu_validation_level TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET icu_validation_level TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW icu_validation_level",
@@ -3410,16 +3410,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET idle_in_transaction_session_timeout TO 2",
-				Expected: []sql.Row{},
+				Query:       "SET idle_in_transaction_session_timeout TO 2",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW idle_in_transaction_session_timeout",
 				Expected: []sql.Row{{int64(2)}},
 			},
 			{
-				Query:    "SET idle_in_transaction_session_timeout TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET idle_in_transaction_session_timeout TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW idle_in_transaction_session_timeout",
@@ -3440,16 +3440,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET idle_session_timeout TO '3'",
-				Expected: []sql.Row{},
+				Query:       "SET idle_session_timeout TO '3'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW idle_session_timeout",
 				Expected: []sql.Row{{int64(3)}},
 			},
 			{
-				Query:    "SET idle_session_timeout TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET idle_session_timeout TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW idle_session_timeout",
@@ -3470,16 +3470,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET ignore_checksum_failure TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET ignore_checksum_failure TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW ignore_checksum_failure",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET ignore_checksum_failure TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET ignore_checksum_failure TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW ignore_checksum_failure",
@@ -3572,16 +3572,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"postgres"}},
 			},
 			{
-				Query:    "SET IntervalStyle TO 'sql_standard'",
-				Expected: []sql.Row{},
+				Query:       "SET IntervalStyle TO 'sql_standard'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW IntervalStyle",
 				Expected: []sql.Row{{"sql_standard"}},
 			},
 			{
-				Query:    "SET IntervalStyle TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET IntervalStyle TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW IntervalStyle",
@@ -3602,16 +3602,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET jit TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET jit TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET jit TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET jit TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit",
@@ -3632,16 +3632,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(100000)}},
 			},
 			{
-				Query:    "SET jit_above_cost TO '100'",
-				Expected: []sql.Row{},
+				Query:       "SET jit_above_cost TO '100'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_above_cost",
 				Expected: []sql.Row{{float64(100)}},
 			},
 			{
-				Query:    "SET jit_above_cost TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET jit_above_cost TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_above_cost",
@@ -3680,16 +3680,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET jit_dump_bitcode TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET jit_dump_bitcode TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_dump_bitcode",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET jit_dump_bitcode TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET jit_dump_bitcode TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_dump_bitcode",
@@ -3710,16 +3710,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET jit_expressions TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET jit_expressions TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_expressions",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET jit_expressions TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET jit_expressions TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_expressions",
@@ -3740,16 +3740,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(500000)}},
 			},
 			{
-				Query:    "SET jit_inline_above_cost TO '5000'",
-				Expected: []sql.Row{},
+				Query:       "SET jit_inline_above_cost TO '5000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_inline_above_cost",
 				Expected: []sql.Row{{float64(5000)}},
 			},
 			{
-				Query:    "SET jit_inline_above_cost TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET jit_inline_above_cost TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_inline_above_cost",
@@ -3770,16 +3770,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(500000)}},
 			},
 			{
-				Query:    "SET jit_optimize_above_cost TO '5000'",
-				Expected: []sql.Row{},
+				Query:       "SET jit_optimize_above_cost TO '5000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_optimize_above_cost",
 				Expected: []sql.Row{{float64(5000)}},
 			},
 			{
-				Query:    "SET jit_optimize_above_cost TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET jit_optimize_above_cost TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_optimize_above_cost",
@@ -3836,16 +3836,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET jit_tuple_deforming TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET jit_tuple_deforming TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_tuple_deforming",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET jit_tuple_deforming TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET jit_tuple_deforming TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW jit_tuple_deforming",
@@ -3866,16 +3866,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(8)}},
 			},
 			{
-				Query:    "SET join_collapse_limit TO '100'",
-				Expected: []sql.Row{},
+				Query:       "SET join_collapse_limit TO '100'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW join_collapse_limit",
 				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET join_collapse_limit TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET join_collapse_limit TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW join_collapse_limit",
@@ -3932,16 +3932,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"en_US.UTF-8"}},
 			},
 			{
-				Query:    "SET lc_messages TO 'en_US'",
-				Expected: []sql.Row{},
+				Query:       "SET lc_messages TO 'en_US'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lc_messages",
 				Expected: []sql.Row{{"en_US"}},
 			},
 			{
-				Query:    "SET lc_messages TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET lc_messages TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lc_messages",
@@ -3962,16 +3962,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"en_US.UTF-8"}},
 			},
 			{
-				Query:    "SET lc_monetary TO 'en_US'",
-				Expected: []sql.Row{},
+				Query:       "SET lc_monetary TO 'en_US'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lc_monetary",
 				Expected: []sql.Row{{"en_US"}},
 			},
 			{
-				Query:    "SET lc_monetary TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET lc_monetary TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lc_monetary",
@@ -3992,16 +3992,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"en_US.UTF-8"}},
 			},
 			{
-				Query:    "SET lc_numeric TO 'en_US'",
-				Expected: []sql.Row{},
+				Query:       "SET lc_numeric TO 'en_US'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lc_numeric",
 				Expected: []sql.Row{{"en_US"}},
 			},
 			{
-				Query:    "SET lc_numeric TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET lc_numeric TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lc_numeric",
@@ -4022,16 +4022,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"en_US.UTF-8"}},
 			},
 			{
-				Query:    "SET lc_time TO 'en_US'",
-				Expected: []sql.Row{},
+				Query:       "SET lc_time TO 'en_US'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lc_time",
 				Expected: []sql.Row{{"en_US"}},
 			},
 			{
-				Query:    "SET lc_time TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET lc_time TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lc_time",
@@ -4070,16 +4070,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET lo_compat_privileges TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET lo_compat_privileges TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lo_compat_privileges",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET lo_compat_privileges TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET lo_compat_privileges TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lo_compat_privileges",
@@ -4100,16 +4100,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET local_preload_libraries TO '/'",
-				Expected: []sql.Row{},
+				Query:       "SET local_preload_libraries TO '/'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW local_preload_libraries",
 				Expected: []sql.Row{{"/"}},
 			},
 			{
-				Query:    "SET local_preload_libraries TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET local_preload_libraries TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW local_preload_libraries",
@@ -4130,16 +4130,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET lock_timeout TO 20",
-				Expected: []sql.Row{},
+				Query:       "SET lock_timeout TO 20",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lock_timeout",
 				Expected: []sql.Row{{int64(20)}},
 			},
 			{
-				Query:    "SET lock_timeout TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET lock_timeout TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW lock_timeout",
@@ -4268,16 +4268,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET log_duration TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET log_duration TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_duration",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_duration TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_duration TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_duration",
@@ -4298,16 +4298,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"default"}},
 			},
 			{
-				Query:    "SET log_error_verbosity TO 'verbose'",
-				Expected: []sql.Row{},
+				Query:       "SET log_error_verbosity TO 'verbose'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_error_verbosity",
 				Expected: []sql.Row{{"verbose"}},
 			},
 			{
-				Query:    "SET log_error_verbosity TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_error_verbosity TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_error_verbosity",
@@ -4328,16 +4328,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET log_executor_stats TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET log_executor_stats TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_executor_stats",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_executor_stats TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_executor_stats TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_executor_stats",
@@ -4430,16 +4430,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET log_lock_waits TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET log_lock_waits TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_lock_waits",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_lock_waits TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_lock_waits TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_lock_waits",
@@ -4460,16 +4460,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(-1)}},
 			},
 			{
-				Query:    "SET log_min_duration_sample TO 1",
-				Expected: []sql.Row{},
+				Query:       "SET log_min_duration_sample TO 1",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_min_duration_sample",
 				Expected: []sql.Row{{int64(1)}},
 			},
 			{
-				Query:    "SET log_min_duration_sample TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_min_duration_sample TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_min_duration_sample",
@@ -4490,16 +4490,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(-1)}},
 			},
 			{
-				Query:    "SET log_min_duration_statement TO 10",
-				Expected: []sql.Row{},
+				Query:       "SET log_min_duration_statement TO 10",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_min_duration_statement",
 				Expected: []sql.Row{{int64(10)}},
 			},
 			{
-				Query:    "SET log_min_duration_statement TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_min_duration_statement TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_min_duration_statement",
@@ -4520,16 +4520,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"error"}},
 			},
 			{
-				Query:    "SET log_min_error_statement TO 'debug5'",
-				Expected: []sql.Row{},
+				Query:       "SET log_min_error_statement TO 'debug5'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_min_error_statement",
 				Expected: []sql.Row{{"debug5"}},
 			},
 			{
-				Query:    "SET log_min_error_statement TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_min_error_statement TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_min_error_statement",
@@ -4550,16 +4550,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"warning"}},
 			},
 			{
-				Query:    "SET log_min_messages TO 'info'",
-				Expected: []sql.Row{},
+				Query:       "SET log_min_messages TO 'info'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_min_messages",
 				Expected: []sql.Row{{"info"}},
 			},
 			{
-				Query:    "SET log_min_messages TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_min_messages TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_min_messages",
@@ -4580,8 +4580,8 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(-1)}},
 			},
 			{
-				Query:    "SET log_parameter_max_length TO '10'",
-				Expected: []sql.Row{},
+				Query:       "SET log_parameter_max_length TO '10'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_parameter_max_length",
@@ -4592,8 +4592,8 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"10"}},
 			},
 			{
-				Query:    "SET log_parameter_max_length TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_parameter_max_length TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_parameter_max_length",
@@ -4614,16 +4614,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET log_parameter_max_length_on_error TO '1'",
-				Expected: []sql.Row{},
+				Query:       "SET log_parameter_max_length_on_error TO '1'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_parameter_max_length_on_error",
 				Expected: []sql.Row{{int64(1)}},
 			},
 			{
-				Query:    "SET log_parameter_max_length_on_error TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_parameter_max_length_on_error TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_parameter_max_length_on_error",
@@ -4644,16 +4644,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET log_parser_stats TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET log_parser_stats TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_parser_stats",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_parser_stats TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_parser_stats TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_parser_stats",
@@ -4674,16 +4674,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET log_planner_stats TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET log_planner_stats TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_planner_stats",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_planner_stats TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_planner_stats TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_planner_stats",
@@ -4722,16 +4722,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET log_replication_commands TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET log_replication_commands TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_replication_commands",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_replication_commands TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_replication_commands TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_replication_commands",
@@ -4806,16 +4806,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"none"}},
 			},
 			{
-				Query:    "SET log_statement TO 'ddl'",
-				Expected: []sql.Row{},
+				Query:       "SET log_statement TO 'ddl'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_statement",
 				Expected: []sql.Row{{"ddl"}},
 			},
 			{
-				Query:    "SET log_statement TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_statement TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_statement",
@@ -4836,16 +4836,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(1)}},
 			},
 			{
-				Query:    "SET log_statement_sample_rate TO 0.5",
-				Expected: []sql.Row{},
+				Query:       "SET log_statement_sample_rate TO 0.5",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_statement_sample_rate",
 				Expected: []sql.Row{{float64(0.5)}},
 			},
 			{
-				Query:    "SET log_statement_sample_rate TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_statement_sample_rate TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_statement_sample_rate",
@@ -4866,16 +4866,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET log_statement_stats TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET log_statement_stats TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_statement_stats",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET log_statement_stats TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_statement_stats TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_statement_stats",
@@ -4896,16 +4896,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(-1)}},
 			},
 			{
-				Query:    "SET log_temp_files TO '100'",
-				Expected: []sql.Row{},
+				Query:       "SET log_temp_files TO '100'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_temp_files",
 				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET log_temp_files TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_temp_files TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_temp_files",
@@ -4944,16 +4944,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(0)}},
 			},
 			{
-				Query:    "SET log_transaction_sample_rate TO '0.5'",
-				Expected: []sql.Row{},
+				Query:       "SET log_transaction_sample_rate TO '0.5'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_transaction_sample_rate",
 				Expected: []sql.Row{{float64(0.5)}},
 			},
 			{
-				Query:    "SET log_transaction_sample_rate TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET log_transaction_sample_rate TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW log_transaction_sample_rate",
@@ -5010,16 +5010,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(65536)}},
 			},
 			{
-				Query:    "SET logical_decoding_work_mem TO '64000'",
-				Expected: []sql.Row{},
+				Query:       "SET logical_decoding_work_mem TO '64000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW logical_decoding_work_mem",
 				Expected: []sql.Row{{int64(64000)}},
 			},
 			{
-				Query:    "SET logical_decoding_work_mem TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET logical_decoding_work_mem TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW logical_decoding_work_mem",
@@ -5040,16 +5040,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET maintenance_io_concurrency TO '1'",
-				Expected: []sql.Row{},
+				Query:       "SET maintenance_io_concurrency TO '1'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW maintenance_io_concurrency",
 				Expected: []sql.Row{{int64(1)}},
 			},
 			{
-				Query:    "SET maintenance_io_concurrency TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET maintenance_io_concurrency TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW maintenance_io_concurrency",
@@ -5070,16 +5070,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(65536)}},
 			},
 			{
-				Query:    "SET maintenance_work_mem TO '64000'",
-				Expected: []sql.Row{},
+				Query:       "SET maintenance_work_mem TO '64000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW maintenance_work_mem",
 				Expected: []sql.Row{{int64(64000)}},
 			},
 			{
-				Query:    "SET maintenance_work_mem TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET maintenance_work_mem TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW maintenance_work_mem",
@@ -5244,16 +5244,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(2)}},
 			},
 			{
-				Query:    "SET max_parallel_maintenance_workers TO '3'",
-				Expected: []sql.Row{},
+				Query:       "SET max_parallel_maintenance_workers TO '3'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW max_parallel_maintenance_workers",
 				Expected: []sql.Row{{int64(3)}},
 			},
 			{
-				Query:    "SET max_parallel_maintenance_workers TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET max_parallel_maintenance_workers TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW max_parallel_maintenance_workers",
@@ -5274,16 +5274,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(8)}},
 			},
 			{
-				Query:    "SET max_parallel_workers TO 11",
-				Expected: []sql.Row{},
+				Query:       "SET max_parallel_workers TO 11",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW max_parallel_workers",
 				Expected: []sql.Row{{int64(11)}},
 			},
 			{
-				Query:    "SET max_parallel_workers TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET max_parallel_workers TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW max_parallel_workers",
@@ -5304,16 +5304,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(2)}},
 			},
 			{
-				Query:    "SET max_parallel_workers_per_gather TO 3",
-				Expected: []sql.Row{},
+				Query:       "SET max_parallel_workers_per_gather TO 3",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW max_parallel_workers_per_gather",
 				Expected: []sql.Row{{int64(3)}},
 			},
 			{
-				Query:    "SET max_parallel_workers_per_gather TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET max_parallel_workers_per_gather TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW max_parallel_workers_per_gather",
@@ -5442,16 +5442,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(2048)}},
 			},
 			{
-				Query:    "SET max_stack_depth TO '2000'",
-				Expected: []sql.Row{},
+				Query:       "SET max_stack_depth TO '2000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW max_stack_depth",
 				Expected: []sql.Row{{int64(2000)}},
 			},
 			{
-				Query:    "SET max_stack_depth TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET max_stack_depth TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW max_stack_depth",
@@ -5598,16 +5598,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(1024)}},
 			},
 			{
-				Query:    "SET min_parallel_index_scan_size TO '512'",
-				Expected: []sql.Row{},
+				Query:       "SET min_parallel_index_scan_size TO '512'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW min_parallel_index_scan_size",
 				Expected: []sql.Row{{int64(512)}},
 			},
 			{
-				Query:    "SET min_parallel_index_scan_size TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET min_parallel_index_scan_size TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW min_parallel_index_scan_size",
@@ -5628,16 +5628,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(1024)}},
 			},
 			{
-				Query:    "SET min_parallel_table_scan_size TO '800'",
-				Expected: []sql.Row{},
+				Query:       "SET min_parallel_table_scan_size TO '800'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW min_parallel_table_scan_size",
 				Expected: []sql.Row{{int64(800)}},
 			},
 			{
-				Query:    "SET min_parallel_table_scan_size TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET min_parallel_table_scan_size TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW min_parallel_table_scan_size",
@@ -5694,16 +5694,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET parallel_leader_participation TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET parallel_leader_participation TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW parallel_leader_participation",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET parallel_leader_participation TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET parallel_leader_participation TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW parallel_leader_participation",
@@ -5724,16 +5724,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(1000)}},
 			},
 			{
-				Query:    "SET parallel_setup_cost TO '10000'",
-				Expected: []sql.Row{},
+				Query:       "SET parallel_setup_cost TO '10000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW parallel_setup_cost",
 				Expected: []sql.Row{{float64(10000)}},
 			},
 			{
-				Query:    "SET parallel_setup_cost TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET parallel_setup_cost TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW parallel_setup_cost",
@@ -5754,16 +5754,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(0.1)}},
 			},
 			{
-				Query:    "SET parallel_tuple_cost TO '0.2'",
-				Expected: []sql.Row{},
+				Query:       "SET parallel_tuple_cost TO '0.2'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW parallel_tuple_cost",
 				Expected: []sql.Row{{float64(0.2)}},
 			},
 			{
-				Query:    "SET parallel_tuple_cost TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET parallel_tuple_cost TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW parallel_tuple_cost",
@@ -5784,16 +5784,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"scram-sha-256"}},
 			},
 			{
-				Query:    "SET password_encryption TO 'md5'",
-				Expected: []sql.Row{},
+				Query:       "SET password_encryption TO 'md5'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW password_encryption",
 				Expected: []sql.Row{{"md5"}},
 			},
 			{
-				Query:    "SET password_encryption TO 'scram-sha-256'",
-				Expected: []sql.Row{},
+				Query:       "SET password_encryption TO 'scram-sha-256'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW password_encryption",
@@ -5814,16 +5814,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"auto"}},
 			},
 			{
-				Query:    "SET plan_cache_mode TO 'force_generic_plan'",
-				Expected: []sql.Row{},
+				Query:       "SET plan_cache_mode TO 'force_generic_plan'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW plan_cache_mode",
 				Expected: []sql.Row{{"force_generic_plan"}},
 			},
 			{
-				Query:    "SET plan_cache_mode TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET plan_cache_mode TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW plan_cache_mode",
@@ -5934,16 +5934,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET quote_all_identifiers TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET quote_all_identifiers TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW quote_all_identifiers",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET quote_all_identifiers TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET quote_all_identifiers TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW quote_all_identifiers",
@@ -5964,16 +5964,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(4)}},
 			},
 			{
-				Query:    "SET random_page_cost TO 2.5",
-				Expected: []sql.Row{},
+				Query:       "SET random_page_cost TO 2.5",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW random_page_cost",
 				Expected: []sql.Row{{float64(2.5)}},
 			},
 			{
-				Query:    "SET random_page_cost TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET random_page_cost TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW random_page_cost",
@@ -6210,16 +6210,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(10)}},
 			},
 			{
-				Query:    "SET recursive_worktable_factor TO '1'",
-				Expected: []sql.Row{},
+				Query:       "SET recursive_worktable_factor TO '1'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW recursive_worktable_factor",
 				Expected: []sql.Row{{float64(1)}},
 			},
 			{
-				Query:    "SET recursive_worktable_factor TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET recursive_worktable_factor TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW recursive_worktable_factor",
@@ -6312,16 +6312,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET row_security TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET row_security TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW row_security",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET row_security TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET row_security TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW row_security",
@@ -6342,16 +6342,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(4096)}},
 			},
 			{
-				Query:    "SET scram_iterations TO '4000'",
-				Expected: []sql.Row{},
+				Query:       "SET scram_iterations TO '4000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW scram_iterations",
 				Expected: []sql.Row{{int64(4000)}},
 			},
 			{
-				Query:    "SET scram_iterations TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET scram_iterations TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW scram_iterations",
@@ -6372,16 +6372,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"\"$user\", public,"}},
 			},
 			{
-				Query:    "SET search_path TO 'postgres'",
-				Expected: []sql.Row{},
+				Query:       "SET search_path TO 'postgres'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW search_path",
 				Expected: []sql.Row{{"postgres"}},
 			},
 			{
-				Query:    "SET search_path TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET search_path TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW search_path",
@@ -6528,16 +6528,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET session_preload_libraries TO '/'",
-				Expected: []sql.Row{},
+				Query:       "SET session_preload_libraries TO '/'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW session_preload_libraries",
 				Expected: []sql.Row{{"/"}},
 			},
 			{
-				Query:    "SET session_preload_libraries TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET session_preload_libraries TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW session_preload_libraries",
@@ -6558,16 +6558,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"origin"}},
 			},
 			{
-				Query:    "SET session_replication_role TO 'local'",
-				Expected: []sql.Row{},
+				Query:       "SET session_replication_role TO 'local'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW session_replication_role",
 				Expected: []sql.Row{{"local"}},
 			},
 			{
-				Query:    "SET session_replication_role TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET session_replication_role TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW session_replication_role",
@@ -6948,16 +6948,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET standard_conforming_strings TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET standard_conforming_strings TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW standard_conforming_strings",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET standard_conforming_strings TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET standard_conforming_strings TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW standard_conforming_strings",
@@ -6978,8 +6978,8 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET statement_timeout TO '42'",
-				Expected: []sql.Row{},
+				Query:       "SET statement_timeout TO '42'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW statement_timeout",
@@ -7000,16 +7000,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"cache"}},
 			},
 			{
-				Query:    "SET stats_fetch_consistency TO 'snapshot'",
-				Expected: []sql.Row{},
+				Query:       "SET stats_fetch_consistency TO 'snapshot'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW stats_fetch_consistency",
 				Expected: []sql.Row{{"snapshot"}},
 			},
 			{
-				Query:    "SET stats_fetch_consistency TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET stats_fetch_consistency TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW stats_fetch_consistency",
@@ -7048,16 +7048,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET synchronize_seqscans TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET synchronize_seqscans TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW synchronize_seqscans",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET synchronize_seqscans TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET synchronize_seqscans TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW synchronize_seqscans",
@@ -7078,16 +7078,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"on"}},
 			},
 			{
-				Query:    "SET synchronous_commit TO 'local'",
-				Expected: []sql.Row{},
+				Query:       "SET synchronous_commit TO 'local'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW synchronous_commit",
 				Expected: []sql.Row{{"local"}},
 			},
 			{
-				Query:    "SET synchronous_commit TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET synchronous_commit TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW synchronous_commit",
@@ -7198,16 +7198,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET tcp_keepalives_count TO 100",
-				Expected: []sql.Row{},
+				Query:       "SET tcp_keepalives_count TO 100",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW tcp_keepalives_count",
 				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET tcp_keepalives_count TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET tcp_keepalives_count TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW tcp_keepalives_count",
@@ -7228,16 +7228,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET tcp_keepalives_idle TO 1",
-				Expected: []sql.Row{},
+				Query:       "SET tcp_keepalives_idle TO 1",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW tcp_keepalives_idle",
 				Expected: []sql.Row{{int64(1)}},
 			},
 			{
-				Query:    "SET tcp_keepalives_idle TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET tcp_keepalives_idle TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW tcp_keepalives_idle",
@@ -7258,16 +7258,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET tcp_keepalives_interval TO 1",
-				Expected: []sql.Row{},
+				Query:       "SET tcp_keepalives_interval TO 1",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW tcp_keepalives_interval",
 				Expected: []sql.Row{{int64(1)}},
 			},
 			{
-				Query:    "SET tcp_keepalives_interval TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET tcp_keepalives_interval TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW tcp_keepalives_interval",
@@ -7288,16 +7288,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				Query:    "SET tcp_user_timeout TO '100000'",
-				Expected: []sql.Row{},
+				Query:       "SET tcp_user_timeout TO '100000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW tcp_user_timeout",
 				Expected: []sql.Row{{int64(100000)}},
 			},
 			{
-				Query:    "SET tcp_user_timeout TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET tcp_user_timeout TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW tcp_user_timeout",
@@ -7318,16 +7318,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(1024)}},
 			},
 			{
-				Query:    "SET temp_buffers TO '8000'",
-				Expected: []sql.Row{},
+				Query:       "SET temp_buffers TO '8000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW temp_buffers",
 				Expected: []sql.Row{{int64(8000)}},
 			},
 			{
-				Query:    "SET temp_buffers TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET temp_buffers TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW temp_buffers",
@@ -7348,16 +7348,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(-1)}},
 			},
 			{
-				Query:    "SET temp_file_limit TO 100",
-				Expected: []sql.Row{},
+				Query:       "SET temp_file_limit TO 100",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW temp_file_limit",
 				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET temp_file_limit TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET temp_file_limit TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW temp_file_limit",
@@ -7378,16 +7378,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET temp_tablespaces TO 'pg_default'",
-				Expected: []sql.Row{},
+				Query:       "SET temp_tablespaces TO 'pg_default'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW temp_tablespaces",
 				Expected: []sql.Row{{"pg_default"}},
 			},
 			{
-				Query:    "SET temp_tablespaces TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET temp_tablespaces TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW temp_tablespaces",
@@ -7408,16 +7408,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"America/Los_Angeles"}},
 			},
 			{
-				Query:    "SET TimeZone TO 'UTC'",
-				Expected: []sql.Row{},
+				Query:       "SET TimeZone TO 'UTC'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW TimeZone",
 				Expected: []sql.Row{{"UTC"}},
 			},
 			{
-				Query:    "SET TimeZone TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET TimeZone TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW TimeZone",
@@ -7438,16 +7438,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"Default"}},
 			},
 			{
-				Query:    "SET timezone_abbreviations TO ''",
-				Expected: []sql.Row{},
+				Query:       "SET timezone_abbreviations TO ''",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW timezone_abbreviations",
 				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET timezone_abbreviations TO 'Default'",
-				Expected: []sql.Row{},
+				Query:       "SET timezone_abbreviations TO 'Default'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW timezone_abbreviations",
@@ -7468,16 +7468,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET trace_notify TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET trace_notify TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW trace_notify",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET trace_notify TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET trace_notify TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW trace_notify",
@@ -7516,16 +7516,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET trace_sort TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET trace_sort TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW trace_sort",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET trace_sort TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET trace_sort TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW trace_sort",
@@ -7546,16 +7546,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET track_activities TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET track_activities TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_activities",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET track_activities TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET track_activities TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_activities",
@@ -7612,16 +7612,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET track_counts TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET track_counts TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_counts",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET track_counts TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET track_counts TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_counts",
@@ -7642,16 +7642,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"none"}},
 			},
 			{
-				Query:    "SET track_functions TO 'all'",
-				Expected: []sql.Row{},
+				Query:       "SET track_functions TO 'all'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_functions",
 				Expected: []sql.Row{{"all"}},
 			},
 			{
-				Query:    "SET track_functions TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET track_functions TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_functions",
@@ -7672,16 +7672,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET track_io_timing TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET track_io_timing TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_io_timing",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET track_io_timing TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET track_io_timing TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_io_timing",
@@ -7702,16 +7702,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET track_wal_io_timing TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET track_wal_io_timing TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_wal_io_timing",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET track_wal_io_timing TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET track_wal_io_timing TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW track_wal_io_timing",
@@ -7732,16 +7732,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET transaction_deferrable TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET transaction_deferrable TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW transaction_deferrable",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET transaction_deferrable TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET transaction_deferrable TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW transaction_deferrable",
@@ -7762,16 +7762,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"read committed"}},
 			},
 			{
-				Query:    "SET transaction_isolation TO 'serializable'",
-				Expected: []sql.Row{},
+				Query:       "SET transaction_isolation TO 'serializable'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW transaction_isolation",
 				Expected: []sql.Row{{"serializable"}},
 			},
 			{
-				Query:    "SET transaction_isolation TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET transaction_isolation TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW transaction_isolation",
@@ -7792,16 +7792,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET transaction_read_only TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET transaction_read_only TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW transaction_read_only",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET transaction_read_only TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET transaction_read_only TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW transaction_read_only",
@@ -7822,16 +7822,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET transform_null_equals TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET transform_null_equals TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW transform_null_equals",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET transform_null_equals TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET transform_null_equals TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW transform_null_equals",
@@ -7906,16 +7906,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET update_process_title TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET update_process_title TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW update_process_title",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET update_process_title TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET update_process_title TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW update_process_title",
@@ -7936,16 +7936,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(256)}},
 			},
 			{
-				Query:    "SET vacuum_buffer_usage_limit TO '512'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_buffer_usage_limit TO '512'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_buffer_usage_limit",
 				Expected: []sql.Row{{int64(512)}},
 			},
 			{
-				Query:    "SET vacuum_buffer_usage_limit TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_buffer_usage_limit TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_buffer_usage_limit",
@@ -7966,16 +7966,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{float64(0)}},
 			},
 			{
-				Query:    "SET vacuum_cost_delay TO '0.2'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_delay TO '0.2'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_delay",
 				Expected: []sql.Row{{float64(0.2)}},
 			},
 			{
-				Query:    "SET vacuum_cost_delay TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_delay TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_delay",
@@ -7996,16 +7996,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(200)}},
 			},
 			{
-				Query:    "SET vacuum_cost_limit TO '400'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_limit TO '400'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_limit",
 				Expected: []sql.Row{{int64(400)}},
 			},
 			{
-				Query:    "SET vacuum_cost_limit TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_limit TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_limit",
@@ -8026,16 +8026,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(20)}},
 			},
 			{
-				Query:    "SET vacuum_cost_page_dirty TO '200'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_page_dirty TO '200'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_page_dirty",
 				Expected: []sql.Row{{int64(200)}},
 			},
 			{
-				Query:    "SET vacuum_cost_page_dirty TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_page_dirty TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_page_dirty",
@@ -8056,16 +8056,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(1)}},
 			},
 			{
-				Query:    "SET vacuum_cost_page_hit TO '100'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_page_hit TO '100'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_page_hit",
 				Expected: []sql.Row{{int64(100)}},
 			},
 			{
-				Query:    "SET vacuum_cost_page_hit TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_page_hit TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_page_hit",
@@ -8086,16 +8086,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(2)}},
 			},
 			{
-				Query:    "SET vacuum_cost_page_miss TO '20'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_page_miss TO '20'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_page_miss",
 				Expected: []sql.Row{{int64(20)}},
 			},
 			{
-				Query:    "SET vacuum_cost_page_miss TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_cost_page_miss TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_cost_page_miss",
@@ -8116,16 +8116,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(1600000000)}},
 			},
 			{
-				Query:    "SET vacuum_failsafe_age TO '2100000000'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_failsafe_age TO '2100000000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_failsafe_age",
 				Expected: []sql.Row{{int64(2100000000)}},
 			},
 			{
-				Query:    "SET vacuum_failsafe_age TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_failsafe_age TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_failsafe_age",
@@ -8146,16 +8146,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(50000000)}},
 			},
 			{
-				Query:    "SET vacuum_freeze_min_age TO '20000000'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_freeze_min_age TO '20000000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_freeze_min_age",
 				Expected: []sql.Row{{int64(20000000)}},
 			},
 			{
-				Query:    "SET vacuum_freeze_min_age TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_freeze_min_age TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_freeze_min_age",
@@ -8176,16 +8176,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(150000000)}},
 			},
 			{
-				Query:    "SET vacuum_freeze_table_age TO '100000000'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_freeze_table_age TO '100000000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_freeze_table_age",
 				Expected: []sql.Row{{int64(100000000)}},
 			},
 			{
-				Query:    "SET vacuum_freeze_table_age TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_freeze_table_age TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_freeze_table_age",
@@ -8206,16 +8206,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(1600000000)}},
 			},
 			{
-				Query:    "SET vacuum_multixact_failsafe_age TO '1000000000'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_multixact_failsafe_age TO '1000000000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_multixact_failsafe_age",
 				Expected: []sql.Row{{int64(1000000000)}},
 			},
 			{
-				Query:    "SET vacuum_multixact_failsafe_age TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_multixact_failsafe_age TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_multixact_failsafe_age",
@@ -8236,16 +8236,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(5000000)}},
 			},
 			{
-				Query:    "SET vacuum_multixact_freeze_min_age TO '2000000'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_multixact_freeze_min_age TO '2000000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_multixact_freeze_min_age",
 				Expected: []sql.Row{{int64(2000000)}},
 			},
 			{
-				Query:    "SET vacuum_multixact_freeze_min_age TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_multixact_freeze_min_age TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_multixact_freeze_min_age",
@@ -8266,16 +8266,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(150000000)}},
 			},
 			{
-				Query:    "SET vacuum_multixact_freeze_table_age TO '120000000'",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_multixact_freeze_table_age TO '120000000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_multixact_freeze_table_age",
 				Expected: []sql.Row{{int64(120000000)}},
 			},
 			{
-				Query:    "SET vacuum_multixact_freeze_table_age TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET vacuum_multixact_freeze_table_age TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW vacuum_multixact_freeze_table_age",
@@ -8332,16 +8332,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"off"}},
 			},
 			{
-				Query:    "SET wal_compression TO 'lz4'",
-				Expected: []sql.Row{},
+				Query:       "SET wal_compression TO 'lz4'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_compression",
 				Expected: []sql.Row{{"lz4"}},
 			},
 			{
-				Query:    "SET wal_compression TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET wal_compression TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_compression",
@@ -8362,16 +8362,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{""}},
 			},
 			{
-				Query:    "SET wal_consistency_checking TO 'generic'",
-				Expected: []sql.Row{},
+				Query:       "SET wal_consistency_checking TO 'generic'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_consistency_checking",
 				Expected: []sql.Row{{"generic"}},
 			},
 			{
-				Query:    "SET wal_consistency_checking TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET wal_consistency_checking TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_consistency_checking",
@@ -8410,16 +8410,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET wal_init_zero TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET wal_init_zero TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_init_zero",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET wal_init_zero TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET wal_init_zero TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_init_zero",
@@ -8548,16 +8548,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET wal_recycle TO 'off'",
-				Expected: []sql.Row{},
+				Query:       "SET wal_recycle TO 'off'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_recycle",
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET wal_recycle TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET wal_recycle TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_recycle",
@@ -8614,16 +8614,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(60000)}},
 			},
 			{
-				Query:    "SET wal_sender_timeout TO '100000'",
-				Expected: []sql.Row{},
+				Query:       "SET wal_sender_timeout TO '100000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_sender_timeout",
 				Expected: []sql.Row{{int64(100000)}},
 			},
 			{
-				Query:    "SET wal_sender_timeout TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET wal_sender_timeout TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_sender_timeout",
@@ -8644,16 +8644,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(2048)}},
 			},
 			{
-				Query:    "SET wal_skip_threshold TO '2000'",
-				Expected: []sql.Row{},
+				Query:       "SET wal_skip_threshold TO '2000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_skip_threshold",
 				Expected: []sql.Row{{int64(2000)}},
 			},
 			{
-				Query:    "SET wal_skip_threshold TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET wal_skip_threshold TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW wal_skip_threshold",
@@ -8728,16 +8728,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int64(4096)}},
 			},
 			{
-				Query:    "SET work_mem TO '4000'",
-				Expected: []sql.Row{},
+				Query:       "SET work_mem TO '4000'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW work_mem",
 				Expected: []sql.Row{{int64(4000)}},
 			},
 			{
-				Query:    "SET work_mem TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET work_mem TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW work_mem",
@@ -8758,16 +8758,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"base64"}},
 			},
 			{
-				Query:    "SET xmlbinary TO 'hex'",
-				Expected: []sql.Row{},
+				Query:       "SET xmlbinary TO 'hex'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW xmlbinary",
 				Expected: []sql.Row{{"hex"}},
 			},
 			{
-				Query:    "SET xmlbinary TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET xmlbinary TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW xmlbinary",
@@ -8788,16 +8788,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"content"}},
 			},
 			{
-				Query:    "SET xmloption TO 'document'",
-				Expected: []sql.Row{},
+				Query:       "SET xmloption TO 'document'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW xmloption",
 				Expected: []sql.Row{{"document"}},
 			},
 			{
-				Query:    "SET xmloption TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET xmloption TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW xmloption",
@@ -8818,16 +8818,16 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 			},
 			{
-				Query:    "SET zero_damaged_pages TO 'on'",
-				Expected: []sql.Row{},
+				Query:       "SET zero_damaged_pages TO 'on'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW zero_damaged_pages",
 				Expected: []sql.Row{{int8(1)}},
 			},
 			{
-				Query:    "SET zero_damaged_pages TO DEFAULT",
-				Expected: []sql.Row{},
+				Query:       "SET zero_damaged_pages TO DEFAULT",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW zero_damaged_pages",
@@ -8843,8 +8843,8 @@ var setStmts = []ScriptTest{
 		Name: "settings with namespaces",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SET myvar.var_value TO 'value'",
-				Expected: []sql.Row{},
+				Query:       "SET myvar.var_value TO 'value'",
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW myvar.var_value",
@@ -8864,7 +8864,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "set myvar.var_value to (select 'a')",
-				Expected: []sql.Row{},
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW myvar.var_value",
@@ -8872,7 +8872,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "set myvar.val2 to (select current_setting('myvar.var_value'))",
-				Expected: []sql.Row{},
+				ExpectedTag: "SET",
 			},
 			{
 				Query:    "SHOW myvar.val2",
