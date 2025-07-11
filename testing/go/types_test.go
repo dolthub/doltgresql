@@ -2625,7 +2625,7 @@ var typesTests = []ScriptTest{
 		Name: "Time without time zone type",
 		SetUpScript: []string{
 			"CREATE TABLE t_time_without_zone (id INTEGER primary key, v1 TIME);",
-			"INSERT INTO t_time_without_zone VALUES (1, '12:34:56'), (2, '23:45:01');",
+			"INSERT INTO t_time_without_zone VALUES (1, '12:34:56'), (2, '23:45:01'), (3, '02:03 EDT');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -2633,6 +2633,7 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "12:34:56"},
 					{2, "23:45:01"},
+					{3, "02:03:00"},
 				},
 			},
 			{
@@ -2640,6 +2641,7 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"12:34:56"},
 					{"23:45:01"},
+					{"02:03:00"},
 				},
 			},
 			{
@@ -2679,7 +2681,7 @@ var typesTests = []ScriptTest{
 		Name: "Time with time zone type",
 		SetUpScript: []string{
 			"CREATE TABLE t_time_with_zone (id INTEGER primary key, v1 TIME WITH TIME ZONE);",
-			"INSERT INTO t_time_with_zone VALUES (1, '12:34:56 UTC'), (2, '23:45:01-0200');",
+			"INSERT INTO t_time_with_zone VALUES (1, '12:34:56 UTC'), (2, '23:45:01-0200'), (3, '2025-06-03 02:03 EDT');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -2687,6 +2689,7 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "12:34:56+00"},
 					{2, "23:45:01-02"},
+					{3, "02:03:00-04"},
 				},
 			},
 			{
@@ -2715,7 +2718,7 @@ var typesTests = []ScriptTest{
 		Name: "Timestamp without time zone type",
 		SetUpScript: []string{
 			"CREATE TABLE t_timestamp_without_zone (id INTEGER primary key, v1 TIMESTAMP);",
-			"INSERT INTO t_timestamp_without_zone VALUES (1, '2022-01-01 12:34:56'), (2, '2022-02-01 23:45:01');",
+			"INSERT INTO t_timestamp_without_zone VALUES (1, '2022-01-01 12:34:56'), (2, '2022-02-01 23:45:01'), (3, 'Feb 10 5:32PM 1997'), (4, 'Feb 10 16:32:05 99');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -2723,6 +2726,8 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "2022-01-01 12:34:56"},
 					{2, "2022-02-01 23:45:01"},
+					{3, "1997-02-10 17:32:00"},
+					{4, "1999-02-10 16:32:05"},
 				},
 			},
 			{

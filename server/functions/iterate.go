@@ -21,7 +21,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -410,10 +409,11 @@ func RunCallback(ctx *sql.Context, internalID id.Id, callbacks Callbacks) error 
 	}
 	// We know we have the relevant callback for the given section, so we'll grab the schema
 	doltSession := dsess.DSessFromSess(ctx.Session)
-	currentDatabase, err := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog.Database(ctx, ctx.GetCurrentDatabase())
+	currentDatabase, err := doltSession.Provider().Database(ctx, ctx.GetCurrentDatabase())
 	if err != nil {
 		return err
 	}
+
 	if currentSchemaDatabase, ok := currentDatabase.(sql.SchemaDatabase); ok {
 		schemas, err := currentSchemaDatabase.AllSchemas(ctx)
 		if err != nil {

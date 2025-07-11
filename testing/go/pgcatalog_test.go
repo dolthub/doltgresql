@@ -1144,11 +1144,11 @@ func TestPgIndex(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_index";`,
+					Query: `SELECT * FROM "pg_catalog"."pg_index" order by 1;`,
 					Expected: []sql.Row{
-						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
-						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
-						{3185790121, 1784425749, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{}", "{}", "{}", "{}", nil, nil},
+						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
+						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
+						{3185790121, 1784425749, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1,2}", "{}", "{}", "0", nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -4118,6 +4118,11 @@ func TestPgCatalogQueries(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "sqlalchemy queries",
+			SetUpScript: []string{
+				`create table t1 (a int primary key, b int not null)`,
+				`create table t2 (a int primary key, b int not null)`,
+				`create index on t2 (b)`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_attribute.attname AS name, pg_catalog.format_type(pg_catalog.pg_attribute.atttypid, pg_catalog.pg_attribute.atttypmod) AS format_type, (SELECT pg_catalog.pg_get_expr(pg_catalog.pg_attrdef.adbin, pg_catalog.pg_attrdef.adrelid) AS pg_get_expr_1 
@@ -4192,6 +4197,205 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
 						{"date", "timestamp without time zone", nil, "t", "dolt_log", nil, "", nil},
 						{"message", "text", nil, "t", "dolt_log", nil, "", nil},
 						{"commit_order", "bigint", nil, "t", "dolt_log", nil, "", nil},
+					},
+				},
+				{
+					Query: `SELECT attr.conrelid, 
+       array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
+       attr.conname,
+       min(attr.description) AS description,
+       NULL AS extra FROM 
+				(SELECT con.conrelid AS conrelid,
+				        con.conname AS conname,
+				        con.conindid AS conindid,
+				        con.description AS description,
+				        con.ord AS ord,
+				        pg_catalog.pg_attribute.attname AS attname
+				 FROM pg_catalog.pg_attribute JOIN 
+				     (SELECT pg_catalog.pg_constraint.conrelid AS conrelid,
+				             pg_catalog.pg_constraint.conname AS conname,
+				             pg_catalog.pg_constraint.conindid AS conindid,
+				             unnest(pg_catalog.pg_constraint.conkey) AS attnum,
+				             generate_subscripts(pg_catalog.pg_constraint.conkey, 1) AS ord,
+				             pg_catalog.pg_description.description AS description 
+				      FROM pg_catalog.pg_constraint 
+				          LEFT OUTER JOIN pg_catalog.pg_description 
+				              ON pg_catalog.pg_description.objoid = pg_catalog.pg_constraint.oid
+				      WHERE pg_catalog.pg_constraint.contype = 'p'
+				        AND pg_catalog.pg_constraint.conrelid IN (3491847678)) AS con
+				     ON pg_catalog.pg_attribute.attnum = con.attnum 
+				            AND pg_catalog.pg_attribute.attrelid = con.conrelid
+				 WHERE con.conrelid IN (3491847678)) AS attr 
+            GROUP BY attr.conrelid, attr.conname ORDER BY attr.conrelid, attr.conname`,
+				},
+				{
+					Query: `SELECT pg_catalog.pg_index.indrelid,
+       cls_idx.relname AS relname_index,
+       pg_catalog.pg_index.indisunique,
+       pg_catalog.pg_constraint.conrelid IS NOT NULL AS has_constraint,
+       pg_catalog.pg_index.indoption,
+       cls_idx.reloptions,
+       pg_catalog.pg_am.amname,
+       CASE WHEN (pg_catalog.pg_index.indpred IS NOT NULL) 
+           THEN pg_catalog.pg_get_expr(pg_catalog.pg_index.indpred, pg_catalog.pg_index.indrelid) 
+           END AS filter_definition,
+    	 pg_catalog.pg_index.indnkeyatts,
+    	 pg_catalog.pg_index.indnullsnotdistinct,
+    	 idx_cols.elements,
+    	 idx_cols.elements_is_expr 
+FROM pg_catalog.pg_index 
+    JOIN pg_catalog.pg_class AS cls_idx 
+        ON pg_catalog.pg_index.indexrelid = cls_idx.oid 
+    JOIN pg_catalog.pg_am 
+        ON cls_idx.relam = pg_catalog.pg_am.oid 
+    LEFT OUTER JOIN (SELECT idx_attr.indexrelid AS indexrelid, min(idx_attr.indrelid) AS min_1,
+                            array_agg(idx_attr.element ORDER BY idx_attr.ord) AS elements,
+                            array_agg(idx_attr.is_expr ORDER BY idx_attr.ord) AS elements_is_expr
+                     FROM (SELECT idx.indexrelid AS indexrelid,
+                                  idx.indrelid AS indrelid,
+                                  idx.ord AS ord,
+                                  CASE WHEN (idx.attnum = 0) THEN pg_catalog.pg_get_indexdef(idx.indexrelid, idx.ord + 1, true)
+                                      ELSE CAST(pg_catalog.pg_attribute.attname AS TEXT) 
+                                      END AS element,
+                                  idx.attnum = 0 AS is_expr
+                           FROM (SELECT pg_catalog.pg_index.indexrelid AS indexrelid,
+                                        pg_catalog.pg_index.indrelid AS indrelid,
+                                        unnest(pg_catalog.pg_index.indkey) AS attnum,
+                                        generate_subscripts(pg_catalog.pg_index.indkey, 1) AS ord
+                                 FROM pg_catalog.pg_index
+                                 WHERE NOT pg_catalog.pg_index.indisprimary
+                                   AND pg_catalog.pg_index.indrelid IN (3491847678)) AS idx
+                           LEFT OUTER JOIN pg_catalog.pg_attribute
+                               ON pg_catalog.pg_attribute.attnum = idx.attnum
+                                      AND pg_catalog.pg_attribute.attrelid = idx.indrelid
+                           WHERE idx.indrelid IN (3491847678)) AS idx_attr
+                     GROUP BY idx_attr.indexrelid) AS idx_cols
+        ON pg_catalog.pg_index.indexrelid = idx_cols.indexrelid
+    LEFT OUTER JOIN pg_catalog.pg_constraint
+        ON pg_catalog.pg_index.indrelid = pg_catalog.pg_constraint.conrelid
+               AND pg_catalog.pg_index.indexrelid = pg_catalog.pg_constraint.conindid
+               AND pg_catalog.pg_constraint.contype = ANY (ARRAY['p', 'u', 'x'])
+WHERE pg_catalog.pg_index.indrelid IN (3491847678)
+  AND NOT pg_catalog.pg_index.indisprimary
+ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
+				},
+				{
+					Query: `SELECT attr.conrelid,
+       array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
+       attr.conname,
+       min(attr.description) AS description,
+       bool_and(pg_catalog.pg_index.indnullsnotdistinct) AS indnullsnotdistinct
+FROM (SELECT con.conrelid AS conrelid,
+             con.conname AS conname,
+             con.conindid AS conindid,
+             con.description AS description,
+             con.ord AS ord, pg_catalog.pg_attribute.attname AS attname
+      FROM pg_catalog.pg_attribute 
+          JOIN (SELECT pg_catalog.pg_constraint.conrelid AS conrelid,
+                       pg_catalog.pg_constraint.conname AS conname,
+                       pg_catalog.pg_constraint.conindid AS conindid,
+                       unnest(pg_catalog.pg_constraint.conkey) AS attnum,
+                       generate_subscripts(pg_catalog.pg_constraint.conkey, 1) AS ord,
+                       pg_catalog.pg_description.description AS description
+                FROM pg_catalog.pg_constraint 
+                    LEFT OUTER JOIN pg_catalog.pg_description 
+                        ON pg_catalog.pg_description.objoid = pg_catalog.pg_constraint.oid
+                WHERE pg_catalog.pg_constraint.contype = 'u'
+                  AND pg_catalog.pg_constraint.conrelid IN (3491847678)) AS con
+              ON pg_catalog.pg_attribute.attnum = con.attnum
+                     AND pg_catalog.pg_attribute.attrelid = con.conrelid
+      WHERE con.conrelid IN (3491847678)) AS attr
+    JOIN pg_catalog.pg_index 
+        ON attr.conindid = pg_catalog.pg_index.indexrelid
+GROUP BY attr.conrelid, attr.conname
+ORDER BY attr.conrelid, attr.conname`,
+				},
+				{
+					Query: `SELECT attr.conrelid,
+       array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
+       attr.conname,
+       min(attr.description) AS description,
+       NULL AS extra FROM
+                         (SELECT con.conrelid AS conrelid,
+                                 con.conname AS conname,
+                                 con.conindid AS conindid,
+                                 con.description AS description,
+                                 con.ord AS ord,
+                                 pg_catalog.pg_attribute.attname AS attname
+                          FROM pg_catalog.pg_attribute 
+                              JOIN (SELECT pg_catalog.pg_constraint.conrelid AS conrelid,
+                                           pg_catalog.pg_constraint.conname AS conname,
+                                           pg_catalog.pg_constraint.conindid AS conindid,
+                                           unnest(pg_catalog.pg_constraint.conkey) AS attnum,
+                                           generate_subscripts(pg_catalog.pg_constraint.conkey, 1) AS ord,
+                                           pg_catalog.pg_description.description AS description
+                                    FROM pg_catalog.pg_constraint
+                                        LEFT OUTER JOIN pg_catalog.pg_description
+                                            ON pg_catalog.pg_description.objoid = pg_catalog.pg_constraint.oid
+                                    WHERE pg_catalog.pg_constraint.contype = 'p'
+                                      AND pg_catalog.pg_constraint.conrelid IN (select oid from pg_class where relname='t1'))
+                                  AS con
+                                  ON pg_catalog.pg_attribute.attnum = con.attnum
+                                         AND pg_catalog.pg_attribute.attrelid = con.conrelid
+                          WHERE con.conrelid IN (select oid from pg_class where relname='t1')) AS attr
+                     GROUP BY attr.conrelid, attr.conname
+                     ORDER BY attr.conrelid, attr.conname`,
+					Expected: []sql.Row{
+						{1249736862, "{a}", "t1_pkey", nil, nil},
+					},
+				},
+				{
+					Query: `SELECT pg_catalog.pg_index.indrelid,
+       cls_idx.relname AS relname_index,
+       pg_catalog.pg_index.indisunique,
+       pg_catalog.pg_constraint.conrelid IS NOT NULL AS has_constraint,
+       pg_catalog.pg_index.indoption,
+       cls_idx.reloptions,
+       pg_catalog.pg_am.amname,
+       CASE WHEN (pg_catalog.pg_index.indpred IS NOT NULL)
+           THEN pg_catalog.pg_get_expr(pg_catalog.pg_index.indpred, pg_catalog.pg_index.indrelid)
+           END AS filter_definition,
+       pg_catalog.pg_index.indnkeyatts,
+       pg_catalog.pg_index.indnullsnotdistinct,
+       idx_cols.elements,
+       idx_cols.elements_is_expr
+FROM pg_catalog.pg_index
+    JOIN pg_catalog.pg_class AS cls_idx 
+        ON pg_catalog.pg_index.indexrelid = cls_idx.oid
+    JOIN pg_catalog.pg_am ON cls_idx.relam = pg_catalog.pg_am.oid
+    LEFT OUTER JOIN 
+    (SELECT idx_attr.indexrelid AS indexrelid,
+            min(idx_attr.indrelid) AS min_1,
+            array_agg(idx_attr.element ORDER BY idx_attr.ord) AS elements,
+            array_agg(idx_attr.is_expr ORDER BY idx_attr.ord) AS elements_is_expr
+     FROM (SELECT idx.indexrelid AS indexrelid,
+                  idx.indrelid AS indrelid,
+                  idx.ord AS ord,
+                  CASE WHEN (idx.attnum = 0)
+                      THEN pg_catalog.pg_get_indexdef(idx.indexrelid, idx.ord + 1, true)
+                      ELSE CAST(pg_catalog.pg_attribute.attname AS TEXT)
+                      END AS element,
+               idx.attnum = 0 AS is_expr 
+           FROM (SELECT pg_catalog.pg_index.indexrelid AS indexrelid,
+                        pg_catalog.pg_index.indrelid AS indrelid,
+                        unnest(pg_catalog.pg_index.indkey) AS attnum,
+                        generate_subscripts(pg_catalog.pg_index.indkey, 1) AS ord
+                 FROM pg_catalog.pg_index 
+                 WHERE NOT pg_catalog.pg_index.indisprimary 
+                   AND pg_catalog.pg_index.indrelid IN (select oid from pg_class where relname='t2')) AS idx
+               LEFT OUTER JOIN pg_catalog.pg_attribute
+                   ON pg_catalog.pg_attribute.attnum = idx.attnum
+                          AND pg_catalog.pg_attribute.attrelid = idx.indrelid
+           WHERE idx.indrelid IN (select oid from pg_class where relname='t2')) AS idx_attr GROUP BY idx_attr.indexrelid) AS idx_cols
+        ON pg_catalog.pg_index.indexrelid = idx_cols.indexrelid
+    LEFT OUTER JOIN pg_catalog.pg_constraint
+        ON pg_catalog.pg_index.indrelid = pg_catalog.pg_constraint.conrelid
+               AND pg_catalog.pg_index.indexrelid = pg_catalog.pg_constraint.conindid
+               AND pg_catalog.pg_constraint.contype = ANY (ARRAY['p', 'u', 'x']) 
+WHERE pg_catalog.pg_index.indrelid IN (select oid from pg_class where relname='t2')
+  AND NOT pg_catalog.pg_index.indisprimary ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
+					Expected: []sql.Row{
+						{1496157034, "b", "f", "f", "0", nil, "btree", nil, 0, "f", "{b}", "{f}"},
 					},
 				},
 			},

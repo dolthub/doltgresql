@@ -87,26 +87,78 @@ var keywordSetters = map[string]fieldSetter{
 
 // These abbreviations are taken from:
 // https://github.com/postgres/postgres/blob/master/src/timezone/known_abbrevs.txt
-// We have not yet implemented PostgreSQL's abbreviation-matching logic
-// because we'd also need to incorporate more tzinfo than is readily-available
-// from the time package.  Instead, we have this map to provide a more
-// useful error message (and telemetry) until we do implement this
-// behavior.
-var unsupportedAbbreviations = [...]string{
-	"ACDT", "ACST", "ADT", "AEDT", "AEST", "AKDT", "AKST", "AST", "AWST", "BST",
-	"CAT", "CDT", "CDT", "CEST", "CET", "CST", "CST", "CST", "ChST",
-	"EAT", "EDT", "EEST", "EET", "EST",
+var timezoneMapping = map[string]string{
+	"ACDT": "+10:30",
+	"ACST": "+09:30",
+	"ADT":  "-03:00",
+	"AEDT": "+11:00",
+	"AEST": "+10:00",
+	"AKDT": "-08:00",
+	"AKST": "-09:00",
+	"AST":  "-04:00",
+	"AWST": "+08:00",
+	"BST":  "+01:00",
+	"CAT":  "+02:00",
+	"CDT":  "-05:00",
+	//"CDT":  "",
+	"CEST": "+02:00",
+	"CET":  "+01:00",
+	"CST":  "-06:00",
+	//"CST":  "",
+	//"CST":  "",
+	"ChST": "+10:00",
+
+	"EAT":  "+03:00",
+	"EDT":  "-04:00",
+	"EEST": "+03:00",
+	"EET":  "+02:00",
+	"EST":  "-05:00",
+
 	// GMT has been removed from this list.
-	"HDT", "HKT", "HST", "IDT", "IST", "IST", "IST", "JST", "KST",
-	"MDT", "MEST", "MET", "MSK", "MST", "NDT", "NST", "NZDT", "NZST",
-	"PDT", "PKT", "PST", "PST", "SAST", "SST", "UCT",
+	"HDT": "-09:00",
+	"HKT": "+08:00",
+	"HST": "-10:00",
+	"IDT": "+03:00",
+	"IST": "+02:00",
+	//"IST":  "",
+	//"IST":  "",
+	"JST": "+09:00",
+	"KST": "+09:00",
+
+	"MDT":  "-06:00",
+	"MEST": "", // TODO
+	"MET":  "", // TODO
+	"MSK":  "+03:00",
+	"MST":  "-07:00",
+	"NDT":  "-02:30",
+	"NST":  "-03:30",
+	"NZDT": "+13:00",
+	"NZST": "+12:00",
+
+	"PDT": "-07:00",
+	"PKT": "+05:00",
+	"PST": "-08:00",
+	//"PST":  "",
+	"SAST": "+02:00",
+	"SST":  "-11:00",
+	"UCT":  "", // TODO
+
 	// UTC has been removed from this list.
-	"WAT", "WEST", "WET", "WIB", "WIT", "WITA",
+	"WAT":  "+01:00",
+	"WEST": "+01:00",
+	"WET":  "+00:00",
+	"WIB":  "+07:00",
+	"WIT":  "+09:00",
+	"WITA": "+08:00",
 }
 
 func init() {
-	for _, tz := range unsupportedAbbreviations {
-		keywordSetters[strings.ToLower(tz)] = fieldSetterUnsupportedAbbreviation
+	for tz, offset := range timezoneMapping {
+		if offset == "" {
+			keywordSetters[strings.ToLower(tz)] = fieldSetterUnsupportedAbbreviation
+		} else {
+			keywordSetters[strings.ToLower(tz)] = fieldSetterLocation(offset)
+		}
 	}
 }
 
@@ -175,6 +227,33 @@ func fieldSetterUTC(fe *fieldExtract, _ string) error {
 	fe.location = time.UTC
 	fe.wanted = fe.wanted.ClearAll(tzFields)
 	return nil
+}
+
+// fieldSetterLocation unconditionally sets the timezone to given offset
+// and removes the TZ fields from the wanted list.
+func fieldSetterLocation(offset string) fieldSetter {
+	tzSign := 1
+	if offset[0] == '-' {
+		tzSign = -1
+	}
+	v := strings.Split(offset[1:], ":")
+	hour, err := strconv.ParseInt(v[0], 10, 32)
+	if err != nil {
+		return fieldSetterUnsupportedAbbreviation
+	}
+	minute, err := strconv.ParseInt(v[1], 10, 32)
+	if err != nil {
+		return fieldSetterUnsupportedAbbreviation
+	}
+
+	return func(fe *fieldExtract, _ string) error {
+		err = fe.Set(fieldTZHour, int(hour))
+		err = fe.Set(fieldTZMinute, int(minute))
+		fe.tzSign = tzSign
+		fe.location = fe.MakeLocation()
+		fe.wanted = fe.wanted.ClearAll(tzFields)
+		return nil
+	}
 }
 
 // fieldSetterUnsupportedAbbreviation always returns an error, but

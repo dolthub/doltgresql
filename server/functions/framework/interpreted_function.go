@@ -38,6 +38,7 @@ type InterpretedFunction struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
+	SRF                bool
 	Statements         []plpgsql.InterpreterOperation
 }
 
@@ -84,9 +85,9 @@ func (iFunc InterpretedFunction) IsStrict() bool {
 	return iFunc.Strict
 }
 
-// Return implements the interface plan.Interpreter.
-func (iFunc InterpretedFunction) Return(ctx *sql.Context) sql.Type {
-	return iFunc.ReturnType
+// IsSRF implements the interface FunctionInterface.
+func (iFunc InterpretedFunction) IsSRF() bool {
+	return iFunc.SRF
 }
 
 // NonDeterministic implements the interface FunctionInterface.

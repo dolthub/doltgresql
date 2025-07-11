@@ -175,7 +175,7 @@ func compileNonOperatorFunction(funcName string, overloads []FunctionInterface) 
 
 // compileNonOperatorFunction creates a CompiledFunction for each overload of the given function.
 func compileAggFunction(funcName string, overloads []AggregateFunctionInterface) {
-	var newBuffer func() (sql.AggregationBuffer, error)
+	var newBuffer NewBufferFn
 	overloadTree := NewOverloads()
 	for _, functionOverload := range overloads {
 		newBuffer = functionOverload.NewBuffer

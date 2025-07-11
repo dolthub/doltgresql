@@ -54,6 +54,7 @@ type pgCatalogCache struct {
 
 	// pg_index / pg_indexes
 	indexes        []sql.Index
+	tableSchemas   map[id.Id]sql.Schema
 	indexOIDs      []id.Id
 	indexTableOIDs []id.Id
 	indexSchemas   []string

@@ -15,7 +15,7 @@
 package functions
 
 import (
-	"github.com/cockroachdb/errors"
+	"io"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -34,14 +34,20 @@ var unnest = framework.Function1{
 	Return:     pgtypes.AnyElement, // TODO: Should return setof AnyElement
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
+	SRF:        true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		valArr := val1.([]interface{})
-		if len(valArr) == 0 {
-			return nil, nil
-		}
-		if len(valArr) == 1 {
-			return valArr[0], nil
-		}
-		return nil, errors.Errorf("unnest() only supports single-element arrays")
+
+		var i = 0
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			defer func() {
+				i++
+			}()
+
+			if i >= len(valArr) {
+				return nil, io.EOF
+			}
+			return sql.Row{valArr[i]}, nil
+		}), nil
 	},
 }

@@ -17,14 +17,30 @@ package ast
 import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	pgnodes "github.com/dolthub/doltgresql/server/node"
+
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
 // nodeCreateExtension handles *tree.CreateExtension nodes.
 func nodeCreateExtension(ctx *Context, node *tree.CreateExtension) (vitess.Statement, error) {
-	if node == nil {
-		return nil, nil
+	if len(node.Schema) > 0 {
+		return NotYetSupportedError("SCHEMA is not yet supported")
 	}
-
-	return NotYetSupportedError("CREATE EXTENSION is not yet supported")
+	if len(node.Version) > 0 {
+		return NotYetSupportedError("VERSION is not yet supported")
+	}
+	if node.Cascade {
+		return NotYetSupportedError("CASCADE is not yet supported")
+	}
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewCreateExtension(
+			string(node.Name),
+			node.IfNotExists,
+			node.Schema,
+			node.Version,
+			node.Cascade,
+		),
+		Children: nil,
+	}, nil
 }

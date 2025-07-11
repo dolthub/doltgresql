@@ -23,6 +23,111 @@ import (
 func TestAggregateFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "bool_and",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (pk INT primary key, v1 BOOLEAN, v2 BOOLEAN);`,
+				`INSERT INTO t1 VALUES (1, true, false), (2, true, true), (3, true, true);`,
+				`CREATE TABLE t2 (v1 BOOLEAN);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT bool_and(v1), bool_and(v2) FROM t1;`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query: `SELECT bool_and(v1 and v2) FROM t1;`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(v1 and v2) FROM t1 where v1 and v2;`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(v1) FROM t1 where pk > 10;`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Skip:  true, // building a values-derived table's type fails here, postgres is more permissive
+					Query: `SELECT bool_and(a) FROM (VALUES(true),(false),(null)) r(a);`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(a) FROM (VALUES(true),(false),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(a) FROM (VALUES(null::bool),(true),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_and(v1) FROM t2`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "bool_or",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (pk INT primary key, v1 BOOLEAN, v2 BOOLEAN);`,
+				`INSERT INTO t1 VALUES (1, false, false), (2, true, true), (3, true, false);`,
+				`CREATE TABLE t2 (v1 BOOLEAN);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT bool_or(v1), bool_or(v2) FROM t1;`,
+					Expected: []sql.Row{{"t", "t"}},
+				},
+				{
+					Query:    `SELECT bool_or(v1), bool_or(v2) FROM t1 where pk <> 2;`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query: `SELECT bool_or(v1 and v2) FROM t1;`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_or(v1) FROM t1 where pk > 10;`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: `SELECT bool_or(a) FROM (VALUES(true),(false),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+				{
+					Query: `SELECT bool_or(a) FROM (VALUES(null::bool),(false),(null::bool)) r(a);`,
+					Expected: []sql.Row{
+						{"f"},
+					},
+				},
+				{
+					Query: `SELECT bool_or(v1) FROM t2`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+			},
+		},
+		{
 			Name: "array_agg",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (pk INT primary key, t timestamp, v varchar, f float[]);`,
@@ -175,7 +280,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with subquery correlation
 				{
-					Skip:  true, // incorrect result
 					Query: `SELECT category, array_agg(name ORDER BY (SELECT COUNT(*) FROM test_data t2 WHERE t2.category = test_data.category AND t2.age < test_data.age)) FROM test_data GROUP BY category ORDER BY category;`,
 					Expected: []sql.Row{
 						{"A", "{Charlie,Alice,Frank}"},
@@ -199,7 +303,6 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with aggregated values in grouped context
 				{
-					Skip:  true, // incorrect result
 					Query: `SELECT category, array_agg(name ORDER BY score - (SELECT AVG(score) FROM test_data t2 WHERE t2.category = test_data.category)) FROM test_data GROUP BY category ORDER BY category;`,
 					Expected: []sql.Row{
 						{"A", "{Frank,Charlie,Alice}"},
@@ -226,6 +329,44 @@ func TestAggregateFunctions(t *testing.T) {
 					Query: `SELECT array_agg(name ORDER BY age > 27, age) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Charlie,Alice,Frank,Diana,Bob,Eve}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "array agg with case statement",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk INT primary key, v1 INT, v2 INT);",
+				"INSERT INTO t1 VALUES (1, 10, 20), (2, 30, 40), (3, 50, 60);",
+				"CREATE TABLE t2 (pk INT primary key, v1 INT, v2 TEXT);",
+				"INSERT INTO t2 VALUES (1, 10, 'a'), (2, 20, 'b'), (3, 30, 'c');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1 ELSE NULL END) FROM t1;`,
+					Expected: []sql.Row{
+						{"{NULL,30,50}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(CASE WHEN v1 >= 20 THEN v2 ELSE NULL END) FROM t2;`,
+					Expected: []sql.Row{
+						{"{NULL,b,c}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1::text ELSE v2 END) FROM t2;`,
+					Expected: []sql.Row{
+						{"{a,b,30}"},
+					},
+				},
+				{
+					// Panic on type mixing, the logic for mixed types is hard-coded in GMS plan builder, needs
+					// to be configurable. Postgres rejects this plan because of the type differences
+					Skip:  true,
+					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1 ELSE v2 END) FROM t2;`,
+					Expected: []sql.Row{
+						{"{a,b,30}"},
 					},
 				},
 			},
@@ -1063,7 +1204,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing2'::regclass;`,
 					Expected: []sql.Row{
-						{"FOREIGN KEY testing2_pktesting_fkey (pktesting) REFERENCES testing (pk)"},
+						{"FOREIGN KEY (pktesting) REFERENCES testing(pk)"},
 						{"PRIMARY KEY (pk)"},
 					},
 				},
@@ -1074,8 +1215,10 @@ func TestSystemInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					Query:       `SELECT pg_get_constraintdef(oid, true) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
-					ExpectedErr: "pretty printing is not yet supported",
+					Query: `SELECT pg_get_constraintdef(oid, true) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
+					Expected: []sql.Row{
+						{"PRIMARY KEY (pk1, pk2)"},
+					},
 				},
 				{
 					Query: `SELECT pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
@@ -1263,7 +1406,6 @@ func TestArrayFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Skip:             true, // TODO: Should return no rows instead of empty row
 					Query:            `SELECT unnest(val1) FROM testing WHERE id=1;`,
 					ExpectedColNames: []string{"unnest"},
 					Expected:         []sql.Row{},
@@ -1274,7 +1416,6 @@ func TestArrayFunctions(t *testing.T) {
 					Expected:         []sql.Row{{1}},
 				},
 				{
-					Skip:     true, // TODO: Support unnesting multiple values
 					Query:    `SELECT unnest(val1) FROM testing WHERE id=3;`,
 					Expected: []sql.Row{{1}, {2}},
 				},
@@ -2646,4 +2787,227 @@ func TestSelectFromFunctions(t *testing.T) {
 			},
 		},
 	})
+}
+
+func TestSetReturningFunctions(t *testing.T) {
+	RunScripts(
+		t,
+		[]ScriptTest{
+			{
+				Name: "generate_series",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT generate_series(1,3)`,
+						Expected: []sql.Row{{1}, {2}, {3}},
+					},
+					{
+						Query:    `SELECT generate_series(1,6,2)`,
+						Expected: []sql.Row{{1}, {3}, {5}},
+					},
+					{
+						Query: `SELECT generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
+						Expected: []sql.Row{
+							{"2008-03-01 00:00:00"},
+							{"2008-03-01 10:00:00"},
+							{"2008-03-01 20:00:00"},
+							{"2008-03-02 06:00:00"},
+						},
+					},
+				},
+			},
+			{
+				Name: "nested generate_series",
+				// Nested SRF expressions cause an infinite loop, skipped in regression tests.
+				// Challenging to fix with the current expression eval architecture and very marginal as a use case.
+				Skip: true,
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `SELECT generate_series(1, generate_series(1, 3))`,
+						Expected: []sql.Row{
+							{1}, {1}, {2}, {1}, {2}, {3},
+						},
+					},
+				},
+			},
+			{
+				Name: "limit, offset, sort",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `SELECT a, generate_series(1,2) FROM (VALUES(1),(2),(3)) r(a) LIMIT 2 OFFSET 2;`,
+						Expected: []sql.Row{
+							{2, 1},
+							{2, 2},
+						},
+					},
+					{
+						Query: `SELECT a, generate_series(1,2) FROM (VALUES(1),(2),(3)) r(a) ORDER BY 1;`,
+						Expected: []sql.Row{
+							{1, 1},
+							{1, 2},
+							{2, 1},
+							{2, 2},
+							{3, 1},
+							{3, 2},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_series with table",
+				SetUpScript: []string{
+					"CREATE TABLE t1 (pk INT primary key, v1 INT);",
+					"INSERT INTO t1 VALUES (1, 1), (2, 2), (3, 3);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `SELECT generate_series(1,3), pk from t1`,
+						Expected: []sql.Row{
+							{1, 1},
+							{2, 1},
+							{3, 1},
+							{1, 2},
+							{2, 2},
+							{3, 2},
+							{1, 3},
+							{2, 3},
+							{3, 3},
+						},
+					},
+					{
+						Query: `SELECT generate_series(1,3) + pk, pk from t1`,
+						Expected: []sql.Row{
+							{2, 1},
+							{3, 1},
+							{4, 1},
+							{3, 2},
+							{4, 2},
+							{5, 2},
+							{4, 3},
+							{5, 3},
+							{6, 3},
+						},
+					},
+				},
+			},
+			{
+				Name: "set returning function as table function: generate_series",
+				Skip: true, // select * from functions does not work yet
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `select * from generate_series(1,3)`,
+						Expected: []sql.Row{{1}, {2}, {3}},
+					},
+					{
+						Query:    `select sum(null::int4) from generate_series(1,3);`,
+						Expected: []sql.Row{{nil}},
+					},
+					{
+						Query: `SELECT * from generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
+						Expected: []sql.Row{
+							{"2008-03-01 00:00:00"},
+							{"2008-03-01 10:00:00"},
+							{"2008-03-01 20:00:00"},
+							{"2008-03-02 06:00:00"},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_subscripts",
+				SetUpScript: []string{
+					"CREATE TABLE t1 (pk INT primary key, v1 INT[]);",
+					"INSERT INTO t1 VALUES (1, ARRAY[1, 2, 3]), (2, ARRAY[4, 5]), (3, NULL);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "select generate_subscripts(v1, 1) from t1 where pk = 1",
+						Expected: []sql.Row{
+							{1}, {2}, {3},
+						},
+					},
+					{
+						Query: "select generate_subscripts(v1, 1) + 100 from t1 where pk = 1",
+						Expected: []sql.Row{
+							{101}, {102}, {103},
+						},
+					},
+					{
+						Query:    "select generate_subscripts(v1, 1) from t1 where pk = 3",
+						Expected: []sql.Row{},
+					},
+					{
+						Query: "select generate_subscripts(v1, 1), v1 from t1",
+						Expected: []sql.Row{
+							{1, "{1,2,3}"},
+							{2, "{1,2,3}"},
+							{3, "{1,2,3}"},
+							{1, "{4,5}"},
+							{2, "{4,5}"},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_subscripts with join",
+				SetUpScript: []string{
+					"CREATE TABLE t1 (a INT[]);",
+					"CREATE TABLE t2 (b int[]);",
+					"INSERT INTO t1 VALUES (ARRAY[1]), (ARRAY[1, 2, 3])",
+					"INSERT INTO t2 VALUES (ARRAY[9,10])",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "select generate_subscripts(a, 1), a, generate_subscripts(b, 1), b from t1, t2;",
+						Expected: []sql.Row{
+							{1, "{1}", 1, "{9,10}"},
+							{nil, "{1}", 2, "{9,10}"},
+							{1, "{1,2,3}", 1, "{9,10}"},
+							{2, "{1,2,3}", 2, "{9,10}"},
+							{3, "{1,2,3}", nil, "{9,10}"},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_subscripts and generate_series combined",
+				SetUpScript: []string{
+					"CREATE TABLE t1 (a INT[]);",
+					"INSERT INTO t1 VALUES (ARRAY[1, 2, 3]), (ARRAY[4, 5]);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "select generate_subscripts(a, 1), a, generate_series(1,4) from t1;",
+						Expected: []sql.Row{
+							{1, "{1,2,3}", 1},
+							{2, "{1,2,3}", 2},
+							{3, "{1,2,3}", 3},
+							{nil, "{1,2,3}", 4},
+							{1, "{4,5}", 1},
+							{2, "{4,5}", 2},
+							{nil, "{4,5}", 3},
+							{nil, "{4,5}", 4},
+						},
+					},
+				},
+			},
+			{
+				Name: "set generation with other func calls",
+				SetUpScript: []string{
+					"CREATE sequence test_seq START WITH 1 INCREMENT BY 3;",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `SELECT generate_series(1, 5), nextval('test_seq')`,
+						Expected: []sql.Row{
+							{1, 1},
+							{2, 4},
+							{3, 7},
+							{4, 10},
+							{5, 13},
+						},
+					},
+				},
+			},
+		},
+	)
 }

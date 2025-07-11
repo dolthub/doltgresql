@@ -24,6 +24,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/procedures"
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/core/extensions"
+	"github.com/dolthub/doltgresql/core/extensions/pg_extension"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -55,6 +57,7 @@ type CompiledFunction struct {
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 var _ procedures.InterpreterExpr = (*CompiledFunction)(nil)
+var _ sql.RowIterExpression = (*CompiledFunction)(nil)
 
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
@@ -202,7 +205,8 @@ func (c *CompiledFunction) OverloadString(types []*pgtypes.DoltgresType) string 
 // Type implements the interface sql.Expression.
 func (c *CompiledFunction) Type() sql.Type {
 	if len(c.callResolved) > 0 {
-		return c.callResolved[len(c.callResolved)-1]
+		rt := c.callResolved[len(c.callResolved)-1]
+		return getTypeIfRowType(c.IsSRF(), rt)
 	}
 	// Compilation must have errored, so we'll return the unknown type
 	return pgtypes.Unknown
@@ -221,6 +225,14 @@ func (c *CompiledFunction) IsNonDeterministic() bool {
 	}
 	// Compilation must have errored, so we'll just return true
 	return true
+}
+
+// IsSRF returns whether this function is a set returning function.
+func (c *CompiledFunction) IsSRF() bool {
+	if c.overload.Valid() {
+		return c.overload.Function().IsSRF()
+	}
+	return false
 }
 
 // IsVariadic returns whether this function has any variadic parameters.
@@ -306,9 +318,61 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return f.Callable(ctx, ([5]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3])
 	case InterpretedFunction:
 		return plpgsql.Call(ctx, f, c.runner, c.callResolved, args)
+	case CFunction:
+		cfunc, err := extensions.GetExtensionFunction(f.ExtensionName, f.ExtensionSymbol)
+		if err != nil {
+			return nil, err
+		}
+		cargs := make([]pg_extension.NullableDatum, len(args))
+		for i, argType := range f.ParameterTypes { // TODO: ParameterTypes does not account for variadic parameters
+			cConvFunc, ok := cConversionToDatumMap[argType.ID]
+			if !ok {
+				return nil, cerrors.Errorf("no conversion function from Go to C for `%s`", argType.ID.TypeName())
+			}
+			cargs[i], err = cConvFunc(args[i])
+			if err != nil {
+				return nil, err
+			}
+		}
+		result, isNotNull := pg_extension.CallFmgrFunction(cfunc.Ptr, cargs...)
+		if isNotNull {
+			cConvFunc, ok := cConversionFromDatumMap[f.ReturnType.ID]
+			if !ok {
+				return nil, cerrors.Errorf("no conversion function from C to Go for `%s`", f.ReturnType.ID.TypeName())
+			}
+			retVal, err := cConvFunc(result)
+			if err != nil {
+				return nil, err
+			}
+			return retVal, nil
+		} else {
+			return nil, nil
+		}
 	default:
 		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval %T", f)
 	}
+}
+
+// EvalRowIter implements sql.RowIterExpression
+func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	eval, err := c.Eval(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	switch eval := eval.(type) {
+	case sql.RowIter:
+		return eval, nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, cerrors.Errorf("function %s returned a value of type %T, which is not a RowIter", c.Name, eval)
+	}
+}
+
+// ReturnsRowIter implements the interface sql.RowIterExpression
+func (c *CompiledFunction) ReturnsRowIter() bool {
+	return c.IsSRF()
 }
 
 // Children implements the interface sql.Expression.
@@ -346,6 +410,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 			Name:         c.Name,
 			Argument:     c.Arguments[0],
 			IsStrict:     c.overload.Function().IsStrict(),
+			IsSRF:        c.IsSRF(),
 			callResolved: ([2]*pgtypes.DoltgresType)(c.callResolved),
 			function:     f,
 		}
@@ -354,6 +419,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 			Name:         c.Name,
 			Arguments:    ([2]sql.Expression)(c.Arguments),
 			IsStrict:     c.overload.Function().IsStrict(),
+			IsSRF:        c.IsSRF(),
 			callResolved: ([3]*pgtypes.DoltgresType)(c.callResolved),
 			function:     f,
 		}
@@ -362,6 +428,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 			Name:         c.Name,
 			Arguments:    ([3]sql.Expression)(c.Arguments),
 			IsStrict:     c.overload.Function().IsStrict(),
+			IsSRF:        c.IsSRF(),
 			callResolved: ([4]*pgtypes.DoltgresType)(c.callResolved),
 			function:     f,
 		}
@@ -722,3 +789,15 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []*pgtypes.Doltgre
 
 // specificFuncImpl implements the interface sql.Expression.
 func (*CompiledFunction) specificFuncImpl() {}
+
+// getTypeIfRowType returns the underlying type if it's Row Type;
+// otherwise, it returns the type that is passed.
+func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) sql.Type {
+	if isSRF {
+		// TODO: need support for used defined types
+		if typ, ok := pgtypes.IDToBuiltInDoltgresType[t.Elem]; ok {
+			return typ
+		}
+	}
+	return t
+}

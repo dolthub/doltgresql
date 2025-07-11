@@ -59,10 +59,10 @@ func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 	}
 
 	return &pgIndexRowIter{
-		indexes: pgCatalogCache.indexes,
-		idxOIDs: pgCatalogCache.indexOIDs,
-		tblOIDs: pgCatalogCache.indexTableOIDs,
-		idx:     0,
+		indexes:      pgCatalogCache.indexes,
+		tableSchemas: pgCatalogCache.tableSchemas,
+		idxOIDs:      pgCatalogCache.indexOIDs,
+		tblOIDs:      pgCatalogCache.indexTableOIDs,
 	}, nil
 }
 
@@ -94,17 +94,18 @@ var pgIndexSchema = sql.Schema{
 	{Name: "indkey", Type: pgtypes.Int16Array, Default: nil, Nullable: false, Source: PgIndexName},     // TODO: type int2vector
 	{Name: "indcollation", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgIndexName}, // TODO: type oidvector
 	{Name: "indclass", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgIndexName},     // TODO: type oidvector
-	{Name: "indoption", Type: pgtypes.Int16Array, Default: nil, Nullable: false, Source: PgIndexName},  // TODO: type int2vector
+	{Name: "indoption", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgIndexName},        // TODO: type int2vector. Declared as the serialized form so it can be read by clients expecting text, but this is a hacky temp solution
 	{Name: "indexprs", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName},          // TODO: type pg_node_tree, collation C
 	{Name: "indpred", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName},           // TODO: type pg_node_tree, collation C
 }
 
 // pgIndexRowIter is the sql.RowIter for the pg_index table.
 type pgIndexRowIter struct {
-	indexes []sql.Index
-	idxOIDs []id.Id
-	tblOIDs []id.Id
-	idx     int
+	indexes      []sql.Index
+	tableSchemas map[id.Id]sql.Schema
+	idxOIDs      []id.Id
+	tblOIDs      []id.Id
+	idx          int
 }
 
 var _ sql.RowIter = (*pgIndexRowIter)(nil)
@@ -118,6 +119,13 @@ func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	index := iter.indexes[iter.idx-1]
 	tableOid := iter.tblOIDs[iter.idx-1]
 	indexOid := iter.idxOIDs[iter.idx-1]
+	schema := iter.tableSchemas[tableOid]
+
+	indKey := make([]any, len(index.Expressions()))
+	for i, expr := range index.Expressions() {
+		colName := extractColName(expr)
+		indKey[i] = int16(schema.IndexOfColName(colName)) + 1
+	}
 
 	// TODO: Fill in the rest of the pg_index columns
 	return sql.Row{
@@ -136,13 +144,20 @@ func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		true,                                     // indisready
 		true,                                     // indislive
 		false,                                    // indisreplident
-		[]any{},                                  // indkey
+		indKey,                                   // indkey
 		[]any{},                                  // indcollation
 		[]any{},                                  // indclass
-		[]any{},                                  // indoption
+		"0",                                      // indoption
 		nil,                                      // indexprs
 		nil,                                      // indpred
 	}, nil
+}
+
+func extractColName(expr string) string {
+	// TODO: this breaks for column names that contain a `.`, but this is a problem that happens
+	//  throughout index analysis in the engine
+	lastDot := strings.LastIndex(expr, ".")
+	return expr[lastDot+1:]
 }
 
 // Close implements the interface sql.RowIter.
@@ -159,10 +174,15 @@ func cacheIndexMetadata(ctx *sql.Context, cache *pgCatalogCache) error {
 	var indexOIDs []id.Id
 	var tableOIDs []id.Id
 
+	tableSchemas := make(map[id.Id]sql.Schema)
+
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			indexes = append(indexes, index.Item)
 			indexSchemas = append(indexSchemas, schema.Item.SchemaName())
+			if tableSchemas[table.OID.AsId()] == nil {
+				tableSchemas[table.OID.AsId()] = table.Item.Schema()
+			}
 			indexOIDs = append(indexOIDs, index.OID.AsId())
 			tableOIDs = append(tableOIDs, table.OID.AsId())
 			return true, nil
@@ -173,6 +193,7 @@ func cacheIndexMetadata(ctx *sql.Context, cache *pgCatalogCache) error {
 	}
 
 	cache.indexes = indexes
+	cache.tableSchemas = tableSchemas
 	cache.indexOIDs = indexOIDs
 	cache.indexTableOIDs = tableOIDs
 	cache.indexSchemas = indexSchemas
