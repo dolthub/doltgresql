@@ -31,15 +31,23 @@ func initBinaryBitOr() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryBitOr, int8or)
 }
 
+// int2or_callable represents the PostgreSQL function of the same name, taking the same parameters.
+func int2or_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	return int16(val1.(int16) | val2.(int16)), nil
+}
+
 // int2or represents the PostgreSQL function of the same name, taking the same parameters.
 var int2or = framework.Function2{
 	Name:       "int2or",
 	Return:     pgtypes.Int16,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int16, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return int16(val1.(int16) | val2.(int16)), nil
-	},
+	Callable:   int2or_callable,
+}
+
+// int4or_callable represents the PostgreSQL function of the same name, taking the same parameters.
+func int4or_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	return int32(val1.(int32) | val2.(int32)), nil
 }
 
 // int4or represents the PostgreSQL function of the same name, taking the same parameters.
@@ -48,9 +56,12 @@ var int4or = framework.Function2{
 	Return:     pgtypes.Int32,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return int32(val1.(int32) | val2.(int32)), nil
-	},
+	Callable:   int4or_callable,
+}
+
+// int8or_callable represents the PostgreSQL function of the same name, taking the same parameters.
+func int8or_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	return int64(val1.(int64) | val2.(int64)), nil
 }
 
 // int8or represents the PostgreSQL function of the same name, taking the same parameters.
@@ -59,7 +70,5 @@ var int8or = framework.Function2{
 	Return:     pgtypes.Int64,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return int64(val1.(int64) | val2.(int64)), nil
-	},
+	Callable:   int8or_callable,
 }
