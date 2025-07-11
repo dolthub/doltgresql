@@ -55,7 +55,7 @@ func initBinaryPlus() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, numeric_add)
 }
 
-// float4pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float4pl_callable is the callable logic for the float4pl function.
 func float4pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return val1.(float32) + val2.(float32), nil
 }
@@ -69,7 +69,7 @@ var float4pl = framework.Function2{
 	Callable:   float4pl_callable,
 }
 
-// float48pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float48pl_callable is the callable logic for the float48pl function.
 func float48pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return float64(val1.(float32)) + val2.(float64), nil
 }
@@ -83,7 +83,7 @@ var float48pl = framework.Function2{
 	Callable:   float48pl_callable,
 }
 
-// float8pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float8pl_callable is the callable logic for the float8pl function.
 func float8pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return val1.(float64) + val2.(float64), nil
 }
@@ -97,7 +97,7 @@ var float8pl = framework.Function2{
 	Callable:   float8pl_callable,
 }
 
-// float84pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float84pl_callable is the callable logic for the float84pl function.
 func float84pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return val1.(float64) + float64(val2.(float32)), nil
 }
@@ -111,7 +111,7 @@ var float84pl = framework.Function2{
 	Callable:   float84pl_callable,
 }
 
-// int2pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int2pl_callable is the callable logic for the int2pl function.
 func int2pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	result := int64(val1.(int16)) + int64(val2.(int16))
 	if result > math.MaxInt16 || result < math.MinInt16 {
@@ -129,7 +129,7 @@ var int2pl = framework.Function2{
 	Callable:   int2pl_callable,
 }
 
-// int24pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int24pl_callable is the callable logic for the int24pl function.
 func int24pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	result := int64(val1.(int16)) + int64(val2.(int32))
 	if result > math.MaxInt16 || result < math.MinInt16 {
@@ -147,7 +147,7 @@ var int24pl = framework.Function2{
 	Callable:   int24pl_callable,
 }
 
-// int28pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int28pl_callable is the callable logic for the int28pl function.
 func int28pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return plusOverflow(int64(val1.(int16)), val2.(int64))
 }
@@ -161,7 +161,7 @@ var int28pl = framework.Function2{
 	Callable:   int28pl_callable,
 }
 
-// int4pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int4pl_callable is the callable logic for the int4pl function.
 func int4pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	result := int64(val1.(int32)) + int64(val2.(int32))
 	if result > math.MaxInt32 || result < math.MinInt32 {
@@ -179,7 +179,7 @@ var int4pl = framework.Function2{
 	Callable:   int4pl_callable,
 }
 
-// int42pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int42pl_callable is the callable logic for the int42pl function.
 func int42pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	result := int64(val1.(int32)) + int64(val2.(int16))
 	if result > math.MaxInt32 || result < math.MinInt32 {
@@ -197,7 +197,7 @@ var int42pl = framework.Function2{
 	Callable:   int42pl_callable,
 }
 
-// int48pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int48pl_callable is the callable logic for the int48pl function.
 func int48pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return plusOverflow(int64(val1.(int32)), val2.(int64))
 }
@@ -211,7 +211,7 @@ var int48pl = framework.Function2{
 	Callable:   int48pl_callable,
 }
 
-// int8pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int8pl_callable is the callable logic for the int8pl function.
 func int8pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return plusOverflow(val1.(int64), val2.(int64))
 }
@@ -225,7 +225,7 @@ var int8pl = framework.Function2{
 	Callable:   int8pl_callable,
 }
 
-// int82pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int82pl_callable is the callable logic for the int82pl function.
 func int82pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return plusOverflow(val1.(int64), int64(val2.(int16)))
 }
@@ -239,7 +239,7 @@ var int82pl = framework.Function2{
 	Callable:   int82pl_callable,
 }
 
-// int84pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int84pl_callable is the callable logic for the int84pl function.
 func int84pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return plusOverflow(val1.(int64), int64(val2.(int32)))
 }
@@ -253,7 +253,7 @@ var int84pl = framework.Function2{
 	Callable:   int84pl_callable,
 }
 
-// interval_pl_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// interval_pl_callable is the callable logic for the interval_pl function.
 func interval_pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	dur1 := val1.(duration.Duration)
 	dur2 := val2.(duration.Duration)
@@ -269,7 +269,7 @@ var interval_pl = framework.Function2{
 	Callable:   interval_pl_callable,
 }
 
-// interval_pl_time_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// interval_pl_time_callable is the callable logic for the interval_pl_time function.
 func interval_pl_time_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return val2.(time.Time).Add(time.Duration(val1.(duration.Duration).Nanos())), nil
 }
@@ -283,7 +283,7 @@ var interval_pl_time = framework.Function2{
 	Callable:   interval_pl_time_callable,
 }
 
-// interval_pl_date_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// interval_pl_date_callable is the callable logic for the interval_pl_date function.
 func interval_pl_date_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
 }
@@ -297,7 +297,7 @@ var interval_pl_date = framework.Function2{
 	Callable:   interval_pl_date_callable,
 }
 
-// interval_pl_timetz_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// interval_pl_timetz_callable is the callable logic for the interval_pl_timetz function.
 func interval_pl_timetz_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	ttz := val2.(time.Time)
 	return ttz.Add(time.Duration(val1.(duration.Duration).Nanos())), nil
@@ -312,7 +312,7 @@ var interval_pl_timetz = framework.Function2{
 	Callable:   interval_pl_timetz_callable,
 }
 
-// interval_pl_timestamp_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// interval_pl_timestamp_callable is the callable logic for the interval_pl_timestamp function.
 func interval_pl_timestamp_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
 }
@@ -326,7 +326,7 @@ var interval_pl_timestamp = framework.Function2{
 	Callable:   interval_pl_timestamp_callable,
 }
 
-// interval_pl_timestamptz_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// interval_pl_timestamptz_callable is the callable logic for the interval_pl_timestamptz function.
 func interval_pl_timestamptz_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return intervalPlusNonInterval(val1.(duration.Duration), val2.(time.Time))
 }
@@ -340,7 +340,7 @@ var interval_pl_timestamptz = framework.Function2{
 	Callable:   interval_pl_timestamptz_callable,
 }
 
-// numeric_add_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// numeric_add_callable is the callable logic for the numeric_add function.
 func numeric_add_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return val1.(decimal.Decimal).Add(val2.(decimal.Decimal)), nil
 }

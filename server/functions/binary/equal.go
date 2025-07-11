@@ -76,7 +76,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, xideq)
 }
 
-// booleq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// booleq_callable is the callable logic for the booleq function.
 func booleq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Bool.Compare(ctx, val1.(bool), val2.(bool))
 	return res == 0, err
@@ -91,7 +91,7 @@ var booleq = framework.Function2{
 	Callable:   booleq_callable,
 }
 
-// bpchareq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// bpchareq_callable is the callable logic for the bpchareq function.
 func bpchareq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.BpChar.Compare(ctx, val1.(string), val2.(string))
 	return res == 0, err
@@ -106,7 +106,7 @@ var bpchareq = framework.Function2{
 	Callable:   bpchareq_callable,
 }
 
-// byteaeq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// byteaeq_callable is the callable logic for the byteaeq function.
 func byteaeq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Bytea.Compare(ctx, val1.([]byte), val2.([]byte))
 	return res == 0, err
@@ -121,7 +121,7 @@ var byteaeq = framework.Function2{
 	Callable:   byteaeq_callable,
 }
 
-// chareq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// chareq_callable is the callable logic for the chareq function.
 func chareq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.InternalChar.Compare(ctx, val1.(string), val2.(string))
 	return res == 0, err
@@ -136,7 +136,7 @@ var chareq = framework.Function2{
 	Callable:   chareq_callable,
 }
 
-// date_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// date_eq_callable is the callable logic for the date_eq function.
 func date_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Date.Compare(ctx, val1.(time.Time), val2.(time.Time))
 	return res == 0, err
@@ -151,7 +151,7 @@ var date_eq = framework.Function2{
 	Callable:   date_eq_callable,
 }
 
-// date_eq_timestamp_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// date_eq_timestamp_callable is the callable logic for the date_eq_timestamp function.
 func date_eq_timestamp_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res := val1.(time.Time).Compare(val2.(time.Time))
 	return res == 0, nil
@@ -166,7 +166,7 @@ var date_eq_timestamp = framework.Function2{
 	Callable:   date_eq_timestamp_callable,
 }
 
-// date_eq_timestamptz_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// date_eq_timestamptz_callable is the callable logic for the date_eq_timestamptz function.
 func date_eq_timestamptz_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res := val1.(time.Time).Compare(val2.(time.Time))
 	return res == 0, nil
@@ -181,7 +181,7 @@ var date_eq_timestamptz = framework.Function2{
 	Callable:   date_eq_timestamptz_callable,
 }
 
-// enum_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// enum_eq_callable is the callable logic for the enum_eq function.
 func enum_eq_callable(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	// TODO: if given types are not the same enum type, it cannot compare
 	res, err := t[0].Compare(ctx, val1, val2)
@@ -197,7 +197,7 @@ var enum_eq = framework.Function2{
 	Callable:   enum_eq_callable,
 }
 
-// float4eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float4eq_callable is the callable logic for the float4eq function.
 func float4eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Float32.Compare(ctx, val1.(float32), val2.(float32))
 	return res == 0, err
@@ -212,7 +212,7 @@ var float4eq = framework.Function2{
 	Callable:   float4eq_callable,
 }
 
-// float48eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float48eq_callable is the callable logic for the float48eq function.
 func float48eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Float64.Compare(ctx, float64(val1.(float32)), val2.(float64))
 	return res == 0, err
@@ -227,7 +227,7 @@ var float48eq = framework.Function2{
 	Callable:   float48eq_callable,
 }
 
-// float84eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float84eq_callable is the callable logic for the float84eq function.
 func float84eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Float64.Compare(ctx, val1.(float64), float64(val2.(float32)))
 	return res == 0, err
@@ -242,7 +242,7 @@ var float84eq = framework.Function2{
 	Callable:   float84eq_callable,
 }
 
-// float8eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float8eq_callable is the callable logic for the float8eq function.
 func float8eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Float64.Compare(ctx, val1.(float64), val2.(float64))
 	return res == 0, err
@@ -257,7 +257,7 @@ var float8eq = framework.Function2{
 	Callable:   float8eq_callable,
 }
 
-// int2eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int2eq_callable is the callable logic for the int2eq function.
 func int2eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Int16.Compare(ctx, val1.(int16), val2.(int16))
 	return res == 0, err
@@ -272,7 +272,7 @@ var int2eq = framework.Function2{
 	Callable:   int2eq_callable,
 }
 
-// int24eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int24eq_callable is the callable logic for the int24eq function.
 func int24eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Int32.Compare(ctx, int32(val1.(int16)), val2.(int32))
 	return res == 0, err
@@ -287,7 +287,7 @@ var int24eq = framework.Function2{
 	Callable:   int24eq_callable,
 }
 
-// int28eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int28eq_callable is the callable logic for the int28eq function.
 func int28eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Int64.Compare(ctx, int64(val1.(int16)), val2.(int64))
 	return res == 0, err
@@ -302,7 +302,7 @@ var int28eq = framework.Function2{
 	Callable:   int28eq_callable,
 }
 
-// int42eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int42eq_callable is the callable logic for the int42eq function.
 func int42eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Int32.Compare(ctx, val1.(int32), int32(val2.(int16)))
 	return res == 0, err
@@ -317,7 +317,7 @@ var int42eq = framework.Function2{
 	Callable:   int42eq_callable,
 }
 
-// int4eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int4eq_callable is the callable logic for the int4eq function.
 func int4eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Int32.Compare(ctx, val1.(int32), val2.(int32))
 	return res == 0, err
@@ -332,7 +332,7 @@ var int4eq = framework.Function2{
 	Callable:   int4eq_callable,
 }
 
-// int48eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int48eq_callable is the callable logic for the int48eq function.
 func int48eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Int64.Compare(ctx, int64(val1.(int32)), val2.(int64))
 	return res == 0, err
@@ -347,7 +347,7 @@ var int48eq = framework.Function2{
 	Callable:   int48eq_callable,
 }
 
-// int82eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int82eq_callable is the callable logic for the int82eq function.
 func int82eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Int64.Compare(ctx, val1.(int64), int64(val2.(int16)))
 	return res == 0, err
@@ -362,7 +362,7 @@ var int82eq = framework.Function2{
 	Callable:   int82eq_callable,
 }
 
-// int84eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int84eq_callable is the callable logic for the int84eq function.
 func int84eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Int64.Compare(ctx, val1.(int64), int64(val2.(int32)))
 	return res == 0, err
@@ -377,7 +377,7 @@ var int84eq = framework.Function2{
 	Callable:   int84eq_callable,
 }
 
-// int8eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int8eq_callable is the callable logic for the int8eq function.
 func int8eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Int64.Compare(ctx, val1.(int64), val2.(int64))
 	return res == 0, err
@@ -392,7 +392,7 @@ var int8eq = framework.Function2{
 	Callable:   int8eq_callable,
 }
 
-// interval_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// interval_eq_callable is the callable logic for the interval_eq function.
 func interval_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Interval.Compare(ctx, val1.(duration.Duration), val2.(duration.Duration))
 	return res == 0, err
@@ -407,7 +407,7 @@ var interval_eq = framework.Function2{
 	Callable:   interval_eq_callable,
 }
 
-// jsonb_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// jsonb_eq_callable is the callable logic for the jsonb_eq function.
 func jsonb_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.JsonB.Compare(ctx, val1.(pgtypes.JsonDocument), val2.(pgtypes.JsonDocument))
 	return res == 0, err
@@ -422,7 +422,7 @@ var jsonb_eq = framework.Function2{
 	Callable:   jsonb_eq_callable,
 }
 
-// nameeq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// nameeq_callable is the callable logic for the nameeq function.
 func nameeq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Name.Compare(ctx, val1.(string), val2.(string))
 	return res == 0, err
@@ -437,7 +437,7 @@ var nameeq = framework.Function2{
 	Callable:   nameeq_callable,
 }
 
-// nameeqtext_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// nameeqtext_callable is the callable logic for the nameeqtext function.
 func nameeqtext_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
 	return res == 0, err
@@ -452,7 +452,7 @@ var nameeqtext = framework.Function2{
 	Callable:   nameeqtext_callable,
 }
 
-// numeric_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// numeric_eq_callable is the callable logic for the numeric_eq function.
 func numeric_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Numeric.Compare(ctx, val1.(decimal.Decimal), val2.(decimal.Decimal))
 	return res == 0, err
@@ -467,7 +467,7 @@ var numeric_eq = framework.Function2{
 	Callable:   numeric_eq_callable,
 }
 
-// oideq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// oideq_callable is the callable logic for the oideq function.
 func oideq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Oid.Compare(ctx, val1.(id.Id), val2.(id.Id))
 	return res == 0, err
@@ -482,7 +482,7 @@ var oideq = framework.Function2{
 	Callable:   oideq_callable,
 }
 
-// texteqname_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// texteqname_callable is the callable logic for the texteqname function.
 func texteqname_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
 	return res == 0, err
@@ -497,7 +497,7 @@ var texteqname = framework.Function2{
 	Callable:   texteqname_callable,
 }
 
-// text_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// text_eq_callable is the callable logic for the text_eq function.
 func text_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Text.Compare(ctx, val1, val2)
 	return res == 0, err
@@ -512,7 +512,7 @@ var text_eq = framework.Function2{
 	Callable:   text_eq_callable,
 }
 
-// record_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// record_eq_callable is the callable logic for the record_eq function.
 func record_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return compare.CompareRecords(ctx, framework.Operator_BinaryEqual, val1, val2)
 }
@@ -526,7 +526,7 @@ var record_eq = framework.Function2{
 	Callable:   record_eq_callable,
 }
 
-// time_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// time_eq_callable is the callable logic for the time_eq function.
 func time_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Time.Compare(ctx, val1.(time.Time), val2.(time.Time))
 	return res == 0, err
@@ -541,7 +541,7 @@ var time_eq = framework.Function2{
 	Callable:   time_eq_callable,
 }
 
-// timestamp_eq_date_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// timestamp_eq_date_callable is the callable logic for the timestamp_eq_date function.
 func timestamp_eq_date_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res := val1.(time.Time).Compare(val2.(time.Time))
 	return res == 0, nil
@@ -556,7 +556,7 @@ var timestamp_eq_date = framework.Function2{
 	Callable:   timestamp_eq_date_callable,
 }
 
-// timestamp_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// timestamp_eq_callable is the callable logic for the timestamp_eq function.
 func timestamp_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Timestamp.Compare(ctx, val1.(time.Time), val2.(time.Time))
 	return res == 0, err
@@ -571,7 +571,7 @@ var timestamp_eq = framework.Function2{
 	Callable:   timestamp_eq_callable,
 }
 
-// timestamp_eq_timestamptz_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// timestamp_eq_timestamptz_callable is the callable logic for the timestamp_eq_timestamptz function.
 func timestamp_eq_timestamptz_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.TimestampTZ.Compare(ctx, val1.(time.Time), val2.(time.Time))
 	return res == 0, err
@@ -586,7 +586,7 @@ var timestamp_eq_timestamptz = framework.Function2{
 	Callable:   timestamp_eq_timestamptz_callable,
 }
 
-// timestamptz_eq_date_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// timestamptz_eq_date_callable is the callable logic for the timestamptz_eq_date function.
 func timestamptz_eq_date_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res := val1.(time.Time).Compare(val2.(time.Time))
 	return res == 0, nil
@@ -601,7 +601,7 @@ var timestamptz_eq_date = framework.Function2{
 	Callable:   timestamptz_eq_date_callable,
 }
 
-// timestamptz_eq_timestamp_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// timestamptz_eq_timestamp_callable is the callable logic for the timestamptz_eq_timestamp function.
 func timestamptz_eq_timestamp_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.TimestampTZ.Compare(ctx, val1.(time.Time), val2.(time.Time))
 	return res == 0, err
@@ -616,7 +616,7 @@ var timestamptz_eq_timestamp = framework.Function2{
 	Callable:   timestamptz_eq_timestamp_callable,
 }
 
-// timestamptz_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// timestamptz_eq_callable is the callable logic for the timestamptz_eq function.
 func timestamptz_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.TimestampTZ.Compare(ctx, val1.(time.Time), val2.(time.Time))
 	return res == 0, err
@@ -631,7 +631,7 @@ var timestamptz_eq = framework.Function2{
 	Callable:   timestamptz_eq_callable,
 }
 
-// timetz_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// timetz_eq_callable is the callable logic for the timetz_eq function.
 func timetz_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.TimeTZ.Compare(ctx, val1.(time.Time), val2.(time.Time))
 	return res == 0, err
@@ -646,7 +646,7 @@ var timetz_eq = framework.Function2{
 	Callable:   timetz_eq_callable,
 }
 
-// uuid_eq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// uuid_eq_callable is the callable logic for the uuid_eq function.
 func uuid_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Uuid.Compare(ctx, val1.(uuid.UUID), val2.(uuid.UUID))
 	return res == 0, err
@@ -661,7 +661,7 @@ var uuid_eq = framework.Function2{
 	Callable:   uuid_eq_callable,
 }
 
-// xideqint4_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// xideqint4_callable is the callable logic for the xideqint4 function.
 func xideqint4_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	// TODO: investigate the edge cases
 	res, err := pgtypes.Int64.Compare(ctx, int64(val1.(uint32)), int64(val2.(int32)))
@@ -677,7 +677,7 @@ var xideqint4 = framework.Function2{
 	Callable:   xideqint4_callable,
 }
 
-// xideq_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// xideq_callable is the callable logic for the xideq function.
 func xideq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Xid.Compare(ctx, val1.(uint32), val2.(uint32))
 	return res == 0, err

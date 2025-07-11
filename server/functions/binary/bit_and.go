@@ -31,7 +31,7 @@ func initBinaryBitAnd() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryBitAnd, int8and)
 }
 
-// int2and_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int2and_callable is the callable logic for the int2and function.
 func int2and_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return int16(val1.(int16) & val2.(int16)), nil
 }
@@ -45,7 +45,7 @@ var int2and = framework.Function2{
 	Callable:   int2and_callable,
 }
 
-// int4and_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int4and_callable is the callable logic for the int4and function.
 func int4and_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return int32(val1.(int32) & val2.(int32)), nil
 }
@@ -59,7 +59,7 @@ var int4and = framework.Function2{
 	Callable:   int4and_callable,
 }
 
-// int8and_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int8and_callable is the callable logic for the int8and function.
 func int8and_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return int64(val1.(int64) & val2.(int64)), nil
 }

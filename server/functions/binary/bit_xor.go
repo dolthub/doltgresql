@@ -31,7 +31,7 @@ func initBinaryBitXor() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryBitXor, int8xor)
 }
 
-// int2xor_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int2xor_callable is the callable logic for the int2xor function.
 func int2xor_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return int16(val1.(int16) ^ val2.(int16)), nil
 }
@@ -45,7 +45,7 @@ var int2xor = framework.Function2{
 	Callable:   int2xor_callable,
 }
 
-// int4xor_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int4xor_callable is the callable logic for the int4xor function.
 func int4xor_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return int32(val1.(int32) ^ val2.(int32)), nil
 }
@@ -59,7 +59,7 @@ var int4xor = framework.Function2{
 	Callable:   int4xor_callable,
 }
 
-// int8xor_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int8xor_callable is the callable logic for the int8xor function.
 func int8xor_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return int64(val1.(int64) ^ val2.(int64)), nil
 }

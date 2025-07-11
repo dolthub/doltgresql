@@ -47,7 +47,7 @@ func initBinaryDivide() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryDivide, numeric_div)
 }
 
-// float4div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float4div_callable is the callable logic for the float4div function.
 func float4div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float32) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -64,7 +64,7 @@ var float4div = framework.Function2{
 	Callable:   float4div_callable,
 }
 
-// float48div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float48div_callable is the callable logic for the float48div function.
 func float48div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float64) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -81,7 +81,7 @@ var float48div = framework.Function2{
 	Callable:   float48div_callable,
 }
 
-// float8div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float8div_callable is the callable logic for the float8div function.
 func float8div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float64) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -98,7 +98,7 @@ var float8div = framework.Function2{
 	Callable:   float8div_callable,
 }
 
-// float84div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// float84div_callable is the callable logic for the float84div function.
 func float84div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float32) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -115,7 +115,7 @@ var float84div = framework.Function2{
 	Callable:   float84div_callable,
 }
 
-// int2div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int2div_callable is the callable logic for the int2div function.
 func int2div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int16) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -132,7 +132,7 @@ var int2div = framework.Function2{
 	Callable:   int2div_callable,
 }
 
-// int24div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int24div_callable is the callable logic for the int24div function.
 func int24div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int32) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -149,7 +149,7 @@ var int24div = framework.Function2{
 	Callable:   int24div_callable,
 }
 
-// int28div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int28div_callable is the callable logic for the int28div function.
 func int28div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int64) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -166,7 +166,7 @@ var int28div = framework.Function2{
 	Callable:   int28div_callable,
 }
 
-// int4div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int4div_callable is the callable logic for the int4div function.
 func int4div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int32) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -183,7 +183,7 @@ var int4div = framework.Function2{
 	Callable:   int4div_callable,
 }
 
-// int42div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int42div_callable is the callable logic for the int42div function.
 func int42div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int16) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -200,7 +200,7 @@ var int42div = framework.Function2{
 	Callable:   int42div_callable,
 }
 
-// int48div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int48div_callable is the callable logic for the int48div function.
 func int48div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int64) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -217,7 +217,7 @@ var int48div = framework.Function2{
 	Callable:   int48div_callable,
 }
 
-// int8div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int8div_callable is the callable logic for the int8div function.
 func int8div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int64) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -234,7 +234,7 @@ var int8div = framework.Function2{
 	Callable:   int8div_callable,
 }
 
-// int82div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int82div_callable is the callable logic for the int82div function.
 func int82div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int16) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -251,7 +251,7 @@ var int82div = framework.Function2{
 	Callable:   int82div_callable,
 }
 
-// int84div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// int84div_callable is the callable logic for the int84div function.
 func int84div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int32) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -268,7 +268,7 @@ var int84div = framework.Function2{
 	Callable:   int84div_callable,
 }
 
-// interval_div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// interval_div_callable is the callable logic for the interval_div function.
 func interval_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float64) == 0 {
 		return nil, errors.Errorf("division by zero")
@@ -285,7 +285,7 @@ var interval_div = framework.Function2{
 	Callable:   interval_div_callable,
 }
 
-// numeric_div_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// numeric_div_callable is the callable logic for the numeric_div function.
 func numeric_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(decimal.Decimal).Equal(decimal.Zero) {
 		return nil, errors.Errorf("division by zero")

@@ -36,7 +36,7 @@ func initBinaryConcatenate() {
 	// TODO: array_append, array_cat, array_prepend, bitcat, tsquery_or, tsvector_concat
 }
 
-// anytextcat_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// anytextcat_callable is the callable logic for the anytextcat function.
 func anytextcat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	valType := paramsAndReturn[0]
 	val1String, err := valType.IoOutput(ctx, val1)
@@ -55,7 +55,7 @@ var anytextcat = framework.Function2{
 	Callable:   anytextcat_callable,
 }
 
-// byteacat_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// byteacat_callable is the callable logic for the byteacat function.
 func byteacat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	v1 := val1.([]byte)
 	v2 := val2.([]byte)
@@ -74,7 +74,7 @@ var byteacat = framework.Function2{
 	Callable:   byteacat_callable,
 }
 
-// jsonb_concat_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// jsonb_concat_callable is the callable logic for the jsonb_concat function.
 func jsonb_concat_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
 	val1 := val1Interface.(pgtypes.JsonDocument).Value
 	val2 := val2Interface.(pgtypes.JsonDocument).Value
@@ -131,7 +131,7 @@ var jsonb_concat = framework.Function2{
 	Callable:   jsonb_concat_callable,
 }
 
-// textanycat_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// textanycat_callable is the callable logic for the textanycat function.
 func textanycat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	valType := paramsAndReturn[1]
 	val2String, err := valType.IoOutput(ctx, val2)
@@ -150,7 +150,7 @@ var textanycat = framework.Function2{
 	Callable:   textanycat_callable,
 }
 
-// textcat_callable represents the PostgreSQL function of the same name, taking the same parameters.
+// textcat_callable is the callable logic for the textcat function.
 func textcat_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return val1.(string) + val2.(string), nil
 }
