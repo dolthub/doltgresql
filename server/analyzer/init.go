@@ -16,8 +16,11 @@ package analyzer
 
 import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
+
+	pgexpression "github.com/dolthub/doltgresql/server/expression"
 )
 
 // IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
@@ -104,6 +107,8 @@ func initEngine() {
 	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
 
 	planbuilder.IsAggregateFunc = IsAggregateFunc
+
+	expression.DefaultExpressionFactory = pgexpression.PostgresExpressionFactory{}
 }
 
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by

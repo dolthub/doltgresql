@@ -53,7 +53,7 @@ var record_out = framework.Function1{
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		values, ok := val.([]pgtypes.RecordValue)
 		if !ok {
-			return nil, fmt.Errorf("expected []any, but got %T", val)
+			return nil, fmt.Errorf("expected []RecordValue, but got %T", val)
 		}
 		return pgtypes.RecordToString(ctx, values)
 	},
@@ -79,7 +79,7 @@ var record_send = framework.Function1{
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		values, ok := val.([]pgtypes.RecordValue)
 		if !ok {
-			return nil, fmt.Errorf("expected []any, but got %T", val)
+			return nil, fmt.Errorf("expected []RecordValue, but got %T", val)
 		}
 		output, err := pgtypes.RecordToString(ctx, values)
 		if err != nil {
