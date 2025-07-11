@@ -19,10 +19,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 )
 
-func init() {
-	expression.DefaultExpressionFactory = PostgresExpressionFactory{}
-}
-
 // PostgresExpressionFactory implements the expression.ExpressionFactory interface and
 // allows callers to produce expressions that have custom behavior for Postgres.
 type PostgresExpressionFactory struct{}
