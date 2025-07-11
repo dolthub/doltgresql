@@ -1122,7 +1122,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.ValidationBehavior> opt_validate_behavior
 
 %type <str> opt_owner opt_template opt_encoding opt_strategy opt_locale opt_lc_collate opt_lc_ctype opt_icu_locale
-%type <str> opt_icu_rules opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace opt_using_index_tablespace
+%type <str> opt_icu_rules opt_locale_provider opt_collation_version opt_tablespace opt_using_index_tablespace
 
 %type <tree.IsolationLevel> transaction_iso_level
 %type <tree.UserPriority> transaction_user_priority
@@ -1203,7 +1203,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.NameList> name_list opt_name_list privilege_list
 %type <[]int32> opt_array_bounds
 %type <tree.From> from_clause
-%type <tree.TableExprs> from_list rowsfrom_list opt_from_list
+%type <tree.TableExprs> from_list opt_from_list
 %type <tree.TablePatterns> table_pattern_list single_table_pattern_list
 %type <tree.TableNames> table_name_list opt_locked_rels opt_inherits
 %type <tree.Exprs> expr_list opt_expr_list tuple1_ambiguous_values tuple1_unambiguous_values
