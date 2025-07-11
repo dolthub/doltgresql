@@ -173,11 +173,16 @@ func RecordToString(ctx *sql.Context, fields []RecordValue) (any, error) {
 			continue
 		}
 
-		str, err := value.Type.IoOutput(ctx, value.Value)
+		doltgresType, ok := value.Type.(*DoltgresType)
+		if !ok {
+			return nil, fmt.Errorf(`expected *DoltgresType but found: %T`, value.Type)
+		}
+
+		str, err := doltgresType.IoOutput(ctx, value.Value)
 		if err != nil {
 			return "", err
 		}
-		if value.Type.ID == Bool.ID {
+		if doltgresType.ID == Bool.ID {
 			str = string(str[0])
 		}
 
