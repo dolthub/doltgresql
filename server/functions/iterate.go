@@ -413,7 +413,7 @@ func RunCallback(ctx *sql.Context, internalID id.Id, callbacks Callbacks) error 
 	if err != nil {
 		return err
 	}
-	
+
 	if currentSchemaDatabase, ok := currentDatabase.(sql.SchemaDatabase); ok {
 		schemas, err := currentSchemaDatabase.AllSchemas(ctx)
 		if err != nil {
