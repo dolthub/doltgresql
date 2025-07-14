@@ -16,6 +16,7 @@ package _go
 
 import (
 	"testing"
+	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/assert"
@@ -82,7 +83,60 @@ var preparedStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Integer insert",
+		Name: "Integer insert with string bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{"1", "2", "3", "4"},
+			},
+			{
+				Query: "SELECT * FROM test order by pk;",
+				Expected: []sql.Row{
+					{1, 2},
+					{3, 4},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{"2"},
+				Expected: []sql.Row{
+					{1, 2},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{"3"},
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 + $1 = $2;",
+				BindVars: []any{"1", "3"},
+				Expected: []sql.Row{
+					{1, 2},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE pk + v1 = $1;",
+				BindVars: []any{"3"},
+				Expected: []sql.Row{
+					{1, 2},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1::integer + $2::integer;",
+				BindVars: []any{"1", "3"},
+				Expected: []sql.Row{
+					{3, 4},
+				},
+			},
+		},
+	},
+	{
+		Name: "Integer insert with binary bindvars",
 		SetUpScript: []string{
 			"drop table if exists test",
 			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
@@ -270,7 +324,48 @@ var preparedStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Float insert",
+		Name: "Float insert with string bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, f1 DOUBLE PRECISION);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{"1", "1.1", "3", "3.3"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY 1;",
+				Expected: []sql.Row{
+					{1, 1.1},
+					{3, 3.3},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE f1 = $1;",
+				BindVars: []any{"1.1"},
+				Expected: []sql.Row{
+					{1, 1.1},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE f1 + $1 = $2;",
+				BindVars: []any{"1.0", "2.1"},
+				Expected: []sql.Row{
+					{1, 1.1},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE f1 = $1::decimal + $2::decimal;",
+				BindVars: []any{"1.0", "0.1"},
+				Expected: []sql.Row{
+					{1, 1.1},
+				},
+			},
+		},
+	},
+	{
+		Name: "Float insert with binary bindvars",
 		SetUpScript: []string{
 			"drop table if exists test",
 			"CREATE TABLE test (pk BIGINT PRIMARY KEY, f1 DOUBLE PRECISION);",
@@ -358,7 +453,7 @@ var preparedStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Date type insert, update, delete",
+		Name: "Date insert, update, delete with string bindvars",
 		SetUpScript: []string{
 			"drop table if exists test",
 			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 DATE);",
@@ -366,7 +461,7 @@ var preparedStatementTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
-				BindVars: []any{1, "2022-02-02", 3, "2024-04-01 -07"},
+				BindVars: []any{"1", "2022-02-02", "3", "2024-04-01 -07"},
 			},
 			{
 				Query: "SELECT * FROM test order by pk;",
@@ -389,11 +484,64 @@ var preparedStatementTests = []ScriptTest{
 			},
 			{
 				Query:    "UPDATE test set v1 = $1 WHERE pk = $2;",
-				BindVars: []any{"2022-02-03", 1},
+				BindVars: []any{"2022-02-03", "1"},
 			},
 			{
 				Query:    "SELECT * FROM test WHERE v1 = $1;",
 				BindVars: []any{"2022-02-03"},
+				Expected: []sql.Row{
+					{1, "2022-02-03"},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE pk = $1;",
+				BindVars: []any{"1"},
+			},
+			{
+				Query: "SELECT * FROM test order by 1;",
+				Expected: []sql.Row{
+					{3, "2024-04-01"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Date insert, update, delete with binary bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 DATE);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, Date("2022-02-02"), 3, Date("2024-04-01")},
+			},
+			{
+				Query: "SELECT * FROM test order by pk;",
+				Expected: []sql.Row{
+					{1, "2022-02-02"},
+					{3, "2024-04-01"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{Date("2022-02-02")},
+				Expected: []sql.Row{
+					{1, "2022-02-02"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{Date("2022-02-03")},
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "UPDATE test set v1 = $1 WHERE pk = $2;",
+				BindVars: []any{Date("2022-02-03"), 1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE v1 = $1;",
+				BindVars: []any{Date("2022-02-03")},
 				Expected: []sql.Row{
 					{1, "2022-02-03"},
 				},
@@ -406,6 +554,574 @@ var preparedStatementTests = []ScriptTest{
 				Query: "SELECT * FROM test order by 1;",
 				Expected: []sql.Row{
 					{3, "2024-04-01"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Timestamp insert with string bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, t1 TIMESTAMP);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{
+					"1", "2023-01-15 14:30",
+					"2", "2024-12-25 09:15:30",
+				},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, "2023-01-15 14:30:00"},
+					{2, "2024-12-25 09:15:30"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE t1 = $1;",
+				BindVars: []any{"2023-01-15 14:30"},
+				Expected: []sql.Row{
+					{1, "2023-01-15 14:30:00"},
+				},
+			},
+			{
+				Query:    "UPDATE test SET t1 = $1 WHERE pk = $2;",
+				BindVars: []any{"2023-01-15 16:45", "1"},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE t1 = $1;",
+				BindVars: []any{"2023-01-15 16:45"},
+				Expected: []sql.Row{
+					{1, "2023-01-15 16:45:00"},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE t1 = $1;",
+				BindVars: []any{"2023-01-15 16:45"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{2, "2024-12-25 09:15:30"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Timestamp insert with binary bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, t1 TIMESTAMP);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{
+					1, Timestamp("2023-01-15 14:30:00"),
+					2, Timestamp("2024-12-25 09:15:30"),
+				},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, "2023-01-15 14:30:00"},
+					{2, "2024-12-25 09:15:30"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE t1 = $1;",
+				BindVars: []any{Timestamp("2023-01-15 14:30:00")},
+				Expected: []sql.Row{
+					{1, "2023-01-15 14:30:00"},
+				},
+			},
+			{
+				Query:    "UPDATE test SET t1 = $1 WHERE pk = $2;",
+				BindVars: []any{Timestamp("2023-01-15 16:45:00"), 1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE t1 = $1;",
+				BindVars: []any{Timestamp("2023-01-15 16:45:00")},
+				Expected: []sql.Row{
+					{1, "2023-01-15 16:45:00"},
+				},
+			},
+			{
+				Query: "DELETE FROM test WHERE t1 = $1;",
+				BindVars: []any{
+					Timestamp("2023-01-15 16:45:00")},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{2, "2024-12-25 09:15:30"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Timestamp with timezone insert with string bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, t1 TIMESTAMPTZ);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{"1", "2023-01-15 14:30:00+00", "2", "2024-12-25 09:15:30-05"},
+			},
+			{
+				Query: "SELECT pk FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1},
+					{2},
+				},
+			},
+			{
+				Query:    "SELECT pk FROM test WHERE t1 = $1;",
+				BindVars: []any{"2023-01-15 14:30:00+00"},
+				Expected: []sql.Row{
+					{1},
+				},
+			},
+		},
+	},
+	{
+		Name: "Timestamp with timezone insert with binary bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, t1 TIMESTAMPTZ);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{
+					1, time.Date(2023, 1, 15, 14, 30, 0, 0, time.UTC), // +00 timezone
+					2, time.Date(2024, 12, 25, 9, 15, 30, 0, time.FixedZone("EST", -5*60*60)), // -05 timezone
+				},
+			},
+			{
+				Query: "SELECT pk FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1},
+					{2},
+				},
+			},
+			{
+				Query:    "SELECT pk FROM test WHERE t1 = $1;",
+				BindVars: []any{time.Date(2023, 1, 15, 14, 30, 0, 0, time.UTC)},
+				Expected: []sql.Row{
+					{1},
+				},
+			},
+		},
+	},
+	{
+		Name: "Time insert with string bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, t1 TIME);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{"1", "14:30:00", "2", "09:15:30"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, "14:30:00"},
+					{2, "09:15:30"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE t1 = $1;",
+				BindVars: []any{"14:30:00"},
+				Expected: []sql.Row{
+					{1, "14:30:00"},
+				},
+			},
+			{
+				Query:    "UPDATE test SET t1 = $1 WHERE pk = $2;",
+				BindVars: []any{"16:45:00", "1"},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE t1 = $1;",
+				BindVars: []any{"16:45:00"},
+				Expected: []sql.Row{
+					{1, "16:45:00"},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE t1 = $1;",
+				BindVars: []any{"16:45:00"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{2, "09:15:30"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Time insert with binary bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, t1 TIME);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{1, time.Date(0, 1, 1, 14, 30, 0, 0, time.UTC), 2, time.Date(0, 1, 1, 9, 15, 30, 0, time.UTC)},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, "14:30:00"},
+					{2, "09:15:30"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE t1 = $1;",
+				BindVars: []any{time.Date(0, 1, 1, 14, 30, 0, 0, time.UTC)},
+				Expected: []sql.Row{
+					{1, "14:30:00"},
+				},
+			},
+			{
+				Query:    "UPDATE test SET t1 = $1 WHERE pk = $2;",
+				BindVars: []any{time.Date(0, 1, 1, 16, 45, 0, 0, time.UTC), 1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE t1 = $1;",
+				BindVars: []any{time.Date(0, 1, 1, 16, 45, 0, 0, time.UTC)},
+				Expected: []sql.Row{
+					{1, "16:45:00"},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE t1 = $1;",
+				BindVars: []any{time.Date(0, 1, 1, 16, 45, 0, 0, time.UTC)},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{2, "09:15:30"},
+				},
+			},
+		},
+	},
+	{
+		Name: "UUID insert with string bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, u1 UUID);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{"1", "550e8400-e29b-41d4-a716-446655440000", "2", "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, "550e8400-e29b-41d4-a716-446655440000"},
+					{2, "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE u1 = $1;",
+				BindVars: []any{"550e8400-e29b-41d4-a716-446655440000"},
+				Expected: []sql.Row{
+					{1, "550e8400-e29b-41d4-a716-446655440000"},
+				},
+			},
+			{
+				Query:    "UPDATE test SET u1 = $1 WHERE pk = $2;",
+				BindVars: []any{"123e4567-e89b-12d3-a456-426614174000", "1"},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE u1 = $1;",
+				BindVars: []any{"123e4567-e89b-12d3-a456-426614174000"},
+				Expected: []sql.Row{
+					{1, "123e4567-e89b-12d3-a456-426614174000"},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE u1 = $1;",
+				BindVars: []any{"123e4567-e89b-12d3-a456-426614174000"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{2, "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+				},
+			},
+		},
+	},
+	{
+		Name: "UUID insert with binary bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, u1 UUID);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "INSERT INTO test VALUES ($1, $2), ($3, $4);",
+				BindVars: []any{
+					1, UUID("550e8400-e29b-41d4-a716-446655440000"),
+					2, UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, "550e8400-e29b-41d4-a716-446655440000"},
+					{2, "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE u1 = $1;",
+				BindVars: []any{UUID("550e8400-e29b-41d4-a716-446655440000")},
+				Expected: []sql.Row{
+					{1, "550e8400-e29b-41d4-a716-446655440000"},
+				},
+			},
+			{
+				Query:    "UPDATE test SET u1 = $1 WHERE pk = $2;",
+				BindVars: []any{UUID("123e4567-e89b-12d3-a456-426614174000"), 1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE u1 = $1;",
+				BindVars: []any{UUID("123e4567-e89b-12d3-a456-426614174000")},
+				Expected: []sql.Row{
+					{1, "123e4567-e89b-12d3-a456-426614174000"},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE u1 = $1;",
+				BindVars: []any{UUID("123e4567-e89b-12d3-a456-426614174000")},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{2, "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Numeric/Decimal insert with string bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, n1 NUMERIC(10,2), n2 DECIMAL(8,3));",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2, $3), ($4, $5, $6);",
+				BindVars: []any{"1", "123.45", "67.890", "2", "999.99", "12.345"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, Numeric("123.45"), Numeric("67.890")},
+					{2, Numeric("999.99"), Numeric("12.345")},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE n1 = $1;",
+				BindVars: []any{"123.45"},
+				Expected: []sql.Row{
+					{1, Numeric("123.45"), Numeric("67.890")},
+				},
+			},
+			{
+				Query:    "UPDATE test SET n1 = $1, n2 = $2 WHERE pk = $3;",
+				BindVars: []any{"456.78", "98.765", "1"},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE n1 = $1;",
+				BindVars: []any{"456.78"},
+				Expected: []sql.Row{
+					{1, Numeric("456.78"), Numeric("98.765")},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE n2 = $1;",
+				BindVars: []any{"98.765"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{2, Numeric("999.99"), Numeric("12.345")},
+				},
+			},
+		},
+	},
+	{
+		Name: "Numeric/Decimal insert with binary bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, n1 NUMERIC(10,2), n2 DECIMAL(8,3));",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "INSERT INTO test VALUES ($1, $2, $3), ($4, $5, $6);",
+				BindVars: []any{
+					1, Numeric("123.45"), Numeric("67.890"),
+					2, Numeric("999.99"), Numeric("12.345")},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, Numeric("123.45"), Numeric("67.890")},
+					{2, Numeric("999.99"), Numeric("12.345")},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE n1 = $1;",
+				BindVars: []any{Numeric("123.45")},
+				Expected: []sql.Row{
+					{1, Numeric("123.45"), Numeric("67.890")},
+				},
+			},
+			{
+				Query:    "UPDATE test SET n1 = $1, n2 = $2 WHERE pk = $3;",
+				BindVars: []any{Numeric("456.78"), Numeric("98.765"), 1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE n1 = $1;",
+				BindVars: []any{Numeric("456.78")},
+				Expected: []sql.Row{
+					{1, Numeric("456.78"), Numeric("98.765")},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE n2 = $1;",
+				BindVars: []any{Numeric("98.765")},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{2, Numeric("999.99"), Numeric("12.345")},
+				},
+			},
+		},
+	},
+	{
+		Name: "Boolean insert with string bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, b1 BOOLEAN);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4), ($5, $6);",
+				BindVars: []any{"1", "true", "2", "false", "3", "true"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, "t"},
+					{2, "f"},
+					{3, "t"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE b1 = $1;",
+				BindVars: []any{"true"},
+				Expected: []sql.Row{
+					{1, "t"},
+					{3, "t"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE b1 = $1;",
+				BindVars: []any{"false"},
+				Expected: []sql.Row{
+					{2, "f"},
+				},
+			},
+			{
+				Query:    "UPDATE test SET b1 = $1 WHERE pk = $2;",
+				BindVars: []any{"false", "1"},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE b1 = $1 ORDER BY pk;",
+				BindVars: []any{"false"},
+				Expected: []sql.Row{
+					{1, "f"},
+					{2, "f"},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE b1 = $1;",
+				BindVars: []any{"false"},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{3, "t"},
+				},
+			},
+		},
+	},
+	{
+		Name: "Boolean insert with binary bindvars",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, b1 BOOLEAN);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2), ($3, $4), ($5, $6);",
+				BindVars: []any{1, true, 2, false, 3, true},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{1, "t"},
+					{2, "f"},
+					{3, "t"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE b1 = $1;",
+				BindVars: []any{true},
+				Expected: []sql.Row{
+					{1, "t"},
+					{3, "t"},
+				},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE b1 = $1;",
+				BindVars: []any{false},
+				Expected: []sql.Row{
+					{2, "f"},
+				},
+			},
+			{
+				Query:    "UPDATE test SET b1 = $1 WHERE pk = $2;",
+				BindVars: []any{false, 1},
+			},
+			{
+				Query:    "SELECT * FROM test WHERE b1 = $1 ORDER BY pk;",
+				BindVars: []any{false},
+				Expected: []sql.Row{
+					{1, "f"},
+					{2, "f"},
+				},
+			},
+			{
+				Query:    "DELETE FROM test WHERE b1 = $1;",
+				BindVars: []any{false},
+			},
+			{
+				Query: "SELECT * FROM test ORDER BY pk;",
+				Expected: []sql.Row{
+					{3, "t"},
 				},
 			},
 		},
