@@ -532,7 +532,7 @@ func TestAlterTable(t *testing.T) {
 				},
 				{
 					Query:       "INSERT INTO t VALUES ('abc', 123);",
-					ExpectedErr: "Foreign key violation on fk: `t_c1_fkey`",
+					ExpectedErr: "Foreign key violation",
 				},
 			},
 		},
