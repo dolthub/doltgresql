@@ -321,9 +321,19 @@ func (pgs *Collection) Map(ctx context.Context) (prolly.AddressMap, error) {
 	return pgs.underlyingMap, nil
 }
 
-// GetID implements the interface rootobject.RootObject.
-func (sequence *Sequence) GetID() objinterface.RootObjectID {
+// GetID implements the interface objinterface.RootObject.
+func (sequence *Sequence) GetID() id.Id {
+	return sequence.Id.AsId()
+}
+
+// GetRootObjectID implements the interface objinterface.RootObject.
+func (sequence *Sequence) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Sequences
+}
+
+// HasConflicts implements the interface objinterface.RootObject.
+func (sequence *Sequence) HasConflicts(ctx context.Context) (bool, error) {
+	return false, nil
 }
 
 // HashOf implements the interface rootobject.RootObject.

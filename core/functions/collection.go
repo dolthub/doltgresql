@@ -366,8 +366,18 @@ func (pgf *Collection) tableNameToID(schemaName string, formattedName string) id
 }
 
 // GetID implements the interface objinterface.RootObject.
-func (function Function) GetID() objinterface.RootObjectID {
+func (function Function) GetID() id.Id {
+	return function.ID.AsId()
+}
+
+// GetRootObjectID implements the interface objinterface.RootObject.
+func (function Function) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Functions
+}
+
+// HasConflicts implements the interface objinterface.RootObject.
+func (function Function) HasConflicts(ctx context.Context) (bool, error) {
+	return false, nil
 }
 
 // HashOf implements the interface objinterface.RootObject.

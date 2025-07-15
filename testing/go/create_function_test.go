@@ -53,6 +53,96 @@ func TestCreateFunction(t *testing.T) {
 			},
 		},
 		{
+			Name:        "Merging With Conflict",
+			Focus:       true,
+			SetUpScript: []string{`CREATE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN 'ex0_' || input; END; $$ LANGUAGE plpgsql;`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT interpreted_example('abc');",
+					Expected: []sql.Row{
+						{"ex0_abc"},
+					},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT dolt_checkout('-b', 'other')`,
+					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+				},
+				{
+					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN 'ex2_' || input; END; $$ LANGUAGE plpgsql;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT interpreted_example('abc');",
+					Expected: []sql.Row{
+						{"ex2_abc"},
+					},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT dolt_checkout('main')`,
+					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+				},
+				{
+					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN 'ex1_' || input; END; $$ LANGUAGE plpgsql;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT interpreted_example('abc');",
+					Expected: []sql.Row{
+						{"ex1_abc"},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_status;`,
+					Expected: []sql.Row{
+						{"pg_catalog.interpreted_example(text)", "f", "modified"},
+					},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query: `SELECT dolt_merge('other');`,
+					Expected: []sql.Row{
+						{`{0,1,"conflicts found"}`},
+					},
+				},
+				{
+					Query: `SELECT * FROM dolt_conflicts;`,
+					Expected: []sql.Row{
+						{"pg_catalog.interpreted_example(text)", 1},
+					},
+				},
+				{
+					Query: `SELECT base_value, our_value, our_diff_type, their_value, their_diff_type, dolt_conflict_id FROM "dolt_conflicts_interpreted_example(text)";`,
+					Expected: []sql.Row{
+						{"text", "varchar(20)", "modified", "varchar(127)", "modified", "return_type"},
+						{nil, "sql", "modified", "c", "modified", "language"},
+					},
+				},
+			},
+		},
+		{
 			Name: "Assignment",
 			SetUpScript: []string{`CREATE FUNCTION interpreted_assignment(input TEXT) RETURNS TEXT AS $$
 DECLARE
@@ -708,7 +798,7 @@ $$ LANGUAGE plpgsql;`,
 			},
 		},
 		{
-			Name: "Merging",
+			Name: "Merging No Conflict",
 			SetUpScript: []string{
 				`CREATE TABLE test(pk INT4);`,
 				`INSERT INTO test VALUES (77);`,

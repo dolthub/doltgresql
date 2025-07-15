@@ -35,10 +35,16 @@ const (
 	RootObjectID_Functions
 	RootObjectID_Triggers
 	RootObjectID_Extensions
+	RootObjectID_Conflicts
 )
 
 // Collection is a collection of root objects.
 type Collection interface {
+	// DeserializeRootObject deserializes a root object's data.
+	DeserializeRootObject(ctx context.Context, data []byte) (RootObject, error)
+	// DiffRootObjects returns a RootObjectDiff for each change made from the ancestor that is not reflected on both
+	// "ours" and "theirs".
+	DiffRootObjects(ctx context.Context, ours, theirs, ancestor RootObject) ([]RootObjectDiff, error)
 	// DropRootObject removes the given root object from the collection.
 	DropRootObject(ctx context.Context, identifier id.Id) error
 	// GetID returns the identifying ID for the Collection.

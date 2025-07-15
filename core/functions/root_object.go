@@ -22,7 +22,38 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+// DeserializeRootObject implements the interface objinterface.Collection.
+func (pgf *Collection) DeserializeRootObject(ctx context.Context, data []byte) (objinterface.RootObject, error) {
+	return DeserializeFunction(ctx, data)
+}
+
+// DiffRootObjects implements the interface objinterface.Collection.
+func (pgf *Collection) DiffRootObjects(ctx context.Context, ours, theirs, ancestor objinterface.RootObject) ([]objinterface.RootObjectDiff, error) {
+	// TODO: these are example diffs for the sake of output comparison
+	return []objinterface.RootObjectDiff{
+		{
+			Type:          pgtypes.Text,
+			FieldName:     "return_type",
+			AncestorValue: "text",
+			OurValue:      "varchar(20)",
+			TheirValue:    "varchar(127)",
+			OurChange:     objinterface.RootObjectDiffChange_Modified,
+			TheirChange:   objinterface.RootObjectDiffChange_Modified,
+		},
+		{
+			Type:          pgtypes.Text,
+			FieldName:     "language",
+			AncestorValue: nil,
+			OurValue:      "sql",
+			TheirValue:    "c",
+			OurChange:     objinterface.RootObjectDiffChange_Modified,
+			TheirChange:   objinterface.RootObjectDiffChange_Modified,
+		},
+	}, nil
+}
 
 // DropRootObject implements the interface objinterface.Collection.
 func (pgf *Collection) DropRootObject(ctx context.Context, identifier id.Id) error {

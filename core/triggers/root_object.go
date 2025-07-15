@@ -24,6 +24,17 @@ import (
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 )
 
+// DeserializeRootObject implements the interface objinterface.Collection.
+func (pgt *Collection) DeserializeRootObject(ctx context.Context, data []byte) (objinterface.RootObject, error) {
+	return DeserializeTrigger(ctx, data)
+}
+
+// DiffRootObjects implements the interface objinterface.Collection.
+func (pgt *Collection) DiffRootObjects(ctx context.Context, ours, theirs, ancestor objinterface.RootObject) ([]objinterface.RootObjectDiff, error) {
+	// TODO: implement me
+	return nil, nil
+}
+
 // DropRootObject implements the interface objinterface.Collection.
 func (pgt *Collection) DropRootObject(ctx context.Context, identifier id.Id) error {
 	if identifier.Section() != id.Section_Trigger {

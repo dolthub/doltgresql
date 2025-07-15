@@ -27,6 +27,23 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// DeserializeRootObject implements the interface objinterface.Collection.
+func (pgs *TypeCollection) DeserializeRootObject(ctx context.Context, data []byte) (objinterface.RootObject, error) {
+	t, err := pgtypes.DeserializeType(data)
+	if err != nil {
+		return nil, err
+	}
+	return TypeWrapper{
+		Type: t.(*pgtypes.DoltgresType),
+	}, nil
+}
+
+// DiffRootObjects implements the interface objinterface.Collection.
+func (pgs *TypeCollection) DiffRootObjects(ctx context.Context, ours, theirs, ancestor objinterface.RootObject) ([]objinterface.RootObjectDiff, error) {
+	// TODO: implement me
+	return nil, nil
+}
+
 // DropRootObject implements the interface objinterface.Collection.
 func (pgs *TypeCollection) DropRootObject(ctx context.Context, identifier id.Id) error {
 	if identifier.Section() != id.Section_Type {

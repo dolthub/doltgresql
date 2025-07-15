@@ -15,12 +15,42 @@
 package objinterface
 
 import (
+	"context"
+
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+
+	"github.com/dolthub/doltgresql/core/id"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // RootObject is an expanded interface on Dolt's root objects.
 type RootObject interface {
 	doltdb.RootObject
-	// GetID returns the ID associated with this root object.
-	GetID() RootObjectID
+	// GetID returns the root object ID.
+	GetID() id.Id
+	// GetRootObjectID returns the root object ID.
+	GetRootObjectID() RootObjectID
+	// Serialize returns the byte representation of the root object.
+	Serialize(ctx context.Context) ([]byte, error)
+}
+
+// RootObjectDiffChange specifies the type of change that occurred from the ancestor value.
+type RootObjectDiffChange uint8
+
+const (
+	RootObjectDiffChange_Added RootObjectDiffChange = iota
+	RootObjectDiffChange_Deleted
+	RootObjectDiffChange_Modified
+)
+
+// RootObjectDiff represents a diff between the ancestor value and our/their values. The field name uniquely identifies
+// which part of a root object that this diff covers.
+type RootObjectDiff struct {
+	Type          *pgtypes.DoltgresType
+	FieldName     string
+	AncestorValue any
+	OurValue      any
+	TheirValue    any
+	OurChange     RootObjectDiffChange
+	TheirChange   RootObjectDiffChange
 }

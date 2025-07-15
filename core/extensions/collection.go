@@ -210,8 +210,18 @@ func (ext Extension) CompareVersions(other Extension) int {
 }
 
 // GetID implements the interface objinterface.RootObject.
-func (ext Extension) GetID() objinterface.RootObjectID {
+func (ext Extension) GetID() id.Id {
+	return ext.ExtName.AsId()
+}
+
+// GetRootObjectID implements the interface objinterface.RootObject.
+func (ext Extension) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Extensions
+}
+
+// HasConflicts implements the interface objinterface.RootObject.
+func (ext Extension) HasConflicts(ctx context.Context) (bool, error) {
+	return false, nil
 }
 
 // HashOf implements the interface objinterface.RootObject.

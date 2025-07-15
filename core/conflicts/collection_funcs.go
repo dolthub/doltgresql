@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package functions
+package conflicts
 
 import (
 	"context"
@@ -23,31 +23,31 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
 
-	pgmerge "github.com/dolthub/doltgresql/core/merge"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
 
 // storage is used to read from and write to the root.
 var storage = objinterface.RootObjectSerializer{
-	Bytes:        (*serial.RootValue).FunctionsBytes,
-	RootValueAdd: serial.RootValueAddFunctions,
+	Bytes:        (*serial.RootValue).ConflictsBytes,
+	RootValueAdd: serial.RootValueAddConflicts,
 }
 
 // HandleMerge implements the interface objinterface.Collection.
 func (*Collection) HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObject, *merge.MergeStats, error) {
-	ourFunc := mro.OurRootObj.(Function)
-	theirFunc := mro.TheirRootObj.(Function)
+	// It technically doesn't make sense to merge conflicts, but we'll only error if there are differences
+	ourConflict := mro.OurRootObj.(Conflict)
+	theirConflict := mro.TheirRootObj.(Conflict)
 	// Ensure that they have the same identifier
-	if ourFunc.ID != theirFunc.ID {
-		return nil, nil, errors.Newf("attempted to merge different functions: `%s` and `%s`",
-			ourFunc.Name().String(), theirFunc.Name().String())
+	if ourConflict.ID != theirConflict.ID {
+		return nil, nil, errors.Newf("attempted to merge different conflicts: `%s` and `%s`",
+			ourConflict.Name().String(), theirConflict.Name().String())
 	}
-	ourHash, err := ourFunc.HashOf(ctx)
+	ourHash, err := ourConflict.HashOf(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	theirHash, err := theirFunc.HashOf(ctx)
+	theirHash, err := theirConflict.HashOf(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -63,12 +63,12 @@ func (*Collection) HandleMerge(ctx context.Context, mro merge.MergeRootObject) (
 			ConstraintViolations: 0,
 		}, nil
 	}
-	return pgmerge.CreateConflict(ctx, mro.RightSrc, ourFunc, theirFunc, mro.AncestorRootObj)
+	return nil, nil, errors.New("attempted to merge conflicts")
 }
 
 // LoadCollection implements the interface objinterface.Collection.
 func (*Collection) LoadCollection(ctx context.Context, root objinterface.RootValue) (objinterface.Collection, error) {
-	return LoadFunctions(ctx, root)
+	return LoadConflicts(ctx, root)
 }
 
 // LoadCollectionHash implements the interface objinterface.Collection.
@@ -80,8 +80,8 @@ func (*Collection) LoadCollectionHash(ctx context.Context, root objinterface.Roo
 	return m.HashOf(), nil
 }
 
-// LoadFunctions loads the functions collection from the given root.
-func LoadFunctions(ctx context.Context, root objinterface.RootValue) (*Collection, error) {
+// LoadConflicts loads the conflicts collection from the given root.
+func LoadConflicts(ctx context.Context, root objinterface.RootValue) (*Collection, error) {
 	m, ok, err := storage.GetProllyMap(ctx, root)
 	if err != nil {
 		return nil, err
@@ -101,8 +101,8 @@ func (*Collection) Serializer() objinterface.RootObjectSerializer {
 }
 
 // UpdateRoot implements the interface objinterface.Collection.
-func (pgf *Collection) UpdateRoot(ctx context.Context, root objinterface.RootValue) (objinterface.RootValue, error) {
-	m, err := pgf.Map(ctx)
+func (pgc *Collection) UpdateRoot(ctx context.Context, root objinterface.RootValue) (objinterface.RootValue, error) {
+	m, err := pgc.Map(ctx)
 	if err != nil {
 		return nil, err
 	}
