@@ -353,8 +353,18 @@ func (pgt *Collection) tableNameToID(schemaName string, formattedName string) id
 }
 
 // GetID implements the interface objinterface.RootObject.
-func (trigger Trigger) GetID() objinterface.RootObjectID {
+func (trigger Trigger) GetID() id.Id {
+	return trigger.ID.AsId()
+}
+
+// GetRootObjectID implements the interface objinterface.RootObject.
+func (trigger Trigger) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Triggers
+}
+
+// HasConflicts implements the interface objinterface.RootObject.
+func (trigger Trigger) HasConflicts(ctx context.Context) (bool, error) {
+	return false, nil
 }
 
 // HashOf implements the interface objinterface.RootObject.

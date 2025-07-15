@@ -14,6 +14,14 @@
 
 package merge
 
+import (
+	"context"
+
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
+)
+
 // ResolveMergeValues is a way to handle merging between "our" value and "their" value. This will always take the
 // changed value if one side has changed from the "ancestor" while the other has not. If both have changed (or the
 // ancestor does not exist), then this defers to a custom resolution function. This function is only called when both
@@ -40,4 +48,10 @@ func ResolveMergeValuesVariadic[T comparable](ourVal, theirVal, ancVal T, hasAnc
 	return ResolveMergeValues(ourVal, theirVal, ancVal, hasAncestorValue, func(t1, t2 T) T {
 		return customResolve(t1, t2)
 	})
+}
+
+// CreateConflict handles conflict creation and is declared in a different package. It is assigned here by an Init
+// function to get around import cycles.
+var CreateConflict = func(ctx context.Context, rightSrc doltdb.Rootish, ours doltdb.RootObject, theirs doltdb.RootObject, ancestor doltdb.RootObject) (doltdb.RootObject, *merge.MergeStats, error) {
+	return nil, nil, errors.New("CreateConflict was never initialized")
 }

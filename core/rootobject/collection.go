@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 
+	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
@@ -40,8 +41,77 @@ var (
 		&functions.Collection{},
 		&triggers.Collection{},
 		&extensions.Collection{},
+		&conflicts.Collection{},
 	}
 )
+
+// CreateConflict creates a conflict on the given root for the two root objects.
+func CreateConflict(ctx context.Context, rightSrc doltdb.Rootish, o doltdb.RootObject, t doltdb.RootObject, a doltdb.RootObject) (doltdb.RootObject, *merge.MergeStats, error) {
+	ours, ok1 := o.(objinterface.RootObject)
+	theirs, ok2 := t.(objinterface.RootObject)
+	if !ok1 || !ok2 {
+		return nil, nil, errors.New("unsupported object found during conflict creation")
+	}
+	ancestor, _ := a.(objinterface.RootObject) // If this is nil, then the conversion will also be nil (which is fine)
+	rightHash, err := rightSrc.HashOf()
+	if err != nil {
+		return nil, nil, err
+	}
+	if ours.GetID() != theirs.GetID() {
+		return nil, nil, errors.Errorf(`cannot create a conflict between "%s" and "%s"`,
+			ours.Name().String(), theirs.Name().String())
+	}
+	conflict := conflicts.Conflict{
+		ID:           ours.GetID(),
+		FromHash:     rightHash.String(),
+		RootObjectID: ours.GetRootObjectID(),
+		Ours:         ours,
+		Theirs:       theirs,
+		Ancestor:     ancestor,
+	}
+	diffs, err := conflict.Diffs(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(diffs) == 0 {
+		return nil, nil, errors.Errorf(`cannot create a conflict between "%s" and "%s" when no diffs are produced`,
+			ours.Name().String(), theirs.Name().String())
+	}
+	return conflict, &merge.MergeStats{
+		Operation:            merge.TableUnmodified,
+		Adds:                 0,
+		Deletes:              0,
+		Modifications:        0,
+		DataConflicts:        0,
+		SchemaConflicts:      0,
+		RootObjectConflicts:  len(diffs),
+		ConstraintViolations: 0,
+	}, nil
+}
+
+// DeserializeRootObject calls the same-named function on the collection that matches the ID that was given.
+func DeserializeRootObject(ctx context.Context, rootObjID objinterface.RootObjectID, data []byte) (objinterface.RootObject, error) {
+	if int64(rootObjID) >= int64(len(globalCollections)) {
+		return nil, errors.New("unsupported object found, please upgrade the server")
+	}
+	collection := globalCollections[rootObjID]
+	if collection == nil {
+		return nil, errors.Errorf("invalid root object ID: %d", rootObjID)
+	}
+	return collection.DeserializeRootObject(ctx, data)
+}
+
+// DiffRootObjects calls the same-named function on the collection that matches the ID that was given.
+func DiffRootObjects(ctx context.Context, rootObjID objinterface.RootObjectID, ours, theirs, ancestor objinterface.RootObject) ([]objinterface.RootObjectDiff, error) {
+	if int64(rootObjID) >= int64(len(globalCollections)) {
+		return nil, errors.New("unsupported object found, please upgrade the server")
+	}
+	collection := globalCollections[rootObjID]
+	if collection == nil {
+		return nil, errors.Errorf("invalid root object ID: %d", rootObjID)
+	}
+	return collection.DiffRootObjects(ctx, ours, theirs, ancestor)
+}
 
 // GetRootObject returns the root object that matches the given name.
 func GetRootObject(ctx context.Context, root objinterface.RootValue, tName doltdb.TableName) (objinterface.RootObject, bool, error) {
@@ -53,20 +123,48 @@ func GetRootObject(ctx context.Context, root objinterface.RootValue, tName doltd
 	return coll.GetRootObject(ctx, rawID)
 }
 
+// GetRootObjectConflicts returns the conflict root object that matches the given name.
+func GetRootObjectConflicts(ctx context.Context, root objinterface.RootValue, tName doltdb.TableName) (conflicts.Conflict, bool, error) {
+	_, rawID, objID, err := ResolveName(ctx, root, tName)
+	if err != nil || objID == objinterface.RootObjectID_None {
+		return conflicts.Conflict{}, false, err
+	}
+	coll, _ := globalCollections[objinterface.RootObjectID_Conflicts].LoadCollection(ctx, root)
+	ro, ok, err := coll.GetRootObject(ctx, rawID)
+	if err != nil || !ok {
+		return conflicts.Conflict{}, false, err
+	}
+	return ro.(conflicts.Conflict), true, nil
+}
+
 // HandleMerge handles merging root objects.
 func HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObject, *merge.MergeStats, error) {
 	if mro.OurRootObj == nil {
 		switch {
 		case mro.TheirRootObj != nil && mro.AncestorRootObj != nil:
-			return nil, &merge.MergeStats{
-				Operation:            merge.TableModified,
-				Adds:                 0,
-				Deletes:              0,
-				Modifications:        0,
-				DataConflicts:        1,
-				SchemaConflicts:      0,
-				ConstraintViolations: 0,
-			}, nil
+			theirs := mro.TheirRootObj.(objinterface.RootObject)
+			ancestor := mro.AncestorRootObj.(objinterface.RootObject)
+			rightHash, err := mro.RightSrc.HashOf()
+			if err != nil {
+				return nil, nil, err
+			}
+			return conflicts.Conflict{
+					ID:           theirs.GetID(),
+					FromHash:     rightHash.String(),
+					RootObjectID: theirs.GetRootObjectID(),
+					Ours:         nil,
+					Theirs:       theirs,
+					Ancestor:     ancestor,
+				}, &merge.MergeStats{
+					Operation:            merge.TableModified,
+					Adds:                 0,
+					Deletes:              0,
+					Modifications:        0,
+					DataConflicts:        0,
+					SchemaConflicts:      0,
+					RootObjectConflicts:  1,
+					ConstraintViolations: 0,
+				}, nil
 		case mro.TheirRootObj != nil && mro.AncestorRootObj == nil:
 			return mro.TheirRootObj, &merge.MergeStats{
 				Operation:            merge.TableAdded,
@@ -75,6 +173,7 @@ func HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObj
 				Modifications:        0,
 				DataConflicts:        0,
 				SchemaConflicts:      0,
+				RootObjectConflicts:  0,
 				ConstraintViolations: 0,
 			}, nil
 		case mro.TheirRootObj == nil && mro.AncestorRootObj != nil:
@@ -85,6 +184,7 @@ func HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObj
 				Modifications:        0,
 				DataConflicts:        0,
 				SchemaConflicts:      0,
+				RootObjectConflicts:  0,
 				ConstraintViolations: 0,
 			}, nil
 		case mro.TheirRootObj == nil && mro.AncestorRootObj == nil:
@@ -95,6 +195,7 @@ func HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObj
 				Modifications:        0,
 				DataConflicts:        0,
 				SchemaConflicts:      0,
+				RootObjectConflicts:  0,
 				ConstraintViolations: 0,
 			}, nil
 		default:
@@ -103,15 +204,29 @@ func HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObj
 	} else if mro.TheirRootObj == nil {
 		switch {
 		case mro.AncestorRootObj != nil:
-			return nil, &merge.MergeStats{
-				Operation:            merge.TableModified,
-				Adds:                 0,
-				Deletes:              0,
-				Modifications:        0,
-				DataConflicts:        1,
-				SchemaConflicts:      0,
-				ConstraintViolations: 0,
-			}, nil
+			ours := mro.OurRootObj.(objinterface.RootObject)
+			ancestor := mro.AncestorRootObj.(objinterface.RootObject)
+			rightHash, err := mro.RightSrc.HashOf()
+			if err != nil {
+				return nil, nil, err
+			}
+			return conflicts.Conflict{
+					ID:           ours.GetID(),
+					FromHash:     rightHash.String(),
+					RootObjectID: ours.GetRootObjectID(),
+					Ours:         ours,
+					Theirs:       nil,
+					Ancestor:     ancestor,
+				}, &merge.MergeStats{
+					Operation:            merge.TableModified,
+					Adds:                 0,
+					Deletes:              0,
+					Modifications:        0,
+					DataConflicts:        0,
+					SchemaConflicts:      0,
+					RootObjectConflicts:  1,
+					ConstraintViolations: 0,
+				}, nil
 		case mro.AncestorRootObj == nil:
 			return mro.OurRootObj, &merge.MergeStats{
 				Operation:            merge.TableAdded,
@@ -120,13 +235,14 @@ func HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObj
 				Modifications:        0,
 				DataConflicts:        0,
 				SchemaConflicts:      0,
+				RootObjectConflicts:  0,
 				ConstraintViolations: 0,
 			}, nil
 		default:
-			return nil, nil, errors.New("MergeRootObjects has somehow reached a default case")
+			return nil, nil, errors.New("HandleMerge has somehow reached a default case")
 		}
 	}
-	identifier := mro.OurRootObj.(objinterface.RootObject).GetID()
+	identifier := mro.OurRootObj.(objinterface.RootObject).GetRootObjectID()
 	if int64(identifier) >= int64(len(globalCollections)) {
 		return nil, nil, errors.New("unsupported root object found, please upgrade Doltgres to the latest version")
 	}
@@ -140,8 +256,8 @@ func HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObj
 // LoadAllCollections loads and returns all collections from the root.
 func LoadAllCollections(ctx context.Context, root objinterface.RootValue) ([]objinterface.Collection, error) {
 	colls := make([]objinterface.Collection, 0, len(globalCollections))
-	for _, emptyColl := range globalCollections {
-		if emptyColl == nil {
+	for i, emptyColl := range globalCollections {
+		if emptyColl == nil || i == int(objinterface.RootObjectID_Conflicts) {
 			continue
 		}
 		coll, err := emptyColl.LoadCollection(ctx, root)
@@ -163,7 +279,7 @@ func LoadCollection(ctx context.Context, root objinterface.RootValue, collection
 
 // PutRootObject adds the given root object to the respective Collection in the root, returning the updated root.
 func PutRootObject(ctx context.Context, root objinterface.RootValue, tName doltdb.TableName, rootObj objinterface.RootObject) (objinterface.RootValue, error) {
-	coll, err := LoadCollection(ctx, root, rootObj.GetID())
+	coll, err := LoadCollection(ctx, root, rootObj.GetRootObjectID())
 	if err != nil {
 		return nil, err
 	}
@@ -212,8 +328,8 @@ func ResolveName(ctx context.Context, root objinterface.RootValue, name doltdb.T
 	resolvedRawID := id.Null
 	resolvedObjID := objinterface.RootObjectID_None
 
-	for _, emptyColl := range globalCollections {
-		if emptyColl == nil {
+	for i, emptyColl := range globalCollections {
+		if emptyColl == nil || i == int(objinterface.RootObjectID_Conflicts) {
 			continue
 		}
 		coll, err := emptyColl.LoadCollection(ctx, root)
