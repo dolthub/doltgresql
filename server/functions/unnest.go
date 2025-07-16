@@ -31,7 +31,7 @@ func initUnnest() {
 // unnest represents the PostgreSQL function of the same name, taking the same parameters.
 var unnest = framework.Function1{
 	Name:       "unnest",
-	Return:     pgtypes.AnyElement, // TODO: Should return setof AnyElement
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.AnyElement),
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Strict:     true,
 	SRF:        true,

@@ -761,6 +761,10 @@ var typesTests = []ScriptTest{
 					{"1999-01-08"},
 				},
 			},
+			{
+				Query:    `SELECT date '08-Jan-99';`,
+				Expected: []sql.Row{{"1999-01-08"}},
+			},
 		},
 	},
 	{

@@ -1419,7 +1419,10 @@ func TestArrayFunctions(t *testing.T) {
 					Query:    `SELECT unnest(val1) FROM testing WHERE id=3;`,
 					Expected: []sql.Row{{1}, {2}},
 				},
-			},
+				{
+					Query:    `select * from unnest(array[1,2,3]);`,
+					Expected: []sql.Row{{1}, {2}, {3}},
+				}},
 		},
 		{
 			Name:        "array_to_string",
