@@ -167,6 +167,15 @@ func (l *intervalLexer) consumeSpaces() {
 	}
 }
 
+// Consumes any number of '@' character.
+func (l *intervalLexer) consumeAts() {
+	if l.err != nil {
+		return
+	}
+	for ; l.offset < len(l.str) && l.str[l.offset] == '@'; l.offset++ {
+	}
+}
+
 // ISO Units.
 var isoDateUnitMap = map[string]duration.Duration{
 	"D": duration.MakeDuration(0, 1, 0),
@@ -513,6 +522,8 @@ func parseDuration(s string, itm types.IntervalTypeMetadata) (duration.Duration,
 	var d duration.Duration
 	l := intervalLexer{str: s, offset: 0, err: nil}
 	l.consumeSpaces()
+	l.consumeAts()    // remove all @ characters
+	l.consumeSpaces() // remove spaces that come after @s
 
 	if l.offset == len(l.str) {
 		return d, pgerror.Newf(

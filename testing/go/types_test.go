@@ -882,7 +882,7 @@ var typesTests = []ScriptTest{
 		Name: "Interval type",
 		SetUpScript: []string{
 			"CREATE TABLE t_interval (id INTEGER primary key, v1 INTERVAL);",
-			"INSERT INTO t_interval VALUES (1, '1 day 3 hours'), (2, '23 hours 30 minutes');",
+			"INSERT INTO t_interval VALUES (1, '1 day 3 hours'), (2, '23 hours 30 minutes'), (3, '@ 1 minute');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -890,11 +890,13 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "1 day 03:00:00"},
 					{2, "23:30:00"},
+					{3, "00:01:00"},
 				},
 			},
 			{
 				Query: "SELECT * FROM t_interval ORDER BY v1;",
 				Expected: []sql.Row{
+					{3, "00:01:00"},
 					{2, "23:30:00"},
 					{1, "1 day 03:00:00"},
 				},
@@ -904,6 +906,7 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, "1", "1 day 03:00:00"},
 					{2, "2", "23:30:00"},
+					{3, "0", "00:01:00"},
 				},
 			},
 			{
