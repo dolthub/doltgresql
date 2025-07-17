@@ -184,5 +184,3 @@ require (
 )
 
 replace github.com/pganalyze/pg_query_go/v6 => github.com/dolthub/pg_query_go/v6 v6.0.0-20250702135351-29eb6bfc4ea6
-
-replace github.com/dolthub/go-mysql-server => /Users/jenniferpurevsuren/dolt_workspace/repos/go-mysql-server
