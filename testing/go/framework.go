@@ -730,6 +730,41 @@ func Numeric(str string) pgtype.Numeric {
 	return numeric
 }
 
+// Timestamp is a helper function to convert timestamp strings to pgtype.Timestamp instances. If
+// the string cannot be converted, this function will panic.
+func Timestamp(timestampStr string) (ret pgtype.Timestamp) {
+	t, err := time.Parse("2006-01-02 15:04:05", timestampStr)
+	if err != nil {
+		panic("invalid timestamp format: " + err.Error())
+	}
+	if err := ret.Scan(t); err != nil {
+		panic("failed to set pgtype.Timestamp: " + err.Error())
+	}
+	return ret
+}
+
+// Date is a helper function to convert date strings to pgtype.Date instances. If the string
+// cannot be converted, this function will panic.
+func Date(dateStr string) (d pgtype.Date) {
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		panic("invalid date format: " + err.Error())
+	}
+	if err := d.Scan(t); err != nil {
+		panic("failed to set pgtype.Date: " + err.Error())
+	}
+	return d
+}
+
+// UUID is a helper function to convert UUID strings to pgtype.UUID instances. If the string
+// cannot be converted, this function will panic.
+func UUID(s string) (u pgtype.UUID) {
+	if err := u.Scan(s); err != nil {
+		panic(err)
+	}
+	return u
+}
+
 // Connect replaces the Current connection with a new one, using the given username and password. If the username is
 // empty, then the default connection is used. If the username and password match the existing connection, then no new
 // connection is made.

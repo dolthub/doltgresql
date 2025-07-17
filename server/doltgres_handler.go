@@ -259,16 +259,14 @@ func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query s
 func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32, formatCodes []int16, values [][]byte) (map[string]sqlparser.Expr, error) {
 	bindings := make(map[string]sqlparser.Expr, len(values))
 	for i := range values {
-		typ := types[i]
-		var bindVarString string
-		// We'll rely on a library to decode each format, which will deal with text and binary representations for us
-		if err := h.pgTypeMap.Scan(typ, formatCodes[i], values[i], &bindVarString); err != nil {
+		bindVarString, err := h.convertBindParameterToString(types[i], values[i], formatCodes[i])
+		if err != nil {
 			return nil, err
 		}
 
-		pgTyp, ok := pgtypes.IDToBuiltInDoltgresType[id.Type(id.Cache().ToInternal(typ))]
+		pgTyp, ok := pgtypes.IDToBuiltInDoltgresType[id.Type(id.Cache().ToInternal(types[i]))]
 		if !ok {
-			return nil, errors.Errorf("unhandled oid type: %v", typ)
+			return nil, errors.Errorf("unhandled oid type: %v", types[i])
 		}
 		v, err := pgTyp.IoInput(ctx, bindVarString)
 		if err != nil {
@@ -277,6 +275,51 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 		bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, pgTyp)}
 	}
 	return bindings, nil
+}
+
+// convertBindParameterToString converts a bind parameter to its string representation.
+// It handles both text and binary format parameters, with special handling for certain types
+// that cannot be directly scanned into strings when in binary format. |typ| is the PostgreSQL
+// type OID, |value| is the raw param value in bytes, and |formatCode| indicates text (0) or
+// binary (1) format.
+//
+// This function relies on the pgtype library to decode values, in text and binary formats,
+// however, a few types cannot be scanned directly into strings from the binary format by this
+// library, so there is special handling for them.
+func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte, formatCode int16) (bindVarString string, err error) {
+	isBinaryFormat := formatCode == pgtype.BinaryFormatCode
+
+	switch {
+	case (typ == pgtype.TimestampOID || typ == pgtype.TimestamptzOID) && isBinaryFormat:
+		var t time.Time
+		if err := h.pgTypeMap.Scan(typ, formatCode, value, &t); err != nil {
+			return "", err
+		}
+		bindVarString = t.Format("2006-01-02 15:04:05")
+	case typ == pgtype.DateOID && isBinaryFormat:
+		var d pgtype.Date
+		if err := h.pgTypeMap.Scan(typ, formatCode, value, &d); err != nil {
+			return "", err
+		}
+		bindVarString = d.Time.Format("2006-01-02")
+	case typ == pgtype.BoolOID && isBinaryFormat:
+		var b bool
+		if err := h.pgTypeMap.Scan(typ, formatCode, value, &b); err != nil {
+			return "", err
+		}
+		if b {
+			bindVarString = "true"
+		} else {
+			bindVarString = "false"
+		}
+	default:
+		// For text format or types that can handle binary-to-string conversion
+		if err := h.pgTypeMap.Scan(typ, formatCode, value, &bindVarString); err != nil {
+			return "", err
+		}
+	}
+
+	return bindVarString, nil
 }
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
