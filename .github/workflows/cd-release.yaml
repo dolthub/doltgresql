@@ -23,8 +23,29 @@ jobs:
           fi
           echo "version=$version" >> $GITHUB_OUTPUT
 
+  windows-extension-support:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PUBLIC_REPO_ACCESS_TOKEN || secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Build SQL Syntax
+        run: ./build.sh
+        working-directory: ./postgres/parser
+        shell: bash
+      - name: Upload Extension Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-extension-artifacts
+          path: |
+            ./core/extensions/pg_extension/output/pg_extension.dll
+            ./core/extensions/pg_extension/output/postgres.exe
+          if-no-files-found: error
+          retention-days: 1
+
   create-release:
-    needs: format-version
+    needs: [format-version, windows-extension-support]
     name: Create release
     runs-on: ubuntu-22.04
     outputs:
@@ -67,6 +88,11 @@ jobs:
         run: gh pr merge --merge --auto "cd-release"
         env:
           GH_TOKEN: ${{ secrets.PUBLIC_REPO_ACCESS_TOKEN || secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Download Extension Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-extension-artifacts
+          path: ./core/extensions/pg_extension/output
       - name: Install Go
         uses: actions/setup-go@v5
         with:
