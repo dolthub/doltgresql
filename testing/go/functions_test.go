@@ -1419,6 +1419,12 @@ func TestArrayFunctions(t *testing.T) {
 					Query:    `SELECT unnest(val1) FROM testing WHERE id=3;`,
 					Expected: []sql.Row{{1}, {2}},
 				},
+				{
+					// TODO: change in Eval in file table_function.go in gms breaks regression test???
+					Skip:     true,
+					Query:    `select * from unnest(array[1,2,3]);`,
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
 			},
 		},
 		{

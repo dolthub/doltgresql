@@ -34,7 +34,7 @@ var anyelement_in = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
+		// TODO: need underlying type information
 		return nil, nil
 	},
 }
@@ -46,7 +46,7 @@ var anyelement_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyElement},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
+		// TODO: need underlying type information
 		return "", nil
 	},
 }

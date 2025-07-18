@@ -807,7 +807,16 @@ func relativeParseTime(ctx ParseTimeContext) time.Time {
 // ParseTimeContext (either for the time or the local timezone).
 func ParseDDate(ctx ParseTimeContext, s string) (_ *DDate, dependsOnContext bool, _ error) {
 	now := relativeParseTime(ctx)
-	t, dependsOnContext, err := pgdate.ParseDate(now, 0 /* mode */, s)
+	t, dependsOnContext, err := pgdate.ParseDate(now, pgdate.ParseModeYMD, s)
+	if err != nil {
+		t, dependsOnContext, err = pgdate.ParseDate(now, pgdate.ParseModeDMY, s)
+		if err != nil {
+			t, dependsOnContext, err = pgdate.ParseDate(now, pgdate.ParseModeMDY, s)
+			if err != nil {
+				return nil, false, err
+			}
+		}
+	}
 	return NewDDate(t), dependsOnContext, err
 }
 

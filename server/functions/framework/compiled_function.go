@@ -206,7 +206,17 @@ func (c *CompiledFunction) OverloadString(types []*pgtypes.DoltgresType) string 
 func (c *CompiledFunction) Type() sql.Type {
 	if len(c.callResolved) > 0 {
 		rt := c.callResolved[len(c.callResolved)-1]
-		return getTypeIfRowType(c.IsSRF(), rt)
+		rt = getTypeIfRowType(c.IsSRF(), rt)
+		// If the return type is polymorphic type, we need the underlying type to be able to
+		// convert the result value using the base type.
+		// TODO: need to add underlying to these types for IO input and output uses
+		if rt.IsPolymorphicType() && len(c.originalTypes) > 0 {
+			rt = c.originalTypes[0]
+			if rt.IsArrayType() {
+				return rt.ArrayBaseType()
+			}
+		}
+		return rt
 	}
 	// Compilation must have errored, so we'll return the unknown type
 	return pgtypes.Unknown
@@ -792,7 +802,7 @@ func (*CompiledFunction) specificFuncImpl() {}
 
 // getTypeIfRowType returns the underlying type if it's Row Type;
 // otherwise, it returns the type that is passed.
-func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) sql.Type {
+func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) *pgtypes.DoltgresType {
 	if isSRF {
 		// TODO: need support for used defined types
 		if typ, ok := pgtypes.IDToBuiltInDoltgresType[t.Elem]; ok {
