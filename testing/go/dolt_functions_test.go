@@ -505,5 +505,162 @@ func TestDoltFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY basic functionality",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key, c1 int);",
+				"INSERT INTO t1 VALUES (1, 10), (2, 20);",
+				"SELECT DOLT_COMMIT('-Am', 'initial commit');",
+				"SELECT DOLT_CHECKOUT('-b', 'branch1');",
+				"UPDATE t1 SET c1 = 100 WHERE pk = 1;",
+				"SELECT DOLT_COMMIT('-am', 'update on branch1');",
+				"SELECT DOLT_CHECKOUT('main');",
+				"UPDATE t1 SET c1 = 200 WHERE pk = 1;",
+				"SELECT DOLT_COMMIT('-am', 'update on main');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'branch1')",
+					Expected: []sql.Row{
+						{"public.t1", Numeric("1"), Numeric("0")},
+					},
+				},
+			},
+		},
+		{
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY with no conflicts",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key, c1 int);",
+				"INSERT INTO t1 VALUES (1, 10), (2, 20);",
+				"SELECT DOLT_COMMIT('-Am', 'initial commit');",
+				"SELECT DOLT_CHECKOUT('-b', 'branch1');",
+				"INSERT INTO t1 VALUES (3, 30);",
+				"SELECT DOLT_COMMIT('-am', 'insert on branch1');",
+				"SELECT DOLT_CHECKOUT('main');",
+				"INSERT INTO t1 VALUES (4, 40);",
+				"SELECT DOLT_COMMIT('-am', 'insert on main');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'branch1')",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY with multiple tables",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key, c1 int);",
+				"CREATE TABLE t2 (pk int primary key, c1 varchar(20));",
+				"INSERT INTO t1 VALUES (1, 10);",
+				"INSERT INTO t2 VALUES (1, 'initial');",
+				"SELECT DOLT_COMMIT('-Am', 'initial commit');",
+				"SELECT DOLT_CHECKOUT('-b', 'branch1');",
+				"UPDATE t1 SET c1 = 100 WHERE pk = 1;",
+				"UPDATE t2 SET c1 = 'branch1' WHERE pk = 1;",
+				"SELECT DOLT_COMMIT('-am', 'updates on branch1');",
+				"SELECT DOLT_CHECKOUT('main');",
+				"UPDATE t1 SET c1 = 200 WHERE pk = 1;",
+				"UPDATE t2 SET c1 = 'main' WHERE pk = 1;",
+				"SELECT DOLT_COMMIT('-am', 'updates on main');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'branch1') ORDER BY 'table'",
+					Expected: []sql.Row{
+						{"public.t1", Numeric("1"), Numeric("0")},
+						{"public.t2", Numeric("1"), Numeric("0")},
+					},
+				},
+			},
+		},
+		{
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY with schema conflicts",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key, c1 int);",
+				"INSERT INTO t1 VALUES (1, 10);",
+				"SELECT DOLT_COMMIT('-Am', 'initial commit');",
+				"SELECT DOLT_CHECKOUT('-b', 'branch1');",
+				"ALTER TABLE t1 ADD COLUMN c2 varchar(50);",
+				"SELECT DOLT_COMMIT('-am', 'add column on branch1');",
+				"SELECT DOLT_CHECKOUT('main');",
+				"ALTER TABLE t1 ADD COLUMN c2 int;",
+				"SELECT DOLT_COMMIT('-am', 'add same column different type on main');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'branch1')",
+					Expected: []sql.Row{
+						{"public.t1", nil, Numeric("1")},
+					},
+				},
+			},
+		},
+		{
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY with multiple schemas",
+			SetUpScript: []string{
+				"CREATE SCHEMA test_schema;",
+				"CREATE TABLE t1 (pk int primary key, c1 int);",
+				"CREATE TABLE test_schema.t2 (pk int primary key, c1 int);",
+				"INSERT INTO t1 VALUES (1, 10);",
+				"INSERT INTO test_schema.t2 VALUES (1, 20);",
+				"SELECT DOLT_COMMIT('-Am', 'initial commit');",
+				"SELECT DOLT_CHECKOUT('-b', 'branch1');",
+				"UPDATE t1 SET c1 = 100 WHERE pk = 1;",
+				"UPDATE test_schema.t2 SET c1 = 200 WHERE pk = 1;",
+				"SELECT DOLT_COMMIT('-am', 'updates on branch1');",
+				"SELECT DOLT_CHECKOUT('main');",
+				"UPDATE t1 SET c1 = 300 WHERE pk = 1;",
+				"UPDATE test_schema.t2 SET c1 = 400 WHERE pk = 1;",
+				"SELECT DOLT_COMMIT('-am', 'updates on main');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'branch1') ORDER BY 'table'",
+					Expected: []sql.Row{
+						{"public.t1", Numeric("1"), Numeric("0")},
+						{"test_schema.t2", Numeric("1"), Numeric("0")},
+					},
+				},
+			},
+		},
+		{
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY error cases",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int primary key, c1 int);",
+				"SELECT DOLT_COMMIT('-Am', 'initial commit');",
+				"SELECT DOLT_CHECKOUT('-b', 'branch1');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('nonexistent-branch', 'main')",
+					ExpectedErr: "branch not found: nonexistent-branch",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'branch1', 'table')",
+					ExpectedErr: "function 'dolt_preview_merge_conflicts_summary' expected 2 arguments, 3 received",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'nonexistent-branch')",
+					ExpectedErr: "branch not found: nonexistent-branch",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('', 'main')",
+					ExpectedErr: "branch name cannot be empty",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', '')",
+					ExpectedErr: "branch name cannot be empty",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY(NULL, 'main')",
+					ExpectedErr: "Invalid argument to dolt_preview_merge_conflicts_summary: NULL",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', NULL)",
+					ExpectedErr: "Invalid argument to dolt_preview_merge_conflicts_summary: NULL",
+				},
+			},
+		},
 	})
 }
