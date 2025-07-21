@@ -16,6 +16,7 @@ package binary
 
 import (
 	"math"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -31,6 +32,9 @@ import (
 
 // initBinaryMinus registers the functions to the catalog.
 func initBinaryMinus() {
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, date_mi)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, date_mii)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, date_mi_interval)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, float4mi)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, float48mi)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, float8mi)
@@ -46,6 +50,13 @@ func initBinaryMinus() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, int84mi)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, interval_mi)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, numeric_sub)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, time_mi_interval)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, time_mi_time)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, timetz_mi_interval)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, timestamp_mi)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, timestamp_mi_interval)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, timestamptz_mi)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, timestamptz_mi_interval)
 }
 
 // float4mi represents the PostgreSQL function of the same name, taking the same parameters.
@@ -228,6 +239,171 @@ var numeric_sub = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		return val1.(decimal.Decimal).Sub(val2.(decimal.Decimal)), nil
+	},
+}
+
+// date_mi represents the PostgreSQL function of the same name, taking the same parameters.
+var date_mi = framework.Function2{
+	Name:       "date_mi",
+	Return:     pgtypes.Int32,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.Date},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		date1 := val1.(time.Time)
+		date2 := val2.(time.Time)
+
+		// Calculate the difference in days
+		duration := date1.Sub(date2)
+		days := int32(duration.Hours() / 24)
+
+		return days, nil
+	},
+}
+
+// date_mii represents the PostgreSQL function of the same name, taking the same parameters.
+var date_mii = framework.Function2{
+	Name:       "date_mii",
+	Return:     pgtypes.Date,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		date := val1.(time.Time)
+		days := val2.(int32)
+
+		// Subtract the specified number of days from the date
+		result := date.AddDate(0, 0, -int(days))
+
+		return result, nil
+	},
+}
+
+// date_mi_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var date_mi_interval = framework.Function2{
+	Name:       "date_mi_interval",
+	Return:     pgtypes.Timestamp,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		date := val1.(time.Time)
+		interval := val2.(duration.Duration)
+		seconds, ok := interval.AsInt64()
+		if !ok {
+			return nil, errors.New("overflown interval")
+		}
+		// above truncates partial seconds.
+		nanos := seconds*duration.NanosPerMicro*duration.MicrosPerMilli*duration.MillisPerSec + interval.Nanos()%int64(time.Second)
+		// Subtract the interval from the date using negative duration
+		result := date.Add(-time.Duration(nanos))
+
+		return result, nil
+	},
+}
+
+// timestamptz_mi represents the PostgreSQL function of the same name, taking the same parameters.
+var timestamptz_mi = framework.Function2{
+	Name:       "timestamptz_mi",
+	Return:     pgtypes.Interval,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.TimestampTZ},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		ts1 := val1.(time.Time)
+		ts2 := val2.(time.Time)
+
+		// Calculate the difference and return as interval
+		diff := ts1.Sub(ts2)
+		return duration.MakeDuration(diff.Nanoseconds(), 0, 0), nil
+	},
+}
+
+// timestamptz_mi_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var timestamptz_mi_interval = framework.Function2{
+	Name:       "timestamptz_mi_interval",
+	Return:     pgtypes.TimestampTZ,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		timestamptz := val1.(time.Time)
+		interval := val2.(duration.Duration)
+
+		// Subtract the interval from the timestamptz
+		return timestamptz.Add(-time.Duration(interval.Nanos())), nil
+	},
+}
+
+// timestamp_mi represents the PostgreSQL function of the same name, taking the same parameters.
+var timestamp_mi = framework.Function2{
+	Name:       "timestamp_mi",
+	Return:     pgtypes.Interval,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Timestamp},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		ts1 := val1.(time.Time)
+		ts2 := val2.(time.Time)
+
+		// Calculate the difference and return as interval
+		diff := ts1.Sub(ts2)
+		return duration.MakeDuration(diff.Nanoseconds(), 0, 0), nil
+	},
+}
+
+// timestamp_mi_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var timestamp_mi_interval = framework.Function2{
+	Name:       "timestamp_mi_interval",
+	Return:     pgtypes.Timestamp,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		timestamp := val1.(time.Time)
+		interval := val2.(duration.Duration)
+
+		// Subtract the interval from the timestamp
+		return timestamp.Add(-time.Duration(interval.Nanos())), nil
+	},
+}
+
+// time_mi_time represents the PostgreSQL function of the same name, taking the same parameters.
+var time_mi_time = framework.Function2{
+	Name:       "time_mi_time",
+	Return:     pgtypes.Interval,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		time1 := val1.(time.Time)
+		time2 := val2.(time.Time)
+
+		// Calculate the difference and return as interval
+		diff := time1.Sub(time2)
+		return duration.MakeDuration(diff.Nanoseconds(), 0, 0), nil
+	},
+}
+
+// time_mi_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var time_mi_interval = framework.Function2{
+	Name:       "time_mi_interval",
+	Return:     pgtypes.Time,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		timeVal := val1.(time.Time)
+		interval := val2.(duration.Duration)
+
+		// Subtract the interval from the time
+		return timeVal.Add(-time.Duration(interval.Nanos())), nil
+	},
+}
+
+// timetz_mi_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var timetz_mi_interval = framework.Function2{
+	Name:       "timetz_mi_interval",
+	Return:     pgtypes.TimeTZ,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Interval, pgtypes.TimeTZ},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		interval := val1.(duration.Duration)
+		timetzVal := val2.(time.Time)
+
+		// Subtract the interval from the timetz (note: parameters are reversed)
+		return timetzVal.Add(-time.Duration(interval.Nanos())), nil
 	},
 }
 

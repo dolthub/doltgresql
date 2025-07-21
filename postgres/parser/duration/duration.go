@@ -40,6 +40,8 @@ import (
 )
 
 const (
+	// NanosPerMicro is the amount of nanoseconds in a microsecond.
+	NanosPerMicro = 1000
 	// MicrosPerMilli is the amount of microseconds in a millisecond.
 	MicrosPerMilli = 1000
 	// MillisPerSec is the amount of seconds in a millisecond.

@@ -765,6 +765,46 @@ var typesTests = []ScriptTest{
 				Query:    `SELECT date '08-Jan-99';`,
 				Expected: []sql.Row{{"1999-01-08"}},
 			},
+			{
+				Query:    `SELECT date '2025-07-21' - 1;`,
+				Expected: []sql.Row{{"2025-07-20"}},
+			},
+			{
+				Query:    `SELECT date '2025-07-21' - date '2025-07-18';`,
+				Expected: []sql.Row{{3}},
+			},
+			{
+				Query:    `SELECT date '2025-07-21' - interval '2 days';`,
+				Expected: []sql.Row{{"2025-07-19 00:00:00"}},
+			},
+			{
+				Query:    `SELECT date '1991-02-03' - time '04:05:06';`,
+				Expected: []sql.Row{{"1991-02-02 19:54:54"}},
+			},
+			{
+				Query:    `SELECT date '2025-07-21' - 1;`,
+				Expected: []sql.Row{{"2025-07-20"}},
+			},
+			{
+				Query:    `SELECT date '1991-02-03' - time '04:05:06';`,
+				Expected: []sql.Row{{"1991-02-02 19:54:54"}},
+			},
+			{
+				Query:    `SELECT date '2025-07-21' + 1;`,
+				Expected: []sql.Row{{"2025-07-22"}},
+			},
+			{
+				Query:    `SELECT date '2025-07-21' + interval '2 days';`,
+				Expected: []sql.Row{{"2025-07-23 00:00:00"}},
+			},
+			{
+				Query:    `SELECT date '2025-07-21' + time '04:05:06';`,
+				Expected: []sql.Row{{"2025-07-21 04:05:06"}},
+			},
+			{
+				Query:    `SELECT date '2025-07-21' + time '04:05:06 UTC';`,
+				Expected: []sql.Row{{"2025-07-21 04:05:06"}},
+			},
 		},
 	},
 	{
@@ -2667,6 +2707,14 @@ var typesTests = []ScriptTest{
 				Query:    "SELECT time without time zone '040506.789+08';",
 				Expected: []sql.Row{{"04:05:06.789"}},
 			},
+			{
+				Query:    `SELECT time '04:05:06' + date '2025-07-21';`,
+				Expected: []sql.Row{{"2025-07-21 04:05:06"}},
+			},
+			{
+				Query:    `SELECT time without time zone '04:05:06' + interval '2 minutes';`,
+				Expected: []sql.Row{{"04:07:06"}},
+			},
 		},
 	},
 	{
@@ -2710,6 +2758,14 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query:    `SELECT time with time zone '04:05:06 UTC' + date '2025-07-21';`,
+				Expected: []sql.Row{{"2025-07-21 04:05:06+00"}},
+			},
+			{
+				Query:    `SELECT time with time zone '04:05:06 UTC' + interval '2 minutes';`,
+				Expected: []sql.Row{{"04:07:06+00"}},
+			},
+			{
 				Query:    `SET TIMEZONE TO DEFAULT;`,
 				Expected: []sql.Row{},
 			},
@@ -2748,6 +2804,10 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"2000-01-01 00:00:00"},
 				},
+			},
+			{
+				Query:    `SELECT timestamp without time zone '2025-07-21 04:05:06' + interval '2 minutes';`,
+				Expected: []sql.Row{{"2025-07-21 04:07:06"}},
 			},
 		},
 	},
@@ -2793,6 +2853,10 @@ var typesTests = []ScriptTest{
 					{1, "2022-01-01 18:34:56+06"},
 					{2, "2022-02-02 10:45:01+06"},
 				},
+			},
+			{
+				Query:    `SELECT timestamp with time zone '2025-07-21 04:05:06 UTC' + interval '2 minutes';`,
+				Expected: []sql.Row{{"2025-07-21 10:07:06+06"}},
 			},
 			{
 				Query:    "SET timezone TO default",
