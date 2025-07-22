@@ -89,10 +89,10 @@ var date_trunc_text_timestamptz_text = framework.Function3{
 
 		// Create a location with the specified offset
 		loc := time.FixedZone("", int(newOffset))
-		
+
 		// Convert timestamp to the specified timezone
 		tsInTz := ts.In(loc)
-		
+
 		// Truncate in the specified timezone
 		truncated, err := truncateTime(unit, tsInTz)
 		if err != nil {

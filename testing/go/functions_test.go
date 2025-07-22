@@ -1472,7 +1472,7 @@ func TestArrayFunctions(t *testing.T) {
 			Name: "array_length",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `select array_cat(ARRAY[1,2,3,4,5], 1);`,
+					Query:    `select array_length(ARRAY[1,2,3,4,5], 1);`,
 					Expected: []sql.Row{{5}},
 				},
 			},
