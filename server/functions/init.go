@@ -185,6 +185,7 @@ func Init() {
 	initToRegclass()
 	initToRegproc()
 	initToRegtype()
+	initToTimestamp()
 	initTranslate()
 	initTrimScale()
 	initTrunc()
