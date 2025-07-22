@@ -33,6 +33,10 @@ import (
 
 // initBinaryPlus registers the functions to the catalog.
 func initBinaryPlus() {
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, date_pl_interval)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, date_pli)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, datetime_pl)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, datetimetz_pl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, float4pl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, float48pl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, float8pl)
@@ -46,6 +50,7 @@ func initBinaryPlus() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, int8pl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, int82pl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, int84pl)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, integer_pl_date)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl_time)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl_date)
@@ -53,6 +58,12 @@ func initBinaryPlus() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, interval_pl_timestamptz)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, numeric_add)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, time_pl_interval)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, timedate_pl)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, timetz_pl_interval)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, timetzdate_pl)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, timestamp_pl_interval)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryPlus, timestamptz_pl_interval)
 }
 
 // float4pl_callable is the callable logic for the float4pl function.
@@ -253,6 +264,23 @@ var int84pl = framework.Function2{
 	Callable:   int84pl_callable,
 }
 
+// integer_pl_date represents the PostgreSQL function of the same name, taking the same parameters.
+var integer_pl_date = framework.Function2{
+	Name:       "integer_pl_date",
+	Return:     pgtypes.Date,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Int32, pgtypes.Date},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		days := val1.(int32)
+		date := val2.(time.Time)
+
+		// Add the specified number of days to the date (reverse of date_pli)
+		result := date.AddDate(0, 0, int(days))
+
+		return result, nil
+	},
+}
+
 // interval_pl_callable is the callable logic for the interval_pl function.
 func interval_pl_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	dur1 := val1.(duration.Duration)
@@ -366,6 +394,190 @@ func plusOverflow(val1 int64, val2 int64) (any, error) {
 		}
 	}
 	return val1 + val2, nil
+}
+
+// date_pl_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var date_pl_interval = framework.Function2{
+	Name:       "date_pl_interval",
+	Return:     pgtypes.Timestamp,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		date := val1.(time.Time)
+		interval := val2.(duration.Duration)
+
+		// Add the interval to the date using the existing helper function
+		return intervalPlusNonInterval(interval, date)
+	},
+}
+
+// date_pli represents the PostgreSQL function of the same name, taking the same parameters.
+var date_pli = framework.Function2{
+	Name:       "date_pli",
+	Return:     pgtypes.Date,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		date := val1.(time.Time)
+		days := val2.(int32)
+
+		// Add the specified number of days to the date
+		result := date.AddDate(0, 0, int(days))
+
+		return result, nil
+	},
+}
+
+// datetime_pl represents the PostgreSQL function of the same name, taking the same parameters.
+var datetime_pl = framework.Function2{
+	Name:       "datetime_pl",
+	Return:     pgtypes.Timestamp,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.Time},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		date := val1.(time.Time)
+		timeVal := val2.(time.Time)
+
+		// Combine date from first parameter with time from second parameter
+		// Extract hour, minute, second, nanosecond from time
+		hour, min, sec := timeVal.Clock()
+		nsec := timeVal.Nanosecond()
+
+		// Create new timestamp with date components from date and time components from time
+		result := time.Date(date.Year(), date.Month(), date.Day(), hour, min, sec, nsec, date.Location())
+
+		return result, nil
+	},
+}
+
+// datetimetz_pl represents the PostgreSQL function of the same name, taking the same parameters.
+var datetimetz_pl = framework.Function2{
+	Name:       "datetimetz_pl",
+	Return:     pgtypes.TimestampTZ,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.TimeTZ},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		date := val1.(time.Time)
+		timetzVal := val2.(time.Time)
+
+		// Combine date from first parameter with time+timezone from second parameter
+		// Extract hour, minute, second, nanosecond, and timezone from timetz
+		hour, min, sec := timetzVal.Clock()
+		nsec := timetzVal.Nanosecond()
+		location := timetzVal.Location()
+
+		// Create new timestamptz with date components from date and time+timezone components from timetz
+		result := time.Date(date.Year(), date.Month(), date.Day(), hour, min, sec, nsec, location)
+
+		return result, nil
+	},
+}
+
+// timedate_pl represents the PostgreSQL function of the same name, taking the same parameters.
+var timedate_pl = framework.Function2{
+	Name:       "timedate_pl",
+	Return:     pgtypes.Timestamp,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Date},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		timeVal := val1.(time.Time)
+		date := val2.(time.Time)
+
+		// Combine time from first parameter with date from second parameter
+		// Extract hour, minute, second, nanosecond from time
+		hour, min, sec := timeVal.Clock()
+		nsec := timeVal.Nanosecond()
+
+		// Create new timestamp with time components from time and date components from date
+		result := time.Date(date.Year(), date.Month(), date.Day(), hour, min, sec, nsec, date.Location())
+
+		return result, nil
+	},
+}
+
+// timetzdate_pl represents the PostgreSQL function of the same name, taking the same parameters.
+var timetzdate_pl = framework.Function2{
+	Name:       "timetzdate_pl",
+	Return:     pgtypes.TimestampTZ,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.Date},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		timetzVal := val1.(time.Time)
+		date := val2.(time.Time)
+
+		// Combine timetz from first parameter with date from second parameter
+		// Extract hour, minute, second, nanosecond, and timezone from timetz
+		hour, min, sec := timetzVal.Clock()
+		nsec := timetzVal.Nanosecond()
+		location := timetzVal.Location()
+
+		// Create new timestamptz with time+timezone components from timetz and date components from date
+		result := time.Date(date.Year(), date.Month(), date.Day(), hour, min, sec, nsec, location)
+
+		return result, nil
+	},
+}
+
+// timestamp_pl_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var timestamp_pl_interval = framework.Function2{
+	Name:       "timestamp_pl_interval",
+	Return:     pgtypes.Timestamp,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Timestamp, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		timestamp := val1.(time.Time)
+		interval := val2.(duration.Duration)
+
+		// Add the interval to the timestamp using the existing helper function
+		return intervalPlusNonInterval(interval, timestamp)
+	},
+}
+
+// timestamptz_pl_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var timestamptz_pl_interval = framework.Function2{
+	Name:       "timestamptz_pl_interval",
+	Return:     pgtypes.TimestampTZ,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		timestamptz := val1.(time.Time)
+		interval := val2.(duration.Duration)
+
+		// Add the interval to the timestamptz using the existing helper function
+		return intervalPlusNonInterval(interval, timestamptz)
+	},
+}
+
+// time_pl_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var time_pl_interval = framework.Function2{
+	Name:       "time_pl_interval",
+	Return:     pgtypes.Time,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		timeVal := val1.(time.Time)
+		interval := val2.(duration.Duration)
+
+		// Add the interval to the time
+		// Convert interval to duration and add to time
+		return timeVal.Add(time.Duration(interval.Nanos())), nil
+	},
+}
+
+// timetz_pl_interval represents the PostgreSQL function of the same name, taking the same parameters.
+var timetz_pl_interval = framework.Function2{
+	Name:       "timetz_pl_interval",
+	Return:     pgtypes.TimeTZ,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.Interval},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		timetzVal := val1.(time.Time)
+		interval := val2.(duration.Duration)
+
+		// Add the interval to the timetz
+		// Convert interval to duration and add to timetz
+		return timetzVal.Add(time.Duration(interval.Nanos())), nil
+	},
 }
 
 // intervalPlusNonInterval adds given interval duration to the given time.Time value.
