@@ -1469,11 +1469,24 @@ func TestArrayFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "array_length",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select array_cat(ARRAY[1,2,3,4,5], 1);`,
+					Expected: []sql.Row{{5}},
+				},
+			},
+		},
+		{
 			Name: "array_position",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT array_position(ARRAY[1,2,3,4,5], 4);`,
 					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:    `SELECT array_position(ARRAY[1,4,2,3,4,5,4], 4, 3);`,
+					Expected: []sql.Row{{5}},
 				},
 				{
 					Query:    `SELECT array_positions(ARRAY[1,2,3,4,5,6,1,2,3,4,5,6], 4);`,

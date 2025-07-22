@@ -81,25 +81,30 @@ var date_trunc_text_timestamptz_text = framework.Function3{
 		ts := val2.(time.Time)
 		timezone := val3.(string)
 
-		// Load the specified timezone
+		// Convert timezone string to offset
 		newOffset, err := convertTzToOffsetSecs(timezone)
 		if err != nil {
 			return nil, err
 		}
 
-		// Convert to specified timezone
-		truncated, err := truncateTime(unit, ts)
+		// Create a location with the specified offset
+		loc := time.FixedZone("", int(newOffset))
+		
+		// Convert timestamp to the specified timezone
+		tsInTz := ts.In(loc)
+		
+		// Truncate in the specified timezone
+		truncated, err := truncateTime(unit, tsInTz)
 		if err != nil {
 			return nil, err
 		}
 
-		localTs := truncated.Add(time.Duration(-int64(newOffset) * NanosPerSec))
+		// Convert back to server timezone
 		serverLoc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}
-		r := localTs.In(serverLoc)
-		return r, nil
+		return truncated.In(serverLoc), nil
 	},
 }
 
