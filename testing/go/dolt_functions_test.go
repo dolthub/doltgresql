@@ -506,7 +506,7 @@ func TestDoltFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY basic functionality",
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS basic functionality",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key, c1 int);",
 				"INSERT INTO t1 VALUES (1, 10), (2, 20);",
@@ -525,10 +525,16 @@ func TestDoltFunctions(t *testing.T) {
 						{"public.t1", Numeric("1"), Numeric("0")},
 					},
 				},
+				{
+					Query: "SELECT base_pk, base_c1, our_pk, our_c1, our_diff_type, their_pk, their_c1, their_diff_type FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
+					Expected: []sql.Row{
+						{1, 10, 1, 200, "modified", 1, 100, "modified"},
+					},
+				},
 			},
 		},
 		{
-			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY with no conflicts",
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS with no conflicts",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key, c1 int);",
 				"INSERT INTO t1 VALUES (1, 10), (2, 20);",
@@ -545,10 +551,14 @@ func TestDoltFunctions(t *testing.T) {
 					Query:    "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'branch1')",
 					Expected: []sql.Row{},
 				},
+				{
+					Query:    "SELECT base_pk, base_c1, our_pk, our_c1, our_diff_type, their_pk, their_c1, their_diff_type FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
+					Expected: []sql.Row{},
+				},
 			},
 		},
 		{
-			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY with multiple tables",
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS with multiple tables",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key, c1 int);",
 				"CREATE TABLE t2 (pk int primary key, c1 varchar(20));",
@@ -572,10 +582,22 @@ func TestDoltFunctions(t *testing.T) {
 						{"public.t2", Numeric("1"), Numeric("0")},
 					},
 				},
+				{
+					Query: "SELECT COUNT(*) FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+				{
+					Query: "SELECT COUNT(*) FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't2')",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
 			},
 		},
 		{
-			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY with schema conflicts",
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS with schema conflicts",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key, c1 int);",
 				"INSERT INTO t1 VALUES (1, 10);",
@@ -594,10 +616,14 @@ func TestDoltFunctions(t *testing.T) {
 						{"public.t1", nil, Numeric("1")},
 					},
 				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
+					ExpectedErr: "schema conflicts found: 1",
+				},
 			},
 		},
 		{
-			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY with multiple schemas",
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS with multiple schemas",
 			SetUpScript: []string{
 				"CREATE SCHEMA test_schema;",
 				"CREATE TABLE t1 (pk int primary key, c1 int);",
@@ -622,10 +648,74 @@ func TestDoltFunctions(t *testing.T) {
 						{"test_schema.t2", Numeric("1"), Numeric("0")},
 					},
 				},
+				{
+					Query: "SELECT COUNT(*) FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+				{
+					Query: "SELECT COUNT(*) FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't2')",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
 			},
 		},
 		{
-			Name: "DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY error cases",
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS with multiple schemas, same name",
+			SetUpScript: []string{
+				"CREATE SCHEMA test_schema;",
+				"CREATE TABLE t1 (pk int primary key, c1 int);",
+				"CREATE TABLE test_schema.t1 (pk int primary key, c2 int);",
+				"INSERT INTO t1 VALUES (1, 10);",
+				"INSERT INTO test_schema.t1 VALUES (1, 20);",
+				"SELECT DOLT_COMMIT('-Am', 'initial commit');",
+				"SELECT DOLT_CHECKOUT('-b', 'branch1');",
+				"UPDATE t1 SET c1 = 100 WHERE pk = 1;",
+				"UPDATE test_schema.t1 SET c2 = 200 WHERE pk = 1;",
+				"SELECT DOLT_COMMIT('-am', 'updates on branch1');",
+				"SELECT DOLT_CHECKOUT('main');",
+				"UPDATE t1 SET c1 = 300 WHERE pk = 1;",
+				"UPDATE test_schema.t1 SET c2 = 400 WHERE pk = 1;",
+				"SELECT DOLT_COMMIT('-am', 'updates on main');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', 'branch1') ORDER BY 'table'",
+					Expected: []sql.Row{
+						{"public.t1", Numeric("1"), Numeric("0")},
+						{"test_schema.t1", Numeric("1"), Numeric("0")},
+					},
+				},
+				{
+					Query: "SELECT base_c1 FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
+					Expected: []sql.Row{
+						{10},
+					},
+				},
+				{
+					Query:       "SELECT base_c2 FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
+					ExpectedErr: "column \"base_c2\" could not be found in any table in scope",
+				},
+				{
+					Query:    "SET search_path TO test_schema;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT base_c2 FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
+					Expected: []sql.Row{
+						{20},
+					},
+				},
+				{
+					Query:       "SELECT base_c1 FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1')",
+					ExpectedErr: "column \"base_c1\" could not be found in any table in scope",
+				},
+			},
+		},
+		{
+			Name: "DOLT_PREVIEW_MERGE_CONFLICTS error cases",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key, c1 int);",
 				"SELECT DOLT_COMMIT('-Am', 'initial commit');",
@@ -659,6 +749,50 @@ func TestDoltFunctions(t *testing.T) {
 				{
 					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS_SUMMARY('main', NULL)",
 					ExpectedErr: "Invalid argument to dolt_preview_merge_conflicts_summary: NULL",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('nonexistent-branch', 'main', 't1')",
+					ExpectedErr: "branch not found: nonexistent-branch",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'nonexistent-branch', 't1')",
+					ExpectedErr: "branch not found: nonexistent-branch",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1')",
+					ExpectedErr: "function 'dolt_preview_merge_conflicts' expected 3 arguments, 2 received",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 't1', 'extra')",
+					ExpectedErr: "function 'dolt_preview_merge_conflicts' expected 3 arguments, 4 received",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('', 'main', 't1')",
+					ExpectedErr: "string is not a valid branch or hash",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', '', 't1')",
+					ExpectedErr: "string is not a valid branch or hash",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS(NULL, 'main', 't1')",
+					ExpectedErr: "Invalid argument to dolt_preview_merge_conflicts: NULL",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', NULL, 't1')",
+					ExpectedErr: "Invalid argument to dolt_preview_merge_conflicts: NULL",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', NULL)",
+					ExpectedErr: "Invalid argument to dolt_preview_merge_conflicts: NULL",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 'nonexistent_table')",
+					ExpectedErr: "table not found: public.nonexistent_table",
+				},
+				{
+					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', '')",
+					ExpectedErr: "table name cannot be empty",
 				},
 			},
 		},
