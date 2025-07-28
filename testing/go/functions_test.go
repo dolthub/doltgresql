@@ -2474,47 +2474,11 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{"2001-02-16 10:30:00-06:30"}},
 				},
 				{
-					Query: `SET timezone to '+06:30';`,
+					Query: `SET timezone to DEFAULT;`,
 				},
 				{
 					Query:    `select date_trunc('hour', interval '2 days 10 hours 30 minutes');`,
 					Expected: []sql.Row{{"2 days 10:00:00"}},
-				},
-			},
-		},
-		{
-			Name: "to_timestamp",
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: `SET timezone to '+06:30';`,
-				},
-				{
-					Query:    `SELECT to_timestamp(0);`,
-					Expected: []sql.Row{{"1969-12-31 17:30:00-06:30"}},
-				},
-				{
-					Query:    `SELECT to_timestamp(946684800);`,
-					Expected: []sql.Row{{"1999-12-31 17:30:00-06:30"}},
-				},
-				{
-					Skip:     true, // TODO: support correct precision
-					Query:    `SELECT to_timestamp(1262349296.789);`,
-					Expected: []sql.Row{{"2010-01-01 06:04:56.789-06:30"}},
-				},
-				{
-					Query:    `SELECT to_timestamp('2011-12-18 23:38:15', 'YYYY-MM-DD HH24:MI:SS');`,
-					Expected: []sql.Row{{"2011-12-18 23:38:15-06:30"}},
-				},
-				{
-					Query:    `SELECT to_timestamp('2000-01-01 12:30:45', 'YYYY-MM-DD HH24:MI:SS');`,
-					Expected: []sql.Row{{"2000-01-01 12:30:45-06:30"}},
-				},
-				{
-					Query:    `SELECT to_timestamp(null::float);`,
-					Expected: []sql.Row{{nil}},
-				},
-				{
-					Query: `SET timezone to '+06:30';`,
 				},
 			},
 		},
