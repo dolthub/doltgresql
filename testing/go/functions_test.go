@@ -1450,6 +1450,91 @@ func TestArrayFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array_upper",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select array_upper(ARRAY[1,2,3,4], 1);`,
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Skip:     true, // TODO: multi-dimensional is not supported yet
+					Query:    `select array_upper(ARRAY[1,2,3,4], 2);`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
+			Name: "array_cat",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select array_cat(ARRAY[1,2,3], ARRAY[4,5]);`,
+					Expected: []sql.Row{{"{1,2,3,4,5}"}},
+				},
+				{
+					Query:    `select array_cat(NULL, ARRAY[4,5]);`,
+					Expected: []sql.Row{{"{4,5}"}},
+				},
+				{
+					Query:    `select array_cat(ARRAY[1,2,3], NULL);`,
+					Expected: []sql.Row{{"{1,2,3}"}},
+				},
+				{
+					Query:    `select array_cat(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
+			Name: "array_length",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select array_length(ARRAY[1,2,3,4,5], 1);`,
+					Expected: []sql.Row{{5}},
+				},
+			},
+		},
+		{
+			Name: "array_position and array_positions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_position(ARRAY[1,2,3,4,5], 4);`,
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:    `SELECT array_position(ARRAY[1,4,2,3,4,5,4], 4, 3);`,
+					Expected: []sql.Row{{5}},
+				},
+				{
+					Query:    `select array_position(NULL, 1);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `select array_position(ARRAY[1,4,2,3,4,5,4], NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `select array_position(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT array_positions(ARRAY[1,2,3,4,5,6,1,2,3,4,5,6], 4);`,
+					Expected: []sql.Row{{"{4,10}"}},
+				},
+				{
+					Query:    `select array_positions(NULL, 1);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `select array_positions(ARRAY[1,4,2,3,4,5,4], NULL);`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					Query:    `select array_positions(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
 	})
 }
 
@@ -2379,6 +2464,62 @@ func TestDateAndTimeFunction(t *testing.T) {
 				{
 					Query:    `select timestamp '2024-08-22 13:47:57-07' at time zone 'utc';`,
 					Expected: []sql.Row{{"2024-08-22 06:47:57-07"}},
+				},
+			},
+		},
+		{
+			Name: "date_part",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select date_part('month', date '2001-02-16');`,
+					Expected: []sql.Row{{float64(2)}},
+				},
+				{
+					Query:    `select date_part('minute', time without time zone '20:38:40');`,
+					Expected: []sql.Row{{float64(38)}},
+				},
+				{
+					Query:    `select date_part('second', time with time zone '20:38:40 UTC');`,
+					Expected: []sql.Row{{float64(40)}},
+				},
+				{
+					Query:    `select date_part('year', timestamp without time zone '2001-02-16 20:38:40');`,
+					Expected: []sql.Row{{float64(2001)}},
+				},
+				{
+					Query:    `select date_part('day', timestamp with time zone '2001-02-16 20:38:40 UTC');`,
+					Expected: []sql.Row{{float64(16)}},
+				},
+				{
+					Query:    `select date_part('month', interval '2 years 3 months');`,
+					Expected: []sql.Row{{float64(3)}},
+				},
+			},
+		},
+		{
+			Name: "date_trunc",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select date_trunc('hour', timestamp '2001-02-16 20:38:40');`,
+					Expected: []sql.Row{{"2001-02-16 20:00:00"}},
+				},
+				{
+					Query: `SET timezone to '+06:30';`,
+				},
+				{
+					Query:    `select date_trunc('day', timestamp with time zone '2001-02-16 20:38:40 UTC');`,
+					Expected: []sql.Row{{"2001-02-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `select date_trunc('day', timestamp with time zone '2001-02-16 20:38:40 UTC', '-07:00');`,
+					Expected: []sql.Row{{"2001-02-16 10:30:00-06:30"}},
+				},
+				{
+					Query: `SET timezone to DEFAULT;`,
+				},
+				{
+					Query:    `select date_trunc('hour', interval '2 days 10 hours 30 minutes');`,
+					Expected: []sql.Row{{"2 days 10:00:00"}},
 				},
 			},
 		},
