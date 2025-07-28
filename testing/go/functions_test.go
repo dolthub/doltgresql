@@ -1457,6 +1457,11 @@ func TestArrayFunctions(t *testing.T) {
 					Query:    `select array_upper(ARRAY[1,2,3,4], 1);`,
 					Expected: []sql.Row{{4}},
 				},
+				{
+					Skip:     true, // TODO: multi-dimensional is not supported yet
+					Query:    `select array_upper(ARRAY[1,2,3,4], 2);`,
+					Expected: []sql.Row{{nil}},
+				},
 			},
 		},
 		{
@@ -1465,6 +1470,18 @@ func TestArrayFunctions(t *testing.T) {
 				{
 					Query:    `select array_cat(ARRAY[1,2,3], ARRAY[4,5]);`,
 					Expected: []sql.Row{{"{1,2,3,4,5}"}},
+				},
+				{
+					Query:    `select array_cat(NULL, ARRAY[4,5]);`,
+					Expected: []sql.Row{{"{4,5}"}},
+				},
+				{
+					Query:    `select array_cat(ARRAY[1,2,3], NULL);`,
+					Expected: []sql.Row{{"{1,2,3}"}},
+				},
+				{
+					Query:    `select array_cat(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},
@@ -1478,7 +1495,7 @@ func TestArrayFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name: "array_position",
+			Name: "array_position and array_positions",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT array_position(ARRAY[1,2,3,4,5], 4);`,
@@ -1489,8 +1506,32 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{5}},
 				},
 				{
+					Query:    `select array_position(NULL, 1);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `select array_position(ARRAY[1,4,2,3,4,5,4], NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `select array_position(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
 					Query:    `SELECT array_positions(ARRAY[1,2,3,4,5,6,1,2,3,4,5,6], 4);`,
 					Expected: []sql.Row{{"{4,10}"}},
+				},
+				{
+					Query:    `select array_positions(NULL, 1);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `select array_positions(ARRAY[1,4,2,3,4,5,4], NULL);`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					Query:    `select array_positions(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},

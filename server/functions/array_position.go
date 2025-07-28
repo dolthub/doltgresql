@@ -105,7 +105,7 @@ var array_position_anyarray_anyelement_int32 = framework.Function3{
 // array_positions_anyarray_anyelement represents the PostgreSQL function of the same name, taking the same parameters.
 var array_positions_anyarray_anyelement = framework.Function2{
 	Name:       "array_positions",
-	Return:     pgtypes.AnyArray,
+	Return:     pgtypes.Int32Array,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement},
 	Strict:     false,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {

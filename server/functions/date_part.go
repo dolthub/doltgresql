@@ -178,11 +178,10 @@ var date_part_text_timestamptz = framework.Function2{
 
 // date_part_text_interval represents the PostgreSQL date_part function for interval type.
 var date_part_text_interval = framework.Function2{
-	Name:               "date_part",
-	Return:             pgtypes.Float64,
-	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Interval},
-	IsNonDeterministic: true,
-	Strict:             true,
+	Name:       "date_part",
+	Return:     pgtypes.Float64,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Interval},
+	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
 		dur := val2.(duration.Duration)
