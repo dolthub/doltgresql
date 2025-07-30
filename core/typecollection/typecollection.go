@@ -306,7 +306,15 @@ func (pgs *TypeCollection) Map(ctx context.Context) (prolly.AddressMap, error) {
 }
 
 // GetID implements the interface objinterface.RootObject.
-func (t TypeWrapper) GetID() objinterface.RootObjectID {
+func (t TypeWrapper) GetID() id.Id {
+	if t.Type != nil {
+		return t.Type.ID.AsId()
+	}
+	return id.Null
+}
+
+// GetRootObjectID implements the interface objinterface.RootObject.
+func (t TypeWrapper) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Types
 }
 
@@ -327,6 +335,14 @@ func (t TypeWrapper) Name() doltdb.TableName {
 		}
 	}
 	return doltdb.TableName{}
+}
+
+// Serialize implements the interface objinterface.RootObject.
+func (t TypeWrapper) Serialize(ctx context.Context) ([]byte, error) {
+	if t.Type != nil {
+		return t.Type.Serialize(), nil
+	}
+	return nil, nil
 }
 
 // writeCache writes every type in the cache to the underlying map.

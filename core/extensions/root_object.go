@@ -22,7 +22,18 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+// DeserializeRootObject implements the interface objinterface.Collection.
+func (pge *Collection) DeserializeRootObject(ctx context.Context, data []byte) (objinterface.RootObject, error) {
+	return DeserializeExtension(ctx, data)
+}
+
+// DiffRootObjects implements the interface objinterface.Collection.
+func (pge *Collection) DiffRootObjects(ctx context.Context, fromHash string, ours objinterface.RootObject, theirs objinterface.RootObject, ancestor objinterface.RootObject) ([]objinterface.RootObjectDiff, objinterface.RootObject, error) {
+	return nil, nil, errors.Errorf("extensions should never produce conflicts")
+}
 
 // DropRootObject implements the interface objinterface.Collection.
 func (pge *Collection) DropRootObject(ctx context.Context, identifier id.Id) error {
@@ -30,6 +41,11 @@ func (pge *Collection) DropRootObject(ctx context.Context, identifier id.Id) err
 		return errors.Errorf(`extension "%s" does not exist`, identifier.String())
 	}
 	return pge.DropLoadedExtension(ctx, id.Extension(identifier))
+}
+
+// GetFieldType implements the interface objinterface.Collection.
+func (pge *Collection) GetFieldType(ctx context.Context, fieldName string) *pgtypes.DoltgresType {
+	return nil
 }
 
 // GetID implements the interface objinterface.Collection.
@@ -43,7 +59,7 @@ func (pge *Collection) GetRootObject(ctx context.Context, identifier id.Id) (obj
 		return nil, false, nil
 	}
 	ext, err := pge.GetLoadedExtension(ctx, id.Extension(identifier))
-	return ext, err == nil, err
+	return ext, err == nil && ext.Namespace.IsValid(), err
 }
 
 // HasRootObject implements the interface objinterface.Collection.
@@ -114,4 +130,9 @@ func (pge *Collection) ResolveName(ctx context.Context, name doltdb.TableName) (
 // TableNameToID implements the interface objinterface.Collection.
 func (pge *Collection) TableNameToID(name doltdb.TableName) id.Id {
 	return id.NewExtension(name.Name).AsId()
+}
+
+// UpdateField implements the interface objinterface.Collection.
+func (pge *Collection) UpdateField(ctx context.Context, rootObject objinterface.RootObject, fieldName string, newValue any) (objinterface.RootObject, error) {
+	return nil, errors.New("updating through the conflicts table for this object type is not yet supported")
 }

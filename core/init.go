@@ -18,6 +18,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/types"
 
+	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 )
@@ -28,6 +29,7 @@ func Init() {
 	doltdb.NewRootValue = newRootValue
 	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
 	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
+	conflicts.ClearContextValues = ClearContextValues
 	plpgsql.GetTypesCollectionFromContext = GetTypesCollectionFromContext
 	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
 }

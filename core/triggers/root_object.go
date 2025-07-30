@@ -22,7 +22,18 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+// DeserializeRootObject implements the interface objinterface.Collection.
+func (pgt *Collection) DeserializeRootObject(ctx context.Context, data []byte) (objinterface.RootObject, error) {
+	return DeserializeTrigger(ctx, data)
+}
+
+// DiffRootObjects implements the interface objinterface.Collection.
+func (pgt *Collection) DiffRootObjects(ctx context.Context, fromHash string, ours objinterface.RootObject, theirs objinterface.RootObject, ancestor objinterface.RootObject) ([]objinterface.RootObjectDiff, objinterface.RootObject, error) {
+	return nil, nil, errors.New("trigger conflict detection has not yet been implemented")
+}
 
 // DropRootObject implements the interface objinterface.Collection.
 func (pgt *Collection) DropRootObject(ctx context.Context, identifier id.Id) error {
@@ -30,6 +41,11 @@ func (pgt *Collection) DropRootObject(ctx context.Context, identifier id.Id) err
 		return errors.Errorf(`trigger %s does not exist`, identifier.String())
 	}
 	return pgt.DropTrigger(ctx, id.Trigger(identifier))
+}
+
+// GetFieldType implements the interface objinterface.Collection.
+func (pgt *Collection) GetFieldType(ctx context.Context, fieldName string) *pgtypes.DoltgresType {
+	return nil
 }
 
 // GetID implements the interface objinterface.Collection.
@@ -43,7 +59,7 @@ func (pgt *Collection) GetRootObject(ctx context.Context, identifier id.Id) (obj
 		return nil, false, nil
 	}
 	f, err := pgt.GetTrigger(ctx, id.Trigger(identifier))
-	return f, err == nil, err
+	return f, err == nil && f.ID.IsValid(), err
 }
 
 // HasRootObject implements the interface objinterface.Collection.
@@ -115,4 +131,9 @@ func (pgt *Collection) ResolveName(ctx context.Context, name doltdb.TableName) (
 // TableNameToID implements the interface objinterface.Collection.
 func (pgt *Collection) TableNameToID(name doltdb.TableName) id.Id {
 	return pgt.tableNameToID(name.Schema, name.Name).AsId()
+}
+
+// UpdateField implements the interface objinterface.Collection.
+func (pgt *Collection) UpdateField(ctx context.Context, rootObject objinterface.RootObject, fieldName string, newValue any) (objinterface.RootObject, error) {
+	return nil, errors.New("updating through the conflicts table for this object type is not yet supported")
 }
