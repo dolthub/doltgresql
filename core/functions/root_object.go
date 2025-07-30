@@ -16,13 +16,130 @@ package functions
 
 import (
 	"context"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 
 	"github.com/dolthub/doltgresql/core/id"
+	pgmerge "github.com/dolthub/doltgresql/core/merge"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	"github.com/dolthub/doltgresql/server/plpgsql"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+const (
+	FIELD_NAME_PARAMETER_NAMES   = "parameter_names"
+	FIELD_NAME_RETURN_TYPE       = "return_type"
+	FIELD_NAME_NON_DETERMINISTIC = "non_deterministic"
+	FIELD_NAME_STRICT            = "strict"
+	FIELD_NAME_DEFINITION        = "definition"
+	FIELD_NAME_EXTENSION_NAME    = "extension_name"
+	FIELD_NAME_EXTENSION_SYMBOL  = "extension_symbol"
+)
+
+// DeserializeRootObject implements the interface objinterface.Collection.
+func (pgf *Collection) DeserializeRootObject(ctx context.Context, data []byte) (objinterface.RootObject, error) {
+	return DeserializeFunction(ctx, data)
+}
+
+// DiffRootObjects implements the interface objinterface.Collection.
+func (pgf *Collection) DiffRootObjects(ctx context.Context, fromHash string, o objinterface.RootObject, t objinterface.RootObject, a objinterface.RootObject) ([]objinterface.RootObjectDiff, objinterface.RootObject, error) {
+	// We ignore many fields when diffing, as differences in these fields would result in a different function due to overloading
+	// For example, "func_name(text)" and "func_name(varchar)" cannot produce a conflict as they're different functions
+	ours := o.(Function)
+	theirs := t.(Function)
+	ancestor, hasAncestor := a.(Function)
+	var diffs []objinterface.RootObjectDiff
+	{
+		ourParamNames := strings.Join(ours.ParameterNames, ",")
+		theirParamNames := strings.Join(theirs.ParameterNames, ",")
+		ancParamNames := strings.Join(ancestor.ParameterNames, ",")
+		diff := objinterface.RootObjectDiff{
+			Type:      pgtypes.Text,
+			FromHash:  fromHash,
+			FieldName: FIELD_NAME_PARAMETER_NAMES,
+		}
+		if pgmerge.DiffValues(&diff, ourParamNames, theirParamNames, ancParamNames, hasAncestor) {
+			diffs = append(diffs, diff)
+		} else {
+			ours.ParameterNames = strings.Split(diff.OurValue.(string), ",")
+		}
+	}
+	if ours.ReturnType != theirs.ReturnType {
+		diff := objinterface.RootObjectDiff{
+			Type:      pgtypes.Text,
+			FromHash:  fromHash,
+			FieldName: FIELD_NAME_RETURN_TYPE,
+		}
+		if pgmerge.DiffValues(&diff, ours.ReturnType.TypeName(), theirs.ReturnType.TypeName(), ancestor.ReturnType.TypeName(), hasAncestor) {
+			diffs = append(diffs, diff)
+		} else {
+			ours.ReturnType = id.NewType(ours.ReturnType.SchemaName(), diff.OurValue.(string))
+		}
+	}
+	if ours.IsNonDeterministic != theirs.IsNonDeterministic {
+		diff := objinterface.RootObjectDiff{
+			Type:      pgtypes.Bool,
+			FromHash:  fromHash,
+			FieldName: FIELD_NAME_NON_DETERMINISTIC,
+		}
+		if pgmerge.DiffValues(&diff, ours.IsNonDeterministic, theirs.IsNonDeterministic, ancestor.IsNonDeterministic, hasAncestor) {
+			diffs = append(diffs, diff)
+		} else {
+			ours.IsNonDeterministic = diff.OurValue.(bool)
+		}
+	}
+	if ours.Strict != theirs.Strict {
+		diff := objinterface.RootObjectDiff{
+			Type:      pgtypes.Bool,
+			FromHash:  fromHash,
+			FieldName: FIELD_NAME_STRICT,
+		}
+		if pgmerge.DiffValues(&diff, ours.Strict, theirs.Strict, ancestor.Strict, hasAncestor) {
+			diffs = append(diffs, diff)
+		} else {
+			ours.Strict = diff.OurValue.(bool)
+		}
+	}
+	if ours.Definition != theirs.Definition {
+		diff := objinterface.RootObjectDiff{
+			Type:      pgtypes.Text,
+			FromHash:  fromHash,
+			FieldName: FIELD_NAME_DEFINITION,
+		}
+		if pgmerge.DiffValues(&diff, ours.GetInnerDefinition(), theirs.GetInnerDefinition(), ancestor.GetInnerDefinition(), hasAncestor) {
+			diffs = append(diffs, diff)
+		} else {
+			ours.Definition = ours.ReplaceDefinition(diff.OurValue.(string))
+		}
+	}
+	if ours.ExtensionName != theirs.ExtensionName {
+		diff := objinterface.RootObjectDiff{
+			Type:      pgtypes.Text,
+			FromHash:  fromHash,
+			FieldName: FIELD_NAME_EXTENSION_NAME,
+		}
+		if pgmerge.DiffValues(&diff, ours.ExtensionName, theirs.ExtensionName, ancestor.ExtensionName, hasAncestor) {
+			diffs = append(diffs, diff)
+		} else {
+			ours.ExtensionName = diff.OurValue.(string)
+		}
+	}
+	if ours.ExtensionSymbol != theirs.ExtensionSymbol {
+		diff := objinterface.RootObjectDiff{
+			Type:      pgtypes.Text,
+			FromHash:  fromHash,
+			FieldName: FIELD_NAME_EXTENSION_SYMBOL,
+		}
+		if pgmerge.DiffValues(&diff, ours.ExtensionSymbol, theirs.ExtensionSymbol, ancestor.ExtensionSymbol, hasAncestor) {
+			diffs = append(diffs, diff)
+		} else {
+			ours.ExtensionSymbol = diff.OurValue.(string)
+		}
+	}
+	return diffs, ours, nil
+}
 
 // DropRootObject implements the interface objinterface.Collection.
 func (pgf *Collection) DropRootObject(ctx context.Context, identifier id.Id) error {
@@ -30,6 +147,28 @@ func (pgf *Collection) DropRootObject(ctx context.Context, identifier id.Id) err
 		return errors.Errorf(`function %s does not exist`, identifier.String())
 	}
 	return pgf.DropFunction(ctx, id.Function(identifier))
+}
+
+// GetFieldType implements the interface objinterface.Collection.
+func (pgf *Collection) GetFieldType(ctx context.Context, fieldName string) *pgtypes.DoltgresType {
+	switch fieldName {
+	case FIELD_NAME_PARAMETER_NAMES:
+		return pgtypes.Text
+	case FIELD_NAME_RETURN_TYPE:
+		return pgtypes.Text
+	case FIELD_NAME_NON_DETERMINISTIC:
+		return pgtypes.Bool
+	case FIELD_NAME_STRICT:
+		return pgtypes.Bool
+	case FIELD_NAME_DEFINITION:
+		return pgtypes.Text
+	case FIELD_NAME_EXTENSION_NAME:
+		return pgtypes.Text
+	case FIELD_NAME_EXTENSION_SYMBOL:
+		return pgtypes.Text
+	default:
+		return nil
+	}
 }
 
 // GetID implements the interface objinterface.Collection.
@@ -43,7 +182,7 @@ func (pgf *Collection) GetRootObject(ctx context.Context, identifier id.Id) (obj
 		return nil, false, nil
 	}
 	f, err := pgf.GetFunction(ctx, id.Function(identifier))
-	return f, err == nil, err
+	return f, err == nil && f.ID.IsValid(), err
 }
 
 // HasRootObject implements the interface objinterface.Collection.
@@ -119,4 +258,33 @@ func (pgf *Collection) ResolveName(ctx context.Context, name doltdb.TableName) (
 // TableNameToID implements the interface objinterface.Collection.
 func (pgf *Collection) TableNameToID(name doltdb.TableName) id.Id {
 	return pgf.tableNameToID(name.Schema, name.Name).AsId()
+}
+
+// UpdateField implements the interface objinterface.Collection.
+func (pgf *Collection) UpdateField(ctx context.Context, rootObject objinterface.RootObject, fieldName string, newValue any) (objinterface.RootObject, error) {
+	function := rootObject.(Function)
+	switch fieldName {
+	case FIELD_NAME_PARAMETER_NAMES:
+		function.ParameterNames = strings.Split(newValue.(string), ",")
+	case FIELD_NAME_RETURN_TYPE:
+		function.ReturnType = id.NewType(function.ReturnType.SchemaName(), newValue.(string))
+	case FIELD_NAME_NON_DETERMINISTIC:
+		function.IsNonDeterministic = newValue.(bool)
+	case FIELD_NAME_STRICT:
+		function.Strict = newValue.(bool)
+	case FIELD_NAME_DEFINITION:
+		function.Definition = function.ReplaceDefinition(newValue.(string))
+		parsedBody, err := plpgsql.Parse(function.Definition)
+		if err != nil {
+			return nil, err
+		}
+		function.Operations = parsedBody
+	case FIELD_NAME_EXTENSION_NAME:
+		function.ExtensionName = newValue.(string)
+	case FIELD_NAME_EXTENSION_SYMBOL:
+		function.ExtensionSymbol = newValue.(string)
+	default:
+		return nil, errors.Newf("unknown field name: `%s`", fieldName)
+	}
+	return function, nil
 }

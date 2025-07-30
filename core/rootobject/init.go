@@ -15,14 +15,24 @@
 package rootobject
 
 import (
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 
+	"github.com/dolthub/doltgresql/core/conflicts"
+	pgmerge "github.com/dolthub/doltgresql/core/merge"
+	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/storage"
 )
 
 // Init initializes the package
 func Init() {
 	merge.MergeRootObjects = HandleMerge
+	pgmerge.CreateConflict = CreateConflict
+	conflicts.DeserializeRootObject = DeserializeRootObject
+	conflicts.DiffRootObjects = DiffRootObjects
+	conflicts.GetFieldType = GetFieldType
+	conflicts.UpdateField = UpdateField
+	doltdb.RootObjectDiffFromRow = objinterface.DiffFromRow
 	for _, collFuncs := range globalCollections {
 		if collFuncs == nil {
 			continue

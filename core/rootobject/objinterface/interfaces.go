@@ -23,6 +23,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/storage"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // RootObjectID is an ID that distinguishes names and root objects from one another.
@@ -35,12 +36,27 @@ const (
 	RootObjectID_Functions
 	RootObjectID_Triggers
 	RootObjectID_Extensions
+	RootObjectID_Conflicts
+)
+
+const (
+	FIELD_NAME_ROOT_OBJECT = "root_object"
+	FIELD_NAME_ANCESTOR    = "ancestor"
+	FIELD_NAME_OURS        = "ours"
+	FIELD_NAME_THEIRS      = "theirs"
 )
 
 // Collection is a collection of root objects.
 type Collection interface {
+	// DeserializeRootObject deserializes a root object's data.
+	DeserializeRootObject(ctx context.Context, data []byte) (RootObject, error)
+	// DiffRootObjects returns a RootObjectDiff for each change made from the ancestor that is not reflected on both
+	// "ours" and "theirs".
+	DiffRootObjects(ctx context.Context, fromHash string, ours RootObject, theirs RootObject, ancestor RootObject) ([]RootObjectDiff, RootObject, error)
 	// DropRootObject removes the given root object from the collection.
 	DropRootObject(ctx context.Context, identifier id.Id) error
+	// GetFieldType returns the type associated with the given diff field name. Returns nil if the name is invalid.
+	GetFieldType(ctx context.Context, fieldName string) *pgtypes.DoltgresType
 	// GetID returns the identifying ID for the Collection.
 	GetID() RootObjectID
 	// GetRootObject returns the root object matching the given ID. Returns false if it cannot be found.
@@ -62,6 +78,9 @@ type Collection interface {
 	ResolveName(ctx context.Context, name doltdb.TableName) (doltdb.TableName, id.Id, error)
 	// TableNameToID converts the given name to an ID. The ID will be invalid for empty/malformed names.
 	TableNameToID(name doltdb.TableName) id.Id
+	// UpdateField updates the field on the given root object with the new value. Returns a new root object with the
+	// updated field.
+	UpdateField(ctx context.Context, rootObject RootObject, fieldName string, newValue any) (RootObject, error)
 
 	// HandleMerge handles merging of two objects. It is guaranteed that "ours" and "theirs" will not be nil, however
 	// "ancestor" may or may not be nil.

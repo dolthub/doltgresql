@@ -60,6 +60,16 @@ func getContextValues(ctx *sql.Context) (*contextValues, error) {
 	return cv, nil
 }
 
+// ClearContextValues clears all context values. This is primarily for operations that are directly called from Dolt, as
+// Dolt does not have the Doltgres concept of context values. Care must be taken to ensure that intermediate state
+// written to the context values are not overwritten.
+func ClearContextValues(ctx *sql.Context) {
+	sess := dsess.DSessFromSess(ctx.Session)
+	if sess.DoltgresSessObj != nil {
+		sess.DoltgresSessObj = &contextValues{}
+	}
+}
+
 // GetRootFromContext returns the working session's root from the context, along with the session.
 func GetRootFromContext(ctx *sql.Context) (*dsess.DoltSession, *RootValue, error) {
 	return getRootFromContextForDatabase(ctx, "")
