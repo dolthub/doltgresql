@@ -2074,7 +2074,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Name: "dolt procedures",
+			Name:        "dolt procedures",
 			SetUpScript: []string{
 				// TODO: Create procedure when supported
 			},
