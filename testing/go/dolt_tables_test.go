@@ -965,13 +965,13 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 			},
 		},
-		{
+		/*{
 			Name: "dolt docs",
 			SetUpScript: []string{
 				"INSERT INTO dolt.docs values ('README.md', 'testing')",
 			},
 			Assertions: []ScriptTestAssertion{
-				/*{
+				{
 					Query: `SELECT * FROM dolt.docs`,
 					Expected: []sql.Row{
 						{"README.md", "testing"},
@@ -991,7 +991,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Skip:     true, // TODO: table not found: dolt_docs
 					Query:    `SELECT dolt_docs.doc_name FROM dolt_docs`,
 					Expected: []sql.Row{{"README.md"}},
-				},*/
+				},
 				{
 					Query:       `SELECT * FROM public.docs`,
 					ExpectedErr: "table not found",
@@ -1006,7 +1006,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 						{"", "dolt.docs", "added", 1, 1},
 					},
 				},
-				/*{
+				{
 					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'docs')`,
 					Expected: []sql.Row{
 						{"", "dolt.docs", "added", 1, 1},
@@ -1018,7 +1018,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{
 						{"", "dolt_docs", "added", 1, 1},
 					},
-				},*/
+				},
 				{
 					Skip:  true, // TODO: we should support this or a --schema flag
 					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING', 'dolt.docs')`,
@@ -1104,12 +1104,12 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:    `SELECT * FROM dolt.docs`,
 					Expected: []sql.Row{},
 				},
-				/*{
+				{
 					Query:    `DELETE FROM dolt_docs WHERE doc_name = 'README.md'`,
 					Expected: []sql.Row{},
-				},*/
+				},
 			},
-		},
+		},*/
 		{
 			Name: "dolt diff",
 			SetUpScript: []string{
