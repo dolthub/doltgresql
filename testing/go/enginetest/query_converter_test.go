@@ -391,6 +391,9 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 		return convertValTuple(val)
 	case *sqlparser.NullVal:
 		return tree.DNull
+	case sqlparser.BoolVal:
+		boolVal := tree.DBool(bool(val))
+		return &boolVal
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
 	}
@@ -1549,4 +1552,19 @@ func TestConvertQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBoolValSupport tests that query converter can handle boolean literals
+// Related to issue #1708: Query converter crashes on boolean literals
+func TestBoolValSupport(t *testing.T) {
+	// This query contains boolean literals that should be converted properly
+	// Before the fix: panics with "unhandled type: sqlparser.BoolVal"
+	// After the fix: should convert successfully without panic
+	result := convertQuery("CREATE TABLE test_table (id INT, archived BOOLEAN DEFAULT FALSE)")
+	
+	// Should not panic and should return converted query
+	require.NotEmpty(t, result, "Query conversion should succeed and return converted SQL")
+	require.Len(t, result, 1, "Should return exactly one converted statement")
+	require.Contains(t, result[0], "CREATE TABLE", "Result should contain CREATE TABLE")
+	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
 }
