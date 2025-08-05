@@ -1170,6 +1170,10 @@ func hasReturningClause(statement sqlparser.Statement) bool {
 				hasReturningClause = true
 			}
 			return false, nil
+		case *sqlparser.Delete:
+			if len(node.Returning) > 0 {
+				hasReturningClause = true
+			}
 		}
 		return true, nil
 	}, statement)
