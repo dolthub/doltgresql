@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ubuntu:20.04
+FROM --platform=linux/amd64 ubuntu:22.04
 
 # install python, java, bats, git ruby, perl, cpan
 ENV DEBIAN_FRONTEND=noninteractive

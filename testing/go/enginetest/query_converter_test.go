@@ -1561,7 +1561,7 @@ func TestBoolValSupport(t *testing.T) {
 	// Before the fix: panics with "unhandled type: sqlparser.BoolVal"
 	// After the fix: should convert successfully without panic
 	result := convertQuery("CREATE TABLE test_table (id INT, archived BOOLEAN DEFAULT FALSE)")
-	
+
 	// Should not panic and should return converted query
 	require.NotEmpty(t, result, "Query conversion should succeed and return converted SQL")
 	require.Len(t, result, 1, "Should return exactly one converted statement")
