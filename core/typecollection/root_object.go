@@ -27,12 +27,33 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// DeserializeRootObject implements the interface objinterface.Collection.
+func (pgs *TypeCollection) DeserializeRootObject(ctx context.Context, data []byte) (objinterface.RootObject, error) {
+	t, err := pgtypes.DeserializeType(data)
+	if err != nil {
+		return nil, err
+	}
+	return TypeWrapper{
+		Type: t.(*pgtypes.DoltgresType),
+	}, nil
+}
+
+// DiffRootObjects implements the interface objinterface.Collection.
+func (pgs *TypeCollection) DiffRootObjects(ctx context.Context, fromHash string, ours objinterface.RootObject, theirs objinterface.RootObject, ancestor objinterface.RootObject) ([]objinterface.RootObjectDiff, objinterface.RootObject, error) {
+	return nil, nil, errors.New("type conflict detection has not yet been implemented")
+}
+
 // DropRootObject implements the interface objinterface.Collection.
 func (pgs *TypeCollection) DropRootObject(ctx context.Context, identifier id.Id) error {
 	if identifier.Section() != id.Section_Type {
 		return errors.Errorf(`type %s does not exist`, identifier.String())
 	}
 	return pgs.DropType(ctx, id.Type(identifier))
+}
+
+// GetFieldType implements the interface objinterface.Collection.
+func (pgs *TypeCollection) GetFieldType(ctx context.Context, fieldName string) *pgtypes.DoltgresType {
+	return nil
 }
 
 // GetID implements the interface objinterface.Collection.
@@ -46,7 +67,7 @@ func (pgs *TypeCollection) GetRootObject(ctx context.Context, identifier id.Id) 
 		return nil, false, nil
 	}
 	typ, err := pgs.GetType(ctx, id.Type(identifier))
-	return TypeWrapper{Type: typ}, err == nil, err
+	return TypeWrapper{Type: typ}, err == nil && typ != nil, err
 }
 
 // HasRootObject implements the interface objinterface.Collection.
@@ -161,4 +182,9 @@ func (pgs *TypeCollection) ResolveName(ctx context.Context, name doltdb.TableNam
 // TableNameToID implements the interface objinterface.Collection.
 func (pgs *TypeCollection) TableNameToID(name doltdb.TableName) id.Id {
 	return id.NewType(name.Schema, name.Name).AsId()
+}
+
+// UpdateField implements the interface objinterface.Collection.
+func (pgs *TypeCollection) UpdateField(ctx context.Context, rootObject objinterface.RootObject, fieldName string, newValue any) (objinterface.RootObject, error) {
+	return nil, errors.New("updating through the conflicts table for this object type is not yet supported")
 }

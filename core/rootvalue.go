@@ -30,6 +30,7 @@ import (
 	"github.com/dolthub/dolt/go/store/types"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -205,6 +206,26 @@ func (root *RootValue) FilterRootObjectNames(ctx context.Context, names []doltdb
 // GetCollation implements the interface doltdb.RootValue.
 func (root *RootValue) GetCollation(ctx context.Context) (schema.Collation, error) {
 	return root.st.GetCollation(ctx)
+}
+
+// GetConflictRootObject implements the interface doltdb.RootValue. This function is specifically used to find conflicts,
+// as the standard GetRootObject will not look at the conflicts collection.
+func (root *RootValue) GetConflictRootObject(ctx context.Context, tName doltdb.TableName) (doltdb.ConflictRootObject, bool, error) {
+	return rootobject.GetRootObjectConflicts(ctx, root, tName)
+}
+
+// GetConflictRootObjects implements the interface doltdb.RootValue.
+func (root *RootValue) GetConflictRootObjects(ctx context.Context) ([]doltdb.ConflictRootObject, error) {
+	collection, err := conflicts.LoadConflicts(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	var allConflicts []doltdb.ConflictRootObject
+	_ = collection.IterAll(ctx, func(rootObj objinterface.RootObject) (stop bool, err error) {
+		allConflicts = append(allConflicts, rootObj.(doltdb.ConflictRootObject))
+		return false, nil
+	})
+	return allConflicts, nil
 }
 
 // GetRootObject implements the interface doltdb.RootValue.
