@@ -377,7 +377,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 				}
 			} else {
 				// In FX mode, on format string space or separator we consume
-				// exactly one character from input string.  Notice we don'getTime
+				// exactly one character from input string.  Notice we don't
 				// insist that the consumed character match the format's
 				// character.
 				inputPos++
@@ -387,7 +387,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			if !fxMode {
 				// In non FX mode we might have skipped some extra characters
 				// (more than specified in format string) before.  In this
-				// case we don'getTime skip input string character, because it might
+				// case we don't skip input string character, because it might
 				// be part of field.
 				if extraSkip > 0 {
 					extraSkip--
@@ -411,7 +411,6 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 		switch n.key.name {
 		case "fx", "FX":
 			fxMode = true
-			break
 		case "a.m.", "A.M.", "p.m.", "P.M.":
 			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
 				[]string{"a.m.", "p.m.", "A.M.", "P.M."}, tfc.pm,
@@ -504,7 +503,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 				l = tfc.ff
 			}
 			// microsecond
-			v, l, err := fromCharParseIntLen(input[inputPos:], 6, formatNodes[i:], tfc.us)
+			v, l, err := fromCharParseIntLen(input[inputPos:], l, formatNodes[i:], tfc.us)
 			if err != nil {
 				return time.Time{}, err
 			}
@@ -533,7 +532,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			inputPos += l
 			inputPos += skipTh(n.postfix)
 		case "tz", "TZ":
-			// TODO
+			// TODO: implement this
 			return time.Time{}, errors.Errorf(`formatting TZ is not supported yet`)
 		case "of", "OF":
 			// OF is equivalent to TZH or TZH:TZM
@@ -937,7 +936,7 @@ func getTime(ctx *sql.Context, t tmFromChar) (time.Time, error) {
 			year = t.year % 100
 			if year != 0 {
 				if t.cc >= 0 {
-					// year += (getTime.cc - 1) * 100
+					// year += (t.cc - 1) * 100
 					tmp, err := checkForOverflow((t.cc - 1) * 100)
 					if err != nil {
 						return time.Time{}, err
@@ -947,7 +946,7 @@ func getTime(ctx *sql.Context, t tmFromChar) (time.Time, error) {
 						return time.Time{}, err
 					}
 				} else {
-					// year = (getTime.cc + 1) * 100 - year + 1
+					// year = (t.cc + 1) * 100 - year + 1
 					tmp, err := checkForOverflow((t.cc + 1) * 100)
 					if err != nil {
 						return time.Time{}, err
@@ -986,7 +985,7 @@ func getTime(ctx *sql.Context, t tmFromChar) (time.Time, error) {
 		}
 		if t.cc >= 0 {
 			// Add 1 because 21st century started in 2001, not 2000
-			// year = (getTime.cc - 1) * 100 + 1
+			// year = (t.cc - 1) * 100 + 1
 			tmp, err := checkForOverflow((t.cc - 1) * 100)
 			if err != nil {
 				return time.Time{}, err
@@ -997,7 +996,7 @@ func getTime(ctx *sql.Context, t tmFromChar) (time.Time, error) {
 			}
 		} else {
 			// Add 1 because year 599 represents 600 BC
-			// year = getTime.cc * 100 + 1;
+			// year = t.cc * 100 + 1;
 			tmp, err := checkForOverflow(t.cc * 100)
 			if err != nil {
 				return time.Time{}, err
@@ -1015,7 +1014,7 @@ func getTime(ctx *sql.Context, t tmFromChar) (time.Time, error) {
 
 	if t.ww != 0 {
 		if t.mode == fromCharDateISOWEEK {
-			// If getTime.d is not set, then the date is left at the beginning of
+			// If t.d is not set, then the date is left at the beginning of
 			// the ISO week (Monday).
 			if t.d != 0 {
 				year, month, day = isoWeekDate2Date(year, t.ww, t.d)
@@ -1023,7 +1022,7 @@ func getTime(ctx *sql.Context, t tmFromChar) (time.Time, error) {
 				year, month, day = isoWeek2Date(year, t.ww)
 			}
 		} else {
-			// getTime.ddd = (getTime.ww - 1) * 7 + 1
+			// t.ddd = (t.ww - 1) * 7 + 1
 			var err error
 			if t.ddd, err = checkForOverflow(t.ww - 1); err != nil {
 				return time.Time{}, err
@@ -1038,7 +1037,7 @@ func getTime(ctx *sql.Context, t tmFromChar) (time.Time, error) {
 	}
 
 	if t.w != 0 {
-		// getTime.dd = (getTime.w - 1) * 7 + 1
+		// t.dd = (t.w - 1) * 7 + 1
 		var err error
 		if t.dd, err = checkForOverflow(t.w - 1); err != nil {
 			return time.Time{}, err
@@ -1098,7 +1097,7 @@ func getTime(ctx *sql.Context, t tmFromChar) (time.Time, error) {
 	}
 
 	if t.ms != 0 {
-		// *fsec += getTime.ms * 1000
+		// *fsec += t.ms * 1000
 		var err error
 		fsec, err = checkForOverflow(t.ms * 1000)
 		if err != nil {
@@ -1126,11 +1125,6 @@ func getTime(ctx *sql.Context, t tmFromChar) (time.Time, error) {
 		if t.tzsign > 0 {
 			gmtOffset = -gmtOffset
 		}
-	} else if t.has_tz {
-		// TZ field
-		has_tz = true
-		gmtOffset = -t.gmtoffset
-		return time.Time{}, errors.Errorf(`TODO for TZ`)
 	}
 
 	if fsec != 0 {
@@ -1213,27 +1207,6 @@ func checkForOverflow(v int) (int, error) {
 		return 0, errors.Errorf(`date/time field value out of range`)
 	}
 	return v, nil
-}
-
-// toTzOffset converts given timezone offset string to seconds.
-func toTzOffset(s string) (int, error) {
-	tzSign := 1
-	if s[0] == '-' {
-		tzSign = -1
-	}
-	v := strings.Split(s[1:], ":")
-	hour, err := strconv.ParseInt(v[0], 10, 32)
-	if err != nil {
-		return 0, errInvalidValueFor.New(s, "TZ")
-	}
-	minute := int64(0)
-	if len(v) > 1 {
-		minute, err = strconv.ParseInt(v[1], 10, 32)
-		if err != nil {
-			return 0, errInvalidValueFor.New(s, "TZ")
-		}
-	}
-	return int((hour*duration.SecsPerHour)+(minute*duration.SecsPerMinute)) * tzSign, nil
 }
 
 // isoWeekDate2Date converts an ISO week date (year, week, weekday) to a Gregorian date using PostgreSQL's algorithm
@@ -1430,10 +1403,7 @@ func isNextSeperator(nodes []*formatNode) bool {
 	// next node
 	n = nodes[1]
 	if n.typ == nodeTypeACTION {
-		if n.key.isDigit {
-			return false
-		}
-		return true
+		return !n.key.isDigit
 	} else if len(n.characters) != 0 && unicode.IsDigit(rune(n.characters[0])) {
 		return false
 	}

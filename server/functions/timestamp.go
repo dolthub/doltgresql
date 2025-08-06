@@ -172,42 +172,9 @@ func FormatTimestampWithBC(t time.Time, hasTZ bool) string {
 		// Format with the positive year, then append " BC"
 		formatted := positiveTime.Format(layout)
 
-		// Remove trailing zeros from fractional seconds to match PostgreSQL's behavior
-		//formatted = removeTrailingZeros(formatted)
-
 		return fmt.Sprintf("%s BC", formatted)
 	} else {
 		// For AD years (positive), use normal formatting
-		return t.Format(layout) // removeTrailingZeros(formatted)
+		return t.Format(layout)
 	}
-}
-
-// removeTrailingZeros removes trailing zeros from fractional seconds
-// PostgreSQL doesn't show trailing zeros in timestamp output
-func removeTrailingZeros(timestamp string) string {
-	// Find the decimal point
-	dotIndex := -1
-	for i := len(timestamp) - 1; i >= 0; i-- {
-		if timestamp[i] == '.' {
-			dotIndex = i
-			break
-		}
-	}
-
-	if dotIndex == -1 {
-		return timestamp // No fractional seconds
-	}
-
-	// Remove trailing zeros after the decimal point
-	endIndex := len(timestamp)
-	for endIndex > dotIndex+1 && timestamp[endIndex-1] == '0' {
-		endIndex--
-	}
-
-	// If all fractional seconds were zero, remove the decimal point too
-	if endIndex == dotIndex+1 {
-		endIndex = dotIndex
-	}
-
-	return timestamp[:endIndex]
 }
