@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -65,8 +66,8 @@ var timestamp_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Timestamp},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: need to format time in BC
-		return val.(time.Time).Format("2006-01-02 15:04:05.999999999"), nil
+		t := val.(time.Time)
+		return FormatTimestampWithBC(t, false), nil
 	},
 }
 
@@ -140,4 +141,73 @@ var timestamp_cmp = framework.Function2{
 		bb := val2.(time.Time)
 		return int32(ab.Compare(bb)), nil
 	},
+}
+
+// FormatTimestampWithBC formats a time.Time that may represent BC dates (negative years)
+// PostgreSQL represents BC years as negative years in time.Time, but Go's Format() doesn't handle this correctly
+// tz is optional timezone value to be appended to formatted value
+func FormatTimestampWithBC(t time.Time, hasTZ bool) string {
+	year := t.Year()
+	isBC := year <= 0
+
+	layout := "2006-01-02 15:04:05.999999"
+
+	if hasTZ {
+		_, offset := t.Zone()
+		if offset%3600 != 0 {
+			layout = layout + "-07:00"
+		} else {
+			layout = layout + "-07"
+		}
+	}
+
+	if isBC {
+		// Convert from PostgreSQL's BC representation to positive year for formatting
+		// PostgreSQL: year 0 = 1 BC, year -1 = 2 BC, etc.
+		absYear := 1 - year
+
+		// Create a new time with the positive year for formatting
+		positiveTime := time.Date(absYear, t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
+
+		// Format with the positive year, then append " BC"
+		formatted := positiveTime.Format(layout)
+
+		// Remove trailing zeros from fractional seconds to match PostgreSQL's behavior
+		//formatted = removeTrailingZeros(formatted)
+
+		return fmt.Sprintf("%s BC", formatted)
+	} else {
+		// For AD years (positive), use normal formatting
+		return t.Format(layout) // removeTrailingZeros(formatted)
+	}
+}
+
+// removeTrailingZeros removes trailing zeros from fractional seconds
+// PostgreSQL doesn't show trailing zeros in timestamp output
+func removeTrailingZeros(timestamp string) string {
+	// Find the decimal point
+	dotIndex := -1
+	for i := len(timestamp) - 1; i >= 0; i-- {
+		if timestamp[i] == '.' {
+			dotIndex = i
+			break
+		}
+	}
+
+	if dotIndex == -1 {
+		return timestamp // No fractional seconds
+	}
+
+	// Remove trailing zeros after the decimal point
+	endIndex := len(timestamp)
+	for endIndex > dotIndex+1 && timestamp[endIndex-1] == '0' {
+		endIndex--
+	}
+
+	// If all fractional seconds were zero, remove the decimal point too
+	if endIndex == dotIndex+1 {
+		endIndex = dotIndex
+	}
+
+	return timestamp[:endIndex]
 }

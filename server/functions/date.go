@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -60,7 +61,7 @@ var date_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(time.Time).Format("2006-01-02"), nil
+		return formatDateWithBC(val.(time.Time)), nil
 	},
 }
 
@@ -105,4 +106,29 @@ var date_cmp = framework.Function2{
 		bb := val2.(time.Time)
 		return int32(ab.Compare(bb)), nil
 	},
+}
+
+// formatDateWithBC formats a time.Time that may represent BC dates (negative years)
+// PostgreSQL represents BC years as negative years in time.Time, but Go's Format() doesn't handle this correctly
+func formatDateWithBC(t time.Time) string {
+	year := t.Year()
+	isBC := year <= 0
+
+	layout := "2006-01-02"
+
+	if isBC {
+		// Convert from PostgreSQL's BC representation to positive year for formatting
+		// PostgreSQL: year 0 = 1 BC, year -1 = 2 BC, etc.
+		absYear := 1 - year
+
+		// Create a new time with the positive year for formatting
+		positiveTime := time.Date(absYear, t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+
+		// Format with the positive year, then append " BC"
+		formatted := positiveTime.Format(layout)
+		return fmt.Sprintf("%s BC", formatted)
+	} else {
+		// For AD years (positive), use normal formatting
+		return t.Format(layout)
+	}
 }
