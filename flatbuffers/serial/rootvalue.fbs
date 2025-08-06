@@ -37,6 +37,8 @@ table RootValue {
   triggers:[ubyte]; // Serialized AddressMap.
 
   extensions:[ubyte]; // Serialized AddressMap.
+
+  conflicts:[ubyte]; // Serialized AddressMap.
 }
 
 table DatabaseSchema {

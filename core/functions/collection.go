@@ -366,7 +366,29 @@ func (pgf *Collection) tableNameToID(schemaName string, formattedName string) id
 }
 
 // GetID implements the interface objinterface.RootObject.
-func (function Function) GetID() objinterface.RootObjectID {
+func (function Function) GetID() id.Id {
+	return function.ID.AsId()
+}
+
+// GetInnerDefinition returns the inner definition inside the CREATE FUNCTION statement.
+func (function Function) GetInnerDefinition() string {
+	// TODO: right now we're hardcode searching for $$, which will fail for some definition strings
+	start := strings.Index(function.Definition, "$$")
+	end := strings.LastIndex(function.Definition, "$$")
+	if start == -1 || end == -1 {
+		// Return the whole definition for now
+		return function.Definition
+	}
+	return strings.TrimSpace(function.Definition[start+2 : end])
+}
+
+// ReplaceDefinition returns a new definition with the inner portion replaced with the given string.
+func (function Function) ReplaceDefinition(newInner string) string {
+	return strings.Replace(function.Definition, function.GetInnerDefinition(), newInner, 1)
+}
+
+// GetRootObjectID implements the interface objinterface.RootObject.
+func (function Function) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Functions
 }
 

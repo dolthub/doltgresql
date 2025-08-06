@@ -153,8 +153,24 @@ func (InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgsql.Int
 		}
 		castFunc := GetAssignmentCast(fromType, targetType)
 		if castFunc == nil {
-			// TODO: try I/O casting
-			return nil, errors.New("no valid cast for return value")
+			// TODO: We're using assignment casting, but for some reason we have to use I/O casting here, which is incorrect?
+			//  We need to dig into this and figure out exactly what's happening, as this is "wrong" according to what
+			//  I understand. This lines up more with explicit casting, but it's supposed to be assignment.
+			//  Maybe there are specific rules for pgsql?
+			if fromType.TypCategory == pgtypes.TypeCategory_StringTypes {
+				castFunc = func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+					if val == nil {
+						return nil, nil
+					}
+					str, err := fromType.IoOutput(ctx, val)
+					if err != nil {
+						return nil, err
+					}
+					return targetType.IoInput(ctx, str)
+				}
+			} else {
+				return nil, errors.New("no valid cast for return value")
+			}
 		}
 		return castFunc(subCtx, rows[0][0], targetType)
 	})

@@ -708,7 +708,7 @@ $$ LANGUAGE plpgsql;`,
 			},
 		},
 		{
-			Name: "Merging",
+			Name: "Merging No Conflict",
 			SetUpScript: []string{
 				`CREATE TABLE test(pk INT4);`,
 				`INSERT INTO test VALUES (77);`,
