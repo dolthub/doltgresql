@@ -17,20 +17,23 @@ package functions
 import (
 	"fmt"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initAsin registers the functions to the catalog.
+// initCurrentSetting registers the functions to the catalog.
 func initCurrentSetting() {
-	framework.RegisterFunction(current_setting)
+	framework.RegisterFunction(current_setting_text)
+	framework.RegisterFunction(current_setting_text_bool)
 }
 
-// asin_float64 represents the PostgreSQL function of the same name, taking the same parameters.
-var current_setting = framework.Function1{
+var errUnrecognizedConfigurationParameter = errors.NewKind(`unrecognized configuration parameter "%s"`)
+
+// current_setting_text represents the PostgreSQL function of the same name, taking the same parameters.
+var current_setting_text = framework.Function1{
 	Name:       "current_setting",
 	Return:     pgtypes.Text, // TODO: it would be nice to support non-text values as well, but this is all postgres supports
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
@@ -48,13 +51,53 @@ var current_setting = framework.Function1{
 
 		variable, err = ctx.GetSessionVariable(ctx, s)
 		if err != nil {
-			return nil, errors.Errorf("unrecognized configuration parameter %s", s)
+			return nil, errUnrecognizedConfigurationParameter.New(s)
 		}
 
 		if variable != nil {
 			return fmt.Sprintf("%v", variable), nil
 		}
 
-		return nil, errors.Errorf("unrecognized configuration parameter %s", s)
+		return nil, errUnrecognizedConfigurationParameter.New(s)
+	},
+}
+
+// current_setting_text_bool represents the PostgreSQL function of the same name, taking the same parameters.
+var current_setting_text_bool = framework.Function2{
+	Name:       "current_setting",
+	Return:     pgtypes.Text, // TODO: it would be nice to support non-text values as well, but this is all postgres supports
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Bool},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		s := val1.(string)
+		missingOk := val2.(bool)
+		_, variable, err := ctx.GetUserVariable(ctx, s)
+		if err != nil {
+			if missingOk {
+				return nil, nil
+			}
+			return nil, err
+		}
+
+		if variable != nil {
+			return fmt.Sprintf("%v", variable), nil
+		}
+
+		variable, err = ctx.GetSessionVariable(ctx, s)
+		if err != nil {
+			if missingOk {
+				return nil, nil
+			}
+			return nil, errUnrecognizedConfigurationParameter.New(s)
+		}
+
+		if variable != nil {
+			return fmt.Sprintf("%v", variable), nil
+		}
+
+		if missingOk {
+			return nil, nil
+		}
+		return nil, errUnrecognizedConfigurationParameter.New(s)
 	},
 }

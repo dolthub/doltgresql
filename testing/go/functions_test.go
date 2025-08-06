@@ -1308,6 +1308,31 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "current_setting function",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SET timezone TO '+00:00';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT current_setting('timezone')",
+					Expected: []sql.Row{{"+00:00"}},
+				},
+				{
+					Query:       "SELECT current_setting('wrong_input')",
+					ExpectedErr: `unrecognized configuration parameter "wrong_input"`,
+				},
+				{
+					Query:    "SELECT current_setting('wrong_input', true)",
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:       "SELECT current_setting('wrong_input', false)",
+					ExpectedErr: `unrecognized configuration parameter "wrong_input"`,
+				},
+			},
+		},
 	})
 }
 
