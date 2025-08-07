@@ -96,10 +96,20 @@ func (pgc *Collection) RenameRootObject(ctx context.Context, oldName id.Id, newN
 
 // ResolveName implements the interface objinterface.Collection.
 func (pgc *Collection) ResolveName(ctx context.Context, name doltdb.TableName) (doltdb.TableName, id.Id, error) {
-	if resolvedId, ok := pgc.nameCache[name]; ok {
-		return name, resolvedId, nil
+	if len(pgc.idCache) == 0 {
+		return doltdb.TableName{}, id.Null, nil
 	}
-	return doltdb.TableName{}, id.Null, nil
+	objs := make([]objinterface.RootObject, 0, len(pgc.idCache))
+	for _, conflict := range pgc.accessCache {
+		if conflict.Ours != nil {
+			objs = append(objs, conflict.Ours)
+		} else if conflict.Theirs != nil {
+			objs = append(objs, conflict.Theirs)
+		} else if conflict.Ancestor != nil {
+			objs = append(objs, conflict.Ancestor)
+		}
+	}
+	return ResolveNameExternal(ctx, name, objs)
 }
 
 // TableNameToID implements the interface objinterface.Collection.
