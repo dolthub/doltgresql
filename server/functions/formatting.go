@@ -97,8 +97,8 @@ type tmFromChar struct {
 	tzh       int              // Timezone hours
 	tzm       int              // Timezone minutes
 	ff        int              // Fractional precision
-	has_tz    bool             // True if TZ field was present
-	gmtoffset int              // GMT offset of fixed-offset zone abbreviation
+	//has_tz    bool             // True if TZ field was present
+	//gmtoffset int              // GMT offset of fixed-offset zone abbreviation
 }
 
 // keywordSuffix represents format modifiers like FM (fill mode) or TH (ordinal)
