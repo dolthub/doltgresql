@@ -1120,13 +1120,30 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 	case "set":
 		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
 	case "bit":
-		// Support for MySQL BIT type conversion to PostgreSQL BIT type (dolt#9641)
+		// Support for MySQL BIT type conversion (dolt#9641)
 		// See: https://github.com/dolthub/dolt/issues/9641
+		// Map BIT types to appropriately sized integers for MySQL compatibility
+		width := int32FromSqlVal(columnType.Length)
+		
+		var intOid oid.Oid
+		var intWidth int32
+		switch {
+		case width <= 16:
+			intOid = oid.T_int2
+			intWidth = 16
+		case width <= 32:
+			intOid = oid.T_int4
+			intWidth = 32
+		default:
+			intOid = oid.T_int8
+			intWidth = 64
+		}
+		
 		return &types.T{
 			InternalType: types.InternalType{
-				Family: types.BitFamily,
-				Width:  int32FromSqlVal(columnType.Length),
-				Oid:    oid.T_bit,
+				Family: types.IntFamily,
+				Width:  intWidth,
+				Oid:    intOid,
 			},
 		}
 	case "json":
@@ -1583,14 +1600,20 @@ func TestBoolValSupport(t *testing.T) {
 func TestBitTypeSupport(t *testing.T) {
 	// Test the exact table creation from the dolt#9641 regression test
 	// Before the fix: panics with "unhandled type: bit"
-	// After the fix: should convert successfully without panic
+	// After the fix: should convert successfully without panic, BIT(1) -> int2
 	result := convertQuery("CREATE TABLE bit_union_test_9641 (id INT PRIMARY KEY, flag BIT(1))")
 
 	// Should not panic and should return converted query
 	require.NotEmpty(t, result, "Query conversion should succeed and return converted SQL")
 	require.Len(t, result, 1, "Should return exactly one converted statement")
 	require.Contains(t, result[0], "CREATE TABLE", "Result should contain CREATE TABLE")
-	require.Contains(t, result[0], "bit", "Result should contain BIT type conversion")
+	// BIT(1) is now converted to SMALLINT for MySQL compatibility with 0/1 values
+	require.Contains(t, result[0], "SMALLINT", "Result should contain SMALLINT type conversion")
+
+	// Test BIT(8) conversion to integer
+	bitResult := convertQuery("CREATE TABLE bit_test (id INT PRIMARY KEY, data BIT(8))")
+	require.NotEmpty(t, bitResult, "BIT(8) query should convert successfully")
+	require.Contains(t, bitResult[0], "CREATE TABLE", "Result should contain CREATE TABLE")
 
 	// Test INSERT query with BIT values - this would also exercise BIT type handling
 	insertResult := convertQuery("INSERT INTO bit_union_test_9641 VALUES (1, 0), (2, 1)")
