@@ -690,7 +690,7 @@ func (t *DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltyp
 	}
 
 	// TODO: check type
-	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceBytes(dest, []byte(value))), nil
+	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceString(dest, value)), nil
 }
 
 // String implements the types.ExtendedType interface.
