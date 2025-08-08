@@ -259,19 +259,16 @@ func TestInsert(t *testing.T) {
 					Expected: []sql.Row{{10}},
 				},
 				{
-					Skip:     true, // TODO: unable to find field with index 2 in row of 2 columns
 					Query:    "INSERT INTO public.t (j) VALUES ($1) RETURNING j;",
 					BindVars: []any{11},
 					Expected: []sql.Row{{11}},
 				},
 				{
-					Skip:     true, // TODO: unable to find field with index 2 in row of 2 columns
 					Query:    "INSERT INTO public.t (j) VALUES ($1) RETURNING t.j;",
 					BindVars: []any{12},
 					Expected: []sql.Row{{12}},
 				},
 				{
-					Skip:     true, // TODO: unable to find field with index 2 in row of 2 columns
 					Query:    "INSERT INTO public.t (j) VALUES ($1) RETURNING public.t.j;",
 					BindVars: []any{13},
 					Expected: []sql.Row{{13}},
