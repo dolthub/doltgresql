@@ -322,7 +322,7 @@ func (root *RootValue) GetTableHash(ctx context.Context, tName doltdb.TableName)
 }
 
 // GetTableNames implements the interface doltdb.RootValue.
-func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]string, error) {
+func (root *RootValue) GetTableNames(ctx context.Context, schemaName string, includeRootObjects bool) ([]string, error) {
 	tableMap, err := root.getTableMap(ctx, schemaName)
 	if err != nil {
 		return nil, err
@@ -336,21 +336,22 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string) ([]
 	if err != nil {
 		return nil, err
 	}
-	// Iterate collections
-	colls, err := rootobject.LoadAllCollections(ctx, root)
-	if err != nil {
-		return nil, err
-	}
-	for _, coll := range colls {
-		err = coll.IterIDs(ctx, func(identifier id.Id) (stop bool, err error) {
-			tName := coll.IDToTableName(identifier)
-			if tName.Schema == schemaName {
-				names = append(names, tName.Name)
-			}
-			return false, nil
-		})
+	if includeRootObjects {
+		colls, err := rootobject.LoadAllCollections(ctx, root)
 		if err != nil {
 			return nil, err
+		}
+		for _, coll := range colls {
+			err = coll.IterIDs(ctx, func(identifier id.Id) (stop bool, err error) {
+				tName := coll.IDToTableName(identifier)
+				if tName.Schema == schemaName {
+					names = append(names, tName.Name)
+				}
+				return false, nil
+			})
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	return names, nil
