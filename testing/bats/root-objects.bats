@@ -83,3 +83,18 @@ SQL
     [ "$status" -eq 0 ]
     [[ "$output" =~ "12" ]] || false
 }
+
+@test 'root-objects: \d does not break' {
+    query_server <<SQL
+CREATE TABLE "t" ("id" SERIAL);
+SQL
+    run query_server -c "\d"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "sequence" ]] || false
+
+    stop_sql_server
+    start_sql_server
+    run query_server -c "\d"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "sequence" ]] || false
+}
