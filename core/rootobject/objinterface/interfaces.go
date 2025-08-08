@@ -90,6 +90,10 @@ type Collection interface {
 	// LoadCollectionHash loads the Collection hash from the given root. This does not load the entire collection from
 	// the root, and is therefore a bit more performant if only the hash is needed.
 	LoadCollectionHash(ctx context.Context, root RootValue) (hash.Hash, error)
+	// ResolveNameFromObjects finds the closest matching (or exact) ID for the given name. If an exact match is not
+	// found, then this may error if the name is ambiguous. This searches through the given root objects rather than the
+	// ones stored in the collection itself.
+	ResolveNameFromObjects(ctx context.Context, name doltdb.TableName, rootObjects []RootObject) (doltdb.TableName, id.Id, error)
 	// Serializer returns the serializer associated with this Collection.
 	Serializer() RootObjectSerializer
 	// UpdateRoot updates the Collection in the given root, returning the updated root.

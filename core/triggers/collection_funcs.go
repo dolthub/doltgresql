@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
@@ -92,6 +93,21 @@ func LoadTriggers(ctx context.Context, root objinterface.RootValue) (*Collection
 		}
 	}
 	return NewCollection(ctx, m, root.NodeStore())
+}
+
+// ResolveNameFromObjects implements the interface objinterface.Collection.
+func (*Collection) ResolveNameFromObjects(ctx context.Context, name doltdb.TableName, rootObjects []objinterface.RootObject) (doltdb.TableName, id.Id, error) {
+	tempCollection := Collection{
+		accessCache: make(map[id.Trigger]Trigger),
+		idCache:     make([]id.Trigger, 0, len(rootObjects)),
+	}
+	for _, rootObject := range rootObjects {
+		if obj, ok := rootObject.(Trigger); ok {
+			tempCollection.accessCache[obj.ID] = obj
+			tempCollection.idCache = append(tempCollection.idCache, obj.ID)
+		}
+	}
+	return tempCollection.ResolveName(ctx, name)
 }
 
 // Serializer implements the interface objinterface.Collection.

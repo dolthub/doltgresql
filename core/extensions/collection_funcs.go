@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
@@ -103,6 +104,19 @@ func LoadExtensions(ctx context.Context, root objinterface.RootValue) (*Collecti
 		}
 	}
 	return NewCollection(ctx, m, root.NodeStore())
+}
+
+// ResolveNameFromObjects implements the interface objinterface.Collection.
+func (*Collection) ResolveNameFromObjects(ctx context.Context, name doltdb.TableName, rootObjects []objinterface.RootObject) (doltdb.TableName, id.Id, error) {
+	tempCollection := Collection{
+		accessCache: make(map[id.Extension]Extension),
+	}
+	for _, rootObject := range rootObjects {
+		if obj, ok := rootObject.(Extension); ok {
+			tempCollection.accessCache[obj.ExtName] = obj
+		}
+	}
+	return tempCollection.ResolveName(ctx, name)
 }
 
 // Serializer implements the interface objinterface.Collection.

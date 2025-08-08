@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
 	merge2 "github.com/dolthub/doltgresql/core/merge"
@@ -143,6 +144,32 @@ func LoadSequences(ctx context.Context, root objinterface.RootValue) (*Collectio
 		underlyingMap: m,
 		ns:            root.NodeStore(),
 	}, nil
+}
+
+// ResolveNameFromObjects implements the interface objinterface.Collection.
+func (*Collection) ResolveNameFromObjects(ctx context.Context, name doltdb.TableName, rootObjects []objinterface.RootObject) (doltdb.TableName, id.Id, error) {
+	// First we'll check if there are any objects to search through in the first place
+	accessedMap := make(map[id.Sequence]*Sequence)
+	for _, rootObject := range rootObjects {
+		if obj, ok := rootObject.(*Sequence); ok {
+			accessedMap[obj.Id] = obj
+		}
+	}
+	if len(accessedMap) == 0 {
+		return doltdb.TableName{}, id.Null, nil
+	}
+	// There are root objects to search through, so we'll create a temporary store
+	ns := tree.NewTestNodeStore()
+	addressMap, err := prolly.NewEmptyAddressMap(ns)
+	if err != nil {
+		return doltdb.TableName{}, id.Null, err
+	}
+	tempCollection := Collection{
+		accessedMap:   accessedMap,
+		underlyingMap: addressMap,
+		ns:            ns,
+	}
+	return tempCollection.ResolveName(ctx, name)
 }
 
 // Serializer implements the interface objinterface.Collection.
