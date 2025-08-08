@@ -1124,7 +1124,7 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 		// See: https://github.com/dolthub/dolt/issues/9641
 		// Map BIT types to appropriately sized integers for MySQL compatibility
 		width := int32FromSqlVal(columnType.Length)
-		
+
 		var intOid oid.Oid
 		var intWidth int32
 		switch {
@@ -1138,7 +1138,7 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 			intOid = oid.T_int8
 			intWidth = 64
 		}
-		
+
 		return &types.T{
 			InternalType: types.InternalType{
 				Family: types.IntFamily,
