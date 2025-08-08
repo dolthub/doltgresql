@@ -259,7 +259,11 @@ func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query s
 func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32, formatCodes []int16, values [][]byte) (map[string]sqlparser.Expr, error) {
 	bindings := make(map[string]sqlparser.Expr, len(values))
 	for i := range values {
-		bindVarString, err := h.convertBindParameterToString(types[i], values[i], formatCodes[i])
+		formatCode := int16(0)
+		if formatCodes != nil {
+			formatCode = formatCodes[i]
+		}
+		bindVarString, err := h.convertBindParameterToString(types[i], values[i], formatCode)
 		if err != nil {
 			return nil, err
 		}
@@ -432,8 +436,19 @@ func (h *DoltgresHandler) maybeReleaseAllLocks(c *mysql.Conn) {
 // These nodes will eventually return an OK result, but their intermediate forms here return a different schema
 // than they will at execution time.
 func nodeReturnsOkResultSchema(node sql.Node) bool {
-	switch node.(type) {
-	case *plan.InsertInto, *plan.Update, *plan.UpdateJoin, *plan.DeleteFrom:
+	switch n := node.(type) {
+	case *plan.InsertInto:
+		if len(n.Returning) > 0 {
+			return false
+		}
+	case *plan.Update:
+		if len(n.Returning) > 0 {
+			return false
+		}
+	case *plan.DeleteFrom, *plan.UpdateJoin:
+		//if len(n.Returning) > 0 {
+		//	return false
+		//}
 		return true
 	}
 	return types.IsOkResultSchema(node.Schema())
