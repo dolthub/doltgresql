@@ -32,7 +32,7 @@ func initToChar() {
 }
 
 // to_char_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
-// Postgres date formatting: https://www.postgresql.org/docs/8.1/functions-formatting.html
+// Postgres date formatting: https://www.postgresql.org/docs/15/functions-formatting.html
 var to_char_timestamp = framework.Function2{
 	Name:       "to_char",
 	Return:     pgtypes.Text,

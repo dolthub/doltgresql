@@ -50,6 +50,9 @@ var timestamptz_in = framework.Function3{
 		//if b.Precision == -1 {
 		//	p = b.Precision
 		//}
+		if input == "infinity" || input == "-infinity" {
+			return input, nil // TODO: might need different representation in time.Time value
+		}
 		loc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
@@ -69,18 +72,18 @@ var timestamptz_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.TimestampTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		if t, ok := val.(string); ok && (t == "infinity" || t == "-infinity") {
+			return t, nil
+		}
+
 		serverLoc, err := GetServerLocation(ctx)
 		if err != nil {
 			return "", err
 		}
 		t := val.(time.Time).In(serverLoc)
-		_, offset := t.Zone()
-		// TODO: need to format time in BC
-		if offset%3600 != 0 {
-			return t.Format("2006-01-02 15:04:05.999999999-07:00"), nil
-		} else {
-			return t.Format("2006-01-02 15:04:05.999999999-07"), nil
-		}
+
+		// Format timestamp with BC support and timezone
+		return FormatTimestampWithBC(t, true), nil
 	},
 }
 

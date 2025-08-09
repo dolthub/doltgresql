@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -65,8 +66,8 @@ var timestamp_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Timestamp},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: need to format time in BC
-		return val.(time.Time).Format("2006-01-02 15:04:05.999999999"), nil
+		t := val.(time.Time)
+		return FormatTimestampWithBC(t, false), nil
 	},
 }
 
@@ -140,4 +141,40 @@ var timestamp_cmp = framework.Function2{
 		bb := val2.(time.Time)
 		return int32(ab.Compare(bb)), nil
 	},
+}
+
+// FormatTimestampWithBC formats a time.Time that may represent BC dates (negative years)
+// PostgreSQL represents BC years as negative years in time.Time, but Go's Format() doesn't handle this correctly
+// tz is optional timezone value to be appended to formatted value
+func FormatTimestampWithBC(t time.Time, hasTZ bool) string {
+	year := t.Year()
+	isBC := year <= 0
+
+	layout := "2006-01-02 15:04:05.999999"
+
+	if hasTZ {
+		_, offset := t.Zone()
+		if offset%3600 != 0 {
+			layout = layout + "-07:00"
+		} else {
+			layout = layout + "-07"
+		}
+	}
+
+	if isBC {
+		// Convert from PostgreSQL's BC representation to positive year for formatting
+		// PostgreSQL: year 0 = 1 BC, year -1 = 2 BC, etc.
+		absYear := 1 - year
+
+		// Create a new time with the positive year for formatting
+		positiveTime := time.Date(absYear, t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
+
+		// Format with the positive year, then append " BC"
+		formatted := positiveTime.Format(layout)
+
+		return fmt.Sprintf("%s BC", formatted)
+	} else {
+		// For AD years (positive), use normal formatting
+		return t.Format(layout)
+	}
 }

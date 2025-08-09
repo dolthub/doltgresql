@@ -560,13 +560,11 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 		}
 		return tVal
 	case types.TimestampTZ.ID:
-		// timestamptz returns a value in server timezone
-		_, offset := v.(time.Time).Zone()
-		if offset%3600 != 0 {
-			return v.(time.Time).Format("2006-01-02 15:04:05.999999999-07:00")
-		} else {
-			return v.(time.Time).Format("2006-01-02 15:04:05.999999999-07")
+		if v == nil {
+			return nil
 		}
+		// timestamptz returns a value in server timezone
+		return functions.FormatTimestampWithBC(v.(time.Time), true)
 	}
 
 	switch val := v.(type) {
