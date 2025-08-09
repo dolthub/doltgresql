@@ -23,11 +23,27 @@ import (
 
 // initObjDescription registers the functions to the catalog.
 func initObjDescription() {
-	framework.RegisterFunction(obj_description)
+	framework.RegisterFunction(obj_description_oid)
+	framework.RegisterFunction(obj_description_oid_name)
 }
 
-// obj_description represents the PostgreSQL function of the same name, taking the same parameters.
-var obj_description = framework.Function2{
+// obj_description_oid represents the PostgreSQL function of the same name, taking the same parameters.
+var obj_description_oid = framework.Function1{
+	Name:               "obj_description",
+	Return:             pgtypes.Text,
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Oid},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// TODO: When we support comments this should return the comment for a
+		// database object specified by its OID and the name of the containing
+		// system catalog.
+		return "", nil
+	},
+}
+
+// obj_description_oid_name represents the PostgreSQL function of the same name, taking the same parameters.
+var obj_description_oid_name = framework.Function2{
 	Name:               "obj_description",
 	Return:             pgtypes.Text,
 	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Name},
