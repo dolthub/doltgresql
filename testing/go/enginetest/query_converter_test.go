@@ -1127,14 +1127,13 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 
 		var intOid oid.Oid
 		var intWidth int32
-		switch {
-		case width <= 16:
+		if width <= 16 {
 			intOid = oid.T_int2
 			intWidth = 16
-		case width <= 32:
+		} else if width <= 32 {
 			intOid = oid.T_int4
 			intWidth = 32
-		default:
+		} else {
 			intOid = oid.T_int8
 			intWidth = 64
 		}
