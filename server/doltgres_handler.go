@@ -17,6 +17,8 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	goerrors "errors"
 	"fmt"
 	"io"
@@ -40,6 +42,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -135,7 +138,7 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 		h.sel.QueryStarted()
 	}
 
-	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback)
+	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback, true)
 	if err != nil {
 		err = sql.CastSQLError(err)
 	}
@@ -175,6 +178,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			},
 		}
 	} else {
+		//
 		fields = schemaToFieldDescriptions(sqlCtx, analyzed.Schema())
 	}
 	return analyzed, fields, nil
@@ -188,7 +192,7 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 		h.sel.QueryStarted()
 	}
 
-	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback)
+	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback, false)
 	if err != nil {
 		err = sql.CastSQLError(err)
 	}
@@ -328,7 +332,8 @@ func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte,
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
-func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error) error {
+func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement,
+	analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error, isExecute bool) error {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return err
@@ -379,10 +384,10 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 		r, err = resultForEmptyIter(sqlCtx, rowIter)
 	} else if analyzer.FlagIsSet(qFlags, sql.QFlagMax1Row) {
 		resultFields := schemaToFieldDescriptions(sqlCtx, schema)
-		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields)
+		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields, isExecute)
 	} else {
 		resultFields := schemaToFieldDescriptions(sqlCtx, schema)
-		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields)
+		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields, isExecute)
 	}
 	if err != nil {
 		return err
@@ -530,7 +535,7 @@ func resultForEmptyIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 }
 
 // resultForMax1RowIter ensures that an empty iterator returns at most one row
-func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, resultFields []pgproto3.FieldDescription) (*Result, error) {
+func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, resultFields []pgproto3.FieldDescription, isExecute bool) (*Result, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForMax1RowIter").End()
 	row, err := iter.Next(ctx)
 	if err == io.EOF {
@@ -546,7 +551,7 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 		return nil, err
 	}
 
-	outputRow, err := rowToBytes(ctx, schema, row)
+	outputRow, err := rowToBytes(ctx, schema, row, isExecute)
 	if err != nil {
 		return nil, err
 	}
@@ -558,7 +563,8 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 
 // resultForDefaultIter reads batches of rows from the iterator
 // and writes results into the callback function.
-func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription) (*Result, bool, error) {
+func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
+	callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription, isExecute bool) (*Result, bool, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForDefaultIter").End()
 
 	var r *Result
@@ -651,7 +657,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 					continue
 				}
 
-				outputRow, err := rowToBytes(ctx, schema, row)
+				outputRow, err := rowToBytes(ctx, schema, row, isExecute)
 				if err != nil {
 					return err
 				}
@@ -693,7 +699,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	return r, processedAtLeastOneBatch, nil
 }
 
-func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row) ([][]byte, error) {
+func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, isExecute bool) ([][]byte, error) {
 	if len(row) == 0 {
 		return nil, nil
 	}
@@ -706,6 +712,43 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row) ([][]byte, error) {
 		if v == nil {
 			o[i] = nil
 		} else {
+			if isExecute {
+				switch d := s[i].Type.(type) {
+				case *pgtypes.DoltgresType:
+					switch d.ID {
+					// This is the list of types to use binary mode for when receiving them
+					// through a prepared statement.  If a type appears in this list, it
+					// must also be implemented in binaryDecode in encode.go.
+					case pgtypes.Bytea.ID:
+						buf := make([]byte, 8)
+						hex.Encode(buf, v.([]byte))
+						o[i] = buf
+						continue
+					case pgtypes.Int64.ID:
+						buf := make([]byte, 8)
+						binary.BigEndian.PutUint64(buf, uint64(v.(int64)))
+						o[i] = buf
+						continue
+					case pgtypes.Int32.ID:
+						buf := make([]byte, 8)
+						binary.BigEndian.PutUint32(buf, uint32(v.(int32)))
+						o[i] = buf
+						continue
+					case pgtypes.Int16.ID:
+						buf := make([]byte, 8)
+						binary.BigEndian.PutUint16(buf, uint16(v.(int16)))
+						o[i] = buf
+						continue
+					case pgtypes.Uuid.ID:
+						buf, err := v.(uuid.UUID).MarshalBinary()
+						if err != nil {
+							return nil, err
+						}
+						o[i] = buf
+						continue
+					}
+				}
+			}
 			val, err := s[i].Type.SQL(ctx, []byte{}, v)
 			if err != nil {
 				return nil, err
