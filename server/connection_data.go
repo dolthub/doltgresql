@@ -139,7 +139,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				default:
 					typOid, err = VitessTypeToObjectID(e.Type().Type())
 					if err != nil {
-						err = errors.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
+						err = errors.Errorf("could not determine OID for placeholder %s: %e", e.Name, err)
 						return false
 					}
 				}
@@ -147,7 +147,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				// TODO: should remove usage non doltgres type
 				typOid, err = VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
-					err = errors.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
+					err = errors.Errorf("could not determine OID for placeholder %s: %e", e.Name, err)
 					return false
 				}
 			}
@@ -164,7 +164,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				} else {
 					typOid, err = VitessTypeToObjectID(e.Type().Type())
 					if err != nil {
-						err = errors.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+						err = errors.Errorf("could not determine OID for placeholder %s: %e", bindVar.Name, err)
 						return false
 					}
 				}
@@ -181,7 +181,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				var typOid uint32
 				typOid, err = VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
-					err = errors.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+					err = errors.Errorf("could not determine OID for placeholder %s: %e", bindVar.Name, err)
 					return false
 				}
 				if _, ok = types[bindVar.Name]; ok {
@@ -203,10 +203,10 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 	for i, t := range types {
 		idx, err := strconv.ParseInt(strings.TrimPrefix(i, "v"), 10, 32)
 		if err != nil {
-			return nil, errors.Errorf("could not determine the index of placeholder %s: %w", i, err)
+			return nil, errors.Errorf("could not determine the index of placeholder %s: %e", i, err)
 		}
 		if int(idx-1) >= len(types) {
-			return nil, errors.Errorf("could not determine the index of placeholder %s: %w", i, err)
+			return nil, errors.Errorf("could not determine the index of placeholder %s: %e", i, err)
 		}
 		typesArr[idx-1] = t
 	}

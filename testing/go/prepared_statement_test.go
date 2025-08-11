@@ -15,12 +15,11 @@
 package _go
 
 import (
-	"testing"
-	"time"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"testing"
+	"time"
 )
 
 func TestPreparedStatements(t *testing.T) {
@@ -1151,6 +1150,18 @@ var preparedStatementTests = []ScriptTest{
 				Query:    `INSERT INTO test (name) VALUES ($1) RETURNING id;`,
 				BindVars: []any{"test_name"},
 				Expected: []sql.Row{{1}},
+			},
+		},
+	},
+	{
+		Name: "define placeholder unordered",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT $3::text, $1::integer + $2::integer",
+				BindVars: []any{1, 3, "hi"},
+				Expected: []sql.Row{
+					{"hi", 4},
+				},
 			},
 		},
 	},

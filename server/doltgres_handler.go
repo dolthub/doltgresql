@@ -25,6 +25,7 @@ import (
 	"os"
 	"regexp"
 	"runtime/trace"
+	"strconv"
 	"sync"
 	"time"
 
@@ -122,7 +123,7 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 		return nil, nil, err
 	}
 
-	return queryPlan, schemaToFieldDescriptions(sqlCtx, queryPlan.Schema()), nil
+	return queryPlan, schemaToFieldDescriptions(sqlCtx, queryPlan.Schema(), true), nil
 }
 
 // ComExecuteBound implements the Handler interface.
@@ -178,7 +179,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			},
 		}
 	} else {
-		fields = schemaToFieldDescriptions(sqlCtx, analyzed.Schema())
+		fields = schemaToFieldDescriptions(sqlCtx, analyzed.Schema(), true)
 	}
 	return analyzed, fields, nil
 }
@@ -319,6 +320,25 @@ func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte,
 		} else {
 			bindVarString = "false"
 		}
+	case typ == pgtype.ByteaOID && isBinaryFormat:
+		buf := make([]byte, hex.DecodedLen(len(value)))
+		_, err = hex.Decode(buf, value)
+		if err != nil {
+			return "", err
+		}
+		bindVarString = `\x` + hex.EncodeToString(buf)
+	case typ == pgtype.Int2OID && isBinaryFormat:
+		bindVarString = strconv.FormatInt(int64(binary.BigEndian.Uint16(value)), 10)
+	case typ == pgtype.Int4OID && isBinaryFormat:
+		bindVarString = strconv.FormatInt(int64(binary.BigEndian.Uint32(value)), 10)
+	case typ == pgtype.Int8OID && isBinaryFormat:
+		bindVarString = strconv.FormatInt(int64(binary.BigEndian.Uint64(value)), 10)
+	case typ == pgtype.UUIDOID && isBinaryFormat:
+		u, err := uuid.FromBytes(value)
+		if err != nil {
+			return "", err
+		}
+		bindVarString = u.String()
 	default:
 		// For text format or types that can handle binary-to-string conversion
 		if err := h.pgTypeMap.Scan(typ, formatCode, value, &bindVarString); err != nil {
@@ -381,10 +401,10 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	} else if schema == nil {
 		r, err = resultForEmptyIter(sqlCtx, rowIter)
 	} else if analyzer.FlagIsSet(qFlags, sql.QFlagMax1Row) {
-		resultFields := schemaToFieldDescriptions(sqlCtx, schema)
+		resultFields := schemaToFieldDescriptions(sqlCtx, schema, false)
 		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields, isExecute)
 	} else {
-		resultFields := schemaToFieldDescriptions(sqlCtx, schema)
+		resultFields := schemaToFieldDescriptions(sqlCtx, schema, false)
 		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields, isExecute)
 	}
 	if err != nil {
@@ -454,11 +474,18 @@ func nodeReturnsOkResultSchema(node sql.Node) bool {
 	return types.IsOkResultSchema(node.Schema())
 }
 
-func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldDescription {
+func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, isPrepared bool) []pgproto3.FieldDescription {
 	fields := make([]pgproto3.FieldDescription, len(s))
 	for i, c := range s {
 		var oid uint32
 		var typmod = int32(-1)
+
+		// "Format" field: The format code being used for the field.
+		// Currently, will be zero (text) or one (binary).
+		// In a RowDescription returned from the statement variant of Describe,
+		// the format code is not yet known and will always be zero.
+		var formatCode = int16(0)
+
 		var err error
 		if doltgresType, ok := c.Type.(*pgtypes.DoltgresType); ok {
 			if doltgresType.TypType == pgtypes.TypeType_Domain {
@@ -467,17 +494,18 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 				oid = id.Cache().ToOID(doltgresType.ID.AsId())
 			}
 			typmod = doltgresType.GetAttTypMod() // pg_attribute.atttypmod
+			if isPrepared {
+				switch doltgresType.ID {
+				case pgtypes.Bytea.ID, pgtypes.Int16.ID, pgtypes.Int32.ID, pgtypes.Int64.ID, pgtypes.Uuid.ID:
+					formatCode = 1
+				}
+			}
 		} else {
 			oid, err = VitessTypeToObjectID(c.Type.Type())
 			if err != nil {
 				panic(err)
 			}
 		}
-
-		// "Format" field: The format code being used for the field.
-		// Currently, will be zero (text) or one (binary).
-		// In a RowDescription returned from the statement variant of Describe,
-		// the format code is not yet known and will always be zero.
 
 		fields[i] = pgproto3.FieldDescription{
 			Name:                 []byte(c.Name),
@@ -486,7 +514,7 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema) []pgproto3.FieldD
 			DataTypeOID:          oid,
 			DataTypeSize:         int16(c.Type.MaxTextResponseByteLength(ctx)),
 			TypeModifier:         typmod,
-			Format:               int16(0),
+			Format:               formatCode,
 		}
 	}
 
@@ -714,8 +742,9 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, isExecute bool) ([]
 					// through a prepared statement.  If a type appears in this list, it
 					// must also be implemented in binaryDecode in encode.go.
 					case pgtypes.Bytea.ID:
-						buf := make([]byte, 8)
-						hex.Encode(buf, v.([]byte))
+						b := v.([]byte)
+						buf := make([]byte, hex.EncodedLen(len(b)))
+						hex.Encode(buf, b)
 						o[i] = buf
 						continue
 					case pgtypes.Int64.ID:
@@ -724,12 +753,12 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, isExecute bool) ([]
 						o[i] = buf
 						continue
 					case pgtypes.Int32.ID:
-						buf := make([]byte, 8)
+						buf := make([]byte, 4)
 						binary.BigEndian.PutUint32(buf, uint32(v.(int32)))
 						o[i] = buf
 						continue
 					case pgtypes.Int16.ID:
-						buf := make([]byte, 8)
+						buf := make([]byte, 2)
 						binary.BigEndian.PutUint16(buf, uint16(v.(int16)))
 						o[i] = buf
 						continue
