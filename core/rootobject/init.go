@@ -31,6 +31,7 @@ func Init() {
 	conflicts.DeserializeRootObject = DeserializeRootObject
 	conflicts.DiffRootObjects = DiffRootObjects
 	conflicts.GetFieldType = GetFieldType
+	conflicts.ResolveNameExternal = resolveNameFromObjects
 	conflicts.UpdateField = UpdateField
 	doltdb.RootObjectDiffFromRow = objinterface.DiffFromRow
 	for _, collFuncs := range globalCollections {

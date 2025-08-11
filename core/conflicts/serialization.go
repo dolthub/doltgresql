@@ -24,7 +24,7 @@ import (
 )
 
 // Serialize returns the Conflict as a byte slice. If the Conflict is invalid, then this returns a nil slice.
-func (conflict Conflict) Serialize(ctx context.Context) ([]byte, error) {
+func (conflict Conflict) Serialize(ctx context.Context) (_ []byte, err error) {
 	if !conflict.ID.IsValid() {
 		return nil, nil
 	}
@@ -33,22 +33,32 @@ func (conflict Conflict) Serialize(ctx context.Context) ([]byte, error) {
 	writer := utils.NewWriter(512)
 	writer.VariableUint(0) // Version
 	// Serialize "ours", "theirs", and "ancestor"
-	ours, err := conflict.Ours.Serialize(ctx)
-	if err != nil {
-		return nil, err
+	var ours, theirs, ancestor []byte
+	if conflict.Ours != nil {
+		ours, err = conflict.Ours.Serialize(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
-	theirs, err := conflict.Theirs.Serialize(ctx)
-	if err != nil {
-		return nil, err
+	if conflict.Theirs != nil {
+		theirs, err = conflict.Theirs.Serialize(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
-	ancestor, err := conflict.Ancestor.Serialize(ctx)
-	if err != nil {
-		return nil, err
+	if conflict.Ancestor != nil {
+		ancestor, err = conflict.Ancestor.Serialize(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// Write the conflict data
 	writer.Id(conflict.ID)
 	writer.String(conflict.FromHash)
 	writer.Int64(int64(conflict.RootObjectID))
+	writer.Bool(conflict.Ours != nil)
+	writer.Bool(conflict.Theirs != nil)
+	writer.Bool(conflict.Ancestor != nil)
 	writer.ByteSlice(ours)
 	writer.ByteSlice(theirs)
 	writer.ByteSlice(ancestor)
@@ -73,21 +83,30 @@ func DeserializeConflict(ctx context.Context, data []byte) (_ Conflict, err erro
 	conflict.ID = reader.Id()
 	conflict.FromHash = reader.String()
 	conflict.RootObjectID = objinterface.RootObjectID(reader.Int64())
+	hasOurs := reader.Bool()
+	hasTheirs := reader.Bool()
+	hasAncestor := reader.Bool()
 	ours := reader.ByteSlice()
 	theirs := reader.ByteSlice()
 	ancestor := reader.ByteSlice()
 	// Deserialize "ours", "theirs", and "ancestor"
-	conflict.Ours, err = DeserializeRootObject(ctx, conflict.RootObjectID, ours)
-	if err != nil {
-		return Conflict{}, err
+	if hasOurs {
+		conflict.Ours, err = DeserializeRootObject(ctx, conflict.RootObjectID, ours)
+		if err != nil {
+			return Conflict{}, err
+		}
 	}
-	conflict.Theirs, err = DeserializeRootObject(ctx, conflict.RootObjectID, theirs)
-	if err != nil {
-		return Conflict{}, err
+	if hasTheirs {
+		conflict.Theirs, err = DeserializeRootObject(ctx, conflict.RootObjectID, theirs)
+		if err != nil {
+			return Conflict{}, err
+		}
 	}
-	conflict.Ancestor, err = DeserializeRootObject(ctx, conflict.RootObjectID, ancestor)
-	if err != nil {
-		return Conflict{}, err
+	if hasAncestor {
+		conflict.Ancestor, err = DeserializeRootObject(ctx, conflict.RootObjectID, ancestor)
+		if err != nil {
+			return Conflict{}, err
+		}
 	}
 	if !reader.IsEmpty() {
 		return Conflict{}, errors.Errorf("extra data found while deserializing a conflict")

@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -31,9 +29,15 @@ func nodeDelete(ctx *Context, node *tree.Delete) (*vitess.Delete, error) {
 	ctx.Auth().PushAuthType(auth.AuthType_DELETE)
 	defer ctx.Auth().PopAuthType()
 
-	if _, ok := node.Returning.(*tree.NoReturningClause); !ok {
-		return nil, errors.Errorf("RETURNING is not yet supported")
+	var returningExprs vitess.SelectExprs
+	if returning, ok := node.Returning.(*tree.ReturningExprs); ok {
+		var err error
+		returningExprs, err = nodeSelectExprs(ctx, tree.SelectExprs(*returning))
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	with, err := nodeWith(ctx, node.With)
 	if err != nil {
 		return nil, err
@@ -60,5 +64,6 @@ func nodeDelete(ctx *Context, node *tree.Delete) (*vitess.Delete, error) {
 		Where:      where,
 		OrderBy:    orderBy,
 		Limit:      limit,
+		Returning:  returningExprs,
 	}, nil
 }

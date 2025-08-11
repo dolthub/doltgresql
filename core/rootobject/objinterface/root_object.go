@@ -41,6 +41,8 @@ type RootObject interface {
 type Conflict interface {
 	RootObject
 	doltdb.ConflictRootObject
+	// GetContainedRootObjectID returns the root object ID of the contained items.
+	GetContainedRootObjectID() RootObjectID
 	// Diffs returns the diffs for the conflict, along with the merged root object if there are no diffs.
 	Diffs(ctx context.Context) ([]RootObjectDiff, RootObject, error)
 	// FieldType returns the type associated with the given field name. Returns nil if the name does not match a field.

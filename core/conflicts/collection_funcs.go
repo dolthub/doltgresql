@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
@@ -93,6 +94,12 @@ func LoadConflicts(ctx context.Context, root objinterface.RootValue) (*Collectio
 		}
 	}
 	return NewCollection(ctx, m, root.NodeStore())
+}
+
+// ResolveNameFromObjects implements the interface objinterface.Collection.
+func (*Collection) ResolveNameFromObjects(ctx context.Context, name doltdb.TableName, rootObjects []objinterface.RootObject) (doltdb.TableName, id.Id, error) {
+	// Conflicts make use of this interface function, so we must return nil to prevent infinite recursion
+	return doltdb.TableName{}, id.Null, nil
 }
 
 // Serializer implements the interface objinterface.Collection.

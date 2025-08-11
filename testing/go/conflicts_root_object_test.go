@@ -560,7 +560,6 @@ func TestConflictsRootObject(t *testing.T) {
 		},
 		{
 			Name:        `Function deleted "ours" updated "theirs", chose "ours"`,
-			Skip:        true, // TODO: there's a bug dealing with root objects being incorrectly treated as tables
 			SetUpScript: []string{`CREATE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '1' || input; END; $$ LANGUAGE plpgsql;`},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -637,7 +636,6 @@ func TestConflictsRootObject(t *testing.T) {
 		},
 		{
 			Name:        `Function deleted "ours" updated "theirs", chose "theirs"`,
-			Skip:        true, // TODO: there's a bug dealing with root objects being incorrectly treated as tables
 			SetUpScript: []string{`CREATE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '1' || input; END; $$ LANGUAGE plpgsql;`},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -716,7 +714,6 @@ func TestConflictsRootObject(t *testing.T) {
 		},
 		{
 			Name:        `Function deleted "ours" updated "theirs", chose "ancestor"`,
-			Skip:        true, // TODO: there's a bug dealing with root objects being incorrectly treated as tables
 			SetUpScript: []string{`CREATE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '1' || input; END; $$ LANGUAGE plpgsql;`},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -795,7 +792,6 @@ func TestConflictsRootObject(t *testing.T) {
 		},
 		{
 			Name:        `Function deleted "theirs" updated "ours", chose "ours"`,
-			Skip:        true, // TODO: there's a bug dealing with root objects being incorrectly treated as tables
 			SetUpScript: []string{`CREATE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '1' || input; END; $$ LANGUAGE plpgsql;`},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -853,16 +849,16 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT base_value, our_value, our_diff_type, their_value, their_diff_type, dolt_conflict_id FROM "dolt_conflicts_interpreted_example(text)";`,
 					Expected: []sql.Row{
-						{"ancestor", nil, "deleted", "theirs", "modified", "root_object"},
+						{"ancestor", "ours", "modified", nil, "deleted", "root_object"},
 					},
 				},
-				{
+				{ // This is effectively a no-op as it doesn't produce an actual change (this verifies the behavior)
 					Query:    `UPDATE "dolt_conflicts_interpreted_example(text)" SET our_value = 'ours';`,
 					Expected: []sql.Row{},
 				},
-				{ // Updating to "ours" will delete the conflicts table since we're keeping our original root object
-					Query:       `DELETE FROM "dolt_conflicts_interpreted_example(text)";`,
-					ExpectedErr: `table not found`,
+				{ // This actually enforces that we've chosen "ours", since we're deleting the entry
+					Query:    `DELETE FROM "dolt_conflicts_interpreted_example(text)";`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -874,7 +870,6 @@ func TestConflictsRootObject(t *testing.T) {
 		},
 		{
 			Name:        `Function deleted "theirs" updated "ours", chose "theirs"`,
-			Skip:        true, // TODO: there's a bug dealing with root objects being incorrectly treated as tables
 			SetUpScript: []string{`CREATE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '1' || input; END; $$ LANGUAGE plpgsql;`},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -932,7 +927,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT base_value, our_value, our_diff_type, their_value, their_diff_type, dolt_conflict_id FROM "dolt_conflicts_interpreted_example(text)";`,
 					Expected: []sql.Row{
-						{"ancestor", nil, "deleted", "theirs", "modified", "root_object"},
+						{"ancestor", "ours", "modified", nil, "deleted", "root_object"},
 					},
 				},
 				{
@@ -951,7 +946,6 @@ func TestConflictsRootObject(t *testing.T) {
 		},
 		{
 			Name:        `Function deleted "theirs" updated "ours", chose "ancestor"`,
-			Skip:        true, // TODO: there's a bug dealing with root objects being incorrectly treated as tables
 			SetUpScript: []string{`CREATE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '1' || input; END; $$ LANGUAGE plpgsql;`},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1009,7 +1003,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT base_value, our_value, our_diff_type, their_value, their_diff_type, dolt_conflict_id FROM "dolt_conflicts_interpreted_example(text)";`,
 					Expected: []sql.Row{
-						{"ancestor", nil, "deleted", "theirs", "modified", "root_object"},
+						{"ancestor", "ours", "modified", nil, "deleted", "root_object"},
 					},
 				},
 				{

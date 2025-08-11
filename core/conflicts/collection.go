@@ -250,6 +250,11 @@ func (conflict Conflict) FieldType(ctx context.Context, name string) *pgtypes.Do
 	return GetFieldType(ctx, conflict.RootObjectID, name)
 }
 
+// GetContainedRootObjectID implements the interface objinterface.RootObject.
+func (conflict Conflict) GetContainedRootObjectID() objinterface.RootObjectID {
+	return conflict.RootObjectID
+}
+
 // GetID implements the interface objinterface.RootObject.
 func (conflict Conflict) GetID() id.Id {
 	return conflict.ID
@@ -381,6 +386,12 @@ var DiffRootObjects = func(ctx context.Context, rootObjID objinterface.RootObjec
 // function to get around import cycles.
 var GetFieldType = func(ctx context.Context, rootObjID objinterface.RootObjectID, fieldName string) *pgtypes.DoltgresType {
 	panic("GetFieldType was never initialized")
+}
+
+// ResolveNameExternal handles name resolution across all collection types, and is declared in a different package. It
+// is assigned here by an Init function to get around import cycles.
+var ResolveNameExternal = func(ctx context.Context, name doltdb.TableName, rootObjects []objinterface.RootObject) (doltdb.TableName, id.Id, error) {
+	panic("ResolveNameExternal was never initialized")
 }
 
 // UpdateField handles updating fields in a root object, and is declared in a different package. It is assigned here by

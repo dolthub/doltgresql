@@ -215,11 +215,14 @@ func GetRootObject(ctx context.Context, root objinterface.RootValue, tName doltd
 
 // GetRootObjectConflicts returns the conflict root object that matches the given name.
 func GetRootObjectConflicts(ctx context.Context, root objinterface.RootValue, tName doltdb.TableName) (conflicts.Conflict, bool, error) {
-	_, rawID, objID, err := ResolveName(ctx, root, tName)
-	if err != nil || objID == objinterface.RootObjectID_None {
+	coll, err := globalCollections[objinterface.RootObjectID_Conflicts].LoadCollection(ctx, root)
+	if err != nil {
 		return conflicts.Conflict{}, false, err
 	}
-	coll, _ := globalCollections[objinterface.RootObjectID_Conflicts].LoadCollection(ctx, root)
+	_, rawID, err := coll.ResolveName(ctx, tName)
+	if err != nil {
+		return conflicts.Conflict{}, false, err
+	}
 	ro, ok, err := coll.GetRootObject(ctx, rawID)
 	if err != nil || !ok {
 		return conflicts.Conflict{}, false, err
@@ -455,13 +458,13 @@ func PutRootObject(ctx context.Context, root objinterface.RootValue, tName doltd
 				}
 			}
 			if merged == nil {
-				return RemoveRootObject(ctx, root, conflict.GetID(), conflict.GetRootObjectID())
+				return RemoveRootObjectIfExists(ctx, root, conflict.GetID(), conflict.GetContainedRootObjectID())
 			} else {
 				return PutRootObject(ctx, root, tName, merged)
 			}
 		} else {
 			if merged == nil {
-				root, err = RemoveRootObject(ctx, root, conflict.GetID(), conflict.GetRootObjectID())
+				root, err = RemoveRootObjectIfExists(ctx, root, conflict.GetID(), conflict.GetContainedRootObjectID())
 				if err != nil {
 					return nil, err
 				}
@@ -487,6 +490,25 @@ func RemoveRootObject(ctx context.Context, root objinterface.RootValue, identifi
 	}
 	if err = coll.DropRootObject(ctx, identifier); err != nil {
 		return nil, err
+	}
+	return coll.UpdateRoot(ctx, root)
+}
+
+// RemoveRootObjectIfExists removes the matching root object from its respective Collection, returning the updated root.
+// If the root object does not exist, then this will not attempt the deletion.
+func RemoveRootObjectIfExists(ctx context.Context, root objinterface.RootValue, identifier id.Id, rootObjectID objinterface.RootObjectID) (objinterface.RootValue, error) {
+	coll, err := LoadCollection(ctx, root, rootObjectID)
+	if err != nil {
+		return nil, err
+	}
+	exists, err := coll.HasRootObject(ctx, identifier)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		if err = coll.DropRootObject(ctx, identifier); err != nil {
+			return nil, err
+		}
 	}
 	return coll.UpdateRoot(ctx, root)
 }
@@ -523,4 +545,28 @@ func ResolveName(ctx context.Context, root objinterface.RootValue, name doltdb.T
 	}
 
 	return resolvedName, resolvedRawID, resolvedObjID, nil
+}
+
+// resolveNameFromObjects resolves the given name on all given objects on all global collections (except for conflicts).
+func resolveNameFromObjects(ctx context.Context, name doltdb.TableName, rootObjects []objinterface.RootObject) (doltdb.TableName, id.Id, error) {
+	var resolvedName doltdb.TableName
+	resolvedRawID := id.Null
+
+	for i, emptyColl := range globalCollections {
+		if emptyColl == nil || i == int(objinterface.RootObjectID_Conflicts) {
+			continue
+		}
+		rName, rID, err := emptyColl.ResolveNameFromObjects(ctx, name, rootObjects)
+		if err != nil {
+			return doltdb.TableName{}, id.Null, err
+		}
+		if rID.IsValid() {
+			if resolvedRawID != id.Null {
+				return doltdb.TableName{}, id.Null, fmt.Errorf(`"%s" is ambiguous`, name.String())
+			}
+			resolvedName = rName
+			resolvedRawID = rID
+		}
+	}
+	return resolvedName, resolvedRawID, nil
 }
