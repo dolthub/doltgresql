@@ -25,13 +25,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	errors2 "gopkg.in/src-d/go-errors.v1"
 )
 
 // This formatting implementation comes from postgres/src/backend/utils/adt/formatting.c
-
-var errInvalidValueFor = errors2.NewKind(`invalid value "%s" for "%s"`)
-var errConflictingValues = errors2.NewKind(`conflicting values for "%s" field in formatting string`)
 
 // Time and date constants for formatting calculations
 const (
@@ -97,6 +93,7 @@ type tmFromChar struct {
 	tzh       int              // Timezone hours
 	tzm       int              // Timezone minutes
 	ff        int              // Fractional precision
+	// TODO: use these when we support TZ
 	//has_tz    bool             // True if TZ field was present
 	//gmtoffset int              // GMT offset of fixed-offset zone abbreviation
 }
@@ -1183,7 +1180,7 @@ func fromCharSeqSearch(keyName string, input string, arr []string, curVal int, c
 		if len(s) > 0 {
 			l = len(s[0])
 		}
-		return 0, 0, errInvalidValueFor.New(input[:l], keyName)
+		return 0, 0, errors.Errorf(`invalid value "%s" for "%s"`, input[:l], keyName)
 	}
 
 	val, err := verifyVal(keyName, curVal, calculateVal(v))
@@ -1196,7 +1193,7 @@ func fromCharSeqSearch(keyName string, input string, arr []string, curVal int, c
 // verifyVal checks if the current value conflicts with a new value for the same field
 func verifyVal(keyName string, curVal, newVal int) (int, error) {
 	if curVal != 0 && curVal != newVal {
-		return 0, errConflictingValues.New(keyName)
+		return 0, errors.Errorf(`conflicting values for "%s" field in formatting string`, keyName)
 	}
 	return newVal, nil
 }

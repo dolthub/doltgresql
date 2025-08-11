@@ -34,6 +34,7 @@ var pg_get_functiondef_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// TODO: real implementation
 		return "", nil
 	},
 }
