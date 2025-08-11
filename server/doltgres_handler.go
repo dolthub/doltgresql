@@ -321,12 +321,7 @@ func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte,
 			bindVarString = "false"
 		}
 	case typ == pgtype.ByteaOID && isBinaryFormat:
-		buf := make([]byte, hex.DecodedLen(len(value)))
-		_, err = hex.Decode(buf, value)
-		if err != nil {
-			return "", err
-		}
-		bindVarString = `\x` + hex.EncodeToString(buf)
+		bindVarString = `\x` + hex.EncodeToString(value)
 	case typ == pgtype.Int2OID && isBinaryFormat:
 		bindVarString = strconv.FormatInt(int64(binary.BigEndian.Uint16(value)), 10)
 	case typ == pgtype.Int4OID && isBinaryFormat:
@@ -401,10 +396,10 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	} else if schema == nil {
 		r, err = resultForEmptyIter(sqlCtx, rowIter)
 	} else if analyzer.FlagIsSet(qFlags, sql.QFlagMax1Row) {
-		resultFields := schemaToFieldDescriptions(sqlCtx, schema, false)
+		resultFields := schemaToFieldDescriptions(sqlCtx, schema, isExecute)
 		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields, isExecute)
 	} else {
-		resultFields := schemaToFieldDescriptions(sqlCtx, schema, false)
+		resultFields := schemaToFieldDescriptions(sqlCtx, schema, isExecute)
 		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields, isExecute)
 	}
 	if err != nil {
@@ -742,10 +737,7 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, isExecute bool) ([]
 					// through a prepared statement.  If a type appears in this list, it
 					// must also be implemented in binaryDecode in encode.go.
 					case pgtypes.Bytea.ID:
-						b := v.([]byte)
-						buf := make([]byte, hex.EncodedLen(len(b)))
-						hex.Encode(buf, b)
-						o[i] = buf
+						o[i] = v.([]byte)
 						continue
 					case pgtypes.Int64.ID:
 						buf := make([]byte, 8)

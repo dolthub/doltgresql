@@ -1165,6 +1165,55 @@ var preparedStatementTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Bytea with binary bindvars",
+		SetUpScript: []string{
+			"CREATE TABLE t_bytea (id INTEGER primary key, v1 BYTEA);",
+			"INSERT INTO t_bytea VALUES (1, E'\\\\xDEADBEEF'), (2, '\\xC0FFEE'), (3, ''), (4, NULL);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_bytea ORDER BY id;",
+				Expected: []sql.Row{
+					{1, []byte{0xDE, 0xAD, 0xBE, 0xEF}},
+					{2, []byte{0xC0, 0xFF, 0xEE}},
+					{3, []byte{}},
+					{4, nil},
+				},
+			},
+			{
+				Query:    "SELECT * FROM t_bytea WHERE v1 = $1 ORDER BY id;",
+				BindVars: []any{[]byte{0xC0, 0xFF, 0xEE}},
+				Expected: []sql.Row{
+					{2, []byte{0xC0, 0xFF, 0xEE}},
+				},
+			},
+			{
+				Query:    "UPDATE t_bytea SET v1 = $1 WHERE id = $2;",
+				BindVars: []any{`\xC0FFEE`, 4},
+			},
+			{
+				Query:    "SELECT * FROM t_bytea WHERE v1 = $1 ORDER BY id;",
+				BindVars: []any{[]byte{0xC0, 0xFF, 0xEE}},
+				Expected: []sql.Row{
+					{2, []byte{0xC0, 0xFF, 0xEE}},
+					{4, []byte{0xC0, 0xFF, 0xEE}},
+				},
+			},
+			{
+				Query:    "DELETE FROM t_bytea WHERE v1 = $1;",
+				BindVars: []any{[]byte{0xDE, 0xAD, 0xBE, 0xEF}},
+			},
+			{
+				Query: "SELECT * FROM t_bytea ORDER BY id;",
+				Expected: []sql.Row{
+					{2, []byte{0xC0, 0xFF, 0xEE}},
+					{3, []byte{}},
+					{4, []byte{0xC0, 0xFF, 0xEE}},
+				},
+			},
+		},
+	},
 }
 
 var pgCatalogTests = []ScriptTest{
