@@ -178,7 +178,6 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			},
 		}
 	} else {
-		//
 		fields = schemaToFieldDescriptions(sqlCtx, analyzed.Schema())
 	}
 	return analyzed, fields, nil
@@ -332,8 +331,7 @@ func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte,
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
-func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement,
-	analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error, isExecute bool) error {
+func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error, isExecute bool) error {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return err
@@ -451,9 +449,6 @@ func nodeReturnsOkResultSchema(node sql.Node) bool {
 			return false
 		}
 	case *plan.DeleteFrom, *plan.UpdateJoin:
-		//if len(n.Returning) > 0 {
-		//	return false
-		//}
 		return true
 	}
 	return types.IsOkResultSchema(node.Schema())
@@ -563,8 +558,7 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 
 // resultForDefaultIter reads batches of rows from the iterator
 // and writes results into the callback function.
-func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
-	callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription, isExecute bool) (*Result, bool, error) {
+func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription, isExecute bool) (*Result, bool, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForDefaultIter").End()
 
 	var r *Result
