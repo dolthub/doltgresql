@@ -1236,6 +1236,26 @@ func TestSystemInformationFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "pg_get_ruledef",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT pg_get_ruledef(845743985);`,
+					ExpectedColNames: []string{"pg_get_ruledef"},
+					Expected:         []sql.Row{{nil}},
+				},
+				{
+					Query:            `SELECT pg_get_ruledef(845743985, true);`,
+					ExpectedColNames: []string{"pg_get_ruledef"},
+					Expected:         []sql.Row{{nil}},
+				},
+				{
+					Query:            `SELECT pg_get_ruledef(845743985, false);`,
+					ExpectedColNames: []string{"pg_get_ruledef"},
+					Expected:         []sql.Row{{nil}},
+				},
+			},
+		},
+		{
 			Name: "pg_get_expr",
 			SetUpScript: []string{
 				`CREATE TABLE testing (id INT primary key);`,
@@ -1765,6 +1785,19 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 				{
 					// TODO: not supported yet
 					Query: `SELECT pg_get_functiondef(22)`,
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+			},
+		},
+		{
+			Name:        "pg_get_function_result",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: not supported yet
+					Query: `SELECT pg_get_function_result(22)`,
 					Expected: []sql.Row{
 						{""},
 					},
@@ -2547,11 +2580,417 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{"2001-02-16 10:30:00-06:30"}},
 				},
 				{
-					Query: `SET timezone to DEFAULT;`,
+					Query: `SET timezone to '+06:30';`,
 				},
 				{
 					Query:    `select date_trunc('hour', interval '2 days 10 hours 30 minutes');`,
 					Expected: []sql.Row{{"2 days 10:00:00"}},
+				},
+			},
+		},
+		{
+			Name: "to_date",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT to_date('1 4 1902', 'Q MM YYYY');`,
+					Expected: []sql.Row{{"1902-04-01"}},
+				},
+				{
+					Query:    `SELECT to_date('3 4 21 01', 'W MM CC YY');`,
+					Expected: []sql.Row{{"2001-04-15"}},
+				},
+				{
+					Query:    `SELECT to_date('2458872', 'J');`,
+					Expected: []sql.Row{{"2020-01-23"}},
+				},
+				{
+					Query:    `SELECT to_date('44-02-01 BC','YYYY-MM-DD BC');`,
+					Expected: []sql.Row{{"0044-02-01 BC"}},
+				},
+				{
+					Query:    `SELECT to_date('-44-02-01','YYYY-MM-DD');`,
+					Expected: []sql.Row{{"0044-02-01 BC"}},
+				},
+				{
+					Query:    `SELECT to_date('2011x 12x 18', 'YYYYxMMxDD');`,
+					Expected: []sql.Row{{"2011-12-18"}},
+				},
+				{
+					Query:    `SELECT to_date('2015 365', 'YYYY DDD');`,
+					Expected: []sql.Row{{"2015-12-31"}},
+				},
+			},
+		},
+		{
+			Name: "to_timestamp",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SET timezone to '+06:30';`,
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 23:38:15', 'YYYY-MM-DD HH24:MI:SS');`,
+					Expected: []sql.Row{{"2011-12-18 23:38:15-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2000-01-01 12:30:45', 'YYYY-MM-DD HH24:MI:SS');`,
+					Expected: []sql.Row{{"2000-01-01 12:30:45-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('0097/Feb/16 --> 08:14:30', 'YYYY/Mon/DD --> HH:MI:SS');`,
+					Expected: []sql.Row{{"0097-02-16 08:14:30-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('97/2/16 8:14:30', 'FMYYYY/FMMM/FMDD FMHH:FMMI:FMSS');`,
+					Expected: []sql.Row{{"0097-02-16 08:14:30-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011$03!18 23_38_15', 'YYYY-MM-DD HH24:MI:SS');`,
+					Expected: []sql.Row{{"2011-03-18 23:38:15-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('1985 January 12', 'YYYY FMMonth DD');`,
+					Expected: []sql.Row{{"1985-01-12 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('1985 FMMonth 12', 'YYYY "FMMonth" DD');`,
+					Expected: []sql.Row{{"1985-01-12 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('1985 \\ 12', 'YYYY \\\\ DD');`,
+					Expected: []sql.Row{{"1985-01-12 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('My birthday-> Year: 1976, Month: May, Day: 16', '"My birthday-> Year:" YYYY, "Month:" FMMonth, "Day:" DD');`,
+					Expected: []sql.Row{{"1976-05-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('1,582nd VIII 21', 'Y,YYYth FMRM DD');`,
+					Expected: []sql.Row{{"1582-08-21 00:00:00-06:30"}},
+				},
+				{
+					Query: `SELECT to_timestamp('15 "text between quote marks" 98 54 45',
+				  E'HH24 "\\"text between quote marks\\"" YY MI SS');`,
+					Expected: []sql.Row{{"1998-01-01 15:54:45-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('05121445482000', 'MMDDHH24MISSYYYY');`,
+					Expected: []sql.Row{{"2000-05-12 14:45:48-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2000January09Sunday', 'YYYYFMMonthDDFMDay');`,
+					Expected: []sql.Row{{"2000-01-09 00:00:00-06:30"}},
+				},
+				{
+					Query:       `SELECT to_timestamp('97/Feb/16', 'YYMonDD');`,
+					ExpectedErr: "invalid value",
+				},
+				{
+					Query:    `SELECT to_timestamp('97/Feb/16', 'YY:Mon:DD');`,
+					Expected: []sql.Row{{"1997-02-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('97/Feb/16', 'FXYY:Mon:DD');`,
+					Expected: []sql.Row{{"1997-02-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('97/Feb/16', 'FXYY/Mon/DD');`,
+					Expected: []sql.Row{{"1997-02-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('19971116', 'YYYYMMDD');`,
+					Expected: []sql.Row{{"1997-11-16 00:00:00-06:30"}},
+				},
+				{
+					// TODO: this test passes but time library parsing does not allow year length to be more than 4
+					//  the using pgx library for tests relies on it.
+					// https://github.com/jackc/pgx/blob/master/pgtype/timestamptz.go#L312
+					Skip:     true,
+					Query:    `SELECT to_timestamp('20000-1116', 'FXYYYY-MMDD');`,
+					Expected: []sql.Row{{"20000-11-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('1997 AD 11 16', 'YYYY BC MM DD');`,
+					Expected: []sql.Row{{"1997-11-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('1997 BC 11 16', 'YYYY BC MM DD');`,
+					Expected: []sql.Row{{"1997-11-16 00:00:00-06:30 BC"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('1997 A.D. 11 16', 'YYYY B.C. MM DD');`,
+					Expected: []sql.Row{{"1997-11-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('1997 B.C. 11 16', 'YYYY B.C. MM DD');`,
+					Expected: []sql.Row{{"1997-11-16 00:00:00-06:30 BC"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('9-1116', 'Y-MMDD');`,
+					Expected: []sql.Row{{"2009-11-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('95-1116', 'YY-MMDD');`,
+					Expected: []sql.Row{{"1995-11-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('995-1116', 'YYY-MMDD');`,
+					Expected: []sql.Row{{"1995-11-16 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2005426', 'YYYYWWD');`,
+					Expected: []sql.Row{{"2005-10-15 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2005300', 'YYYYDDD');`,
+					Expected: []sql.Row{{"2005-10-27 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2005527', 'IYYYIWID');`,
+					Expected: []sql.Row{{"2006-01-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('005527', 'IYYIWID');`,
+					Expected: []sql.Row{{"2006-01-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('05527', 'IYIWID');`,
+					Expected: []sql.Row{{"2006-01-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('5527', 'IIWID');`,
+					Expected: []sql.Row{{"2006-01-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2005364', 'IYYYIDDD');`,
+					Expected: []sql.Row{{"2006-01-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('20050302', 'YYYYMMDD');`,
+					Expected: []sql.Row{{"2005-03-02 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2005 03 02', 'YYYYMMDD');`,
+					Expected: []sql.Row{{"2005-03-02 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp(' 2005 03 02', 'YYYYMMDD');`,
+					Expected: []sql.Row{{"2005-03-02 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('  20050302', 'YYYYMMDD');`,
+					Expected: []sql.Row{{"2005-03-02 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 11:38 AM', 'YYYY-MM-DD HH12:MI PM');`,
+					Expected: []sql.Row{{"2011-12-18 11:38:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 11:38 PM', 'YYYY-MM-DD HH12:MI PM');`,
+					Expected: []sql.Row{{"2011-12-18 23:38:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 11:38 A.M.', 'YYYY-MM-DD HH12:MI P.M.');`,
+					Expected: []sql.Row{{"2011-12-18 11:38:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 11:38 P.M.', 'YYYY-MM-DD HH12:MI P.M.');`,
+					Expected: []sql.Row{{"2011-12-18 23:38:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 11:38 +05', 'YYYY-MM-DD HH12:MI TZH');`,
+					Expected: []sql.Row{{"2011-12-18 00:08:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 11:38 -05', 'YYYY-MM-DD HH12:MI TZH');`,
+					Expected: []sql.Row{{"2011-12-18 10:08:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 11:38 +05:20', 'YYYY-MM-DD HH12:MI TZH:TZM');`,
+					Expected: []sql.Row{{"2011-12-17 23:48:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 11:38 -05:20', 'YYYY-MM-DD HH12:MI TZH:TZM');`,
+					Expected: []sql.Row{{"2011-12-18 10:28:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 11:38 20', 'YYYY-MM-DD HH12:MI TZM');`,
+					Expected: []sql.Row{{"2011-12-18 04:48:00-06:30"}},
+				},
+				{
+					Skip:        true, // TODO: support formatting TZ
+					Query:       `SELECT to_timestamp('2011-12-18 11:38 PST', 'YYYY-MM-DD HH12:MI TZ');`,
+					ExpectedErr: `formatting field "TZ" is only supported in to_char`,
+				},
+				{
+					Query:    `SELECT to_timestamp('2018-11-02 12:34:56.025', 'YYYY-MM-DD HH24:MI:SS.MS');`,
+					Expected: []sql.Row{{"2018-11-02 12:34:56.025-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('44-02-01 11:12:13 BC','YYYY-MM-DD HH24:MI:SS BC');`,
+					Expected: []sql.Row{{"0044-02-01 11:12:13-06:30 BC"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('-44-02-01 11:12:13','YYYY-MM-DD HH24:MI:SS');`,
+					Expected: []sql.Row{{"0044-02-01 11:12:13-06:30 BC"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('-44-02-01 11:12:13 BC','YYYY-MM-DD HH24:MI:SS BC');`,
+					Expected: []sql.Row{{"0044-02-01 11:12:13-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18 23:38:15', 'YYYY-MM-DD  HH24:MI:SS');`,
+					Expected: []sql.Row{{"2011-12-18 23:38:15-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18  23:38:15', 'YYYY-MM-DD  HH24:MI:SS');`,
+					Expected: []sql.Row{{"2011-12-18 23:38:15-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18   23:38:15', 'YYYY-MM-DD  HH24:MI:SS');`,
+					Expected: []sql.Row{{"2011-12-18 23:38:15-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18  23:38:15', 'YYYY-MM-DD HH24:MI:SS');`,
+					Expected: []sql.Row{{"2011-12-18 23:38:15-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18  23:38:15', 'YYYY-MM-DD  HH24:MI:SS');`,
+					Expected: []sql.Row{{"2011-12-18 23:38:15-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2011-12-18  23:38:15', 'YYYY-MM-DD   HH24:MI:SS');`,
+					Expected: []sql.Row{{"2011-12-18 23:38:15-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2000+   JUN', 'YYYY/MON');`,
+					Expected: []sql.Row{{"2000-06-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('  2000 +JUN', 'YYYY/MON');`,
+					Expected: []sql.Row{{"2000-06-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp(' 2000 +JUN', 'YYYY//MON');`,
+					Expected: []sql.Row{{"2000-06-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2000  +JUN', 'YYYY//MON');`,
+					Expected: []sql.Row{{"2000-06-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2000 + JUN', 'YYYY MON');`,
+					Expected: []sql.Row{{"2000-06-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2000 ++ JUN', 'YYYY  MON');`,
+					Expected: []sql.Row{{"2000-06-01 00:00:00-06:30"}},
+				},
+				{
+					Query:       `SELECT to_timestamp('2000 + - JUN', 'YYYY  MON');`,
+					ExpectedErr: `invalid value "-" for "MON"`,
+				},
+				{
+					Query:    `SELECT to_timestamp('2000 + + JUN', 'YYYY   MON');`,
+					Expected: []sql.Row{{"2000-06-01 00:00:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2000 -10', 'YYYY TZH');`,
+					Expected: []sql.Row{{"2000-01-01 03:30:00-06:30"}},
+				},
+				{
+					Query:    `SELECT to_timestamp('2000 -10', 'YYYY  TZH');`,
+					Expected: []sql.Row{{"1999-12-31 07:30:00-06:30"}},
+				},
+				{
+					Query:       `SELECT to_timestamp('2005527', 'YYYYIWID');`,
+					ExpectedErr: "invalid combination of date conventions",
+				},
+				{
+					Query:       `SELECT to_timestamp('19971', 'YYYYMMDD');`,
+					ExpectedErr: `source string too short for "MM" formatting field`,
+				},
+				{
+					Query:       `SELECT to_timestamp('19971)24', 'YYYYMMDD');`,
+					ExpectedErr: `invalid value "1)" for "MM"`,
+				},
+				{
+					Query:       `SELECT to_timestamp('Friday 1-January-1999', 'DY DD MON YYYY');`,
+					ExpectedErr: `invalid value "da" for "DD"`,
+				},
+				{
+					Query:       `SELECT to_timestamp('Fri 1-January-1999', 'DY DD MON YYYY');`,
+					ExpectedErr: `invalid value "uary" for "YYYY"`,
+				},
+				{
+					Query:    `SELECT to_timestamp('Fri 1-Jan-1999', 'DY DD MON YYYY');`,
+					Expected: []sql.Row{{"1999-01-01 00:00:00-06:30"}},
+				},
+				{
+					Query:       `SELECT to_timestamp('1997-11-Jan-16', 'YYYY-MM-Mon-DD');`,
+					ExpectedErr: `conflicting values for "Mon" field in formatting string`,
+				},
+				{
+					Query:       `SELECT to_timestamp('199711xy', 'YYYYMMDD');`,
+					ExpectedErr: `invalid value "xy" for "DD"`,
+				},
+				{
+					Query:       `SELECT to_timestamp('10000000000', 'FMYYYY');`,
+					ExpectedErr: `value for "YYYY" in source string is out of range`,
+				},
+				{
+					Query:       `SELECT to_timestamp('2016-06-13 25:00:00', 'YYYY-MM-DD HH24:MI:SS');`,
+					ExpectedErr: `date/time field value out of range`,
+				},
+				{
+					Query:       `SELECT to_timestamp('2016-06-13 15:60:00', 'YYYY-MM-DD HH24:MI:SS');`,
+					ExpectedErr: `date/time field value out of range`,
+				},
+				{
+					Query:       `SELECT to_timestamp('2016-06-13 15:50:60', 'YYYY-MM-DD HH24:MI:SS');`,
+					ExpectedErr: `date/time field value out of range`,
+				},
+				{
+					Query:    `SELECT to_timestamp('2016-06-13 15:50:55', 'YYYY-MM-DD HH24:MI:SS');`,
+					Expected: []sql.Row{{"2016-06-13 15:50:55-06:30"}},
+				},
+				{
+					Query:       `SELECT to_timestamp('2016-06-13 15:50:55', 'YYYY-MM-DD HH:MI:SS');`,
+					ExpectedErr: `hour "15" is invalid for the 12-hour clock`,
+				},
+				{
+					Query:       `SELECT to_timestamp('2016-13-01 15:50:55', 'YYYY-MM-DD HH24:MI:SS');`,
+					ExpectedErr: `date/time field value out of range`,
+				},
+				{
+					Query:       `SELECT to_timestamp('2016-02-30 15:50:55', 'YYYY-MM-DD HH24:MI:SS');`,
+					ExpectedErr: `date/time field value out of range`,
+				},
+				{
+					Query:    `SELECT to_timestamp('2016-02-29 15:50:55', 'YYYY-MM-DD HH24:MI:SS');`,
+					Expected: []sql.Row{{"2016-02-29 15:50:55-06:30"}},
+				},
+				{
+					Query:       `SELECT to_timestamp('2015-02-29 15:50:55', 'YYYY-MM-DD HH24:MI:SS');`,
+					ExpectedErr: `date/time field value out of range`,
+				},
+				{
+					Query:    `SELECT to_timestamp('2015-02-11 86000', 'YYYY-MM-DD SSSS');`,
+					Expected: []sql.Row{{"2015-02-11 23:53:20-06:30"}},
+				},
+				{
+					Query:       `SELECT to_timestamp('2015-02-11 86400', 'YYYY-MM-DD SSSS');`,
+					ExpectedErr: `date/time field value out of range`,
+				},
+				{
+					Query:    `SELECT to_timestamp('2015-02-11 86000', 'YYYY-MM-DD SSSSS');`,
+					Expected: []sql.Row{{"2015-02-11 23:53:20-06:30"}},
+				},
+				{
+					Query:       `SELECT to_timestamp('2015-02-11 86400', 'YYYY-MM-DD SSSSS');`,
+					ExpectedErr: `date/time field value out of range`,
+				},
+				{
+					Query: `SET timezone to '+06:30';`,
 				},
 			},
 		},

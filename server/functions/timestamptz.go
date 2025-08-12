@@ -47,9 +47,6 @@ var timestamptz_in = framework.Function3{
 		//typmod := val3.(int32)
 		// TODO: decode typmod to precision
 		p := 6
-		//if b.Precision == -1 {
-		//	p = b.Precision
-		//}
 		loc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
@@ -74,13 +71,9 @@ var timestamptz_out = framework.Function1{
 			return "", err
 		}
 		t := val.(time.Time).In(serverLoc)
-		_, offset := t.Zone()
-		// TODO: need to format time in BC
-		if offset%3600 != 0 {
-			return t.Format("2006-01-02 15:04:05.999999999-07:00"), nil
-		} else {
-			return t.Format("2006-01-02 15:04:05.999999999-07"), nil
-		}
+
+		// Format timestamp with BC support and timezone
+		return FormatDateTimeWithBC(t, "2006-01-02 15:04:05.999999", true), nil
 	},
 }
 

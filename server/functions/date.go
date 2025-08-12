@@ -60,7 +60,7 @@ var date_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(time.Time).Format("2006-01-02"), nil
+		return FormatDateTimeWithBC(val.(time.Time), "2006-01-02", false), nil
 	},
 }
 
