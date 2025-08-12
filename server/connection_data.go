@@ -15,8 +15,10 @@
 package server
 
 import (
-	"github.com/cockroachdb/errors"
+	"strconv"
+	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -111,7 +113,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 		inspectNode = queryPlan.Source
 	}
 
-	types := make([]uint32, 0)
+	types := make(map[string]uint32)
 	var err error
 	var extractBindVars func(n sql.Node, expr sql.Expression) bool
 	extractBindVars = func(n sql.Node, expr sql.Expression) bool {
@@ -137,7 +139,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				default:
 					typOid, err = VitessTypeToObjectID(e.Type().Type())
 					if err != nil {
-						err = errors.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
+						err = errors.Errorf("could not determine OID for placeholder %s: %e", e.Name, err)
 						return false
 					}
 				}
@@ -145,11 +147,15 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				// TODO: should remove usage non doltgres type
 				typOid, err = VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
-					err = errors.Errorf("could not determine OID for placeholder %s: %w", e.Name, err)
+					err = errors.Errorf("could not determine OID for placeholder %s: %e", e.Name, err)
 					return false
 				}
 			}
-			types = append(types, typOid)
+			if _, ok := types[e.Name]; ok {
+				// sanity check
+				err = errors.Errorf("double placeholder given for %s", e.Name)
+			}
+			types[e.Name] = typOid
 		case *pgexprs.ExplicitCast:
 			if bindVar, ok := e.Child().(*expression.BindVar); ok {
 				var typOid uint32
@@ -158,11 +164,15 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				} else {
 					typOid, err = VitessTypeToObjectID(e.Type().Type())
 					if err != nil {
-						err = errors.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+						err = errors.Errorf("could not determine OID for placeholder %s: %e", bindVar.Name, err)
 						return false
 					}
 				}
-				types = append(types, typOid)
+				if _, ok = types[bindVar.Name]; ok {
+					// sanity check
+					err = errors.Errorf("double placeholder given for %s", bindVar.Name)
+				}
+				types[bindVar.Name] = typOid
 				return false
 			}
 		// $1::text and similar get converted to a Convert expression wrapping the bindvar
@@ -171,10 +181,14 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 				var typOid uint32
 				typOid, err = VitessTypeToObjectID(e.Type().Type())
 				if err != nil {
-					err = errors.Errorf("could not determine OID for placeholder %s: %w", bindVar.Name, err)
+					err = errors.Errorf("could not determine OID for placeholder %s: %e", bindVar.Name, err)
 					return false
 				}
-				types = append(types, typOid)
+				if _, ok = types[bindVar.Name]; ok {
+					// sanity check
+					err = errors.Errorf("double placeholder given for %s", bindVar.Name)
+				}
+				types[bindVar.Name] = typOid
 				return false
 			}
 		}
@@ -182,7 +196,21 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 	}
 
 	transform.InspectExpressionsWithNode(inspectNode, extractBindVars)
-	return types, err
+
+	// above finds types of bindvars in unordered form.
+	// the list of types needs to be ordered as v1, v2, v3, etc.
+	typesArr := make([]uint32, len(types))
+	for i, t := range types {
+		idx, err := strconv.ParseInt(strings.TrimPrefix(i, "v"), 10, 32)
+		if err != nil {
+			return nil, errors.Errorf("could not determine the index of placeholder %s: %e", i, err)
+		}
+		if int(idx-1) >= len(types) {
+			return nil, errors.Errorf("could not determine the index of placeholder %s: %e", i, err)
+		}
+		typesArr[idx-1] = t
+	}
+	return typesArr, err
 }
 
 // VitessTypeToObjectID returns a type, as defined by Vitess, into a type as defined by Postgres.
