@@ -456,13 +456,9 @@ func (h *DoltgresHandler) maybeReleaseAllLocks(c *mysql.Conn) {
 func nodeReturnsOkResultSchema(node sql.Node) bool {
 	switch n := node.(type) {
 	case *plan.InsertInto:
-		if len(n.Returning) > 0 {
-			return false
-		}
+		return len(n.Returning) == 0
 	case *plan.Update:
-		if len(n.Returning) > 0 {
-			return false
-		}
+		return len(n.Returning) == 0
 	case *plan.DeleteFrom, *plan.UpdateJoin:
 		return true
 	}
