@@ -62,6 +62,8 @@ var Row = &DoltgresType{
 func RowTypeWithReturnType(baseType *DoltgresType) *DoltgresType {
 	rt := *Row
 	rt.Elem = baseType.ID
+	rt.InputFunc = baseType.InputFunc
+	rt.OutputFunc = baseType.OutputFunc
 	return &rt
 }
 
