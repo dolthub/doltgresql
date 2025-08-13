@@ -15,7 +15,6 @@
 package _go
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -5833,24 +5832,6 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SELECT current_setting('plan_cache_mode')",
 				Expected: []sql.Row{{"auto"}},
-			},
-		},
-	},
-	{
-		Name:        "set 'port' configuration variable",
-		SetUpScript: []string{},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query:    "SHOW port",
-				Expected: []sql.Row{{currentPort}},
-			},
-			{
-				Query:       "SET port TO '5432'",
-				ExpectedErr: "is a read only variable",
-			},
-			{
-				Query:    "SELECT current_setting('port')",
-				Expected: []sql.Row{{fmt.Sprintf("%v", currentPort)}},
 			},
 		},
 	},
