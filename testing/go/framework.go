@@ -53,9 +53,6 @@ import (
 // rather than starting a doltgres server.
 const runOnPostgres = false
 
-// currentPort is a port number that is currently in use. It's for tests only.
-var currentPort = 5432
-
 // ScriptTest defines a consistent structure for testing queries.
 type ScriptTest struct {
 	// Name of the script.
