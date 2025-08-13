@@ -17,13 +17,12 @@ package _go
 import (
 	"context"
 	"fmt"
-	"github.com/dolthub/dolt/go/libraries/utils/svcs"
-	"github.com/stretchr/testify/require"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
-
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServerConfigVariableStatement(t *testing.T) {

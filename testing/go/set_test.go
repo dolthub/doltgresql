@@ -15,7 +15,6 @@
 package _go
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
