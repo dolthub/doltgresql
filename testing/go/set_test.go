@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -5841,7 +5842,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW port",
-				Expected: []sql.Row{{int64(5432)}},
+				Expected: []sql.Row{{currentPort}},
 			},
 			{
 				Query:       "SET port TO '5432'",
@@ -5849,7 +5850,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('port')",
-				Expected: []sql.Row{{"5432"}},
+				Expected: []sql.Row{{fmt.Sprintf("%v", currentPort)}},
 			},
 		},
 	},

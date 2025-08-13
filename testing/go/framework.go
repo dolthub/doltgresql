@@ -53,6 +53,9 @@ import (
 // rather than starting a doltgres server.
 const runOnPostgres = false
 
+// currentPort is a port number that is currently in use. It's for tests only.
+var currentPort = 5432
+
 // ScriptTest defines a consistent structure for testing queries.
 type ScriptTest struct {
 	// Name of the script.
@@ -161,6 +164,7 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 			controller.Stop()
 			err := controller.WaitForStop()
 			require.NoError(t, err)
+			currentPort = 5432
 		}()
 	}
 
@@ -337,6 +341,7 @@ func init() {
 func CreateServer(t *testing.T, database string) (context.Context, *Connection, *svcs.Controller) {
 	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
+	currentPort = port
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
 		ListenerConfig: &servercfg.DoltgresListenerConfig{
 			PortNumber: &port,
