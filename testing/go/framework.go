@@ -335,8 +335,15 @@ func init() {
 // when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
 // until the server has closed.
 func CreateServer(t *testing.T, database string) (context.Context, *Connection, *svcs.Controller) {
-	require.NotEmpty(t, database)
 	port := GetUnusedPort(t)
+	return CreateServerWithPort(t, database, port)
+}
+
+// CreateServerWithPort creates a server with the given database and port, returning a connection to the server. The server will close
+// when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
+// until the server has closed.
+func CreateServerWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
+	require.NotEmpty(t, database)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
 		ListenerConfig: &servercfg.DoltgresListenerConfig{
 			PortNumber: &port,

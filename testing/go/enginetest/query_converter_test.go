@@ -1120,7 +1120,31 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 	case "set":
 		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
 	case "bit":
-		panic(fmt.Sprintf("unhandled type: %s", columnType.Type))
+		// Support for MySQL BIT type conversion (dolt#9641)
+		// See: https://github.com/dolthub/dolt/issues/9641
+		// Map BIT types to appropriately sized integers for MySQL compatibility
+		width := int32FromSqlVal(columnType.Length)
+
+		var intOid oid.Oid
+		var intWidth int32
+		if width <= 16 {
+			intOid = oid.T_int2
+			intWidth = 16
+		} else if width <= 32 {
+			intOid = oid.T_int4
+			intWidth = 32
+		} else {
+			intOid = oid.T_int8
+			intWidth = 64
+		}
+
+		return &types.T{
+			InternalType: types.InternalType{
+				Family: types.IntFamily,
+				Width:  intWidth,
+				Oid:    intOid,
+			},
+		}
 	case "json":
 		return &types.T{
 			InternalType: types.InternalType{
@@ -1567,4 +1591,28 @@ func TestBoolValSupport(t *testing.T) {
 	require.Len(t, result, 1, "Should return exactly one converted statement")
 	require.Contains(t, result[0], "CREATE TABLE", "Result should contain CREATE TABLE")
 	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
+}
+
+// TestBitTypeSupport tests BIT type conversion for dolt#9641 compatibility
+// See: https://github.com/dolthub/dolt/issues/9641
+func TestBitTypeSupport(t *testing.T) {
+	result := convertQuery("CREATE TABLE bit_union_test_9641 (id INT PRIMARY KEY, flag BIT(1))")
+	require.NotEmpty(t, result)
+	require.Len(t, result, 1)
+	require.Contains(t, result[0], "CREATE TABLE")
+	require.Contains(t, result[0], "SMALLINT")
+
+	bitResult := convertQuery("CREATE TABLE bit_test (id INT PRIMARY KEY, data BIT(8))")
+	require.NotEmpty(t, bitResult)
+	require.Contains(t, bitResult[0], "CREATE TABLE")
+
+	insertResult := convertQuery("INSERT INTO bit_union_test_9641 VALUES (1, 0), (2, 1)")
+	require.NotEmpty(t, insertResult)
+	require.Len(t, insertResult, 1)
+	require.Contains(t, insertResult[0], "INSERT INTO")
+
+	unionResult := convertQuery("SELECT flag FROM bit_union_test_9641 WHERE id = 1 UNION SELECT NULL as flag")
+	require.NotEmpty(t, unionResult)
+	require.Len(t, unionResult, 1)
+	require.Contains(t, unionResult[0], "UNION")
 }

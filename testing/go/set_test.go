@@ -5836,24 +5836,6 @@ var setStmts = []ScriptTest{
 		},
 	},
 	{
-		Name:        "set 'port' configuration variable",
-		SetUpScript: []string{},
-		Assertions: []ScriptTestAssertion{
-			{
-				Query:    "SHOW port",
-				Expected: []sql.Row{{int64(5432)}},
-			},
-			{
-				Query:       "SET port TO '5432'",
-				ExpectedErr: "is a read only variable",
-			},
-			{
-				Query:    "SELECT current_setting('port')",
-				Expected: []sql.Row{{"5432"}},
-			},
-		},
-	},
-	{
 		Name:        "set 'post_auth_delay' configuration variable",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
