@@ -17,10 +17,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/dolthub/go-mysql-server/sql"
 	"time"
 
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 
 	dserver "github.com/dolthub/doltgresql/server"
