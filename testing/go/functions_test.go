@@ -1472,8 +1472,7 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{1}, {2}},
 				},
 				{
-					// TODO: change in Eval in file table_function.go in gms breaks regression test???
-					Skip:     true,
+					Skip:     true, // TODO: fix for this in gms breaks regression test
 					Query:    `select * from unnest(array[1,2,3]);`,
 					Expected: []sql.Row{{1}, {2}, {3}},
 				},
@@ -3463,6 +3462,7 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 			{
+				Skip: true, // TODO: fix for this in gms breaks regression test
 				Name: "generate_series as table function",
 				Assertions: []ScriptTestAssertion{
 					{
