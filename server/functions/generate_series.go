@@ -15,7 +15,6 @@
 package functions
 
 import (
-	"fmt"
 	"io"
 	"time"
 
@@ -189,7 +188,7 @@ var generate_series_timestamp_timestamp_interval = framework.Function3{
 		stepInt, ok := step.AsInt64()
 		if !ok {
 			// TODO: overflown
-			return nil, fmt.Errorf("step argument of generate_series function is overflown")
+			return nil, errors.Errorf("step argument of generate_series function is overflown")
 		}
 
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {

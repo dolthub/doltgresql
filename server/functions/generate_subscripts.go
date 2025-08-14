@@ -43,11 +43,10 @@ var generate_subscripts = framework.Function2{
 		}
 
 		var lenArr = len(arr)
-		var i = 1
+		var i = 0
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() { i++ }()
-
-			if i >= lenArr {
+			i++
+			if i > lenArr {
 				return nil, io.EOF
 			}
 			return sql.Row{int32(i)}, nil
