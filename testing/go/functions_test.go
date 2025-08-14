@@ -3423,12 +3423,41 @@ func TestSetReturningFunctions(t *testing.T) {
 						Expected: []sql.Row{{1}, {3}, {5}},
 					},
 					{
+						Query:       `SELECT generate_series(1,6,0)`,
+						ExpectedErr: "step size cannot equal zero",
+					},
+					{
+						Query:    `SELECT generate_series(6,1,-2)`,
+						Expected: []sql.Row{{6}, {4}, {2}},
+					},
+					{
+						Query:    `SELECT generate_series(1.5,6,2)`,
+						Expected: []sql.Row{{Numeric("1.5")}, {Numeric("3.5")}, {Numeric("5.5")}},
+					},
+					{
+						Query:       `SELECT generate_series(1,6,0)`,
+						ExpectedErr: "step size cannot equal zero",
+					},
+					{
+						Query:    `SELECT generate_series(6,2.2,-2)`,
+						Expected: []sql.Row{{Numeric("6")}, {Numeric("4")}},
+					},
+					{
 						Query: `SELECT generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
 						Expected: []sql.Row{
 							{"2008-03-01 00:00:00"},
 							{"2008-03-01 10:00:00"},
 							{"2008-03-01 20:00:00"},
 							{"2008-03-02 06:00:00"},
+						},
+					},
+					{
+						Query: `SELECT generate_series('2008-03-02 12:00'::timestamp,'2008-03-01 00:00'::timestamp, '-10 hours');`,
+						Expected: []sql.Row{
+							{"2008-03-02 12:00:00"},
+							{"2008-03-02 02:00:00"},
+							{"2008-03-01 16:00:00"},
+							{"2008-03-01 06:00:00"},
 						},
 					},
 				},
