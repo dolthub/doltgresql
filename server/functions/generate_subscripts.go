@@ -38,15 +38,16 @@ var generate_subscripts = framework.Function2{
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		arr := val1.([]any)
 		dimension := val2.(int32)
-
 		if dimension != 1 {
 			return nil, sql.ErrUnsupportedFeature.New("generate_subscripts only supports 1-dimensional arrays")
 		}
 
-		var i = 0
+		var lenArr = len(arr)
+		var i = 1
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			i++
-			if i > len(arr) {
+			defer func() { i++ }()
+
+			if i >= lenArr {
 				return nil, io.EOF
 			}
 			return sql.Row{int32(i)}, nil

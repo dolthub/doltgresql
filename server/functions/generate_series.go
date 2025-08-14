@@ -16,10 +16,10 @@ package functions
 
 import (
 	"fmt"
-	"github.com/cockroachdb/errors"
 	"io"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 

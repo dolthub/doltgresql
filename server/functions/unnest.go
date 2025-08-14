@@ -38,13 +38,12 @@ var unnest = framework.Function1{
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		valArr := val1.([]interface{})
 
+		var lenArr = len(valArr)
 		var i = 0
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() {
-				i++
-			}()
+			defer func() { i++ }()
 
-			if i >= len(valArr) {
+			if i >= lenArr {
 				return nil, io.EOF
 			}
 			return sql.Row{valArr[i]}, nil
