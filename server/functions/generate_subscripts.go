@@ -31,7 +31,7 @@ func initGenerateSubscripts() {
 // generate_series_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_subscripts = framework.Function2{
 	Name:       "generate_subscripts",
-	Return:     pgtypes.Int32,
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.Int32),
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32},
 	Strict:     true,
 	SRF:        true,

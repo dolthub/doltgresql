@@ -3463,6 +3463,38 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 			{
+				Name: "generate_series as table function",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT * FROM generate_series(1,3)`,
+						Expected: []sql.Row{{1}, {2}, {3}},
+					},
+					{
+						Query:    `SELECT * FROM generate_series(1,6,2)`,
+						Expected: []sql.Row{{1}, {3}, {5}},
+					},
+					{
+						Query: `SELECT * FROM generate_series('2008-03-02 12:00'::timestamp,'2008-03-01 00:00'::timestamp, '-10 hours'::interval);`,
+						Expected: []sql.Row{
+							{"2008-03-02 12:00:00"},
+							{"2008-03-02 02:00:00"},
+							{"2008-03-01 16:00:00"},
+							{"2008-03-01 06:00:00"},
+						},
+					},
+					{
+						Skip:  true, // TODO: cannot cast unknown to interval, but this should work
+						Query: `SELECT * FROM generate_series('2008-03-02 12:00'::timestamp,'2008-03-01 00:00'::timestamp, '-10 hours');`,
+						Expected: []sql.Row{
+							{"2008-03-02 12:00:00"},
+							{"2008-03-02 02:00:00"},
+							{"2008-03-01 16:00:00"},
+							{"2008-03-01 06:00:00"},
+						},
+					},
+				},
+			},
+			{
 				Name: "nested generate_series",
 				// Nested SRF expressions cause an infinite loop, skipped in regression tests.
 				// Challenging to fix with the current expression eval architecture and very marginal as a use case.
