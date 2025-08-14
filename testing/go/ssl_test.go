@@ -46,7 +46,8 @@ func NewSslListener(_ server.Config, listenerCfg mysql.ListenerConfig, sel serve
 }
 
 func TestSSL(t *testing.T) {
-	port := GetUnusedPort(t)
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
 		ListenerConfig: &servercfg.DoltgresListenerConfig{
 			PortNumber: &port,

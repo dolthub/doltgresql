@@ -21,7 +21,6 @@ import (
 	goerrors "errors"
 	"fmt"
 	"math"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -335,7 +334,8 @@ func init() {
 // when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
 // until the server has closed.
 func CreateServer(t *testing.T, database string) (context.Context, *Connection, *svcs.Controller) {
-	port := GetUnusedPort(t)
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
 	return CreateServerWithPort(t, database, port)
 }
 
@@ -715,15 +715,6 @@ func NormalizeIntsAndFloats(v any) any {
 	default:
 		return val
 	}
-}
-
-// GetUnusedPort returns an unused port.
-func GetUnusedPort(t *testing.T) int {
-	listener, err := net.Listen("tcp", ":0")
-	require.NoError(t, err)
-	port := listener.Addr().(*net.TCPAddr).Port
-	require.NoError(t, listener.Close())
-	return port
 }
 
 // Numeric creates a numeric value from a string.

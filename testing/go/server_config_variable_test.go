@@ -29,7 +29,8 @@ func TestServerConfigVariableStatement(t *testing.T) {
 	scriptDatabase := "postgres"
 	var ctx context.Context
 	var conn *Connection
-	port := GetUnusedPort(t)
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
 
 	if runOnPostgres {
 		ctx = context.Background()
