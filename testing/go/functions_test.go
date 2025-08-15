@@ -513,6 +513,80 @@ func TestFunctionsMath(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "power",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT power(1::float8, 1::float8);`,
+					Expected: []sql.Row{
+						{1.0},
+					},
+				},
+				{
+					Query: `SELECT power(2::float8, 0.5::float8);`,
+					Expected: []sql.Row{
+						{1.4142135623730951},
+					},
+				},
+				{
+					Query: `SELECT power(0::float8, 0::float8);`,
+					Expected: []sql.Row{
+						{1.0},
+					},
+				},
+				{
+					Query: `SELECT power(4::float8, -1::float8);`,
+					Expected: []sql.Row{
+						{0.25},
+					},
+				},
+				{
+					Query: `SELECT power(-2::float8, -1::float8);`,
+					Expected: []sql.Row{
+						{-0.5},
+					},
+				},
+				{
+					Query:       `SELECT power(0::float8, -1::float8);`,
+					ExpectedErr: `zero raised to a negative power is undefined`,
+				},
+				{
+					Query: `SELECT power(1::numeric, 1::numeric)::float8;`,
+					Expected: []sql.Row{
+						{1.0},
+					},
+				},
+				{
+					Query: `SELECT power(2::numeric, 0.5::numeric)::float8;`,
+					Skip:  true, // TODO: we don't handle non-integer exponents properly
+					Expected: []sql.Row{
+						{1.4142135623730951},
+					},
+				},
+				{
+					Query: `SELECT power(0::numeric, 0::numeric)::float8;`,
+					Expected: []sql.Row{
+						{1.0},
+					},
+				},
+				{
+					Query: `SELECT power(4::numeric, -1::numeric)::float8;`,
+					Expected: []sql.Row{
+						{0.25},
+					},
+				},
+				{
+					Query: `SELECT power(-2::numeric, -1::numeric)::float8;`,
+					Expected: []sql.Row{
+						{-0.5},
+					},
+				},
+				{
+					Query:       `SELECT power(0::numeric, -1::numeric);`,
+					ExpectedErr: `zero raised to a negative power is undefined`,
+				},
+			},
+		},
 	})
 }
 
@@ -1472,8 +1546,7 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{1}, {2}},
 				},
 				{
-					// TODO: change in Eval in file table_function.go in gms breaks regression test???
-					Skip:     true,
+					Skip:     true, // TODO: fix for this in gms breaks regression test
 					Query:    `select * from unnest(array[1,2,3]);`,
 					Expected: []sql.Row{{1}, {2}, {3}},
 				},
@@ -3423,12 +3496,81 @@ func TestSetReturningFunctions(t *testing.T) {
 						Expected: []sql.Row{{1}, {3}, {5}},
 					},
 					{
+						Query:       `SELECT generate_series(1::int4,6::int4,0::int4)`,
+						ExpectedErr: "step size cannot equal zero",
+					},
+					{
+						Query:    `SELECT generate_series(6,1,-2)`,
+						Expected: []sql.Row{{6}, {4}, {2}},
+					},
+					{
+						Query:    `SELECT generate_series(1.5,6,2)`,
+						Expected: []sql.Row{{Numeric("1.5")}, {Numeric("3.5")}, {Numeric("5.5")}},
+					},
+					{
+						Query:       `SELECT generate_series(1::int8,6::int8,0::int8)`,
+						ExpectedErr: "step size cannot equal zero",
+					},
+					{
+						Query:    `SELECT generate_series(6,2.2,-2)`,
+						Expected: []sql.Row{{Numeric("6")}, {Numeric("4")}},
+					},
+					{
 						Query: `SELECT generate_series('2008-03-01 00:00'::timestamp,'2008-03-02 12:00', '10 hours');`,
 						Expected: []sql.Row{
 							{"2008-03-01 00:00:00"},
 							{"2008-03-01 10:00:00"},
 							{"2008-03-01 20:00:00"},
 							{"2008-03-02 06:00:00"},
+						},
+					},
+					{
+						Query: `SELECT generate_series('2008-03-02 12:00'::timestamp,'2008-03-01 00:00'::timestamp, '-10 hours');`,
+						Expected: []sql.Row{
+							{"2008-03-02 12:00:00"},
+							{"2008-03-02 02:00:00"},
+							{"2008-03-01 16:00:00"},
+							{"2008-03-01 06:00:00"},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_series as table function",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT * FROM generate_series(1,3)`,
+						Expected: []sql.Row{{1}, {2}, {3}},
+					},
+					{
+						Query:    `SELECT * FROM generate_series(1,6,2)`,
+						Expected: []sql.Row{{1}, {3}, {5}},
+					},
+					{
+						Query:       `SELECT * FROM generate_series(-100::numeric, 100::numeric, 0::numeric);`,
+						ExpectedErr: `step size cannot equal zero`,
+					},
+					{
+						Query: `SELECT * FROM generate_series('2008-03-02 12:00'::timestamp,'2008-03-01 00:00'::timestamp, '-10 hours'::interval);`,
+						Expected: []sql.Row{
+							{"2008-03-02 12:00:00"},
+							{"2008-03-02 02:00:00"},
+							{"2008-03-01 16:00:00"},
+							{"2008-03-01 06:00:00"},
+						},
+					},
+					{
+						Query:       `select * from generate_series('2020-01-01 00:00'::timestamp, '2020-01-02 03:00'::timestamp, '0 hour'::interval);`,
+						ExpectedErr: `step size cannot equal zero`,
+					},
+					{
+						Skip:  true, // TODO: cannot cast unknown to interval, but this should work
+						Query: `SELECT * FROM generate_series('2008-03-02 12:00'::timestamp,'2008-03-01 00:00'::timestamp, '-10 hours');`,
+						Expected: []sql.Row{
+							{"2008-03-02 12:00:00"},
+							{"2008-03-02 02:00:00"},
+							{"2008-03-01 16:00:00"},
+							{"2008-03-01 06:00:00"},
 						},
 					},
 				},

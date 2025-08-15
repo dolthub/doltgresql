@@ -15,20 +15,17 @@
 package functions
 
 import (
-	"fmt"
 	"io"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
-	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
-
-var ErrStepSizeCannotEqualZero = errors.NewKind("step size cannot equal zero")
 
 // initGenerateSeries registers the functions to the catalog.
 func initGenerateSeries() {
@@ -41,6 +38,9 @@ func initGenerateSeries() {
 	framework.RegisterFunction(generate_series_timestamp_timestamp_interval)
 }
 
+// errStepSizeZero is an error for a step size of zero in the generate_series functions.
+var errStepSizeZero = errors.New("step size cannot equal zero")
+
 // generate_series_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_series_int32_int32 = framework.Function2{
 	Name:       "generate_series",
@@ -52,16 +52,7 @@ var generate_series_int32_int32 = framework.Function2{
 		start := val1.(int32)
 		finish := val2.(int32)
 		step := int32(1) // by default
-
-		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() {
-				start += step
-			}()
-			if start > finish {
-				return nil, io.EOF
-			}
-			return sql.Row{start}, nil
-		}), nil
+		return int32GenerateSeries(start, finish, step)
 	},
 }
 
@@ -76,20 +67,25 @@ var generate_series_int32_int32_int32 = framework.Function3{
 		start := val1.(int32)
 		finish := val2.(int32)
 		step := val3.(int32)
-		if step == 0 {
-			return nil, ErrStepSizeCannotEqualZero.New()
-		}
-
-		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() {
-				start += step
-			}()
-			if start > finish {
-				return nil, io.EOF
-			}
-			return sql.Row{start}, nil
-		}), nil
+		return int32GenerateSeries(start, finish, step)
 	},
+}
+
+// int32GenerateSeries returns RowIter for generate_series function results for given int32 values.
+// This function checks for error of step being zero.
+func int32GenerateSeries(start, finish, step int32) (*pgtypes.SetReturningFunctionRowIter, error) {
+	if step == 0 {
+		return nil, errStepSizeZero
+	}
+	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+		defer func() {
+			start += step
+		}()
+		if (step > 0 && start > finish) || (step < 0 && start < finish) {
+			return nil, io.EOF
+		}
+		return sql.Row{start}, nil
+	}), nil
 }
 
 // generate_series_int64_int64 represents the PostgreSQL function of the same name, taking the same parameters.
@@ -103,16 +99,7 @@ var generate_series_int64_int64 = framework.Function2{
 		start := val1.(int64)
 		finish := val2.(int64)
 		step := int64(1) // by default
-
-		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() {
-				start += step
-			}()
-			if start > finish {
-				return nil, io.EOF
-			}
-			return sql.Row{start}, nil
-		}), nil
+		return int64GenerateSeries(start, finish, step)
 	},
 }
 
@@ -127,20 +114,25 @@ var generate_series_int64_int64_int64 = framework.Function3{
 		start := val1.(int64)
 		finish := val2.(int64)
 		step := val3.(int64)
-		if step == 0 {
-			return nil, ErrStepSizeCannotEqualZero.New()
-		}
-
-		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() {
-				start += step
-			}()
-			if start > finish {
-				return nil, io.EOF
-			}
-			return sql.Row{start}, nil
-		}), nil
+		return int64GenerateSeries(start, finish, step)
 	},
+}
+
+// int64GenerateSeries returns RowIter for generate_series function results for given int64 values.
+// This function checks for error of step being zero.
+func int64GenerateSeries(start, finish, step int64) (*pgtypes.SetReturningFunctionRowIter, error) {
+	if step == 0 {
+		return nil, errStepSizeZero
+	}
+	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+		defer func() {
+			start += step
+		}()
+		if (step > 0 && start > finish) || (step < 0 && start < finish) {
+			return nil, io.EOF
+		}
+		return sql.Row{start}, nil
+	}), nil
 }
 
 // generate_series_numeric_numeric represents the PostgreSQL function of the same name, taking the same parameters.
@@ -153,17 +145,8 @@ var generate_series_numeric_numeric = framework.Function2{
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		start := val1.(decimal.Decimal)
 		finish := val2.(decimal.Decimal)
-		step := decimal.NewFromInt(1) // by default
-
-		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() {
-				start = start.Add(step)
-			}()
-			if start.GreaterThan(finish) {
-				return nil, io.EOF
-			}
-			return sql.Row{start}, nil
-		}), nil
+		step := numericOne // by default
+		return numericGenerateSeries(start, finish, step)
 	},
 }
 
@@ -178,20 +161,26 @@ var generate_series_numeric_numeric_numeric = framework.Function3{
 		start := val1.(decimal.Decimal)
 		finish := val2.(decimal.Decimal)
 		step := val3.(decimal.Decimal)
-		if step == decimal.Zero {
-			return nil, ErrStepSizeCannotEqualZero.New()
-		}
-
-		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() {
-				start = start.Add(step)
-			}()
-			if start.GreaterThan(finish) {
-				return nil, io.EOF
-			}
-			return sql.Row{start}, nil
-		}), nil
+		return numericGenerateSeries(start, finish, step)
 	},
+}
+
+// numericGenerateSeries returns RowIter for generate_series function results for given numeric values.
+// This function checks for error of step being zero.
+func numericGenerateSeries(start, finish, step decimal.Decimal) (*pgtypes.SetReturningFunctionRowIter, error) {
+	if step.Equal(decimal.Zero) {
+		return nil, errStepSizeZero
+	}
+	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+		defer func() {
+			start = start.Add(step)
+		}()
+		if (step.GreaterThan(decimal.Zero) && start.GreaterThan(finish)) ||
+			(step.LessThan(decimal.Zero) && start.LessThan(finish)) {
+			return nil, io.EOF
+		}
+		return sql.Row{start}, nil
+	}), nil
 }
 
 // generate_series_timestamp_timestamp_interval represents the PostgreSQL function of the same name, taking the same parameters.
@@ -208,14 +197,17 @@ var generate_series_timestamp_timestamp_interval = framework.Function3{
 		stepInt, ok := step.AsInt64()
 		if !ok {
 			// TODO: overflown
-			return nil, fmt.Errorf("step argument of generate_series function is overflown")
+			return nil, errors.Errorf("step argument of generate_series function is overflown")
+		}
+		if stepInt == 0 {
+			return nil, errStepSizeZero
 		}
 
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 			defer func() {
 				start = start.Add(time.Duration(stepInt) * time.Second)
 			}()
-			if start.After(finish) {
+			if (stepInt > 0 && start.After(finish)) || (stepInt < 0 && start.Before(finish)) {
 				return nil, io.EOF
 			}
 			return sql.Row{start}, nil

@@ -370,9 +370,9 @@ func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter
 		return nil, err
 	}
 
-	switch eval := eval.(type) {
+	switch v := eval.(type) {
 	case sql.RowIter:
-		return eval, nil
+		return v, nil
 	case nil:
 		return nil, nil
 	default:

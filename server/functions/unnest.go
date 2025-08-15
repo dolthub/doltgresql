@@ -40,9 +40,7 @@ var unnest = framework.Function1{
 
 		var i = 0
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
-			defer func() {
-				i++
-			}()
+			defer func() { i++ }()
 
 			if i >= len(valArr) {
 				return nil, io.EOF

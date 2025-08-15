@@ -130,7 +130,7 @@ var _ FunctionInterface = Function4{}
 func (f Function0) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function0) GetReturn() *pgtypes.DoltgresType { return f.Return }
+func (f Function0) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
 func (f Function0) GetParameters() []*pgtypes.DoltgresType { return nil }
@@ -163,7 +163,7 @@ func (f Function0) enforceInterfaceInheritance(error) {}
 func (f Function1) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function1) GetReturn() *pgtypes.DoltgresType { return f.Return }
+func (f Function1) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
 func (f Function1) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
@@ -201,7 +201,7 @@ func (f Function1) enforceInterfaceInheritance(error) {}
 func (f Function2) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function2) GetReturn() *pgtypes.DoltgresType { return f.Return }
+func (f Function2) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
 func (f Function2) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
@@ -239,7 +239,7 @@ func (f Function2) enforceInterfaceInheritance(error) {}
 func (f Function3) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function3) GetReturn() *pgtypes.DoltgresType { return f.Return }
+func (f Function3) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
 func (f Function3) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
@@ -277,7 +277,7 @@ func (f Function3) enforceInterfaceInheritance(error) {}
 func (f Function4) GetName() string { return f.Name }
 
 // GetReturn implements the FunctionInterface interface.
-func (f Function4) GetReturn() *pgtypes.DoltgresType { return f.Return }
+func (f Function4) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
 func (f Function4) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }

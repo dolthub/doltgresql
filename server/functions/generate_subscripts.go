@@ -31,14 +31,13 @@ func initGenerateSubscripts() {
 // generate_series_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_subscripts = framework.Function2{
 	Name:       "generate_subscripts",
-	Return:     pgtypes.Int32,
+	Return:     pgtypes.RowTypeWithReturnType(pgtypes.Int32),
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.Int32},
 	Strict:     true,
 	SRF:        true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		arr := val1.([]any)
 		dimension := val2.(int32)
-
 		if dimension != 1 {
 			return nil, sql.ErrUnsupportedFeature.New("generate_subscripts only supports 1-dimensional arrays")
 		}
