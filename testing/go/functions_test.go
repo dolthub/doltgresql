@@ -513,6 +513,80 @@ func TestFunctionsMath(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "power",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT power(1::float8, 1::float8);`,
+					Expected: []sql.Row{
+						{1.0},
+					},
+				},
+				{
+					Query: `SELECT power(2::float8, 0.5::float8);`,
+					Expected: []sql.Row{
+						{1.4142135623730951},
+					},
+				},
+				{
+					Query: `SELECT power(0::float8, 0::float8);`,
+					Expected: []sql.Row{
+						{1.0},
+					},
+				},
+				{
+					Query: `SELECT power(4::float8, -1::float8);`,
+					Expected: []sql.Row{
+						{0.25},
+					},
+				},
+				{
+					Query: `SELECT power(-2::float8, -1::float8);`,
+					Expected: []sql.Row{
+						{-0.5},
+					},
+				},
+				{
+					Query:       `SELECT power(0::float8, -1::float8);`,
+					ExpectedErr: `zero raised to a negative power is undefined`,
+				},
+				{
+					Query: `SELECT power(1::numeric, 1::numeric)::float8;`,
+					Expected: []sql.Row{
+						{1.0},
+					},
+				},
+				{
+					Query: `SELECT power(2::numeric, 0.5::numeric)::float8;`,
+					Skip:  true, // TODO: we don't handle non-integer exponents properly
+					Expected: []sql.Row{
+						{1.4142135623730951},
+					},
+				},
+				{
+					Query: `SELECT power(0::numeric, 0::numeric)::float8;`,
+					Expected: []sql.Row{
+						{1.0},
+					},
+				},
+				{
+					Query: `SELECT power(4::numeric, -1::numeric)::float8;`,
+					Expected: []sql.Row{
+						{0.25},
+					},
+				},
+				{
+					Query: `SELECT power(-2::numeric, -1::numeric)::float8;`,
+					Expected: []sql.Row{
+						{-0.5},
+					},
+				},
+				{
+					Query:       `SELECT power(0::numeric, -1::numeric);`,
+					ExpectedErr: `zero raised to a negative power is undefined`,
+				},
+			},
+		},
 	})
 }
 
@@ -3462,7 +3536,6 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 			{
-				Skip: true, // TODO: fix for this in gms breaks regression test
 				Name: "generate_series as table function",
 				Assertions: []ScriptTestAssertion{
 					{
@@ -3472,6 +3545,10 @@ func TestSetReturningFunctions(t *testing.T) {
 					{
 						Query:    `SELECT * FROM generate_series(1,6,2)`,
 						Expected: []sql.Row{{1}, {3}, {5}},
+					},
+					{
+						Query:       `SELECT * FROM generate_series(-100::numeric, 100::numeric, 0::numeric);`,
+						ExpectedErr: `step size cannot equal zero`,
 					},
 					{
 						Query: `SELECT * FROM generate_series('2008-03-02 12:00'::timestamp,'2008-03-01 00:00'::timestamp, '-10 hours'::interval);`,

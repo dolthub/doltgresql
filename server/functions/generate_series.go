@@ -38,6 +38,9 @@ func initGenerateSeries() {
 	framework.RegisterFunction(generate_series_timestamp_timestamp_interval)
 }
 
+// errStepSizeZero is an error for a step size of zero in the generate_series functions.
+var errStepSizeZero = errors.New("step size cannot equal zero")
+
 // generate_series_int32_int32 represents the PostgreSQL function of the same name, taking the same parameters.
 var generate_series_int32_int32 = framework.Function2{
 	Name:       "generate_series",
@@ -70,7 +73,7 @@ var generate_series_int32_int32_int32 = framework.Function3{
 
 func int32GenerateSeries(start, finish, step int32) (*pgtypes.SetReturningFunctionRowIter, error) {
 	if step == 0 {
-		return nil, errors.Errorf("step size cannot equal zero")
+		return nil, errStepSizeZero
 	}
 	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 		defer func() {
@@ -115,7 +118,7 @@ var generate_series_int64_int64_int64 = framework.Function3{
 
 func int64GenerateSeries(start, finish, step int64) (*pgtypes.SetReturningFunctionRowIter, error) {
 	if step == 0 {
-		return nil, errors.Errorf("step size cannot equal zero")
+		return nil, errStepSizeZero
 	}
 	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 		defer func() {
@@ -138,7 +141,7 @@ var generate_series_numeric_numeric = framework.Function2{
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		start := val1.(decimal.Decimal)
 		finish := val2.(decimal.Decimal)
-		step := decimal.NewFromInt(1) // by default
+		step := numericOne // by default
 		return numericGenerateSeries(start, finish, step)
 	},
 }
@@ -159,8 +162,8 @@ var generate_series_numeric_numeric_numeric = framework.Function3{
 }
 
 func numericGenerateSeries(start, finish, step decimal.Decimal) (*pgtypes.SetReturningFunctionRowIter, error) {
-	if step == decimal.Zero {
-		return nil, errors.Errorf("step size cannot equal zero")
+	if step.Equal(decimal.Zero) {
+		return nil, errStepSizeZero
 	}
 	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 		defer func() {
