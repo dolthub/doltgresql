@@ -35,7 +35,6 @@ import (
 
 	dserver "github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
-	framework "github.com/dolthub/doltgresql/testing/go"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -177,7 +176,8 @@ func ptr[T any](val T) *T {
 // until the server has closed.
 func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *svcs.Controller) {
 	require.NotEmpty(t, database)
-	port := GetUnusedPort(t)
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
 		ListenerConfig: &servercfg.DoltgresListenerConfig{
 			PortNumber: &port,
@@ -252,11 +252,6 @@ func NumericToDecimal(val pgtype.Numeric) decimal.Decimal {
 		panic(err)
 	}
 	return decimal.RequireFromString(strVal.(string))
-}
-
-// GetUnusedPort returns an unused port.
-func GetUnusedPort(t *testing.T) int {
-	return framework.GetUnusedPort(t)
 }
 
 // CompareResults compares two sets of results, taking the equivalence thresholds into account when making the
