@@ -1978,7 +1978,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{Numeric("2006")}},
 				},
 				{
-					Skip:     true, // TODO: not supported yet
 					Query:    `SELECT extract(julian from date '2021-06-23');`,
 					Expected: []sql.Row{{Numeric("2459389")}},
 				},
@@ -2541,7 +2540,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{"-43 years -9 mons -26 days -22:59:58.6"}},
 				},
 				{
-					Skip:     true, // TODO: current_date should return timestamp, not text
 					Query:    `SELECT age(current_date);`,
 					Expected: []sql.Row{{"00:00:00"}},
 				},
@@ -3064,6 +3062,20 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 				{
 					Query: `SET timezone to '+06:30';`,
+				},
+			},
+		},
+		{
+			Name: "current_time and now functions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT now()::timetz::text = current_time()::text;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Skip:     true, // TODO: support precision
+					Query:    `SELECT now()::timetz(4)::text = current_time(5)::text;`,
+					Expected: []sql.Row{{false}},
 				},
 			},
 		},

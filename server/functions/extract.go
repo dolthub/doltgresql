@@ -254,7 +254,7 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 		year, _ := tVal.ISOWeek()
 		return decimal.NewFromInt(int64(year)), nil
 	case "julian":
-		return decimal.Decimal{}, cerrors.Errorf("'julian' field extraction not supported yet")
+		return decimal.NewFromInt(int64(date2J(tVal.Year(), int(tVal.Month()), tVal.Day()))), nil
 	case "microsecond", "microseconds":
 		w := float64(tVal.Second() * 1000000)
 		f := float64(tVal.Nanosecond()) / float64(1000)
