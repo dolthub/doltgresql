@@ -32,8 +32,9 @@ func initPower() {
 }
 
 var (
+	// errPowerZeroToNegative is an error for raising zero to a negative power in the "power" functions.
 	errPowerZeroToNegative = errors.New("zero raised to a negative power is undefined")
-
+	// numericOne is equivalent to decimal.NewFromInt(1), but represented as a value for the sake of efficiency.
 	numericOne = decimal.NewFromInt(1)
 )
 
