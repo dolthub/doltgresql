@@ -99,6 +99,7 @@ func Init() {
 	initCurrentDatabase()
 	initCurrentSchema()
 	initCurrentSetting()
+	initCurrentTime()
 	initCurrentSchemas()
 	initDegrees()
 	initDiv()
