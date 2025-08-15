@@ -42,11 +42,10 @@ var generate_subscripts = framework.Function2{
 			return nil, sql.ErrUnsupportedFeature.New("generate_subscripts only supports 1-dimensional arrays")
 		}
 
-		var lenArr = len(arr)
 		var i = 0
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 			i++
-			if i > lenArr {
+			if i > len(arr) {
 				return nil, io.EOF
 			}
 			return sql.Row{int32(i)}, nil

@@ -3496,7 +3496,7 @@ func TestSetReturningFunctions(t *testing.T) {
 						Expected: []sql.Row{{1}, {3}, {5}},
 					},
 					{
-						Query:       `SELECT generate_series(1,6,0)`,
+						Query:       `SELECT generate_series(1::int4,6::int4,0::int4)`,
 						ExpectedErr: "step size cannot equal zero",
 					},
 					{
@@ -3508,7 +3508,7 @@ func TestSetReturningFunctions(t *testing.T) {
 						Expected: []sql.Row{{Numeric("1.5")}, {Numeric("3.5")}, {Numeric("5.5")}},
 					},
 					{
-						Query:       `SELECT generate_series(1,6,0)`,
+						Query:       `SELECT generate_series(1::int8,6::int8,0::int8)`,
 						ExpectedErr: "step size cannot equal zero",
 					},
 					{

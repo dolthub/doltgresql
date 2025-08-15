@@ -17,8 +17,8 @@ package functions
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -29,8 +29,6 @@ func initCurrentSetting() {
 	framework.RegisterFunction(current_setting_text)
 	framework.RegisterFunction(current_setting_text_bool)
 }
-
-var errUnrecognizedConfigurationParameter = errors.NewKind(`unrecognized configuration parameter "%s"`)
 
 // current_setting_text represents the PostgreSQL function of the same name, taking the same parameters.
 var current_setting_text = framework.Function1{
@@ -51,14 +49,14 @@ var current_setting_text = framework.Function1{
 
 		variable, err = ctx.GetSessionVariable(ctx, s)
 		if err != nil {
-			return nil, errUnrecognizedConfigurationParameter.New(s)
+			return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
 		}
 
 		if variable != nil {
 			return fmt.Sprintf("%v", variable), nil
 		}
 
-		return nil, errUnrecognizedConfigurationParameter.New(s)
+		return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
 	},
 }
 
@@ -88,7 +86,7 @@ var current_setting_text_bool = framework.Function2{
 			if missingOk {
 				return nil, nil
 			}
-			return nil, errUnrecognizedConfigurationParameter.New(s)
+			return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
 		}
 
 		if variable != nil {
@@ -98,6 +96,6 @@ var current_setting_text_bool = framework.Function2{
 		if missingOk {
 			return nil, nil
 		}
-		return nil, errUnrecognizedConfigurationParameter.New(s)
+		return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
 	},
 }

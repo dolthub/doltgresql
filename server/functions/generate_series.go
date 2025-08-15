@@ -71,6 +71,8 @@ var generate_series_int32_int32_int32 = framework.Function3{
 	},
 }
 
+// int32GenerateSeries returns RowIter for generate_series function results for given int32 values.
+// This function checks for error of step being zero.
 func int32GenerateSeries(start, finish, step int32) (*pgtypes.SetReturningFunctionRowIter, error) {
 	if step == 0 {
 		return nil, errStepSizeZero
@@ -116,6 +118,8 @@ var generate_series_int64_int64_int64 = framework.Function3{
 	},
 }
 
+// int64GenerateSeries returns RowIter for generate_series function results for given int64 values.
+// This function checks for error of step being zero.
 func int64GenerateSeries(start, finish, step int64) (*pgtypes.SetReturningFunctionRowIter, error) {
 	if step == 0 {
 		return nil, errStepSizeZero
@@ -161,6 +165,8 @@ var generate_series_numeric_numeric_numeric = framework.Function3{
 	},
 }
 
+// numericGenerateSeries returns RowIter for generate_series function results for given numeric values.
+// This function checks for error of step being zero.
 func numericGenerateSeries(start, finish, step decimal.Decimal) (*pgtypes.SetReturningFunctionRowIter, error) {
 	if step.Equal(decimal.Zero) {
 		return nil, errStepSizeZero

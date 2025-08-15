@@ -10,7 +10,7 @@ require (
 	github.com/dolthub/eventsapi_schema v0.0.0-20250725194025-a087efa1ee55
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20250327004329-6799764f2dad
-	github.com/dolthub/go-mysql-server v0.20.1-0.20250813184321-cf94656a252a
+	github.com/dolthub/go-mysql-server v0.20.1-0.20250814230713-18f9e2b9b343
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20250813175212-45844169a751
 	github.com/fatih/color v1.13.0
