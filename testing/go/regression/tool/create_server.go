@@ -17,10 +17,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 
 	dserver "github.com/dolthub/doltgresql/server"
@@ -29,12 +29,8 @@ import (
 
 // CreateDoltgresServer creates and returns a Doltgres server.
 func CreateDoltgresServer() (controller *svcs.Controller, port int, err error) {
-	portListener, err := net.Listen("tcp", ":0")
+	port, err = sql.GetEmptyPort()
 	if err != nil {
-		return nil, 0, err
-	}
-	port = portListener.Addr().(*net.TCPAddr).Port
-	if err = portListener.Close(); err != nil {
 		return nil, 0, err
 	}
 	address := "127.0.0.1"
