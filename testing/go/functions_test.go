@@ -3560,6 +3560,10 @@ func TestSetReturningFunctions(t *testing.T) {
 						},
 					},
 					{
+						Query:       `select * from generate_series('2020-01-01 00:00'::timestamp, '2020-01-02 03:00'::timestamp, '0 hour'::interval);`,
+						ExpectedErr: `function: 'unknown_func' not found`,
+					},
+					{
 						Skip:  true, // TODO: cannot cast unknown to interval, but this should work
 						Query: `SELECT * FROM generate_series('2008-03-02 12:00'::timestamp,'2008-03-01 00:00'::timestamp, '-10 hours');`,
 						Expected: []sql.Row{

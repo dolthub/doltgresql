@@ -199,6 +199,9 @@ var generate_series_timestamp_timestamp_interval = framework.Function3{
 			// TODO: overflown
 			return nil, errors.Errorf("step argument of generate_series function is overflown")
 		}
+		if stepInt == 0 {
+			return nil, errStepSizeZero
+		}
 
 		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 			defer func() {
