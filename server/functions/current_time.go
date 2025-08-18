@@ -31,6 +31,10 @@ func initCurrentTime() {
 	framework.RegisterFunction(current_time_int32)
 	framework.RegisterFunction(current_timestamp)
 	framework.RegisterFunction(current_timestamp_int32)
+	framework.RegisterFunction(localtime)
+	framework.RegisterFunction(localtime_int32)
+	framework.RegisterFunction(localtimestamp)
+	framework.RegisterFunction(localtimestamp_int32)
 	framework.RegisterFunction(now)
 	framework.RegisterFunction(timeofday_)
 }
@@ -98,6 +102,52 @@ var current_timestamp_int32 = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: support precision
+		return ctx.QueryTime(), nil
+	},
+}
+
+// localtime represents the PostgreSQL function of the same name, taking the same parameters.
+var localtime = framework.Function0{
+	Name:   "localtime",
+	Return: pgtypes.Timestamp,
+	Strict: true,
+	Callable: func(ctx *sql.Context) (any, error) {
+		// Current date and time (start of current transaction)
+		return ctx.QueryTime(), nil
+	},
+}
+
+// localtime_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var localtime_int32 = framework.Function1{
+	Name:       "localtime",
+	Return:     pgtypes.Timestamp,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// Current date and time (start of current transaction)
+		return ctx.QueryTime(), nil
+	},
+}
+
+// localtimestamp represents the PostgreSQL function of the same name, taking the same parameters.
+var localtimestamp = framework.Function0{
+	Name:   "localtimestamp",
+	Return: pgtypes.Timestamp,
+	Strict: true,
+	Callable: func(ctx *sql.Context) (any, error) {
+		// Current date and time (start of current transaction)
+		return ctx.QueryTime(), nil
+	},
+}
+
+// localtimestamp_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+var localtimestamp_int32 = framework.Function1{
+	Name:       "localtimestamp",
+	Return:     pgtypes.Timestamp,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// Current date and time (start of current transaction)
 		return ctx.QueryTime(), nil
 	},
 }
