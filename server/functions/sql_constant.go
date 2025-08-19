@@ -23,34 +23,22 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initCurrentTime registers the functions to the catalog.
-func initCurrentTime() {
-	framework.RegisterFunction(clock_timestamp)
+// initSqlConstant registers the constants to the catalog.
+func initSqlConstant() {
 	framework.RegisterFunction(current_date)
 	framework.RegisterFunction(current_time)
 	framework.RegisterFunction(current_time_int32)
-	framework.RegisterFunction(current_timestamp)
-	framework.RegisterFunction(current_timestamp_int32)
+	// TODO: printing string format of functions should not show parenthesis for constants
+	//framework.RegisterFunction(current_timestamp)
+	//framework.RegisterFunction(current_timestamp_int32)
 	framework.RegisterFunction(localtime)
 	framework.RegisterFunction(localtime_int32)
 	framework.RegisterFunction(localtimestamp)
 	framework.RegisterFunction(localtimestamp_int32)
-	framework.RegisterFunction(now)
-	framework.RegisterFunction(timeofday_)
 }
 
-// clock_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
-var clock_timestamp = framework.Function0{
-	Name:   "clock_timestamp",
-	Return: pgtypes.TimestampTZ,
-	Strict: true,
-	Callable: func(ctx *sql.Context) (any, error) {
-		// Current date and time (changes during statement execution)
-		return ctx.QueryTime(), nil
-	},
-}
-
-// current_date represents the PostgreSQL function of the same name, taking the same parameters.
+// current_date represents the PostgreSQL constant of the same name, taking the same parameters.
+// This is not a function, but a SQL constant.
 var current_date = framework.Function0{
 	Name:   "current_date",
 	Return: pgtypes.Date,
@@ -62,7 +50,8 @@ var current_date = framework.Function0{
 	},
 }
 
-// current_time represents the PostgreSQL function of the same name, taking the same parameters.
+// current_time represents the PostgreSQL constant of the same name, taking the same parameters.
+// This is not a function, but a SQL constant.
 var current_time = framework.Function0{
 	Name:   "current_time",
 	Return: pgtypes.TimeTZ,
@@ -72,7 +61,8 @@ var current_time = framework.Function0{
 	},
 }
 
-// current_time_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+// current_time_int32 represents the PostgreSQL constant of the same name, taking the same parameters.
+// This is not a function, but a SQL constant.
 var current_time_int32 = framework.Function1{
 	Name:       "current_time",
 	Return:     pgtypes.TimeTZ,
@@ -84,7 +74,8 @@ var current_time_int32 = framework.Function1{
 	},
 }
 
-// current_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
+// current_timestamp represents the PostgreSQL constant of the same name, taking the same parameters.
+// This is not a function, but a SQL constant.
 var current_timestamp = framework.Function0{
 	Name:   "current_timestamp",
 	Return: pgtypes.TimestampTZ,
@@ -94,7 +85,8 @@ var current_timestamp = framework.Function0{
 	},
 }
 
-// current_timestamp_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+// current_timestamp_int32 represents the PostgreSQL constant of the same name, taking the same parameters.
+// This is not a function, but a SQL constant.
 var current_timestamp_int32 = framework.Function1{
 	Name:       "current_timestamp",
 	Return:     pgtypes.TimestampTZ,
@@ -106,7 +98,8 @@ var current_timestamp_int32 = framework.Function1{
 	},
 }
 
-// localtime represents the PostgreSQL function of the same name, taking the same parameters.
+// localtime represents the PostgreSQL constant of the same name, taking the same parameters.
+// This is not a function, but a SQL constant.
 var localtime = framework.Function0{
 	Name:   "localtime",
 	Return: pgtypes.Timestamp,
@@ -117,7 +110,8 @@ var localtime = framework.Function0{
 	},
 }
 
-// localtime_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+// localtime_int32 represents the PostgreSQL constant of the same name, taking the same parameters.
+// This is not a function, but a SQL constant.
 var localtime_int32 = framework.Function1{
 	Name:       "localtime",
 	Return:     pgtypes.Timestamp,
@@ -129,7 +123,8 @@ var localtime_int32 = framework.Function1{
 	},
 }
 
-// localtimestamp represents the PostgreSQL function of the same name, taking the same parameters.
+// localtimestamp represents the PostgreSQL constant of the same name, taking the same parameters.
+// This is not a function, but a SQL constant.
 var localtimestamp = framework.Function0{
 	Name:   "localtimestamp",
 	Return: pgtypes.Timestamp,
@@ -140,7 +135,8 @@ var localtimestamp = framework.Function0{
 	},
 }
 
-// localtimestamp_int32 represents the PostgreSQL function of the same name, taking the same parameters.
+// localtimestamp_int32 represents the PostgreSQL constant of the same name, taking the same parameters.
+// This is not a function, but a SQL constant.
 var localtimestamp_int32 = framework.Function1{
 	Name:       "localtimestamp",
 	Return:     pgtypes.Timestamp,
@@ -149,27 +145,5 @@ var localtimestamp_int32 = framework.Function1{
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// Current date and time (start of current transaction)
 		return ctx.QueryTime(), nil
-	},
-}
-
-// now represents the PostgreSQL function of the same name, taking the same parameters.
-var now = framework.Function0{
-	Name:   "now",
-	Return: pgtypes.TimestampTZ,
-	Strict: true,
-	Callable: func(ctx *sql.Context) (any, error) {
-		// Current date and time (start of current transaction)
-		return ctx.QueryTime(), nil
-	},
-}
-
-// timeofday_ represents the PostgreSQL function of the same name, taking the same parameters.
-var timeofday_ = framework.Function0{
-	Name:   "timeofday",
-	Return: pgtypes.TimestampTZ,
-	Strict: true,
-	Callable: func(ctx *sql.Context) (any, error) {
-		// Current date and time (like clock_timestamp, but as a text string)
-		return ctx.QueryTime().Format(`Wed Feb 25 11:06:39.999999 2015 PST`), nil
 	},
 }
