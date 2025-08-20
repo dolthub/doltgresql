@@ -191,8 +191,11 @@ func (d *DropFunction) findFunctionBySignature(ctx *sql.Context, routineWithArgs
 
 	unresolvedObjectName := routineWithArgs.Name
 	routineName := unresolvedObjectName.Object()
-	// TODO: User defined functions are currently registered in pg_catalog
-	schemaName := "pg_catalog"
+	// TODO: User defined functions need to search the entire search path for matches
+	schemaName, err := core.GetSchemaName(ctx, nil, "")
+	if err != nil {
+		return functions.Function{}, err
+	}
 
 	typeIds := make([]id.Type, 0, len(routineWithArgs.Args))
 	for _, routineArg := range routineWithArgs.Args {
@@ -217,7 +220,8 @@ func (d *DropFunction) findFunctionBySignature(ctx *sql.Context, routineWithArgs
 			typeName = strings.ToLower(typ.SQLString())
 		}
 
-		typeId := id.NewType(schemaName, typeName)
+		// TODO: types shouldn't be hardcoded to go in pg_catalog, should use the search path
+		typeId := id.NewType("pg_catalog", typeName)
 
 		typeCollection, err := core.GetTypesCollectionFromContext(ctx)
 		if err != nil {

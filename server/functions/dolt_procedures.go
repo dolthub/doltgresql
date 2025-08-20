@@ -39,19 +39,27 @@ func initDoltProcedures() {
 		}
 
 		funcVal := reflect.ValueOf(procDef.Function)
-		callable := callableForDoltProcedure(p, funcVal)
+		callable1 := callable1ForDoltProcedure(p, funcVal)
+		callable0 := callable0ForDoltProcedure(funcVal)
 
 		framework.RegisterFunction(framework.Function1{
 			Name:       procDef.Name,
 			Return:     pgtypes.TextArray,
 			Parameters: [1]*pgtypes.DoltgresType{pgtypes.TextArray},
 			Variadic:   true,
-			Callable:   callable,
+			Callable:   callable1,
+		})
+		framework.RegisterFunction(framework.Function0{
+			Name:     procDef.Name,
+			Return:   pgtypes.TextArray,
+			Callable: callable0,
 		})
 	}
 }
 
-func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+// callable1ForDoltProcedure creates a callable function that takes in a variadic number of parameters. This is
+// equivalent to calling "DOLT_PROC_NAME('abc', ...)".
+func callable1ForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 	funcType := funcVal.Type()
 
 	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
@@ -97,6 +105,26 @@ func callableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) 
 			rowIter = sql.RowsToRowIter()
 		}
 
+		return drainRowIter(ctx, rowIter)
+	}
+}
+
+// callable0ForDoltProcedure creates a callable function that does not take any parameters. This is equivalent to
+// calling "DOLT_PROC_NAME()".
+func callable0ForDoltProcedure(funcVal reflect.Value) func(ctx *sql.Context) (any, error) {
+	return func(ctx *sql.Context) (any, error) {
+		funcParams := []reflect.Value{reflect.ValueOf(ctx)}
+		out := funcVal.Call(funcParams)
+		if err, ok := out[1].Interface().(error); ok { // Only evaluates to true when error is not nil
+			return nil, err
+		}
+
+		var rowIter sql.RowIter
+		if iter, ok := out[0].Interface().(sql.RowIter); ok {
+			rowIter = iter
+		} else {
+			rowIter = sql.RowsToRowIter()
+		}
 		return drainRowIter(ctx, rowIter)
 	}
 }

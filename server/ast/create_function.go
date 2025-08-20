@@ -35,11 +35,6 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}
 	// Grab the general information that we'll need to create the function
 	tableName := node.Name.ToTableName()
-	schemaName := tableName.Schema()
-	if len(schemaName) == 0 {
-		// TODO: fix function finder such that it doesn't always assume pg_catalog
-		schemaName = "pg_catalog"
-	}
 	retType := pgtypes.Void
 	if len(node.RetType) == 1 {
 		switch typ := node.RetType[0].Type.(type) {
@@ -100,7 +95,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateFunction(
 			tableName.Table(),
-			schemaName,
+			tableName.Schema(),
 			node.Replace,
 			retType,
 			paramNames,

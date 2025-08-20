@@ -17,6 +17,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -203,6 +204,49 @@ func (root *RootValue) FilterRootObjectNames(ctx context.Context, names []doltdb
 	return returnNames, nil
 }
 
+// GetAllTableNames implements the interface doltdb.RootValue.
+func (root *RootValue) GetAllTableNames(ctx context.Context, includeRootObjects bool) ([]doltdb.TableName, error) {
+	var names []doltdb.TableName
+
+	existingSchemas, err := root.st.GetSchemas(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, existingSchema := range existingSchemas {
+		tableMap, err := root.getTableMap(ctx, existingSchema.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		err = tableMap.Iter(ctx, func(name string, _ hash.Hash) (bool, error) {
+			names = append(names, doltdb.TableName{
+				Name:   name,
+				Schema: existingSchema.Name,
+			})
+			return false, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	if includeRootObjects {
+		colls, err := rootobject.LoadAllCollections(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+		for _, coll := range colls {
+			err = coll.IterIDs(ctx, func(identifier id.Id) (stop bool, err error) {
+				names = append(names, coll.IDToTableName(identifier))
+				return false, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return names, nil
+}
+
 // GetCollation implements the interface doltdb.RootValue.
 func (root *RootValue) GetCollation(ctx context.Context) (schema.Collation, error) {
 	return root.st.GetCollation(ctx)
@@ -226,11 +270,6 @@ func (root *RootValue) GetConflictRootObjects(ctx context.Context) ([]doltdb.Con
 		return false, nil
 	})
 	return allConflicts, nil
-}
-
-// GetRootObject implements the interface doltdb.RootValue.
-func (root *RootValue) GetRootObject(ctx context.Context, tName doltdb.TableName) (doltdb.RootObject, bool, error) {
-	return rootobject.GetRootObject(ctx, root, tName)
 }
 
 // GetDatabaseSchemas implements the interface doltdb.RootValue.
@@ -265,6 +304,11 @@ func (root *RootValue) GetForeignKeyCollection(ctx context.Context) (*doltdb.For
 		}
 	}
 	return root.fkc.Copy(), nil
+}
+
+// GetRootObject implements the interface doltdb.RootValue.
+func (root *RootValue) GetRootObject(ctx context.Context, tName doltdb.TableName) (doltdb.RootObject, bool, error) {
+	return rootobject.GetRootObject(ctx, root, tName)
 }
 
 // GetStorage returns the underlying storage.
@@ -532,6 +576,7 @@ func (root *RootValue) RemoveTables(
 	}
 
 	tableMaps := make(map[string]storage.RootTableMap)
+	deletedObjIds := make(map[objinterface.RootObjectID]struct{})
 	var tables []doltdb.TableName
 	var rootObjNames []struct {
 		rawID id.Id
@@ -568,6 +613,7 @@ func (root *RootValue) RemoveTables(
 			rawID id.Id
 			objID objinterface.RootObjectID
 		}{rawID: rawID, objID: objID})
+		deletedObjIds[objID] = struct{}{}
 	}
 	newRoot := root
 
@@ -595,9 +641,17 @@ func (root *RootValue) RemoveTables(
 			}
 			if len(seqs) > 0 {
 				for _, seq := range seqs {
+					deletedObjIds[objinterface.RootObjectID_Sequences] = struct{}{}
 					if err = seqColl.DropSequence(ctx, seq.Id); err != nil {
 						return nil, err
 					}
+					// If we're deleting sequences here, then we need to ensure that we don't try to delete them later too
+					rootObjNames = slices.DeleteFunc(rootObjNames, func(s struct {
+						rawID id.Id
+						objID objinterface.RootObjectID
+					}) bool {
+						return s.rawID == seq.Id.AsId()
+					})
 				}
 			}
 		}
@@ -611,19 +665,19 @@ func (root *RootValue) RemoveTables(
 		if err != nil {
 			return nil, err
 		}
-		droppedTrigger := false
 		for _, tableName := range tables {
 			for _, trigID := range trigColl.GetTriggerIDsForTable(ctx, id.NewTable(tableName.Schema, tableName.Name)) {
-				droppedTrigger = true
+				deletedObjIds[objinterface.RootObjectID_Triggers] = struct{}{}
 				if err = trigColl.DropTrigger(ctx, trigID); err != nil {
 					return nil, err
 				}
-			}
-		}
-		if sqlCtx, ok := ctx.(*sql.Context); ok && droppedTrigger {
-			// We're not updating the cached values, so we'll remove those
-			if cv, err := getContextValues(sqlCtx); err == nil {
-				cv.trigs = nil
+				// If we're deleting sequences here, then we need to ensure that we don't try to delete them later too
+				rootObjNames = slices.DeleteFunc(rootObjNames, func(s struct {
+					rawID id.Id
+					objID objinterface.RootObjectID
+				}) bool {
+					return s.rawID == trigID.AsId()
+				})
 			}
 		}
 		retRoot, err = trigColl.UpdateRoot(ctx, newRoot)
@@ -660,6 +714,15 @@ func (root *RootValue) RemoveTables(
 			return nil, err
 		}
 		newRoot = newRootInt.(*RootValue)
+	}
+
+	// We're not updating the cached values for the deleted object IDs, so we'll remove them
+	if sqlCtx, ok := ctx.(*sql.Context); ok && len(deletedObjIds) > 0 {
+		if cv, err := getContextValues(sqlCtx); err == nil {
+			for deletedObjId := range deletedObjIds {
+				cv.clear(deletedObjId)
+			}
+		}
 	}
 
 	return newRoot, nil
