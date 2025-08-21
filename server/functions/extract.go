@@ -255,13 +255,13 @@ func getFieldFromTimeVal(field string, tVal time.Time) (decimal.Decimal, error) 
 		return decimal.NewFromInt(int64(year)), nil
 	case "julian":
 		return decimal.NewFromInt(int64(date2J(tVal.Year(), int(tVal.Month()), tVal.Day()))), nil
-	case "microsecond", "microseconds":
+	case "microsecond", "microseconds", "usec", "usecs":
 		w := float64(tVal.Second() * 1000000)
 		f := float64(tVal.Nanosecond()) / float64(1000)
 		return decimal.NewFromFloat(w + f), nil
 	case "millennium", "millenniums":
 		return decimal.NewFromFloat(math.Ceil(float64(tVal.Year()) / 1000)), nil
-	case "millisecond", "milliseconds":
+	case "millisecond", "milliseconds", "msec", "msecs":
 		w := float64(tVal.Second() * 1000)
 		f := float64(tVal.Nanosecond()) / float64(1000000)
 		return decimal.NewFromString(decimal.NewFromFloat(w + f).StringFixed(3))
