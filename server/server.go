@@ -267,12 +267,15 @@ func (c configCliContext) GlobalArgs() *argparser.ArgParseResults {
 	panic("ConfigCliContext does not support GlobalArgs()")
 }
 
-func (c configCliContext) QueryEngine(ctx context.Context) (cli.Queryist, *sql.Context, func(), error) {
-	return nil, nil, nil, errors.Errorf("ConfigCliContext does not support QueryEngine()")
+func (c configCliContext) QueryEngine(ctx context.Context) (res cli.QueryEngineResult, err error) {
+	return res, errors.Errorf("ConfigCliContext does not support QueryEngine()")
 }
 
 func (c configCliContext) WorkingDir() filesys.Filesys {
 	panic("runtime error:ConfigCliContext does not support WorkingDir() in this context")
+}
+
+func (c configCliContext) Close() {
 }
 
 var _ cli.CliContext = configCliContext{}
