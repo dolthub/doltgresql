@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -29,6 +30,18 @@ import (
 
 // This formatting implementation comes from postgres/src/backend/utils/adt/formatting.c
 
+var (
+	monthsFull = []string{"January", "February", "March", "April", "May", "June", "July",
+		"August", "September", "October", "November", "December"}
+	monthsShort = []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+	wdaysFull = []string{"Sunday", "Monday", "Tuesday", "Wednesday",
+		"Thursday", "Friday", "Saturday"}
+	wdaysShort    = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
+	rmMonthsLower = []string{"xii", "xi", "x", "ix", "viii", "vii", "vi", "v", "iv", "iii", "ii", "i"}
+	numthLower    = []string{"st", "nd", "rd", "th"}
+)
+
 // Time and date constants for formatting calculations
 const (
 	monthsPerYear = 12
@@ -42,9 +55,8 @@ const (
 type formatNode struct {
 	typ        formatNodeType // Type of the node (action, character, separator, space)
 	characters []uint8        // Characters for literal text nodes
-	suffix     *keywordSuffix // Prefix modifiers like FM, TM
-	postfix    *keywordSuffix // Suffix modifiers like TH, SP
-	key        *keyword       // Format keyword for action nodes
+	suffix     int
+	key        *keyword // Format keyword for action nodes
 }
 
 // formatNodeType defines the type of formatting node
@@ -64,6 +76,161 @@ const (
 	fromCharDateNONE      fromCharDateMode = iota // Value does not affect date mode
 	fromCharDateGREGORIAN                         // Gregorian (day, month, year) style date
 	fromCharDateISOWEEK                           // ISO 8601 week date
+)
+
+// keywordID defines the keyword ID
+type keywordID uint
+
+const (
+	DCH_A_D keywordID = iota
+	DCH_A_M
+	DCH_AD
+	DCH_AM
+	DCH_B_C
+	DCH_BC
+	DCH_CC
+	DCH_DAY
+	DCH_DDD
+	DCH_DD
+	DCH_DY
+	DCH_Day
+	DCH_Dy
+	DCH_D
+	DCH_FF1
+	DCH_FF2
+	DCH_FF3
+	DCH_FF4
+	DCH_FF5
+	DCH_FF6
+	DCH_FX
+	DCH_HH24
+	DCH_HH12
+	DCH_HH
+	DCH_IDDD
+	DCH_ID
+	DCH_IW
+	DCH_IYYY
+	DCH_IYY
+	DCH_IY
+	DCH_I
+	DCH_J
+	DCH_MI
+	DCH_MM
+	DCH_MONTH
+	DCH_MON
+	DCH_MS
+	DCH_Month
+	DCH_Mon
+	DCH_OF
+	DCH_P_M
+	DCH_PM
+	DCH_Q
+	DCH_RM
+	DCH_SSSSS
+	DCH_SSSS
+	DCH_SS
+	DCH_TZH
+	DCH_TZM
+	DCH_TZ
+	DCH_US
+	DCH_WW
+	DCH_W
+	DCH_Y_YYY
+	DCH_YYYY
+	DCH_YYY
+	DCH_YY
+	DCH_Y
+	DCH_a_d
+	DCH_a_m
+	DCH_ad
+	DCH_am
+	DCH_b_c
+	DCH_bc
+	DCH_cc
+	DCH_day
+	DCH_ddd
+	DCH_dd
+	DCH_dy
+	DCH_d
+	DCH_ff1
+	DCH_ff2
+	DCH_ff3
+	DCH_ff4
+	DCH_ff5
+	DCH_ff6
+	DCH_fx
+	DCH_hh24
+	DCH_hh12
+	DCH_hh
+	DCH_iddd
+	DCH_id
+	DCH_iw
+	DCH_iyyy
+	DCH_iyy
+	DCH_iy
+	DCH_i
+	DCH_j
+	DCH_mi
+	DCH_mm
+	DCH_month
+	DCH_mon
+	DCH_ms
+	DCH_of
+	DCH_p_m
+	DCH_pm
+	DCH_q
+	DCH_rm
+	DCH_sssss
+	DCH_ssss
+	DCH_ss
+	DCH_tzh
+	DCH_tzm
+	DCH_tz
+	DCH_us
+	DCH_ww
+	DCH_w
+	DCH_y_yyy
+	DCH_yyyy
+	DCH_yyy
+	DCH_yy
+	DCH_y
+
+	NUM_COMMA
+	NUM_DEC
+	NUM_0
+	NUM_9
+	NUM_B
+	NUM_C
+	NUM_D
+	NUM_E
+	NUM_FM
+	NUM_G
+	NUM_L
+	NUM_MI
+	NUM_PL
+	NUM_PR
+	NUM_RN
+	NUM_SG
+	NUM_SP
+	NUM_S
+	NUM_TH
+	NUM_V
+	NUM_b
+	NUM_c
+	NUM_d
+	NUM_e
+	NUM_fm
+	NUM_g
+	NUM_l
+	NUM_mi
+	NUM_pl
+	NUM_pr
+	NUM_rn
+	NUM_sg
+	NUM_sp
+	NUM_s
+	NUM_th
+	NUM_v
 )
 
 // tmFromChar holds parsed date/time components from input string
@@ -102,140 +269,189 @@ type tmFromChar struct {
 type keywordSuffix struct {
 	name      string // Name of the suffix/prefix
 	len       int    // Length of the modifier
-	isPostFix bool   // True if this is a postfix modifier
+	id        int
+	isPostFix bool // True if this is a postfix modifier
 }
 
+const (
+	DCH_S_FM int = 0x01
+	DCH_S_TH int = 0x02
+	DCH_S_th int = 0x04
+	DCH_S_SP int = 0x08
+	DCH_S_TM int = 0x10
+)
+
 var orderedKeywordSuffixes = []*keywordSuffix{
-	{"FM", 2, false},
-	{"fm", 2, false},
-	{"TM", 2, false},
-	{"tm", 2, false},
-	{"TH", 2, true},
-	{"th", 2, true},
-	{"SP", 2, true},
+	{"FM", 2, DCH_S_FM, false},
+	{"fm", 2, DCH_S_FM, false},
+	{"TM", 2, DCH_S_TM, false},
+	{"tm", 2, DCH_S_TM, false},
+	{"TH", 2, DCH_S_TH, true},
+	{"th", 2, DCH_S_th, true},
+	{"SP", 2, DCH_S_SP, true},
 }
 
 // keyword represents a format specifier (like YYYY, MM, DD, etc.)
 type keyword struct {
-	name    string           // Name of the keyword (e.g., "YYYY", "MM")
-	len     int              // Length of the keyword
+	name    string // Name of the keyword (e.g., "YYYY", "MM")
+	len     int    // Length of the keyword
+	id      keywordID
 	isDigit bool             // True if this keyword expects digits
 	fcdMode fromCharDateMode // Date mode this keyword belongs to
 }
 
 var orderedDCHKeywords = []*keyword{
-	{"A.D.", 4, false, fromCharDateNONE},
-	{"A.M.", 4, false, fromCharDateNONE},
-	{"AD", 2, false, fromCharDateNONE},
-	{"AM", 2, false, fromCharDateNONE},
-	{"B.C.", 4, false, fromCharDateNONE},
-	{"BC", 2, false, fromCharDateNONE},
-	{"CC", 2, true, fromCharDateNONE},
-	{"DAY", 3, false, fromCharDateNONE},
-	{"DDD", 3, true, fromCharDateGREGORIAN},
-	{"DD", 2, true, fromCharDateGREGORIAN},
-	{"DY", 2, false, fromCharDateNONE},
-	{"Day", 3, false, fromCharDateNONE},
-	{"Dy", 2, false, fromCharDateNONE},
-	{"D", 1, true, fromCharDateGREGORIAN},
-	{"FF1", 3, true, fromCharDateNONE},
-	{"FF2", 3, true, fromCharDateNONE},
-	{"FF3", 3, true, fromCharDateNONE},
-	{"FF4", 3, true, fromCharDateNONE},
-	{"FF5", 3, true, fromCharDateNONE},
-	{"FF6", 3, true, fromCharDateNONE},
-	{"FX", 2, false, fromCharDateNONE},
-	{"HH24", 4, true, fromCharDateNONE},
-	{"HH12", 4, true, fromCharDateNONE},
-	{"HH", 2, true, fromCharDateNONE},
-	{"IDDD", 4, true, fromCharDateISOWEEK},
-	{"ID", 2, true, fromCharDateISOWEEK},
-	{"IW", 2, true, fromCharDateISOWEEK},
-	{"IYYY", 4, true, fromCharDateISOWEEK},
-	{"IYY", 3, true, fromCharDateISOWEEK},
-	{"IY", 2, true, fromCharDateISOWEEK},
-	{"I", 1, true, fromCharDateISOWEEK},
-	{"J", 1, true, fromCharDateNONE},
-	{"MI", 2, true, fromCharDateNONE},
-	{"MM", 2, true, fromCharDateGREGORIAN},
-	{"MONTH", 5, false, fromCharDateGREGORIAN},
-	{"MON", 3, false, fromCharDateGREGORIAN},
-	{"MS", 2, true, fromCharDateNONE},
-	{"Month", 5, false, fromCharDateGREGORIAN},
-	{"Mon", 3, false, fromCharDateGREGORIAN},
-	{"OF", 2, false, fromCharDateNONE},
-	{"P.M.", 4, false, fromCharDateNONE},
-	{"PM", 2, false, fromCharDateNONE},
-	{"Q", 1, true, fromCharDateNONE},
-	{"RM", 2, false, fromCharDateGREGORIAN},
-	{"SSSSS", 5, true, fromCharDateNONE},
-	{"SSSS", 4, true, fromCharDateNONE},
-	{"SS", 2, true, fromCharDateNONE},
-	{"TZH", 3, false, fromCharDateNONE},
-	{"TZM", 3, true, fromCharDateNONE},
-	{"TZ", 2, false, fromCharDateNONE},
-	{"US", 2, true, fromCharDateNONE},
-	{"WW", 2, true, fromCharDateGREGORIAN},
-	{"W", 1, true, fromCharDateGREGORIAN},
-	{"Y,YYY", 5, true, fromCharDateGREGORIAN},
-	{"YYYY", 4, true, fromCharDateGREGORIAN},
-	{"YYY", 3, true, fromCharDateGREGORIAN},
-	{"YY", 2, true, fromCharDateGREGORIAN},
-	{"Y", 1, true, fromCharDateGREGORIAN},
-	{"a.d.", 4, false, fromCharDateNONE},
-	{"a.m.", 4, false, fromCharDateNONE},
-	{"ad", 2, false, fromCharDateNONE},
-	{"am", 2, false, fromCharDateNONE},
-	{"b.c.", 4, false, fromCharDateNONE},
-	{"bc", 2, false, fromCharDateNONE},
-	{"cc", 2, true, fromCharDateNONE},
-	{"day", 3, false, fromCharDateNONE},
-	{"ddd", 3, true, fromCharDateGREGORIAN},
-	{"dd", 2, true, fromCharDateGREGORIAN},
-	{"dy", 2, false, fromCharDateNONE},
-	{"d", 1, true, fromCharDateGREGORIAN},
-	{"ff1", 3, true, fromCharDateNONE},
-	{"ff2", 3, true, fromCharDateNONE},
-	{"ff3", 3, true, fromCharDateNONE},
-	{"ff4", 3, true, fromCharDateNONE},
-	{"ff5", 3, true, fromCharDateNONE},
-	{"ff6", 3, true, fromCharDateNONE},
-	{"fx", 2, false, fromCharDateNONE},
-	{"hh24", 4, true, fromCharDateNONE},
-	{"hh12", 4, true, fromCharDateNONE},
-	{"hh", 2, true, fromCharDateNONE},
-	{"iddd", 4, true, fromCharDateISOWEEK},
-	{"id", 2, true, fromCharDateISOWEEK},
-	{"iw", 2, true, fromCharDateISOWEEK},
-	{"iyyy", 4, true, fromCharDateISOWEEK},
-	{"iyy", 3, true, fromCharDateISOWEEK},
-	{"iy", 2, true, fromCharDateISOWEEK},
-	{"i", 1, true, fromCharDateISOWEEK},
-	{"j", 1, true, fromCharDateNONE},
-	{"mi", 2, true, fromCharDateNONE},
-	{"mm", 2, true, fromCharDateGREGORIAN},
-	{"month", 5, false, fromCharDateGREGORIAN},
-	{"mon", 3, false, fromCharDateGREGORIAN},
-	{"ms", 2, true, fromCharDateNONE},
-	{"of", 2, false, fromCharDateNONE},
-	{"p.m.", 4, false, fromCharDateNONE},
-	{"pm", 2, false, fromCharDateNONE},
-	{"q", 1, true, fromCharDateNONE},
-	{"rm", 2, false, fromCharDateGREGORIAN},
-	{"sssss", 5, true, fromCharDateNONE},
-	{"ssss", 4, true, fromCharDateNONE},
-	{"ss", 2, true, fromCharDateNONE},
-	{"tzh", 3, false, fromCharDateNONE},
-	{"tzm", 3, true, fromCharDateNONE},
-	{"tz", 2, false, fromCharDateNONE},
-	{"us", 2, true, fromCharDateNONE},
-	{"ww", 2, true, fromCharDateGREGORIAN},
-	{"w", 1, true, fromCharDateGREGORIAN},
-	{"y,yyy", 5, true, fromCharDateGREGORIAN},
-	{"yyyy", 4, true, fromCharDateGREGORIAN},
-	{"yyy", 3, true, fromCharDateGREGORIAN},
-	{"yy", 2, true, fromCharDateGREGORIAN},
-	{"y", 1, true, fromCharDateGREGORIAN},
+	{"A.D.", 4, DCH_A_D, false, fromCharDateNONE},
+	{"A.M.", 4, DCH_A_M, false, fromCharDateNONE},
+	{"AD", 2, DCH_AD, false, fromCharDateNONE},
+	{"AM", 2, DCH_AM, false, fromCharDateNONE},
+	{"B.C.", 4, DCH_B_C, false, fromCharDateNONE},
+	{"BC", 2, DCH_BC, false, fromCharDateNONE},
+	{"CC", 2, DCH_CC, true, fromCharDateNONE},
+	{"DAY", 3, DCH_DAY, false, fromCharDateNONE},
+	{"DDD", 3, DCH_DDD, true, fromCharDateGREGORIAN},
+	{"DD", 2, DCH_DD, true, fromCharDateGREGORIAN},
+	{"DY", 2, DCH_DY, false, fromCharDateNONE},
+	{"Day", 3, DCH_Day, false, fromCharDateNONE},
+	{"Dy", 2, DCH_Dy, false, fromCharDateNONE},
+	{"D", 1, DCH_D, true, fromCharDateGREGORIAN},
+	{"FF1", 3, DCH_FF1, true, fromCharDateNONE},
+	{"FF2", 3, DCH_FF2, true, fromCharDateNONE},
+	{"FF3", 3, DCH_FF3, true, fromCharDateNONE},
+	{"FF4", 3, DCH_FF4, true, fromCharDateNONE},
+	{"FF5", 3, DCH_FF5, true, fromCharDateNONE},
+	{"FF6", 3, DCH_FF6, true, fromCharDateNONE},
+	{"FX", 2, DCH_FX, false, fromCharDateNONE},
+	{"HH24", 4, DCH_HH24, true, fromCharDateNONE},
+	{"HH12", 4, DCH_HH12, true, fromCharDateNONE},
+	{"HH", 2, DCH_HH, true, fromCharDateNONE},
+	{"IDDD", 4, DCH_IDDD, true, fromCharDateISOWEEK},
+	{"ID", 2, DCH_ID, true, fromCharDateISOWEEK},
+	{"IW", 2, DCH_IW, true, fromCharDateISOWEEK},
+	{"IYYY", 4, DCH_IYYY, true, fromCharDateISOWEEK},
+	{"IYY", 3, DCH_IYY, true, fromCharDateISOWEEK},
+	{"IY", 2, DCH_IY, true, fromCharDateISOWEEK},
+	{"I", 1, DCH_I, true, fromCharDateISOWEEK},
+	{"J", 1, DCH_J, true, fromCharDateNONE},
+	{"MI", 2, DCH_MI, true, fromCharDateNONE},
+	{"MM", 2, DCH_MM, true, fromCharDateGREGORIAN},
+	{"MONTH", 5, DCH_MONTH, false, fromCharDateGREGORIAN},
+	{"MON", 3, DCH_MON, false, fromCharDateGREGORIAN},
+	{"MS", 2, DCH_MS, true, fromCharDateNONE},
+	{"Month", 5, DCH_Month, false, fromCharDateGREGORIAN},
+	{"Mon", 3, DCH_Mon, false, fromCharDateGREGORIAN},
+	{"OF", 2, DCH_OF, false, fromCharDateNONE},
+	{"P.M.", 4, DCH_P_M, false, fromCharDateNONE},
+	{"PM", 2, DCH_PM, false, fromCharDateNONE},
+	{"Q", 1, DCH_Q, true, fromCharDateNONE},
+	{"RM", 2, DCH_RM, false, fromCharDateGREGORIAN},
+	{"SSSSS", 5, DCH_SSSS, true, fromCharDateNONE},
+	{"SSSS", 4, DCH_SSSS, true, fromCharDateNONE},
+	{"SS", 2, DCH_SS, true, fromCharDateNONE},
+	{"TZH", 3, DCH_TZH, false, fromCharDateNONE},
+	{"TZM", 3, DCH_TZM, true, fromCharDateNONE},
+	{"TZ", 2, DCH_TZ, false, fromCharDateNONE},
+	{"US", 2, DCH_US, true, fromCharDateNONE},
+	{"WW", 2, DCH_WW, true, fromCharDateGREGORIAN},
+	{"W", 1, DCH_W, true, fromCharDateGREGORIAN},
+	{"Y,YYY", 5, DCH_Y_YYY, true, fromCharDateGREGORIAN},
+	{"YYYY", 4, DCH_YYYY, true, fromCharDateGREGORIAN},
+	{"YYY", 3, DCH_YYY, true, fromCharDateGREGORIAN},
+	{"YY", 2, DCH_YY, true, fromCharDateGREGORIAN},
+	{"Y", 1, DCH_Y, true, fromCharDateGREGORIAN},
+	{"a.d.", 4, DCH_a_d, false, fromCharDateNONE},
+	{"a.m.", 4, DCH_a_m, false, fromCharDateNONE},
+	{"ad", 2, DCH_ad, false, fromCharDateNONE},
+	{"am", 2, DCH_am, false, fromCharDateNONE},
+	{"b.c.", 4, DCH_b_c, false, fromCharDateNONE},
+	{"bc", 2, DCH_bc, false, fromCharDateNONE},
+	{"cc", 2, DCH_CC, true, fromCharDateNONE},
+	{"day", 3, DCH_day, false, fromCharDateNONE},
+	{"ddd", 3, DCH_DDD, true, fromCharDateGREGORIAN},
+	{"dd", 2, DCH_DD, true, fromCharDateGREGORIAN},
+	{"dy", 2, DCH_dy, false, fromCharDateNONE},
+	{"d", 1, DCH_D, true, fromCharDateGREGORIAN},
+	{"ff1", 3, DCH_FF1, true, fromCharDateNONE},
+	{"ff2", 3, DCH_FF2, true, fromCharDateNONE},
+	{"ff3", 3, DCH_FF3, true, fromCharDateNONE},
+	{"ff4", 3, DCH_FF4, true, fromCharDateNONE},
+	{"ff5", 3, DCH_FF5, true, fromCharDateNONE},
+	{"ff6", 3, DCH_FF6, true, fromCharDateNONE},
+	{"fx", 2, DCH_FX, false, fromCharDateNONE},
+	{"hh24", 4, DCH_HH24, true, fromCharDateNONE},
+	{"hh12", 4, DCH_HH12, true, fromCharDateNONE},
+	{"hh", 2, DCH_HH, true, fromCharDateNONE},
+	{"iddd", 4, DCH_IDDD, true, fromCharDateISOWEEK},
+	{"id", 2, DCH_ID, true, fromCharDateISOWEEK},
+	{"iw", 2, DCH_IW, true, fromCharDateISOWEEK},
+	{"iyyy", 4, DCH_IYYY, true, fromCharDateISOWEEK},
+	{"iyy", 3, DCH_IYY, true, fromCharDateISOWEEK},
+	{"iy", 2, DCH_IY, true, fromCharDateISOWEEK},
+	{"i", 1, DCH_I, true, fromCharDateISOWEEK},
+	{"j", 1, DCH_J, true, fromCharDateNONE},
+	{"mi", 2, DCH_MI, true, fromCharDateNONE},
+	{"mm", 2, DCH_MM, true, fromCharDateGREGORIAN},
+	{"month", 5, DCH_month, false, fromCharDateGREGORIAN},
+	{"mon", 3, DCH_mon, false, fromCharDateGREGORIAN},
+	{"ms", 2, DCH_MS, true, fromCharDateNONE},
+	{"of", 2, DCH_OF, false, fromCharDateNONE},
+	{"p.m.", 4, DCH_p_m, false, fromCharDateNONE},
+	{"pm", 2, DCH_pm, false, fromCharDateNONE},
+	{"q", 1, DCH_Q, true, fromCharDateNONE},
+	{"rm", 2, DCH_rm, false, fromCharDateGREGORIAN},
+	{"sssss", 5, DCH_SSSS, true, fromCharDateNONE},
+	{"ssss", 4, DCH_SSSS, true, fromCharDateNONE},
+	{"ss", 2, DCH_SS, true, fromCharDateNONE},
+	{"tzh", 3, DCH_TZH, false, fromCharDateNONE},
+	{"tzm", 3, DCH_TZM, true, fromCharDateNONE},
+	{"tz", 2, DCH_tz, false, fromCharDateNONE},
+	{"us", 2, DCH_US, true, fromCharDateNONE},
+	{"ww", 2, DCH_WW, true, fromCharDateGREGORIAN},
+	{"w", 1, DCH_W, true, fromCharDateGREGORIAN},
+	{"y,yyy", 5, DCH_Y_YYY, true, fromCharDateGREGORIAN},
+	{"yyyy", 4, DCH_YYYY, true, fromCharDateGREGORIAN},
+	{"yyy", 3, DCH_YYY, true, fromCharDateGREGORIAN},
+	{"yy", 2, DCH_YY, true, fromCharDateGREGORIAN},
+	{"y", 1, DCH_Y, true, fromCharDateGREGORIAN},
+}
+
+var orderedNUMKeywords = []*keyword{
+	{name: ",", len: 1, id: NUM_COMMA},
+	{name: ".", len: 1, id: NUM_DEC},
+	{name: "0", len: 1, id: NUM_0},
+	{name: "9", len: 1, id: NUM_9},
+	{name: "B", len: 1, id: NUM_B},
+	{name: "C", len: 1, id: NUM_C},
+	{name: "D", len: 1, id: NUM_D},
+	{name: "EEEE", len: 4, id: NUM_E},
+	{name: "FM", len: 2, id: NUM_FM},
+	{name: "G", len: 1, id: NUM_G},
+	{name: "L", len: 1, id: NUM_L},
+	{name: "MI", len: 2, id: NUM_MI},
+	{name: "PL", len: 2, id: NUM_PL},
+	{name: "PR", len: 2, id: NUM_PR},
+	{name: "RN", len: 2, id: NUM_RN},
+	{name: "SG", len: 2, id: NUM_SG},
+	{name: "SP", len: 2, id: NUM_SP},
+	{name: "S", len: 1, id: NUM_S},
+	{name: "TH", len: 2, id: NUM_TH},
+	{name: "V", len: 1, id: NUM_V},
+	{name: "b", len: 1, id: NUM_B},
+	{name: "c", len: 1, id: NUM_C},
+	{name: "d", len: 1, id: NUM_D},
+	{name: "eeee", len: 4, id: NUM_E},
+	{name: "fm", len: 2, id: NUM_FM},
+	{name: "g", len: 1, id: NUM_G},
+	{name: "l", len: 1, id: NUM_L},
+	{name: "mi", len: 2, id: NUM_MI},
+	{name: "pl", len: 2, id: NUM_PL},
+	{name: "pr", len: 2, id: NUM_PR},
+	{name: "rn", len: 2, id: NUM_rn},
+	{name: "sg", len: 2, id: NUM_SG},
+	{name: "sp", len: 2, id: NUM_SP},
+	{name: "s", len: 1, id: NUM_S},
+	{name: "th", len: 2, id: NUM_th},
+	{name: "v", len: 1, id: NUM_V},
 }
 
 // isSpace returns true if the character is a space.
@@ -248,15 +464,19 @@ func isSeperateChar(s uint8) bool {
 	return s > 0x20 && s < 0x7F && !unicode.IsUpper(rune(s)) && !unicode.IsLower(rune(s)) && !unicode.IsDigit(rune(s))
 }
 
-// suffSearch searches for format modifiers (prefixes/suffixes) at the beginning of the string
-func suffSearch(str string) *keywordSuffix {
+// suffSearch searches for format modifiers prefixes or postfixes.
+// suffix id and length
+func suffSearch(str string, isPostfix bool) (int, int) {
 	l := len(str)
 	for _, s := range orderedKeywordSuffixes {
+		if s.isPostFix != isPostfix {
+			continue
+		}
 		if l >= s.len && str[:s.len] == s.name {
-			return s
+			return s.id, s.len
 		}
 	}
-	return nil
+	return 0, 0
 }
 
 // keywordSearch searches for format keywords at the beginning of the string
@@ -275,10 +495,11 @@ func parseFormat(format string) ([]*formatNode, error) {
 	var f []*formatNode
 	formatPos := 0
 	for formatPos < len(format) {
-		var suffix *keywordSuffix
+		suffix := 0
 		// prefix
-		if suffix = suffSearch(format[formatPos:]); suffix != nil {
-			formatPos += suffix.len
+		if suffixId, suffixLen := suffSearch(format[formatPos:], false); suffixId != 0 {
+			suffix |= suffixId
+			formatPos += suffixLen
 		}
 		// keyword
 		if k := keywordSearch(format[formatPos:]); k != nil {
@@ -289,9 +510,9 @@ func parseFormat(format string) ([]*formatNode, error) {
 			}
 			formatPos += k.len
 			// postfix
-			if postfix := suffSearch(format[formatPos:]); postfix != nil {
-				newNode.postfix = postfix
-				formatPos += postfix.len
+			if suffixId, suffixLen := suffSearch(format[formatPos:], true); suffixId != 0 {
+				newNode.suffix |= suffixId
+				formatPos += suffixLen
 			}
 			f = append(f, newNode)
 		} else {
@@ -405,10 +626,10 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			}
 		}
 
-		switch n.key.name {
-		case "fx", "FX":
+		switch n.key.id {
+		case DCH_FX:
 			fxMode = true
-		case "a.m.", "A.M.", "p.m.", "P.M.":
+		case DCH_A_M, DCH_P_M, DCH_AM, DCH_PM:
 			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
 				[]string{"a.m.", "p.m.", "A.M.", "P.M."}, tfc.pm,
 				func(i int) int { return i % 2 })
@@ -418,7 +639,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			tfc.pm = v
 			inputPos += l
 			tfc.is12clock = true
-		case "am", "AM", "pm", "PM":
+		case DCH_a_m, DCH_p_m, DCH_am, DCH_pm:
 			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
 				[]string{"am", "pm", "AM", "PM"}, tfc.pm,
 				func(i int) int { return i % 2 })
@@ -428,7 +649,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			tfc.pm = v
 			inputPos += l
 			tfc.is12clock = true
-		case "hh", "HH", "hh12", "HH12":
+		case DCH_HH, DCH_HH12:
 			v, l, err := fromCharParseIntLen(input[inputPos:], 2, formatNodes[i:], tfc.hh)
 			if err != nil {
 				return time.Time{}, err
@@ -436,32 +657,32 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			tfc.hh = v
 			inputPos += l
 			tfc.is12clock = true
-			inputPos += skipTh(n.postfix)
-		case "hh24", "HH24":
+			inputPos += skipTh(n.suffix)
+		case DCH_HH24:
 			v, l, err := fromCharParseIntLen(input[inputPos:], 2, formatNodes[i:], tfc.hh)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.hh = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "mi", "MI":
+			inputPos += skipTh(n.suffix)
+		case DCH_MI:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.mi)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.mi = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "ss", "SS":
+			inputPos += skipTh(n.suffix)
+		case DCH_SS:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.ss)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.ss = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "ms", "MS":
+			inputPos += skipTh(n.suffix)
+		case DCH_MS:
 			// millisecond
 			v, l, err := fromCharParseIntLen(input[inputPos:], 3, formatNodes[i:], tfc.ms)
 			if err != nil {
@@ -477,24 +698,24 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 				tfc.ms = v
 			}
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "ff1", "FF1", "ff2", "FF2", "ff3", "FF3", "ff4", "FF4", "ff5", "FF5", "ff6", "FF6":
-			switch n.key.name {
-			case "ff1", "FF1":
+			inputPos += skipTh(n.suffix)
+		case DCH_FF1, DCH_FF2, DCH_FF3, DCH_FF4, DCH_FF5, DCH_FF6:
+			switch n.key.id {
+			case DCH_FF1:
 				tfc.ff = 1
-			case "ff2", "FF2":
+			case DCH_FF2:
 				tfc.ff = 2
-			case "ff3", "FF3":
+			case DCH_FF3:
 				tfc.ff = 3
-			case "ff4", "FF4":
+			case DCH_FF4:
 				tfc.ff = 4
-			case "ff5", "FF5":
+			case DCH_FF5:
 				tfc.ff = 5
-			case "ff6", "FF6":
+			case DCH_FF6:
 				tfc.ff = 6
 			}
 			fallthrough
-		case "us", "US":
+		case DCH_US:
 			l := 6
 			if tfc.ff != 0 {
 				l = tfc.ff
@@ -519,19 +740,19 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 				tfc.us = v
 			}
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "ssss", "sssss", "SSSS", "SSSSS":
+			inputPos += skipTh(n.suffix)
+		case DCH_SSSS:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.ssss)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.ssss = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "tz", "TZ":
+			inputPos += skipTh(n.suffix)
+		case DCH_tz, DCH_TZ:
 			// TODO: implement this
 			return time.Time{}, errors.Errorf(`formatting TZ is not supported yet`)
-		case "of", "OF":
+		case DCH_OF:
 			// OF is equivalent to TZH or TZH:TZM
 			// see TZH comments below
 			if input[inputPos] == '-' {
@@ -562,7 +783,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 				tfc.tzm = v
 				inputPos += l
 			}
-		case "tzh", "TZH":
+		case DCH_TZH:
 			if input[inputPos] == '-' {
 				tfc.tzsign = -1
 				inputPos++
@@ -582,7 +803,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			}
 			tfc.tzh = v
 			inputPos += l
-		case "tzm", "TZM":
+		case DCH_TZM:
 			// assign positive timezone sign if TZH was not seen before
 			if tfc.tzsign == 0 {
 				tfc.tzsign = +1
@@ -593,7 +814,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			}
 			tfc.tzm = v
 			inputPos += l
-		case "a.d.", "b.c.", "A.D.", "B.C.":
+		case DCH_A_D, DCH_B_C, DCH_a_d, DCH_b_c:
 			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
 				[]string{"a.d.", "b.c.", "A.D.", "B.C."}, tfc.bc,
 				func(i int) int { return i % 2 })
@@ -602,7 +823,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			}
 			tfc.bc = v
 			inputPos += l
-		case "ad", "bc", "AD", "BC":
+		case DCH_AD, DCH_BC, DCH_ad, DCH_bc:
 			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
 				[]string{"ad", "bc", "AD", "BC"}, tfc.bc,
 				func(i int) int { return i % 2 })
@@ -611,86 +832,80 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			}
 			tfc.bc = v
 			inputPos += l
-		case "month", "Month", "MONTH":
-			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
-				[]string{"January", "February", "March", "April", "May", "June", "July",
-					"August", "September", "October", "November", "December"}, tfc.mm,
+		case DCH_MONTH, DCH_Month, DCH_month:
+			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:], monthsFull, tfc.mm,
 				func(i int) int { return i })
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.mm = v + 1
 			inputPos += l
-		case "mon", "Mon", "MON":
+		case DCH_MON, DCH_Mon, DCH_mon:
 			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
-				[]string{"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-					"Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}, tfc.mm,
+				monthsShort, tfc.mm,
 				func(i int) int { return i })
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.mm = v + 1
 			inputPos += l
-		case "mm", "MM":
+		case DCH_MM:
 			val, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.mm)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.mm = val
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "day", "Day", "DAY":
-			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
-				[]string{"Sunday", "Monday", "Tuesday", "Wednesday",
-					"Thursday", "Friday", "Saturday"}, tfc.d,
+			inputPos += skipTh(n.suffix)
+		case DCH_DAY, DCH_Day, DCH_day:
+			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:], wdaysFull, tfc.d,
 				func(i int) int { return i })
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.d = v + 1
 			inputPos += l
-		case "dy", "Dy", "DY":
-			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
-				[]string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}, tfc.d,
+		case DCH_DY, DCH_Dy, DCH_dy:
+			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:], wdaysShort, tfc.d,
 				func(i int) int { return i })
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.d = v + 1
 			inputPos += l
-		case "ddd", "DDD":
+		case DCH_DDD:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.ddd)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.ddd = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "iddd", "IDDD":
+			inputPos += skipTh(n.suffix)
+		case DCH_IDDD:
 			v, l, err := fromCharParseIntLen(input[inputPos:], 3, formatNodes[i:], tfc.ddd)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.ddd = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "dd", "DD":
+			inputPos += skipTh(n.suffix)
+		case DCH_DD:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.dd)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.dd = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "d", "D":
+			inputPos += skipTh(n.suffix)
+		case DCH_D:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.d)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.d = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "id", "ID":
+			inputPos += skipTh(n.suffix)
+		case DCH_ID:
 			v, l, err := fromCharParseIntLen(input[inputPos:], 1, formatNodes[i:], tfc.dd)
 			if err != nil {
 				return time.Time{}, err
@@ -702,32 +917,32 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 				tfc.d = v
 			}
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "ww", "WW", "iw", "IW":
+			inputPos += skipTh(n.suffix)
+		case DCH_WW, DCH_IW:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.ww)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.ww = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "q", "Q":
+			inputPos += skipTh(n.suffix)
+		case DCH_Q:
 			// we parse but ignore
 			_, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], 0)
 			if err != nil {
 				return time.Time{}, err
 			}
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "cc", "CC":
+			inputPos += skipTh(n.suffix)
+		case DCH_CC:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.cc)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.cc = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "y,yyy", "Y,YYY":
+			inputPos += skipTh(n.suffix)
+		case DCH_Y_YYY:
 			var millennia, years int
 
 			parts := strings.Split(input[inputPos:], ",")
@@ -781,8 +996,8 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			tfc.year = years
 			tfc.yysz = 4
 			inputPos += 5
-			inputPos += skipTh(n.postfix)
-		case "yyyy", "YYYY", "iyyy", "IYYY":
+			inputPos += skipTh(n.suffix)
+		case DCH_YYYY, DCH_IYYY:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.year)
 			if err != nil {
 				return time.Time{}, err
@@ -790,8 +1005,8 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			tfc.year = v
 			tfc.yysz = 4
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "yyy", "YYY", "iyy", "IYY":
+			inputPos += skipTh(n.suffix)
+		case DCH_YYY, DCH_IYY:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.year)
 			if err != nil {
 				return time.Time{}, err
@@ -803,8 +1018,8 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			}
 			tfc.yysz = 3
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "yy", "YY", "iy", "IY":
+			inputPos += skipTh(n.suffix)
+		case DCH_YY, DCH_IY:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.year)
 			if err != nil {
 				return time.Time{}, err
@@ -816,8 +1031,8 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			}
 			tfc.yysz = 2
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "y", "Y", "i", "I":
+			inputPos += skipTh(n.suffix)
+		case DCH_Y, DCH_I:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.year)
 			if err != nil {
 				return time.Time{}, err
@@ -829,32 +1044,31 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			}
 			tfc.yysz = 1
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "rm", "RM":
-			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
-				[]string{"xii", "xi", "x", "ix", "viii", "vii", "vi", "v", "iv", "iii", "ii", "i"}, tfc.mm,
+			inputPos += skipTh(n.suffix)
+		case DCH_RM, DCH_rm:
+			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:], rmMonthsLower, tfc.mm,
 				func(i int) int { return monthsPerYear - i })
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.mm = v
 			inputPos += l
-		case "w", "W":
+		case DCH_W:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.w)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.w = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
-		case "j", "J":
+			inputPos += skipTh(n.suffix)
+		case DCH_J:
 			v, l, err := fromCharParseIntLen(input[inputPos:], n.key.len, formatNodes[i:], tfc.j)
 			if err != nil {
 				return time.Time{}, err
 			}
 			tfc.j = v
 			inputPos += l
-			inputPos += skipTh(n.postfix)
+			inputPos += skipTh(n.suffix)
 		default:
 		}
 
@@ -1330,12 +1544,11 @@ func adjustPartialYearTo2020(year int) int {
 }
 
 // skipTh returns 2 if there is a "TH" or "th" postfix; otherwise returns 0
-func skipTh(suff *keywordSuffix) int {
-	if suff != nil && suff.isPostFix && (suff.name == "th" || suff.name == "TH") {
+func skipTh(suff int) int {
+	if suff&DCH_S_TH != 0 {
 		return 2
-	} else {
-		return 0
 	}
+	return 0
 }
 
 // fromCharParseIntLen parses an integer from input string with specified length constraints
@@ -1344,7 +1557,7 @@ func fromCharParseIntLen(input string, length int, nodes []*formatNode, curVal i
 	input = strings.TrimLeftFunc(input, unicode.IsSpace)
 	n := nodes[0]
 
-	isFMorIsNextSeperator := (n.suffix != nil && (n.suffix.name == "fm" || n.suffix.name == "FM")) || isNextSeperator(nodes)
+	isFMorIsNextSeperator := n.suffix&DCH_S_FM != 0 || isNextSeperator(nodes)
 
 	if !isFMorIsNextSeperator && len(input) < length {
 		return 0, 0, errors.Errorf(`source string too short for "%s" formatting field`, n.key.name)
@@ -1394,7 +1607,7 @@ func isNextSeperator(nodes []*formatNode) bool {
 	if len(nodes) == 1 {
 		return true
 	}
-	if n.typ == nodeTypeACTION && n.postfix != nil && n.postfix.isPostFix && (n.postfix.name == "th" || n.postfix.name == "TH") {
+	if n.typ == nodeTypeACTION && skipTh(n.suffix) > 0 {
 		return true
 	}
 	// next node
@@ -1405,4 +1618,642 @@ func isNextSeperator(nodes []*formatNode) bool {
 		return false
 	}
 	return true
+}
+
+type tmToChar struct {
+	sec    int
+	min    int
+	hour   int
+	mday   int
+	mon    int
+	year   int
+	wday   int
+	yday   int
+	gmtoff int
+	fsec   int64  /* fractional seconds */
+	tzn    string /* timezone */
+}
+
+func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
+	formatNodes, err := parseFormat(format)
+	if err != nil {
+		return "", err
+	}
+
+	var s string
+	for i, n := range formatNodes {
+		if n.typ != nodeTypeACTION {
+			s += string(n.characters)
+			continue
+		}
+
+		switch n.key.id {
+		case DCH_A_M, DCH_P_M:
+			if (t.hour % hoursPerDay) >= hoursPerDay/2 {
+				s += "P.M."
+			} else {
+				s += "A.M."
+			}
+		case DCH_AM, DCH_PM:
+			if (t.hour % hoursPerDay) >= hoursPerDay/2 {
+				s += "PM"
+			} else {
+				s += "AM"
+			}
+		case DCH_a_m, DCH_p_m:
+			if (t.hour % hoursPerDay) >= hoursPerDay/2 {
+				s += "p.m."
+			} else {
+				s += "a.m."
+			}
+		case DCH_am, DCH_pm:
+			if (t.hour % hoursPerDay) >= hoursPerDay/2 {
+				s += "pm"
+			} else {
+				s += "am"
+			}
+		case DCH_HH, DCH_HH12:
+			// display time as shown on a 12-hour clock, even for intervals
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if t.hour >= 0 {
+				width = 2
+			} else {
+				width = 3
+			}
+			h := t.hour % (hoursPerDay / 2)
+			if h == 0 {
+				h = hoursPerDay / 2
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, h), n.suffix)
+		case DCH_HH24:
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if t.hour >= 0 {
+				width = 2
+			} else {
+				width = 3
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, t.hour), n.suffix)
+		case DCH_MI:
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if t.min >= 0 {
+				width = 2
+			} else {
+				width = 3
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, t.min), n.suffix)
+		case DCH_SS:
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if t.sec >= 0 {
+				width = 2
+			} else {
+				width = 3
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, t.sec), n.suffix)
+		case DCH_FF1:
+			s += makeNumTh(getStringFromIntWithWidth(1, int(t.fsec/1000)), n.suffix)
+		case DCH_FF2:
+			s += makeNumTh(getStringFromIntWithWidth(2, int(t.fsec/1000)), n.suffix)
+		case DCH_FF3, DCH_MS:
+			// millisecond
+			s += makeNumTh(getStringFromIntWithWidth(3, int(t.fsec/1000)), n.suffix)
+		case DCH_FF4:
+			s += makeNumTh(getStringFromIntWithWidth(4, int(t.fsec/1000)), n.suffix)
+		case DCH_FF5:
+			s += makeNumTh(getStringFromIntWithWidth(5, int(t.fsec/1000)), n.suffix)
+		case DCH_FF6, DCH_US:
+			// microsecond
+			s += makeNumTh(getStringFromIntWithWidth(6, int(t.fsec)), n.suffix)
+		case DCH_SSSS:
+			s += makeNumTh(fmt.Sprintf("%d", t.hour*duration.SecsPerHour+t.min*duration.SecsPerMinute+t.sec), n.suffix)
+		case DCH_tz:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			s += strings.ToLower(t.tzn)
+		case DCH_TZ:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			s += strings.ToUpper(t.tzn)
+		case DCH_TZH:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			sign := "+"
+			if t.gmtoff < 0 {
+				sign = "-"
+			}
+			s += fmt.Sprintf("%s%s", sign, getStringFromIntWithWidth(2, int(math.Abs(float64(t.gmtoff/duration.SecsPerHour)))))
+		case DCH_TZM:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			s += getStringFromIntWithWidth(2, int(math.Abs(float64(t.gmtoff%duration.SecsPerHour)/duration.SecsPerMinute)))
+		case DCH_OF:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else {
+				width = 2
+			}
+			sign := "+"
+			if t.gmtoff < 0 {
+				sign = "-"
+			}
+			s += fmt.Sprintf("%s%s:%s", sign, getStringFromIntWithWidth(width, int(math.Abs(float64(t.gmtoff/duration.SecsPerHour)))),
+				getStringFromIntWithWidth(2, int(math.Abs(float64(t.gmtoff%duration.SecsPerHour)/duration.SecsPerMinute))))
+		case DCH_A_D, DCH_B_C:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			if t.year <= 0 {
+				s += "B.C."
+			} else {
+				s += "A.D."
+			}
+		case DCH_AD, DCH_BC:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			if t.year <= 0 {
+				s += "BC"
+			} else {
+				s += "AD"
+			}
+		case DCH_a_d, DCH_b_c:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			if t.year <= 0 {
+				s += "BC"
+			} else {
+				s += "AD"
+			}
+		case DCH_ad, DCH_bc:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			if t.year <= 0 {
+				s += "bc"
+			} else {
+				s += "ad"
+			}
+		case DCH_MONTH:
+			m, err := getFromArray(monthsFull, t.mon-1, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", strings.ToUpper(m))
+		case DCH_Month:
+			m, err := getFromArray(monthsFull, t.mon-1, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", m)
+		case DCH_month:
+			m, err := getFromArray(monthsFull, t.mon-1, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", strings.ToLower(m))
+		case DCH_MON:
+			m, err := getFromArray(monthsShort, t.mon-1, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", strings.ToUpper(m))
+		case DCH_Mon:
+			m, err := getFromArray(monthsShort, t.mon-1, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", m)
+		case DCH_mon:
+			m, err := getFromArray(monthsShort, t.mon-1, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", strings.ToLower(m))
+		case DCH_MM:
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if t.min >= 0 {
+				width = 2
+			} else {
+				width = 3
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, t.mon), n.suffix)
+		case DCH_DAY:
+			m, err := getFromArray(wdaysFull, t.wday, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", strings.ToUpper(m))
+		case DCH_Day:
+			m, err := getFromArray(wdaysFull, t.wday, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", m)
+		case DCH_day:
+			m, err := getFromArray(wdaysFull, t.wday, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", strings.ToLower(m))
+		case DCH_DY:
+			m, err := getFromArray(wdaysShort, t.wday, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", strings.ToUpper(m))
+		case DCH_Dy:
+			m, err := getFromArray(wdaysShort, t.wday, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", m)
+		case DCH_dy:
+			m, err := getFromArray(wdaysShort, t.wday, n.suffix, isInterval)
+			if err != nil {
+				return "", err
+			}
+			s += fmt.Sprintf("%s", strings.ToLower(m))
+		case DCH_DDD:
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else {
+				width = 3
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, t.yday), n.suffix)
+		case DCH_IDDD:
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else {
+				width = 3
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, date2IsoYearDay(t.year, t.mon, t.mday)), n.suffix)
+		case DCH_DD:
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else {
+				width = 2
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, t.mday), n.suffix)
+		case DCH_D:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			s += makeNumTh(getStringFromInt(t.wday+1), n.suffix)
+		case DCH_ID:
+			if isInterval {
+				return "", errors.Errorf("invalid format specification for an interval value")
+			}
+			wday := t.wday
+			if t.wday == 0 {
+				wday = 7
+			}
+			s += makeNumTh(getStringFromInt(wday), n.suffix)
+		case DCH_WW:
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else {
+				width = 2
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, (t.yday-1)/7+1), n.suffix)
+		case DCH_IW:
+			width := 0
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else {
+				width = 2
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, date2IsoWeek(t.year, t.mon, t.mday)), n.suffix)
+		case DCH_Q:
+			if t.mon == 0 {
+				break
+			}
+			s += makeNumTh(fmt.Sprintf("%d", (t.mon-1)/3+1), n.suffix)
+		case DCH_CC:
+			//var i int
+			if isInterval {
+				// straight calculation
+				i = t.year / 100
+			} else {
+				if t.year > 0 {
+					// Century 20 == 1901 - 2000
+					i = (t.year-1)/100 + 1
+				} else {
+					// Century 6BC == 600BC - 501BC
+					i = t.year/100 - 1
+				}
+			}
+			if i <= 99 && i >= -99 {
+				width := 0
+				if n.suffix&DCH_S_FM != 0 {
+					width = 0
+				} else if i >= 0 {
+					width = 2
+				} else {
+					width = 3
+				}
+				s += makeNumTh(getStringFromIntWithWidth(width, i), n.suffix)
+			} else {
+				s += makeNumTh(getStringFromInt(i), n.suffix)
+			}
+		case DCH_Y_YYY:
+			ay := adjustYear(t.year, isInterval)
+			i = ay / 1000
+			s += makeNumTh(fmt.Sprintf("%d,%03d", i, ay-(i*1000)), n.suffix)
+		case DCH_YYYY:
+			width := 0
+			ay := adjustYear(t.year, isInterval)
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if ay >= 0 {
+				width = 4
+			} else {
+				width = 5
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, ay), n.suffix)
+		case DCH_IYYY:
+			width := 0
+			ay := adjustYear(t.year, isInterval)
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if ay >= 0 {
+				width = 4
+			} else {
+				width = 5
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, adjustYear(date2IsoYear(t.year, t.mon, t.mday), isInterval)), n.suffix)
+		case DCH_YYY:
+			width := 0
+			ay := adjustYear(t.year, isInterval)
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if ay >= 0 {
+				width = 3
+			} else {
+				width = 4
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, ay), n.suffix)
+		case DCH_IYY:
+			width := 0
+			ay := adjustYear(t.year, isInterval)
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if ay >= 0 {
+				width = 3
+			} else {
+				width = 4
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, adjustYear(date2IsoYear(t.year, t.mon, t.mday), isInterval)%1000), n.suffix)
+		case DCH_YY:
+			width := 0
+			ay := adjustYear(t.year, isInterval)
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if ay >= 0 {
+				width = 2
+			} else {
+				width = 3
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, ay), n.suffix)
+		case DCH_IY:
+			width := 0
+			ay := adjustYear(t.year, isInterval)
+			if n.suffix&DCH_S_FM != 0 {
+				width = 0
+			} else if ay >= 0 {
+				width = 2
+			} else {
+				width = 3
+			}
+			s += makeNumTh(getStringFromIntWithWidth(width, adjustYear(date2IsoYear(t.year, t.mon, t.mday), isInterval)%100), n.suffix)
+		case DCH_Y:
+			s += makeNumTh(getStringFromIntWithWidth(1, adjustYear(t.year, isInterval)), n.suffix)
+		case DCH_I:
+			s += makeNumTh(getStringFromIntWithWidth(1, adjustYear(date2IsoYear(t.year, t.mon, t.mday), isInterval)%10), n.suffix)
+		case DCH_RM, DCH_rm:
+			// For intervals, values like '12 month' will be reduced to 0
+			// month and some years.  These should be processed.
+			if t.mon != 0 && t.year != 0 {
+				break
+			} else {
+				mon := 0
+				//const char *const *months;
+
+				// Compute the position in the roman-numeral array.  Note
+				// that the contents of the array are reversed, December
+				// being first and January last.
+				if t.mon == 0 {
+					// This case is special, and tracks the case of full
+					// interval years.
+					if t.year < 0 {
+						mon = monthsPerYear - 1
+					}
+				} else if t.mon < 0 {
+					// Negative case.  In this case, the calculation is
+					// reversed, where -1 means December, -2 November,
+					// etc.
+					mon = -1 * (t.mon + 1)
+				} else {
+					// Common case, with a strictly positive value.  The
+					// position in the array matches with the value of
+					// tm_mon.
+					mon = monthsPerYear - t.mon
+				}
+				width := 0
+				if n.suffix&DCH_S_FM != 0 {
+					width = 0
+				} else {
+					width = -4
+				}
+				if n.key.name == "rm" {
+					s += fmt.Sprintf("%*s", width, rmMonthsLower[mon])
+				} else {
+					s += fmt.Sprintf("%*s", width, strings.ToUpper(rmMonthsLower[mon]))
+				}
+			}
+		case DCH_W:
+			s += makeNumTh(getStringFromInt((t.mday-1)/7+1), n.suffix)
+		case DCH_J:
+			s += makeNumTh(getStringFromInt(date2J(t.year, t.mon, t.mday)), n.suffix)
+		default:
+		}
+	}
+
+	return s, nil
+}
+
+func getFromArray(arr []string, v int, suffix int, isInterval bool) (string, error) {
+	if isInterval {
+		return "", errors.Errorf("invalid format specification for an interval value")
+	}
+	if v == 0 {
+		// TODO
+		return "", nil
+	}
+	if suffix&DCH_S_TM != 0 {
+		return "", errors.Errorf("TM suffix is not supported yet.")
+	}
+	return fmt.Sprintf("%s", arr[v]), nil
+}
+
+// date2IsoYear returns ISO 8601 year number.
+// Note: zero or negative results follow the year-zero-exists convention.
+func date2IsoYear(year, mon, mday int) int {
+	/* current day */
+	dayn := date2J(year, mon, mday)
+
+	/* fourth day of current year */
+	day4 := date2J(year, 1, 4)
+
+	/* day0 == offset to first day of week (Monday) */
+	day0 := j2Day(day4 - 1)
+
+	// We need the first week containing a Thursday, otherwise this day falls
+	// into the previous year for purposes of counting weeks
+	if dayn < day4-day0 {
+		day4 = date2J(year-1, 1, 4)
+
+		/* day0 == offset to first day of week (Monday) */
+		day0 = j2Day(day4 - 1)
+
+		year--
+	}
+
+	result := float64(dayn-(day4-day0))/7 + 1
+
+	// Sometimes the last few days in a year will fall into the first week of
+	// the next year, so check for this.
+	if result >= 52 {
+		day4 = date2J(year+1, 1, 4)
+
+		/* day0 == offset to first day of week (Monday) */
+		day0 = j2Day(day4 - 1)
+
+		if dayn >= day4-day0 {
+			year++
+		}
+	}
+	return year
+}
+
+// date2IsoYearDay returns the ISO 8601 day-of-year, given a Gregorian year, month and day.
+// Possible return values are 1 through 371 (364 in non-leap years).
+func date2IsoYearDay(year, mon, mday int) int {
+	return date2J(year, mon, mday) - isoWeek2J(date2IsoYear(year, mon, mday), 1) + 1
+}
+
+// date2IsoWeek returns ISO week number of year.
+func date2IsoWeek(year, mon, mday int) int {
+	// current day */
+	dayn := date2J(year, mon, mday)
+
+	// fourth day of current year
+	day4 := date2J(year, 1, 4)
+
+	// day0 == offset to first day of week (Monday)
+	day0 := j2Day(day4 - 1)
+
+	// We need the first week containing a Thursday, otherwise this day falls
+	// into the previous year for purposes of counting weeks
+	if dayn < day4-day0 {
+		day4 = date2J(year-1, 1, 4)
+
+		// day0 == offset to first day of week (Monday)
+		day0 = j2Day(day4 - 1)
+	}
+
+	result := (dayn-(day4-day0))/7 + 1
+
+	// Sometimes the last few days in a year will fall into the first week of
+	// the next year, so check for this.
+	if result >= 52 {
+		day4 = date2J(year+1, 1, 4)
+
+		// day0 == offset to first day of week (Monday)
+		day0 = j2Day(day4 - 1)
+
+		if dayn >= day4-day0 {
+			result = (dayn-(day4-day0))/7 + 1
+		}
+	}
+
+	return result
+}
+
+// adjustYear return the year if it's interval. Otherwise,
+// there is no 0 AD, and years go from 1 BC to 1 AD, so we make it
+// positive and map year == -1 to year zero, and shift all negative
+// years up one. For interval years, we just return the year.
+func adjustYear(year int, isInterval bool) int {
+	if isInterval {
+		return year
+	}
+	if year <= 0 {
+		return -year + 1
+	}
+	return year
+}
+
+// getStringFromIntWithWidth returns int in string format with given width
+// If the int is of length less than width, it's padded with zeroes.
+// If the int is of length more than width, it's trimmed.
+// Zero width is no width restriction.
+func getStringFromIntWithWidth(width int, v int) string {
+	if width == 0 {
+		return fmt.Sprintf("%d", v)
+	}
+	s := fmt.Sprintf("%0*d", width, v)
+	l := len(s)
+	if l > width {
+		return s[l-width:]
+	}
+	return s
+}
+
+// getStringFromInt returns int in string format.
+func getStringFromInt(v int) string {
+	return getStringFromIntWithWidth(0, v)
+}
+
+func makeNumTh(s string, suffix int) string {
+	if suffix&DCH_S_TH != 0 {
+		return s + strings.ToUpper(numth(s[len(s)-1]))
+	} else if suffix&DCH_S_th != 0 {
+		return s + numth(s[len(s)-1])
+	} else {
+		return s
+	}
+}
+
+func numth(s uint8) string {
+	if s == '1' {
+		return "st"
+	} else if s == '2' {
+		return "nd"
+	} else if s == '3' {
+		return "rd"
+	} else {
+		return "th"
+	}
 }

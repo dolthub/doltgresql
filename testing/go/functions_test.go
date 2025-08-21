@@ -3366,6 +3366,42 @@ func TestFormatFunctions(t *testing.T) {
 						{"3 3"},
 					},
 				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD SSSS');`,
+					Expected: []sql.Row{
+						{"2012-12-12 43200"},
+					},
+				},
+				{
+					Query: `SET timezone = '-06:30';`,
+				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZH:TZM');`,
+					Expected: []sql.Row{
+						{"2012-12-12 12:00:00 +06:30"},
+					},
+				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00 -02:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZH:TZM');`,
+					Expected: []sql.Row{
+						{"2012-12-12 08:30:00 +06:30"},
+					},
+				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00 -02:00'::timestamptz, 'TZ');`,
+					Expected: []sql.Row{
+						{" "},
+					},
+				},
+				{
+					Query: `SET timezone = 'UTC';`,
+				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00 -02:00'::timestamptz, 'TZ tz');`,
+					Expected: []sql.Row{
+						{"UTC utc"},
+					},
+				},
 			},
 		},
 	})
