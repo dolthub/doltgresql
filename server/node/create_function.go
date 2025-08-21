@@ -102,7 +102,11 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	for i, paramType := range c.ParameterTypes {
 		paramTypes[i] = paramType.ID
 	}
-	funcID := id.NewFunction(c.SchemaName, c.FunctionName, idTypes...)
+	schemaName, err := core.GetSchemaName(ctx, nil, c.SchemaName)
+	if err != nil {
+		return nil, err
+	}
+	funcID := id.NewFunction(schemaName, c.FunctionName, idTypes...)
 	if c.Replace && funcCollection.HasFunction(ctx, funcID) {
 		if err = funcCollection.DropFunction(ctx, funcID); err != nil {
 			return nil, err
