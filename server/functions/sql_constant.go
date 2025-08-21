@@ -28,9 +28,8 @@ func initSqlConstant() {
 	framework.RegisterFunction(current_date)
 	framework.RegisterFunction(current_time)
 	framework.RegisterFunction(current_time_int32)
-	// TODO: printing string format of functions should not show parenthesis for constants
-	//framework.RegisterFunction(current_timestamp)
-	//framework.RegisterFunction(current_timestamp_int32)
+	framework.RegisterFunction(current_timestamp)
+	framework.RegisterFunction(current_timestamp_int32)
 	framework.RegisterFunction(localtime)
 	framework.RegisterFunction(localtime_int32)
 	framework.RegisterFunction(localtimestamp)

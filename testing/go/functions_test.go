@@ -3297,8 +3297,11 @@ func TestStringFunction(t *testing.T) {
 func TestFormatFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name:        "test to_char",
-			SetUpScript: []string{},
+			Name: "test to_char",
+			SetUpScript: []string{
+				`CREATE TABLE TIMESTAMP_TBL (d1 timestamp(2) without time zone);`,
+				`INSERT INTO TIMESTAMP_TBL VALUES ('1997-02-10 17:32:01-0800');`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'YYYY-MM-DD HH24:MI:SS.MS');`,
@@ -3400,6 +3403,18 @@ func TestFormatFunctions(t *testing.T) {
 					Query: `SELECT to_char('2012-12-12 12:00 -02:00'::timestamptz, 'TZ tz');`,
 					Expected: []sql.Row{
 						{"UTC utc"},
+					},
+				},
+				{
+					Query: `SELECT to_char(d1, 'Y,YYY YYYY YYY YY Y CC Q MM WW DDD DD D J') FROM TIMESTAMP_TBL;`,
+					Expected: []sql.Row{
+						{"1,997 1997 997 97 7 20 1 02 06 041 10 2 2450490"},
+					},
+				},
+				{
+					Query: `SELECT to_char(d1, 'DAY Day day DY Dy dy MONTH Month month RM MON Mon mon') FROM TIMESTAMP_TBL;`,
+					Expected: []sql.Row{
+						{`MONDAY    Monday    monday    MON Mon mon FEBRUARY  February  february  II   FEB Feb feb`},
 					},
 				},
 			},

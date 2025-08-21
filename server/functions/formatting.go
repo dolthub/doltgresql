@@ -39,7 +39,6 @@ var (
 		"Thursday", "Friday", "Saturday"}
 	wdaysShort    = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
 	rmMonthsLower = []string{"xii", "xi", "x", "ix", "viii", "vii", "vi", "v", "iv", "iii", "ii", "i"}
-	numthLower    = []string{"st", "nd", "rd", "th"}
 )
 
 // Time and date constants for formatting calculations
@@ -415,45 +414,6 @@ var orderedDCHKeywords = []*keyword{
 	{"y", 1, DCH_Y, true, fromCharDateGREGORIAN},
 }
 
-var orderedNUMKeywords = []*keyword{
-	{name: ",", len: 1, id: NUM_COMMA},
-	{name: ".", len: 1, id: NUM_DEC},
-	{name: "0", len: 1, id: NUM_0},
-	{name: "9", len: 1, id: NUM_9},
-	{name: "B", len: 1, id: NUM_B},
-	{name: "C", len: 1, id: NUM_C},
-	{name: "D", len: 1, id: NUM_D},
-	{name: "EEEE", len: 4, id: NUM_E},
-	{name: "FM", len: 2, id: NUM_FM},
-	{name: "G", len: 1, id: NUM_G},
-	{name: "L", len: 1, id: NUM_L},
-	{name: "MI", len: 2, id: NUM_MI},
-	{name: "PL", len: 2, id: NUM_PL},
-	{name: "PR", len: 2, id: NUM_PR},
-	{name: "RN", len: 2, id: NUM_RN},
-	{name: "SG", len: 2, id: NUM_SG},
-	{name: "SP", len: 2, id: NUM_SP},
-	{name: "S", len: 1, id: NUM_S},
-	{name: "TH", len: 2, id: NUM_TH},
-	{name: "V", len: 1, id: NUM_V},
-	{name: "b", len: 1, id: NUM_B},
-	{name: "c", len: 1, id: NUM_C},
-	{name: "d", len: 1, id: NUM_D},
-	{name: "eeee", len: 4, id: NUM_E},
-	{name: "fm", len: 2, id: NUM_FM},
-	{name: "g", len: 1, id: NUM_G},
-	{name: "l", len: 1, id: NUM_L},
-	{name: "mi", len: 2, id: NUM_MI},
-	{name: "pl", len: 2, id: NUM_PL},
-	{name: "pr", len: 2, id: NUM_PR},
-	{name: "rn", len: 2, id: NUM_rn},
-	{name: "sg", len: 2, id: NUM_SG},
-	{name: "sp", len: 2, id: NUM_SP},
-	{name: "s", len: 1, id: NUM_S},
-	{name: "th", len: 2, id: NUM_th},
-	{name: "v", len: 1, id: NUM_V},
-}
-
 // isSpace returns true if the character is a space.
 func isSpace(s uint8) bool {
 	return s == ' ' || s == '\t'
@@ -629,7 +589,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 		switch n.key.id {
 		case DCH_FX:
 			fxMode = true
-		case DCH_A_M, DCH_P_M, DCH_AM, DCH_PM:
+		case DCH_A_M, DCH_P_M, DCH_a_m, DCH_p_m:
 			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
 				[]string{"a.m.", "p.m.", "A.M.", "P.M."}, tfc.pm,
 				func(i int) int { return i % 2 })
@@ -639,7 +599,7 @@ func getDateTimeFromFormat(ctx *sql.Context, input, format string) (time.Time, e
 			tfc.pm = v
 			inputPos += l
 			tfc.is12clock = true
-		case DCH_a_m, DCH_p_m, DCH_am, DCH_pm:
+		case DCH_AM, DCH_PM, DCH_am, DCH_pm:
 			v, l, err := fromCharSeqSearch(n.key.name, input[inputPos:],
 				[]string{"am", "pm", "AM", "PM"}, tfc.pm,
 				func(i int) int { return i % 2 })
@@ -1545,7 +1505,7 @@ func adjustPartialYearTo2020(year int) int {
 
 // skipTh returns 2 if there is a "TH" or "th" postfix; otherwise returns 0
 func skipTh(suff int) int {
-	if suff&DCH_S_TH != 0 {
+	if suff&DCH_S_TH != 0 || suff&DCH_S_th != 0 {
 		return 2
 	}
 	return 0
@@ -1674,13 +1634,11 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 			}
 		case DCH_HH, DCH_HH12:
 			// display time as shown on a 12-hour clock, even for intervals
-			width := 0
+			width := 3
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if t.hour >= 0 {
 				width = 2
-			} else {
-				width = 3
 			}
 			h := t.hour % (hoursPerDay / 2)
 			if h == 0 {
@@ -1688,33 +1646,27 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, h), n.suffix)
 		case DCH_HH24:
-			width := 0
+			width := 3
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if t.hour >= 0 {
 				width = 2
-			} else {
-				width = 3
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, t.hour), n.suffix)
 		case DCH_MI:
-			width := 0
+			width := 3
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if t.min >= 0 {
 				width = 2
-			} else {
-				width = 3
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, t.min), n.suffix)
 		case DCH_SS:
-			width := 0
+			width := 3
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if t.sec >= 0 {
 				width = 2
-			} else {
-				width = 3
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, t.sec), n.suffix)
 		case DCH_FF1:
@@ -1761,11 +1713,9 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 			if isInterval {
 				return "", errors.Errorf("invalid format specification for an interval value")
 			}
-			width := 0
+			width := 2
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
-			} else {
-				width = 2
 			}
 			sign := "+"
 			if t.gmtoff < 0 {
@@ -1810,109 +1760,101 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 				s += "ad"
 			}
 		case DCH_MONTH:
-			m, err := getFromArray(monthsFull, t.mon-1, n.suffix, isInterval)
+			m, err := getFromArray(monthsFull, t.mon-1, n.suffix, isInterval, -9)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", strings.ToUpper(m))
+			s += strings.ToUpper(m)
 		case DCH_Month:
-			m, err := getFromArray(monthsFull, t.mon-1, n.suffix, isInterval)
+			m, err := getFromArray(monthsFull, t.mon-1, n.suffix, isInterval, -9)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", m)
+			s += m
 		case DCH_month:
-			m, err := getFromArray(monthsFull, t.mon-1, n.suffix, isInterval)
+			m, err := getFromArray(monthsFull, t.mon-1, n.suffix, isInterval, -9)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", strings.ToLower(m))
+			s += strings.ToLower(m)
 		case DCH_MON:
-			m, err := getFromArray(monthsShort, t.mon-1, n.suffix, isInterval)
+			m, err := getFromArray(monthsShort, t.mon-1, n.suffix, isInterval, 0)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", strings.ToUpper(m))
+			s += strings.ToUpper(m)
 		case DCH_Mon:
-			m, err := getFromArray(monthsShort, t.mon-1, n.suffix, isInterval)
+			m, err := getFromArray(monthsShort, t.mon-1, n.suffix, isInterval, 0)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", m)
+			s += m
 		case DCH_mon:
-			m, err := getFromArray(monthsShort, t.mon-1, n.suffix, isInterval)
+			m, err := getFromArray(monthsShort, t.mon-1, n.suffix, isInterval, 0)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", strings.ToLower(m))
+			s += strings.ToLower(m)
 		case DCH_MM:
-			width := 0
+			width := 3
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if t.min >= 0 {
 				width = 2
-			} else {
-				width = 3
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, t.mon), n.suffix)
 		case DCH_DAY:
-			m, err := getFromArray(wdaysFull, t.wday, n.suffix, isInterval)
+			m, err := getFromArray(wdaysFull, t.wday, n.suffix, isInterval, -9)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", strings.ToUpper(m))
+			s += strings.ToUpper(m)
 		case DCH_Day:
-			m, err := getFromArray(wdaysFull, t.wday, n.suffix, isInterval)
+			m, err := getFromArray(wdaysFull, t.wday, n.suffix, isInterval, -9)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", m)
+			s += m
 		case DCH_day:
-			m, err := getFromArray(wdaysFull, t.wday, n.suffix, isInterval)
+			m, err := getFromArray(wdaysFull, t.wday, n.suffix, isInterval, -9)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", strings.ToLower(m))
+			s += strings.ToLower(m)
 		case DCH_DY:
-			m, err := getFromArray(wdaysShort, t.wday, n.suffix, isInterval)
+			m, err := getFromArray(wdaysShort, t.wday, n.suffix, isInterval, 0)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", strings.ToUpper(m))
+			s += strings.ToUpper(m)
 		case DCH_Dy:
-			m, err := getFromArray(wdaysShort, t.wday, n.suffix, isInterval)
+			m, err := getFromArray(wdaysShort, t.wday, n.suffix, isInterval, 0)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", m)
+			s += m
 		case DCH_dy:
-			m, err := getFromArray(wdaysShort, t.wday, n.suffix, isInterval)
+			m, err := getFromArray(wdaysShort, t.wday, n.suffix, isInterval, 0)
 			if err != nil {
 				return "", err
 			}
-			s += fmt.Sprintf("%s", strings.ToLower(m))
+			s += strings.ToLower(m)
 		case DCH_DDD:
-			width := 0
+			width := 3
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
-			} else {
-				width = 3
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, t.yday), n.suffix)
 		case DCH_IDDD:
-			width := 0
+			width := 3
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
-			} else {
-				width = 3
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, date2IsoYearDay(t.year, t.mon, t.mday)), n.suffix)
 		case DCH_DD:
-			width := 0
+			width := 2
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
-			} else {
-				width = 2
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, t.mday), n.suffix)
 		case DCH_D:
@@ -1930,19 +1872,15 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 			}
 			s += makeNumTh(getStringFromInt(wday), n.suffix)
 		case DCH_WW:
-			width := 0
+			width := 2
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
-			} else {
-				width = 2
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, (t.yday-1)/7+1), n.suffix)
 		case DCH_IW:
-			width := 0
+			width := 2
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
-			} else {
-				width = 2
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, date2IsoWeek(t.year, t.mon, t.mday)), n.suffix)
 		case DCH_Q:
@@ -1965,13 +1903,11 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 				}
 			}
 			if i <= 99 && i >= -99 {
-				width := 0
+				width := 3
 				if n.suffix&DCH_S_FM != 0 {
 					width = 0
 				} else if i >= 0 {
 					width = 2
-				} else {
-					width = 3
 				}
 				s += makeNumTh(getStringFromIntWithWidth(width, i), n.suffix)
 			} else {
@@ -1982,69 +1918,57 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 			i = ay / 1000
 			s += makeNumTh(fmt.Sprintf("%d,%03d", i, ay-(i*1000)), n.suffix)
 		case DCH_YYYY:
-			width := 0
+			width := 5
 			ay := adjustYear(t.year, isInterval)
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if ay >= 0 {
 				width = 4
-			} else {
-				width = 5
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, ay), n.suffix)
 		case DCH_IYYY:
-			width := 0
+			width := 5
 			ay := adjustYear(t.year, isInterval)
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if ay >= 0 {
 				width = 4
-			} else {
-				width = 5
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, adjustYear(date2IsoYear(t.year, t.mon, t.mday), isInterval)), n.suffix)
 		case DCH_YYY:
-			width := 0
+			width := 4
 			ay := adjustYear(t.year, isInterval)
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if ay >= 0 {
 				width = 3
-			} else {
-				width = 4
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, ay), n.suffix)
 		case DCH_IYY:
-			width := 0
+			width := 4
 			ay := adjustYear(t.year, isInterval)
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if ay >= 0 {
 				width = 3
-			} else {
-				width = 4
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, adjustYear(date2IsoYear(t.year, t.mon, t.mday), isInterval)%1000), n.suffix)
 		case DCH_YY:
-			width := 0
+			width := 3
 			ay := adjustYear(t.year, isInterval)
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if ay >= 0 {
 				width = 2
-			} else {
-				width = 3
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, ay), n.suffix)
 		case DCH_IY:
-			width := 0
+			width := 3
 			ay := adjustYear(t.year, isInterval)
 			if n.suffix&DCH_S_FM != 0 {
 				width = 0
 			} else if ay >= 0 {
 				width = 2
-			} else {
-				width = 3
 			}
 			s += makeNumTh(getStringFromIntWithWidth(width, adjustYear(date2IsoYear(t.year, t.mon, t.mday), isInterval)%100), n.suffix)
 		case DCH_Y:
@@ -2054,9 +1978,7 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 		case DCH_RM, DCH_rm:
 			// For intervals, values like '12 month' will be reduced to 0
 			// month and some years.  These should be processed.
-			if t.mon != 0 && t.year != 0 {
-				break
-			} else {
+			if t.mon != 0 || t.year != 0 {
 				mon := 0
 				//const char *const *months;
 
@@ -2080,13 +2002,11 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 					// tm_mon.
 					mon = monthsPerYear - t.mon
 				}
-				width := 0
+				width := -4
 				if n.suffix&DCH_S_FM != 0 {
 					width = 0
-				} else {
-					width = -4
 				}
-				if n.key.name == "rm" {
+				if n.key.id == DCH_rm {
 					s += fmt.Sprintf("%*s", width, rmMonthsLower[mon])
 				} else {
 					s += fmt.Sprintf("%*s", width, strings.ToUpper(rmMonthsLower[mon]))
@@ -2103,7 +2023,7 @@ func tsToChar(t *tmToChar, format string, isInterval bool) (string, error) {
 	return s, nil
 }
 
-func getFromArray(arr []string, v int, suffix int, isInterval bool) (string, error) {
+func getFromArray(arr []string, v int, suffix int, isInterval bool, width int) (string, error) {
 	if isInterval {
 		return "", errors.Errorf("invalid format specification for an interval value")
 	}
@@ -2114,7 +2034,10 @@ func getFromArray(arr []string, v int, suffix int, isInterval bool) (string, err
 	if suffix&DCH_S_TM != 0 {
 		return "", errors.Errorf("TM suffix is not supported yet.")
 	}
-	return fmt.Sprintf("%s", arr[v]), nil
+	if suffix&DCH_S_FM != 0 {
+		width = 0
+	}
+	return fmt.Sprintf("%*s", width, arr[v]), nil
 }
 
 // date2IsoYear returns ISO 8601 year number.
