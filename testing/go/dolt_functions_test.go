@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TestDoltAdd includes a multitude of items to ensure that adding them all does not cause any errors.
 func TestDoltAdd(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -180,6 +181,7 @@ func TestDoltAdd(t *testing.T) {
 	})
 }
 
+// TestDoltBranch includes a multitude of items to ensure that creating branches with them does not cause any errors.
 func TestDoltBranch(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -339,6 +341,7 @@ func TestDoltBranchStatus(t *testing.T) {
 	})
 }
 
+// TestDoltCheckout includes a multitude of items to ensure that switching branches with them does not cause any errors.
 func TestDoltCheckout(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -425,6 +428,7 @@ func TestDoltCheckout(t *testing.T) {
 	})
 }
 
+// TestDoltCherryPick includes a multitude of items to ensure that cherry picking them does not cause any errors.
 func TestDoltCherryPick(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -496,6 +500,7 @@ func TestDoltCherryPick(t *testing.T) {
 	})
 }
 
+// TestDoltClean includes a multitude of items to ensure that they're all properly cleaned up.
 func TestDoltClean(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -693,6 +698,7 @@ func TestDoltClean(t *testing.T) {
 	})
 }
 
+// TestDoltCommit includes a multitude of items to ensure that committing with them does not cause any errors.
 func TestDoltCommit(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -893,6 +899,8 @@ func TestDoltCommit(t *testing.T) {
 	})
 }
 
+// TestDoltConflictsResolve includes a multitude of items to ensure that we properly handle conflict resolution for all
+// of them.
 func TestDoltConflictsResolve(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1057,6 +1065,7 @@ func TestDoltConflictsResolve(t *testing.T) {
 	})
 }
 
+// TestDoltDiff includes a multitude of items to ensure that they all produce diffs without error.
 func TestDoltDiff(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1181,6 +1190,7 @@ func TestDoltDiff(t *testing.T) {
 	})
 }
 
+// TestDoltDiffStat includes a multitude of items to ensure that they all produce diff stats without error.
 func TestDoltDiffStat(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1301,6 +1311,7 @@ func TestDoltDiffStat(t *testing.T) {
 	})
 }
 
+// TestDoltDiffSummary includes a multitude of items to ensure that they all produce diff summaries without error.
 func TestDoltDiffSummary(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1421,6 +1432,7 @@ func TestDoltDiffSummary(t *testing.T) {
 	})
 }
 
+// TestDoltGC includes a multitude of items to ensure that GC does not cause any errors when they're in the repository.
 func TestDoltGC(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1562,6 +1574,7 @@ func TestDoltLog(t *testing.T) {
 	})
 }
 
+// TestDoltMerge includes a multitude of items to ensure that they're all able to merge without errors.
 func TestDoltMerge(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1781,6 +1794,7 @@ func TestDoltMerge(t *testing.T) {
 	})
 }
 
+// TestDoltPreviewMergeConflicts includes a multitude of items to ensure that we're able to preview all item types.
 func TestDoltPreviewMergeConflicts(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1876,6 +1890,7 @@ func TestDoltPreviewMergeConflicts(t *testing.T) {
 	})
 }
 
+// TestDoltPreviewMergeConflictsSummary includes a multitude of items to ensure that we're able to summarize all item types.
 func TestDoltPreviewMergeConflictsSummary(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1958,6 +1973,7 @@ func TestDoltQueryDiff(t *testing.T) {
 	})
 }
 
+// TestDoltReset includes a multitude of items to ensure that we're able to reset all item types.
 func TestDoltReset(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -2057,6 +2073,7 @@ func TestDoltReset(t *testing.T) {
 	})
 }
 
+// TestDoltRevert includes a multitude of items to ensure that we're able to revert all item types.
 func TestDoltRevert(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -2132,6 +2149,7 @@ func TestDoltRevert(t *testing.T) {
 	})
 }
 
+// TestDoltRM includes a multitude of items to ensure that we're able to handle all item types with "rm".
 func TestDoltRM(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -2187,6 +2205,8 @@ func TestDoltRM(t *testing.T) {
 	})
 }
 
+// TestDoltSchemaDiff includes a multitude of items to ensure that the presence of each item type does not cause any
+// errors when looking at schema diffs for tables.
 func TestDoltSchemaDiff(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -2253,6 +2273,7 @@ func TestDoltSchemaDiff(t *testing.T) {
 	})
 }
 
+// TestDoltStash includes a multitude of items to ensure that we're able to stash all item types.
 func TestDoltStash(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

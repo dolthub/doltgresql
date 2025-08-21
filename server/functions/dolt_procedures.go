@@ -39,27 +39,27 @@ func initDoltProcedures() {
 		}
 
 		funcVal := reflect.ValueOf(procDef.Function)
-		callable1 := callable1ForDoltProcedure(p, funcVal)
-		callable0 := callable0ForDoltProcedure(funcVal)
+		varArgCallable := varArgCallableForDoltProcedure(p, funcVal)
+		noArgCallable := noArgCallableForDoltProcedure(funcVal)
 
 		framework.RegisterFunction(framework.Function1{
 			Name:       procDef.Name,
 			Return:     pgtypes.TextArray,
 			Parameters: [1]*pgtypes.DoltgresType{pgtypes.TextArray},
 			Variadic:   true,
-			Callable:   callable1,
+			Callable:   varArgCallable,
 		})
 		framework.RegisterFunction(framework.Function0{
 			Name:     procDef.Name,
 			Return:   pgtypes.TextArray,
-			Callable: callable0,
+			Callable: noArgCallable,
 		})
 	}
 }
 
-// callable1ForDoltProcedure creates a callable function that takes in a variadic number of parameters. This is
+// varArgCallableForDoltProcedure creates a callable function that takes in a variadic number of parameters. This is
 // equivalent to calling "DOLT_PROC_NAME('abc', ...)".
-func callable1ForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 	funcType := funcVal.Type()
 
 	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
@@ -109,9 +109,9 @@ func callable1ForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value)
 	}
 }
 
-// callable0ForDoltProcedure creates a callable function that does not take any parameters. This is equivalent to
+// noArgCallableForDoltProcedure creates a callable function that does not take any parameters. This is equivalent to
 // calling "DOLT_PROC_NAME()".
-func callable0ForDoltProcedure(funcVal reflect.Value) func(ctx *sql.Context) (any, error) {
+func noArgCallableForDoltProcedure(funcVal reflect.Value) func(ctx *sql.Context) (any, error) {
 	return func(ctx *sql.Context) (any, error) {
 		funcParams := []reflect.Value{reflect.ValueOf(ctx)}
 		out := funcVal.Call(funcParams)
