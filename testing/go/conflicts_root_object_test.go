@@ -79,7 +79,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", "f", "modified"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{
@@ -99,7 +99,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -181,7 +181,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", "f", "modified"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{
@@ -201,7 +201,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -287,7 +287,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", "f", "modified"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{
@@ -307,7 +307,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -393,7 +393,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", "f", "modified"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{
@@ -413,7 +413,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -499,7 +499,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", "f", "modified"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{
@@ -519,7 +519,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -611,7 +611,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -687,7 +687,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -765,7 +765,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -843,7 +843,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -921,7 +921,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -997,7 +997,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", 1},
 					},
 				},
 				{
@@ -1075,7 +1075,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 2},
+						{"public.interpreted_example(text)", 2},
 					},
 				},
 				{
@@ -1160,7 +1160,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"pg_catalog.interpreted_example(text)", 2},
+						{"public.interpreted_example(text)", 2},
 					},
 				},
 				{

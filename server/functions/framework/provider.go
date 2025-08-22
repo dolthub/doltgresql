@@ -44,13 +44,25 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 	if err != nil {
 		return nil, false
 	}
+	// TODO: this should search all schemas in the search path, but the search path doesn't handle pg_catalog yet
 	funcName := id.NewFunction("pg_catalog", name)
 	overloads, err := funcCollection.GetFunctionOverloads(ctx, funcName)
 	if err != nil {
 		return nil, false
 	}
 	if len(overloads) == 0 {
-		return nil, false
+		currentSchema, err := core.GetCurrentSchema(ctx)
+		if err != nil {
+			return nil, false
+		}
+		funcName = id.NewFunction(currentSchema, name)
+		overloads, err = funcCollection.GetFunctionOverloads(ctx, funcName)
+		if err != nil {
+			return nil, false
+		}
+		if len(overloads) == 0 {
+			return nil, false
+		}
 	}
 
 	overloadTree := NewOverloads()

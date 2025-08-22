@@ -26,6 +26,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
+	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/core/typecollection"
@@ -469,4 +470,26 @@ func databasesInContext(ctx *sql.Context, cv *contextValues) []string {
 	dbs[ctx.GetCurrentDatabase()] = struct{}{}
 
 	return slices.Sorted(maps.Keys(dbs))
+}
+
+// clear removes the collection from the cache.
+func (cv *contextValues) clear(objID objinterface.RootObjectID) {
+	switch objID {
+	case objinterface.RootObjectID_None:
+		// Nothing to cache with this
+	case objinterface.RootObjectID_Sequences:
+		cv.seqs = nil
+	case objinterface.RootObjectID_Types:
+		cv.types = nil
+	case objinterface.RootObjectID_Functions:
+		cv.funcs = nil
+	case objinterface.RootObjectID_Triggers:
+		cv.trigs = nil
+	case objinterface.RootObjectID_Extensions:
+		// We don't cache these
+	case objinterface.RootObjectID_Conflicts:
+		// We don't cache these
+	default:
+		panic("unhandled context clear object ID")
+	}
 }
