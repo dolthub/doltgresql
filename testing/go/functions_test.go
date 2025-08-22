@@ -3079,6 +3079,64 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "make_timestamp",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT make_timestamp(2014, 12, 28, 6, 30, 45.887);`,
+					Expected: []sql.Row{{"2014-12-28 06:30:45.887"}},
+				},
+				{
+					Query:    `SELECT make_timestamp(-44, 3, 15, 12, 30, 15);`,
+					Expected: []sql.Row{{"0044-03-15 12:30:15 BC"}},
+				},
+				{
+					Query:    `SELECT make_timestamp(-1, 3, 15, 12, 30, 15);`,
+					Expected: []sql.Row{{"0001-03-15 12:30:15 BC"}},
+				},
+				{
+					Query:       `select make_timestamp(0, 7, 15, 12, 30, 15);`,
+					ExpectedErr: `date field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 0, 15, 12, 30, 15);`,
+					ExpectedErr: `date field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 7, 32, 12, 30, 15);`,
+					ExpectedErr: `date field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 7, 15, 25, 30, 15);`,
+					ExpectedErr: `time field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 7, 15, 2, 61, 15);`,
+					ExpectedErr: `time field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 7, 15, 25, 30, 61);`,
+					ExpectedErr: `time field value out of range`,
+				},
+			},
+		},
+		{
+			Name: "date_bin",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT date_bin('5 min'::interval, timestamp '2020-02-01 01:01:01', timestamp '2020-02-01 00:02:30');`,
+					Expected: []sql.Row{{"2020-02-01 00:57:30"}},
+				},
+				{
+					Query:       `SELECT date_bin('5 months'::interval, timestamp '2020-02-01 01:01:01', timestamp '2001-01-01');`,
+					ExpectedErr: `timestamps cannot be binned into intervals containing months or years`,
+				},
+				{
+					Query:       `SELECT date_bin('0 days'::interval, timestamp '1970-01-01 01:00:00' , timestamp '1970-01-01 00:00:00');`,
+					ExpectedErr: `stride must be greater than zero`,
+				},
+			},
+		},
 	})
 }
 

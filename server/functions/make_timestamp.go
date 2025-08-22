@@ -15,9 +15,10 @@
 package functions
 
 import (
+	"time"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"time"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -40,6 +41,12 @@ var make_timestamp = framework.Function6{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [7]*pgtypes.DoltgresType, val1, val2, val3, val4, val5, val6 any) (any, error) {
 		year := val1.(int32)
+		if year == 0 {
+			return nil, errDateFieldOutOfRange
+		} else if year < 0 {
+			// PostgreSQL: year 0 = 1 BC, year -1 = 2 BC, etc.
+			year++
+		}
 		month := val2.(int32)
 		if month < 1 || month > 12 {
 			return nil, errDateFieldOutOfRange
@@ -53,7 +60,7 @@ var make_timestamp = framework.Function6{
 			return nil, errTimeFieldOutOfRange
 		}
 		minute := val5.(int32)
-		if hour < 0 || hour > 59 {
+		if minute < 0 || minute > 59 {
 			return nil, errTimeFieldOutOfRange
 		}
 		partialSecond := val6.(float64)

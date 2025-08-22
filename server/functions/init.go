@@ -27,6 +27,7 @@ func initTypeFunctions() {
 	initBytea()
 	initChar()
 	initDate()
+	initDateBin()
 	initDatePart()
 	initDateTrunc()
 	initDomain()
