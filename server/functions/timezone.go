@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"strings"
 	"time"
 
@@ -120,11 +121,12 @@ var timezone_text_timestamp = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		serverLoc, err := GetServerLocation(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return timeVal.Add(time.Duration(-int64(newOffset) * NanosPerSec)).In(serverLoc), nil
+		//serverLoc, err := GetServerLocation(ctx)
+		//if err != nil {
+		//	return nil, err
+		//}
+		//_, offset := time.Now().In(serverLoc).Zone()
+		return timeVal.Add(time.Duration(int64(newOffset) * NanosPerSec)), nil
 	},
 }
 
@@ -155,6 +157,9 @@ func convertTzToOffsetSecs(tz string) (int32, error) {
 	if err == nil {
 		_, offsetSecsUnconverted := time.Now().In(loc).Zone()
 		return int32(-offsetSecsUnconverted), nil
+	}
+	if tza, ok := pgdate.TimezoneMapping[tz]; ok {
+		tz = tza
 	}
 
 	var t time.Time

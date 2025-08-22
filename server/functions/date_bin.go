@@ -32,7 +32,7 @@ func initDateBin() {
 	framework.RegisterFunction(date_bin_interval_timestamptz_timestamptz)
 }
 
-// date_bin_interval_timestamp_timestamp represents the PostgreSQL date_bin function for timestamp type.
+// date_bin_interval_timestamp_timestamp represents the PostgreSQL function of the same name, taking the same parameters.
 var date_bin_interval_timestamp_timestamp = framework.Function3{
 	Name:       "date_bin",
 	Return:     pgtypes.Timestamp,
@@ -46,7 +46,7 @@ var date_bin_interval_timestamp_timestamp = framework.Function3{
 	},
 }
 
-// date_bin_interval_timestamptz_timestamptz represents the PostgreSQL date_bin function for timestamptz type.
+// date_bin_interval_timestamptz_timestamptz represents the PostgreSQL function of the same name, taking the same parameters.
 var date_bin_interval_timestamptz_timestamptz = framework.Function3{
 	Name:       "date_bin",
 	Return:     pgtypes.TimestampTZ,
@@ -74,12 +74,8 @@ func binTimestamp(interval duration.Duration, timestamp time.Time, origin time.T
 		return time.Time{}, cerrors.Errorf("stride must be greater than zero")
 	}
 
-	// Convert times to nanoseconds since origin
-	timestampNanos := timestamp.UnixNano()
 	originNanos := origin.UnixNano()
-
-	// Calculate the difference from origin
-	diffNanos := timestampNanos - originNanos
+	diffNanos := timestamp.UnixNano() - originNanos
 
 	// Calculate how many complete intervals have passed
 	binCount := diffNanos / intervalNanos

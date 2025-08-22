@@ -16,6 +16,7 @@ package functions
 
 import (
 	"fmt"
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -159,6 +160,10 @@ func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
 	loc, err := time.LoadLocation(tz)
 	if err == nil {
 		return loc, nil
+	}
+
+	if tza, ok := pgdate.TimezoneMapping[tz]; ok {
+		tz = tza
 	}
 
 	var t time.Time

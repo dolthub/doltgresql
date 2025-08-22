@@ -85,9 +85,10 @@ var keywordSetters = map[string]fieldSetter{
 	keywordZulu:     fieldSetterUTC,
 }
 
+// TimezoneMapping is a map timezone abbreviations to their timezone offset.
 // These abbreviations are taken from:
 // https://github.com/postgres/postgres/blob/master/src/timezone/known_abbrevs.txt
-var timezoneMapping = map[string]string{
+var TimezoneMapping = map[string]string{
 	"ACDT": "+10:30",
 	"ACST": "+09:30",
 	"ADT":  "-03:00",
@@ -153,7 +154,7 @@ var timezoneMapping = map[string]string{
 }
 
 func init() {
-	for tz, offset := range timezoneMapping {
+	for tz, offset := range TimezoneMapping {
 		if offset == "" {
 			keywordSetters[strings.ToLower(tz)] = fieldSetterUnsupportedAbbreviation
 		} else {
