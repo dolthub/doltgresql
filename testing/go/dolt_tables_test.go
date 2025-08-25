@@ -1392,9 +1392,12 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 				},
 				{
-					Skip:     true, // TODO: Returning rows for both tables
-					Query:    `SELECT id, committer FROM public.dolt_history_test`,
-					Expected: []sql.Row{{10, "John Doe"}},
+					// Since we just made another commit in this database / commit graph, we should see the row from
+					// public.test show up once for each of those commits. Even though the second commit only modified
+					// data in a different schema, the commit it created is still a reachable commit from the current
+					// branch, so should be shown in the public.dolt_history_test table results.
+					Query:    `SELECT id, committer FROM public.dolt_history_test order by id, committer`,
+					Expected: []sql.Row{{10, "Another Doe"}, {10, "John Doe"}},
 				},
 				{
 					Query:       `SELECT id FROM public.dolt_history_test_sch`,
@@ -1426,9 +1429,12 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{12, "postgres"}},
 				},
 				{
-					Skip:     true, // TODO: Returning rows for all tables
-					Query:    `SELECT id, committer FROM public.dolt_history_test`,
-					Expected: []sql.Row{{10, "John Doe"}},
+					// Now when we query public.dolt_history_test, we see the same row show up in the three
+					// commits we have made to this database. The second and third commits were made on
+					// tables in the newschema schema and not in the public schema, but since those schemas
+					// are in the same database and share the same commit graph, we see those commits show up.
+					Query:    `SELECT id, committer FROM public.dolt_history_test order by id, committer`,
+					Expected: []sql.Row{{10, "Another Doe"}, {10, "John Doe"}, {10, "postgres"}},
 				},
 				{
 					Query:    "SET search_path = 'newschema,public'",
