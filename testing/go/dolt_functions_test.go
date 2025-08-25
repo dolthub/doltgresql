@@ -899,10 +899,144 @@ func TestDoltCommit(t *testing.T) {
 	})
 }
 
+var simpleConflictResolveSetupScript = []string{
+	"CREATE TABLE t_simple (pk INT4 PRIMARY KEY, v1 INT4);",
+	"INSERT INTO t_simple VALUES (1, 1);",
+	"SELECT DOLT_COMMIT('-Am', 'initial')",
+	"SELECT DOLT_BRANCH('other');",
+	"INSERT INTO t_simple VALUES (2, 2);",
+	"SELECT DOLT_COMMIT('-Am', 'second row on main')",
+	"SELECT DOLT_CHECKOUT('other');",
+	"INSERT INTO t_simple VALUES (2, 3);",
+	"SELECT DOLT_COMMIT('-Am', 'conflicted row on other')",
+	"SELECT DOLT_CHECKOUT('main');",
+}
+
 // TestDoltConflictsResolve includes a multitude of items to ensure that we properly handle conflict resolution for all
 // of them.
 func TestDoltConflictsResolve(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name:        "Simple conflicts resolve all using --ours",
+			SetUpScript: simpleConflictResolveSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
+					Expected: []sql.Row{{`{0,1,"conflicts found"}`}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_conflicts;",
+					Expected: []sql.Row{{"t_simple", 1}},
+				},
+				{
+					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--ours', '.');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:            "SELECT DOLT_COMMIT('-Am', 'commit merge');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT * FROM t_simple;`,
+					Expected: []sql.Row{{1, 1}, {2, 2}},
+				},
+			},
+		},
+		{
+			Name:        "Simple conflicts resolve all using --theirs",
+			SetUpScript: simpleConflictResolveSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
+					Expected: []sql.Row{{`{0,1,"conflicts found"}`}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_conflicts;",
+					Expected: []sql.Row{{"t_simple", 1}},
+				},
+				{
+					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--theirs', '.');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:            "SELECT DOLT_COMMIT('-Am', 'commit merge');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT * FROM t_simple;`,
+					Expected: []sql.Row{{1, 1}, {2, 3}},
+				},
+			},
+		},
+		{
+			Name:        "Simple conflicts resolve table using --ours",
+			SetUpScript: simpleConflictResolveSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
+					Expected: []sql.Row{{`{0,1,"conflicts found"}`}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_conflicts;",
+					Expected: []sql.Row{{"t_simple", 1}},
+				},
+				{
+					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--ours', 't_simple');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:            "SELECT DOLT_COMMIT('-Am', 'commit merge');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT * FROM t_simple;`,
+					Expected: []sql.Row{{1, 1}, {2, 2}},
+				},
+			},
+		},
+		{
+			Name:        "Simple conflicts resolve table using --theirs",
+			Skip:        true,
+			SetUpScript: simpleConflictResolveSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
+					Expected: []sql.Row{{`{0,1,"conflicts found"}`}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_conflicts;",
+					Expected: []sql.Row{{"t_simple", 1}},
+				},
+				{
+					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--theirs', 't_simple');",
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:            "SELECT DOLT_COMMIT('-Am', 'commit merge');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT * FROM t_simple;`,
+					Expected: []sql.Row{{1, 1}, {2, 3}},
+				},
+			},
+		},
 		{
 			Name: "Resolve all using --ours",
 			Skip: true, // TODO: attempting a merge with generated columns causes a panic
