@@ -4114,15 +4114,17 @@ func TestPgViews(t *testing.T) {
 	})
 }
 
-func TestPgCatalogQueries(t *testing.T) {
+func TestSqlAlchemyQueries(t *testing.T) {
+	sharedSetupScript := []string{
+		`create table t1 (a int primary key, b int not null)`,
+		`create table t2 (a int primary key, b int not null)`,
+		`create index on t2 (b)`,
+	}
+
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "sqlalchemy queries",
-			SetUpScript: []string{
-				`create table t1 (a int primary key, b int not null)`,
-				`create table t2 (a int primary key, b int not null)`,
-				`create index on t2 (b)`,
-			},
+			Name:        "schema for dolt_log",
+			SetUpScript: sharedSetupScript,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_attribute.attname AS name, pg_catalog.format_type(pg_catalog.pg_attribute.atttypid, pg_catalog.pg_attribute.atttypmod) AS format_type, (SELECT pg_catalog.pg_get_expr(pg_catalog.pg_attrdef.adbin, pg_catalog.pg_attrdef.adrelid) AS pg_get_expr_1 
@@ -4141,6 +4143,12 @@ WHERE pg_catalog.pg_class.relkind = ANY (ARRAY['r', 'p', 'f', 'v', 'm']) AND pg_
 						{"commit_order", "bigint", nil, "t", "dolt_log", nil, "", nil},
 					},
 				},
+			},
+		},
+		{
+			Name:        "type queries",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_type.typname AS name,
        pg_catalog.pg_type_is_visible(pg_catalog.pg_type.oid) AS visible,
@@ -4155,6 +4163,12 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
     ON pg_catalog.pg_type.oid = lbl_agg.enumtypid WHERE pg_catalog.pg_type.typtype = 'e'
     ORDER BY pg_catalog.pg_namespace.nspname, pg_catalog.pg_type.typname`,
 				},
+			},
+		},
+		{
+			Name:        "dolt_log schema 2",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_attribute.attname AS name,
     pg_catalog.format_type(pg_catalog.pg_attribute.atttypid,
@@ -4199,6 +4213,12 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
 						{"commit_order", "bigint", nil, "t", "dolt_log", nil, "", nil},
 					},
 				},
+			},
+		},
+		{
+			Name:        "constraints",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT attr.conrelid, 
        array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
@@ -4228,6 +4248,12 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
 				 WHERE con.conrelid IN (3491847678)) AS attr 
             GROUP BY attr.conrelid, attr.conname ORDER BY attr.conrelid, attr.conname`,
 				},
+			},
+		},
+		{
+			Name:        "has constraints",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_index.indrelid,
        cls_idx.relname AS relname_index,
@@ -4279,6 +4305,12 @@ WHERE pg_catalog.pg_index.indrelid IN (3491847678)
   AND NOT pg_catalog.pg_index.indisprimary
 ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 				},
+			},
+		},
+		{
+			Name:        "attributes",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT attr.conrelid,
        array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
@@ -4310,6 +4342,12 @@ FROM (SELECT con.conrelid AS conrelid,
 GROUP BY attr.conrelid, attr.conname
 ORDER BY attr.conrelid, attr.conname`,
 				},
+			},
+		},
+		{
+			Name:        "key constraints",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT attr.conrelid,
        array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
@@ -4344,6 +4382,12 @@ ORDER BY attr.conrelid, attr.conname`,
 						{1249736862, "{a}", "t1_pkey", nil, nil},
 					},
 				},
+			},
+		},
+		{
+			Name:        "index queries",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_index.indrelid,
        cls_idx.relname AS relname_index,
