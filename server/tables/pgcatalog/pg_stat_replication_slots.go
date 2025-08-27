@@ -42,7 +42,7 @@ func (p PgStatReplicationSlotsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatReplicationSlotsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatReplicationSlotsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_replication_slots row iter
 	return emptyRowIter()
 }

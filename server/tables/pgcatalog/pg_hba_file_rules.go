@@ -42,7 +42,7 @@ func (p PgHbaFileRulesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgHbaFileRulesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgHbaFileRulesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_hba_file_rules row iter
 	return emptyRowIter()
 }

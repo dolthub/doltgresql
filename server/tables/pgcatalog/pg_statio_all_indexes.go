@@ -42,7 +42,7 @@ func (p PgStatioAllIndexesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatioAllIndexesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatioAllIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_statio_all_indexes row iter
 	return emptyRowIter()
 }

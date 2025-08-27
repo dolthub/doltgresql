@@ -42,7 +42,7 @@ func (p PgRewriteHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgRewriteHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgRewriteHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_rewrite row iter
 	return emptyRowIter()
 }

@@ -4114,6 +4114,62 @@ func TestPgViews(t *testing.T) {
 	})
 }
 
+func TestPgCatalogJoinPerf(t *testing.T) {
+	sharedSetupScript := []string{
+		`create table t1 (a int primary key, b int not null)`,
+		`create table t2 (c int primary key, d int not null)`,
+		`create index on t2 (d)`,
+	}
+
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "pg_catalog join performance",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT c.relname, a.attname 
+FROM pg_catalog.pg_class c 
+    JOIN pg_catalog.pg_attribute a 
+        ON c.oid = a.attrelid 
+WHERE c.relkind = 'r' AND a.attnum > 0 
+  AND NOT a.attisdropped
+  AND c.relname = 't2'
+ORDER BY 1,2;`,
+					Expected: []sql.Row{
+						{"t2", "c"},
+						{"t2", "d"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT c.relname, a.attname 
+FROM pg_catalog.pg_class c 
+    JOIN pg_catalog.pg_attribute a 
+        ON c.oid = a.attrelid 
+WHERE c.relkind = 'r' AND a.attnum > 0 
+  AND NOT a.attisdropped
+  AND c.relname = 't2'
+ORDER BY 1,2;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname, a.attname]"},
+						{" └─ Sort(c.relname ASC, a.attname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (((c.relkind = 'r' AND a.attnum > 0) AND (NOT(a.attisdropped))) AND c.relname = 't2')"},
+						{"         └─ InnerJoin"},
+						{"             ├─ c.oid = a.attrelid"},
+						{"             ├─ TableAlias(a)"},
+						{"             │   └─ Table"},
+						{"             │       └─ name: pg_attribute"},
+						{"             └─ TableAlias(c)"},
+						{"                 └─ Table"},
+						{"                     └─ name: pg_class"},
+					},
+				},
+			},
+		},
+	})
+}
+
 func TestSqlAlchemyQueries(t *testing.T) {
 	sharedSetupScript := []string{
 		`create table t1 (a int primary key, b int not null)`,

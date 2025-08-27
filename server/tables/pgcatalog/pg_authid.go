@@ -42,7 +42,7 @@ func (p PgAuthidHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgAuthidHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgAuthidHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_authid row iter
 	return emptyRowIter()
 }

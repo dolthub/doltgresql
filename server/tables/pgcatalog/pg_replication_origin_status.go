@@ -42,7 +42,7 @@ func (p PgReplicationOriginStatusHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgReplicationOriginStatusHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgReplicationOriginStatusHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_replication_origin_status row iter
 	return emptyRowIter()
 }

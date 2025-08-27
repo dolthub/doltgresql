@@ -42,7 +42,7 @@ func (p PgRulesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgRulesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgRulesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_rules row iter
 	return emptyRowIter()
 }

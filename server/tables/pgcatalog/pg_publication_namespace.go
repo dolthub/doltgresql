@@ -42,7 +42,7 @@ func (p PgPublicationNamespaceHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgPublicationNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgPublicationNamespaceHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_publication_namespace row iter
 	return emptyRowIter()
 }

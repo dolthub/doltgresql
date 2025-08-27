@@ -42,7 +42,7 @@ func (p PgUserMappingHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgUserMappingHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgUserMappingHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_user_mapping row iter
 	return emptyRowIter()
 }

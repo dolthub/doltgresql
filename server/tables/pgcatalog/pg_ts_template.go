@@ -42,7 +42,7 @@ func (p PgTsTemplateHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgTsTemplateHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgTsTemplateHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_ts_template row iter
 	return emptyRowIter()
 }

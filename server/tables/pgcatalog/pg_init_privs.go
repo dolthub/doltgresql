@@ -42,7 +42,7 @@ func (p PgInitPrivsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgInitPrivsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgInitPrivsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_init_privs row iter
 	return emptyRowIter()
 }

@@ -42,7 +42,7 @@ func (p PgEventTriggerHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgEventTriggerHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgEventTriggerHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_event_trigger row iter
 	return emptyRowIter()
 }

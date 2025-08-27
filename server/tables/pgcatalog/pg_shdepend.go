@@ -42,7 +42,7 @@ func (p PgShdependHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgShdependHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgShdependHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_shdepend row iter
 	return emptyRowIter()
 }

@@ -42,7 +42,7 @@ func (p PgTimezoneAbbrevsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgTimezoneAbbrevsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgTimezoneAbbrevsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_timezone_abbrevs row iter
 	return emptyRowIter()
 }

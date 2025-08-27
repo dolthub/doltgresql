@@ -42,7 +42,7 @@ func (p PgStatXactAllTablesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatXactAllTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatXactAllTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_xact_all_tables row iter
 	return emptyRowIter()
 }

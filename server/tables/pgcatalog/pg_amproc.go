@@ -42,7 +42,7 @@ func (p PgAmprocHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgAmprocHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgAmprocHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_amproc row iter
 	return emptyRowIter()
 }

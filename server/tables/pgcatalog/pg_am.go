@@ -43,7 +43,7 @@ func (p PgAmHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgAmHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgAmHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	return &pgAmRowIter{
 		ams: defaultPostgresAms,
 		idx: 0,

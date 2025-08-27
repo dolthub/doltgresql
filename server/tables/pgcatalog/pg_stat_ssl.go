@@ -42,7 +42,7 @@ func (p PgStatSslHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatSslHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatSslHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_ssl row iter
 	return emptyRowIter()
 }

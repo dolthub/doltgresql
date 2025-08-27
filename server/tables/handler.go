@@ -21,9 +21,11 @@ type Handler interface {
 	// Name returns the name of the table.
 	Name() string
 	// RowIter returns a sql.RowIter that returns the rows of the table.
-	RowIter(ctx *sql.Context) (sql.RowIter, error)
+	RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error)
 	// Schema returns the table's schema.
 	Schema() sql.PrimaryKeySchema
+	// // Indexes returns the table's indexes.
+	// Indexes() ([]sql.Index, error)
 }
 
 // handlers is a map from the schema name, to the table name, to the handler.

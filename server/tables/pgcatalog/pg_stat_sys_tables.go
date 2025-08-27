@@ -42,7 +42,7 @@ func (p PgStatSysTablesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatSysTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatSysTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_sys_tables row iter
 	return emptyRowIter()
 }

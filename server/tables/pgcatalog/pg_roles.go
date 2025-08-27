@@ -42,7 +42,7 @@ func (p PgRolesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgRolesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgRolesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_roles row iter
 	return emptyRowIter()
 }

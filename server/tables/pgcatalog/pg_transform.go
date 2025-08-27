@@ -42,7 +42,7 @@ func (p PgTransformHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgTransformHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgTransformHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_transform row iter
 	return emptyRowIter()
 }

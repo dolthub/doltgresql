@@ -42,7 +42,7 @@ func (p PgForeignTableHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgForeignTableHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgForeignTableHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_foreign_table row iter
 	return emptyRowIter()
 }

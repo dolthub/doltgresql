@@ -42,7 +42,7 @@ func (p PgSettingsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgSettingsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgSettingsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_settings row iter
 	return emptyRowIter()
 }

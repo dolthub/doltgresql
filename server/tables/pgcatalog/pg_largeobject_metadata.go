@@ -42,7 +42,7 @@ func (p PgLargeobjectMetadataHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgLargeobjectMetadataHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgLargeobjectMetadataHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_largeobject_metadata row iter
 	return emptyRowIter()
 }

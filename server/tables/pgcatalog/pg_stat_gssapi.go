@@ -42,7 +42,7 @@ func (p PgStatGssapiHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatGssapiHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatGssapiHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_gssapi row iter
 	return emptyRowIter()
 }

@@ -22,12 +22,15 @@ import (
 type VirtualTable struct {
 	handler Handler
 	schema  sql.DatabaseSchema
+	indexLookup sql.IndexLookup
 }
 
 var _ sql.DebugStringer = (*VirtualTable)(nil)
 var _ sql.PrimaryKeyTable = (*VirtualTable)(nil)
 var _ sql.Table = (*VirtualTable)(nil)
 var _ sql.DatabaseSchemaTable = (*VirtualTable)(nil)
+var _ sql.IndexAddressableTable = (*VirtualTable)(nil)
+var _ sql.IndexedTable = (*VirtualTable)(nil)
 
 // NewVirtualTable creates a new *VirtualTable from the given Handler.
 func NewVirtualTable(handler Handler, schema sql.DatabaseSchema) *VirtualTable {
@@ -54,7 +57,7 @@ func (tbl *VirtualTable) Name() string {
 
 // PartitionRows implements the interface sql.Table.
 func (tbl *VirtualTable) PartitionRows(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	return tbl.handler.RowIter(ctx)
+	return tbl.handler.RowIter(ctx, nil)
 }
 
 // Partitions implements the interface sql.Table.
@@ -81,4 +84,24 @@ func (tbl *VirtualTable) String() string {
 
 func (tbl *VirtualTable) DatabaseSchema() sql.DatabaseSchema {
 	return tbl.schema
+}
+
+func (tbl *VirtualTable) IndexedAccess(ctx *sql.Context, lookup sql.IndexLookup) sql.IndexedTable {
+	ntbl := *tbl
+	ntbl.indexLookup = lookup
+	return &ntbl
+}
+
+func (tbl *VirtualTable) GetIndexes(ctx *sql.Context) ([]sql.Index, error) {
+	return tbl.handler.Indexes()
+}
+
+func (tbl *VirtualTable) PreciseMatch() bool {
+	// TODO: make this configurable per table
+	return true
+}
+
+func (tbl *VirtualTable) LookupPartitions(context *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error) {
+	// TODO implement me
+	panic("implement me")
 }

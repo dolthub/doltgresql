@@ -42,7 +42,7 @@ func (p PgAvailableExtensionVersionsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgAvailableExtensionVersionsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgAvailableExtensionVersionsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_available_extension_versions row iter
 	return emptyRowIter()
 }

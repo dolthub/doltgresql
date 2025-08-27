@@ -42,7 +42,7 @@ func (p PgStatXactUserTablesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatXactUserTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatXactUserTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_xact_user_tables row iter
 	return emptyRowIter()
 }

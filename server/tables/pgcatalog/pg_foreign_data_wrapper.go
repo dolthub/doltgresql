@@ -42,7 +42,7 @@ func (p PgForeignDataWrapperHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgForeignDataWrapperHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgForeignDataWrapperHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_foreign_data_wrapper row iter
 	return emptyRowIter()
 }

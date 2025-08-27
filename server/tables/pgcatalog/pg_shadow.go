@@ -42,7 +42,7 @@ func (p PgShadowHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgShadowHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgShadowHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_shadow row iter
 	return emptyRowIter()
 }

@@ -42,7 +42,7 @@ func (p PgStatsExtHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatsExtHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatsExtHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stats_ext row iter
 	return emptyRowIter()
 }

@@ -47,7 +47,7 @@ func (p PgClassHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgClassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// Use cached data from this process if it exists
 	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
