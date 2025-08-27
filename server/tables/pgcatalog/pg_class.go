@@ -41,6 +41,7 @@ func InitPgClass() {
 type PgClassHandler struct{}
 
 var _ tables.Handler = PgClassHandler{}
+var _ tables.IndexedTableHandler = PgClassHandler{}
 
 // Name implements the interface tables.Handler.
 func (p PgClassHandler) Name() string {
@@ -176,6 +177,107 @@ func (p PgClassHandler) Schema() sql.PrimaryKeySchema {
 	}
 }
 
+type pgCatalogInMemIndex struct {
+	name string
+	tblName string
+	dbName string
+	uniq bool
+	columnExprs []sql.ColumnExpressionType
+}
+
+func (p pgCatalogInMemIndex) ID() string {
+	return p.name
+}
+
+func (p pgCatalogInMemIndex) Database() string {
+	return p.dbName
+}
+
+func (p pgCatalogInMemIndex) Table() string {
+	return p.tblName
+}
+
+func (p pgCatalogInMemIndex) Expressions() []string {
+	exprs := make([]string, len(p.columnExprs))
+	for i, expr := range p.columnExprs {
+		exprs[i] = expr.Expression
+	}
+	return exprs
+}
+
+func (p pgCatalogInMemIndex) IsUnique() bool {
+	return p.uniq
+}
+
+func (p pgCatalogInMemIndex) IsSpatial() bool {
+	return false
+}
+
+func (p pgCatalogInMemIndex) IsFullText() bool {
+	return false
+}
+
+func (p pgCatalogInMemIndex) IsVector() bool {
+	return false
+}
+
+func (p pgCatalogInMemIndex) Comment() string {
+	return ""
+}
+
+func (p pgCatalogInMemIndex) IndexType() string {
+	return "BTREE"
+}
+
+func (p pgCatalogInMemIndex) IsGenerated() bool {
+	return false
+}
+
+func (p pgCatalogInMemIndex) ColumnExpressionTypes() []sql.ColumnExpressionType {
+	return p.columnExprs
+}
+
+func (p pgCatalogInMemIndex) CanSupport(context *sql.Context, r ...sql.Range) bool {
+	return true // why not
+}
+
+func (p pgCatalogInMemIndex) CanSupportOrderBy(expr sql.Expression) bool {
+	return true
+}
+
+func (p pgCatalogInMemIndex) PrefixLengths() []uint16 {
+	return make([]uint16, len(p.columnExprs))
+}
+
+var _ sql.Index = (*pgCatalogInMemIndex)(nil)
+
+func (p PgClassHandler) Indexes() ([]sql.Index, error) {
+	return []sql.Index{
+		pgCatalogInMemIndex{
+			name:        "pg_class_oid_index",
+			tblName:     "pg_class",
+			dbName:      "pg_catalog",
+			uniq:        true,
+			columnExprs: []sql.ColumnExpressionType{{Expression: "oid", Type: pgtypes.Oid}},
+		},
+		pgCatalogInMemIndex{
+			name:        "pg_class_relname_nsp_index",
+			tblName:     "pg_class",
+			dbName:      "pg_catalog",
+			uniq:        true,
+			columnExprs: []sql.ColumnExpressionType{
+				{Expression: "relname", Type: pgtypes.Name},
+				{Expression: "relnamespace", Type: pgtypes.Oid},
+			},
+		},
+	}, nil
+}
+
+func (p PgClassHandler) LookupPartitions(context *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error) {
+	// TODO implement me
+	panic("implement me")
+}
+
 // pgClassSchema is the schema for pg_class.
 var pgClassSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgClassName},
@@ -303,3 +405,4 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 func (iter *pgClassRowIter) Close(ctx *sql.Context) error {
 	return nil
 }
+
