@@ -15,6 +15,7 @@
 package tables
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
@@ -93,7 +94,10 @@ func (tbl *VirtualTable) IndexedAccess(ctx *sql.Context, lookup sql.IndexLookup)
 }
 
 func (tbl *VirtualTable) GetIndexes(ctx *sql.Context) ([]sql.Index, error) {
-	return tbl.handler.Indexes()
+	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
+		return itbl.Indexes()
+	}
+	return nil, nil
 }
 
 func (tbl *VirtualTable) PreciseMatch() bool {
@@ -101,7 +105,9 @@ func (tbl *VirtualTable) PreciseMatch() bool {
 	return true
 }
 
-func (tbl *VirtualTable) LookupPartitions(context *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error) {
-	// TODO implement me
-	panic("implement me")
+func (tbl *VirtualTable) LookupPartitions(ctx *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error) {
+	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
+		return itbl.LookupPartitions(ctx, lookup)
+	}
+	return nil, errors.Errorf("cannot lookup partitions for virtual table %s", tbl.Name())
 }
