@@ -17,6 +17,7 @@ package pgcatalog
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/google/btree"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -38,7 +39,7 @@ type pgCatalogCache struct {
 	pid uint64
 
 	// pg_classes
-	pgClasses []pgClass
+	pgClasses *pgClassCache
 
 	// pg_constraints
 	pgConstraints []pgConstraint
@@ -78,6 +79,12 @@ type pgCatalogCache struct {
 	// pg_tables
 	tables       []sql.Table
 	systemTables []doltdb.TableName
+}
+
+type pgClassCache struct {
+	classes      []pgClass
+	nameIdx      *btree.BTree
+	oidIdx       *btree.BTree
 }
 
 // newPgCatalogCache creates a new pgCatalogCache, with the query/process ID set to |pid|. The PID is important,

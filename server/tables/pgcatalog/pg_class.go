@@ -20,6 +20,7 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/google/btree"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
@@ -57,48 +58,62 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 	if pgCatalogCache.pgClasses == nil {
 		var classes []pgClass
 		tableHasIndexes := make(map[uint32]struct{})
+		nameIdx := btree.New(2)
+		oidIdx := btree.New(2)
 
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 				tableHasIndexes[id.Cache().ToOID(table.OID.AsId())] = struct{}{}
-				classes = append(classes, pgClass{
+				class := pgClass{
 					oid:        index.OID.AsId(),
 					name:       getIndexName(index.Item),
 					hasIndexes: false,
 					kind:       "i",
 					schemaOid:  schema.OID.AsId(),
-				})
+				}
+				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
+				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				classes = append(classes, class)
 				return true, nil
 			},
 			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 				_, hasIndexes := tableHasIndexes[id.Cache().ToOID(table.OID.AsId())]
-				classes = append(classes, pgClass{
+				class := pgClass{
 					oid:        table.OID.AsId(),
 					name:       table.Item.Name(),
 					hasIndexes: hasIndexes,
 					kind:       "r",
 					schemaOid:  schema.OID.AsId(),
-				})
+				}
+				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
+				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				classes = append(classes, class)
 				return true, nil
 			},
 			View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
-				classes = append(classes, pgClass{
+				class := pgClass{
 					oid:        view.OID.AsId(),
 					name:       view.Item.Name,
 					hasIndexes: false,
 					kind:       "v",
 					schemaOid:  schema.OID.AsId(),
-				})
+				}
+				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
+				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				classes = append(classes, class)
 				return true, nil
 			},
 			Sequence: func(ctx *sql.Context, schema functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
-				classes = append(classes, pgClass{
+				class := pgClass{
 					oid:        sequence.OID.AsId(),
 					name:       sequence.Item.Id.SequenceName(),
 					hasIndexes: false,
 					kind:       "S",
 					schemaOid:  schema.OID.AsId(),
-				})
+				}
+				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
+				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				classes = append(classes, class)
 				return true, nil
 			},
 		})
@@ -118,21 +133,28 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 			}
 
 			for _, tblName := range systemTables {
-				classes = append(classes, pgClass{
+				class := pgClass{
 					oid:       id.NewTable(tblName.Schema, tblName.Name).AsId(),
 					name:      tblName.Name,
 					schemaOid: id.NewNamespace(tblName.Schema).AsId(),
 					kind:      "r",
-				})
+				}
+				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
+				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				classes = append(classes, class)
 			}
 		}
 
-		pgCatalogCache.pgClasses = classes
+		pgCatalogCache.pgClasses = &pgClassCache{
+			classes: classes,
+			nameIdx: nameIdx,
+			oidIdx:  oidIdx,
+		}
 	}
 
 	return &pgClassRowIter{
-		classes: pgCatalogCache.pgClasses,
-		idx:     0,
+		classCache: pgCatalogCache.pgClasses,
+		idx:        0,
 	}, nil
 }
 
@@ -200,21 +222,36 @@ type pgClass struct {
 	kind       string // r = ordinary table, i = index, S = sequence, t = TOAST table, v = view, m = materialized view, c = composite type, f = foreign table, p = partitioned table, I = partitioned index
 }
 
+// Index key for pgClass.oid
+type pgClassOIDLess pgClass
+func (a pgClassOIDLess) Less(b btree.Item) bool {
+	return a.oid < b.(pgClassOIDLess).oid
+}
+
+// Index key for pgClass.[relname, relnamespace]
+type pgClassNameLess pgClass
+func (a pgClassNameLess) Less(b btree.Item) bool {
+	if a.name == b.(pgClassNameLess).name {
+		return a.schemaOid < b.(pgClassNameLess).schemaOid
+	}
+	return a.name < b.(pgClassNameLess).name
+}
+
 // pgClassRowIter is the sql.RowIter for the pg_class table.
 type pgClassRowIter struct {
-	classes []pgClass
-	idx     int
+	classCache *pgClassCache
+	idx        int
 }
 
 var _ sql.RowIter = (*pgClassRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if iter.idx >= len(iter.classes) {
+	if iter.idx >= len(iter.classCache.classes) {
 		return nil, io.EOF
 	}
 	iter.idx++
-	class := iter.classes[iter.idx-1]
+	class := iter.classCache.classes[iter.idx-1]
 
 	// TODO: this is temporary definition of 'relam' field
 	var relam = id.Null
