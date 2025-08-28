@@ -59,8 +59,8 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 	if pgCatalogCache.pgClasses == nil {
 		var classes []pgClass
 		tableHasIndexes := make(map[uint32]struct{})
-		nameIdx := btree.New(2)
-		oidIdx := btree.New(2)
+		nameIdx := btree.NewG[*pgClass](2, lessName)
+		oidIdx := btree.NewG(2, lessOid)
 
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
@@ -72,8 +72,8 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 					kind:       "i",
 					schemaOid:  schema.OID.AsId(),
 				}
-				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
-				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				nameIdx.ReplaceOrInsert(&class)
+				oidIdx.ReplaceOrInsert(&class)
 				classes = append(classes, class)
 				return true, nil
 			},
@@ -86,8 +86,8 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 					kind:       "r",
 					schemaOid:  schema.OID.AsId(),
 				}
-				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
-				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				nameIdx.ReplaceOrInsert(&class)
+				oidIdx.ReplaceOrInsert(&class)
 				classes = append(classes, class)
 				return true, nil
 			},
@@ -99,8 +99,8 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 					kind:       "v",
 					schemaOid:  schema.OID.AsId(),
 				}
-				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
-				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				nameIdx.ReplaceOrInsert(&class)
+				oidIdx.ReplaceOrInsert(&class)
 				classes = append(classes, class)
 				return true, nil
 			},
@@ -112,8 +112,8 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 					kind:       "S",
 					schemaOid:  schema.OID.AsId(),
 				}
-				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
-				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				nameIdx.ReplaceOrInsert(&class)
+				oidIdx.ReplaceOrInsert(&class)
 				classes = append(classes, class)
 				return true, nil
 			},
@@ -140,8 +140,8 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 					schemaOid: id.NewNamespace(tblName.Schema).AsId(),
 					kind:      "r",
 				}
-				nameIdx.ReplaceOrInsert(pgClassNameLess(class))
-				oidIdx.ReplaceOrInsert(pgClassOIDLess(class))
+				nameIdx.ReplaceOrInsert(&class)
+				oidIdx.ReplaceOrInsert(&class)
 				classes = append(classes, class)
 			}
 		}
@@ -153,8 +153,15 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 		}
 	}
 
+	var idxLookup *sql.IndexLookup
+	classIdxPart, ok := partition.(pgClassIdxPart)
+	if ok {
+		idxLookup = &classIdxPart.lookup
+	}
+
 	return &pgClassRowIter{
 		classCache: pgCatalogCache.pgClasses,
+		idxLookup:	idxLookup,
 		idx:        0,
 	}, nil
 }
@@ -273,9 +280,43 @@ func (p PgClassHandler) Indexes() ([]sql.Index, error) {
 	}, nil
 }
 
+type pgClassIdxPart struct {
+	idxName string
+	lookup sql.IndexLookup
+}
+
+func (p pgClassIdxPart) Key() []byte {
+	return []byte(p.idxName)
+}
+
+var _ sql.Partition = (*pgClassIdxPart)(nil)
+
+type pgClassIdxPartIter struct {
+	used bool
+	part pgClassIdxPart
+}
+
+func (p pgClassIdxPartIter) Close(context *sql.Context) error {
+	return nil
+}
+
+func (p pgClassIdxPartIter) Next(context *sql.Context) (sql.Partition, error) {
+	if p.used {
+		return nil, io.EOF
+	}
+	p.used = true
+	return p.part, nil
+}
+
+var _ sql.PartitionIter = (*pgClassIdxPartIter)(nil)
+
 func (p PgClassHandler) LookupPartitions(context *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error) {
-	// TODO implement me
-	panic("implement me")
+	return &pgClassIdxPartIter{
+		part: pgClassIdxPart{
+			idxName: lookup.Index.(pgCatalogInMemIndex).name,
+			lookup:  lookup,
+		},
+	}, nil
 }
 
 // pgClassSchema is the schema for pg_class.
@@ -324,31 +365,32 @@ type pgClass struct {
 	kind       string // r = ordinary table, i = index, S = sequence, t = TOAST table, v = view, m = materialized view, c = composite type, f = foreign table, p = partitioned table, I = partitioned index
 }
 
-// Index key for pgClass.oid
-type pgClassOIDLess pgClass
-func (a pgClassOIDLess) Less(b btree.Item) bool {
-	return a.oid < b.(pgClassOIDLess).oid
+func lessOid(a, b *pgClass) bool {
+	return a.oid < b.oid
 }
 
-// Index key for pgClass.[relname, relnamespace]
-type pgClassNameLess pgClass
-func (a pgClassNameLess) Less(b btree.Item) bool {
-	if a.name == b.(pgClassNameLess).name {
-		return a.schemaOid < b.(pgClassNameLess).schemaOid
+func lessName(a, b *pgClass) bool {
+	if a.name == b.name {
+		return a.schemaOid < b.schemaOid
 	}
-	return a.name < b.(pgClassNameLess).name
+	return a.name < b.name
 }
 
 // pgClassRowIter is the sql.RowIter for the pg_class table.
 type pgClassRowIter struct {
 	classCache *pgClassCache
 	idx        int
+	idxLookup  *sql.IndexLookup
 }
 
 var _ sql.RowIter = (*pgClassRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	if iter.idxLookup != nil {
+		iter.classCache.nameIdx.DescendRange()
+	}
+	
 	if iter.idx >= len(iter.classCache.classes) {
 		return nil, io.EOF
 	}

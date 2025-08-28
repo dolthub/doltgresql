@@ -83,8 +83,8 @@ type pgCatalogCache struct {
 
 type pgClassCache struct {
 	classes      []pgClass
-	nameIdx      *btree.BTree
-	oidIdx       *btree.BTree
+	nameIdx      *btree.BTreeG[*pgClass]
+	oidIdx       *btree.BTreeG[*pgClass]
 }
 
 // newPgCatalogCache creates a new pgCatalogCache, with the query/process ID set to |pid|. The PID is important,
