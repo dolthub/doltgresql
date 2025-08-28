@@ -153,15 +153,15 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 		}
 	}
 
-	var idxLookup *sql.IndexLookup
-	classIdxPart, ok := partition.(pgClassIdxPart)
-	if ok {
-		idxLookup = &classIdxPart.lookup
+	if classIdxPart, ok := partition.(pgClassIdxPart); ok {
+		return &sqlLookupIter{
+			lookup:  classIdxPart.lookup,
+			classes: pgCatalogCache.pgClasses,
+		}, nil
 	}
 
-	return &pgClassRowIter{
+	return &pgClassTableScanIter{
 		classCache: pgCatalogCache.pgClasses,
-		idxLookup:	idxLookup,
 		idx:        0,
 	}, nil
 }
@@ -376,27 +376,160 @@ func lessName(a, b *pgClass) bool {
 	return a.name < b.name
 }
 
-// pgClassRowIter is the sql.RowIter for the pg_class table.
-type pgClassRowIter struct {
+// pgClassTableScanIter is the sql.RowIter for the pg_class table.
+type pgClassTableScanIter struct {
 	classCache *pgClassCache
 	idx        int
 	idxLookup  *sql.IndexLookup
 }
 
-var _ sql.RowIter = (*pgClassRowIter)(nil)
+type sqlLookupIter struct {
+	lookup sql.IndexLookup
+	classes *pgClassCache
+	rangeIdx int
+	nextChan chan *pgClass
+}
 
-// Next implements the interface sql.RowIter.
-func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if iter.idxLookup != nil {
-		iter.classCache.nameIdx.DescendRange()
+func (l sqlLookupIter) Next(ctx *sql.Context) (sql.Row, error) {
+	nextClass, err := l.NextClassItem()
+	if err != nil {
+		return nil, err
 	}
 	
+	return pgClassToRow(*nextClass), nil
+}
+
+func (l sqlLookupIter) Close(context *sql.Context) error {
+	return nil
+}
+
+func (l sqlLookupIter) NextClassItem() (*pgClass, error) {
+	if l.rangeIdx >= l.lookup.Ranges.Len() {
+		return nil, io.EOF
+	}
+	
+	if l.nextChan != nil {
+		class, ok := <-l.nextChan
+		if !ok {
+			l.nextChan = nil 
+			l.rangeIdx++
+			return l.NextClassItem()
+		}
+		return class, nil
+	}
+	
+	l.nextChan = make(chan *pgClass)
+	go func() {
+		idx, gte, lte := l.getIndexScanRange()
+		itr := func(item *pgClass) bool {
+			l.nextChan <- item
+			return true
+		}
+
+		if gte != nil && lte != nil {
+			idx.AscendRange(gte, lte, itr)
+		} else if gte != nil {
+			idx.AscendGreaterOrEqual(gte, itr)
+		} else if lte != nil {
+			idx.AscendLessThan(lte, itr)
+		} else {
+			idx.Ascend(itr)
+		}
+		
+		// because the above call uses a closed range for its upper end, we just return the last item at the end rather 
+		// than trying to generate a greater one
+		upperRange, ok := idx.Get(lte)
+		if ok {
+			l.nextChan <- upperRange
+		}
+
+		close(l.nextChan)
+	}()
+	
+	return l.NextClassItem()
+}
+
+func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *pgClass) {
+	rng := l.lookup.Ranges.ToRanges()[l.rangeIdx]
+	
+	var gte, lte *pgClass
+	var idx *btree.BTreeG[*pgClass]
+
+	switch l.lookup.Index.(pgCatalogInMemIndex).name {
+	case "pg_class_oid_index":
+		idx = l.classes.oidIdx
+
+		msrng := rng.(sql.MySQLRange)
+		oidRng := msrng[0]
+		var oidLower, oidUpper id.Id
+		if oidRng.HasLowerBound() {
+			oidLower = sql.GetMySQLRangeCutKey(oidRng.LowerBound).(id.Id)
+			gte = &pgClass{
+				oid: oidLower,
+			}
+		}
+		if oidRng.HasUpperBound() {
+			oidUpper = sql.GetMySQLRangeCutKey(oidRng.UpperBound).(id.Id)
+			lte = &pgClass{
+				oid: oidUpper,
+			}
+		}
+		
+	case "pg_class_relname_nsp_index":
+		idx = l.classes.nameIdx
+		msrng := rng.(sql.MySQLRange)
+		relNameRange := msrng[0]
+		schemaOidRange := msrng[1]
+		var relnameLower, relnameUpper string
+		var schemaOidLower, schemaOidUpper id.Id
+		
+		if relNameRange.HasLowerBound() {
+			relnameLower = sql.GetMySQLRangeCutKey(relNameRange.LowerBound).(string)
+		}
+		if relNameRange.HasUpperBound() {
+			relnameUpper = sql.GetMySQLRangeCutKey(relNameRange.UpperBound).(string)
+		}
+		if schemaOidRange.HasLowerBound() {
+			schemaOidLower = sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound).(id.Id)
+		}
+		if schemaOidRange.HasUpperBound() {
+			schemaOidUpper = sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound).(id.Id)
+		}
+		
+		if relNameRange.HasLowerBound() || schemaOidRange.HasLowerBound() {
+			gte = &pgClass{
+				name:      relnameLower,
+				schemaOid: schemaOidLower,
+			}
+		}
+		
+		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
+			lte = &pgClass{
+				name:      relnameUpper,
+				schemaOid: schemaOidUpper,
+			}
+		}
+	default:
+		panic("unknown index name: " + l.lookup.Index.(pgCatalogInMemIndex).name)
+	}
+	
+	return idx, gte, lte
+}
+
+var _ sql.RowIter = (*pgClassTableScanIter)(nil)
+
+// Next implements the interface sql.RowIter.
+func (iter *pgClassTableScanIter) Next(ctx *sql.Context) (sql.Row, error) {
 	if iter.idx >= len(iter.classCache.classes) {
 		return nil, io.EOF
 	}
 	iter.idx++
 	class := iter.classCache.classes[iter.idx-1]
 
+	return pgClassToRow(class), nil
+}
+
+func pgClassToRow(class pgClass) sql.Row {
 	// TODO: this is temporary definition of 'relam' field
 	var relam = id.Null
 	if class.kind == "i" {
@@ -440,11 +573,11 @@ func (iter *pgClassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		nil,              // relacl
 		nil,              // reloptions
 		nil,              // relpartbound
-	}, nil
+	}
 }
 
 // Close implements the interface sql.RowIter.
-func (iter *pgClassRowIter) Close(ctx *sql.Context) error {
+func (iter *pgClassTableScanIter) Close(ctx *sql.Context) error {
 	return nil
 }
 
