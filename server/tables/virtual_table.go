@@ -58,7 +58,7 @@ func (tbl *VirtualTable) Name() string {
 
 // PartitionRows implements the interface sql.Table.
 func (tbl *VirtualTable) PartitionRows(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	return tbl.handler.RowIter(ctx, nil)
+	return tbl.handler.RowIter(ctx, partition)
 }
 
 // Partitions implements the interface sql.Table.

@@ -4114,7 +4114,7 @@ func TestPgViews(t *testing.T) {
 	})
 }
 
-func TestPgCatalogJoinPerf(t *testing.T) {
+func TestPgCatalogIndexes(t *testing.T) {
 	sharedSetupScript := []string{
 		`create table t1 (a int primary key, b int not null)`,
 		`create table t2 (c int primary key, d int not null)`,
@@ -4122,6 +4122,31 @@ func TestPgCatalogJoinPerf(t *testing.T) {
 	}
 
 	RunScripts(t, []ScriptTest{
+		{
+			Name:        "pg_class name lookup",
+			Focus: true,
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT c.oid
+FROM pg_catalog.pg_class c 
+WHERE c.relname = 't2' and c.relnamespace = 2200
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{1496157034},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT c.oid
+FROM pg_catalog.pg_class c 
+WHERE c.relname = 't2' and c.relnamespace = 2200
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{1496157034},
+					},
+				},
+			},
+		},
 		{
 			Name:        "pg_catalog join performance",
 			SetUpScript: sharedSetupScript,

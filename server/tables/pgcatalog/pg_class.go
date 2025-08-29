@@ -185,10 +185,10 @@ func (p PgClassHandler) Schema() sql.PrimaryKeySchema {
 }
 
 type pgCatalogInMemIndex struct {
-	name string
-	tblName string
-	dbName string
-	uniq bool
+	name        string
+	tblName     string
+	dbName      string
+	uniq        bool
 	columnExprs []sql.ColumnExpressionType
 }
 
@@ -268,10 +268,10 @@ func (p PgClassHandler) Indexes() ([]sql.Index, error) {
 			columnExprs: []sql.ColumnExpressionType{{Expression: "oid", Type: pgtypes.Oid}},
 		},
 		pgCatalogInMemIndex{
-			name:        "pg_class_relname_nsp_index",
-			tblName:     "pg_class",
-			dbName:      "pg_catalog",
-			uniq:        true,
+			name:    "pg_class_relname_nsp_index",
+			tblName: "pg_class",
+			dbName:  "pg_catalog",
+			uniq:    true,
 			columnExprs: []sql.ColumnExpressionType{
 				{Expression: "relname", Type: pgtypes.Name},
 				{Expression: "relnamespace", Type: pgtypes.Oid},
@@ -282,7 +282,7 @@ func (p PgClassHandler) Indexes() ([]sql.Index, error) {
 
 type pgClassIdxPart struct {
 	idxName string
-	lookup sql.IndexLookup
+	lookup  sql.IndexLookup
 }
 
 func (p pgClassIdxPart) Key() []byte {
@@ -384,18 +384,18 @@ type pgClassTableScanIter struct {
 }
 
 type sqlLookupIter struct {
-	lookup sql.IndexLookup
-	classes *pgClassCache
+	lookup   sql.IndexLookup
+	classes  *pgClassCache
 	rangeIdx int
 	nextChan chan *pgClass
 }
 
-func (l sqlLookupIter) Next(ctx *sql.Context) (sql.Row, error) {
+func (l *sqlLookupIter) Next(ctx *sql.Context) (sql.Row, error) {
 	nextClass, err := l.NextClassItem()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return pgClassToRow(*nextClass), nil
 }
 
@@ -403,21 +403,21 @@ func (l sqlLookupIter) Close(context *sql.Context) error {
 	return nil
 }
 
-func (l sqlLookupIter) NextClassItem() (*pgClass, error) {
+func (l *sqlLookupIter) NextClassItem() (*pgClass, error) {
 	if l.rangeIdx >= l.lookup.Ranges.Len() {
 		return nil, io.EOF
 	}
-	
+
 	if l.nextChan != nil {
 		class, ok := <-l.nextChan
 		if !ok {
-			l.nextChan = nil 
+			l.nextChan = nil
 			l.rangeIdx++
 			return l.NextClassItem()
 		}
 		return class, nil
 	}
-	
+
 	l.nextChan = make(chan *pgClass)
 	go func() {
 		idx, gte, lte := l.getIndexScanRange()
@@ -435,8 +435,8 @@ func (l sqlLookupIter) NextClassItem() (*pgClass, error) {
 		} else {
 			idx.Ascend(itr)
 		}
-		
-		// because the above call uses a closed range for its upper end, we just return the last item at the end rather 
+
+		// because the above call uses a closed range for its upper end, we just return the last item at the end rather
 		// than trying to generate a greater one
 		upperRange, ok := idx.Get(lte)
 		if ok {
@@ -445,13 +445,13 @@ func (l sqlLookupIter) NextClassItem() (*pgClass, error) {
 
 		close(l.nextChan)
 	}()
-	
+
 	return l.NextClassItem()
 }
 
 func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *pgClass) {
 	rng := l.lookup.Ranges.ToRanges()[l.rangeIdx]
-	
+
 	var gte, lte *pgClass
 	var idx *btree.BTreeG[*pgClass]
 
@@ -474,7 +474,7 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 				oid: oidUpper,
 			}
 		}
-		
+
 	case "pg_class_relname_nsp_index":
 		idx = l.classes.nameIdx
 		msrng := rng.(sql.MySQLRange)
@@ -482,7 +482,7 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 		schemaOidRange := msrng[1]
 		var relnameLower, relnameUpper string
 		var schemaOidLower, schemaOidUpper id.Id
-		
+
 		if relNameRange.HasLowerBound() {
 			relnameLower = sql.GetMySQLRangeCutKey(relNameRange.LowerBound).(string)
 		}
@@ -495,14 +495,14 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 		if schemaOidRange.HasUpperBound() {
 			schemaOidUpper = sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound).(id.Id)
 		}
-		
+
 		if relNameRange.HasLowerBound() || schemaOidRange.HasLowerBound() {
 			gte = &pgClass{
 				name:      relnameLower,
 				schemaOid: schemaOidLower,
 			}
 		}
-		
+
 		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
 			lte = &pgClass{
 				name:      relnameUpper,
@@ -512,7 +512,7 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 	default:
 		panic("unknown index name: " + l.lookup.Index.(pgCatalogInMemIndex).name)
 	}
-	
+
 	return idx, gte, lte
 }
 
@@ -580,4 +580,3 @@ func pgClassToRow(class pgClass) sql.Row {
 func (iter *pgClassTableScanIter) Close(ctx *sql.Context) error {
 	return nil
 }
-
