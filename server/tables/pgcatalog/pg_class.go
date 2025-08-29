@@ -265,7 +265,7 @@ func (p PgClassHandler) Indexes() ([]sql.Index, error) {
 			tblName:     "pg_class",
 			dbName:      "pg_catalog",
 			uniq:        true,
-			columnExprs: []sql.ColumnExpressionType{{Expression: "oid", Type: pgtypes.Oid}},
+			columnExprs: []sql.ColumnExpressionType{{Expression: "pg_class.oid", Type: pgtypes.Oid}},
 		},
 		pgCatalogInMemIndex{
 			name:    "pg_class_relname_nsp_index",
@@ -273,8 +273,8 @@ func (p PgClassHandler) Indexes() ([]sql.Index, error) {
 			dbName:  "pg_catalog",
 			uniq:    true,
 			columnExprs: []sql.ColumnExpressionType{
-				{Expression: "relname", Type: pgtypes.Name},
-				{Expression: "relnamespace", Type: pgtypes.Oid},
+				{Expression: "pg_class.relname", Type: pgtypes.Name},
+				{Expression: "pg_class.relnamespace", Type: pgtypes.Oid},
 			},
 		},
 	}, nil
