@@ -115,6 +115,7 @@ func (node *SequenceOptions) Format(ctx *FmtCtx) {
 // SequenceOption represents an option on a CREATE/ALTER SEQUENCE statement.
 type SequenceOption struct {
 	Name          string
+	SeqName       TableName
 	IntVal        *int64
 	OptionalWord  bool
 	ColumnItemVal *ColumnItem
@@ -133,6 +134,14 @@ const (
 	SeqOptMaxValue  = "MAXVALUE"
 	SeqOptStart     = "START WITH"
 
-	// SeqOptRestart is used for ALTER sequence option only
-	SeqOptRestart = "RESTART"
+	// Options that are used within CREATE TABLE, ALTER TABLE, etc.
+
+	SeqOptRestart  = "RESTART"
+	SeqOptName     = "SEQUENCE NAME"
+	SeqOptLogged   = "LOGGED"
+	SeqOptUnlogged = "UNLOGGED"
+
+	// This is used to signal that the sequence should be set as the default value (not used by the parser)
+
+	SeqOptViaAlterTable = "VIA ALTER TABLE"
 )

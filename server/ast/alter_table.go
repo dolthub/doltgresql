@@ -37,6 +37,14 @@ func nodeAlterTable(ctx *Context, node *tree.AlterTable) (vitess.Statement, erro
 		return nil, err
 	}
 
+	// We don't implement sequence addition/modification as a DDL since it's not in GMS, so we only support one of these
+	// at a time. If there are more than one, then we'll return an error in the command loop.
+	if len(node.Cmds) == 1 {
+		cmd, ok := node.Cmds[0].(*tree.AlterTableComputed)
+		if ok {
+			return nodeAlterTableComputed(ctx, treeTableName, cmd)
+		}
+	}
 	statements, noOps, err := nodeAlterTableCmds(ctx, node.Cmds, tableName, node.IfExists)
 	if err != nil {
 		return nil, err
@@ -150,6 +158,8 @@ func nodeAlterTableCmds(
 			vitessDdlCmds = append(vitessDdlCmds, statement)
 		case *tree.AlterTableOwner:
 			unsupportedWarnings = append(unsupportedWarnings, fmt.Sprintf("ALTER TABLE %s OWNER TO %s", tableName.String(), cmd.Owner))
+		case *tree.AlterTableComputed:
+			return nil, nil, errors.New("This command does not currently support multiple actions in one statement")
 		default:
 			return nil, nil, errors.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
@@ -408,4 +418,54 @@ func nodeAlterTablePartition(ctx *Context, node *tree.AlterTablePartition) (*vit
 		Table:          tableName,
 		PartitionSpecs: []*vitess.PartitionSpec{partitionSpec},
 	}, nil
+}
+
+// nodeAlterTableComputed converts a tree.AlterTableComputed instance into an equivalent CREATE/ALTER SEQUENCE statement.
+func nodeAlterTableComputed(ctx *Context, tableName tree.TableName, node *tree.AlterTableComputed) (vitess.Statement, error) {
+	if len(node.Defs) > 0 {
+		return NotYetSupportedError("ALTER TABLE variant is not yet supported")
+	}
+	var persistence tree.Persistence
+	var seqName tree.TableName
+	var trimmedOptions []tree.SequenceOption
+	switch def := node.AddDefs.(type) {
+	case *tree.ColumnComputedDef:
+		if def.Expr != nil {
+			return NotYetSupportedError("ALTER TABLE variant is not yet supported")
+		}
+		trimmedOptions = make([]tree.SequenceOption, 0, len(def.Options)+2)
+		for _, opt := range def.Options {
+			switch opt.Name {
+			case tree.SeqOptOwnedBy:
+				return NotYetSupportedError("OWNED BY is invalid here")
+			case tree.SeqOptRestart:
+				return NotYetSupportedError("RESTART is not yet supported")
+			case tree.SeqOptName:
+				seqName = opt.SeqName
+			case tree.SeqOptLogged:
+				persistence = tree.PersistencePermanent
+			case tree.SeqOptUnlogged:
+				persistence = tree.PersistenceUnlogged
+			default:
+				trimmedOptions = append(trimmedOptions, opt)
+			}
+		}
+	default:
+		return NotYetSupportedError("ALTER TABLE variant is not yet supported")
+	}
+	trimmedOptions = append(trimmedOptions,
+		tree.SequenceOption{
+			Name:          tree.SeqOptOwnedBy,
+			ColumnItemVal: tree.NewColumnItem(&tableName, node.Column),
+		},
+		tree.SequenceOption{
+			Name: tree.SeqOptViaAlterTable,
+		},
+	)
+	return nodeCreateSequence(ctx, &tree.CreateSequence{
+		IfNotExists: false,
+		Name:        seqName,
+		Persistence: persistence,
+		Options:     trimmedOptions,
+	})
 }
