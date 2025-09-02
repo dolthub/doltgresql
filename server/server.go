@@ -267,7 +267,7 @@ func (c configCliContext) GlobalArgs() *argparser.ArgParseResults {
 	panic("ConfigCliContext does not support GlobalArgs()")
 }
 
-func (c configCliContext) QueryEngine(ctx context.Context) (cli.QueryEngineResult, error) {
+func (c configCliContext) QueryEngine(ctx context.Context, _ ...cli.LateBindQueryistOption) (cli.QueryEngineResult, error) {
 	return cli.QueryEngineResult{}, errors.Errorf("ConfigCliContext does not support QueryEngine()")
 }
 
