@@ -60,6 +60,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	incrementSet := false
 	startSet := false
 	cycle := false
+	fromAlter := false
 	for _, option := range node.Options {
 		switch option.Name {
 		case tree.SeqOptAs:
@@ -94,10 +95,13 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 			}
 			colName, ok := expr.(*vitess.ColName)
 			if !ok {
-				return nil, errors.Errorf("expected sequence owner to be a table and column name")
+				return nil, errors.New("expected sequence owner to be a table and column name")
 			}
-			if len(colName.Qualifier.SchemaQualifier.String()) > 0 || len(colName.Qualifier.DbQualifier.String()) > 0 {
-				return nil, errors.Errorf("sequence owner must be in the same schema as the sequence")
+			if colName.Qualifier.SchemaQualifier.String() != name.SchemaQualifier.String() {
+				return nil, errors.New("CREATE SEQUENCE must use the same schema for the sequence and owned table")
+			}
+			if len(colName.Qualifier.DbQualifier.String()) > 0 {
+				return nil, errors.New("database specification is not yet supported for sequences")
 			}
 			ownerTableName = colName.Qualifier.Name.String()
 			ownerColumnName = colName.Name.String()
@@ -137,6 +141,8 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 				return nil, errors.Errorf("conflicting or redundant options")
 			}
 			startSet = true
+		case tree.SeqOptViaAlterTable:
+			fromAlter = true
 		default:
 			return nil, errors.Errorf("unknown CREATE SEQUENCE option")
 		}
@@ -178,7 +184,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	}
 	// Returns the stored procedure call with all options
 	return vitess.InjectedStatement{
-		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), &sequences.Sequence{
+		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), fromAlter, &sequences.Sequence{
 			Id:          id.NewSequence("", name.Name.String()),
 			DataTypeID:  dataType.ID,
 			Persistence: sequences.Persistence_Permanent,

@@ -304,10 +304,11 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.ColumnItem:
 		var tableName vitess.TableName
 		if node.TableName != nil {
-			if node.TableName.NumParts > 1 {
-				return nil, errors.Errorf("referencing items outside the schema or database is not yet supported")
+			if node.TableName.NumParts > 2 {
+				return nil, errors.Errorf("referencing items outside the database is not yet supported")
 			}
 			tableName.Name = vitess.NewTableIdent(node.TableName.Parts[0])
+			tableName.SchemaQualifier = vitess.NewTableIdent(node.TableName.Parts[1])
 		}
 		return &vitess.ColName{
 			Name:      vitess.NewColIdent(string(node.ColumnName)),

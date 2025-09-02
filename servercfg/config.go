@@ -464,6 +464,18 @@ func (cfg *DoltgresConfig) RemotesapiReadOnly() *bool {
 	return cfg.RemotesapiConfig.ReadOnly
 }
 
+// MCPPort returns nil for Doltgres; MCP HTTP server is not configured here.
+func (cfg *DoltgresConfig) MCPPort() *int { return nil }
+
+// MCPUser returns nil for Doltgres; MCP is not configured here.
+func (cfg *DoltgresConfig) MCPUser() *string { return nil }
+
+// MCPPassword returns nil for Doltgres; MCP is not configured here.
+func (cfg *DoltgresConfig) MCPPassword() *string { return nil }
+
+// MCPDatabase returns nil for Doltgres; MCP is not configured here.
+func (cfg *DoltgresConfig) MCPDatabase() *string { return nil }
+
 func (cfg *DoltgresConfig) ClusterConfig() servercfg.ClusterConfig {
 	return nil
 }

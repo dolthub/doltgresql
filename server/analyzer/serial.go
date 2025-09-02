@@ -122,7 +122,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			maxValue = 9223372036854775807
 		}
 
-		ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", &sequences.Sequence{
+		ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", false, &sequences.Sequence{
 			Id:          id.NewSequence("", sequenceName),
 			DataTypeID:  col.Type.(*pgtypes.DoltgresType).ID,
 			Persistence: sequences.Persistence_Permanent,

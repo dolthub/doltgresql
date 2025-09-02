@@ -46,7 +46,7 @@ import (
 // Version should have a new line that follows, else the formatter will fail the PR created by the release GH action
 
 const (
-	Version = "0.51.1"
+	Version = "0.51.2"
 
 	DefUserName  = "postres"
 	DefUserEmail = "postgres@somewhere.com"
@@ -267,7 +267,7 @@ func (c configCliContext) GlobalArgs() *argparser.ArgParseResults {
 	panic("ConfigCliContext does not support GlobalArgs()")
 }
 
-func (c configCliContext) QueryEngine(ctx context.Context) (cli.QueryEngineResult, error) {
+func (c configCliContext) QueryEngine(ctx context.Context, _ ...cli.LateBindQueryistOption) (cli.QueryEngineResult, error) {
 	return cli.QueryEngineResult{}, errors.Errorf("ConfigCliContext does not support QueryEngine()")
 }
 
