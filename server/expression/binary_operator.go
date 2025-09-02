@@ -35,6 +35,7 @@ var _ vitess.Injectable = (*BinaryOperator)(nil)
 var _ sql.Expression = (*BinaryOperator)(nil)
 var _ expression.BinaryExpression = (*BinaryOperator)(nil)
 var _ expression.Equality = (*BinaryOperator)(nil)
+var _ sql.IndexComparisonExpression = (*BinaryOperator)(nil)
 
 // NewBinaryOperator returns a new *BinaryOperator.
 func NewBinaryOperator(operator framework.Operator) *BinaryOperator {
@@ -182,3 +183,21 @@ func (b *BinaryOperator) Right() sql.Expression {
 		return nil
 	}
 }
+
+// IndexScanOperation implements the sql.IndexComparisonExpression interface.
+func (b *BinaryOperator) IndexScanOperation() (sql.IndexScanOp, sql.Expression, sql.Expression, bool) {
+	switch b.operator {
+	case framework.Operator_BinaryEqual:
+		return sql.IndexScanOpEq, b.Left(), b.Right(), true
+	case framework.Operator_BinaryLessThan:
+		return sql.IndexScanOpLt, b.Left(), b.Right(), true
+	case framework.Operator_BinaryLessOrEqual:
+		return sql.IndexScanOpLte, b.Left(), b.Right(), true
+	case framework.Operator_BinaryGreaterThan:
+		return sql.IndexScanOpGt, b.Left(), b.Right(), true
+	case framework.Operator_BinaryGreaterOrEqual:
+		return sql.IndexScanOpGte, b.Left(), b.Right(), true
+	}
+	return 0, nil, nil, false
+}
+

@@ -22,7 +22,7 @@ type Handler interface {
 	Name() string
 	// RowIter returns a sql.RowIter that returns the rows of the table.
 	RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error)
-	// Schema returns the table's schema.
+	// PkSchema returns the table's schema.
 	PkSchema() sql.PrimaryKeySchema
 }
 
@@ -32,7 +32,10 @@ type IndexedTableHandler interface {
 	Indexes() ([]sql.Index, error)
 	// LookupPartitions returns a sql.PartitionIter that can be used to look up rows in the table using the given lookup
 	LookupPartitions(context *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error)
-	// sql.IndexSearchableTable
+	// SkipIndexCosting is part of sql.IndexSearchableTable
+	SkipIndexCosting() bool
+	// LookupForExpressions returns an IndexLookup for the given expressions, part of sql.IndexSearchableTable
+	LookupForExpressions(context *sql.Context, expression ...sql.Expression) (sql.IndexLookup, *sql.FuncDepSet, sql.Expression, bool, error)
 }
 
 // handlers is a map from the schema name, to the table name, to the handler.

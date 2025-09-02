@@ -31,6 +31,7 @@ var _ sql.PrimaryKeyTable = (*VirtualTable)(nil)
 var _ sql.Table = (*VirtualTable)(nil)
 var _ sql.DatabaseSchemaTable = (*VirtualTable)(nil)
 var _ sql.IndexAddressableTable = (*VirtualTable)(nil)
+var _ sql.IndexSearchableTable = (*VirtualTable)(nil)
 var _ sql.IndexedTable = (*VirtualTable)(nil)
 
 // NewVirtualTable creates a new *VirtualTable from the given Handler.
@@ -111,3 +112,18 @@ func (tbl *VirtualTable) LookupPartitions(ctx *sql.Context, lookup sql.IndexLook
 	}
 	return nil, errors.Errorf("cannot lookup partitions for virtual table %s", tbl.Name())
 }
+
+func (tbl *VirtualTable) SkipIndexCosting() bool {
+	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
+		return itbl.SkipIndexCosting()
+	}
+	return false
+}
+
+func (tbl *VirtualTable) LookupForExpressions(ctx *sql.Context, expressions ...sql.Expression) (sql.IndexLookup, *sql.FuncDepSet, sql.Expression, bool, error) {
+	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
+		return itbl.LookupForExpressions(ctx, expressions...)
+	}
+	return sql.IndexLookup{}, nil, nil, false, errors.Errorf("cannot lookup for expressions for virtual table %s", tbl.Name())
+}
+

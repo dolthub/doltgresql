@@ -48,6 +48,10 @@ func (p PgClassHandler) Name() string {
 	return PgClassName
 }
 
+func (p PgClassHandler) SkipIndexCosting() bool {
+	return false
+}
+
 // RowIter implements the interface tables.Handler.
 func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// Use cached data from this process if it exists
@@ -204,6 +208,10 @@ func (p PgClassHandler) Indexes() ([]sql.Index, error) {
 			},
 		},
 	}, nil
+}
+
+func (p PgClassHandler) LookupForExpressions(ctx *sql.Context, exprs ...sql.Expression) (sql.IndexLookup, *sql.FuncDepSet, sql.Expression, bool, error) {
+	return sql.IndexLookup{}, nil, nil, false, nil
 }
 
 type pgClassIdxPart struct {
