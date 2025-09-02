@@ -85,79 +85,85 @@ var keywordSetters = map[string]fieldSetter{
 	keywordZulu:     fieldSetterUTC,
 }
 
+type timezone struct {
+	abbreviation string
+	// there are more than one identifier for some time zones.
+	identifier string
+}
+
+// TimezoneMapping is a map timezone abbreviations to their timezone offset.
 // These abbreviations are taken from:
 // https://github.com/postgres/postgres/blob/master/src/timezone/known_abbrevs.txt
-var timezoneMapping = map[string]string{
-	"ACDT": "+10:30",
-	"ACST": "+09:30",
-	"ADT":  "-03:00",
-	"AEDT": "+11:00",
-	"AEST": "+10:00",
-	"AKDT": "-08:00",
-	"AKST": "-09:00",
-	"AST":  "-04:00",
-	"AWST": "+08:00",
-	"BST":  "+01:00",
-	"CAT":  "+02:00",
-	"CDT":  "-05:00",
+var TimezoneMapping = map[string]timezone{
+	"ACDT": {"+10:30", "Australia/Adelaide"},
+	"ACST": {"+09:30", ""},
+	"ADT":  {"-03:00", "America/Glace_Bay"},
+	"AEDT": {"+11:00", "Australia/Sydney"},
+	"AEST": {"+10:00", "Australia/Brisbane"},
+	"AKDT": {"-08:00", "America/Anchorage"},
+	"AKST": {"-09:00", "America/Anchorage"},
+	"AST":  {"-04:00", "America/Barbados"},
+	"AWST": {"+08:00", "Australia/Perth"},
+	"BST":  {"+01:00", "Europe/London"},
+	"CAT":  {"+02:00", "Africa/Juba"},
+	"CDT":  {"-05:00", "America/Chicago"},
 	//"CDT":  "",
-	"CEST": "+02:00",
-	"CET":  "+01:00",
-	"CST":  "-06:00",
+	"CEST": {"+02:00", "Europe/Berlin"},
+	"CET":  {"+01:00", "Africa/Algiers"},
+	"CST":  {"-06:00", "Asia/Shanghai"},
 	//"CST":  "",
 	//"CST":  "",
-	"ChST": "+10:00",
+	"ChST": {"+10:00", "Pacific/Guam"},
 
-	"EAT":  "+03:00",
-	"EDT":  "-04:00",
-	"EEST": "+03:00",
-	"EET":  "+02:00",
-	"EST":  "-05:00",
+	"EAT":  {"+03:00", "Africa/Nairobi"},
+	"EDT":  {"-04:00", "America/Detroit"},
+	"EEST": {"+03:00", "Africa/Cairo"},
+	"EET":  {"+02:00", "Africa/Tripoli"},
+	"EST":  {"-05:00", "America/Cancun"},
 
-	// GMT has been removed from this list.
-	"HDT": "-09:00",
-	"HKT": "+08:00",
-	"HST": "-10:00",
-	"IDT": "+03:00",
-	"IST": "+02:00",
-	//"IST":  "",
-	//"IST":  "",
-	"JST": "+09:00",
-	"KST": "+09:00",
+	"GMT": {"+00:00", "Africa/Monrovia"},
+	"HDT": {"-09:00", "America/Adak"},
+	"HKT": {"+08:00", "Asia/Hong_Kong"},
+	"HST": {"-10:00", "Pacific/Honolulu"},
+	"IDT": {"+03:00", "Asia/Jerusalem"},
+	"IST": {"+02:00", "Asia/Jerusalem"}, // TODO: multiple abbr
+	//"IST": "",
+	//"IST": "",
+	"JST": {"+09:00", "Asia/Tokyo"},
+	"KST": {"+09:00", "Asia/Seoul"},
 
-	"MDT":  "-06:00",
-	"MEST": "", // TODO
-	"MET":  "", // TODO
-	"MSK":  "+03:00",
-	"MST":  "-07:00",
-	"NDT":  "-02:30",
-	"NST":  "-03:30",
-	"NZDT": "+13:00",
-	"NZST": "+12:00",
+	"MDT":  {"-06:00", "America/Edmonton"},
+	"MEST": {"", ""}, // TODO
+	"MET":  {"", ""}, // TODO
+	"MSK":  {"+03:00", "Europe/Moscow"},
+	"MST":  {"-07:00", "America/Edmonton"},
+	"NDT":  {"-02:30", "America/St_Johns"},
+	"NST":  {"-03:30", "America/St_Johns"},
+	"NZDT": {"+13:00", "Pacific/Auckland"},
+	"NZST": {"+12:00", "Pacific/Auckland"},
 
-	"PDT": "-07:00",
-	"PKT": "+05:00",
-	"PST": "-08:00",
-	//"PST":  "",
-	"SAST": "+02:00",
-	"SST":  "-11:00",
-	"UCT":  "", // TODO
+	"PDT": {"-07:00", "America/Los_Angeles"},
+	"PKT": {"+05:00", "Asia/Manila"},
+	"PST": {"-08:00", "America/Los_Angeles"},
+	//"PST": { "",
+	"SAST": {"+02:00", "Africa/Johannesburg"},
+	"SST":  {"-11:00", "Pacific/Pago_Pago"},
+	"UCT":  {"", ""}, // TODO
 
 	// UTC has been removed from this list.
-	"WAT":  "+01:00",
-	"WEST": "+01:00",
-	"WET":  "+00:00",
-	"WIB":  "+07:00",
-	"WIT":  "+09:00",
-	"WITA": "+08:00",
+	"WEST": {"+01:00", "Atlantic/Canary"},
+	"WET":  {"+00:00", "Atlantic/Canary"},
+	"WIB":  {"+07:00", "Asia/Jakarta"},
+	"WIT":  {"+09:00", "Asia/Jayapura"},
+	"WITA": {"+08:00", "Asia/Makassar"},
 }
 
 func init() {
-	for tz, offset := range timezoneMapping {
-		if offset == "" {
+	for tz, offset := range TimezoneMapping {
+		if offset.abbreviation == "" {
 			keywordSetters[strings.ToLower(tz)] = fieldSetterUnsupportedAbbreviation
 		} else {
-			keywordSetters[strings.ToLower(tz)] = fieldSetterLocation(offset)
+			keywordSetters[strings.ToLower(tz)] = fieldSetterLocation(offset.abbreviation)
 		}
 	}
 }
@@ -260,4 +266,11 @@ func fieldSetterLocation(offset string) fieldSetter {
 // captures the abbreviation in telemetry.
 func fieldSetterUnsupportedAbbreviation(_ *fieldExtract, s string) error {
 	return unimplemented.NewWithIssueDetail(31710, s, "timestamp abbreviations not supported")
+}
+
+func GetTimezoneIdentifier(tz string) (string, string) {
+	if tzid, ok := TimezoneMapping[tz]; ok {
+		return tzid.abbreviation, tzid.identifier
+	}
+	return "", ""
 }

@@ -45,6 +45,7 @@ var make_timestamp = framework.Function6{
 			return nil, errDateFieldOutOfRange
 		} else if year < 0 {
 			// PostgreSQL: year 0 = 1 BC, year -1 = 2 BC, etc.
+			// which formatting it is handled in FormatDateTimeWithBC using calculation: (1 - year)
 			year++
 		}
 		month := val2.(int32)

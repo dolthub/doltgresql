@@ -120,7 +120,21 @@ type Function4 struct {
 	Callable           func(ctx *sql.Context, paramsAndReturn [5]*pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any) (any, error)
 }
 
-// Function6 is a function that takes four parameters. The parameter and return types are passed into the Callable
+// Function5 is a function that takes five parameters. The parameter and return types are passed into the Callable
+// function when the parameters (and possibly return type) have at least one polymorphic type. The return type is the
+// last type in the array.
+type Function5 struct {
+	Name               string
+	Return             *pgtypes.DoltgresType
+	Parameters         [5]*pgtypes.DoltgresType
+	Variadic           bool
+	IsNonDeterministic bool
+	Strict             bool
+	SRF                bool
+	Callable           func(ctx *sql.Context, paramsAndReturn [6]*pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any, val5 any) (any, error)
+}
+
+// Function6 is a function that takes six parameters. The parameter and return types are passed into the Callable
 // function when the parameters (and possibly return type) have at least one polymorphic type. The return type is the
 // last type in the array.
 type Function6 struct {
@@ -139,6 +153,7 @@ var _ FunctionInterface = Function1{}
 var _ FunctionInterface = Function2{}
 var _ FunctionInterface = Function3{}
 var _ FunctionInterface = Function4{}
+var _ FunctionInterface = Function5{}
 var _ FunctionInterface = Function6{}
 
 // GetName implements the FunctionInterface interface.
@@ -325,6 +340,44 @@ func (f Function4) InternalID() id.Id {
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function4) enforceInterfaceInheritance(error) {}
+
+// GetName implements the FunctionInterface interface.
+func (f Function5) GetName() string { return f.Name }
+
+// GetReturn implements the FunctionInterface interface.
+func (f Function5) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
+
+// GetParameters implements the FunctionInterface interface.
+func (f Function5) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+
+// VariadicIndex implements the FunctionInterface interface.
+func (f Function5) VariadicIndex() int {
+	if f.Variadic {
+		return 4
+	} else {
+		return -1
+	}
+}
+
+// GetExpectedParameterCount implements the FunctionInterface interface.
+func (f Function5) GetExpectedParameterCount() int { return 6 }
+
+// NonDeterministic implements the FunctionInterface interface.
+func (f Function5) NonDeterministic() bool { return f.IsNonDeterministic }
+
+// IsStrict implements the FunctionInterface interface.
+func (f Function5) IsStrict() bool { return f.Strict }
+
+// IsSRF implements the FunctionInterface interface.
+func (f Function5) IsSRF() bool { return f.SRF }
+
+// InternalID implements the FunctionInterface interface.
+func (f Function5) InternalID() id.Id {
+	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID, f.Parameters[2].ID, f.Parameters[3].ID, f.Parameters[4].ID).AsId()
+}
+
+// enforceInterfaceInheritance implements the FunctionInterface interface.
+func (f Function5) enforceInterfaceInheritance(error) {}
 
 // GetName implements the FunctionInterface interface.
 func (f Function6) GetName() string { return f.Name }

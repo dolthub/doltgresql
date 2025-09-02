@@ -326,6 +326,8 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return f.Callable(ctx, ([4]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2])
 	case Function4:
 		return f.Callable(ctx, ([5]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3])
+	case Function5:
+		return f.Callable(ctx, ([6]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3], args[4])
 	case Function6:
 		return f.Callable(ctx, ([7]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3], args[4], args[5])
 	case InterpretedFunction:

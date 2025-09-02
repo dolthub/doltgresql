@@ -2551,7 +2551,7 @@ func TestDateAndTimeFunction(t *testing.T) {
 		},
 		{
 			Name:        "timezone",
-			SetUpScript: []string{},
+			SetUpScript: []string{`SET timezone = '+06:30'`},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `select timezone(interval '2 minutes', timestamp with time zone '2001-02-16 20:38:40.12-05');`,
@@ -2571,15 +2571,19 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 				{
 					Query:    `select timezone('-04:45', timestamp '2001-02-16 20:38:40.12');`,
-					Expected: []sql.Row{{"2001-02-16 07:53:40.12-08"}},
+					Expected: []sql.Row{{"2001-02-16 09:23:40.12-06:30"}},
 				},
 				{
 					Query:    `select timezone('-04:45:44', timestamp '2001-02-16 20:38:40.12');`,
-					Expected: []sql.Row{{"2001-02-16 07:52:56.12-08"}},
+					Expected: []sql.Row{{"2001-02-16 09:22:56.12-06:30"}},
+				},
+				{
+					Query:    `select '2001-02-16 20:38:40.12'::timestamp at time zone '-04:45:44';`,
+					Expected: []sql.Row{{"2001-02-16 09:22:56.12-06:30"}},
 				},
 				{
 					Query:    `select timezone(interval '2 hours 2 minutes', timestamp '2001-02-16 20:38:40.12');`,
-					Expected: []sql.Row{{"2001-02-16 10:36:40.12-08"}},
+					Expected: []sql.Row{{"2001-02-16 12:06:40.12-06:30"}},
 				},
 				{
 					Query:    `select '2024-08-22 14:47:57 -07' at time zone 'utc';`,
@@ -2599,7 +2603,23 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 				{
 					Query:    `select timestamp '2024-08-22 13:47:57-07' at time zone 'utc';`,
-					Expected: []sql.Row{{"2024-08-22 06:47:57-07"}},
+					Expected: []sql.Row{{"2024-08-22 07:17:57-06:30"}},
+				},
+				{
+					Query:    `select '2011-03-27 02:00:00'::timestamp at time zone '+01:00';`,
+					Expected: []sql.Row{{"2011-03-26 20:30:00-06:30"}},
+				},
+				{
+					Query:    `select '2011-03-27 02:00:00'::timestamp at time zone 'UTC';`,
+					Expected: []sql.Row{{"2011-03-26 19:30:00-06:30"}},
+				},
+				{
+					Query:    `select timezone('MSK', timestamp '2011-03-27 02:00:00');`,
+					Expected: []sql.Row{{"2011-03-26 15:30:00-06:30"}},
+				},
+				{
+					Query:    `select '2011-03-27 02:00:00'::timestamp at time zone 'MSK';`,
+					Expected: []sql.Row{{"2011-03-26 15:30:00-06:30"}},
 				},
 			},
 		},

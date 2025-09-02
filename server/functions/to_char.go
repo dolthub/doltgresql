@@ -75,6 +75,8 @@ var to_char_timestamptz_text = framework.Function2{
 	},
 }
 
+// timestampTtc takes time.Time value and converts it to tmToChar value
+// which is used for to_char function.
 func timestampTtc(ts time.Time) *tmToChar {
 	ttc := &tmToChar{}
 	ttc.year = ts.Year()

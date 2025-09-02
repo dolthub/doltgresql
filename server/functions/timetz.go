@@ -15,7 +15,6 @@
 package functions
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -155,19 +154,6 @@ func GetServerLocation(ctx *sql.Context) (*time.Location, error) {
 		return nil, err
 	}
 
-	tz := val.(string)
-	loc, err := time.LoadLocation(tz)
-	if err == nil {
-		return loc, nil
-	}
-
-	var t time.Time
-	if t, err = time.Parse("Z07", tz); err == nil {
-	} else if t, err = time.Parse("Z07:00", tz); err == nil {
-	} else if t, err = time.Parse("Z07:00:00", tz); err != nil {
-		return nil, err
-	}
-
-	_, offsetSecsUnconverted := t.Zone()
-	return time.FixedZone(fmt.Sprintf("fixed offset:%d", offsetSecsUnconverted), -offsetSecsUnconverted), nil
+	loc, _, _, err := convertTzToOffsetSecs(time.Now(), val.(string))
+	return loc, err
 }
