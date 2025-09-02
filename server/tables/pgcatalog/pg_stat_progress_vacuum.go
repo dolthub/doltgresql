@@ -48,7 +48,7 @@ func (p PgStatProgressVacuumHandler) RowIter(ctx *sql.Context, partition sql.Par
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatProgressVacuumHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatProgressVacuumHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatProgressVacuumSchema,
 		PkOrdinals: nil,

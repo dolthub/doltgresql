@@ -48,7 +48,7 @@ func (p PgBackendMemoryContextsHandler) RowIter(ctx *sql.Context, partition sql.
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgBackendMemoryContextsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgBackendMemoryContextsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgBackendMemoryContextsSchema,
 		PkOrdinals: nil,

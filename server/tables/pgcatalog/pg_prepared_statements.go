@@ -48,7 +48,7 @@ func (p PgPreparedStatementsHandler) RowIter(ctx *sql.Context, partition sql.Par
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgPreparedStatementsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgPreparedStatementsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgPreparedStatementsSchema,
 		PkOrdinals: nil,

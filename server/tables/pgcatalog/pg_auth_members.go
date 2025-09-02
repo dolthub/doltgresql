@@ -48,7 +48,7 @@ func (p PgAuthMembersHandler) RowIter(ctx *sql.Context, partition sql.Partition)
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgAuthMembersHandler) Schema() sql.PrimaryKeySchema {
+func (p PgAuthMembersHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgAuthMembersSchema,
 		PkOrdinals: nil,

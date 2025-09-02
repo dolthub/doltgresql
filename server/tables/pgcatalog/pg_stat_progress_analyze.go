@@ -48,7 +48,7 @@ func (p PgStatProgressAnalyzeHandler) RowIter(ctx *sql.Context, partition sql.Pa
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatProgressAnalyzeHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatProgressAnalyzeHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatProgressAnalyzeSchema,
 		PkOrdinals: nil,

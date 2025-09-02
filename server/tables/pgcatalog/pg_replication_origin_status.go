@@ -48,7 +48,7 @@ func (p PgReplicationOriginStatusHandler) RowIter(ctx *sql.Context, partition sq
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgReplicationOriginStatusHandler) Schema() sql.PrimaryKeySchema {
+func (p PgReplicationOriginStatusHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgReplicationOriginStatusSchema,
 		PkOrdinals: nil,

@@ -48,7 +48,7 @@ func (p PgStatProgressCopyHandler) RowIter(ctx *sql.Context, partition sql.Parti
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatProgressCopyHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatProgressCopyHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatProgressCopySchema,
 		PkOrdinals: nil,

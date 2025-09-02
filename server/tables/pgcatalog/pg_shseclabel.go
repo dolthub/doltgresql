@@ -48,7 +48,7 @@ func (p PgShseclabelHandler) RowIter(ctx *sql.Context, partition sql.Partition) 
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgShseclabelHandler) Schema() sql.PrimaryKeySchema {
+func (p PgShseclabelHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgShseclabelSchema,
 		PkOrdinals: nil,

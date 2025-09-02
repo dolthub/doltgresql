@@ -48,7 +48,7 @@ func (p PgStatDatabaseConflictsHandler) RowIter(ctx *sql.Context, partition sql.
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatDatabaseConflictsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatDatabaseConflictsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatDatabaseConflictsSchema,
 		PkOrdinals: nil,

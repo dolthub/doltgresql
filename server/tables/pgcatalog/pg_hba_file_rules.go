@@ -48,7 +48,7 @@ func (p PgHbaFileRulesHandler) RowIter(ctx *sql.Context, partition sql.Partition
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgHbaFileRulesHandler) Schema() sql.PrimaryKeySchema {
+func (p PgHbaFileRulesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgHbaFileRulesSchema,
 		PkOrdinals: nil,

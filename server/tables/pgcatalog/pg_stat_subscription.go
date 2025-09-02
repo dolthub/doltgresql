@@ -48,7 +48,7 @@ func (p PgStatSubscriptionHandler) RowIter(ctx *sql.Context, partition sql.Parti
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatSubscriptionHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatSubscriptionHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatSubscriptionSchema,
 		PkOrdinals: nil,

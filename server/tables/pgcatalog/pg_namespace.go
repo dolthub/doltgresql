@@ -77,7 +77,7 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context, partition sql.Partition) (
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgNamespaceHandler) Schema() sql.PrimaryKeySchema {
+func (p PgNamespaceHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgNamespaceSchema,
 		PkOrdinals: nil,

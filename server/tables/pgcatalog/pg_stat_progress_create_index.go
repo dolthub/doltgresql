@@ -48,7 +48,7 @@ func (p PgStatProgressCreateIndexHandler) RowIter(ctx *sql.Context, partition sq
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatProgressCreateIndexHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatProgressCreateIndexHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatProgressCreateIndexSchema,
 		PkOrdinals: nil,

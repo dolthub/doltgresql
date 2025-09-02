@@ -48,7 +48,7 @@ func (p PgShmemAllocationsHandler) RowIter(ctx *sql.Context, partition sql.Parti
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgShmemAllocationsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgShmemAllocationsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgShmemAllocationsSchema,
 		PkOrdinals: nil,

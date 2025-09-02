@@ -48,7 +48,7 @@ func (p PgShadowHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgShadowHandler) Schema() sql.PrimaryKeySchema {
+func (p PgShadowHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgShadowSchema,
 		PkOrdinals: nil,

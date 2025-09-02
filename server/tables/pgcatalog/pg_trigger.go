@@ -48,7 +48,7 @@ func (p PgTriggerHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sq
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgTriggerHandler) Schema() sql.PrimaryKeySchema {
+func (p PgTriggerHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgTriggerSchema,
 		PkOrdinals: nil,

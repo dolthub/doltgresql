@@ -48,7 +48,7 @@ func (p PgAvailableExtensionVersionsHandler) RowIter(ctx *sql.Context, partition
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgAvailableExtensionVersionsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgAvailableExtensionVersionsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgAvailableExtensionVersionsSchema,
 		PkOrdinals: nil,

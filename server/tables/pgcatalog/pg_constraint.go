@@ -189,7 +189,7 @@ func getFKAction(action sql.ForeignKeyReferentialAction) string {
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgConstraintHandler) Schema() sql.PrimaryKeySchema {
+func (p PgConstraintHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     PgConstraintSchema,
 		PkOrdinals: nil,

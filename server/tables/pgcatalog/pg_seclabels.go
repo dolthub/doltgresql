@@ -48,7 +48,7 @@ func (p PgSeclabelsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgSeclabelsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgSeclabelsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgSeclabelsSchema,
 		PkOrdinals: nil,

@@ -48,7 +48,7 @@ func (p PgReplicationSlotsHandler) RowIter(ctx *sql.Context, partition sql.Parti
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgReplicationSlotsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgReplicationSlotsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgReplicationSlotsSchema,
 		PkOrdinals: nil,

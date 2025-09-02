@@ -48,7 +48,7 @@ func (p PgIdentFileMappingsHandler) RowIter(ctx *sql.Context, partition sql.Part
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgIdentFileMappingsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgIdentFileMappingsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgIdentFileMappingsSchema,
 		PkOrdinals: nil,

@@ -71,7 +71,7 @@ func (p PgDatabaseHandler) RowIter(ctx *sql.Context, partition sql.Partition) (s
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgDatabaseHandler) Schema() sql.PrimaryKeySchema {
+func (p PgDatabaseHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgDatabaseSchema,
 		PkOrdinals: nil,

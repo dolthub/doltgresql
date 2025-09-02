@@ -48,7 +48,7 @@ func (p PgStatSslHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sq
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatSslHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatSslHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatSslSchema,
 		PkOrdinals: nil,

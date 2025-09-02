@@ -48,7 +48,7 @@ func (p PgRewriteHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sq
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgRewriteHandler) Schema() sql.PrimaryKeySchema {
+func (p PgRewriteHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgRewriteSchema,
 		PkOrdinals: nil,

@@ -48,7 +48,7 @@ func (p PgStatWalReceiverHandler) RowIter(ctx *sql.Context, partition sql.Partit
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatWalReceiverHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatWalReceiverHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatWalReceiverSchema,
 		PkOrdinals: nil,

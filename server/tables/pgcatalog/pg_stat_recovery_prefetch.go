@@ -48,7 +48,7 @@ func (p PgStatRecoveryPrefetchHandler) RowIter(ctx *sql.Context, partition sql.P
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatRecoveryPrefetchHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatRecoveryPrefetchHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatRecoveryPrefetchSchema,
 		PkOrdinals: nil,

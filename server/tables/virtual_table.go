@@ -70,7 +70,7 @@ func (tbl *VirtualTable) Partitions(ctx *sql.Context) (sql.PartitionIter, error)
 
 // PrimaryKeySchema implements the interface sql.PrimaryKeyTable.
 func (tbl *VirtualTable) PrimaryKeySchema() sql.PrimaryKeySchema {
-	return tbl.handler.Schema()
+	return tbl.handler.PkSchema()
 }
 
 // Schema implements the interface sql.Table.

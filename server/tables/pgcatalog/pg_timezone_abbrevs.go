@@ -48,7 +48,7 @@ func (p PgTimezoneAbbrevsHandler) RowIter(ctx *sql.Context, partition sql.Partit
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgTimezoneAbbrevsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgTimezoneAbbrevsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgTimezoneAbbrevsSchema,
 		PkOrdinals: nil,

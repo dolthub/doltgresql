@@ -48,7 +48,7 @@ func (p PgDbRoleSettingHandler) RowIter(ctx *sql.Context, partition sql.Partitio
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgDbRoleSettingHandler) Schema() sql.PrimaryKeySchema {
+func (p PgDbRoleSettingHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgDbRoleSettingSchema,
 		PkOrdinals: nil,

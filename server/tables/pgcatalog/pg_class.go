@@ -177,7 +177,7 @@ func getIndexName(idx sql.Index) string {
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgClassHandler) Schema() sql.PrimaryKeySchema {
+func (p PgClassHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgClassSchema,
 		PkOrdinals: nil,
