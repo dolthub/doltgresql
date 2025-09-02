@@ -15,6 +15,7 @@
 package analyzer
 
 import (
+	"github.com/dolthub/doltgresql/server/index"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -109,6 +110,8 @@ func initEngine() {
 	planbuilder.IsAggregateFunc = IsAggregateFunc
 
 	expression.DefaultExpressionFactory = pgexpression.PostgresExpressionFactory{}
+	
+	analyzer.SplitConjunction = index.SplitConjunction
 }
 
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by
