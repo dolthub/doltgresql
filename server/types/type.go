@@ -282,6 +282,8 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
 	case id.Id:
 		return cmp.Compare(id.Cache().ToOID(ab), id.Cache().ToOID(v2.(id.Id))), nil
+	case id.Oid:
+		return cmp.Compare(ab.OID(), v2.(id.Oid).OID()), nil
 	case []any:
 		if !t.IsArrayType() {
 			return 0, errors.Errorf("array value received in Compare for non array type")
@@ -366,6 +368,8 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	case "oid", "regclass", "regproc", "regtype":
 		if _, ok := v.(id.Id); ok {
 			return v, sql.InRange, nil
+		} else if i32, ok := v.(int32); ok {
+			return id.NewOID(uint32(i32)), sql.InRange, nil
 		}
 	case "xid":
 		if _, ok := v.(uint32); ok {
