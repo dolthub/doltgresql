@@ -102,13 +102,15 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 		oidRng := msrng[0]
 		var oidLower, oidUpper id.Id
 		if oidRng.HasLowerBound() {
-			oidLower = sql.GetMySQLRangeCutKey(oidRng.LowerBound).(id.Id)
+			lowerRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
+			oidUpper = id.Cache().ToInternal(lowerRangeCutKey.(id.Oid).OID())
 			gte = &pgClass{
 				oid: oidLower,
 			}
 		}
 		if oidRng.HasUpperBound() {
-			oidUpper = sql.GetMySQLRangeCutKey(oidRng.UpperBound).(id.Id)
+			upperRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
+			oidUpper = id.Cache().ToInternal(upperRangeCutKey.(id.Oid).OID())
 			lte = &pgClass{
 				oid: oidUpper,
 			}

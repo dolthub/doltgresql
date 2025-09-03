@@ -4137,6 +4137,25 @@ ORDER BY 1;`,
 					},
 				},
 				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname > 't' AND c.relname < 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t1"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid = 1496157034
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
 					Query: `EXPLAIN SELECT c.oid
 FROM pg_catalog.pg_class c 
 WHERE c.relname = 't2' and c.relnamespace = 2200
@@ -4153,10 +4172,46 @@ ORDER BY 1;`,
 						{"                 └─ filters: [{[t2, t2], [\x13\x01\x042200, \x13\x01\x042200]}]"},
 					},
 				},
+				{
+					Query: `EXPLAIN SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname > 't' AND c.relname < 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname]"},
+						{" └─ Filter"},
+						{"     ├─ (((c.relname > 't' AND c.relname < 't2') AND c.relnamespace = 2200) AND c.relkind = 'r')"},
+						{"     └─ TableAlias(c)"},
+						{"         └─ IndexedTableAccess(pg_class)"},
+						{"             ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"             └─ filters: [{(t, t2), [\x13\x01\x042200, \x13\x01\x042200]}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid = 1496157034
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname]"},
+						{" └─ Sort(c.relname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ c.oid = 1496157034"},
+						{"         └─ TableAlias(c)"},
+						{"             └─ IndexedTableAccess(pg_class)"},
+						{"                 ├─ index: [pg_class.oid]"},
+						{"                 └─ filters: [{[\x13\x01"},
+						{"                    1496157034, \x13\x01"},
+						{"                    1496157034]}]"},
+					},
+				},
 			},
 		},
 		{
-			Name:        "pg_catalog join performance",
+			Name:        "join on pg_class",
 			SetUpScript: sharedSetupScript,
 			Assertions: []ScriptTestAssertion{
 				{
@@ -4188,14 +4243,14 @@ ORDER BY 1,2;`,
 						{" └─ Sort(c.relname ASC, a.attname ASC)"},
 						{"     └─ Filter"},
 						{"         ├─ (((c.relkind = 'r' AND a.attnum > 0) AND (NOT(a.attisdropped))) AND c.relname = 't2')"},
-						{"         └─ InnerJoin"},
-						{"             ├─ c.oid = a.attrelid"},
+						{"         └─ LookupJoin"},
 						{"             ├─ TableAlias(a)"},
 						{"             │   └─ Table"},
 						{"             │       └─ name: pg_attribute"},
 						{"             └─ TableAlias(c)"},
-						{"                 └─ Table"},
-						{"                     └─ name: pg_class"},
+						{"                 └─ IndexedTableAccess(pg_class)"},
+						{"                     ├─ index: [pg_class.oid]"},
+						{"                     └─ keys: a.attrelid"},
 					},
 				},
 			},
