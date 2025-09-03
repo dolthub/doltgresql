@@ -3141,6 +3141,42 @@ func TestDateAndTimeFunction(t *testing.T) {
 			},
 		},
 		{
+			Name: "make_timestamptz",
+			SetUpScript: []string{
+				`SET timezone = '+06:30'`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT make_timestamptz(2014, 12, 28, 6, 30, 45.887);`,
+					Expected: []sql.Row{{"2014-12-28 06:30:45.887-06:30"}},
+				},
+				{
+					Query:    `SELECT make_timestamptz(-44, 3, 15, 12, 30, 15);`,
+					Expected: []sql.Row{{"0044-03-15 12:30:15-06:30 BC"}},
+				},
+				{
+					Query:    `SELECT make_timestamptz(-1, 3, 15, 12, 30, 15);`,
+					Expected: []sql.Row{{"0001-03-15 12:30:15-06:30 BC"}},
+				},
+				{
+					Query:       `select make_timestamptz(0, 7, 15, 12, 30, 15);`,
+					ExpectedErr: `date field value out of range`,
+				},
+				{
+					Query:       `SELECT make_timestamptz(1910, 12, 24, 0, 0, 0, 'Nehwon/Lankhmar');`,
+					ExpectedErr: `time zone "Nehwon/Lankhmar" not recognized`,
+				},
+				{
+					Query:    `SELECT make_timestamptz(1881, 12, 10, 0, 0, 0, 'Europe/Paris') AT TIME ZONE 'UTC';`,
+					Expected: []sql.Row{{"1881-12-09 23:50:39"}},
+				},
+				{
+					Query:    `SELECT make_timestamptz(2008, 12, 10, 10, 10, 10, 'EST');`,
+					Expected: []sql.Row{{"2008-12-10 08:40:10-06:30"}},
+				},
+			},
+		},
+		{
 			Name: "date_bin",
 			Assertions: []ScriptTestAssertion{
 				{

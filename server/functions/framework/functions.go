@@ -148,6 +148,20 @@ type Function6 struct {
 	Callable           func(ctx *sql.Context, paramsAndReturn [7]*pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any, val5 any, val6 any) (any, error)
 }
 
+// Function7 is a function that takes seven parameters. The parameter and return types are passed into the Callable
+// function when the parameters (and possibly return type) have at least one polymorphic type. The return type is the
+// last type in the array.
+type Function7 struct {
+	Name               string
+	Return             *pgtypes.DoltgresType
+	Parameters         [7]*pgtypes.DoltgresType
+	Variadic           bool
+	IsNonDeterministic bool
+	Strict             bool
+	SRF                bool
+	Callable           func(ctx *sql.Context, paramsAndReturn [8]*pgtypes.DoltgresType, val1 any, val2 any, val3 any, val4 any, val5 any, val6 any, val7 any) (any, error)
+}
+
 var _ FunctionInterface = Function0{}
 var _ FunctionInterface = Function1{}
 var _ FunctionInterface = Function2{}
@@ -155,6 +169,7 @@ var _ FunctionInterface = Function3{}
 var _ FunctionInterface = Function4{}
 var _ FunctionInterface = Function5{}
 var _ FunctionInterface = Function6{}
+var _ FunctionInterface = Function7{}
 
 // GetName implements the FunctionInterface interface.
 func (f Function0) GetName() string { return f.Name }
@@ -360,7 +375,7 @@ func (f Function5) VariadicIndex() int {
 }
 
 // GetExpectedParameterCount implements the FunctionInterface interface.
-func (f Function5) GetExpectedParameterCount() int { return 6 }
+func (f Function5) GetExpectedParameterCount() int { return 5 }
 
 // NonDeterministic implements the FunctionInterface interface.
 func (f Function5) NonDeterministic() bool { return f.IsNonDeterministic }
@@ -416,6 +431,44 @@ func (f Function6) InternalID() id.Id {
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function6) enforceInterfaceInheritance(error) {}
+
+// GetName implements the FunctionInterface interface.
+func (f Function7) GetName() string { return f.Name }
+
+// GetReturn implements the FunctionInterface interface.
+func (f Function7) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
+
+// GetParameters implements the FunctionInterface interface.
+func (f Function7) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+
+// VariadicIndex implements the FunctionInterface interface.
+func (f Function7) VariadicIndex() int {
+	if f.Variadic {
+		return 6
+	} else {
+		return -1
+	}
+}
+
+// GetExpectedParameterCount implements the FunctionInterface interface.
+func (f Function7) GetExpectedParameterCount() int { return 7 }
+
+// NonDeterministic implements the FunctionInterface interface.
+func (f Function7) NonDeterministic() bool { return f.IsNonDeterministic }
+
+// IsStrict implements the FunctionInterface interface.
+func (f Function7) IsStrict() bool { return f.Strict }
+
+// IsSRF implements the FunctionInterface interface.
+func (f Function7) IsSRF() bool { return f.SRF }
+
+// InternalID implements the FunctionInterface interface.
+func (f Function7) InternalID() id.Id {
+	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID, f.Parameters[2].ID, f.Parameters[3].ID, f.Parameters[4].ID, f.Parameters[5].ID, f.Parameters[6].ID).AsId()
+}
+
+// enforceInterfaceInheritance implements the FunctionInterface interface.
+func (f Function7) enforceInterfaceInheritance(error) {}
 
 // Func1Aggregate is a function that takes one parameter and is an aggregate function.
 type Func1Aggregate struct {
