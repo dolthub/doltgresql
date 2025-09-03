@@ -122,16 +122,17 @@ var timezone_text_timestamp = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
+		t := timeVal.Add(time.Duration(int64(-newOffset) * NanosPerSec))
 		if !isOffset {
 			// for named time zone
-			return timeVal.Add(time.Duration(int64(newOffset) * NanosPerSec)), nil
+			return t, nil
 		}
 		// for time offset
 		serverLoc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return timeVal.Add(time.Duration(-int64(newOffset) * NanosPerSec)).In(serverLoc), nil
+		return t.In(serverLoc), nil
 	},
 }
 
@@ -162,15 +163,15 @@ func convertTzToOffsetSecs(t time.Time, tz string) (*time.Location, int32, bool,
 	}
 	loc, err := time.LoadLocation(tz)
 	if err == nil {
-		_, offsetSecsUnconverted := time.Now().In(loc).Zone()
-		return loc, int32(-offsetSecsUnconverted), false, nil
+		_, offsetSecsUnconverted := t.In(loc).Zone()
+		return loc, int32(offsetSecsUnconverted), false, nil
 	}
 
 	if abbr, tzid := pgdate.GetTimezoneIdentifier(tz); tzid != "" {
 		loc, err = time.LoadLocation(tzid)
 		if err == nil {
 			_, offsetSecsUnconverted := t.In(loc).Zone()
-			return loc, int32(-offsetSecsUnconverted), false, nil
+			return loc, int32(offsetSecsUnconverted), false, nil
 		}
 	} else if abbr != "" {
 		tz = abbr
