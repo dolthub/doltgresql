@@ -129,10 +129,12 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 			relnameUpper = sql.GetMySQLRangeCutKey(relNameRange.UpperBound).(string)
 		}
 		if schemaOidRange.HasLowerBound() {
-			schemaOidLower = sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound).(id.Id)
+			lowerRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound)
+			schemaOidLower = id.Cache().ToInternal(lowerRangeCutKey.(id.Oid).OID())
 		}
 		if schemaOidRange.HasUpperBound() {
-			schemaOidUpper = sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound).(id.Id)
+			upperRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound)
+			schemaOidUpper = id.Cache().ToInternal(upperRangeCutKey.(id.Oid).OID())
 		}
 
 		if relNameRange.HasLowerBound() || schemaOidRange.HasLowerBound() {

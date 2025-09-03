@@ -4130,7 +4130,7 @@ func TestPgCatalogIndexes(t *testing.T) {
 				{
 					Query: `SELECT c.oid
 FROM pg_catalog.pg_class c 
-WHERE c.relname = 't2' and c.relnamespace = 2200
+WHERE c.relname = 't2' and c.relnamespace = 2200 -- public
 ORDER BY 1;`,
 					Expected: []sql.Row{
 						{1496157034},
@@ -4142,7 +4142,15 @@ FROM pg_catalog.pg_class c
 WHERE c.relname = 't2' and c.relnamespace = 2200
 ORDER BY 1;`,
 					Expected: []sql.Row{
-						{1496157034},
+						{"Project"},
+						{" ├─ columns: [c.oid]"},
+						{" └─ Sort(c.oid ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (c.relname = 't2' AND c.relnamespace = 2200)"},
+						{"         └─ TableAlias(c)"},
+						{"             └─ IndexedTableAccess(pg_class)"},
+						{"                 ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"                 └─ filters: [{[t2, t2], [\x13\x01\x042200, \x13\x01\x042200]}]"},
 					},
 				},
 			},

@@ -234,7 +234,7 @@ func (p pgClassIdxPartIter) Close(context *sql.Context) error {
 	return nil
 }
 
-func (p pgClassIdxPartIter) Next(context *sql.Context) (sql.Partition, error) {
+func (p *pgClassIdxPartIter) Next(context *sql.Context) (sql.Partition, error) {
 	if p.used {
 		return nil, io.EOF
 	}
