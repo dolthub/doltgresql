@@ -89,7 +89,7 @@ type DoltgresType struct {
 	BaseTypeForInternal id.Type // used for INTERNAL type only
 }
 
-var _ types.ExtendedType = &DoltgresType{}
+var _ sql.ExtendedType = &DoltgresType{}
 var _ sql.NullType = &DoltgresType{}
 var _ sql.StringType = &DoltgresType{}
 
@@ -398,7 +398,7 @@ var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCas
 var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
 
 // ConvertToType implements the types.ExtendedType interface.
-func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ types.ExtendedType, val any) (any, error) {
+func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, error) {
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
 		return nil, errors.Errorf("expected DoltgresType, got %T", typ)
@@ -595,15 +595,15 @@ func (t *DoltgresType) MaxCharacterLength() int64 {
 }
 
 // MaxSerializedWidth implements the types.ExtendedType interface.
-func (t *DoltgresType) MaxSerializedWidth() types.ExtendedTypeSerializedWidth {
+func (t *DoltgresType) MaxSerializedWidth() sql.ExtendedTypeSerializedWidth {
 	if t.TypLength < 0 {
 		// Length will be 0 for any non-string type, as well as unbounded string types
 		if t.Length() > 0 {
-			return types.ExtendedTypeSerializedWidth_64K
+			return sql.ExtendedTypeSerializedWidth_64K
 		}
-		return types.ExtendedTypeSerializedWidth_Unbounded
+		return sql.ExtendedTypeSerializedWidth_Unbounded
 	}
-	return types.ExtendedTypeSerializedWidth_64K
+	return sql.ExtendedTypeSerializedWidth_64K
 }
 
 // MaxTextResponseByteLength implements the types.ExtendedType interface.
