@@ -85,7 +85,7 @@ func loadLibraryInternal(path string) (InternalLoadedLibrary, error) {
 					dllSha := sha256.Sum256(dllBytes)
 					extDllSha := sha256.New()
 					_, _ = io.Copy(extDllSha, extDll)
-					shouldWriteFiles = bytes.Compare(extDllSha.Sum(nil), dllSha[:]) != 0
+					shouldWriteFiles = !bytes.Equal(extDllSha.Sum(nil), dllSha[:])
 				}()
 			}
 			if shouldWriteFiles {
