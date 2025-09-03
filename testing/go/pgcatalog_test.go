@@ -4149,6 +4149,37 @@ ORDER BY 1;`,
 				{
 					Query: `SELECT c.relname
 FROM pg_catalog.pg_class c 
+WHERE c.relname >= 't1' AND c.relname <= 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t1"},
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname >= 't1' AND c.relname < 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t1"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname > 't1' AND c.relname <= 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
 WHERE c.oid = 1496157034
 ORDER BY 1;`,
 					Expected: []sql.Row{
