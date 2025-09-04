@@ -20,9 +20,28 @@ jobs:
       with:
         go-version-file: go.mod
       id: go
+    - name: Install ICU4C (MacOS)
+      if: ${{ matrix.platform == 'macos-latest' }}
+      run: |
+        dir=$(brew --cellar icu4c)
+        dir="$dir"/$(ls "$dir")
+        echo CGO_CPPFLAGS=-I$dir/include >> $GITHUB_ENV
+        echo CGO_LDFLAGS=-L$dir/lib >> $GITHUB_ENV
+    - name: Install ICU4C (Windows)
+      if: ${{ matrix.platform == 'windows-latest' }}
+      uses: msys2/setup-msys2@v2
+      with:
+        path-type: inherit
+        msystem: UCRT64
+        pacboy: icu:p toolchain:p pkg-config:p
     - name: Build SQL Syntax
       run: ./build.sh
       working-directory: ./postgres/parser
       shell: bash
-    - name: Test
+    - name: Test (*nix)
+      if: ${{ matrix.platform != 'windows-latest' }}
       run: go test $(go list ./testing/go/enginetest)
+    - name: Test (Windows)
+      if: ${{ matrix.platform == 'windows-latest' }}
+      shell: msys2 {0}
+      run: go.exe test $(go.exe list ./testing/go/enginetest)

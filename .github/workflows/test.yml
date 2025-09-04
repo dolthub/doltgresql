@@ -20,6 +20,20 @@ jobs:
       with:
         go-version-file: go.mod
       id: go
+    - name: Install ICU4C (MacOS)
+      if: ${{ matrix.platform == 'macos-latest' }}
+      run: |
+        dir=$(brew --cellar icu4c)
+        dir="$dir"/$(ls "$dir")
+        echo CGO_CPPFLAGS=-I$dir/include >> $GITHUB_ENV
+        echo CGO_LDFLAGS=-L$dir/lib >> $GITHUB_ENV
+    - name: Install ICU4C (Windows)
+      if: ${{ matrix.platform == 'windows-latest' }}
+      uses: msys2/setup-msys2@v2
+      with:
+        path-type: inherit
+        msystem: UCRT64
+        pacboy: icu:p toolchain:p pkg-config:p
     - name: Build SQL Syntax
       run: ./build.sh
       working-directory: ./postgres/parser
@@ -28,10 +42,14 @@ jobs:
       uses: tj-actions/install-postgresql@v3
       with:
         postgresql-version: 15
-    - name: Test
-      if: ${{ matrix.platform != 'ubuntu-latest' }}
+    - name: Test (MacOS)
+      if: ${{ matrix.platform == 'macos-latest' }}
       run: go test -skip="TestReplication" $(go list ./... | grep -v enginetest)
-    - name: Test
+    - name: Test (Windows)
+      if: ${{ matrix.platform == 'windows-latest' }}
+      shell: msys2 {0}
+      run: go.exe test -skip="TestReplication" $(go.exe list ./... | grep -v enginetest)
+    - name: Test (Linux)
       if: ${{ matrix.platform == 'ubuntu-latest' }}
       # Enginetest harness breaks with race testing, not sure why yet
       run: go test -race -skip="TestReplication" $(go list ./... | grep -v enginetest)
