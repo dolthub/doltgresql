@@ -4123,7 +4123,7 @@ func TestPgCatalogIndexes(t *testing.T) {
 
 	RunScripts(t, []ScriptTest{
 		{
-			Name:        "pg_class name lookup",
+			Name:        "pg_class index lookup",
 			Focus: true,
 			SetUpScript: sharedSetupScript,
 			Assertions: []ScriptTestAssertion{
@@ -4187,6 +4187,15 @@ ORDER BY 1;`,
 					},
 				},
 				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid >= 1496157034 AND c.oid < 1496157035
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
 					Query: `EXPLAIN SELECT c.oid
 FROM pg_catalog.pg_class c 
 WHERE c.relname = 't2' and c.relnamespace = 2200
@@ -4200,7 +4209,7 @@ ORDER BY 1;`,
 						{"         └─ TableAlias(c)"},
 						{"             └─ IndexedTableAccess(pg_class)"},
 						{"                 ├─ index: [pg_class.relname,pg_class.relnamespace]"},
-						{"                 └─ filters: [{[t2, t2], [\x13\x01\x042200, \x13\x01\x042200]}]"},
+						{"                 └─ filters: [{[t2, t2], [2200, 2200]}]"},
 					},
 				},
 				{
@@ -4217,7 +4226,7 @@ ORDER BY 1;`,
 						{"     └─ TableAlias(c)"},
 						{"         └─ IndexedTableAccess(pg_class)"},
 						{"             ├─ index: [pg_class.relname,pg_class.relnamespace]"},
-						{"             └─ filters: [{(t, t2), [\x13\x01\x042200, \x13\x01\x042200]}]"},
+						{"             └─ filters: [{(t, t2), [2200, 2200]}]"},
 					},
 				},
 				{
@@ -4234,9 +4243,7 @@ ORDER BY 1;`,
 						{"         └─ TableAlias(c)"},
 						{"             └─ IndexedTableAccess(pg_class)"},
 						{"                 ├─ index: [pg_class.oid]"},
-						{"                 └─ filters: [{[\x13\x01"},
-						{"                    1496157034, \x13\x01"},
-						{"                    1496157034]}]"},
+						{"                 └─ filters: [{[1496157034, 1496157034]}]"},
 					},
 				},
 			},
