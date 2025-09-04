@@ -368,8 +368,6 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	case "oid", "regclass", "regproc", "regtype":
 		if _, ok := v.(id.Id); ok {
 			return v, sql.InRange, nil
-		} else if i32, ok := v.(int32); ok {
-			return id.NewOID(uint32(i32)), sql.InRange, nil
 		}
 	case "xid":
 		if _, ok := v.(uint32); ok {
