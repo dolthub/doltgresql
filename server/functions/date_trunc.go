@@ -82,7 +82,7 @@ var date_trunc_text_timestamptz_text = framework.Function3{
 		timezone := val3.(string)
 
 		// Convert timezone string to offset
-		newOffset, err := convertTzToOffsetSecs(timezone)
+		_, newOffset, _, err := convertTzToOffsetSecs(ts, timezone)
 		if err != nil {
 			return nil, err
 		}

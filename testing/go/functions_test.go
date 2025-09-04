@@ -1978,7 +1978,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{Numeric("2006")}},
 				},
 				{
-					Skip:     true, // TODO: not supported yet
 					Query:    `SELECT extract(julian from date '2021-06-23');`,
 					Expected: []sql.Row{{Numeric("2459389")}},
 				},
@@ -2541,7 +2540,6 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{"-43 years -9 mons -26 days -22:59:58.6"}},
 				},
 				{
-					Skip:     true, // TODO: current_date should return timestamp, not text
 					Query:    `SELECT age(current_date);`,
 					Expected: []sql.Row{{"00:00:00"}},
 				},
@@ -2553,7 +2551,7 @@ func TestDateAndTimeFunction(t *testing.T) {
 		},
 		{
 			Name:        "timezone",
-			SetUpScript: []string{},
+			SetUpScript: []string{`SET timezone = '+06:30'`},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `select timezone(interval '2 minutes', timestamp with time zone '2001-02-16 20:38:40.12-05');`,
@@ -2573,15 +2571,19 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 				{
 					Query:    `select timezone('-04:45', timestamp '2001-02-16 20:38:40.12');`,
-					Expected: []sql.Row{{"2001-02-16 07:53:40.12-08"}},
+					Expected: []sql.Row{{"2001-02-16 09:23:40.12-06:30"}},
 				},
 				{
 					Query:    `select timezone('-04:45:44', timestamp '2001-02-16 20:38:40.12');`,
-					Expected: []sql.Row{{"2001-02-16 07:52:56.12-08"}},
+					Expected: []sql.Row{{"2001-02-16 09:22:56.12-06:30"}},
+				},
+				{
+					Query:    `select '2001-02-16 20:38:40.12'::timestamp at time zone '-04:45:44';`,
+					Expected: []sql.Row{{"2001-02-16 09:22:56.12-06:30"}},
 				},
 				{
 					Query:    `select timezone(interval '2 hours 2 minutes', timestamp '2001-02-16 20:38:40.12');`,
-					Expected: []sql.Row{{"2001-02-16 10:36:40.12-08"}},
+					Expected: []sql.Row{{"2001-02-16 12:06:40.12-06:30"}},
 				},
 				{
 					Query:    `select '2024-08-22 14:47:57 -07' at time zone 'utc';`,
@@ -2601,7 +2603,23 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 				{
 					Query:    `select timestamp '2024-08-22 13:47:57-07' at time zone 'utc';`,
-					Expected: []sql.Row{{"2024-08-22 06:47:57-07"}},
+					Expected: []sql.Row{{"2024-08-22 07:17:57-06:30"}},
+				},
+				{
+					Query:    `select '2011-03-27 02:00:00'::timestamp at time zone '+01:00';`,
+					Expected: []sql.Row{{"2011-03-26 20:30:00-06:30"}},
+				},
+				{
+					Query:    `select '2011-03-27 02:00:00'::timestamp at time zone 'UTC';`,
+					Expected: []sql.Row{{"2011-03-26 19:30:00-06:30"}},
+				},
+				{
+					Query:    `select timezone('MSK', timestamp '2011-03-27 02:00:00');`,
+					Expected: []sql.Row{{"2011-03-26 15:30:00-06:30"}},
+				},
+				{
+					Query:    `select '2011-03-27 02:00:00'::timestamp at time zone 'MSK';`,
+					Expected: []sql.Row{{"2011-03-26 15:30:00-06:30"}},
 				},
 			},
 		},
@@ -3067,6 +3085,114 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "current_time and now functions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT now()::timetz::text = current_time()::text;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Skip:     true, // TODO: support precision
+					Query:    `SELECT now()::timetz(4)::text = current_time(5)::text;`,
+					Expected: []sql.Row{{false}},
+				},
+			},
+		},
+		{
+			Name: "make_timestamp",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT make_timestamp(2014, 12, 28, 6, 30, 45.887);`,
+					Expected: []sql.Row{{"2014-12-28 06:30:45.887"}},
+				},
+				{
+					Query:    `SELECT make_timestamp(-44, 3, 15, 12, 30, 15);`,
+					Expected: []sql.Row{{"0044-03-15 12:30:15 BC"}},
+				},
+				{
+					Query:    `SELECT make_timestamp(-1, 3, 15, 12, 30, 15);`,
+					Expected: []sql.Row{{"0001-03-15 12:30:15 BC"}},
+				},
+				{
+					Query:       `select make_timestamp(0, 7, 15, 12, 30, 15);`,
+					ExpectedErr: `date field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 0, 15, 12, 30, 15);`,
+					ExpectedErr: `date field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 7, 32, 12, 30, 15);`,
+					ExpectedErr: `date field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 7, 15, 25, 30, 15);`,
+					ExpectedErr: `time field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 7, 15, 2, 61, 15);`,
+					ExpectedErr: `time field value out of range`,
+				},
+				{
+					Query:       `select make_timestamp(2000, 7, 15, 25, 30, 61);`,
+					ExpectedErr: `time field value out of range`,
+				},
+			},
+		},
+		{
+			Name: "make_timestamptz",
+			SetUpScript: []string{
+				`SET timezone = '+06:30'`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT make_timestamptz(2014, 12, 28, 6, 30, 45.887);`,
+					Expected: []sql.Row{{"2014-12-28 06:30:45.887-06:30"}},
+				},
+				{
+					Query:    `SELECT make_timestamptz(-44, 3, 15, 12, 30, 15);`,
+					Expected: []sql.Row{{"0044-03-15 12:30:15-06:30 BC"}},
+				},
+				{
+					Query:    `SELECT make_timestamptz(-1, 3, 15, 12, 30, 15);`,
+					Expected: []sql.Row{{"0001-03-15 12:30:15-06:30 BC"}},
+				},
+				{
+					Query:       `select make_timestamptz(0, 7, 15, 12, 30, 15);`,
+					ExpectedErr: `date field value out of range`,
+				},
+				{
+					Query:       `SELECT make_timestamptz(1910, 12, 24, 0, 0, 0, 'Nehwon/Lankhmar');`,
+					ExpectedErr: `time zone "Nehwon/Lankhmar" not recognized`,
+				},
+				{
+					Query:    `SELECT make_timestamptz(1881, 12, 10, 0, 0, 0, 'Europe/Paris') AT TIME ZONE 'UTC';`,
+					Expected: []sql.Row{{"1881-12-09 23:50:39"}},
+				},
+				{
+					Query:    `SELECT make_timestamptz(2008, 12, 10, 10, 10, 10, 'EST');`,
+					Expected: []sql.Row{{"2008-12-10 08:40:10-06:30"}},
+				},
+			},
+		},
+		{
+			Name: "date_bin",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT date_bin('5 min'::interval, timestamp '2020-02-01 01:01:01', timestamp '2020-02-01 00:02:30');`,
+					Expected: []sql.Row{{"2020-02-01 00:57:30"}},
+				},
+				{
+					Query:       `SELECT date_bin('5 months'::interval, timestamp '2020-02-01 01:01:01', timestamp '2001-01-01');`,
+					ExpectedErr: `timestamps cannot be binned into intervals containing months or years`,
+				},
+				{
+					Query:       `SELECT date_bin('0 days'::interval, timestamp '1970-01-01 01:00:00' , timestamp '1970-01-01 00:00:00');`,
+					ExpectedErr: `stride must be greater than zero`,
+				},
+			},
+		},
 	})
 }
 
@@ -3285,8 +3411,11 @@ func TestStringFunction(t *testing.T) {
 func TestFormatFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name:        "test to_char",
-			SetUpScript: []string{},
+			Name: "test to_char",
+			SetUpScript: []string{
+				`CREATE TABLE TIMESTAMP_TBL (d1 timestamp(2) without time zone);`,
+				`INSERT INTO TIMESTAMP_TBL VALUES ('1997-02-10 17:32:01-0800');`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'YYYY-MM-DD HH24:MI:SS.MS');`,
@@ -3352,6 +3481,54 @@ func TestFormatFunctions(t *testing.T) {
 					Query: `SELECT to_char(timestamp '2021-09-15 21:43:56.123456789', 'Q q');`,
 					Expected: []sql.Row{
 						{"3 3"},
+					},
+				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD SSSS');`,
+					Expected: []sql.Row{
+						{"2012-12-12 43200"},
+					},
+				},
+				{
+					Query: `SET timezone = '-06:30';`,
+				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZH:TZM');`,
+					Expected: []sql.Row{
+						{"2012-12-12 12:00:00 +06:30"},
+					},
+				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00 -02:00'::timestamptz, 'YYYY-MM-DD HH:MI:SS TZH:TZM');`,
+					Expected: []sql.Row{
+						{"2012-12-12 08:30:00 +06:30"},
+					},
+				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00 -02:00'::timestamptz, 'TZ');`,
+					Expected: []sql.Row{
+						{" "},
+					},
+				},
+				{
+					Query: `SET timezone = 'UTC';`,
+				},
+				{
+					Query: `SELECT to_char('2012-12-12 12:00 -02:00'::timestamptz, 'TZ tz');`,
+					Expected: []sql.Row{
+						{"UTC utc"},
+					},
+				},
+				{
+					Query: `SELECT to_char(d1, 'Y,YYY YYYY YYY YY Y CC Q MM WW DDD DD D J') FROM TIMESTAMP_TBL;`,
+					Expected: []sql.Row{
+						{"1,997 1997 997 97 7 20 1 02 06 041 10 2 2450490"},
+					},
+				},
+				{
+					Query: `SELECT to_char(d1, 'DAY Day day DY Dy dy MONTH Month month RM MON Mon mon') FROM TIMESTAMP_TBL;`,
+					Expected: []sql.Row{
+						{`MONDAY    Monday    monday    MON Mon mon FEBRUARY  February  february  II   FEB Feb feb`},
 					},
 				},
 			},

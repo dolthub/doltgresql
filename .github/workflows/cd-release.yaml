@@ -102,7 +102,7 @@ jobs:
         run: |
           latest=$(git rev-parse HEAD)
           echo "commitish=$latest" >> $GITHUB_OUTPUT
-          GO_BUILD_VERSION=1.24.1 scripts/build_binaries.sh
+          GO_BUILD_VERSION=1.24.6 scripts/build_binaries.sh
       - name: Create Release
         id: create_release
         uses: dolthub/create-release@v2
@@ -112,7 +112,6 @@ jobs:
           tag_name: v${{ needs.format-version.outputs.version }}
           release_name: ${{ needs.format-version.outputs.version }}
           draft: false
-          prerelease: true
           commitish: ${{ steps.build_binaries.outputs.commitish }}
       - name: Upload Linux AMD64 Distro
         id: upload-linux-amd64-distro

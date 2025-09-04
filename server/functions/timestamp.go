@@ -48,9 +48,6 @@ var timestamp_in = framework.Function3{
 		//typmod := val3.(int32)
 		// TODO: decode typmod to precision
 		p := 6
-		//if b.Precision == -1 {
-		//	p = b.Precision
-		//}
 		t, _, err := tree.ParseDTimestamp(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
 		if err != nil {
 			return nil, err

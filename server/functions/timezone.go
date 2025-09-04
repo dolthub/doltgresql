@@ -15,12 +15,14 @@
 package functions
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -61,7 +63,7 @@ var timezone_text_timestamptz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
 		timeVal := val2.(time.Time)
-		newOffset, err := convertTzToOffsetSecs(tz)
+		_, newOffset, _, err := convertTzToOffsetSecs(timeVal, tz)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +81,7 @@ var timezone_text_timetz = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
 		timeVal := val2.(time.Time)
-		newOffset, err := convertTzToOffsetSecs(tz)
+		_, newOffset, _, err := convertTzToOffsetSecs(timeVal, tz)
 		if err != nil {
 			return nil, err
 		}
@@ -116,15 +118,21 @@ var timezone_text_timestamp = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
 		timeVal := val2.(time.Time)
-		newOffset, err := convertTzToOffsetSecs(tz)
+		_, newOffset, isOffset, err := convertTzToOffsetSecs(timeVal, tz)
 		if err != nil {
 			return nil, err
 		}
+		t := timeVal.Add(time.Duration(int64(-newOffset) * NanosPerSec))
+		if !isOffset {
+			// for named time zone
+			return t, nil
+		}
+		// for time offset
 		serverLoc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return timeVal.Add(time.Duration(-int64(newOffset) * NanosPerSec)).In(serverLoc), nil
+		return t.In(serverLoc), nil
 	},
 }
 
@@ -146,24 +154,35 @@ var timezone_interval_timestamp = framework.Function2{
 	},
 }
 
-// TZ input can be in format of 'UTC' or '-04:45:33'
-func convertTzToOffsetSecs(tz string) (int32, error) {
+// TZ input can be in format of 'UTC' or '-04:45:33'.
+// It returns location, offset of the given timezone.
+// It also returns true if given timezone is offset; false if named timezone.
+func convertTzToOffsetSecs(t time.Time, tz string) (*time.Location, int32, bool, error) {
 	if strings.ToLower(tz) == "utc" {
 		tz = "UTC"
 	}
 	loc, err := time.LoadLocation(tz)
 	if err == nil {
-		_, offsetSecsUnconverted := time.Now().In(loc).Zone()
-		return int32(-offsetSecsUnconverted), nil
+		_, offsetSecsUnconverted := t.In(loc).Zone()
+		return loc, int32(offsetSecsUnconverted), false, nil
 	}
 
-	var t time.Time
+	if abbr, tzid := pgdate.GetTimezoneIdentifier(tz); tzid != "" {
+		loc, err = time.LoadLocation(tzid)
+		if err == nil {
+			_, offsetSecsUnconverted := t.In(loc).Zone()
+			return loc, int32(offsetSecsUnconverted), false, nil
+		}
+	} else if abbr != "" {
+		tz = abbr
+	}
+
 	if t, err = time.Parse("Z07", tz); err == nil {
 	} else if t, err = time.Parse("Z07:00", tz); err == nil {
 	} else if t, err = time.Parse("Z07:00:00", tz); err != nil {
-		return 0, err
+		return nil, 0, false, err
 	}
 
 	_, offsetSecsUnconverted := t.Zone()
-	return int32(-offsetSecsUnconverted), nil
+	return time.FixedZone(fmt.Sprintf("fixed offset:%d", offsetSecsUnconverted), -offsetSecsUnconverted), int32(-offsetSecsUnconverted), true, nil
 }
