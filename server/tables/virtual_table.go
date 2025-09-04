@@ -31,7 +31,6 @@ var _ sql.PrimaryKeyTable = (*VirtualTable)(nil)
 var _ sql.Table = (*VirtualTable)(nil)
 var _ sql.DatabaseSchemaTable = (*VirtualTable)(nil)
 var _ sql.IndexAddressableTable = (*VirtualTable)(nil)
-var _ sql.IndexSearchableTable = (*VirtualTable)(nil)
 var _ sql.IndexedTable = (*VirtualTable)(nil)
 
 // NewVirtualTable creates a new *VirtualTable from the given Handler.

@@ -21,9 +21,9 @@ import (
 	"github.com/google/btree"
 )
 
-// RangeAnalyzer knows how to convert a Range to a scan range for a particular index.
-type RangeAnalyzer[T any] interface {
-	getIndexScanRange() (*btree.BTreeG[T], T, T)
+// RangeConverter knows how to convert a Range to bounds for a btree scan.
+type RangeConverter[T any] interface {
+	getIndexScanRange(rng sql.Range, index sql.Index) (T, bool, T, bool)
 }
 
 // BTreeIndexAccess knows how to get a btree index by name.
@@ -31,57 +31,63 @@ type BTreeIndexAccess[T any] interface {
 	getIndex(name string) *btree.BTreeG[T]
 }
 
-type sqlLookupIter struct {
-	lookup   sql.IndexLookup
-	rangeConverter RangeAnalyzer[*pgClass]
-	btreeAccess BTreeIndexAccess[*pgClass]
-	classes  *pgClassCache
-	rangeIdx int
-	nextChan chan *pgClass
+// rowConverter converts a value of type T to a sql.Row.
+type rowConverter[T any] func(T) sql.Row
+
+type sqlLookupIter[T any] struct {
+	lookup         sql.IndexLookup
+	rangeConverter RangeConverter[T]
+	btreeAccess    BTreeIndexAccess[T]
+	rowConverter   rowConverter[T]
+	rangeIdx       int
+	nextChan       chan T
 }
 
-func (l *sqlLookupIter) Next(ctx *sql.Context) (sql.Row, error) {
-	nextClass, err := l.NextClassItem()
+func (l *sqlLookupIter[T]) Next(ctx *sql.Context) (sql.Row, error) {
+	nextClass, err := l.NextItem()
 	if err != nil {
 		return nil, err
 	}
 
-	return pgClassToRow(*nextClass), nil
+	return l.rowConverter(*nextClass), nil
 }
 
-func (l sqlLookupIter) Close(context *sql.Context) error {
+func (l *sqlLookupIter[T]) Close(ctx *sql.Context) error {
 	return nil
 }
 
-func (l *sqlLookupIter) NextClassItem() (*pgClass, error) {
+// NextItem returns the next item from the index lookup, or io.EOF if there are no more items.
+// Needs to return a pointer to T so that we can return nil for EOF.
+func (l *sqlLookupIter[T]) NextItem() (*T, error) {
 	if l.rangeIdx >= l.lookup.Ranges.Len() {
 		return nil, io.EOF
 	}
 
 	if l.nextChan != nil {
-		class, ok := <-l.nextChan
+		next, ok := <-l.nextChan
 		if !ok {
 			l.nextChan = nil
 			l.rangeIdx++
-			return l.NextClassItem()
+			return l.NextItem()
 		}
-		return class, nil
+		return &next, nil
 	}
 
-	l.nextChan = make(chan *pgClass)
+	l.nextChan = make(chan T)
 	rng := l.lookup.Ranges.ToRanges()[l.rangeIdx]
 	go func() {
-		idx, gte, lte := l.getIndexScanRange(rng, l.lookup.Index, nil)
-		itr := func(item *pgClass) bool {
+		gte, hasLowerBound, lte, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
+		itr := func(item T) bool {
 			l.nextChan <- item
 			return true
 		}
 
-		if gte != nil && lte != nil {
+		idx := l.btreeAccess.getIndex(l.lookup.Index.(pgCatalogInMemIndex).name)
+		if hasLowerBound && hasUpperBound {
 			idx.AscendRange(gte, lte, itr)
-		} else if gte != nil {
+		} else if hasLowerBound {
 			idx.AscendGreaterOrEqual(gte, itr)
-		} else if lte != nil {
+		} else if hasUpperBound {
 			idx.AscendLessThan(lte, itr)
 		} else {
 			idx.Ascend(itr)
@@ -97,77 +103,10 @@ func (l *sqlLookupIter) NextClassItem() (*pgClass, error) {
 		close(l.nextChan)
 	}()
 
-	return l.NextClassItem()
+	return l.NextItem()
 }
 
-func (l sqlLookupIter) getIndexScanRange(rng sql.Range, index sql.Index, btreeAccess BTreeIndexAccess[*pgClass]) (*btree.BTreeG[*pgClass], *pgClass, *pgClass) {
-	var gte, lte *pgClass
-	var btreeIdx *btree.BTreeG[*pgClass]
-
-	switch index.(pgCatalogInMemIndex).name {
-	case "pg_class_oid_index":
-		btreeIdx = btreeAccess.getIndex("pg_class_oid_index")
-
-		msrng := rng.(sql.MySQLRange)
-		oidRng := msrng[0]
-		if oidRng.HasLowerBound() {
-			lowerRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
-			oidLower := uint32(lowerRangeCutKey.(int32))
-			gte = &pgClass{
-				oidNative: oidLower,
-			}
-		}
-		if oidRng.HasUpperBound() {
-			upperRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
-			oidUpper := uint32(upperRangeCutKey.(int32))
-			lte = &pgClass{
-				oidNative: oidUpper,
-			}
-		}
-
-	case "pg_class_relname_nsp_index":
-		btreeIdx = btreeAccess.getIndex("pg_class_relname_nsp_index")
-		msrng := rng.(sql.MySQLRange)
-		relNameRange := msrng[0]
-		schemaOidRange := msrng[1]
-		var relnameLower, relnameUpper string
-		var schemaOidLower, schemaOidUpper uint32
-
-		if relNameRange.HasLowerBound() {
-			relnameLower = sql.GetMySQLRangeCutKey(relNameRange.LowerBound).(string)
-		}
-		if relNameRange.HasUpperBound() {
-			relnameUpper = sql.GetMySQLRangeCutKey(relNameRange.UpperBound).(string)
-		}
-		if schemaOidRange.HasLowerBound() {
-			lowerRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound)
-			schemaOidLower = uint32(lowerRangeCutKey.(int32))
-		}
-		if schemaOidRange.HasUpperBound() {
-			upperRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound)
-			schemaOidUpper = uint32(upperRangeCutKey.(int32))
-		}
-
-		if relNameRange.HasLowerBound() || schemaOidRange.HasLowerBound() {
-			gte = &pgClass{
-				name:      relnameLower,
-				schemaOidNative: schemaOidLower,
-			}
-		}
-
-		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
-			lte = &pgClass{
-				name:      relnameUpper,
-				schemaOidNative: schemaOidUpper,
-			}
-		}
-	default:
-		panic("unknown index name: " + l.lookup.Index.(pgCatalogInMemIndex).name)
-	}
-
-	return btreeIdx, gte, lte
-}
-
+// pgCatalogInMemIndex is an in-memory implementation of sql.Index for pg_catalog tables.
 type pgCatalogInMemIndex struct {
 	name        string
 	tblName     string

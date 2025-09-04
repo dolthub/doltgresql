@@ -61,7 +61,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 	}
 
 	if pgCatalogCache.pgClasses == nil {
-		var classes []pgClass
+		var classes []*pgClass
 		tableHasIndexes := make(map[uint32]struct{})
 		nameIdx := btree.NewG[*pgClass](2, lessName)
 		oidIdx := btree.NewG(2, lessOid)
@@ -69,7 +69,7 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 				tableHasIndexes[id.Cache().ToOID(table.OID.AsId())] = struct{}{}
-				class := pgClass{
+				class := &pgClass{
 					oid:             index.OID.AsId(),
 					oidNative:       id.Cache().ToOID(index.OID.AsId()),
 					name:            getIndexName(index.Item),
@@ -78,14 +78,14 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 					schemaOid:       schema.OID.AsId(),
 					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 				}
-				nameIdx.ReplaceOrInsert(&class)
-				oidIdx.ReplaceOrInsert(&class)
+				nameIdx.ReplaceOrInsert(class)
+				oidIdx.ReplaceOrInsert(class)
 				classes = append(classes, class)
 				return true, nil
 			},
 			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 				_, hasIndexes := tableHasIndexes[id.Cache().ToOID(table.OID.AsId())]
-				class := pgClass{
+				class := &pgClass{
 					oid:        table.OID.AsId(),
 					oidNative:  id.Cache().ToOID(table.OID.AsId()),
 					name:       table.Item.Name(),
@@ -94,13 +94,13 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 					schemaOid:  schema.OID.AsId(),
 					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 				}
-				nameIdx.ReplaceOrInsert(&class)
-				oidIdx.ReplaceOrInsert(&class)
+				nameIdx.ReplaceOrInsert(class)
+				oidIdx.ReplaceOrInsert(class)
 				classes = append(classes, class)
 				return true, nil
 			},
 			View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
-				class := pgClass{
+				class := &pgClass{
 					oid:        view.OID.AsId(),
 					oidNative:  id.Cache().ToOID(view.OID.AsId()),
 					name:       view.Item.Name,
@@ -109,13 +109,13 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 					schemaOid:  schema.OID.AsId(),
 					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 				}
-				nameIdx.ReplaceOrInsert(&class)
-				oidIdx.ReplaceOrInsert(&class)
+				nameIdx.ReplaceOrInsert(class)
+				oidIdx.ReplaceOrInsert(class)
 				classes = append(classes, class)
 				return true, nil
 			},
 			Sequence: func(ctx *sql.Context, schema functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
-				class := pgClass{
+				class := &pgClass{
 					oid:        sequence.OID.AsId(),
 					oidNative:  id.Cache().ToOID(sequence.OID.AsId()),
 					name:       sequence.Item.Id.SequenceName(),
@@ -124,8 +124,8 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 					schemaOid:  schema.OID.AsId(),
 					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 				}
-				nameIdx.ReplaceOrInsert(&class)
-				oidIdx.ReplaceOrInsert(&class)
+				nameIdx.ReplaceOrInsert(class)
+				oidIdx.ReplaceOrInsert(class)
 				classes = append(classes, class)
 				return true, nil
 			},
@@ -146,14 +146,14 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 			}
 
 			for _, tblName := range systemTables {
-				class := pgClass{
+				class := &pgClass{
 					oid:       id.NewTable(tblName.Schema, tblName.Name).AsId(),
 					name:      tblName.Name,
 					schemaOid: id.NewNamespace(tblName.Schema).AsId(),
 					kind:      "r",
 				}
-				nameIdx.ReplaceOrInsert(&class)
-				oidIdx.ReplaceOrInsert(&class)
+				nameIdx.ReplaceOrInsert(class)
+				oidIdx.ReplaceOrInsert(class)
 				classes = append(classes, class)
 			}
 		}
@@ -166,9 +166,13 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 	}
 
 	if classIdxPart, ok := partition.(pgClassIdxPart); ok {
-		return &sqlLookupIter{
-			lookup:  classIdxPart.lookup,
-			classes: pgCatalogCache.pgClasses,
+		return &sqlLookupIter[*pgClass]{
+			lookup:         classIdxPart.lookup,
+			rangeConverter: p,
+			btreeAccess:    pgCatalogCache.pgClasses,
+			rowConverter:   pgClassToRow,
+			rangeIdx:       0,
+			nextChan:       nil,
 		}, nil
 	}
 
@@ -188,7 +192,78 @@ func getIndexName(idx sql.Index) string {
 	// return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
 }
 
-// Schema implements the interface tables.Handler.
+// getIndexScanRange implements the interface RangeConverter.
+func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgClass, bool, *pgClass, bool) {
+	var gte, lte *pgClass
+	var hasLowerBound, hasUpperBound bool
+
+	switch index.(pgCatalogInMemIndex).name {
+	case "pg_class_oid_index":
+		msrng := rng.(sql.MySQLRange)
+		oidRng := msrng[0]
+		if oidRng.HasLowerBound() {
+			lowerRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
+			oidLower := uint32(lowerRangeCutKey.(int32))
+			gte = &pgClass{
+				oidNative: oidLower,
+			}
+			hasLowerBound = true
+		}
+		if oidRng.HasUpperBound() {
+			upperRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
+			oidUpper := uint32(upperRangeCutKey.(int32))
+			lte = &pgClass{
+				oidNative: oidUpper,
+			}
+			hasUpperBound = true
+		}
+
+	case "pg_class_relname_nsp_index":
+		msrng := rng.(sql.MySQLRange)
+		relNameRange := msrng[0]
+		schemaOidRange := msrng[1]
+		var relnameLower, relnameUpper string
+		var schemaOidLower, schemaOidUpper uint32
+
+		if relNameRange.HasLowerBound() {
+			relnameLower = sql.GetMySQLRangeCutKey(relNameRange.LowerBound).(string)
+			hasLowerBound = true
+		}
+		if relNameRange.HasUpperBound() {
+			relnameUpper = sql.GetMySQLRangeCutKey(relNameRange.UpperBound).(string)
+			hasUpperBound = true
+		}
+
+		if schemaOidRange.HasLowerBound() {
+			lowerRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound)
+			schemaOidLower = uint32(lowerRangeCutKey.(int32))
+		}
+		if schemaOidRange.HasUpperBound() {
+			upperRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound)
+			schemaOidUpper = uint32(upperRangeCutKey.(int32))
+		}
+
+		if relNameRange.HasLowerBound() || schemaOidRange.HasLowerBound() {
+			gte = &pgClass{
+				name:      relnameLower,
+				schemaOidNative: schemaOidLower,
+			}
+		}
+
+		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
+			lte = &pgClass{
+				name:      relnameUpper,
+				schemaOidNative: schemaOidUpper,
+			}
+		}
+	default:
+		panic("unknown index name: " + index.(pgCatalogInMemIndex).name)
+	}
+
+	return gte, hasLowerBound, lte, hasUpperBound
+}
+
+// PkSchema implements the interface tables.Handler.
 func (p PgClassHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgClassSchema,
@@ -342,7 +417,7 @@ func (iter *pgClassTableScanIter) Next(ctx *sql.Context) (sql.Row, error) {
 	return pgClassToRow(class), nil
 }
 
-func pgClassToRow(class pgClass) sql.Row {
+func pgClassToRow(class *pgClass) sql.Row {
 	// TODO: this is temporary definition of 'relam' field
 	var relam = id.Null
 	if class.kind == "i" {

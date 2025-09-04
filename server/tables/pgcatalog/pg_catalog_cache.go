@@ -82,9 +82,23 @@ type pgCatalogCache struct {
 }
 
 type pgClassCache struct {
-	classes      []pgClass
+	classes      []*pgClass
 	nameIdx      *btree.BTreeG[*pgClass]
 	oidIdx       *btree.BTreeG[*pgClass]
+}
+
+var _ BTreeIndexAccess[*pgClass] = &pgClassCache{}
+
+// getIndex implements BTreeIndexAccess.
+func (p pgClassCache) getIndex(name string) *btree.BTreeG[*pgClass] {
+	switch name {
+	case "pg_class_oid_index":
+		return p.oidIdx
+	case "pg_class_relname_nsp_index":
+		return p.nameIdx
+	default:
+		panic("unknown pg_class index: " + name)
+	}
 }
 
 // newPgCatalogCache creates a new pgCatalogCache, with the query/process ID set to |pid|. The PID is important,
