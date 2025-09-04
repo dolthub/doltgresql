@@ -17,7 +17,6 @@ package pgcatalog
 import (
 	"io"
 
-	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/google/btree"
 )
@@ -65,6 +64,7 @@ func (l *sqlLookupIter) NextClassItem() (*pgClass, error) {
 			return true
 		}
 
+		// TODO next: the OID comparison here must be numeric, but the IDs are being compared as strings
 		if gte != nil && lte != nil {
 			idx.AscendRange(gte, lte, itr)
 		} else if gte != nil {
@@ -100,19 +100,18 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 
 		msrng := rng.(sql.MySQLRange)
 		oidRng := msrng[0]
-		var oidLower, oidUpper id.Id
 		if oidRng.HasLowerBound() {
 			lowerRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
-			oidUpper = id.Cache().ToInternal(id.NewOID(uint32(lowerRangeCutKey.(int32))).OID())
+			oidLower := uint32(lowerRangeCutKey.(int32))
 			gte = &pgClass{
-				oid: oidLower,
+				oidNative: oidLower,
 			}
 		}
 		if oidRng.HasUpperBound() {
 			upperRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
-			oidUpper = id.Cache().ToInternal(id.NewOID(uint32(upperRangeCutKey.(int32))).OID())
+			oidUpper := uint32(upperRangeCutKey.(int32))
 			lte = &pgClass{
-				oid: oidUpper,
+				oidNative: oidUpper,
 			}
 		}
 
@@ -122,7 +121,7 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 		relNameRange := msrng[0]
 		schemaOidRange := msrng[1]
 		var relnameLower, relnameUpper string
-		var schemaOidLower, schemaOidUpper id.Id
+		var schemaOidLower, schemaOidUpper uint32
 
 		if relNameRange.HasLowerBound() {
 			relnameLower = sql.GetMySQLRangeCutKey(relNameRange.LowerBound).(string)
@@ -132,24 +131,24 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 		}
 		if schemaOidRange.HasLowerBound() {
 			lowerRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound)
-			schemaOidLower = id.Cache().ToInternal(id.NewOID(uint32(lowerRangeCutKey.(int32))).OID())
+			schemaOidLower = uint32(lowerRangeCutKey.(int32))
 		}
 		if schemaOidRange.HasUpperBound() {
 			upperRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound)
-			schemaOidUpper = id.Cache().ToInternal(id.NewOID(uint32(upperRangeCutKey.(int32))).OID())
+			schemaOidUpper = uint32(upperRangeCutKey.(int32))
 		}
 
 		if relNameRange.HasLowerBound() || schemaOidRange.HasLowerBound() {
 			gte = &pgClass{
 				name:      relnameLower,
-				schemaOid: schemaOidLower,
+				schemaOidNative: schemaOidLower,
 			}
 		}
 
 		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
 			lte = &pgClass{
 				name:      relnameUpper,
-				schemaOid: schemaOidUpper,
+				schemaOidNative: schemaOidUpper,
 			}
 		}
 	default:

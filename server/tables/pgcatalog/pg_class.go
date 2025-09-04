@@ -70,11 +70,13 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 			Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 				tableHasIndexes[id.Cache().ToOID(table.OID.AsId())] = struct{}{}
 				class := pgClass{
-					oid:        index.OID.AsId(),
-					name:       getIndexName(index.Item),
-					hasIndexes: false,
-					kind:       "i",
-					schemaOid:  schema.OID.AsId(),
+					oid:             index.OID.AsId(),
+					oidNative:       id.Cache().ToOID(index.OID.AsId()),
+					name:            getIndexName(index.Item),
+					hasIndexes:      false,
+					kind:            "i",
+					schemaOid:       schema.OID.AsId(),
+					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 				}
 				nameIdx.ReplaceOrInsert(&class)
 				oidIdx.ReplaceOrInsert(&class)
@@ -85,10 +87,12 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 				_, hasIndexes := tableHasIndexes[id.Cache().ToOID(table.OID.AsId())]
 				class := pgClass{
 					oid:        table.OID.AsId(),
+					oidNative:  id.Cache().ToOID(table.OID.AsId()),
 					name:       table.Item.Name(),
 					hasIndexes: hasIndexes,
 					kind:       "r",
 					schemaOid:  schema.OID.AsId(),
+					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 				}
 				nameIdx.ReplaceOrInsert(&class)
 				oidIdx.ReplaceOrInsert(&class)
@@ -98,10 +102,12 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 			View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
 				class := pgClass{
 					oid:        view.OID.AsId(),
+					oidNative:  id.Cache().ToOID(view.OID.AsId()),
 					name:       view.Item.Name,
 					hasIndexes: false,
 					kind:       "v",
 					schemaOid:  schema.OID.AsId(),
+					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 				}
 				nameIdx.ReplaceOrInsert(&class)
 				oidIdx.ReplaceOrInsert(&class)
@@ -111,10 +117,12 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 			Sequence: func(ctx *sql.Context, schema functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
 				class := pgClass{
 					oid:        sequence.OID.AsId(),
+					oidNative:  id.Cache().ToOID(sequence.OID.AsId()),
 					name:       sequence.Item.Id.SequenceName(),
 					hasIndexes: false,
 					kind:       "S",
 					schemaOid:  schema.OID.AsId(),
+					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 				}
 				nameIdx.ReplaceOrInsert(&class)
 				oidIdx.ReplaceOrInsert(&class)
@@ -291,21 +299,25 @@ var pgClassSchema = sql.Schema{
 }
 
 // pgClass represents a row in the pg_class table.
+// We store oids in their native format to avoid having to do a lookup for every comparison for queries that require
+// it (most queries)
 type pgClass struct {
-	oid        id.Id
-	name       string
-	schemaOid  id.Id
-	hasIndexes bool
-	kind       string // r = ordinary table, i = index, S = sequence, t = TOAST table, v = view, m = materialized view, c = composite type, f = foreign table, p = partitioned table, I = partitioned index
+	oid             id.Id
+	oidNative       uint32
+	name            string
+	schemaOid       id.Id
+	schemaOidNative uint32
+	hasIndexes      bool
+	kind            string // r = ordinary table, i = index, S = sequence, t = TOAST table, v = view, m = materialized view, c = composite type, f = foreign table, p = partitioned table, I = partitioned index
 }
 
 func lessOid(a, b *pgClass) bool {
-	return a.oid < b.oid
+	return a.oidNative < b.oidNative
 }
 
 func lessName(a, b *pgClass) bool {
 	if a.name == b.name {
-		return a.schemaOid < b.schemaOid
+		return a.schemaOidNative < b.schemaOidNative
 	}
 	return a.name < b.name
 }
