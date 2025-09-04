@@ -147,7 +147,7 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context, partition sql.Partition) 
 
 				constraints = append(constraints, pgConstraint{
 					oid:         index.OID.AsId(),
-					name:        getIndexName(index.Item),
+					name:        formatIndexName(index.Item),
 					schemaOid:   schema.OID.AsId(),
 					conType:     conType,
 					tableOid:    table.OID.AsId(),

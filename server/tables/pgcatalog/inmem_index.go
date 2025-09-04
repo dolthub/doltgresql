@@ -21,6 +21,19 @@ import (
 	"github.com/google/btree"
 )
 
+// inMemIndexScanIter is a sql.RowIter that uses an in-memory btree index to satisfy index lookups 
+// on pg_catalog tables.
+type inMemIndexScanIter[T any] struct {
+	lookup         sql.IndexLookup
+	rangeConverter RangeConverter[T]
+	btreeAccess    BTreeIndexAccess[T]
+	rowConverter   rowConverter[T]
+	rangeIdx       int
+	nextChan       chan T
+}
+
+var _ sql.RowIter = (*inMemIndexScanIter[any])(nil)
+
 // RangeConverter knows how to convert a Range to bounds for a btree scan.
 type RangeConverter[T any] interface {
 	getIndexScanRange(rng sql.Range, index sql.Index) (T, bool, T, bool)
@@ -34,17 +47,9 @@ type BTreeIndexAccess[T any] interface {
 // rowConverter converts a value of type T to a sql.Row.
 type rowConverter[T any] func(T) sql.Row
 
-type sqlLookupIter[T any] struct {
-	lookup         sql.IndexLookup
-	rangeConverter RangeConverter[T]
-	btreeAccess    BTreeIndexAccess[T]
-	rowConverter   rowConverter[T]
-	rangeIdx       int
-	nextChan       chan T
-}
-
-func (l *sqlLookupIter[T]) Next(ctx *sql.Context) (sql.Row, error) {
-	nextClass, err := l.NextItem()
+// Next implements the sql.RowIter interface.
+func (l *inMemIndexScanIter[T]) Next(ctx *sql.Context) (sql.Row, error) {
+	nextClass, err := l.nextItem()
 	if err != nil {
 		return nil, err
 	}
@@ -52,13 +57,14 @@ func (l *sqlLookupIter[T]) Next(ctx *sql.Context) (sql.Row, error) {
 	return l.rowConverter(*nextClass), nil
 }
 
-func (l *sqlLookupIter[T]) Close(ctx *sql.Context) error {
+// Close implements the sql.RowIter interface.
+func (l *inMemIndexScanIter[T]) Close(ctx *sql.Context) error {
 	return nil
 }
 
-// NextItem returns the next item from the index lookup, or io.EOF if there are no more items.
+// nextItem returns the next item from the index lookup, or io.EOF if there are no more items.
 // Needs to return a pointer to T so that we can return nil for EOF.
-func (l *sqlLookupIter[T]) NextItem() (*T, error) {
+func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 	if l.rangeIdx >= l.lookup.Ranges.Len() {
 		return nil, io.EOF
 	}
@@ -68,7 +74,7 @@ func (l *sqlLookupIter[T]) NextItem() (*T, error) {
 		if !ok {
 			l.nextChan = nil
 			l.rangeIdx++
-			return l.NextItem()
+			return l.nextItem()
 		}
 		return &next, nil
 	}
@@ -94,7 +100,7 @@ func (l *sqlLookupIter[T]) NextItem() (*T, error) {
 		}
 
 		// because the above call uses a closed range for its upper end, we just return the last item at the end rather
-		// than trying to generate a greater one
+		// than trying to generate a greater one for the upper bound.
 		upperRange, ok := idx.Get(lte)
 		if ok {
 			l.nextChan <- upperRange
@@ -103,7 +109,7 @@ func (l *sqlLookupIter[T]) NextItem() (*T, error) {
 		close(l.nextChan)
 	}()
 
-	return l.NextItem()
+	return l.nextItem()
 }
 
 // pgCatalogInMemIndex is an in-memory implementation of sql.Index for pg_catalog tables.
@@ -180,3 +186,33 @@ func (p pgCatalogInMemIndex) PrefixLengths() []uint16 {
 }
 
 var _ sql.Index = (*pgCatalogInMemIndex)(nil)
+
+type inMemIndexPartition struct {
+	idxName string
+	lookup  sql.IndexLookup
+}
+
+func (p inMemIndexPartition) Key() []byte {
+	return []byte(p.idxName)
+}
+
+var _ sql.Partition = (*inMemIndexPartition)(nil)
+
+type inMemIndexPartIter struct {
+	used bool
+	part inMemIndexPartition
+}
+
+func (p inMemIndexPartIter) Close(context *sql.Context) error {
+	return nil
+}
+
+func (p *inMemIndexPartIter) Next(context *sql.Context) (sql.Partition, error) {
+	if p.used {
+		return nil, io.EOF
+	}
+	p.used = true
+	return p.part, nil
+}
+
+var _ sql.PartitionIter = (*inMemIndexPartIter)(nil)

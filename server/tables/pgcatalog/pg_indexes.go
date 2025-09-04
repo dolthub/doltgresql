@@ -103,15 +103,15 @@ func (iter *pgIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	return sql.Row{
 		schema,                     // schemaname
 		index.Table(),              // tablename
-		getIndexName(index),        // indexname
+		formatIndexName(index),     // indexname
 		"",                         // tablespace
 		getIndexDef(index, schema), // indexdef
 	}, nil
 }
 
-// getIndexName returns the definition of the index.
+// formatIndexName returns the definition of the index.
 func getIndexDef(index sql.Index, schema string) string {
-	name := getIndexName(index)
+	name := formatIndexName(index)
 	using := strings.ToLower(index.IndexType())
 	unique := ""
 	if index.IsUnique() {

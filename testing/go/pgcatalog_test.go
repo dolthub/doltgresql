@@ -4124,7 +4124,6 @@ func TestPgCatalogIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name:        "pg_class index lookup",
-			Focus: true,
 			SetUpScript: sharedSetupScript,
 			Assertions: []ScriptTestAssertion{
 				{
