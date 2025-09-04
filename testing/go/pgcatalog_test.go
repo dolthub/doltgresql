@@ -4199,6 +4199,15 @@ ORDER BY 1;`,
 				{
 					Query: `SELECT c.relname
 FROM pg_catalog.pg_class c 
+WHERE c.oid IN (1496157034, 1496157035) 
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
 WHERE c.oid > 1496157033 AND c.oid < 1496157035
 ORDER BY 1;`,
 					Expected: []sql.Row{
@@ -4271,6 +4280,23 @@ ORDER BY 1;`,
 						{"             └─ IndexedTableAccess(pg_class)"},
 						{"                 ├─ index: [pg_class.oid]"},
 						{"                 └─ filters: [{(1496157033, 1496157035)}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid IN (1496157034, 1496157035) 
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname]"},
+						{" └─ Sort(c.relname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ c.oid IN (1496157034, 1496157035)"},
+						{"         └─ TableAlias(c)"},
+						{"             └─ IndexedTableAccess(pg_class)"},
+						{"                 ├─ index: [pg_class.oid]"},
+						{"                 └─ filters: [{[1496157034, 1496157034]}, {[1496157035, 1496157035]}]"},
 					},
 				},
 			},

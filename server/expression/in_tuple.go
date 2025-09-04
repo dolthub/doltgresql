@@ -38,9 +38,10 @@ type InTuple struct {
 	compFuncs     []framework.Function
 }
 
-var _ vitess.Injectable = (*BinaryOperator)(nil)
-var _ sql.Expression = (*BinaryOperator)(nil)
-var _ expression.BinaryExpression = (*BinaryOperator)(nil)
+var _ vitess.Injectable = (*InTuple)(nil)
+var _ sql.Expression = (*InTuple)(nil)
+var _ expression.BinaryExpression = (*InTuple)(nil)
+var _ sql.IndexComparisonExpression = (*InTuple)(nil)
 
 // NewInTuple returns a new *InTuple.
 func NewInTuple() *InTuple {
@@ -275,3 +276,9 @@ func (it *InTuple) Left() sql.Expression {
 func (it *InTuple) Right() sql.Expression {
 	return it.rightExpr
 }
+
+// IndexScanOperation implements the sql.IndexComparisonExpression interface.
+func (it *InTuple) IndexScanOperation() (sql.IndexScanOp, sql.Expression, sql.Expression, bool) {
+	return sql.IndexScanOpInSet, it.leftExpr, it.rightExpr, true
+}
+
