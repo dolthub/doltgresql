@@ -366,7 +366,7 @@ func lessOid(a, b *pgClass) bool {
 
 // lessName is a sort function for pgClass based on name, then schemaOid.
 func lessName(a, b *pgClass) bool {
-	if a.name == b.name {
+	if a.name == b.name && a.schemaOidNative != 0 && b.schemaOidNative != 0 {
 		return a.schemaOidNative < b.schemaOidNative
 	}
 	return a.name < b.name

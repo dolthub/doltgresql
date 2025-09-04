@@ -446,7 +446,7 @@ func TestPgClass(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				// Table
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing' order by 1;`,
 					Expected: []sql.Row{
 						{3120782595, "testing", 2638679668, 0, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
