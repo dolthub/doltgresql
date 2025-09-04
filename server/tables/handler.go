@@ -32,10 +32,6 @@ type IndexedTableHandler interface {
 	Indexes() ([]sql.Index, error)
 	// LookupPartitions returns a sql.PartitionIter that can be used to look up rows in the table using the given lookup
 	LookupPartitions(context *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error)
-	// SkipIndexCosting is part of sql.IndexSearchableTable
-	SkipIndexCosting() bool
-	// LookupForExpressions returns an IndexLookup for the given expressions, part of sql.IndexSearchableTable
-	LookupForExpressions(context *sql.Context, expression ...sql.Expression) (sql.IndexLookup, *sql.FuncDepSet, sql.Expression, bool, error)
 }
 
 // handlers is a map from the schema name, to the table name, to the handler.

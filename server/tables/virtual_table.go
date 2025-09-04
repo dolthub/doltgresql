@@ -88,12 +88,14 @@ func (tbl *VirtualTable) DatabaseSchema() sql.DatabaseSchema {
 	return tbl.schema
 }
 
+// IndexedAccess implements the interface sql.IndexAddressableTable.
 func (tbl *VirtualTable) IndexedAccess(ctx *sql.Context, lookup sql.IndexLookup) sql.IndexedTable {
 	ntbl := *tbl
 	ntbl.indexLookup = lookup
 	return &ntbl
 }
 
+// GetIndexes implements the interface sql.IndexedTable.
 func (tbl *VirtualTable) GetIndexes(ctx *sql.Context) ([]sql.Index, error) {
 	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
 		return itbl.Indexes()
@@ -101,29 +103,16 @@ func (tbl *VirtualTable) GetIndexes(ctx *sql.Context) ([]sql.Index, error) {
 	return nil, nil
 }
 
+// GetIndexLookup implements the interface sql.IndexAddressableTable.
 func (tbl *VirtualTable) PreciseMatch() bool {
 	// TODO: make this configurable per table
 	return true
 }
 
+// LookupPartitions implements the interface sql.IndexedTable.
 func (tbl *VirtualTable) LookupPartitions(ctx *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error) {
 	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
 		return itbl.LookupPartitions(ctx, lookup)
 	}
 	return nil, errors.Errorf("cannot lookup partitions for virtual table %s", tbl.Name())
 }
-
-func (tbl *VirtualTable) SkipIndexCosting() bool {
-	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
-		return itbl.SkipIndexCosting()
-	}
-	return false
-}
-
-func (tbl *VirtualTable) LookupForExpressions(ctx *sql.Context, expressions ...sql.Expression) (sql.IndexLookup, *sql.FuncDepSet, sql.Expression, bool, error) {
-	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
-		return itbl.LookupForExpressions(ctx, expressions...)
-	}
-	return sql.IndexLookup{}, nil, nil, false, errors.Errorf("cannot lookup for expressions for virtual table %s", tbl.Name())
-}
-

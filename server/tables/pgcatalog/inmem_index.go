@@ -21,8 +21,20 @@ import (
 	"github.com/google/btree"
 )
 
+// RangeAnalyzer knows how to convert a Range to a scan range for a particular index.
+type RangeAnalyzer[T any] interface {
+	getIndexScanRange() (*btree.BTreeG[T], T, T)
+}
+
+// BTreeIndexAccess knows how to get a btree index by name.
+type BTreeIndexAccess[T any] interface {
+	getIndex(name string) *btree.BTreeG[T]
+}
+
 type sqlLookupIter struct {
 	lookup   sql.IndexLookup
+	rangeConverter RangeAnalyzer[*pgClass]
+	btreeAccess BTreeIndexAccess[*pgClass]
 	classes  *pgClassCache
 	rangeIdx int
 	nextChan chan *pgClass
@@ -57,14 +69,14 @@ func (l *sqlLookupIter) NextClassItem() (*pgClass, error) {
 	}
 
 	l.nextChan = make(chan *pgClass)
+	rng := l.lookup.Ranges.ToRanges()[l.rangeIdx]
 	go func() {
-		idx, gte, lte := l.getIndexScanRange()
+		idx, gte, lte := l.getIndexScanRange(rng, l.lookup.Index, nil)
 		itr := func(item *pgClass) bool {
 			l.nextChan <- item
 			return true
 		}
 
-		// TODO next: the OID comparison here must be numeric, but the IDs are being compared as strings
 		if gte != nil && lte != nil {
 			idx.AscendRange(gte, lte, itr)
 		} else if gte != nil {
@@ -88,15 +100,13 @@ func (l *sqlLookupIter) NextClassItem() (*pgClass, error) {
 	return l.NextClassItem()
 }
 
-func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *pgClass) {
-	rng := l.lookup.Ranges.ToRanges()[l.rangeIdx]
-
+func (l sqlLookupIter) getIndexScanRange(rng sql.Range, index sql.Index, btreeAccess BTreeIndexAccess[*pgClass]) (*btree.BTreeG[*pgClass], *pgClass, *pgClass) {
 	var gte, lte *pgClass
-	var idx *btree.BTreeG[*pgClass]
+	var btreeIdx *btree.BTreeG[*pgClass]
 
-	switch l.lookup.Index.(pgCatalogInMemIndex).name {
+	switch index.(pgCatalogInMemIndex).name {
 	case "pg_class_oid_index":
-		idx = l.classes.oidIdx
+		btreeIdx = btreeAccess.getIndex("pg_class_oid_index")
 
 		msrng := rng.(sql.MySQLRange)
 		oidRng := msrng[0]
@@ -116,7 +126,7 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 		}
 
 	case "pg_class_relname_nsp_index":
-		idx = l.classes.nameIdx
+		btreeIdx = btreeAccess.getIndex("pg_class_relname_nsp_index")
 		msrng := rng.(sql.MySQLRange)
 		relNameRange := msrng[0]
 		schemaOidRange := msrng[1]
@@ -155,7 +165,7 @@ func (l sqlLookupIter) getIndexScanRange() (*btree.BTreeG[*pgClass], *pgClass, *
 		panic("unknown index name: " + l.lookup.Index.(pgCatalogInMemIndex).name)
 	}
 
-	return idx, gte, lte
+	return btreeIdx, gte, lte
 }
 
 type pgCatalogInMemIndex struct {
@@ -219,7 +229,7 @@ func (p pgCatalogInMemIndex) ColumnExpressionTypes() []sql.ColumnExpressionType 
 }
 
 func (p pgCatalogInMemIndex) CanSupport(context *sql.Context, r ...sql.Range) bool {
-	return true // why not
+	return true
 }
 
 func (p pgCatalogInMemIndex) CanSupportOrderBy(expr sql.Expression) bool {
