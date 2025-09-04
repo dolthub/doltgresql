@@ -197,6 +197,8 @@ func (b *BinaryOperator) IndexScanOperation() (sql.IndexScanOp, sql.Expression, 
 		return sql.IndexScanOpGt, b.Left(), b.Right(), true
 	case framework.Operator_BinaryGreaterOrEqual:
 		return sql.IndexScanOpGte, b.Left(), b.Right(), true
+	case framework.Operator_BinaryNotEqual:
+		return sql.IndexScanOpNotEq, b.Left(), b.Right(), true
 	}
 	return 0, nil, nil, false
 }
