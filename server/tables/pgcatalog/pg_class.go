@@ -386,7 +386,6 @@ func lessName(a, b *pgClass) bool {
 type pgClassTableScanIter struct {
 	classCache *pgClassCache
 	idx        int
-	idxLookup  *sql.IndexLookup
 }
 
 var _ sql.RowIter = (*pgClassTableScanIter)(nil)
