@@ -1206,7 +1206,7 @@ func TestPgIndexes(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_indexes";`,
+					Query: `SELECT * FROM "pg_catalog"."pg_indexes" where schemaname = 'testschema';`,
 					Expected: []sql.Row{
 						{"testschema", "testing", "testing_pkey", "", "CREATE UNIQUE INDEX testing_pkey ON testschema.testing USING btree (pk)"},
 						{"testschema", "testing", "v1", "", "CREATE UNIQUE INDEX v1 ON testschema.testing USING btree (v1)"},
@@ -1223,7 +1223,7 @@ func TestPgIndexes(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT indexname FROM PG_catalog.pg_INDEXES ORDER BY indexname;",
+					Query:    "SELECT indexname FROM PG_catalog.pg_INDEXES where schemaname='testschema' ORDER BY indexname;",
 					Expected: []sql.Row{{"my_index"}, {"testing2_pkey"}, {"testing_pkey"}, {"v1"}},
 				},
 			},
