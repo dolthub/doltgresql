@@ -357,11 +357,11 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				tableSchemas[table.OID.AsId()] = table.Item.Schema()
 			}
 
-			schema := tableSchemas[table.OID.AsId()]
+			s := tableSchemas[table.OID.AsId()]
 			indKey := make([]any, len(index.Item.Expressions()))
 			for i, expr := range index.Item.Expressions() {
 				colName := extractColName(expr)
-				indKey[i] = int16(schema.IndexOfColName(colName)) + 1
+				indKey[i] = int16(s.IndexOfColName(colName)) + 1
 			}
 
 			pgIdx := &pgIndex{
@@ -405,27 +405,6 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 		indexOidIdx: indexOidIdx,
 		indrelidIdx: indrelidIdx,
 	}
-
-	// Keep the old cache data for backward compatibility
-	var legacyIndexes []sql.Index
-	var indexSchemas []string
-	var indexOIDs []id.Id
-	var tableOIDs []id.Id
-
-	for _, pgIdx := range indexes {
-		// We need to reconstruct the sql.Index for legacy compatibility
-		// This is a simplified approach - in a real implementation you might need more sophisticated reconstruction
-		legacyIndexes = append(legacyIndexes, nil) // placeholder
-		indexSchemas = append(indexSchemas, "")    // placeholder
-		indexOIDs = append(indexOIDs, pgIdx.indexOid)
-		tableOIDs = append(tableOIDs, pgIdx.tableOid)
-	}
-
-	pgCatalogCache.indexes = legacyIndexes
-	pgCatalogCache.tableSchemas = tableSchemas
-	pgCatalogCache.indexOIDs = indexOIDs
-	pgCatalogCache.indexTableOIDs = tableOIDs
-	pgCatalogCache.indexSchemas = indexSchemas
-
+	
 	return nil
 }

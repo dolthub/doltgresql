@@ -54,12 +54,7 @@ type pgCatalogCache struct {
 	attributeColIdxs   []int
 
 	// pg_index / pg_indexes
-	indexes        []sql.Index
-	tableSchemas   map[id.Id]sql.Schema
-	indexOIDs      []id.Id
-	indexTableOIDs []id.Id
-	indexSchemas   []string
-	pgIndexes      *pgIndexCache
+	pgIndexes *pgIndexCache
 
 	// pg_sequence
 	sequences    []*sequences.Sequence
@@ -103,7 +98,7 @@ func (p pgClassCache) getIndex(name string) *btree.BTreeG[*pgClass] {
 }
 
 type pgIndexCache struct {
-	indexes []*pgIndex
+	indexes     []*pgIndex
 	indexOidIdx *btree.BTreeG[*pgIndex]
 	indrelidIdx *btree.BTreeG[*pgIndex]
 }
