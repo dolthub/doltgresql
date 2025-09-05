@@ -59,6 +59,7 @@ type pgCatalogCache struct {
 	indexOIDs      []id.Id
 	indexTableOIDs []id.Id
 	indexSchemas   []string
+	pgIndexes      *pgIndexCache
 
 	// pg_sequence
 	sequences    []*sequences.Sequence
@@ -98,6 +99,26 @@ func (p pgClassCache) getIndex(name string) *btree.BTreeG[*pgClass] {
 		return p.nameIdx
 	default:
 		panic("unknown pg_class index: " + name)
+	}
+}
+
+type pgIndexCache struct {
+	indexes []*pgIndex
+	indexOidIdx *btree.BTreeG[*pgIndex]
+	indrelidIdx *btree.BTreeG[*pgIndex]
+}
+
+var _ BTreeIndexAccess[*pgIndex] = &pgIndexCache{}
+
+// getIndex implements BTreeIndexAccess.
+func (p pgIndexCache) getIndex(name string) *btree.BTreeG[*pgIndex] {
+	switch name {
+	case "pg_index_indexrelid_index":
+		return p.indexOidIdx
+	case "pg_index_indrelid_index":
+		return p.indrelidIdx
+	default:
+		panic("unknown pg_index index: " + name)
 	}
 }
 
