@@ -512,7 +512,6 @@ func TestPgClass(t *testing.T) {
 		},
 		{
 			Name:  "pg_class with regclass",
-			Focus: true,
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
 				`SET search_path TO testschema;`,
