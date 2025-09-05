@@ -208,18 +208,16 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		msrng := rng.(sql.MySQLRange)
 		oidRng := msrng[0]
 		if oidRng.HasLowerBound() {
-			lowerRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
-			oidLower := uint32(lowerRangeCutKey.(int32))
+			lowerRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.LowerBound).(id.Id)
 			gte = &pgClass{
-				oidNative: oidLower,
+				oidNative: idToOid(lowerRangeCutKey),
 			}
 			hasLowerBound = true
 		}
 		if oidRng.HasUpperBound() {
-			upperRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
-			oidUpper := uint32(upperRangeCutKey.(int32))
+			upperRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.UpperBound).(id.Id)
 			lte = &pgClass{
-				oidNative: oidUpper,
+				oidNative: idToOid(upperRangeCutKey),
 			}
 			hasUpperBound = true
 		}
@@ -241,24 +239,24 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		}
 
 		if schemaOidRange.HasLowerBound() {
-			lowerRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound)
-			schemaOidLower = uint32(lowerRangeCutKey.(int32))
+			lowerRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound).(id.Id)
+			schemaOidLower = idToOid(lowerRangeCutKey)
 		}
 		if schemaOidRange.HasUpperBound() {
-			upperRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound)
-			schemaOidUpper = uint32(upperRangeCutKey.(int32))
+			upperRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound).(id.Id)
+			schemaOidUpper = idToOid(upperRangeCutKey)
 		}
 
 		if relNameRange.HasLowerBound() || schemaOidRange.HasLowerBound() {
 			gte = &pgClass{
-				name:      relnameLower,
+				name:            relnameLower,
 				schemaOidNative: schemaOidLower,
 			}
 		}
 
 		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
 			lte = &pgClass{
-				name:      relnameUpper,
+				name:            relnameUpper,
 				schemaOidNative: schemaOidUpper,
 			}
 		}
@@ -267,6 +265,18 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 	}
 
 	return gte, hasLowerBound, lte, hasUpperBound
+}
+
+// idToOid converts an id.Id to its native uint32 OID representation. The type conversion process during index 
+// building will produce one of two values for comparison against an OID column: either a known OID value, which
+// will be an Id of the appropriate type (Table, Namespace, etc), or an unknown value, which will be an oid.Oid. 
+func idToOid(i id.Id) uint32 {
+	switch i.Section() {
+	case id.Section_OID:
+		return id.Oid(i).OID()
+	default:
+		return id.Cache().ToOID(i)
+	}
 }
 
 // PkSchema implements the interface tables.Handler.

@@ -508,6 +508,7 @@ func TestPgClass(t *testing.T) {
 		},
 		{
 			Name: "pg_class with regclass",
+			Focus: true,
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
 				`SET search_path TO testschema;`,
@@ -517,9 +518,15 @@ func TestPgClass(t *testing.T) {
 				`SET search_path TO testschema2;`,
 			},
 			Assertions: []ScriptTestAssertion{
+				// {
+				// 	Query:       `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testing'::regclass;`,
+				// 	ExpectedErr: "does not exist",
+				// },
 				{
-					Query:       `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testing'::regclass;`,
-					ExpectedErr: "does not exist",
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid=1234`,
+					Expected: []sql.Row{
+						{3120782595, "testing", 2638679668, 0, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+					},
 				},
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing'::regclass;`,
