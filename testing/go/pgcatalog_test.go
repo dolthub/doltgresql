@@ -4362,6 +4362,105 @@ ORDER BY 1,2;`,
 				},
 			},
 		},
+		{
+			Name:        "pg_index index lookup",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT i.indrelid FROM pg_catalog.pg_index i 
+WHERE i.indexrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = 't1_pkey')
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{1496157033},
+					},
+				},
+				{
+					Query: `SELECT i.indrelid FROM pg_catalog.pg_index i 
+WHERE i.indexrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = 't2_pkey')
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{1496157034},
+					},
+				},
+				{
+					Query: `SELECT COUNT(*) FROM pg_catalog.pg_index i 
+WHERE i.indrelid = 1496157034`,
+					Expected: []sql.Row{
+						{2},
+					},
+				},
+				{
+					Query: `SELECT i.indisprimary FROM pg_catalog.pg_index i 
+WHERE i.indrelid = 1496157034 AND i.indisprimary = true
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{true},
+					},
+				},
+				{
+					Query: `SELECT COUNT(*) FROM pg_catalog.pg_index i 
+WHERE i.indrelid IN (1496157033, 1496157034)`,
+					Expected: []sql.Row{
+						{3},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT i.indrelid FROM pg_catalog.pg_index i 
+WHERE i.indexrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = 't1_pkey')
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [i.indrelid]"},
+						{" └─ Sort(i.indrelid ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ i.indexrelid = Subquery"},
+						{"         │   ├─ cacheable: false"},
+						{"         │   └─ Project"},
+						{"         │       ├─ columns: [c.oid]"},
+						{"         │       └─ Filter"},
+						{"         │           ├─ c.relname = 't1_pkey'"},
+						{"         │           └─ TableAlias(c)"},
+						{"         │               └─ IndexedTableAccess(pg_class)"},
+						{"         │                   ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"         │                   └─ filters: [{[t1_pkey, t1_pkey], [<nil>, <nil>]}]"},
+						{"         └─ TableAlias(i)"},
+						{"             └─ IndexedTableAccess(pg_index)"},
+						{"                 ├─ index: [pg_index.indexrelid]"},
+						{"                 └─ keys: Subquery"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT COUNT(*) FROM pg_catalog.pg_index i 
+WHERE i.indrelid = 1496157034`,
+					Expected: []sql.Row{
+						{"GroupBy"},
+						{" ├─ select: COUNT(*)"},
+						{" ├─ group: "},
+						{" └─ Filter"},
+						{"     ├─ i.indrelid = 1496157034"},
+						{"     └─ TableAlias(i)"},
+						{"         └─ IndexedTableAccess(pg_index)"},
+						{"             ├─ index: [pg_index.indrelid]"},
+						{"             └─ filters: [{[{Table:[\"public\",\"t2\"]}, {Table:[\"public\",\"t2\"]}]}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT COUNT(*) FROM pg_catalog.pg_index i 
+WHERE i.indrelid IN (1496157033, 1496157034)`,
+					Expected: []sql.Row{
+						{"GroupBy"},
+						{" ├─ select: COUNT(*)"},
+						{" ├─ group: "},
+						{" └─ Filter"},
+						{"     ├─ i.indrelid IN (1496157033, 1496157034)"},
+						{"     └─ TableAlias(i)"},
+						{"         └─ IndexedTableAccess(pg_index)"},
+						{"             ├─ index: [pg_index.indrelid]"},
+						{"             └─ filters: [{[{Table:[\"public\",\"t1\"]}, {Table:[\"public\",\"t1\"]}]}, {[{Table:[\"public\",\"t2\"]}, {Table:[\"public\",\"t2\"]}]}]"},
+					},
+				},
+			},
+		},
 	})
 }
 
