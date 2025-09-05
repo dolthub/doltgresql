@@ -135,7 +135,7 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
-			Name: "Covering Composite Index",
+			Name:  "Covering Composite Index",
 			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT);",

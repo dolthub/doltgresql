@@ -281,4 +281,3 @@ func (it *InTuple) Right() sql.Expression {
 func (it *InTuple) IndexScanOperation() (sql.IndexScanOp, sql.Expression, sql.Expression, bool) {
 	return sql.IndexScanOpInSet, it.leftExpr, it.rightExpr, true
 }
-

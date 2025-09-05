@@ -82,9 +82,9 @@ type pgCatalogCache struct {
 }
 
 type pgClassCache struct {
-	classes      []*pgClass
-	nameIdx      *btree.BTreeG[*pgClass]
-	oidIdx       *btree.BTreeG[*pgClass]
+	classes []*pgClass
+	nameIdx *btree.BTreeG[*pgClass]
+	oidIdx  *btree.BTreeG[*pgClass]
 }
 
 var _ BTreeIndexAccess[*pgClass] = &pgClassCache{}

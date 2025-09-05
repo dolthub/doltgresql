@@ -21,8 +21,8 @@ import (
 
 // VirtualTable represents a table that does not enforce any particular storage of its data.
 type VirtualTable struct {
-	handler Handler
-	schema  sql.DatabaseSchema
+	handler     Handler
+	schema      sql.DatabaseSchema
 	indexLookup sql.IndexLookup
 }
 

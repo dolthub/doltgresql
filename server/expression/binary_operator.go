@@ -202,4 +202,3 @@ func (b *BinaryOperator) IndexScanOperation() (sql.IndexScanOp, sql.Expression, 
 	}
 	return 0, nil, nil, false
 }
-

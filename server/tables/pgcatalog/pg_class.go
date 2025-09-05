@@ -184,7 +184,7 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 		nameIdx: nameIdx,
 		oidIdx:  oidIdx,
 	}
-	
+
 	return nil
 }
 
@@ -267,9 +267,9 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 	return gte, hasLowerBound, lte, hasUpperBound
 }
 
-// idToOid converts an id.Id to its native uint32 OID representation. The type conversion process during index 
+// idToOid converts an id.Id to its native uint32 OID representation. The type conversion process during index
 // building will produce one of two values for comparison against an OID column: either a known OID value, which
-// will be an Id of the appropriate type (Table, Namespace, etc), or an unknown value, which will be an oid.Oid. 
+// will be an Id of the appropriate type (Table, Namespace, etc), or an unknown value, which will be an oid.Oid.
 func idToOid(i id.Id) uint32 {
 	switch i.Section() {
 	case id.Section_OID:

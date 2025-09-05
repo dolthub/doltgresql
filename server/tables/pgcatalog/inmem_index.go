@@ -21,7 +21,7 @@ import (
 	"github.com/google/btree"
 )
 
-// inMemIndexScanIter is a sql.RowIter that uses an in-memory btree index to satisfy index lookups 
+// inMemIndexScanIter is a sql.RowIter that uses an in-memory btree index to satisfy index lookups
 // on pg_catalog tables.
 type inMemIndexScanIter[T any] struct {
 	lookup         sql.IndexLookup

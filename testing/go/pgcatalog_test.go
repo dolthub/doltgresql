@@ -505,13 +505,13 @@ func TestPgClass(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid=1234`,
+					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE oid=1234`,
 					Expected: []sql.Row{},
 				},
 			},
 		},
 		{
-			Name: "pg_class with regclass",
+			Name:  "pg_class with regclass",
 			Focus: true,
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
@@ -1150,10 +1150,10 @@ func TestPgIndex(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT i.* from pg_class c " +
-							"JOIN pg_index i ON c.oid = i.indexrelid " +
-							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-							"ORDER BY 1;",
+						"JOIN pg_index i ON c.oid = i.indexrelid " +
+						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+						"ORDER BY 1;",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
 						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
@@ -1169,11 +1169,11 @@ func TestPgIndex(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT i.indexrelid from pg_class c " +
-							"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
-							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-							"ORDER BY 1;",
+					Query: "SELECT i.indexrelid from pg_class c " +
+						"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
+						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+						"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {1322775662}, {3185790121}},
 				},
 				{
