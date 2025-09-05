@@ -24,7 +24,6 @@ import (
 
 func TestBasicIndexing(t *testing.T) {
 	RunScripts(t, []ScriptTest{
-
 		{
 			Name: "Covering Index",
 			SetUpScript: []string{
@@ -136,7 +135,6 @@ func TestBasicIndexing(t *testing.T) {
 		},
 		{
 			Name:  "Covering Composite Index",
-			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT);",
 				"INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24);",
