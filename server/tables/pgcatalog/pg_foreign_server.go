@@ -42,13 +42,13 @@ func (p PgForeignServerHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgForeignServerHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgForeignServerHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_foreign_server row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgForeignServerHandler) Schema() sql.PrimaryKeySchema {
+func (p PgForeignServerHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgForeignServerSchema,
 		PkOrdinals: nil,

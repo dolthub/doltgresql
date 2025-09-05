@@ -15,19 +15,23 @@
 package tables
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // VirtualTable represents a table that does not enforce any particular storage of its data.
 type VirtualTable struct {
-	handler Handler
-	schema  sql.DatabaseSchema
+	handler     Handler
+	schema      sql.DatabaseSchema
+	indexLookup sql.IndexLookup
 }
 
 var _ sql.DebugStringer = (*VirtualTable)(nil)
 var _ sql.PrimaryKeyTable = (*VirtualTable)(nil)
 var _ sql.Table = (*VirtualTable)(nil)
 var _ sql.DatabaseSchemaTable = (*VirtualTable)(nil)
+var _ sql.IndexAddressableTable = (*VirtualTable)(nil)
+var _ sql.IndexedTable = (*VirtualTable)(nil)
 
 // NewVirtualTable creates a new *VirtualTable from the given Handler.
 func NewVirtualTable(handler Handler, schema sql.DatabaseSchema) *VirtualTable {
@@ -54,7 +58,7 @@ func (tbl *VirtualTable) Name() string {
 
 // PartitionRows implements the interface sql.Table.
 func (tbl *VirtualTable) PartitionRows(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	return tbl.handler.RowIter(ctx)
+	return tbl.handler.RowIter(ctx, partition)
 }
 
 // Partitions implements the interface sql.Table.
@@ -66,7 +70,7 @@ func (tbl *VirtualTable) Partitions(ctx *sql.Context) (sql.PartitionIter, error)
 
 // PrimaryKeySchema implements the interface sql.PrimaryKeyTable.
 func (tbl *VirtualTable) PrimaryKeySchema() sql.PrimaryKeySchema {
-	return tbl.handler.Schema()
+	return tbl.handler.PkSchema()
 }
 
 // Schema implements the interface sql.Table.
@@ -81,4 +85,33 @@ func (tbl *VirtualTable) String() string {
 
 func (tbl *VirtualTable) DatabaseSchema() sql.DatabaseSchema {
 	return tbl.schema
+}
+
+// IndexedAccess implements the interface sql.IndexAddressableTable.
+func (tbl *VirtualTable) IndexedAccess(ctx *sql.Context, lookup sql.IndexLookup) sql.IndexedTable {
+	ntbl := *tbl
+	ntbl.indexLookup = lookup
+	return &ntbl
+}
+
+// GetIndexes implements the interface sql.IndexedTable.
+func (tbl *VirtualTable) GetIndexes(ctx *sql.Context) ([]sql.Index, error) {
+	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
+		return itbl.Indexes()
+	}
+	return nil, nil
+}
+
+// GetIndexLookup implements the interface sql.IndexAddressableTable.
+func (tbl *VirtualTable) PreciseMatch() bool {
+	// TODO: make this configurable per table
+	return true
+}
+
+// LookupPartitions implements the interface sql.IndexedTable.
+func (tbl *VirtualTable) LookupPartitions(ctx *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error) {
+	if itbl, ok := tbl.handler.(IndexedTableHandler); ok {
+		return itbl.LookupPartitions(ctx, lookup)
+	}
+	return nil, errors.Errorf("cannot lookup partitions for virtual table %s", tbl.Name())
 }

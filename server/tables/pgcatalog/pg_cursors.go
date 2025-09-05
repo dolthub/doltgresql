@@ -42,13 +42,13 @@ func (p PgCursorsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgCursorsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgCursorsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_cursors row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgCursorsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgCursorsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgCursorsSchema,
 		PkOrdinals: nil,

@@ -42,13 +42,13 @@ func (p PgOperatorHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgOperatorHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgOperatorHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_operator row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgOperatorHandler) Schema() sql.PrimaryKeySchema {
+func (p PgOperatorHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgOperatorSchema,
 		PkOrdinals: nil,

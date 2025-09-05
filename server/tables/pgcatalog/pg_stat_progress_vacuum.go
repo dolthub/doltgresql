@@ -42,13 +42,13 @@ func (p PgStatProgressVacuumHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatProgressVacuumHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatProgressVacuumHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_progress_vacuum row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatProgressVacuumHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatProgressVacuumHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatProgressVacuumSchema,
 		PkOrdinals: nil,

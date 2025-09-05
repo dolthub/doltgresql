@@ -24,7 +24,6 @@ import (
 
 func TestBasicIndexing(t *testing.T) {
 	RunScripts(t, []ScriptTest{
-
 		{
 			Name: "Covering Index",
 			SetUpScript: []string{
@@ -99,7 +98,6 @@ func TestBasicIndexing(t *testing.T) {
 		},
 		{
 			Name: "String primary key ordering",
-			Skip: true, // string primary key ordering is broken
 			SetUpScript: []string{
 				"create table t (s varchar(5) primary key);",
 				"insert into t values ('foo');",
@@ -136,13 +134,19 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
-			Name: "Covering Composite Index",
+			Name:  "Covering Composite Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT);",
 				"INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24);",
 				"CREATE INDEX v1_idx ON test(v1, v2);",
 			},
 			Assertions: []ScriptTestAssertion{
+				{
+					Query: "EXPLAIN SELECT * FROM test WHERE v1 = 2 AND v2 = 22 ORDER BY pk;",
+					Expected: []sql.Row{
+						{12, 2, 22},
+					},
+				},
 				{
 					Query: "SELECT * FROM test WHERE v1 = 2 AND v2 = 22 ORDER BY pk;",
 					Expected: []sql.Row{

@@ -42,13 +42,13 @@ func (p PgSettingsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgSettingsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgSettingsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_settings row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgSettingsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgSettingsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgSettingsSchema,
 		PkOrdinals: nil,

@@ -42,13 +42,13 @@ func (p PgStatUserIndexesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatUserIndexesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatUserIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_user_indexes row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatUserIndexesHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatUserIndexesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatUserIndexesSchema,
 		PkOrdinals: nil,

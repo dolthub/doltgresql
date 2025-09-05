@@ -42,13 +42,13 @@ func (p PgStatProgressBasebackupHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatProgressBasebackupHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatProgressBasebackupHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_progress_basebackup row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatProgressBasebackupHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatProgressBasebackupHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatProgressBasebackupSchema,
 		PkOrdinals: nil,

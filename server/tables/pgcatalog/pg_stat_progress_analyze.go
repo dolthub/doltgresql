@@ -42,13 +42,13 @@ func (p PgStatProgressAnalyzeHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatProgressAnalyzeHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatProgressAnalyzeHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_progress_analyze row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatProgressAnalyzeHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatProgressAnalyzeHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatProgressAnalyzeSchema,
 		PkOrdinals: nil,

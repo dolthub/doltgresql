@@ -42,13 +42,13 @@ func (p PgDependHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgDependHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgDependHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_depend row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgDependHandler) Schema() sql.PrimaryKeySchema {
+func (p PgDependHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgDependSchema,
 		PkOrdinals: nil,

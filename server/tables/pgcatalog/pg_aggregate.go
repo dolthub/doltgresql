@@ -42,13 +42,13 @@ func (p PgAggregateHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgAggregateHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgAggregateHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_aggregate row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgAggregateHandler) Schema() sql.PrimaryKeySchema {
+func (p PgAggregateHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgAggregateSchema,
 		PkOrdinals: nil,

@@ -34,7 +34,7 @@ func init() {
 
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
 // by DoltgreSQL.
-func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
+func SerializeType(extendedType sql.ExtendedType) ([]byte, error) {
 	if doltgresType, ok := extendedType.(*DoltgresType); ok {
 		return doltgresType.Serialize(), nil
 	}
@@ -43,7 +43,7 @@ func SerializeType(extendedType types.ExtendedType) ([]byte, error) {
 
 // DeserializeType is able to deserialize the given serialized type into an appropriate extended type. All extended
 // types will be defined by DoltgreSQL.
-func DeserializeType(serializedType []byte) (types.ExtendedType, error) {
+func DeserializeType(serializedType []byte) (sql.ExtendedType, error) {
 	if len(serializedType) == 0 {
 		return nil, errors.Errorf("deserializing empty type data")
 	}

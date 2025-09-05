@@ -42,13 +42,13 @@ func (p PgTriggerHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgTriggerHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgTriggerHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_trigger row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgTriggerHandler) Schema() sql.PrimaryKeySchema {
+func (p PgTriggerHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgTriggerSchema,
 		PkOrdinals: nil,

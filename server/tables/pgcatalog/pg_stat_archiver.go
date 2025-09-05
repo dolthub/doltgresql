@@ -42,13 +42,13 @@ func (p PgStatArchiverHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatArchiverHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatArchiverHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_archiver row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatArchiverHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatArchiverHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatArchiverSchema,
 		PkOrdinals: nil,

@@ -42,13 +42,13 @@ func (p PgStatRecoveryPrefetchHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatRecoveryPrefetchHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatRecoveryPrefetchHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_recovery_prefetch row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatRecoveryPrefetchHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatRecoveryPrefetchHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatRecoveryPrefetchSchema,
 		PkOrdinals: nil,

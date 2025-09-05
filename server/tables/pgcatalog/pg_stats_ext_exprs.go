@@ -42,13 +42,13 @@ func (p PgStatsExtExprsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatsExtExprsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatsExtExprsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stats_ext_exprs row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatsExtExprsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatsExtExprsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatsExtExprsSchema,
 		PkOrdinals: nil,

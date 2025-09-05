@@ -42,13 +42,13 @@ func (p PgSubscriptionRelHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgSubscriptionRelHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgSubscriptionRelHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_subscription_rel row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgSubscriptionRelHandler) Schema() sql.PrimaryKeySchema {
+func (p PgSubscriptionRelHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgSubscriptionRelSchema,
 		PkOrdinals: nil,
