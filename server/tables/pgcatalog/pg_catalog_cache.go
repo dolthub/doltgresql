@@ -98,9 +98,11 @@ func (p pgClassCache) getIndex(name string) *btree.BTreeG[*pgClass] {
 }
 
 type pgIndexCache struct {
-	indexes     []*pgIndex
-	indexOidIdx *btree.BTreeG[*pgIndex]
-	indrelidIdx *btree.BTreeG[*pgIndex]
+	indexes      []*pgIndex
+	tableSchemas map[id.Id]sql.Schema
+	tableNames   map[id.Id]string
+	indexOidIdx  *btree.BTreeG[*pgIndex]
+	indrelidIdx  *btree.BTreeG[*pgIndex]
 }
 
 var _ BTreeIndexAccess[*pgIndex] = &pgIndexCache{}

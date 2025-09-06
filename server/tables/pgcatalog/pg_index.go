@@ -258,29 +258,16 @@ func (iter *pgIndexRowIter) Close(ctx *sql.Context) error {
 // pgIndex represents a row in the pg_index table.
 // We store oids in their native format as well so that we can do range scans on them.
 type pgIndex struct {
-	indexOid            id.Id
-	indexOidNative      uint32
-	tableOid            id.Id
-	tableOidNative      uint32
-	indnatts            int16
-	indnkeyatts         int16
-	indisunique         bool
-	indnullsnotdistinct bool
-	indisprimary        bool
-	indisexclusion      bool
-	indimmediate        bool
-	indisclustered      bool
-	indisvalid          bool
-	indcheckxmin        bool
-	indisready          bool
-	indislive           bool
-	indisreplident      bool
-	indkey              []any
-	indcollation        []any
-	indclass            []any
-	indoption           string
-	indexprs            interface{}
-	indpred             interface{}
+	index          sql.Index
+	schemaName     string
+	indexOid       id.Id
+	indexOidNative uint32
+	tableOid       id.Id
+	tableOidNative uint32
+	indnatts       int16
+	indisunique    bool
+	indisprimary   bool
+	indkey         []any
 }
 
 // lessIndexOid is a sort function for pgIndex based on indexrelid.
@@ -319,27 +306,27 @@ func (iter *pgIndexTableScanIter) Close(ctx *sql.Context) error {
 
 func pgIndexToRow(index *pgIndex) sql.Row {
 	return sql.Row{
-		index.indexOid,            // indexrelid
-		index.tableOid,            // indrelid
-		index.indnatts,            // indnatts
-		index.indnkeyatts,         // indnkeyatts
-		index.indisunique,         // indisunique
-		index.indnullsnotdistinct, // indnullsnotdistinct
-		index.indisprimary,        // indisprimary
-		index.indisexclusion,      // indisexclusion
-		index.indimmediate,        // indimmediate
-		index.indisclustered,      // indisclustered
-		index.indisvalid,          // indisvalid
-		index.indcheckxmin,        // indcheckxmin
-		index.indisready,          // indisready
-		index.indislive,           // indislive
-		index.indisreplident,      // indisreplident
-		index.indkey,              // indkey
-		index.indcollation,        // indcollation
-		index.indclass,            // indclass
-		index.indoption,           // indoption
-		index.indexprs,            // indexprs
-		index.indpred,             // indpred
+		index.indexOid,         // indexrelid
+		index.tableOid,         // indrelid
+		index.indnatts,         // indnatts
+		int16(0),               // indnkeyatts
+		index.index.IsUnique(), // indisunique
+		false,                  // indnullsnotdistinct
+		index.indisprimary,     // indisprimary
+		false,                  // indisexclusion
+		false,                  // indimmediate
+		false,                  // indisclustered
+		true,                   // indisvalid
+		false,                  // indcheckxmin
+		true,                   // indisready
+		true,                   // indislive
+		false,                  // indisreplident
+		index.indkey,           // indkey
+		[]any{},                // indcollation
+		[]any{},                // indclass
+		"0",                    // indoption
+		nil,                    // indexprs
+		nil,                    // indpred
 	}
 }
 
@@ -350,11 +337,15 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	indrelidIdx := btree.NewG[*pgIndex](2, lessIndrelid)
 
 	tableSchemas := make(map[id.Id]sql.Schema)
+	tableNames := make(map[id.Id]string)
 
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			if tableSchemas[table.OID.AsId()] == nil {
 				tableSchemas[table.OID.AsId()] = table.Item.Schema()
+			}
+			if tableNames[table.OID.AsId()] == "" {
+				tableNames[table.OID.AsId()] = table.Item.Name()
 			}
 
 			s := tableSchemas[table.OID.AsId()]
@@ -365,29 +356,16 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			}
 
 			pgIdx := &pgIndex{
-				indexOid:            index.OID.AsId(),
-				indexOidNative:      id.Cache().ToOID(index.OID.AsId()),
-				tableOid:            table.OID.AsId(),
-				tableOidNative:      id.Cache().ToOID(table.OID.AsId()),
-				indnatts:            int16(len(index.Item.Expressions())),
-				indnkeyatts:         int16(0),
-				indisunique:         index.Item.IsUnique(),
-				indnullsnotdistinct: false,
-				indisprimary:        strings.ToLower(index.Item.ID()) == "primary",
-				indisexclusion:      false,
-				indimmediate:        false,
-				indisclustered:      false,
-				indisvalid:          true,
-				indcheckxmin:        false,
-				indisready:          true,
-				indislive:           true,
-				indisreplident:      false,
-				indkey:              indKey,
-				indcollation:        []any{},
-				indclass:            []any{},
-				indoption:           "0",
-				indexprs:            nil,
-				indpred:             nil,
+				index:          index.Item,
+				schemaName:     schema.Item.Name(),
+				indexOid:       index.OID.AsId(),
+				indexOidNative: id.Cache().ToOID(index.OID.AsId()),
+				tableOid:       table.OID.AsId(),
+				tableOidNative: id.Cache().ToOID(table.OID.AsId()),
+				indkey:         indKey,
+				indnatts:       int16(len(index.Item.Expressions())),
+				indisunique:    index.Item.IsUnique(),
+				indisprimary:   strings.ToLower(index.Item.ID()) == "primary",
 			}
 
 			indexOidIdx.ReplaceOrInsert(pgIdx)
@@ -401,10 +379,12 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	}
 
 	pgCatalogCache.pgIndexes = &pgIndexCache{
-		indexes:     indexes,
-		indexOidIdx: indexOidIdx,
-		indrelidIdx: indrelidIdx,
+		indexes:      indexes,
+		tableNames:   tableNames,
+		tableSchemas: tableSchemas,
+		indexOidIdx:  indexOidIdx,
+		indrelidIdx:  indrelidIdx,
 	}
-	
+
 	return nil
 }
