@@ -126,36 +126,48 @@ func (p PgIndexHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgIn
 		msrng := rng.(sql.MySQLRange)
 		oidRng := msrng[0]
 		if oidRng.HasLowerBound() {
-			lowerRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.LowerBound).(id.Id)
-			gte = &pgIndex{
-				indexOidNative: idToOid(lowerRangeCutKey),
+			lb := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
+			if lb != nil {
+				lowerRangeCutKey := lb.(id.Id)
+				gte = &pgIndex{
+					indexOidNative: idToOid(lowerRangeCutKey),
+				}
+				hasLowerBound = true
 			}
-			hasLowerBound = true
 		}
 		if oidRng.HasUpperBound() {
-			upperRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.UpperBound).(id.Id)
-			lte = &pgIndex{
-				indexOidNative: idToOid(upperRangeCutKey),
+			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
+			if ub != nil {
+				upperRangeCutKey := ub.(id.Id)
+				lte = &pgIndex{
+					indexOidNative: idToOid(upperRangeCutKey),
+				}
+				hasUpperBound = true
 			}
-			hasUpperBound = true
 		}
 
 	case "pg_index_indrelid_index":
 		msrng := rng.(sql.MySQLRange)
 		oidRng := msrng[0]
 		if oidRng.HasLowerBound() {
-			lowerRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.LowerBound).(id.Id)
-			gte = &pgIndex{
-				tableOidNative: idToOid(lowerRangeCutKey),
+			lb := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
+			if lb != nil {
+				lowerRangeCutKey := lb.(id.Id)
+				gte = &pgIndex{
+					tableOidNative: idToOid(lowerRangeCutKey),
+				}
+				hasLowerBound = true
 			}
-			hasLowerBound = true
 		}
 		if oidRng.HasUpperBound() {
-			upperRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.UpperBound).(id.Id)
-			lte = &pgIndex{
-				tableOidNative: idToOid(upperRangeCutKey),
+			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
+			if ub != nil {
+				upperRangeCutKey := ub.(id.Id)
+				lte = &pgIndex{
+					tableOidNative: idToOid(upperRangeCutKey),
+				}
+				hasUpperBound = true
 			}
-			hasUpperBound = true
 		}
 	default:
 		panic("unknown index name: " + index.(pgCatalogInMemIndex).name)
@@ -304,6 +316,7 @@ func (iter *pgIndexTableScanIter) Close(ctx *sql.Context) error {
 	return nil
 }
 
+// pgIndexToRow converts a pgIndex to a sql.Row.
 func pgIndexToRow(index *pgIndex) sql.Row {
 	return sql.Row{
 		index.indexOid,         // indexrelid

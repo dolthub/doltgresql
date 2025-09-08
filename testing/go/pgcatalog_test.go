@@ -1149,10 +1149,10 @@ func TestPgIndex(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT i.* from pg_class c " +
-						"JOIN pg_index i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN pg_index i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
 						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
@@ -1169,18 +1169,18 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT i.indexrelid from pg_class c " +
-						"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {1322775662}, {3185790121}},
 				},
 				{
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i " +
-						"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
-						"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
-						"JOIN pg_namespace n ON t.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
+							"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
+							"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
+							"JOIN pg_namespace n ON t.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, "testing_pkey", "testing"},
 						{1322775662, 3120782595, "v1", "testing"},
@@ -4391,14 +4391,24 @@ ORDER BY "Schema", "Name"`,
 		},
 		{
 			Name:        "pg_index index lookup",
+			Focus:       true,
 			SetUpScript: sharedSetupScript,
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT i.indrelid FROM pg_catalog.pg_index i 
-WHERE i.indexrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = 't1_pkey')
-ORDER BY 1;`,
+					Query: `SELECT c.relname, c.relnamespace FROM pg_catalog.pg_index i
+         join pg_class c on i.indexrelid = c.oid
+         --join pg_namespace n on c.relnamespace = n.oid
+WHERE c.relname = 't2'`,
 					Expected: []sql.Row{
-						{1496157033},
+						{2},
+					},
+				},
+				{
+					Query: `SELECT c.relname, n.nspname FROM pg_class c
+         join pg_namespace n on c.relnamespace = n.oid
+WHERE c.relname = 't2'`,
+					Expected: []sql.Row{
+						{2},
 					},
 				},
 				{
@@ -4410,7 +4420,7 @@ ORDER BY 1;`,
 					},
 				},
 				{
-					Query: `SELECT COUNT(*) FROM pg_catalog.pg_index i 
+					Query: `SELECT * FROM pg_catalog.pg_index i 
 WHERE i.indrelid = 1496157034`,
 					Expected: []sql.Row{
 						{2},
