@@ -142,12 +142,6 @@ func TestBasicIndexing(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "EXPLAIN SELECT * FROM test WHERE v1 = 2 AND v2 = 22 ORDER BY pk;",
-					Expected: []sql.Row{
-						{12, 2, 22},
-					},
-				},
-				{
 					Query: "SELECT * FROM test WHERE v1 = 2 AND v2 = 22 ORDER BY pk;",
 					Expected: []sql.Row{
 						{12, 2, 22},
