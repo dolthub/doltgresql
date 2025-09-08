@@ -4230,6 +4230,11 @@ ORDER BY 1;`,
 					},
 				},
 				{
+					// This is to make sure a full range scan works (we don't support a full range scan on the index yet)
+					Query:    `SELECT relname from pg_catalog.pg_class order by oid limit 1;`,
+					Expected: []sql.Row{sql.Row{"pg_publication_namespace"}},
+				},
+				{
 					Query: `EXPLAIN SELECT c.oid
 FROM pg_catalog.pg_class c 
 WHERE c.relname = 't2' and c.relnamespace = 2200
