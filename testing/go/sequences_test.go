@@ -1138,7 +1138,7 @@ func TestSequences(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query: "SELECT * FROM information_schema.key_column_usage;",
+					Query: "SELECT * FROM information_schema.key_column_usage where constraint_schema <> 'pg_catalog';",
 					Expected: []sql.Row{
 						{"postgres", "public", "PRIMARY", "postgres", "public", "call", "id", 1, nil, nil, nil, nil},
 						{"postgres", "public", "PRIMARY", "postgres", "public", "user", "id", 1, nil, nil, nil, nil},

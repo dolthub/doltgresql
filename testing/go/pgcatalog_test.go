@@ -511,8 +511,7 @@ func TestPgClass(t *testing.T) {
 			},
 		},
 		{
-			Name:  "pg_class with regclass",
-			Focus: true,
+			Name: "pg_class with regclass",
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
 				`SET search_path TO testschema;`,
@@ -4231,6 +4230,11 @@ ORDER BY 1;`,
 					},
 				},
 				{
+					// This is to make sure a full range scan works (we don't support a full range scan on the index yet)
+					Query:    `SELECT relname from pg_catalog.pg_class order by oid limit 1;`,
+					Expected: []sql.Row{sql.Row{"pg_publication_namespace"}},
+				},
+				{
 					Query: `EXPLAIN SELECT c.oid
 FROM pg_catalog.pg_class c 
 WHERE c.relname = 't2' and c.relnamespace = 2200
@@ -4359,6 +4363,29 @@ ORDER BY 1,2;`,
 						{"                     ├─ index: [pg_class.oid]"},
 						{"                     └─ keys: a.attrelid"},
 					},
+				},
+			},
+		},
+		{
+			Name:        "left join with nil left result",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT n.nspname as "Schema",
+  c.relname as "Name",
+  pg_catalog.pg_get_userbyid(c.relowner) as "Owner",
+ c2.oid::pg_catalog.regclass as "Table"
+FROM pg_catalog.pg_class c
+     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     LEFT JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid
+     LEFT JOIN pg_catalog.pg_class c2 ON i.indrelid = c2.oid
+WHERE c.relkind IN ('I','')
+ AND NOT c.relispartition
+      AND n.nspname <> 'pg_catalog'
+      AND n.nspname !~ '^pg_toast'
+      AND n.nspname <> 'information_schema'
+  AND pg_catalog.pg_table_is_visible(c.oid)
+ORDER BY "Schema", "Name"`,
 				},
 			},
 		},

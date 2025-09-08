@@ -77,6 +77,8 @@ type pgCatalogCache struct {
 	systemTables []doltdb.TableName
 }
 
+// pgClassCache holds cached data for the pg_class table, including two btree indexes for fast lookups by OID and
+// by relname
 type pgClassCache struct {
 	classes []*pgClass
 	nameIdx *btree.BTreeG[*pgClass]
