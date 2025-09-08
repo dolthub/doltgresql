@@ -4361,6 +4361,29 @@ ORDER BY 1,2;`,
 				},
 			},
 		},
+		{
+			Name: "left join with nil left result",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT n.nspname as "Schema",
+  c.relname as "Name",
+  pg_catalog.pg_get_userbyid(c.relowner) as "Owner",
+ c2.oid::pg_catalog.regclass as "Table"
+FROM pg_catalog.pg_class c
+     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     LEFT JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid
+     LEFT JOIN pg_catalog.pg_class c2 ON i.indrelid = c2.oid
+WHERE c.relkind IN ('I','')
+ AND NOT c.relispartition
+      AND n.nspname <> 'pg_catalog'
+      AND n.nspname !~ '^pg_toast'
+      AND n.nspname <> 'information_schema'
+  AND pg_catalog.pg_table_is_visible(c.oid)
+ORDER BY "Schema", "Name"`,
+				},
+			},
+		},
 	})
 }
 

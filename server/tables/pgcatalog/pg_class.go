@@ -208,18 +208,25 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		msrng := rng.(sql.MySQLRange)
 		oidRng := msrng[0]
 		if oidRng.HasLowerBound() {
-			lowerRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.LowerBound).(id.Id)
-			gte = &pgClass{
-				oidNative: idToOid(lowerRangeCutKey),
+			lb := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
+			if lb != nil {
+				lowerRangeCutKey := lb.(id.Id)
+				gte = &pgClass{
+					oidNative: idToOid(lowerRangeCutKey),
+				}
+				hasLowerBound = true
 			}
-			hasLowerBound = true
 		}
+
 		if oidRng.HasUpperBound() {
-			upperRangeCutKey := sql.GetMySQLRangeCutKey(oidRng.UpperBound).(id.Id)
-			lte = &pgClass{
-				oidNative: idToOid(upperRangeCutKey),
+			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
+			if ub != nil {
+				upperRangeCutKey := ub.(id.Id)
+				lte = &pgClass{
+					oidNative: idToOid(upperRangeCutKey),
+				}
+				hasUpperBound = true
 			}
-			hasUpperBound = true
 		}
 
 	case "pg_class_relname_nsp_index":
@@ -230,21 +237,33 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		var schemaOidLower, schemaOidUpper uint32
 
 		if relNameRange.HasLowerBound() {
-			relnameLower = sql.GetMySQLRangeCutKey(relNameRange.LowerBound).(string)
-			hasLowerBound = true
+			lb := sql.GetMySQLRangeCutKey(relNameRange.LowerBound)
+			if lb != nil {
+				relnameLower = lb.(string)
+				hasLowerBound = true
+			}
 		}
 		if relNameRange.HasUpperBound() {
-			relnameUpper = sql.GetMySQLRangeCutKey(relNameRange.UpperBound).(string)
-			hasUpperBound = true
+			ub := sql.GetMySQLRangeCutKey(relNameRange.UpperBound)
+			if ub != nil {
+				relnameUpper = ub.(string)
+				hasUpperBound = true
+			}
 		}
 
 		if schemaOidRange.HasLowerBound() {
-			lowerRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound).(id.Id)
-			schemaOidLower = idToOid(lowerRangeCutKey)
+			lb := sql.GetMySQLRangeCutKey(schemaOidRange.LowerBound)
+			if lb != nil {
+				lowerRangeCutKey := lb.(id.Id)
+				schemaOidLower = idToOid(lowerRangeCutKey)
+			}
 		}
 		if schemaOidRange.HasUpperBound() {
-			upperRangeCutKey := sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound).(id.Id)
-			schemaOidUpper = idToOid(upperRangeCutKey)
+			ub := sql.GetMySQLRangeCutKey(schemaOidRange.UpperBound)
+			if ub != nil {
+				upperRangeCutKey := ub.(id.Id)
+				schemaOidUpper = idToOid(upperRangeCutKey)
+			}
 		}
 
 		if relNameRange.HasLowerBound() || schemaOidRange.HasLowerBound() {

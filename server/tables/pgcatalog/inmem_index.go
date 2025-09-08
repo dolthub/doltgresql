@@ -82,6 +82,10 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 	l.nextChan = make(chan T)
 	rng := l.lookup.Ranges.ToRanges()[l.rangeIdx]
 	go func() {
+		defer func() {
+			close(l.nextChan)
+		}()
+		
 		gte, hasLowerBound, lte, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
 		itr := func(item T) bool {
 			l.nextChan <- item
@@ -96,7 +100,8 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 		} else if hasUpperBound {
 			idx.AscendLessThan(lte, itr)
 		} else {
-			idx.Ascend(itr)
+			// We don't support nil lookups for this kind of index, there are never nillable elements
+			return
 		}
 
 		// because the above call uses a closed range for its upper end, we just return the last item at the end rather
@@ -105,8 +110,6 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 		if ok {
 			l.nextChan <- upperRange
 		}
-
-		close(l.nextChan)
 	}()
 
 	return l.nextItem()
