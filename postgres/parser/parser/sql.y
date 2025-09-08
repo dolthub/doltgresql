@@ -15305,7 +15305,6 @@ reserved_keyword:
 // Adding keywords here creates non-resolvable incompatibilities with
 // postgres clients.
 cockroachdb_extra_reserved_keyword:
-  INDEX
-| NOTHING
+  NOTHING
 
 %%
