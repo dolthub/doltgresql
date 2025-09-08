@@ -85,7 +85,7 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 		defer func() {
 			close(l.nextChan)
 		}()
-		
+
 		gte, hasLowerBound, lte, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
 		itr := func(item T) bool {
 			l.nextChan <- item

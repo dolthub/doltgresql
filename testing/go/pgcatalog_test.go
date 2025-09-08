@@ -511,7 +511,7 @@ func TestPgClass(t *testing.T) {
 			},
 		},
 		{
-			Name:  "pg_class with regclass",
+			Name: "pg_class with regclass",
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
 				`SET search_path TO testschema;`,
@@ -4362,7 +4362,7 @@ ORDER BY 1,2;`,
 			},
 		},
 		{
-			Name: "left join with nil left result",
+			Name:        "left join with nil left result",
 			SetUpScript: sharedSetupScript,
 			Assertions: []ScriptTestAssertion{
 				{
