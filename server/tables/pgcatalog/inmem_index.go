@@ -124,18 +124,24 @@ type pgCatalogInMemIndex struct {
 	columnExprs []sql.ColumnExpressionType
 }
 
+var _ sql.Index = (*pgCatalogInMemIndex)(nil)
+
+// ID implements the interface sql.Index.
 func (p pgCatalogInMemIndex) ID() string {
 	return p.name
 }
 
+// Database implements the interface sql.Index.
 func (p pgCatalogInMemIndex) Database() string {
 	return p.dbName
 }
 
+// Table implements the interface sql.Index.
 func (p pgCatalogInMemIndex) Table() string {
 	return p.tblName
 }
 
+// Expressions implements the interface sql.Index.
 func (p pgCatalogInMemIndex) Expressions() []string {
 	exprs := make([]string, len(p.columnExprs))
 	for i, expr := range p.columnExprs {
@@ -144,72 +150,90 @@ func (p pgCatalogInMemIndex) Expressions() []string {
 	return exprs
 }
 
+// IsUnique implements the interface sql.Index.
 func (p pgCatalogInMemIndex) IsUnique() bool {
 	return p.uniq
 }
 
+// IsSpatial implements the interface sql.Index.
 func (p pgCatalogInMemIndex) IsSpatial() bool {
 	return false
 }
 
+// IsFullText implements the interface sql.Index.
 func (p pgCatalogInMemIndex) IsFullText() bool {
 	return false
 }
 
+// IsFunctional implements the interface sql.Index.
 func (p pgCatalogInMemIndex) IsVector() bool {
 	return false
 }
 
+// Comment implements the interface sql.Index.
 func (p pgCatalogInMemIndex) Comment() string {
 	return ""
 }
 
+// IndexType implements the interface sql.Index.
 func (p pgCatalogInMemIndex) IndexType() string {
 	return "BTREE"
 }
 
+// IsGenerated implements the interface sql.Index.
 func (p pgCatalogInMemIndex) IsGenerated() bool {
 	return false
 }
 
+// ColumnExpressionTypes implements the interface sql.Index.
 func (p pgCatalogInMemIndex) ColumnExpressionTypes() []sql.ColumnExpressionType {
 	return p.columnExprs
 }
 
+// CanSupport implements the interface sql.Index.
 func (p pgCatalogInMemIndex) CanSupport(context *sql.Context, r ...sql.Range) bool {
 	return true
 }
 
+// CanSupportOrderBy implements the interface sql.Index.
 func (p pgCatalogInMemIndex) CanSupportOrderBy(expr sql.Expression) bool {
 	return true
 }
 
+// PrefixLengths implements the interface sql.Index.
 func (p pgCatalogInMemIndex) PrefixLengths() []uint16 {
 	return make([]uint16, len(p.columnExprs))
 }
 
 var _ sql.Index = (*pgCatalogInMemIndex)(nil)
 
+// inMemIndexPartition is a sql.Partition that represents the single partition for an in memory index lookup.
 type inMemIndexPartition struct {
 	idxName string
 	lookup  sql.IndexLookup
 }
 
+var _ sql.Partition = (*inMemIndexPartition)(nil)
+
+// Key implements the interface sql.Partition.
 func (p inMemIndexPartition) Key() []byte {
 	return []byte(p.idxName)
 }
 
-var _ sql.Partition = (*inMemIndexPartition)(nil)
-
+// inMemIndexPartIter is a sql.PartitionIter that returns a single partition for an in memory index lookup.
 type inMemIndexPartIter struct {
 	used bool
 	part inMemIndexPartition
 }
 
+var _ sql.PartitionIter = (*inMemIndexPartIter)(nil)
+
+// Close implements the interface sql.PartitionIter.
 func (p inMemIndexPartIter) Close(context *sql.Context) error {
 	return nil
 }
 
+// Next implements the interface sql.PartitionIter.
 func (p *inMemIndexPartIter) Next(context *sql.Context) (sql.Partition, error) {
 	if p.used {
 		return nil, io.EOF
@@ -217,5 +241,3 @@ func (p *inMemIndexPartIter) Next(context *sql.Context) (sql.Partition, error) {
 	p.used = true
 	return p.part, nil
 }
-
-var _ sql.PartitionIter = (*inMemIndexPartIter)(nil)
