@@ -70,7 +70,7 @@ type Parameter struct {
 	Source       ParameterSource
 	ResetVal     any
 	Scope        sql.SystemVariableScope
-	ValidateFunc func(any) (any, bool)
+	ValidateFunc func(currVal, newVal any) (any, bool)
 }
 
 // GetName implements sql.SystemVariable.
@@ -99,32 +99,32 @@ func (p *Parameter) GetDefault() any {
 }
 
 // InitValue implements sql.SystemVariable.
-func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
-	convertedVal, _, err := p.Type.Convert(ctx, val)
+func (p *Parameter) InitValue(ctx *sql.Context, currVal, newVal any, global bool) (sql.SystemVarValue, error) {
+	convertedNewVal, _, err := p.Type.Convert(ctx, newVal)
 	if err != nil {
 		return sql.SystemVarValue{}, err
 	}
 	if p.ValidateFunc != nil {
-		v, ok := p.ValidateFunc(convertedVal)
+		v, ok := p.ValidateFunc(currVal, convertedNewVal)
 		if !ok {
-			return sql.SystemVarValue{}, ErrInvalidValue.New(p.Name, convertedVal)
+			return sql.SystemVarValue{}, ErrInvalidValue.New(p.Name, convertedNewVal)
 		}
-		convertedVal = v
+		convertedNewVal = v
 	}
 	svv := sql.SystemVarValue{
 		Var: p,
-		Val: convertedVal,
+		Val: convertedNewVal,
 	}
 	return svv, nil
 }
 
 // SetValue implements sql.SystemVariable.
-func (p *Parameter) SetValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
+func (p *Parameter) SetValue(ctx *sql.Context, currVal, newVal any, global bool) (sql.SystemVarValue, error) {
 	if p.IsReadOnly() {
 		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
 	}
 	// TODO: Do parsing of units for memory and time parameters
-	return p.InitValue(ctx, val, global)
+	return p.InitValue(ctx, currVal, newVal, global)
 }
 
 // IsReadOnly implements sql.SystemVariable.

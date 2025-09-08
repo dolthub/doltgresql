@@ -16,6 +16,7 @@ package functions
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -64,7 +65,7 @@ var timestamp_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		t := val.(time.Time)
-		return FormatDateTimeWithBC(t, "2006-01-02 15:04:05.999999", false), nil
+		return FormatDateTimeWithBC(t, getLayoutStringFormat(ctx, false), false), nil
 	},
 }
 
@@ -138,6 +139,81 @@ var timestamp_cmp = framework.Function2{
 		bb := val2.(time.Time)
 		return int32(ab.Compare(bb)), nil
 	},
+}
+
+// https://www.postgresql.org/docs/15/datatype-datetime.html
+const (
+	DateStyleISO      = "ISO"
+	DateStyleSQL      = "SQL"
+	DateStylePostgres = "Postgres"
+	DateStyleGerman   = "German"
+)
+
+func getDateStyleOutputFormat(ctx *sql.Context) string {
+	format := DateStyleISO // default
+	if ctx == nil {
+		return format
+	}
+
+	val, err := ctx.GetSessionVariable(ctx, "datestyle")
+	if err != nil {
+		return format
+	}
+
+	values := strings.Split(strings.ReplaceAll(val.(string), " ", ""), ",")
+	for _, value := range values {
+		switch value {
+		case DateStyleISO, DateStyleSQL, DateStylePostgres, DateStyleGerman:
+			return value
+		}
+	}
+	return format
+}
+
+const (
+	// ISO is ISO 8601, SQL standard
+	dateStyleFormat_ISO         = "2006-01-02 15:04:05.999999"
+	dateStyleFormatDateOnly_ISO = "2006-01-02"
+	// SQL is traditional style
+	dateStyleFormat_SQL         = "01/02/2006 15:04:05.999999"
+	dateStyleFormatDateOnly_SQL = "01/02/2006"
+	// Postgres is original style
+	dateStyleFormat_Postgres         = "Mon Jan 02 15:04:05.999999 2006"
+	dateStyleFormatDateOnly_Postgres = "Mon Jan 02 2006"
+	// regional style
+	dateStyleFormat_German         = "02.01.2006 15:04:05.999999"
+	dateStyleFormatDateOnly_German = "02.01.2006"
+)
+
+func getLayoutStringFormat(ctx *sql.Context, dateOnly bool) string {
+	layout := getDateStyleOutputFormat(ctx)
+	switch layout {
+	case DateStyleISO:
+		if dateOnly {
+			return dateStyleFormatDateOnly_ISO
+		}
+		return dateStyleFormat_ISO
+	case DateStyleSQL:
+		if dateOnly {
+			return dateStyleFormatDateOnly_SQL
+		}
+		return dateStyleFormat_SQL
+	case DateStylePostgres:
+		if dateOnly {
+			return dateStyleFormatDateOnly_Postgres
+		}
+		return dateStyleFormat_Postgres
+	case DateStyleGerman:
+		if dateOnly {
+			return dateStyleFormatDateOnly_German
+		}
+		return dateStyleFormat_German
+	}
+	// shouldn't happen but return default
+	if dateOnly {
+		return dateStyleFormatDateOnly_ISO
+	}
+	return dateStyleFormat_ISO
 }
 
 // FormatDateTimeWithBC formats a time.Time that may represent BC dates (negative years)
