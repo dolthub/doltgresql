@@ -42,13 +42,13 @@ func (p PgDefaultAclHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgDefaultAclHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgDefaultAclHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_default_acl row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgDefaultAclHandler) Schema() sql.PrimaryKeySchema {
+func (p PgDefaultAclHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgDefaultAclSchema,
 		PkOrdinals: nil,

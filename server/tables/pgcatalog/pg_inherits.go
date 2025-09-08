@@ -42,13 +42,13 @@ func (p PgInheritsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgInheritsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgInheritsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_inherits row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgInheritsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgInheritsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgInheritsSchema,
 		PkOrdinals: nil,

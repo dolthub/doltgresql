@@ -42,13 +42,13 @@ func (p PgAvailableExtensionsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgAvailableExtensionsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgAvailableExtensionsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_available_extensions row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgAvailableExtensionsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgAvailableExtensionsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgAvailableExtensionsSchema,
 		PkOrdinals: nil,

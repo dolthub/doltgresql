@@ -42,13 +42,13 @@ func (p PgReplicationSlotsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgReplicationSlotsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgReplicationSlotsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_replication_slots row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgReplicationSlotsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgReplicationSlotsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgReplicationSlotsSchema,
 		PkOrdinals: nil,

@@ -42,13 +42,13 @@ func (p PgSeclabelsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgSeclabelsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgSeclabelsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_seclabels row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgSeclabelsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgSeclabelsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgSeclabelsSchema,
 		PkOrdinals: nil,

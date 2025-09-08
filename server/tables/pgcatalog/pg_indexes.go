@@ -44,7 +44,7 @@ func (p PgIndexesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgIndexesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// Use cached data from this process if it exists
 	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
@@ -65,7 +65,7 @@ func (p PgIndexesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgIndexesHandler) Schema() sql.PrimaryKeySchema {
+func (p PgIndexesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgIndexesSchema,
 		PkOrdinals: nil,
@@ -103,15 +103,15 @@ func (iter *pgIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	return sql.Row{
 		schema,                     // schemaname
 		index.Table(),              // tablename
-		getIndexName(index),        // indexname
+		formatIndexName(index),     // indexname
 		"",                         // tablespace
 		getIndexDef(index, schema), // indexdef
 	}, nil
 }
 
-// getIndexName returns the definition of the index.
+// formatIndexName returns the definition of the index.
 func getIndexDef(index sql.Index, schema string) string {
-	name := getIndexName(index)
+	name := formatIndexName(index)
 	using := strings.ToLower(index.IndexType())
 	unique := ""
 	if index.IsUnique() {

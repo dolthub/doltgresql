@@ -42,13 +42,13 @@ func (p PgSequencesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgSequencesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgSequencesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_sequences row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgSequencesHandler) Schema() sql.PrimaryKeySchema {
+func (p PgSequencesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgSequencesSchema,
 		PkOrdinals: nil,

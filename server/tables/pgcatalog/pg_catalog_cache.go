@@ -17,6 +17,7 @@ package pgcatalog
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/google/btree"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -38,7 +39,7 @@ type pgCatalogCache struct {
 	pid uint64
 
 	// pg_classes
-	pgClasses []pgClass
+	pgClasses *pgClassCache
 
 	// pg_constraints
 	pgConstraints []pgConstraint
@@ -78,6 +79,28 @@ type pgCatalogCache struct {
 	// pg_tables
 	tables       []sql.Table
 	systemTables []doltdb.TableName
+}
+
+// pgClassCache holds cached data for the pg_class table, including two btree indexes for fast lookups by OID and
+// by relname
+type pgClassCache struct {
+	classes []*pgClass
+	nameIdx *btree.BTreeG[*pgClass]
+	oidIdx  *btree.BTreeG[*pgClass]
+}
+
+var _ BTreeIndexAccess[*pgClass] = &pgClassCache{}
+
+// getIndex implements BTreeIndexAccess.
+func (p pgClassCache) getIndex(name string) *btree.BTreeG[*pgClass] {
+	switch name {
+	case "pg_class_oid_index":
+		return p.oidIdx
+	case "pg_class_relname_nsp_index":
+		return p.nameIdx
+	default:
+		panic("unknown pg_class index: " + name)
+	}
 }
 
 // newPgCatalogCache creates a new pgCatalogCache, with the query/process ID set to |pid|. The PID is important,

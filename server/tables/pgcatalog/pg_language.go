@@ -42,13 +42,13 @@ func (p PgLanguageHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgLanguageHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgLanguageHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_language row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgLanguageHandler) Schema() sql.PrimaryKeySchema {
+func (p PgLanguageHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgLanguageSchema,
 		PkOrdinals: nil,

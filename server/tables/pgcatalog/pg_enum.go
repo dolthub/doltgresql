@@ -42,13 +42,13 @@ func (p PgEnumHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgEnumHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgEnumHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_enum row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgEnumHandler) Schema() sql.PrimaryKeySchema {
+func (p PgEnumHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgEnumSchema,
 		PkOrdinals: nil,

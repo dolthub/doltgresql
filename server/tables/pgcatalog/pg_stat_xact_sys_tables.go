@@ -42,13 +42,13 @@ func (p PgStatXactSysTablesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatXactSysTablesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatXactSysTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_xact_sys_tables row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatXactSysTablesHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatXactSysTablesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatXactSysTablesSchema,
 		PkOrdinals: nil,

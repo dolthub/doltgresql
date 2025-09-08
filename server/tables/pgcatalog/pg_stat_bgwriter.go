@@ -42,13 +42,13 @@ func (p PgStatBgwriterHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatBgwriterHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatBgwriterHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_bgwriter row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatBgwriterHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatBgwriterHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatBgwriterSchema,
 		PkOrdinals: nil,

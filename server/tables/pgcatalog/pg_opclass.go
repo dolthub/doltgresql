@@ -42,13 +42,13 @@ func (p PgOpclassHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgOpclassHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgOpclassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_opclass row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgOpclassHandler) Schema() sql.PrimaryKeySchema {
+func (p PgOpclassHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgOpclassSchema,
 		PkOrdinals: nil,

@@ -446,7 +446,7 @@ func TestPgClass(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				// Table
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing';`,
+					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing' order by 1;`,
 					Expected: []sql.Row{
 						{3120782595, "testing", 2638679668, 0, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
@@ -503,6 +503,10 @@ func TestPgClass(t *testing.T) {
 					Expected: []sql.Row{
 						{"testing"},
 					},
+				},
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_class" WHERE oid=1234`,
+					Expected: []sql.Row{},
 				},
 			},
 		},
@@ -1144,7 +1148,11 @@ func TestPgIndex(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_index" order by 1;`,
+					Query: "SELECT i.* from pg_class c " +
+						"JOIN pg_index i ON c.oid = i.indexrelid " +
+						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+						"ORDER BY 1;",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
 						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
@@ -1160,11 +1168,19 @@ func TestPgIndex(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT indexrelid FROM PG_catalog.pg_INDEX ORDER BY indexrelid ASC;",
+					Query: "SELECT i.indexrelid from pg_class c " +
+						"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
+						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+						"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {1322775662}, {3185790121}},
 				},
 				{
-					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid JOIN pg_catalog.pg_class t ON i.indrelid = t.oid;",
+					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i " +
+						"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
+						"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
+						"JOIN pg_namespace n ON t.relnamespace = n.oid " +
+						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, "testing_pkey", "testing"},
 						{1322775662, 3120782595, "v1", "testing"},
@@ -1189,7 +1205,7 @@ func TestPgIndexes(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_indexes";`,
+					Query: `SELECT * FROM "pg_catalog"."pg_indexes" where schemaname = 'testschema';`,
 					Expected: []sql.Row{
 						{"testschema", "testing", "testing_pkey", "", "CREATE UNIQUE INDEX testing_pkey ON testschema.testing USING btree (pk)"},
 						{"testschema", "testing", "v1", "", "CREATE UNIQUE INDEX v1 ON testschema.testing USING btree (v1)"},
@@ -1206,7 +1222,7 @@ func TestPgIndexes(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT indexname FROM PG_catalog.pg_INDEXES ORDER BY indexname;",
+					Query:    "SELECT indexname FROM PG_catalog.pg_INDEXES where schemaname='testschema' ORDER BY indexname;",
 					Expected: []sql.Row{{"my_index"}, {"testing2_pkey"}, {"testing_pkey"}, {"v1"}},
 				},
 			},
@@ -4114,15 +4130,279 @@ func TestPgViews(t *testing.T) {
 	})
 }
 
-func TestPgCatalogQueries(t *testing.T) {
+func TestPgCatalogIndexes(t *testing.T) {
+	sharedSetupScript := []string{
+		`create table t1 (a int primary key, b int not null)`,
+		`create table t2 (c int primary key, d int not null)`,
+		`create index on t2 (d)`,
+	}
+
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "sqlalchemy queries",
-			SetUpScript: []string{
-				`create table t1 (a int primary key, b int not null)`,
-				`create table t2 (a int primary key, b int not null)`,
-				`create index on t2 (b)`,
+			Name:        "pg_class index lookup",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT c.oid
+FROM pg_catalog.pg_class c 
+WHERE c.relname = 't2' and c.relnamespace = 2200 -- public
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{1496157034},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname > 't' AND c.relname < 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t1"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname >= 't1' AND c.relname <= 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t1"},
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname >= 't1' AND c.relname < 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t1"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname > 't1' AND c.relname <= 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname > 't1' AND c.relname <= 't2' AND c.relnamespace > 2199 AND c.relnamespace < 2201 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid = 1496157034
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid IN (1496157034, 1496157035) 
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid > 1496157033 AND c.oid < 1496157035
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
+					// This is to make sure a full range scan works (we don't support a full range scan on the index yet)
+					Query:    `SELECT relname from pg_catalog.pg_class order by oid limit 1;`,
+					Expected: []sql.Row{sql.Row{"pg_publication_namespace"}},
+				},
+				{
+					Query: `EXPLAIN SELECT c.oid
+FROM pg_catalog.pg_class c 
+WHERE c.relname = 't2' and c.relnamespace = 2200
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.oid]"},
+						{" └─ Sort(c.oid ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (c.relname = 't2' AND c.relnamespace = 2200)"},
+						{"         └─ TableAlias(c)"},
+						{"             └─ IndexedTableAccess(pg_class)"},
+						{"                 ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"                 └─ filters: [{[t2, t2], [{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.relname > 't' AND c.relname < 't2' AND c.relnamespace = 2200 -- public
+AND relkind = 'r'
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname]"},
+						{" └─ Filter"},
+						{"     ├─ (((c.relname > 't' AND c.relname < 't2') AND c.relnamespace = 2200) AND c.relkind = 'r')"},
+						{"     └─ TableAlias(c)"},
+						{"         └─ IndexedTableAccess(pg_class)"},
+						{"             ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"             └─ filters: [{(t, t2), [{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid = 1496157034
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname]"},
+						{" └─ Sort(c.relname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ c.oid = 1496157034"},
+						{"         └─ TableAlias(c)"},
+						{"             └─ IndexedTableAccess(pg_class)"},
+						{"                 ├─ index: [pg_class.oid]"},
+						{"                 └─ filters: [{[{Table:[\"public\",\"t2\"]}, {Table:[\"public\",\"t2\"]}]}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid > 1496157033 AND c.oid < 1496157035
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname]"},
+						{" └─ Sort(c.relname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (c.oid > 1496157033 AND c.oid < 1496157035)"},
+						{"         └─ TableAlias(c)"},
+						{"             └─ IndexedTableAccess(pg_class)"},
+						{"                 ├─ index: [pg_class.oid]"},
+						{"                 └─ filters: [{({OID:[\"1496157033\"]}, {OID:[\"1496157035\"]})}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid IN (1496157034, 1496157035) 
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname]"},
+						{" └─ Sort(c.relname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ c.oid IN (1496157034, 1496157035)"},
+						{"         └─ TableAlias(c)"},
+						{"             └─ IndexedTableAccess(pg_class)"},
+						{"                 ├─ index: [pg_class.oid]"},
+						{"                 └─ filters: [{[{Table:[\"public\",\"t2\"]}, {Table:[\"public\",\"t2\"]}]}, {[{OID:[\"1496157035\"]}, {OID:[\"1496157035\"]}]}]"},
+					},
+				},
 			},
+		},
+		{
+			Name:        "join on pg_class",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT c.relname, a.attname 
+FROM pg_catalog.pg_class c 
+    JOIN pg_catalog.pg_attribute a 
+        ON c.oid = a.attrelid 
+WHERE c.relkind = 'r' AND a.attnum > 0 
+  AND NOT a.attisdropped
+  AND c.relname = 't2'
+ORDER BY 1,2;`,
+					Expected: []sql.Row{
+						{"t2", "c"},
+						{"t2", "d"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT c.relname, a.attname 
+FROM pg_catalog.pg_class c 
+    JOIN pg_catalog.pg_attribute a 
+        ON c.oid = a.attrelid 
+WHERE c.relkind = 'r' AND a.attnum > 0 
+  AND NOT a.attisdropped
+  AND c.relname = 't2'
+ORDER BY 1,2;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname, a.attname]"},
+						{" └─ Sort(c.relname ASC, a.attname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (((c.relkind = 'r' AND a.attnum > 0) AND (NOT(a.attisdropped))) AND c.relname = 't2')"},
+						{"         └─ LookupJoin"},
+						{"             ├─ TableAlias(a)"},
+						{"             │   └─ Table"},
+						{"             │       └─ name: pg_attribute"},
+						{"             └─ TableAlias(c)"},
+						{"                 └─ IndexedTableAccess(pg_class)"},
+						{"                     ├─ index: [pg_class.oid]"},
+						{"                     └─ keys: a.attrelid"},
+					},
+				},
+			},
+		},
+		{
+			Name:        "left join with nil left result",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT n.nspname as "Schema",
+  c.relname as "Name",
+  pg_catalog.pg_get_userbyid(c.relowner) as "Owner",
+ c2.oid::pg_catalog.regclass as "Table"
+FROM pg_catalog.pg_class c
+     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+     LEFT JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid
+     LEFT JOIN pg_catalog.pg_class c2 ON i.indrelid = c2.oid
+WHERE c.relkind IN ('I','')
+ AND NOT c.relispartition
+      AND n.nspname <> 'pg_catalog'
+      AND n.nspname !~ '^pg_toast'
+      AND n.nspname <> 'information_schema'
+  AND pg_catalog.pg_table_is_visible(c.oid)
+ORDER BY "Schema", "Name"`,
+				},
+			},
+		},
+	})
+}
+
+func TestSqlAlchemyQueries(t *testing.T) {
+	sharedSetupScript := []string{
+		`create table t1 (a int primary key, b int not null)`,
+		`create table t2 (a int primary key, b int not null)`,
+		`create index on t2 (b)`,
+	}
+
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "schema for dolt_log",
+			SetUpScript: sharedSetupScript,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_attribute.attname AS name, pg_catalog.format_type(pg_catalog.pg_attribute.atttypid, pg_catalog.pg_attribute.atttypmod) AS format_type, (SELECT pg_catalog.pg_get_expr(pg_catalog.pg_attrdef.adbin, pg_catalog.pg_attrdef.adrelid) AS pg_get_expr_1 
@@ -4141,6 +4421,12 @@ WHERE pg_catalog.pg_class.relkind = ANY (ARRAY['r', 'p', 'f', 'v', 'm']) AND pg_
 						{"commit_order", "bigint", nil, "t", "dolt_log", nil, "", nil},
 					},
 				},
+			},
+		},
+		{
+			Name:        "type queries",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_type.typname AS name,
        pg_catalog.pg_type_is_visible(pg_catalog.pg_type.oid) AS visible,
@@ -4155,6 +4441,12 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
     ON pg_catalog.pg_type.oid = lbl_agg.enumtypid WHERE pg_catalog.pg_type.typtype = 'e'
     ORDER BY pg_catalog.pg_namespace.nspname, pg_catalog.pg_type.typname`,
 				},
+			},
+		},
+		{
+			Name:        "dolt_log schema 2",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_attribute.attname AS name,
     pg_catalog.format_type(pg_catalog.pg_attribute.atttypid,
@@ -4199,6 +4491,12 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
 						{"commit_order", "bigint", nil, "t", "dolt_log", nil, "", nil},
 					},
 				},
+			},
+		},
+		{
+			Name:        "constraints",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT attr.conrelid, 
        array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
@@ -4228,6 +4526,12 @@ JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_type
 				 WHERE con.conrelid IN (3491847678)) AS attr 
             GROUP BY attr.conrelid, attr.conname ORDER BY attr.conrelid, attr.conname`,
 				},
+			},
+		},
+		{
+			Name:        "has constraints",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_index.indrelid,
        cls_idx.relname AS relname_index,
@@ -4279,6 +4583,12 @@ WHERE pg_catalog.pg_index.indrelid IN (3491847678)
   AND NOT pg_catalog.pg_index.indisprimary
 ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 				},
+			},
+		},
+		{
+			Name:        "attributes",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT attr.conrelid,
        array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
@@ -4310,6 +4620,12 @@ FROM (SELECT con.conrelid AS conrelid,
 GROUP BY attr.conrelid, attr.conname
 ORDER BY attr.conrelid, attr.conname`,
 				},
+			},
+		},
+		{
+			Name:        "key constraints",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT attr.conrelid,
        array_agg(CAST(attr.attname AS TEXT) ORDER BY attr.ord) AS cols,
@@ -4344,6 +4660,12 @@ ORDER BY attr.conrelid, attr.conname`,
 						{1249736862, "{a}", "t1_pkey", nil, nil},
 					},
 				},
+			},
+		},
+		{
+			Name:        "index queries",
+			SetUpScript: sharedSetupScript,
+			Assertions: []ScriptTestAssertion{
 				{
 					Query: `SELECT pg_catalog.pg_index.indrelid,
        cls_idx.relname AS relname_index,

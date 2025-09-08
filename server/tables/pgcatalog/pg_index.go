@@ -45,7 +45,7 @@ func (p PgIndexHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgIndexHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// Use cached data from this process if it exists
 	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
@@ -67,7 +67,7 @@ func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgIndexHandler) Schema() sql.PrimaryKeySchema {
+func (p PgIndexHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgIndexSchema,
 		PkOrdinals: nil,

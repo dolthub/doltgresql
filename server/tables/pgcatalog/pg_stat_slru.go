@@ -42,13 +42,13 @@ func (p PgStatSlruHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatSlruHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatSlruHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_slru row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatSlruHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatSlruHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatSlruSchema,
 		PkOrdinals: nil,
