@@ -259,7 +259,7 @@ func (s *inMemIndexStorage[T]) Add(val T) {
 	if s.uniqTree != nil {
 		s.uniqTree.ReplaceOrInsert(val)
 	} else {
-		existing, replaced := s.nonUniqTree.Get([]T{val})
+		existing, replaced := s.nonUniqTree.ReplaceOrInsert([]T{val})
 		if replaced {
 			existing = append(existing, val)
 			s.nonUniqTree.ReplaceOrInsert(existing)
