@@ -254,8 +254,8 @@ func NewNonUniqueInMemIndexStorage[T any](lessFunc func(a, b []T) bool) *inMemIn
 	}
 }
 
-// add adds a value to the in-memory index storage.
-func (s *inMemIndexStorage[T]) add(val T) {
+// Add adds a value to the in-memory index storage.
+func (s *inMemIndexStorage[T]) Add(val T) {
 	if s.uniqTree != nil {
 		s.uniqTree.ReplaceOrInsert(val)
 	} else {
@@ -318,7 +318,8 @@ func (s *inMemIndexStorage[T]) iterFuncNonUniq(c chan T) func(item []T) bool {
 }
 
 // iterKey sends the value for the given key to the channel if it exists in the index.
-// This is used to include the upper bound of a range scan, since the btree package uses a half-open range.
+// This is used to include the upper bound of a range scan, since the btree package uses a half-open range in all of
+// its Ascend methods.
 func (s *inMemIndexStorage[T]) iterKey(v T, c chan T) {
 	if s.uniqTree != nil {
 		val, ok := s.uniqTree.Get(v)

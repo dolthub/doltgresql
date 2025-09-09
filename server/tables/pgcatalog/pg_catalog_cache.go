@@ -17,7 +17,6 @@ package pgcatalog
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/google/btree"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -81,14 +80,11 @@ type pgCatalogCache struct {
 // by relname
 type pgClassCache struct {
 	classes []*pgClass
-	nameIdx *btree.BTreeG[*pgClass]
-	oidIdx  *btree.BTreeG[*pgClass]
+	nameIdx *inMemIndexStorage[*pgClass]
+	oidIdx  *inMemIndexStorage[*pgClass]
 }
 
-var _ BTreeStorageAccess[*pgClass] = &pgClassCache{}
-
-// getIndex implements BTreeStorageAccess.
-func (p pgClassCache) getUniqueIndex(name string) *btree.BTreeG[*pgClass] {
+func (p pgClassCache) getIndex(name string) *inMemIndexStorage[*pgClass] {
 	switch name {
 	case "pg_class_oid_index":
 		return p.oidIdx
@@ -99,33 +95,23 @@ func (p pgClassCache) getUniqueIndex(name string) *btree.BTreeG[*pgClass] {
 	}
 }
 
-func (p pgClassCache) getNonUniqueIndex(name string) *btree.BTreeG[[]*pgClass] {
-	panic("no non-unique indexes on pg_class")
-}
+var _ BTreeStorageAccess[*pgClass] = &pgClassCache{}
 
 type pgIndexCache struct {
 	indexes      []*pgIndex
 	tableSchemas map[id.Id]sql.Schema
 	tableNames   map[id.Id]string
-	indexOidIdx  *btree.BTreeG[*pgIndex]
-	indrelidIdx  *btree.BTreeG[[]*pgIndex]
+	indexOidIdx  *inMemIndexStorage[*pgIndex]
+	indrelidIdx  *inMemIndexStorage[*pgIndex]
 }
 
 var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}
 
-// getUniqueIndex implements BTreeStorageAccess.
-func (p pgIndexCache) getUniqueIndex(name string) *btree.BTreeG[*pgIndex] {
+// getIndex implements BTreeStorageAccess.
+func (p pgIndexCache) getIndex(name string) *inMemIndexStorage[*pgIndex] {
 	switch name {
 	case "pg_index_indexrelid_index":
 		return p.indexOidIdx
-	default:
-		panic("unknown pg_index index: " + name)
-	}
-}
-
-// getIndex implements BTreeStorageAccess.
-func (p pgIndexCache) getNonUniqueIndex(name string) *btree.BTreeG[[]*pgIndex] {
-	switch name {
 	case "pg_index_indrelid_index":
 		return p.indrelidIdx
 	default:

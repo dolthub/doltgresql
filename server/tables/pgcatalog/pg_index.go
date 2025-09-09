@@ -18,13 +18,11 @@ import (
 	"io"
 	"strings"
 
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/google/btree"
-
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // PgIndexName is a constant to the pg_index name.
@@ -287,8 +285,8 @@ func pgIndexToRow(index *pgIndex) sql.Row {
 // cachePgIndexes caches the pg_index data for the current database in the session.
 func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	var indexes []*pgIndex
-	indexOidIdx := btree.NewG[*pgIndex](2, lessIndexOid)
-	indrelidIdx := btree.NewG[[]*pgIndex](2, lessIndrelid)
+	indexOidIdx := NewUniqueInMemIndexStorage[*pgIndex](lessIndexOid)
+	indrelidIdx := NewNonUniqueInMemIndexStorage[*pgIndex](lessIndrelid)
 
 	tableSchemas := make(map[id.Id]sql.Schema)
 	tableNames := make(map[id.Id]string)
@@ -322,15 +320,8 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				indisprimary:   strings.ToLower(index.Item.ID()) == "primary",
 			}
 
-			indexOidIdx.ReplaceOrInsert(pgIdx)
-
-			// this index is non-unique, so storing it is more complex
-			indices := []*pgIndex{pgIdx}
-			existing, present := indrelidIdx.ReplaceOrInsert(indices)
-			if present {
-				indrelidIdx.ReplaceOrInsert(append(existing, indices...))
-			}
-
+			indexOidIdx.Add(pgIdx)
+			indrelidIdx.Add(pgIdx)
 			indexes = append(indexes, pgIdx)
 			return true, nil
 		},
