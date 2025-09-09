@@ -39,9 +39,11 @@ type RangeConverter[T any] interface {
 	getIndexScanRange(rng sql.Range, index sql.Index) (T, bool, T, bool)
 }
 
-// BTreeIndexAccess knows how to get a btree index by name.
+// BTreeIndexAccess knows how to get a btree index by name. This interface needs two methods because
+// unique and non-unique indexes have different types as stored in the btree package.
 type BTreeIndexAccess[T any] interface {
-	getIndex(name string) *btree.BTreeG[T]
+	getUniqueIndex(name string) *btree.BTreeG[T]
+	getNonUniqueIndex(name string) *btree.BTreeG[[]T]
 }
 
 // rowConverter converts a value of type T to a sql.Row.
@@ -79,6 +81,8 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 		return &next, nil
 	}
 
+	inMemIndex := l.lookup.Index.(pgCatalogInMemIndex)
+
 	l.nextChan = make(chan T)
 	rng := l.lookup.Ranges.ToRanges()[l.rangeIdx]
 	go func() {
@@ -87,28 +91,50 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 		}()
 
 		gte, hasLowerBound, lte, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
-		itr := func(item T) bool {
-			l.nextChan <- item
-			return true
-		}
 
-		idx := l.btreeAccess.getIndex(l.lookup.Index.(pgCatalogInMemIndex).name)
-		if hasLowerBound && hasUpperBound {
-			idx.AscendRange(gte, lte, itr)
-		} else if hasLowerBound {
-			idx.AscendGreaterOrEqual(gte, itr)
-		} else if hasUpperBound {
-			idx.AscendLessThan(lte, itr)
+		if inMemIndex.uniq {
+			itr := func(item T) bool {
+				l.nextChan <- item
+				return true
+			}
+
+			idx := l.btreeAccess.getUniqueIndex(inMemIndex.name)
+			if hasLowerBound && hasUpperBound {
+				idx.AscendRange(gte, lte, itr)
+			} else if hasLowerBound {
+				idx.AscendGreaterOrEqual(gte, itr)
+			} else if hasUpperBound {
+				idx.AscendLessThan(lte, itr)
+			} else {
+				// We don't support nil lookups for this kind of index, there are never nillable elements
+				return
+			}
+
+			// because the above call uses a closed range for its upper end, we just return the last item at the end rather
+			// than trying to generate a greater one for the upper bound.
+			upperRange, ok := idx.Get(lte)
+			if ok {
+				l.nextChan <- upperRange
+			}
 		} else {
-			// We don't support nil lookups for this kind of index, there are never nillable elements
-			return
-		}
+			itr := func(item []T) bool {
+				for _, it := range item {
+					l.nextChan <- it
+				}
+				return true
+			}
 
-		// because the above call uses a closed range for its upper end, we just return the last item at the end rather
-		// than trying to generate a greater one for the upper bound.
-		upperRange, ok := idx.Get(lte)
-		if ok {
-			l.nextChan <- upperRange
+			idx := l.btreeAccess.getNonUniqueIndex(inMemIndex.name)
+			if hasLowerBound && hasUpperBound {
+				idx.AscendRange([]T{gte}, []T{lte}, itr)
+			} else if hasLowerBound {
+				idx.AscendGreaterOrEqual([]T{gte}, itr)
+			} else if hasUpperBound {
+				idx.AscendLessThan([]T{lte}, itr)
+			} else {
+				// We don't support nil lookups for this kind of index, there are never nillable elements
+				return
+			}
 		}
 	}()
 

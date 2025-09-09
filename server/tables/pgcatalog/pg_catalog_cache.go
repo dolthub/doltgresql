@@ -88,7 +88,7 @@ type pgClassCache struct {
 var _ BTreeIndexAccess[*pgClass] = &pgClassCache{}
 
 // getIndex implements BTreeIndexAccess.
-func (p pgClassCache) getIndex(name string) *btree.BTreeG[*pgClass] {
+func (p pgClassCache) getUniqueIndex(name string) *btree.BTreeG[*pgClass] {
 	switch name {
 	case "pg_class_oid_index":
 		return p.oidIdx
@@ -99,21 +99,33 @@ func (p pgClassCache) getIndex(name string) *btree.BTreeG[*pgClass] {
 	}
 }
 
+func (p pgClassCache) getNonUniqueIndex(name string) *btree.BTreeG[[]*pgClass] {
+	panic("no non-unique indexes on pg_class")
+}
+
 type pgIndexCache struct {
 	indexes      []*pgIndex
 	tableSchemas map[id.Id]sql.Schema
 	tableNames   map[id.Id]string
 	indexOidIdx  *btree.BTreeG[*pgIndex]
-	indrelidIdx  *btree.BTreeG[*pgIndex]
+	indrelidIdx  *btree.BTreeG[[]*pgIndex]
 }
 
 var _ BTreeIndexAccess[*pgIndex] = &pgIndexCache{}
 
-// getIndex implements BTreeIndexAccess.
-func (p pgIndexCache) getIndex(name string) *btree.BTreeG[*pgIndex] {
+// getUniqueIndex implements BTreeIndexAccess.
+func (p pgIndexCache) getUniqueIndex(name string) *btree.BTreeG[*pgIndex] {
 	switch name {
 	case "pg_index_indexrelid_index":
 		return p.indexOidIdx
+	default:
+		panic("unknown pg_index index: " + name)
+	}
+}
+
+// getIndex implements BTreeIndexAccess.
+func (p pgIndexCache) getNonUniqueIndex(name string) *btree.BTreeG[[]*pgIndex] {
+	switch name {
 	case "pg_index_indrelid_index":
 		return p.indrelidIdx
 	default:

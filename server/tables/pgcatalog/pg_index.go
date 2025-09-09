@@ -288,8 +288,8 @@ func lessIndexOid(a, b *pgIndex) bool {
 }
 
 // lessIndrelid is a sort function for pgIndex based on indrelid.
-func lessIndrelid(a, b *pgIndex) bool {
-	return a.tableOidNative < b.tableOidNative
+func lessIndrelid(a, b []*pgIndex) bool {
+	return a[0].tableOidNative < b[0].tableOidNative
 }
 
 // pgIndexTableScanIter is the sql.RowIter for the pg_index table.
@@ -347,7 +347,7 @@ func pgIndexToRow(index *pgIndex) sql.Row {
 func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	var indexes []*pgIndex
 	indexOidIdx := btree.NewG[*pgIndex](2, lessIndexOid)
-	indrelidIdx := btree.NewG[*pgIndex](2, lessIndrelid)
+	indrelidIdx := btree.NewG[[]*pgIndex](2, lessIndrelid)
 
 	tableSchemas := make(map[id.Id]sql.Schema)
 	tableNames := make(map[id.Id]string)
@@ -382,7 +382,13 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			}
 
 			indexOidIdx.ReplaceOrInsert(pgIdx)
-			indrelidIdx.ReplaceOrInsert(pgIdx)
+
+			// this index is non-unique, so storing it is more complex
+			indices := []*pgIndex{pgIdx}
+			existing, present := indrelidIdx.ReplaceOrInsert(indices)
+			if present {
+				indrelidIdx.ReplaceOrInsert(append(existing, indices...))
+			}
 			indexes = append(indexes, pgIdx)
 			return true, nil
 		},
