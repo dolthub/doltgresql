@@ -135,6 +135,15 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 				// We don't support nil lookups for this kind of index, there are never nillable elements
 				return
 			}
+
+			// because the above call uses a closed range for its upper end, we just return the last item at the end rather
+			// than trying to generate a greater one for the upper bound.
+			upperRange, ok := idx.Get([]T{lte})
+			if ok {
+				for _, ur := range upperRange {
+					l.nextChan <- ur
+				}
+			}
 		}
 	}()
 

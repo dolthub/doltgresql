@@ -330,6 +330,7 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			if present {
 				indrelidIdx.ReplaceOrInsert(append(existing, indices...))
 			}
+
 			indexes = append(indexes, pgIdx)
 			return true, nil
 		},
