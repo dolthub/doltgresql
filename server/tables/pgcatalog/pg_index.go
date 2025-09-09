@@ -201,70 +201,11 @@ var pgIndexSchema = sql.Schema{
 	{Name: "indpred", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName},           // TODO: type pg_node_tree, collation C
 }
 
-// pgIndexRowIter is the sql.RowIter for the pg_index table.
-type pgIndexRowIter struct {
-	indexes      []sql.Index
-	tableSchemas map[id.Id]sql.Schema
-	idxOIDs      []id.Id
-	tblOIDs      []id.Id
-	idx          int
-}
-
-var _ sql.RowIter = (*pgIndexRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if iter.idx >= len(iter.indexes) {
-		return nil, io.EOF
-	}
-	iter.idx++
-	index := iter.indexes[iter.idx-1]
-	tableOid := iter.tblOIDs[iter.idx-1]
-	indexOid := iter.idxOIDs[iter.idx-1]
-	schema := iter.tableSchemas[tableOid]
-
-	indKey := make([]any, len(index.Expressions()))
-	for i, expr := range index.Expressions() {
-		colName := extractColName(expr)
-		indKey[i] = int16(schema.IndexOfColName(colName)) + 1
-	}
-
-	// TODO: Fill in the rest of the pg_index columns
-	return sql.Row{
-		indexOid,                                 // indexrelid
-		tableOid,                                 // indrelid
-		int16(len(index.Expressions())),          // indnatts
-		int16(0),                                 // indnkeyatts
-		index.IsUnique(),                         // indisunique
-		false,                                    // indnullsnotdistinct
-		strings.ToLower(index.ID()) == "primary", // indisprimary
-		false,                                    // indisexclusion
-		false,                                    // indimmediate
-		false,                                    // indisclustered
-		true,                                     // indisvalid
-		false,                                    // indcheckxmin
-		true,                                     // indisready
-		true,                                     // indislive
-		false,                                    // indisreplident
-		indKey,                                   // indkey
-		[]any{},                                  // indcollation
-		[]any{},                                  // indclass
-		"0",                                      // indoption
-		nil,                                      // indexprs
-		nil,                                      // indpred
-	}, nil
-}
-
 func extractColName(expr string) string {
 	// TODO: this breaks for column names that contain a `.`, but this is a problem that happens
 	//  throughout index analysis in the engine
 	lastDot := strings.LastIndex(expr, ".")
 	return expr[lastDot+1:]
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgIndexRowIter) Close(ctx *sql.Context) error {
-	return nil
 }
 
 // pgIndex represents a row in the pg_index table.
