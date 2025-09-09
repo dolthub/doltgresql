@@ -156,7 +156,7 @@ func (p pgCatalogInMemIndex) IsFullText() bool {
 	return false
 }
 
-// IsFunctional implements the interface sql.Index.
+// IsVector implements the interface sql.Index.
 func (p pgCatalogInMemIndex) IsVector() bool {
 	return false
 }
@@ -271,9 +271,9 @@ func (s *inMemIndexStorage[T]) Add(val T) {
 // index in the range are sent to the channel
 func (s *inMemIndexStorage[T]) IterRange(gte, lte T, c chan T) {
 	if s.uniqTree != nil {
-		s.uniqTree.AscendRange(gte, lte, s.iterFuncUniq(c))
+		s.uniqTree.AscendRange(gte, lte, s.sendItem(c))
 	} else {
-		s.nonUniqTree.AscendRange([]T{gte}, []T{lte}, s.iterFuncNonUniq(c))
+		s.nonUniqTree.AscendRange([]T{gte}, []T{lte}, s.sendItems(c))
 	}
 
 	s.iterKey(lte, c)
@@ -283,9 +283,9 @@ func (s *inMemIndexStorage[T]) IterRange(gte, lte T, c chan T) {
 // All values in the index greater than or equal to the given value are sent to the channel.
 func (s *inMemIndexStorage[T]) IterGreaterThanEqual(gte T, c chan T) {
 	if s.uniqTree != nil {
-		s.uniqTree.AscendGreaterOrEqual(gte, s.iterFuncUniq(c))
+		s.uniqTree.AscendGreaterOrEqual(gte, s.sendItem(c))
 	} else {
-		s.nonUniqTree.AscendGreaterOrEqual([]T{gte}, s.iterFuncNonUniq(c))
+		s.nonUniqTree.AscendGreaterOrEqual([]T{gte}, s.sendItems(c))
 	}
 }
 
@@ -293,28 +293,12 @@ func (s *inMemIndexStorage[T]) IterGreaterThanEqual(gte T, c chan T) {
 // All values in the index less than or equal to the given value are sent to the channel.
 func (s *inMemIndexStorage[T]) IterLessThan(lte T, c chan T) {
 	if s.uniqTree != nil {
-		s.uniqTree.AscendLessThan(lte, s.iterFuncUniq(c))
+		s.uniqTree.AscendLessThan(lte, s.sendItem(c))
 	} else {
-		s.nonUniqTree.AscendLessThan([]T{lte}, s.iterFuncNonUniq(c))
+		s.nonUniqTree.AscendLessThan([]T{lte}, s.sendItems(c))
 	}
 
 	s.iterKey(lte, c)
-}
-
-func (s *inMemIndexStorage[T]) iterFuncUniq(c chan T) func(item T) bool {
-	return func(item T) bool {
-		c <- item
-		return true
-	}
-}
-
-func (s *inMemIndexStorage[T]) iterFuncNonUniq(c chan T) func(item []T) bool {
-	return func(items []T) bool {
-		for _, item := range items {
-			c <- item
-		}
-		return true
-	}
 }
 
 // iterKey sends the value for the given key to the channel if it exists in the index.
@@ -333,5 +317,23 @@ func (s *inMemIndexStorage[T]) iterKey(v T, c chan T) {
 				c <- val
 			}
 		}
+	}
+}
+
+// sendItem returns a function that sends the given item to the channel.
+func (s *inMemIndexStorage[T]) sendItem(c chan T) func(item T) bool {
+	return func(item T) bool {
+		c <- item
+		return true
+	}
+}
+
+// sendItems returns a function that sends all items in the given slice to the channel.
+func (s *inMemIndexStorage[T]) sendItems(c chan T) func(item []T) bool {
+	return func(items []T) bool {
+		for _, item := range items {
+			c <- item
+		}
+		return true
 	}
 }
