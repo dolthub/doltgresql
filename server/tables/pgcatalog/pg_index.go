@@ -309,7 +309,7 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 
 			pgIdx := &pgIndex{
 				index:          index.Item,
-				schemaName:     schema.Item.Name(),
+				schemaName:     schema.Item.SchemaName(),
 				indexOid:       index.OID.AsId(),
 				indexOidNative: id.Cache().ToOID(index.OID.AsId()),
 				tableOid:       table.OID.AsId(),
@@ -331,11 +331,10 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	}
 
 	pgCatalogCache.pgIndexes = &pgIndexCache{
-		indexes:      indexes,
-		tableNames:   tableNames,
-		tableSchemas: tableSchemas,
-		indexOidIdx:  indexOidIdx,
-		indrelidIdx:  indrelidIdx,
+		indexes:     indexes,
+		tableNames:  tableNames,
+		indexOidIdx: indexOidIdx,
+		indrelidIdx: indrelidIdx,
 	}
 
 	return nil
