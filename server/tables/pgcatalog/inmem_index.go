@@ -26,7 +26,7 @@ import (
 type inMemIndexScanIter[T any] struct {
 	lookup         sql.IndexLookup
 	rangeConverter RangeConverter[T]
-	btreeAccess    BTreeIndexAccess[T]
+	btreeAccess    BTreeStorageAccess[T]
 	rowConverter   rowConverter[T]
 	rangeIdx       int
 	nextChan       chan T
@@ -39,11 +39,10 @@ type RangeConverter[T any] interface {
 	getIndexScanRange(rng sql.Range, index sql.Index) (T, bool, T, bool)
 }
 
-// BTreeIndexAccess knows how to get a btree index by name. This interface needs two methods because
+// BTreeStorageAccess knows how to get a btree index by name. This interface needs two methods because
 // unique and non-unique indexes have different types as stored in the btree package.
-type BTreeIndexAccess[T any] interface {
-	getUniqueIndex(name string) *btree.BTreeG[T]
-	getNonUniqueIndex(name string) *btree.BTreeG[[]T]
+type BTreeStorageAccess[T any] interface {
+	getIndex(name string) *inMemIndexStorage[T]
 }
 
 // rowConverter converts a value of type T to a sql.Row.
@@ -91,59 +90,16 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 		}()
 
 		gte, hasLowerBound, lte, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
-
-		if inMemIndex.uniq {
-			itr := func(item T) bool {
-				l.nextChan <- item
-				return true
-			}
-
-			idx := l.btreeAccess.getUniqueIndex(inMemIndex.name)
-			if hasLowerBound && hasUpperBound {
-				idx.AscendRange(gte, lte, itr)
-			} else if hasLowerBound {
-				idx.AscendGreaterOrEqual(gte, itr)
-			} else if hasUpperBound {
-				idx.AscendLessThan(lte, itr)
-			} else {
-				// We don't support nil lookups for this kind of index, there are never nillable elements
-				return
-			}
-
-			// because the above call uses a closed range for its upper end, we just return the last item at the end rather
-			// than trying to generate a greater one for the upper bound.
-			upperRange, ok := idx.Get(lte)
-			if ok {
-				l.nextChan <- upperRange
-			}
+		idx := l.btreeAccess.getIndex(inMemIndex.name)
+		if hasLowerBound && hasUpperBound {
+			idx.IterRange(gte, lte, l.nextChan)
+		} else if hasLowerBound {
+			idx.IterGreaterThanEqual(gte, l.nextChan)
+		} else if hasUpperBound {
+			idx.IterLessThan(lte, l.nextChan)
 		} else {
-			itr := func(item []T) bool {
-				for _, it := range item {
-					l.nextChan <- it
-				}
-				return true
-			}
-
-			idx := l.btreeAccess.getNonUniqueIndex(inMemIndex.name)
-			if hasLowerBound && hasUpperBound {
-				idx.AscendRange([]T{gte}, []T{lte}, itr)
-			} else if hasLowerBound {
-				idx.AscendGreaterOrEqual([]T{gte}, itr)
-			} else if hasUpperBound {
-				idx.AscendLessThan([]T{lte}, itr)
-			} else {
-				// We don't support nil lookups for this kind of index, there are never nillable elements
-				return
-			}
-
-			// because the above call uses a closed range for its upper end, we just return the last item at the end rather
-			// than trying to generate a greater one for the upper bound.
-			upperRange, ok := idx.Get([]T{lte})
-			if ok {
-				for _, ur := range upperRange {
-					l.nextChan <- ur
-				}
-			}
+			// We don't support nil lookups for this kind of index, there are never nillable elements
+			return
 		}
 	}()
 
@@ -275,4 +231,106 @@ func (p *inMemIndexPartIter) Next(context *sql.Context) (sql.Partition, error) {
 	}
 	p.used = true
 	return p.part, nil
+}
+
+// inMemIndexStorage is an in-memory storage for an index using a btree, abstracting away the differences between
+// unique and non-unique indexes.
+type inMemIndexStorage[T any] struct {
+	uniqTree    *btree.BTreeG[T]
+	nonUniqTree *btree.BTreeG[[]T]
+}
+
+// NewUniqueInMemIndexStorage creates a new in-memory index storage for a unique index.
+func NewUniqueInMemIndexStorage[T any](lessFunc func(a, b T) bool) *inMemIndexStorage[T] {
+	return &inMemIndexStorage[T]{
+		uniqTree: btree.NewG[T](2, lessFunc),
+	}
+}
+
+// NewNonUniqueInMemIndexStorage creates a new in-memory index storage for a non-unique index.
+func NewNonUniqueInMemIndexStorage[T any](lessFunc func(a, b []T) bool) *inMemIndexStorage[T] {
+	return &inMemIndexStorage[T]{
+		nonUniqTree: btree.NewG[[]T](2, lessFunc),
+	}
+}
+
+// add adds a value to the in-memory index storage.
+func (s *inMemIndexStorage[T]) add(val T) {
+	if s.uniqTree != nil {
+		s.uniqTree.ReplaceOrInsert(val)
+	} else {
+		existing, replaced := s.nonUniqTree.Get([]T{val})
+		if replaced {
+			existing = append(existing, val)
+			s.nonUniqTree.ReplaceOrInsert(existing)
+		}
+	}
+}
+
+// IterRange implements an in-order iteration over the index values in the given range, inclusive. All values in the
+// index in the range are sent to the channel
+func (s *inMemIndexStorage[T]) IterRange(gte, lte T, c chan T) {
+	if s.uniqTree != nil {
+		s.uniqTree.AscendRange(gte, lte, s.iterFuncUniq(c))
+	} else {
+		s.nonUniqTree.AscendRange([]T{gte}, []T{lte}, s.iterFuncNonUniq(c))
+	}
+
+	s.iterKey(lte, c)
+}
+
+// IterGreaterThanEqual implements an in-order iteration over the index values greater than or equal to the given value.
+// All values in the index greater than or equal to the given value are sent to the channel.
+func (s *inMemIndexStorage[T]) IterGreaterThanEqual(gte T, c chan T) {
+	if s.uniqTree != nil {
+		s.uniqTree.AscendGreaterOrEqual(gte, s.iterFuncUniq(c))
+	} else {
+		s.nonUniqTree.AscendGreaterOrEqual([]T{gte}, s.iterFuncNonUniq(c))
+	}
+}
+
+// IterLessThan implements an in-order iteration over the index values less than or equal to the given value.
+// All values in the index less than or equal to the given value are sent to the channel.
+func (s *inMemIndexStorage[T]) IterLessThan(lte T, c chan T) {
+	if s.uniqTree != nil {
+		s.uniqTree.AscendLessThan(lte, s.iterFuncUniq(c))
+	} else {
+		s.nonUniqTree.AscendLessThan([]T{lte}, s.iterFuncNonUniq(c))
+	}
+
+	s.iterKey(lte, c)
+}
+
+func (s *inMemIndexStorage[T]) iterFuncUniq(c chan T) func(item T) bool {
+	return func(item T) bool {
+		c <- item
+		return true
+	}
+}
+
+func (s *inMemIndexStorage[T]) iterFuncNonUniq(c chan T) func(item []T) bool {
+	return func(items []T) bool {
+		for _, item := range items {
+			c <- item
+		}
+		return true
+	}
+}
+
+// iterKey sends the value for the given key to the channel if it exists in the index.
+// This is used to include the upper bound of a range scan, since the btree package uses a half-open range.
+func (s *inMemIndexStorage[T]) iterKey(v T, c chan T) {
+	if s.uniqTree != nil {
+		val, ok := s.uniqTree.Get(v)
+		if ok {
+			c <- val
+		}
+	} else {
+		vals, ok := s.nonUniqTree.Get([]T{v})
+		if ok {
+			for _, val := range vals {
+				c <- val
+			}
+		}
+	}
 }

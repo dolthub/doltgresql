@@ -85,9 +85,9 @@ type pgClassCache struct {
 	oidIdx  *btree.BTreeG[*pgClass]
 }
 
-var _ BTreeIndexAccess[*pgClass] = &pgClassCache{}
+var _ BTreeStorageAccess[*pgClass] = &pgClassCache{}
 
-// getIndex implements BTreeIndexAccess.
+// getIndex implements BTreeStorageAccess.
 func (p pgClassCache) getUniqueIndex(name string) *btree.BTreeG[*pgClass] {
 	switch name {
 	case "pg_class_oid_index":
@@ -111,9 +111,9 @@ type pgIndexCache struct {
 	indrelidIdx  *btree.BTreeG[[]*pgIndex]
 }
 
-var _ BTreeIndexAccess[*pgIndex] = &pgIndexCache{}
+var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}
 
-// getUniqueIndex implements BTreeIndexAccess.
+// getUniqueIndex implements BTreeStorageAccess.
 func (p pgIndexCache) getUniqueIndex(name string) *btree.BTreeG[*pgIndex] {
 	switch name {
 	case "pg_index_indexrelid_index":
@@ -123,7 +123,7 @@ func (p pgIndexCache) getUniqueIndex(name string) *btree.BTreeG[*pgIndex] {
 	}
 }
 
-// getIndex implements BTreeIndexAccess.
+// getIndex implements BTreeStorageAccess.
 func (p pgIndexCache) getNonUniqueIndex(name string) *btree.BTreeG[[]*pgIndex] {
 	switch name {
 	case "pg_index_indrelid_index":
