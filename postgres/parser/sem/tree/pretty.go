@@ -1174,22 +1174,6 @@ func (node *Order) doc(p *PrettyCfg) pretty.Doc {
 	var d pretty.Doc
 	if node.OrderType == OrderByColumn {
 		d = p.Doc(node.Expr)
-	} else {
-		if node.Index == "" {
-			d = pretty.ConcatSpace(
-				pretty.Keyword("PRIMARY KEY"),
-				p.Doc(&node.Table),
-			)
-		} else {
-			d = pretty.ConcatSpace(
-				pretty.Keyword("INDEX"),
-				pretty.Fold(pretty.Concat,
-					p.Doc(&node.Table),
-					pretty.Text("@"),
-					p.Doc(&node.Index),
-				),
-			)
-		}
 	}
 	if node.Direction != DefaultDirection {
 		d = p.nestUnder(d, pretty.Text(node.Direction.String()))
