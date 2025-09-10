@@ -199,7 +199,7 @@ func formatIndexName(idx sql.Index) string {
 
 // getIndexScanRange implements the interface RangeConverter.
 func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgClass, bool, *pgClass, bool) {
-	var gte, lte *pgClass
+	var gte, lt *pgClass
 	var hasLowerBound, hasUpperBound bool
 
 	switch index.(pgCatalogInMemIndex).name {
@@ -221,8 +221,8 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
 			if ub != nil {
 				upperRangeCutKey := ub.(id.Id)
-				lte = &pgClass{
-					oidNative: idToOid(upperRangeCutKey),
+				lt = &pgClass{
+					oidNative: idToOid(upperRangeCutKey) + 1,
 				}
 				hasUpperBound = true
 			}
@@ -273,7 +273,14 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		}
 
 		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
-			lte = &pgClass{
+			// If we're comparing only on relname, we need to include the next highest value to make sure we iterate every
+			// relname. Otherwise, we can increment the schema OID to use as our less-than value.
+			if schemaOidUpper == 0 {
+				relnameUpper = relnameUpper + " "
+			} else {
+				schemaOidUpper = schemaOidUpper + 1
+			}
+			lt = &pgClass{
 				name:            relnameUpper,
 				schemaOidNative: schemaOidUpper,
 			}
@@ -282,7 +289,7 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		panic("unknown index name: " + index.(pgCatalogInMemIndex).name)
 	}
 
-	return gte, hasLowerBound, lte, hasUpperBound
+	return gte, hasLowerBound, lt, hasUpperBound
 }
 
 // idToOid converts an id.Id to its native uint32 OID representation. The type conversion process during index

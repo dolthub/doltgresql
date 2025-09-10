@@ -34,7 +34,8 @@ type inMemIndexScanIter[T any] struct {
 
 var _ sql.RowIter = (*inMemIndexScanIter[any])(nil)
 
-// RangeConverter knows how to convert a Range to bounds for a btree scan.
+// RangeConverter knows how to convert a Range to bounds for a btree scan. The two values returned are the
+// greater-than-or-equal lower bound, and the less-than upper bound for this index.
 type RangeConverter[T any] interface {
 	getIndexScanRange(rng sql.Range, index sql.Index) (T, bool, T, bool)
 }
@@ -96,7 +97,7 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 		} else if hasLowerBound {
 			idx.IterGreaterThanEqual(gte, l.nextChan)
 		} else if hasUpperBound {
-			idx.IterLessThanEqual(lte, l.nextChan)
+			idx.IterLessThan(lte, l.nextChan)
 		} else {
 			// We don't support nil lookups for this kind of index, there are never nillable elements
 			return
@@ -267,16 +268,14 @@ func (s *inMemIndexStorage[T]) Add(val T) {
 	}
 }
 
-// IterRange implements an in-order iteration over the index values in the given range, inclusive. All values in the
+// IterRange implements an in-order iteration over the index values in the range [gte, lt). All values in the
 // index in the range are sent to the channel
-func (s *inMemIndexStorage[T]) IterRange(gte, lte T, c chan T) {
+func (s *inMemIndexStorage[T]) IterRange(gte, lt T, c chan T) {
 	if s.uniqTree != nil {
-		s.uniqTree.AscendRange(gte, lte, s.sendItem(c))
+		s.uniqTree.AscendRange(gte, lt, s.sendItem(c))
 	} else {
-		s.nonUniqTree.AscendRange([]T{gte}, []T{lte}, s.sendItems(c))
+		s.nonUniqTree.AscendRange([]T{gte}, []T{lt}, s.sendItems(c))
 	}
-
-	s.iterKey(lte, c)
 }
 
 // IterGreaterThanEqual implements an in-order iteration over the index values greater than or equal to the given value.
@@ -289,34 +288,13 @@ func (s *inMemIndexStorage[T]) IterGreaterThanEqual(gte T, c chan T) {
 	}
 }
 
-// IterLessThanEqual implements an in-order iteration over the index values less than or equal to the given value.
+// IterLessThan implements an in-order iteration over the index values less than the given value.
 // All values in the index less than or equal to the given value are sent to the channel.
-func (s *inMemIndexStorage[T]) IterLessThanEqual(lte T, c chan T) {
+func (s *inMemIndexStorage[T]) IterLessThan(lt T, c chan T) {
 	if s.uniqTree != nil {
-		s.uniqTree.AscendLessThan(lte, s.sendItem(c))
+		s.uniqTree.AscendLessThan(lt, s.sendItem(c))
 	} else {
-		s.nonUniqTree.AscendLessThan([]T{lte}, s.sendItems(c))
-	}
-
-	s.iterKey(lte, c)
-}
-
-// iterKey sends the value for the given key to the channel if it exists in the index.
-// This is used to include the upper bound of a range scan, since the btree package uses a half-open range in all of
-// its Ascend methods.
-func (s *inMemIndexStorage[T]) iterKey(v T, c chan T) {
-	if s.uniqTree != nil {
-		val, ok := s.uniqTree.Get(v)
-		if ok {
-			c <- val
-		}
-	} else {
-		vals, ok := s.nonUniqTree.Get([]T{v})
-		if ok {
-			for _, val := range vals {
-				c <- val
-			}
-		}
+		s.nonUniqTree.AscendLessThan([]T{lt}, s.sendItems(c))
 	}
 }
 

@@ -205,7 +205,7 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 
 // getIndexScanRange implements the interface RangeConverter.
 func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgAttribute, bool, *pgAttribute, bool) {
-	var gte, lte *pgAttribute
+	var gte, lt *pgAttribute
 	var hasLowerBound, hasUpperBound bool
 
 	switch index.(pgCatalogInMemIndex).name {
@@ -255,8 +255,15 @@ func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 		}
 
 		if hasUpperBound {
-			lte = &pgAttribute{
-				attrelidNative: idToOid(oidUpper),
+			// our less-than upper bound depends on whether one or both fields in the range were set
+			oid := idToOid(oidUpper)
+			if attnumUpper == 0 {
+				oid += 1
+			} else {
+				attnumUpper += 1
+			}
+			lt = &pgAttribute{
+				attrelidNative: oid,
 				attnum:         attnumUpper,
 			}
 		}
@@ -306,8 +313,15 @@ func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 		}
 
 		if attrelidRange.HasUpperBound() || attnameRange.HasUpperBound() {
-			lte = &pgAttribute{
-				attrelidNative: attrelidUpper,
+			// our less-than upper bound depends on whether one or both fields in the range were set
+			oidUpper := attrelidUpper
+			if attnameUpper == "" {
+				oidUpper += 1
+			} else {
+				attnameUpper += " "
+			}
+			lt = &pgAttribute{
+				attrelidNative: oidUpper,
 				attname:        attnameUpper,
 			}
 		}
@@ -315,7 +329,7 @@ func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 		panic("unknown index name: " + index.(pgCatalogInMemIndex).name)
 	}
 
-	return gte, hasLowerBound, lte, hasUpperBound
+	return gte, hasLowerBound, lt, hasUpperBound
 }
 
 // PkSchema implements the interface tables.Handler.
