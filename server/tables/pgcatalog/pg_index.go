@@ -18,11 +18,12 @@ import (
 	"io"
 	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // PgIndexName is a constant to the pg_index name.

@@ -19,12 +19,13 @@ import (
 	"io"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // PgClassName is a constant to the pg_class name.
