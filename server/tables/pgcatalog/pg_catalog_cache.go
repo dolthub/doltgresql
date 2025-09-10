@@ -17,7 +17,6 @@ package pgcatalog
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/google/btree"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -54,11 +53,7 @@ type pgCatalogCache struct {
 	attributeColIdxs   []int
 
 	// pg_index / pg_indexes
-	indexes        []sql.Index
-	tableSchemas   map[id.Id]sql.Schema
-	indexOIDs      []id.Id
-	indexTableOIDs []id.Id
-	indexSchemas   []string
+	pgIndexes *pgIndexCache
 
 	// pg_sequence
 	sequences    []*sequences.Sequence
@@ -85,14 +80,12 @@ type pgCatalogCache struct {
 // by relname
 type pgClassCache struct {
 	classes []*pgClass
-	nameIdx *btree.BTreeG[*pgClass]
-	oidIdx  *btree.BTreeG[*pgClass]
+	nameIdx *inMemIndexStorage[*pgClass]
+	oidIdx  *inMemIndexStorage[*pgClass]
 }
 
-var _ BTreeIndexAccess[*pgClass] = &pgClassCache{}
-
-// getIndex implements BTreeIndexAccess.
-func (p pgClassCache) getIndex(name string) *btree.BTreeG[*pgClass] {
+// getIndex implements BTreeStorageAccess.
+func (p pgClassCache) getIndex(name string) *inMemIndexStorage[*pgClass] {
 	switch name {
 	case "pg_class_oid_index":
 		return p.oidIdx
@@ -100,6 +93,30 @@ func (p pgClassCache) getIndex(name string) *btree.BTreeG[*pgClass] {
 		return p.nameIdx
 	default:
 		panic("unknown pg_class index: " + name)
+	}
+}
+
+var _ BTreeStorageAccess[*pgClass] = &pgClassCache{}
+
+// pgIndexCache holds cached data for the pg_index table, including two btree indexes for fast lookups by index OID
+type pgIndexCache struct {
+	indexes     []*pgIndex
+	tableNames  map[id.Id]string
+	indexOidIdx *inMemIndexStorage[*pgIndex]
+	indrelidIdx *inMemIndexStorage[*pgIndex]
+}
+
+var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}
+
+// getIndex implements BTreeStorageAccess.
+func (p pgIndexCache) getIndex(name string) *inMemIndexStorage[*pgIndex] {
+	switch name {
+	case "pg_index_indexrelid_index":
+		return p.indexOidIdx
+	case "pg_index_indrelid_index":
+		return p.indrelidIdx
+	default:
+		panic("unknown pg_index index: " + name)
 	}
 }
 

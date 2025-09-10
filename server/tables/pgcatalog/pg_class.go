@@ -20,7 +20,6 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/google/btree"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
@@ -84,8 +83,8 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	var classes []*pgClass
 	tableHasIndexes := make(map[uint32]struct{})
-	nameIdx := btree.NewG[*pgClass](2, lessName)
-	oidIdx := btree.NewG(2, lessOid)
+	nameIdx := NewUniqueInMemIndexStorage[*pgClass](lessName)
+	oidIdx := NewUniqueInMemIndexStorage[*pgClass](lessOid)
 
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
@@ -99,8 +98,8 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				schemaOid:       schema.OID.AsId(),
 				schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 			}
-			nameIdx.ReplaceOrInsert(class)
-			oidIdx.ReplaceOrInsert(class)
+			nameIdx.Add(class)
+			oidIdx.Add(class)
 			classes = append(classes, class)
 			return true, nil
 		},
@@ -115,8 +114,8 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				schemaOid:       schema.OID.AsId(),
 				schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 			}
-			nameIdx.ReplaceOrInsert(class)
-			oidIdx.ReplaceOrInsert(class)
+			nameIdx.Add(class)
+			oidIdx.Add(class)
 			classes = append(classes, class)
 			return true, nil
 		},
@@ -130,8 +129,8 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				schemaOid:       schema.OID.AsId(),
 				schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 			}
-			nameIdx.ReplaceOrInsert(class)
-			oidIdx.ReplaceOrInsert(class)
+			nameIdx.Add(class)
+			oidIdx.Add(class)
 			classes = append(classes, class)
 			return true, nil
 		},
@@ -145,8 +144,8 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				schemaOid:       schema.OID.AsId(),
 				schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 			}
-			nameIdx.ReplaceOrInsert(class)
-			oidIdx.ReplaceOrInsert(class)
+			nameIdx.Add(class)
+			oidIdx.Add(class)
 			classes = append(classes, class)
 			return true, nil
 		},
@@ -173,8 +172,8 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				schemaOid: id.NewNamespace(tblName.Schema).AsId(),
 				kind:      "r",
 			}
-			nameIdx.ReplaceOrInsert(class)
-			oidIdx.ReplaceOrInsert(class)
+			nameIdx.Add(class)
+			oidIdx.Add(class)
 			classes = append(classes, class)
 		}
 	}

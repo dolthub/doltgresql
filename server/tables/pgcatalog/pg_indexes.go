@@ -51,15 +51,15 @@ func (p PgIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sq
 		return nil, err
 	}
 
-	if pgCatalogCache.indexes == nil {
-		if err := cacheIndexMetadata(ctx, pgCatalogCache); err != nil {
+	if pgCatalogCache.pgIndexes == nil {
+		err = cachePgIndexes(ctx, pgCatalogCache)
+		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &pgIndexesRowIter{
-		indexes: pgCatalogCache.indexes,
-		schemas: pgCatalogCache.indexSchemas,
+		indexes: pgCatalogCache.pgIndexes,
 		idx:     0,
 	}, nil
 }
@@ -83,8 +83,7 @@ var pgIndexesSchema = sql.Schema{
 
 // pgIndexesRowIter is the sql.RowIter for the pg_indexes table.
 type pgIndexesRowIter struct {
-	indexes []sql.Index
-	schemas []string
+	indexes *pgIndexCache
 	idx     int
 }
 
@@ -92,20 +91,19 @@ var _ sql.RowIter = (*pgIndexesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if iter.idx >= len(iter.indexes) {
+	if iter.idx >= len(iter.indexes.indexes) {
 		return nil, io.EOF
 	}
 	iter.idx++
-	index := iter.indexes[iter.idx-1]
-	schema := iter.schemas[iter.idx-1]
+	index := iter.indexes.indexes[iter.idx-1]
 
 	// TODO: Fill in the rest of the pg_indexes columns
 	return sql.Row{
-		schema,                     // schemaname
-		index.Table(),              // tablename
-		formatIndexName(index),     // indexname
-		"",                         // tablespace
-		getIndexDef(index, schema), // indexdef
+		index.schemaName,                        // schemaname
+		iter.indexes.tableNames[index.tableOid], // tablename
+		formatIndexName(index.index),            // indexname
+		"",                                      // tablespace
+		getIndexDef(index.index, index.schemaName), // indexdef
 	}, nil
 }
 
