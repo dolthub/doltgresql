@@ -17,6 +17,7 @@ package pgcatalog
 import (
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -233,7 +234,9 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		relNameRange := msrng[0]
 		schemaOidRange := msrng[1]
 		var relnameLower, relnameUpper string
-		var schemaOidLower, schemaOidUpper uint32
+		schemaOidLower := uint32(0)
+		schemaOidUpper := uint32(math.MaxUint32)
+		schemaOidUpperSet := false
 
 		if relNameRange.HasLowerBound() {
 			lb := sql.GetMySQLRangeCutKey(relNameRange.LowerBound)
@@ -262,6 +265,7 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 			if ub != nil {
 				upperRangeCutKey := ub.(id.Id)
 				schemaOidUpper = idToOid(upperRangeCutKey)
+				schemaOidUpperSet = true
 			}
 		}
 
@@ -273,9 +277,8 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		}
 
 		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
-			// If we're comparing only on relname, we need to include the next highest value to make sure we iterate every
-			// relname. Otherwise, we can increment the schema OID to use as our less-than value.
-			if schemaOidUpper == 0 {
+			// our less-than upper bound depends on whether we have a prefix match or both fields were set
+			if !schemaOidUpperSet {
 				relnameUpper = relnameUpper + " "
 			} else {
 				schemaOidUpper = schemaOidUpper + 1
@@ -401,9 +404,7 @@ func lessOid(a, b *pgClass) bool {
 
 // lessName is a sort function for pgClass based on name, then schemaOid.
 func lessName(a, b *pgClass) bool {
-	// Some keys used for lookups set only the first column, which means we only compare the second if it's set for
-	// both entries
-	if a.name == b.name && a.schemaOidNative > 0 && b.schemaOidNative > 0 {
+	if a.name == b.name {
 		return a.schemaOidNative < b.schemaOidNative
 	}
 	return a.name < b.name

@@ -218,6 +218,7 @@ func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 		var oidLower, oidUpper id.Id
 		attnumLower := int16(math.MinInt16)
 		attnumUpper := int16(math.MaxInt16)
+		attNumUpperSet := false
 
 		if oidRng.HasLowerBound() {
 			lb := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
@@ -246,6 +247,7 @@ func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 			ub := sql.GetMySQLRangeCutKey(attNumRng.UpperBound)
 			if ub != nil {
 				attnumUpper = ub.(int16)
+				attNumUpperSet = true
 			}
 		}
 
@@ -259,7 +261,7 @@ func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 		if hasUpperBound {
 			// our less-than upper bound depends on whether one or both fields in the range were set
 			oid := idToOid(oidUpper)
-			if attnumUpper == 0 {
+			if !attNumUpperSet {
 				oid += 1
 			} else {
 				attnumUpper += 1
