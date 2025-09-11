@@ -703,18 +703,13 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		ValidateFunc: func(curr, new any) (any, bool) {
 			ds := "ISO"
 			do := "MDY"
-			if curr == nil {
-				return fmt.Sprintf(`%s, %s`, ds, do), true
-			} else if oldVal, ok := curr.(string); !ok {
-				return "", false
-			} else {
-				// the first must be date style and second must be date ordering
+			if oldVal, ok := curr.(string); ok {
 				currentVal := strings.Split(strings.ReplaceAll(oldVal, " ", ""), ",")
-				if len(currentVal) != 2 {
-					return "", false
+				if len(currentVal) == 2 {
+					// the first must be date style and second must be date ordering
+					ds = currentVal[0]
+					do = currentVal[1]
 				}
-				ds = currentVal[0]
-				do = currentVal[1]
 			}
 			newVal, ok := new.(string)
 			if !ok {

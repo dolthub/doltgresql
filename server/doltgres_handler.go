@@ -259,9 +259,9 @@ func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query s
 	return h.sm.NewContextWithQuery(ctx, c, query)
 }
 
-// InitSessionParameter sets a value to specified parameter for given session.
-func (h *DoltgresHandler) InitSessionParameter(ctx context.Context, c *mysql.Conn, name, value string) error {
-	return h.sm.InitSessionVariable(ctx, c, name, value)
+// InitSessionParameterDefault sets a default value to specified parameter for a session.
+func (h *DoltgresHandler) InitSessionParameterDefault(ctx context.Context, c *mysql.Conn, name, value string) error {
+	return h.sm.InitSessionDefaultVariable(ctx, c, name, value)
 }
 
 // convertBindParameters handles the conversion from bind parameters to variable values.

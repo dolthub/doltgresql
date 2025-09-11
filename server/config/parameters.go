@@ -90,7 +90,9 @@ func (p *Parameter) GetSessionScope() sql.SystemVariableScope {
 
 // SetDefault implements sql.SystemVariable.
 func (p *Parameter) SetDefault(a any) {
-	p.Default = a
+	if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
+		p.Default = validatedVal
+	}
 }
 
 // GetDefault implements sql.SystemVariable.

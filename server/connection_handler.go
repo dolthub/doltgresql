@@ -289,7 +289,7 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 		// TODO: handle other parameters defined in StartupMessage
 		switch strings.ToLower(name) {
 		case "datestyle":
-			err := h.doltgresHandler.InitSessionParameter(context.Background(), h.mysqlConn, "DateStyle", value)
+			err := h.doltgresHandler.InitSessionParameterDefault(context.Background(), h.mysqlConn, "DateStyle", value)
 			if err != nil {
 				return err
 			}
