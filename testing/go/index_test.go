@@ -24,7 +24,6 @@ import (
 
 func TestBasicIndexing(t *testing.T) {
 	RunScripts(t, []ScriptTest{
-
 		{
 			Name: "Covering Index",
 			SetUpScript: []string{
@@ -99,7 +98,6 @@ func TestBasicIndexing(t *testing.T) {
 		},
 		{
 			Name: "String primary key ordering",
-			Skip: true, // string primary key ordering is broken
 			SetUpScript: []string{
 				"create table t (s varchar(5) primary key);",
 				"insert into t values ('foo');",

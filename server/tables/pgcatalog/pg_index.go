@@ -38,6 +38,7 @@ func InitPgIndex() {
 type PgIndexHandler struct{}
 
 var _ tables.Handler = PgIndexHandler{}
+var _ tables.IndexedTableHandler = PgIndexHandler{}
 
 // Name implements the interface tables.Handler.
 func (p PgIndexHandler) Name() string {
@@ -45,33 +46,133 @@ func (p PgIndexHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgIndexHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
-	// Use cached data from this process if it exists
+func (p PgIndexHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
+	// Use cached data from this session if it exists
 	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if pgCatalogCache.indexes == nil {
-		if err := cacheIndexMetadata(ctx, pgCatalogCache); err != nil {
+	if pgCatalogCache.pgIndexes == nil {
+		err = cachePgIndexes(ctx, pgCatalogCache)
+		if err != nil {
 			return nil, err
 		}
 	}
 
-	return &pgIndexRowIter{
-		indexes:      pgCatalogCache.indexes,
-		tableSchemas: pgCatalogCache.tableSchemas,
-		idxOIDs:      pgCatalogCache.indexOIDs,
-		tblOIDs:      pgCatalogCache.indexTableOIDs,
+	if indexIdxPart, ok := partition.(inMemIndexPartition); ok {
+		return &inMemIndexScanIter[*pgIndex]{
+			lookup:         indexIdxPart.lookup,
+			rangeConverter: p,
+			btreeAccess:    pgCatalogCache.pgIndexes,
+			rowConverter:   pgIndexToRow,
+			rangeIdx:       0,
+			nextChan:       nil,
+		}, nil
+	}
+
+	return &pgIndexTableScanIter{
+		indexCache: pgCatalogCache.pgIndexes,
+		idx:        0,
 	}, nil
 }
 
-// Schema implements the interface tables.Handler.
-func (p PgIndexHandler) Schema() sql.PrimaryKeySchema {
+// PkSchema implements the interface tables.Handler.
+func (p PgIndexHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgIndexSchema,
 		PkOrdinals: nil,
 	}
+}
+
+// Indexes implements tables.IndexedTableHandler.
+func (p PgIndexHandler) Indexes() ([]sql.Index, error) {
+	return []sql.Index{
+		pgCatalogInMemIndex{
+			name:        "pg_index_indexrelid_index",
+			tblName:     "pg_index",
+			dbName:      "pg_catalog",
+			uniq:        true,
+			columnExprs: []sql.ColumnExpressionType{{Expression: "pg_index.indexrelid", Type: pgtypes.Oid}},
+		},
+		pgCatalogInMemIndex{
+			name:        "pg_index_indrelid_index",
+			tblName:     "pg_index",
+			dbName:      "pg_catalog",
+			uniq:        false,
+			columnExprs: []sql.ColumnExpressionType{{Expression: "pg_index.indrelid", Type: pgtypes.Oid}},
+		},
+	}, nil
+}
+
+// LookupPartitions implements tables.IndexedTableHandler.
+func (p PgIndexHandler) LookupPartitions(context *sql.Context, lookup sql.IndexLookup) (sql.PartitionIter, error) {
+	return &inMemIndexPartIter{
+		part: inMemIndexPartition{
+			idxName: lookup.Index.(pgCatalogInMemIndex).name,
+			lookup:  lookup,
+		},
+	}, nil
+}
+
+// getIndexScanRange implements the interface RangeConverter.
+func (p PgIndexHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgIndex, bool, *pgIndex, bool) {
+	var gte, lte *pgIndex
+	var hasLowerBound, hasUpperBound bool
+
+	switch index.(pgCatalogInMemIndex).name {
+	case "pg_index_indexrelid_index":
+		msrng := rng.(sql.MySQLRange)
+		oidRng := msrng[0]
+		if oidRng.HasLowerBound() {
+			lb := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
+			if lb != nil {
+				lowerRangeCutKey := lb.(id.Id)
+				gte = &pgIndex{
+					indexOidNative: idToOid(lowerRangeCutKey),
+				}
+				hasLowerBound = true
+			}
+		}
+		if oidRng.HasUpperBound() {
+			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
+			if ub != nil {
+				upperRangeCutKey := ub.(id.Id)
+				lte = &pgIndex{
+					indexOidNative: idToOid(upperRangeCutKey),
+				}
+				hasUpperBound = true
+			}
+		}
+
+	case "pg_index_indrelid_index":
+		msrng := rng.(sql.MySQLRange)
+		oidRng := msrng[0]
+		if oidRng.HasLowerBound() {
+			lb := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
+			if lb != nil {
+				lowerRangeCutKey := lb.(id.Id)
+				gte = &pgIndex{
+					tableOidNative: idToOid(lowerRangeCutKey),
+				}
+				hasLowerBound = true
+			}
+		}
+		if oidRng.HasUpperBound() {
+			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
+			if ub != nil {
+				upperRangeCutKey := ub.(id.Id)
+				lte = &pgIndex{
+					tableOidNative: idToOid(upperRangeCutKey),
+				}
+				hasUpperBound = true
+			}
+		}
+	default:
+		panic("unknown index name: " + index.(pgCatalogInMemIndex).name)
+	}
+
+	return gte, hasLowerBound, lte, hasUpperBound
 }
 
 // pgIndexSchema is the schema for pg_index.
@@ -99,60 +200,6 @@ var pgIndexSchema = sql.Schema{
 	{Name: "indpred", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName},           // TODO: type pg_node_tree, collation C
 }
 
-// pgIndexRowIter is the sql.RowIter for the pg_index table.
-type pgIndexRowIter struct {
-	indexes      []sql.Index
-	tableSchemas map[id.Id]sql.Schema
-	idxOIDs      []id.Id
-	tblOIDs      []id.Id
-	idx          int
-}
-
-var _ sql.RowIter = (*pgIndexRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgIndexRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if iter.idx >= len(iter.indexes) {
-		return nil, io.EOF
-	}
-	iter.idx++
-	index := iter.indexes[iter.idx-1]
-	tableOid := iter.tblOIDs[iter.idx-1]
-	indexOid := iter.idxOIDs[iter.idx-1]
-	schema := iter.tableSchemas[tableOid]
-
-	indKey := make([]any, len(index.Expressions()))
-	for i, expr := range index.Expressions() {
-		colName := extractColName(expr)
-		indKey[i] = int16(schema.IndexOfColName(colName)) + 1
-	}
-
-	// TODO: Fill in the rest of the pg_index columns
-	return sql.Row{
-		indexOid,                                 // indexrelid
-		tableOid,                                 // indrelid
-		int16(len(index.Expressions())),          // indnatts
-		int16(0),                                 // indnkeyatts
-		index.IsUnique(),                         // indisunique
-		false,                                    // indnullsnotdistinct
-		strings.ToLower(index.ID()) == "primary", // indisprimary
-		false,                                    // indisexclusion
-		false,                                    // indimmediate
-		false,                                    // indisclustered
-		true,                                     // indisvalid
-		false,                                    // indcheckxmin
-		true,                                     // indisready
-		true,                                     // indislive
-		false,                                    // indisreplident
-		indKey,                                   // indkey
-		[]any{},                                  // indcollation
-		[]any{},                                  // indclass
-		"0",                                      // indoption
-		nil,                                      // indexprs
-		nil,                                      // indpred
-	}, nil
-}
-
 func extractColName(expr string) string {
 	// TODO: this breaks for column names that contain a `.`, but this is a problem that happens
 	//  throughout index analysis in the engine
@@ -160,31 +207,123 @@ func extractColName(expr string) string {
 	return expr[lastDot+1:]
 }
 
+// pgIndex represents a row in the pg_index table.
+// We store oids in their native format as well so that we can do range scans on them.
+type pgIndex struct {
+	index          sql.Index
+	schemaName     string
+	indexOid       id.Id
+	indexOidNative uint32
+	tableOid       id.Id
+	tableOidNative uint32
+	indnatts       int16
+	indisunique    bool
+	indisprimary   bool
+	indkey         []any
+}
+
+// lessIndexOid is a sort function for pgIndex based on indexrelid.
+func lessIndexOid(a, b *pgIndex) bool {
+	return a.indexOidNative < b.indexOidNative
+}
+
+// lessIndrelid is a sort function for pgIndex based on indrelid.
+func lessIndrelid(a, b []*pgIndex) bool {
+	return a[0].tableOidNative < b[0].tableOidNative
+}
+
+// pgIndexTableScanIter is the sql.RowIter for the pg_index table.
+type pgIndexTableScanIter struct {
+	indexCache *pgIndexCache
+	idx        int
+}
+
+var _ sql.RowIter = (*pgIndexTableScanIter)(nil)
+
+// Next implements the interface sql.RowIter.
+func (iter *pgIndexTableScanIter) Next(ctx *sql.Context) (sql.Row, error) {
+	if iter.idx >= len(iter.indexCache.indexes) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	index := iter.indexCache.indexes[iter.idx-1]
+
+	return pgIndexToRow(index), nil
+}
+
 // Close implements the interface sql.RowIter.
-func (iter *pgIndexRowIter) Close(ctx *sql.Context) error {
+func (iter *pgIndexTableScanIter) Close(ctx *sql.Context) error {
 	return nil
 }
 
-// cacheIndexMetadata iterates over the indexes in the current database and caches their metadata in |cache|. This
-// cache holds pg_catalog data for the duration of a single query so that we don't have to generate the same pg_catalog
-// data when multiple tables are joined together.
-func cacheIndexMetadata(ctx *sql.Context, cache *pgCatalogCache) error {
-	var indexes []sql.Index
-	var indexSchemas []string
-	var indexOIDs []id.Id
-	var tableOIDs []id.Id
+// pgIndexToRow converts a pgIndex to a sql.Row.
+func pgIndexToRow(index *pgIndex) sql.Row {
+	return sql.Row{
+		index.indexOid,         // indexrelid
+		index.tableOid,         // indrelid
+		index.indnatts,         // indnatts
+		int16(0),               // indnkeyatts
+		index.index.IsUnique(), // indisunique
+		false,                  // indnullsnotdistinct
+		index.indisprimary,     // indisprimary
+		false,                  // indisexclusion
+		false,                  // indimmediate
+		false,                  // indisclustered
+		true,                   // indisvalid
+		false,                  // indcheckxmin
+		true,                   // indisready
+		true,                   // indislive
+		false,                  // indisreplident
+		index.indkey,           // indkey
+		[]any{},                // indcollation
+		[]any{},                // indclass
+		"0",                    // indoption
+		nil,                    // indexprs
+		nil,                    // indpred
+	}
+}
+
+// cachePgIndexes caches the pg_index data for the current database in the session.
+func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
+	var indexes []*pgIndex
+	indexOidIdx := NewUniqueInMemIndexStorage[*pgIndex](lessIndexOid)
+	indrelidIdx := NewNonUniqueInMemIndexStorage[*pgIndex](lessIndrelid)
 
 	tableSchemas := make(map[id.Id]sql.Schema)
+	tableNames := make(map[id.Id]string)
 
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
-			indexes = append(indexes, index.Item)
-			indexSchemas = append(indexSchemas, schema.Item.SchemaName())
 			if tableSchemas[table.OID.AsId()] == nil {
 				tableSchemas[table.OID.AsId()] = table.Item.Schema()
 			}
-			indexOIDs = append(indexOIDs, index.OID.AsId())
-			tableOIDs = append(tableOIDs, table.OID.AsId())
+			if tableNames[table.OID.AsId()] == "" {
+				tableNames[table.OID.AsId()] = table.Item.Name()
+			}
+
+			s := tableSchemas[table.OID.AsId()]
+			indKey := make([]any, len(index.Item.Expressions()))
+			for i, expr := range index.Item.Expressions() {
+				colName := extractColName(expr)
+				indKey[i] = int16(s.IndexOfColName(colName)) + 1
+			}
+
+			pgIdx := &pgIndex{
+				index:          index.Item,
+				schemaName:     schema.Item.SchemaName(),
+				indexOid:       index.OID.AsId(),
+				indexOidNative: id.Cache().ToOID(index.OID.AsId()),
+				tableOid:       table.OID.AsId(),
+				tableOidNative: id.Cache().ToOID(table.OID.AsId()),
+				indkey:         indKey,
+				indnatts:       int16(len(index.Item.Expressions())),
+				indisunique:    index.Item.IsUnique(),
+				indisprimary:   strings.ToLower(index.Item.ID()) == "primary",
+			}
+
+			indexOidIdx.Add(pgIdx)
+			indrelidIdx.Add(pgIdx)
+			indexes = append(indexes, pgIdx)
 			return true, nil
 		},
 	})
@@ -192,10 +331,12 @@ func cacheIndexMetadata(ctx *sql.Context, cache *pgCatalogCache) error {
 		return err
 	}
 
-	cache.indexes = indexes
-	cache.tableSchemas = tableSchemas
-	cache.indexOIDs = indexOIDs
-	cache.indexTableOIDs = tableOIDs
-	cache.indexSchemas = indexSchemas
+	pgCatalogCache.pgIndexes = &pgIndexCache{
+		indexes:     indexes,
+		tableNames:  tableNames,
+		indexOidIdx: indexOidIdx,
+		indrelidIdx: indrelidIdx,
+	}
+
 	return nil
 }

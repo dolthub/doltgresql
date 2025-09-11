@@ -45,7 +45,7 @@ func (p PgSequenceHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgSequenceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgSequenceHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// Use cached data from this process if it exists
 	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
@@ -77,7 +77,7 @@ func (p PgSequenceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgSequenceHandler) Schema() sql.PrimaryKeySchema {
+func (p PgSequenceHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgSequenceSchema,
 		PkOrdinals: nil,

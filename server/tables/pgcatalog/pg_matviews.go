@@ -42,13 +42,13 @@ func (p PgMatviewsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgMatviewsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgMatviewsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_matviews row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgMatviewsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgMatviewsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgMatviewsSchema,
 		PkOrdinals: nil,

@@ -42,13 +42,13 @@ func (p PgPoliciesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgPoliciesHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgPoliciesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_policies row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgPoliciesHandler) Schema() sql.PrimaryKeySchema {
+func (p PgPoliciesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgPoliciesSchema,
 		PkOrdinals: nil,

@@ -10902,21 +10902,6 @@ sortby:
       NullsOrder: nullsOrder,
     }
   }
-| PRIMARY KEY table_name opt_asc_desc
-  {
-    name := $3.unresolvedObjectName().ToTableName()
-    $$.val = &tree.Order{OrderType: tree.OrderByIndex, Direction: $4.dir(), Table: name}
-  }
-| INDEX table_name '@' index_name opt_asc_desc
-  {
-    name := $2.unresolvedObjectName().ToTableName()
-    $$.val = &tree.Order{
-      OrderType: tree.OrderByIndex,
-      Direction: $5.dir(),
-      Table:     name,
-      Index:     tree.UnrestrictedName($4),
-    }
-  }
 
 opt_nulls_order:
   NULLS FIRST
@@ -15131,6 +15116,7 @@ col_name_keyword:
 | IF
 | IFERROR
 | IFNULL
+| INDEX
 | INOUT
 | INT
 | INTEGER
@@ -15305,7 +15291,6 @@ reserved_keyword:
 // Adding keywords here creates non-resolvable incompatibilities with
 // postgres clients.
 cockroachdb_extra_reserved_keyword:
-  INDEX
-| NOTHING
+  NOTHING
 
 %%

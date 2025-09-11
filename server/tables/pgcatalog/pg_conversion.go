@@ -42,13 +42,13 @@ func (p PgConversionHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgConversionHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgConversionHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_conversion row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgConversionHandler) Schema() sql.PrimaryKeySchema {
+func (p PgConversionHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     PgConversionSchema,
 		PkOrdinals: nil,

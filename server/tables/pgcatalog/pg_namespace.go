@@ -44,7 +44,7 @@ func (p PgNamespaceHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgNamespaceHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// Use cached data from this process if it exists
 	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
@@ -77,7 +77,7 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgNamespaceHandler) Schema() sql.PrimaryKeySchema {
+func (p PgNamespaceHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgNamespaceSchema,
 		PkOrdinals: nil,

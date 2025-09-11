@@ -42,13 +42,13 @@ func (p PgStatDatabaseConflictsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatDatabaseConflictsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatDatabaseConflictsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_database_conflicts row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatDatabaseConflictsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatDatabaseConflictsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatDatabaseConflictsSchema,
 		PkOrdinals: nil,

@@ -42,13 +42,13 @@ func (p PgAuthMembersHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgAuthMembersHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgAuthMembersHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_auth_members row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgAuthMembersHandler) Schema() sql.PrimaryKeySchema {
+func (p PgAuthMembersHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgAuthMembersSchema,
 		PkOrdinals: nil,

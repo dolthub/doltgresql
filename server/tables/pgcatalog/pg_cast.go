@@ -42,13 +42,13 @@ func (p PgCastHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgCastHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgCastHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_cast row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgCastHandler) Schema() sql.PrimaryKeySchema {
+func (p PgCastHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgCastSchema,
 		PkOrdinals: nil,

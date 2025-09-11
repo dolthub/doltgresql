@@ -42,13 +42,13 @@ func (p PgStatWalReceiverHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgStatWalReceiverHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgStatWalReceiverHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_stat_wal_receiver row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgStatWalReceiverHandler) Schema() sql.PrimaryKeySchema {
+func (p PgStatWalReceiverHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatWalReceiverSchema,
 		PkOrdinals: nil,

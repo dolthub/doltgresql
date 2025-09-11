@@ -45,7 +45,7 @@ func (p PgConstraintHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgConstraintHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// Use cached data from this process if it exists
 	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
@@ -147,7 +147,7 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
 
 				constraints = append(constraints, pgConstraint{
 					oid:         index.OID.AsId(),
-					name:        getIndexName(index.Item),
+					name:        formatIndexName(index.Item),
 					schemaOid:   schema.OID.AsId(),
 					conType:     conType,
 					tableOid:    table.OID.AsId(),
@@ -189,7 +189,7 @@ func getFKAction(action sql.ForeignKeyReferentialAction) string {
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgConstraintHandler) Schema() sql.PrimaryKeySchema {
+func (p PgConstraintHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     PgConstraintSchema,
 		PkOrdinals: nil,

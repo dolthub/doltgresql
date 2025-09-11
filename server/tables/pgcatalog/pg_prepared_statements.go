@@ -42,13 +42,13 @@ func (p PgPreparedStatementsHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgPreparedStatementsHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgPreparedStatementsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_prepared_statements row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgPreparedStatementsHandler) Schema() sql.PrimaryKeySchema {
+func (p PgPreparedStatementsHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgPreparedStatementsSchema,
 		PkOrdinals: nil,

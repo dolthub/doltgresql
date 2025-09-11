@@ -42,13 +42,13 @@ func (p PgPublicationHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgPublicationHandler) RowIter(ctx *sql.Context) (sql.RowIter, error) {
+func (p PgPublicationHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Implement pg_publication row iter
 	return emptyRowIter()
 }
 
 // Schema implements the interface tables.Handler.
-func (p PgPublicationHandler) Schema() sql.PrimaryKeySchema {
+func (p PgPublicationHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgPublicationSchema,
 		PkOrdinals: nil,

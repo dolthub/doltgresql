@@ -38,7 +38,7 @@ type pgCatalogCache struct {
 	pid uint64
 
 	// pg_classes
-	pgClasses []pgClass
+	pgClasses *pgClassCache
 
 	// pg_constraints
 	pgConstraints []pgConstraint
@@ -53,11 +53,7 @@ type pgCatalogCache struct {
 	attributeColIdxs   []int
 
 	// pg_index / pg_indexes
-	indexes        []sql.Index
-	tableSchemas   map[id.Id]sql.Schema
-	indexOIDs      []id.Id
-	indexTableOIDs []id.Id
-	indexSchemas   []string
+	pgIndexes *pgIndexCache
 
 	// pg_sequence
 	sequences    []*sequences.Sequence
@@ -78,6 +74,50 @@ type pgCatalogCache struct {
 	// pg_tables
 	tables       []sql.Table
 	systemTables []doltdb.TableName
+}
+
+// pgClassCache holds cached data for the pg_class table, including two btree indexes for fast lookups by OID and
+// by relname
+type pgClassCache struct {
+	classes []*pgClass
+	nameIdx *inMemIndexStorage[*pgClass]
+	oidIdx  *inMemIndexStorage[*pgClass]
+}
+
+// getIndex implements BTreeStorageAccess.
+func (p pgClassCache) getIndex(name string) *inMemIndexStorage[*pgClass] {
+	switch name {
+	case "pg_class_oid_index":
+		return p.oidIdx
+	case "pg_class_relname_nsp_index":
+		return p.nameIdx
+	default:
+		panic("unknown pg_class index: " + name)
+	}
+}
+
+var _ BTreeStorageAccess[*pgClass] = &pgClassCache{}
+
+// pgIndexCache holds cached data for the pg_index table, including two btree indexes for fast lookups by index OID
+type pgIndexCache struct {
+	indexes     []*pgIndex
+	tableNames  map[id.Id]string
+	indexOidIdx *inMemIndexStorage[*pgIndex]
+	indrelidIdx *inMemIndexStorage[*pgIndex]
+}
+
+var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}
+
+// getIndex implements BTreeStorageAccess.
+func (p pgIndexCache) getIndex(name string) *inMemIndexStorage[*pgIndex] {
+	switch name {
+	case "pg_index_indexrelid_index":
+		return p.indexOidIdx
+	case "pg_index_indrelid_index":
+		return p.indrelidIdx
+	default:
+		panic("unknown pg_index index: " + name)
+	}
 }
 
 // newPgCatalogCache creates a new pgCatalogCache, with the query/process ID set to |pid|. The PID is important,
