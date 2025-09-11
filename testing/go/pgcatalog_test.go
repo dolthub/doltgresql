@@ -133,39 +133,30 @@ func TestPgAttribute(t *testing.T) {
 				`SET search_path TO testschema2;`,
 			},
 			Assertions: []ScriptTestAssertion{
-				// {
-				// 	Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk' AND attrelid='testschema.test'::regclass;`,
-				// 	Expected: []sql.Row{{2502341994, "pk", 23, 0, 1, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
-				// },
-				// {
-				// 	Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1' AND attrelid='testschema.test'::regclass;`,
-				// 	Expected: []sql.Row{{2502341994, "v1", 25, 0, 2, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
-				// },
-				// { // Different cases and quoted, so it fails
-				// 	Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
-				// 	ExpectedErr: "not",
-				// },
-				// { // Different cases and quoted, so it fails
-				// 	Query:       `SELECT * FROM "pg_catalog"."PG_attribute";`,
-				// 	ExpectedErr: "not",
-				// },
-				// { // Different cases but non-quoted, so it works
-				// 	Query: "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname LIMIT 3;",
-				// 	Expected: []sql.Row{
-				// 		{"ACTION_CONDITION"},
-				// 		{"ACTION_ORDER"},
-				// 		{"ACTION_ORIENTATION"},
-				// 	},
-				// },
-				// 		{
-				// 			Query: `EXPLAIN SELECT attname FROM "pg_catalog"."pg_attribute" a
-				// JOIN "pg_catalog"."pg_class" c ON a.attrelid = c.oid
-				//            WHERE c.relname = 'test';`,
-				// 			Expected: []sql.Row{
-				// 				{"pk"},
-				// 				{"v1"},
-				// 			},
-				// 		},
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk' AND attrelid='testschema.test'::regclass;`,
+					Expected: []sql.Row{{2502341994, "pk", 23, 0, 1, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1' AND attrelid='testschema.test'::regclass;`,
+					Expected: []sql.Row{{2502341994, "v1", 25, 0, 2, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases and quoted, so it fails
+					Query:       `SELECT * FROM "pg_catalog"."PG_attribute";`,
+					ExpectedErr: "not",
+				},
+				{ // Different cases but non-quoted, so it works
+					Query: "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname LIMIT 3;",
+					Expected: []sql.Row{
+						{"ACTION_CONDITION"},
+						{"ACTION_ORDER"},
+						{"ACTION_ORIENTATION"},
+					},
+				},
 				{
 					Query: `SELECT attname FROM "pg_catalog"."pg_attribute" a
     JOIN "pg_catalog"."pg_class" c ON a.attrelid = c.oid
