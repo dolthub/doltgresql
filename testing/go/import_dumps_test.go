@@ -169,6 +169,7 @@ func RunImportTest(t *testing.T, script ImportTest, psqlCommand string, dumpsFol
 		cmd.Stdin = targetFile
 		require.NoError(t, cmd.Run())
 		if len(allErrors) > 0 {
+			t.Logf("COUNT: %d", len(allErrors))
 			// If we have more than some threshold, then we'll only show the first few for ease of consumption
 			for i := 0; i < len(allErrors) && i < 10; i++ {
 				t.Logf("QUERY: %s\nERROR: %s", allErrors[i].Query, allErrors[i].Error)

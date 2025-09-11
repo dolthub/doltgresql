@@ -659,8 +659,6 @@ type OrderType int
 const (
 	// OrderByColumn is the regular "by expression/column" ORDER BY specification.
 	OrderByColumn OrderType = iota
-	// OrderByIndex enables the user to specify a given index' columns implicitly.
-	OrderByIndex
 )
 
 // Order represents an ordering expression.
@@ -669,26 +667,12 @@ type Order struct {
 	Expr       Expr
 	Direction  Direction
 	NullsOrder NullsOrder
-	// Table/Index replaces Expr when OrderType = OrderByIndex.
-	Table TableName
-	// If Index is empty, then the order should use the primary key.
-	Index UnrestrictedName
 }
 
 // Format implements the NodeFormatter interface.
 func (node *Order) Format(ctx *FmtCtx) {
 	if node.OrderType == OrderByColumn {
 		ctx.FormatNode(node.Expr)
-	} else {
-		if node.Index == "" {
-			ctx.WriteString("PRIMARY KEY ")
-			ctx.FormatNode(&node.Table)
-		} else {
-			ctx.WriteString("INDEX ")
-			ctx.FormatNode(&node.Table)
-			ctx.WriteByte('@')
-			ctx.FormatNode(&node.Index)
-		}
 	}
 	if node.Direction != DefaultDirection {
 		ctx.WriteByte(' ')
@@ -703,8 +687,7 @@ func (node *Order) Format(ctx *FmtCtx) {
 // Equal checks if the node ordering is equivalent to other.
 func (node *Order) Equal(other *Order) bool {
 	return node.Expr.String() == other.Expr.String() && node.Direction == other.Direction &&
-		node.Table == other.Table && node.OrderType == other.OrderType &&
-		node.NullsOrder == other.NullsOrder
+		node.OrderType == other.OrderType && node.NullsOrder == other.NullsOrder
 }
 
 // Limit represents a LIMIT clause.

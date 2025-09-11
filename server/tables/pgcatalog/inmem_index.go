@@ -96,7 +96,7 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 		} else if hasLowerBound {
 			idx.IterGreaterThanEqual(gte, l.nextChan)
 		} else if hasUpperBound {
-			idx.IterLessThan(lte, l.nextChan)
+			idx.IterLessThanEqual(lte, l.nextChan)
 		} else {
 			// We don't support nil lookups for this kind of index, there are never nillable elements
 			return
@@ -289,9 +289,9 @@ func (s *inMemIndexStorage[T]) IterGreaterThanEqual(gte T, c chan T) {
 	}
 }
 
-// IterLessThan implements an in-order iteration over the index values less than or equal to the given value.
+// IterLessThanEqual implements an in-order iteration over the index values less than or equal to the given value.
 // All values in the index less than or equal to the given value are sent to the channel.
-func (s *inMemIndexStorage[T]) IterLessThan(lte T, c chan T) {
+func (s *inMemIndexStorage[T]) IterLessThanEqual(lte T, c chan T) {
 	if s.uniqTree != nil {
 		s.uniqTree.AscendLessThan(lte, s.sendItem(c))
 	} else {
@@ -320,16 +320,18 @@ func (s *inMemIndexStorage[T]) iterKey(v T, c chan T) {
 	}
 }
 
-// sendItem returns a function that sends the given item to the channel.
-func (s *inMemIndexStorage[T]) sendItem(c chan T) func(item T) bool {
+// sendItem returns an iterator function that sends the given item to the channel. This function returns a bool to
+// conform to the interface for the Ascend* methods in the btree package.
+func (s *inMemIndexStorage[T]) sendItem(c chan T) btree.ItemIteratorG[T] {
 	return func(item T) bool {
 		c <- item
 		return true
 	}
 }
 
-// sendItems returns a function that sends all items in the given slice to the channel.
-func (s *inMemIndexStorage[T]) sendItems(c chan T) func(item []T) bool {
+// sendItems returns an iterator function that sends all items in the given slice to the channel. This function
+// returns a bool to conform to the interface for the Ascend* methods in the btree package.
+func (s *inMemIndexStorage[T]) sendItems(c chan T) btree.ItemIteratorG[[]T] {
 	return func(items []T) bool {
 		for _, item := range items {
 			c <- item

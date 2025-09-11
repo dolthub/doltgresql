@@ -792,5 +792,34 @@ func TestSmokeTests(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "INDEX as column name",
+			SetUpScript: []string{
+				`CREATE TABLE test1 (index INT4, CONSTRAINT index_constraint1 CHECK ((index >= 0)));`,
+				`CREATE TABLE test2 ("IndeX" INT4, CONSTRAINT index_constraint2 CHECK (("IndeX" >= 0)));`,
+				`INSERT INTO test1 VALUES (1);`,
+				`INSERT INTO test2 VALUES (2);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT * FROM test1;`,
+					ExpectedColNames: []string{"index"},
+					Expected:         []sql.Row{{1}},
+				},
+				{
+					Query:            `SELECT * FROM test2;`,
+					ExpectedColNames: []string{"IndeX"},
+					Expected:         []sql.Row{{2}},
+				},
+				{
+					Query:       `INSERT INTO test1 VALUES (-1);`,
+					ExpectedErr: "index_constraint1",
+				},
+				{
+					Query:       `INSERT INTO test2 VALUES (-1);`,
+					ExpectedErr: "index_constraint2",
+				},
+			},
+		},
 	})
 }
