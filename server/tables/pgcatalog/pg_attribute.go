@@ -83,8 +83,8 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context, partition sql.Partition) (
 // cachePgAttributes caches the pg_attribute data for the current database in the session.
 func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	var attributes []*pgAttribute
-	attrelidIdx := NewNonUniqueInMemIndexStorage[*pgAttribute](lessAttrelid)
-	attrelidAttnameIdx := NewUniqueInMemIndexStorage[*pgAttribute](lessAttrelidAttname)
+	attrelidIdx := NewUniqueInMemIndexStorage[*pgAttribute](lessAttNum)
+	attrelidAttnameIdx := NewUniqueInMemIndexStorage[*pgAttribute](lessAttName)
 
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Table: func(ctx *sql.Context, _ functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
@@ -209,16 +209,18 @@ func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 	var hasLowerBound, hasUpperBound bool
 
 	switch index.(pgCatalogInMemIndex).name {
-	case "pg_attribute_attrelid_index":
+	case "pg_attribute_relid_attnum_index":
 		msrng := rng.(sql.MySQLRange)
 		oidRng := msrng[0]
+		attNumRng := msrng[1]
+
+		var oidLower, oidUpper id.Id
+		var attnumLower, attnumUpper int16
+
 		if oidRng.HasLowerBound() {
 			lb := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
 			if lb != nil {
-				lowerRangeCutKey := lb.(id.Id)
-				gte = &pgAttribute{
-					attrelidNative: idToOid(lowerRangeCutKey),
-				}
+				oidLower = lb.(id.Id)
 				hasLowerBound = true
 			}
 		}
@@ -226,15 +228,40 @@ func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 		if oidRng.HasUpperBound() {
 			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
 			if ub != nil {
-				upperRangeCutKey := ub.(id.Id)
-				lte = &pgAttribute{
-					attrelidNative: idToOid(upperRangeCutKey),
-				}
+				oidUpper = ub.(id.Id)
 				hasUpperBound = true
 			}
 		}
 
-	case "pg_attribute_attrelid_attname_index":
+		if attNumRng.HasLowerBound() {
+			lb := sql.GetMySQLRangeCutKey(attNumRng.LowerBound)
+			if lb != nil {
+				attnumLower = lb.(int16)
+			}
+		}
+
+		if attNumRng.HasUpperBound() {
+			ub := sql.GetMySQLRangeCutKey(attNumRng.UpperBound)
+			if ub != nil {
+				attnumUpper = ub.(int16)
+			}
+		}
+
+		if hasLowerBound {
+			gte = &pgAttribute{
+				attrelidNative: idToOid(oidLower),
+				attnum:         attnumLower,
+			}
+		}
+
+		if hasUpperBound {
+			lte = &pgAttribute{
+				attrelidNative: idToOid(oidUpper),
+				attnum:         attnumUpper,
+			}
+		}
+
+	case "pg_attribute_relid_attnam_index":
 		msrng := rng.(sql.MySQLRange)
 		attrelidRange := msrng[0]
 		attnameRange := msrng[1]
@@ -303,14 +330,17 @@ func (p PgAttributeHandler) PkSchema() sql.PrimaryKeySchema {
 func (p PgAttributeHandler) Indexes() ([]sql.Index, error) {
 	return []sql.Index{
 		pgCatalogInMemIndex{
-			name:        "pg_attribute_attrelid_index",
-			tblName:     "pg_attribute",
-			dbName:      "pg_catalog",
-			uniq:        false,
-			columnExprs: []sql.ColumnExpressionType{{Expression: "pg_attribute.attrelid", Type: pgtypes.Oid}},
+			name:    "pg_attribute_relid_attnum_index",
+			tblName: "pg_attribute",
+			dbName:  "pg_catalog",
+			uniq:    true,
+			columnExprs: []sql.ColumnExpressionType{
+				{Expression: "pg_attribute.attrelid", Type: pgtypes.Oid},
+				{Expression: "pg_attribute.attnum", Type: pgtypes.Int16},
+			},
 		},
 		pgCatalogInMemIndex{
-			name:    "pg_attribute_attrelid_attname_index",
+			name:    "pg_attribute_relid_attnam_index",
 			tblName: "pg_attribute",
 			dbName:  "pg_catalog",
 			uniq:    true,
@@ -376,14 +406,21 @@ type pgAttribute struct {
 	attgenerated   string
 }
 
-// lessAttrelid is a sort function for pgAttribute based on attrelid.
-func lessAttrelid(a, b []*pgAttribute) bool {
-	return a[0].attrelidNative < b[0].attrelidNative
+// lessAttNum is a sort function for pgAttribute based on attrelid.
+func lessAttNum(a, b *pgAttribute) bool {
+	// Some keys used for lookups set only the first column, which means we only compare the second if it's set for
+	// both entries
+	if a.attrelidNative == b.attrelidNative && a.attnum != 0 && b.attnum != 0 {
+		return a.attnum < b.attnum
+	}
+	return a.attrelidNative < b.attrelidNative
 }
 
-// lessAttrelidAttname is a sort function for pgAttribute based on attrelid, then attname.
-func lessAttrelidAttname(a, b *pgAttribute) bool {
-	if a.attrelidNative == b.attrelidNative {
+// lessAttName is a sort function for pgAttribute based on attrelid, then attname.
+func lessAttName(a, b *pgAttribute) bool {
+	// Some keys used for lookups set only the first column, which means we only compare the second if it's set for
+	// both entries
+	if a.attrelidNative == b.attrelidNative && a.attname != "" && b.attname != "" {
 		return a.attname < b.attname
 	}
 	return a.attrelidNative < b.attrelidNative
@@ -416,31 +453,31 @@ func (iter *pgAttributeTableScanIter) Close(ctx *sql.Context) error {
 func pgAttributeToRow(attr *pgAttribute) sql.Row {
 	// TODO: Fill in the rest of the pg_attribute columns
 	return sql.Row{
-		attr.attrelid,   // attrelid
-		attr.attname,    // attname
-		attr.atttypid,   // atttypid
-		int16(0),        // attlen
-		attr.attnum,     // attnum
-		int32(-1),       // attcacheoff
-		int32(-1),       // atttypmod
-		attr.attndims,   // attndims
-		false,           // attbyval
-		"i",             // attalign
-		"p",             // attstorage
-		"",              // attcompression
-		attr.attnotnull, // attnotnull
-		attr.atthasdef,  // atthasdef
-		false,           // atthasmissing
-		"",              // attidentity
+		attr.attrelid,     // attrelid
+		attr.attname,      // attname
+		attr.atttypid,     // atttypid
+		int16(0),          // attlen
+		attr.attnum,       // attnum
+		int32(-1),         // attcacheoff
+		int32(-1),         // atttypmod
+		attr.attndims,     // attndims
+		false,             // attbyval
+		"i",               // attalign
+		"p",               // attstorage
+		"",                // attcompression
+		attr.attnotnull,   // attnotnull
+		attr.atthasdef,    // atthasdef
+		false,             // atthasmissing
+		"",                // attidentity
 		attr.attgenerated, // attgenerated
-		false,           // attisdropped
-		true,            // attislocal
-		int16(0),        // attinhcount
-		int16(-1),       // attstattarget
-		id.Null,         // attcollation
-		nil,             // attacl
-		nil,             // attoptions
-		nil,             // attfdwoptions
-		nil,             // attmissingval
+		false,             // attisdropped
+		true,              // attislocal
+		int16(0),          // attinhcount
+		int16(-1),         // attstattarget
+		id.Null,           // attcollation
+		nil,               // attacl
+		nil,               // attoptions
+		nil,               // attfdwoptions
+		nil,               // attmissingval
 	}
 }

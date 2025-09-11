@@ -115,9 +115,9 @@ var _ BTreeStorageAccess[*pgAttribute] = &pgAttributeCache{}
 // getIndex implements BTreeStorageAccess.
 func (p pgAttributeCache) getIndex(name string) *inMemIndexStorage[*pgAttribute] {
 	switch name {
-	case "pg_attribute_attrelid_index":
+	case "pg_attribute_relid_attnum_index":
 		return p.attrelidIdx
-	case "pg_attribute_attrelid_attname_index":
+	case "pg_attribute_relid_attnam_index":
 		return p.attrelidAttnameIdx
 	default:
 		panic("unknown pg_attribute index: " + name)
