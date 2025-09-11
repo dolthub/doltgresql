@@ -240,6 +240,15 @@ func FormatDateTimeWithBC(t time.Time, layout string, hasTZ bool) string {
 		// Create a new time with the positive year for formatting
 		positiveTime := time.Date(absYear, t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
 
+		// we convert the negative year to positive year to get formatted result, but it creates issue on
+		// the day of week value, so we get day of the week value from original negative time value.
+		if strings.HasPrefix(layout, "Mon") {
+			layout = strings.TrimPrefix(layout, "Mon")
+			formatted := positiveTime.Format(layout)
+			dayOfWeek := t.Format("Mon")
+			return fmt.Sprintf("%s%s BC", dayOfWeek, formatted)
+		}
+
 		// Format with the positive year, then append " BC"
 		formatted := positiveTime.Format(layout)
 		return fmt.Sprintf("%s BC", formatted)
