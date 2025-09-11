@@ -16,6 +16,7 @@ package pgcatalog
 
 import (
 	"io"
+	"math"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -215,7 +216,8 @@ func (p PgAttributeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 		attNumRng := msrng[1]
 
 		var oidLower, oidUpper id.Id
-		var attnumLower, attnumUpper int16
+		attnumLower := int16(math.MinInt16)
+		attnumUpper := int16(math.MaxInt16)
 
 		if oidRng.HasLowerBound() {
 			lb := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
@@ -422,9 +424,7 @@ type pgAttribute struct {
 
 // lessAttNum is a sort function for pgAttribute based on attrelid.
 func lessAttNum(a, b *pgAttribute) bool {
-	// Some keys used for lookups set only the first column, which means we only compare the second if it's set for
-	// both entries
-	if a.attrelidNative == b.attrelidNative && a.attnum != 0 && b.attnum != 0 {
+	if a.attrelidNative == b.attrelidNative {
 		return a.attnum < b.attnum
 	}
 	return a.attrelidNative < b.attrelidNative
@@ -432,9 +432,7 @@ func lessAttNum(a, b *pgAttribute) bool {
 
 // lessAttName is a sort function for pgAttribute based on attrelid, then attname.
 func lessAttName(a, b *pgAttribute) bool {
-	// Some keys used for lookups set only the first column, which means we only compare the second if it's set for
-	// both entries
-	if a.attrelidNative == b.attrelidNative && a.attname != "" && b.attname != "" {
+	if a.attrelidNative == b.attrelidNative {
 		return a.attname < b.attname
 	}
 	return a.attrelidNative < b.attrelidNative

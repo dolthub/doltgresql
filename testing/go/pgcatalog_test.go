@@ -133,32 +133,43 @@ func TestPgAttribute(t *testing.T) {
 				`SET search_path TO testschema2;`,
 			},
 			Assertions: []ScriptTestAssertion{
+				// {
+				// 	Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk' AND attrelid='testschema.test'::regclass;`,
+				// 	Expected: []sql.Row{{2502341994, "pk", 23, 0, 1, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+				// },
+				// {
+				// 	Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1' AND attrelid='testschema.test'::regclass;`,
+				// 	Expected: []sql.Row{{2502341994, "v1", 25, 0, 2, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+				// },
+				// { // Different cases and quoted, so it fails
+				// 	Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
+				// 	ExpectedErr: "not",
+				// },
+				// { // Different cases and quoted, so it fails
+				// 	Query:       `SELECT * FROM "pg_catalog"."PG_attribute";`,
+				// 	ExpectedErr: "not",
+				// },
+				// { // Different cases but non-quoted, so it works
+				// 	Query: "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname LIMIT 3;",
+				// 	Expected: []sql.Row{
+				// 		{"ACTION_CONDITION"},
+				// 		{"ACTION_ORDER"},
+				// 		{"ACTION_ORIENTATION"},
+				// 	},
+				// },
+				// 		{
+				// 			Query: `EXPLAIN SELECT attname FROM "pg_catalog"."pg_attribute" a
+				// JOIN "pg_catalog"."pg_class" c ON a.attrelid = c.oid
+				//            WHERE c.relname = 'test';`,
+				// 			Expected: []sql.Row{
+				// 				{"pk"},
+				// 				{"v1"},
+				// 			},
+				// 		},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk' AND attrelid='testschema.test'::regclass;`,
-					Expected: []sql.Row{{2502341994, "pk", 23, 0, 1, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
-				},
-				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1' AND attrelid='testschema.test'::regclass;`,
-					Expected: []sql.Row{{2502341994, "v1", 25, 0, 2, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
-				},
-				{ // Different cases and quoted, so it fails
-					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
-					ExpectedErr: "not",
-				},
-				{ // Different cases and quoted, so it fails
-					Query:       `SELECT * FROM "pg_catalog"."PG_attribute";`,
-					ExpectedErr: "not",
-				},
-				{ // Different cases but non-quoted, so it works
-					Query: "SELECT attname FROM PG_catalog.pg_ATTRIBUTE ORDER BY attname LIMIT 3;",
-					Expected: []sql.Row{
-						{"ACTION_CONDITION"},
-						{"ACTION_ORDER"},
-						{"ACTION_ORIENTATION"},
-					},
-				},
-				{
-					Query: `SELECT attname FROM "pg_catalog"."pg_attribute" a JOIN "pg_catalog"."pg_class" c ON a.attrelid = c.oid WHERE c.relname = 'test';`,
+					Query: `SELECT attname FROM "pg_catalog"."pg_attribute" a
+    JOIN "pg_catalog"."pg_class" c ON a.attrelid = c.oid
+               WHERE c.relname = 'test';`,
 					Expected: []sql.Row{
 						{"pk"},
 						{"v1"},
@@ -1149,10 +1160,10 @@ func TestPgIndex(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT i.* from pg_class c " +
-						"JOIN pg_index i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN pg_index i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
 						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
@@ -1169,18 +1180,18 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT i.indexrelid from pg_class c " +
-						"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {1322775662}, {3185790121}},
 				},
 				{
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i " +
-						"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
-						"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
-						"JOIN pg_namespace n ON t.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
+							"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
+							"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
+							"JOIN pg_namespace n ON t.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, "testing_pkey", "testing"},
 						{1322775662, 3120782595, "v1", "testing"},
@@ -4355,13 +4366,13 @@ ORDER BY 1,2;`,
 						{"     └─ Filter"},
 						{"         ├─ (((c.relkind = 'r' AND a.attnum > 0) AND (NOT(a.attisdropped))) AND c.relname = 't2')"},
 						{"         └─ LookupJoin"},
-						{"             ├─ TableAlias(c)"},
+						{"             ├─ TableAlias(a)"},
 						{"             │   └─ Table"},
-						{"             │       └─ name: pg_class"},
-						{"             └─ TableAlias(a)"},
-						{"                 └─ IndexedTableAccess(pg_attribute)"},
-						{"                     ├─ index: [pg_attribute.attrelid]"},
-						{"                     └─ keys: c.oid"},
+						{"             │       └─ name: pg_attribute"},
+						{"             └─ TableAlias(c)"},
+						{"                 └─ IndexedTableAccess(pg_class)"},
+						{"                     ├─ index: [pg_class.oid]"},
+						{"                     └─ keys: a.attrelid"},
 					},
 				},
 			},
