@@ -1160,10 +1160,10 @@ func TestPgIndex(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT i.* from pg_class c " +
-							"JOIN pg_index i ON c.oid = i.indexrelid " +
-							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-							"ORDER BY 1;",
+						"JOIN pg_index i ON c.oid = i.indexrelid " +
+						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+						"ORDER BY 1;",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
 						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
@@ -1180,18 +1180,18 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT i.indexrelid from pg_class c " +
-							"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
-							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-							"ORDER BY 1;",
+						"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
+						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+						"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {1322775662}, {3185790121}},
 				},
 				{
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i " +
-							"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
-							"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
-							"JOIN pg_namespace n ON t.relnamespace = n.oid " +
-							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
+						"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
+						"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
+						"JOIN pg_namespace n ON t.relnamespace = n.oid " +
+						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, "testing_pkey", "testing"},
 						{1322775662, 3120782595, "v1", "testing"},
@@ -4141,7 +4141,7 @@ func TestPgViews(t *testing.T) {
 	})
 }
 
-func TestPgCatalogIndexes(t *testing.T) {
+func TestPgClassIndexes(t *testing.T) {
 	sharedSetupScript := []string{
 		`create table t1 (a int primary key, b int not null)`,
 		`create table t2 (c int primary key, d int not null)`,
@@ -4400,6 +4400,88 @@ ORDER BY "Schema", "Name"`,
 				},
 			},
 		},
+		{
+			Name: "tables in multiple schemas",
+			SetUpScript: []string{
+				`CREATE SCHEMA s1;`,
+				`CREATE SCHEMA s2;`,
+				`create schema s3;`,
+				`CREATE TABLE s2.t (a INT);`,
+				`CREATE TABLE s1.t (b INT);`,
+				`CREATE TABLE s3.t (c INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `select relname, nspname FROM pg_catalog.pg_class c 
+join pg_catalog.pg_namespace n on c.relnamespace = n.oid
+where c.relname = 't' and c.relkind = 'r'
+order by 1,2`,
+					Expected: []sql.Row{
+						{"t", "s1"},
+						{"t", "s2"},
+						{"t", "s3"},
+					},
+				},
+				{
+					Query: `select relname, relnamespace FROM pg_catalog.pg_class c 
+where c.relname = 't' and c.relkind = 'r'
+order by 1,2`,
+					Expected: []sql.Row{
+						{"t", 1634633383},
+						{"t", 1916695891},
+						{"t", 2153117264},
+					},
+				},
+				{
+					// TODO: this is missing a pushdown index lookup on relnamespace, not sure why
+					Query: `explain select relname, nspname FROM pg_catalog.pg_class c 
+join pg_catalog.pg_namespace n on c.relnamespace = n.oid
+where c.relname = 't' and c.relkind = 'r'
+order by 1,2`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname, n.nspname]"},
+						{" └─ Sort(c.relname ASC, n.nspname ASC)"},
+						{"     └─ InnerJoin"},
+						{"         ├─ c.relnamespace = n.oid"},
+						{"         ├─ TableAlias(n)"},
+						{"         │   └─ Table"},
+						{"         │       └─ name: pg_namespace"},
+						{"         └─ Filter"},
+						{"             ├─ (c.relname = 't' AND c.relkind = 'r')"},
+						{"             └─ TableAlias(c)"},
+						{"                 └─ Table"},
+						{"                     └─ name: pg_class"},
+					},
+				},
+				{
+					Query: `explain select relname, relnamespace FROM pg_catalog.pg_class c 
+where c.relname = 't' and c.relkind = 'r'
+order by 1,2`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname, c.relnamespace]"},
+						{" └─ Filter"},
+						{"     ├─ (c.relname = 't' AND c.relkind = 'r')"},
+						{"     └─ TableAlias(c)"},
+						{"         └─ IndexedTableAccess(pg_class)"},
+						{"             ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"             └─ filters: [{[t, t], [NULL, ∞)}]"},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestPgIndexIndexes(t *testing.T) {
+	sharedSetupScript := []string{
+		`create table t1 (a int primary key, b int not null)`,
+		`create table t2 (c int primary key, d int not null)`,
+		`create index on t2 (d)`,
+	}
+
+	RunScripts(t, []ScriptTest{
 		{
 			Name:        "pg_index index lookup",
 			SetUpScript: sharedSetupScript,
