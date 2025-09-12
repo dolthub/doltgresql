@@ -63,6 +63,8 @@ type ImportTest struct {
 	// Breakpoints allow for triggering breakpoints when any matching queries are given. A breakpoint must be set within
 	// TriggerImportBreakpoint for this to work.
 	Breakpoints []string
+	// SkipQueries
+	SkipQueries []string
 }
 
 // RunImportTests runs the given ImportTest scripts.
@@ -150,7 +152,12 @@ func RunImportTest(t *testing.T, script ImportTest, psqlCommand string, dumpsFol
 		}()
 		// Create the message interceptor
 		var qeChan chan dumps.ImportQueryError
-		port, qeChan = dumps.InterceptImportMessages(t, port, script.Breakpoints, TriggerImportBreakpoint)
+		port, qeChan = dumps.InterceptImportMessages(t, dumps.InterceptArgs{
+			DoltgresPort:      port,
+			SkippedQueries:    script.SkipQueries,
+			BreakpointQueries: script.Breakpoints,
+			TriggerBreakpoint: TriggerImportBreakpoint,
+		})
 		defer close(qeChan)
 		var allErrors []dumps.ImportQueryError
 		go func() {
