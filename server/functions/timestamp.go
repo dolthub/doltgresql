@@ -223,15 +223,7 @@ func FormatDateTimeWithBC(t time.Time, layout string, hasTZ bool) string {
 	year := t.Year()
 	isBC := year <= 0
 
-	if hasTZ {
-		_, offset := t.Zone()
-		if offset%3600 != 0 {
-			layout = layout + "-07:00"
-		} else {
-			layout = layout + "-07"
-		}
-	}
-
+	var formattedTime string
 	if isBC {
 		// Convert from PostgreSQL's BC representation to positive year for formatting
 		// PostgreSQL: year 0 = 1 BC, year -1 = 2 BC, etc.
@@ -240,20 +232,38 @@ func FormatDateTimeWithBC(t time.Time, layout string, hasTZ bool) string {
 		// Create a new time with the positive year for formatting
 		positiveTime := time.Date(absYear, t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
 
-		// we convert the negative year to positive year to get formatted result, but it creates issue on
-		// the day of week value, so we get day of the week value from original negative time value.
+		// Convert the negative year to positive year to get formatted result, but it creates issue on
+		// the day of week value, so we need to get day of the week value from original negative time value.
 		if strings.HasPrefix(layout, "Mon") {
-			layout = strings.TrimPrefix(layout, "Mon")
-			formatted := positiveTime.Format(layout)
-			dayOfWeek := t.Format("Mon")
-			return fmt.Sprintf("%s%s BC", dayOfWeek, formatted)
+			formattedTime = fmt.Sprintf("%s%s", t.Format("Mon"), positiveTime.Format(strings.TrimPrefix(layout, "Mon")))
+		} else {
+			// Format with the positive year, then append " BC"
+			formattedTime = positiveTime.Format(layout)
 		}
-
-		// Format with the positive year, then append " BC"
-		formatted := positiveTime.Format(layout)
-		return fmt.Sprintf("%s BC", formatted)
 	} else {
 		// For AD years (positive), use normal formatting
-		return t.Format(layout)
+		formattedTime = t.Format(layout)
 	}
+
+	if hasTZ {
+		name, offset := t.Zone()
+		if strings.HasPrefix(layout, "Mon") {
+			// Postgres doesn't show timezone for ones that don't have timezone abbreviation.
+			if name != "" {
+				name = t.Format("MST")
+			}
+			formattedTime += fmt.Sprintf(" %s", name)
+		} else {
+			if offset%3600 != 0 {
+				formattedTime += t.Format("-07:00")
+			} else {
+				formattedTime += t.Format("-07")
+			}
+		}
+	}
+
+	if isBC {
+		return formattedTime + " BC"
+	}
+	return formattedTime
 }

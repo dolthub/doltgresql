@@ -15,7 +15,6 @@
 package functions
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -184,5 +183,5 @@ func convertTzToOffsetSecs(t time.Time, tz string) (*time.Location, int32, bool,
 	}
 
 	_, offsetSecsUnconverted := t.Zone()
-	return time.FixedZone(fmt.Sprintf("fixed offset:%d", offsetSecsUnconverted), -offsetSecsUnconverted), int32(-offsetSecsUnconverted), true, nil
+	return time.FixedZone("", -offsetSecsUnconverted), int32(-offsetSecsUnconverted), true, nil
 }
