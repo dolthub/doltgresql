@@ -106,6 +106,7 @@ type pgIndexCache struct {
 
 var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}
 
+// pgAttributeCache holds cached data for the pg_attribute table, including two btree indexes for fast lookups
 type pgAttributeCache struct {
 	attributes         []*pgAttribute
 	attrelidIdx        *inMemIndexStorage[*pgAttribute]

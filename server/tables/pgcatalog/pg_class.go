@@ -241,6 +241,7 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		if relNameRange.HasLowerBound() {
 			lb := sql.GetMySQLRangeCutKey(relNameRange.LowerBound)
 			if lb != nil {
+
 				relnameLower = lb.(string)
 				hasLowerBound = true
 			}
@@ -279,7 +280,7 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
 			// our less-than upper bound depends on whether we have a prefix match or both fields were set
 			if !schemaOidUpperSet {
-				relnameUpper = relnameUpper + " "
+				relnameUpper = fmt.Sprintf("%s%o", relnameUpper, rune(0))
 			} else {
 				schemaOidUpper = schemaOidUpper + 1
 			}

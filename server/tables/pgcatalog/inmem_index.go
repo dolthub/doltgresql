@@ -90,14 +90,14 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 			close(l.nextChan)
 		}()
 
-		gte, hasLowerBound, lte, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
+		gte, hasLowerBound, lt, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
 		idx := l.btreeAccess.getIndex(inMemIndex.name)
 		if hasLowerBound && hasUpperBound {
-			idx.IterRange(gte, lte, l.nextChan)
+			idx.IterRange(gte, lt, l.nextChan)
 		} else if hasLowerBound {
 			idx.IterGreaterThanEqual(gte, l.nextChan)
 		} else if hasUpperBound {
-			idx.IterLessThan(lte, l.nextChan)
+			idx.IterLessThan(lt, l.nextChan)
 		} else {
 			// We don't support nil lookups for this kind of index, there are never nillable elements
 			return
