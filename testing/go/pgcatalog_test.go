@@ -668,6 +668,34 @@ func TestPgConstraint(t *testing.T) {
 						{1719906648, "testing2_pktesting_fkey", 2694106299, "testing2"},
 					},
 				},
+				// Test index lookups
+				{
+					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE oid = 2068729390;",
+					Expected: []sql.Row{
+						{2068729390, "testing2_pkey"},
+					},
+				},
+				{
+					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE conrelid = 2694106299 ORDER BY conname;",
+					Expected: []sql.Row{
+						{2068729390, "testing2_pkey"},
+						{1719906648, "testing2_pktesting_fkey"},
+					},
+				},
+				{
+					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE conname = 'testing_pkey' AND connamespace = 2200;",
+					Expected: []sql.Row{
+						{3757635986, "testing_pkey"},
+					},
+				},
+				{
+					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE conname >= 'testing' AND conname < 'testingz' ORDER BY conname;",
+					Expected: []sql.Row{
+						{2068729390, "testing2_pkey"},
+						{1719906648, "testing2_pktesting_fkey"},
+						{3757635986, "testing_pkey"},
+					},
+				},
 			},
 		},
 	})
