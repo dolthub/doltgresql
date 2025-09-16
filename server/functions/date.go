@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -41,15 +42,16 @@ var date_in = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		input := val.(string)
-		if date, _, err := pgdate.ParseDate(time.Now(), pgdate.ParseModeYMD, input); err == nil {
-			return date.ToTime()
-		} else if date, _, err = pgdate.ParseDate(time.Now(), pgdate.ParseModeDMY, input); err == nil {
-			return date.ToTime()
-		} else if date, _, err = pgdate.ParseDate(time.Now(), pgdate.ParseModeMDY, input); err == nil {
-			return date.ToTime()
-		} else {
-			return nil, err
+		formatsInOrder := getDateStyleInputFormat(ctx)
+		var date pgdate.Date
+		var err error
+		for _, format := range formatsInOrder {
+			date, _, err = pgdate.ParseDate(time.Now(), format, input)
+			if err == nil {
+				return date.ToTime()
+			}
 		}
+		return nil, err
 	},
 }
 
@@ -60,7 +62,7 @@ var date_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return FormatDateTimeWithBC(val.(time.Time), "2006-01-02", false), nil
+		return FormatDateTimeWithBC(val.(time.Time), getLayoutStringFormat(ctx, true), false), nil
 	},
 }
 
@@ -105,4 +107,43 @@ var date_cmp = framework.Function2{
 		bb := val2.(time.Time)
 		return int32(ab.Compare(bb)), nil
 	},
+}
+
+// getDateStyleInputFormat sets the defined format in DateStyle config as the first in the ordered list of date parsing modes.
+// TODO: this or something similar should be used in postgres/parser/sem/tree/datum.go when parsing timestamp/timestamptz/date values.
+func getDateStyleInputFormat(ctx *sql.Context) []pgdate.ParseMode {
+	formatsInOrder := []pgdate.ParseMode{pgdate.ParseModeMDY, pgdate.ParseModeDMY, pgdate.ParseModeYMD} // default
+	if ctx == nil {
+		return formatsInOrder
+	}
+	val, err := ctx.GetSessionVariable(ctx, "datestyle")
+	if err != nil {
+		return formatsInOrder
+	}
+
+	ds := strings.ReplaceAll(val.(string), " ", "")
+	values := strings.Split(ds, ",")
+	setFormat := pgdate.ParseModeYMD
+	for _, value := range values {
+		switch value {
+		case "MDY":
+			setFormat = pgdate.ParseModeMDY
+		case "DMY":
+			setFormat = pgdate.ParseModeDMY
+		case "YMD":
+			setFormat = pgdate.ParseModeYMD
+		}
+	}
+	if setFormat == formatsInOrder[0] {
+		return formatsInOrder
+	}
+
+	curFirst := formatsInOrder[0]
+	for i, f := range formatsInOrder {
+		if setFormat == f {
+			formatsInOrder[i] = curFirst
+		}
+	}
+	formatsInOrder[0] = setFormat
+	return formatsInOrder
 }

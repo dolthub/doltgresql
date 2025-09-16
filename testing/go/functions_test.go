@@ -3507,7 +3507,7 @@ func TestFormatFunctions(t *testing.T) {
 				{
 					Query: `SELECT to_char('2012-12-12 12:00 -02:00'::timestamptz, 'TZ');`,
 					Expected: []sql.Row{
-						{" "},
+						{""},
 					},
 				},
 				{
