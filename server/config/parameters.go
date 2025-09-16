@@ -101,32 +101,36 @@ func (p *Parameter) GetDefault() any {
 }
 
 // InitValue implements sql.SystemVariable.
-func (p *Parameter) InitValue(ctx *sql.Context, currVal, newVal any, global bool) (sql.SystemVarValue, error) {
-	convertedNewVal, _, err := p.Type.Convert(ctx, newVal)
+func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
+	convertedVal, _, err := p.Type.Convert(ctx, val)
+	if err != nil {
+		return sql.SystemVarValue{}, err
+	}
+	currVal, err := ctx.GetSessionVariable(ctx, p.Name)
 	if err != nil {
 		return sql.SystemVarValue{}, err
 	}
 	if p.ValidateFunc != nil {
-		v, ok := p.ValidateFunc(currVal, convertedNewVal)
+		v, ok := p.ValidateFunc(currVal, convertedVal)
 		if !ok {
-			return sql.SystemVarValue{}, ErrInvalidValue.New(p.Name, convertedNewVal)
+			return sql.SystemVarValue{}, ErrInvalidValue.New(p.Name, convertedVal)
 		}
-		convertedNewVal = v
+		convertedVal = v
 	}
 	svv := sql.SystemVarValue{
 		Var: p,
-		Val: convertedNewVal,
+		Val: convertedVal,
 	}
 	return svv, nil
 }
 
 // SetValue implements sql.SystemVariable.
-func (p *Parameter) SetValue(ctx *sql.Context, currVal, newVal any, global bool) (sql.SystemVarValue, error) {
+func (p *Parameter) SetValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
 	if p.IsReadOnly() {
 		return sql.SystemVarValue{}, ErrCannotChangeAtRuntime.New(p.Name)
 	}
 	// TODO: Do parsing of units for memory and time parameters
-	return p.InitValue(ctx, currVal, newVal, global)
+	return p.InitValue(ctx, val, global)
 }
 
 // IsReadOnly implements sql.SystemVariable.
