@@ -114,20 +114,35 @@ func (p PgConstraintHandler) Indexes() ([]sql.Index, error) {
 			columnExprs: []sql.ColumnExpressionType{{Expression: "pg_constraint.oid", Type: pgtypes.Oid}},
 		},
 		pgCatalogInMemIndex{
-			name:        "pg_constraint_conrelid_index",
-			tblName:     "pg_constraint",
-			dbName:      "pg_catalog",
-			uniq:        false,
-			columnExprs: []sql.ColumnExpressionType{{Expression: "pg_constraint.conrelid", Type: pgtypes.Oid}},
+			name:    "pg_constraint_conrelid_contypid_conname_index",
+			tblName: "pg_constraint",
+			dbName:  "pg_catalog",
+			uniq:    true,
+			columnExprs: []sql.ColumnExpressionType{
+				{Expression: "pg_constraint.conrelid", Type: pgtypes.Oid},
+				{Expression: "pg_constraint.contypid", Type: pgtypes.Oid},
+				{Expression: "pg_constraint.conname", Type: pgtypes.Name},
+			},
 		},
 		pgCatalogInMemIndex{
-			name:        "pg_constraint_conname_nsp_index",
-			tblName:     "pg_constraint",
-			dbName:      "pg_catalog",
-			uniq:        true,
+			name:    "pg_constraint_conname_nsp_index",
+			tblName: "pg_constraint",
+			dbName:  "pg_catalog",
+			uniq:    false,
 			columnExprs: []sql.ColumnExpressionType{
 				{Expression: "pg_constraint.conname", Type: pgtypes.Name},
 				{Expression: "pg_constraint.connamespace", Type: pgtypes.Oid},
+			},
+		},
+		// pg_constraint_conparentid_index is skipped because we don't support partitions, but might be worth
+		// implementing if it makes any tool faster
+		pgCatalogInMemIndex{
+			name:    "pg_constraint_contypid_index",
+			tblName: "pg_constraint",
+			dbName:  "pg_catalog",
+			uniq:    false,
+			columnExprs: []sql.ColumnExpressionType{
+				{Expression: "pg_constraint.contypid", Type: pgtypes.Oid},
 			},
 		},
 	}, nil
@@ -173,7 +188,7 @@ func (p PgConstraintHandler) getIndexScanRange(rng sql.Range, index sql.Index) (
 			}
 		}
 
-	case "pg_constraint_conrelid_index":
+	case "pg_constraint_conrelid_contypid_conname_index":
 		msrng := rng.(sql.MySQLRange)
 		oidRng := msrng[0]
 		if oidRng.HasLowerBound() {
@@ -269,8 +284,8 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 	tableOIDs := make(map[id.Id]map[string]id.Id)
 	tableColToIdxMap := make(map[string]int16)
 	oidIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintOid)
-	conrelidIdx := NewNonUniqueInMemIndexStorage[*pgConstraint](lessConstraintConrelid)
 	connameNspIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintConnameNsp)
+	conrelidIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintConrelid)
 
 	// We iterate over all tables first to obtain their OIDs, which we'll need to reference for foreign keys
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
@@ -400,10 +415,10 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 	}
 
 	pgCatalogCache.pgConstraints = &pgConstraintCache{
-		constraints:     constraints,
-		oidIdx:         oidIdx,
-		conrelidIdx:    conrelidIdx,
-		connameNspIdx:  connameNspIdx,
+		constraints:   constraints,
+		oidIdx:        oidIdx,
+		conrelidIdx:   conrelidIdx,
+		connameNspIdx: connameNspIdx,
 	}
 
 	return nil
@@ -415,8 +430,8 @@ func lessConstraintOid(a, b *pgConstraint) bool {
 }
 
 // lessConstraintConrelid is a sort function for pgConstraint based on conrelid.
-func lessConstraintConrelid(a, b []*pgConstraint) bool {
-	return a[0].tableOidNative < b[0].tableOidNative
+func lessConstraintConrelid(a, b *pgConstraint) bool {
+	return a.tableOidNative < b.tableOidNative
 }
 
 // lessConstraintConnameNsp is a sort function for pgConstraint based on conname, then schemaOid.
@@ -426,7 +441,6 @@ func lessConstraintConnameNsp(a, b *pgConstraint) bool {
 	}
 	return a.name < b.name
 }
-
 
 // PgConstraintSchema is the schema for pg_constraint.
 var PgConstraintSchema = sql.Schema{
@@ -521,30 +535,30 @@ func pgConstraintToRow(constraint *pgConstraint) sql.Row {
 
 	return sql.Row{
 		constraint.oid,          // oid
-		constraint.name,          // conname
-		constraint.schemaOid,     // connamespace
-		constraint.conType,       // contype
-		false,                    // condeferrable
-		false,                    // condeferred
-		true,                     // convalidated
-		constraint.tableOid,      // conrelid
-		id.Null,                  // contypid
-		constraint.idxOid,        // conindid
-		id.Null,                  // conparentid
-		constraint.tableRefOid,   // confrelid
-		constraint.fkUpdateType,  // confupdtype
-		constraint.fkDeleteType,  // confdeltype
-		constraint.fkMatchType,   // confmatchtype
-		true,                     // conislocal
-		int16(0),                 // coninhcount
-		true,                     // connoinherit
-		conKey,                   // conkey
-		conFkey,                  // confkey
-		nil,                      // conpfeqop
-		nil,                      // conppeqop
-		nil,                      // conffeqop
-		nil,                      // confdelsetcols
-		nil,                      // conexclop
-		nil,                      // conbin
+		constraint.name,         // conname
+		constraint.schemaOid,    // connamespace
+		constraint.conType,      // contype
+		false,                   // condeferrable
+		false,                   // condeferred
+		true,                    // convalidated
+		constraint.tableOid,     // conrelid
+		id.Null,                 // contypid
+		constraint.idxOid,       // conindid
+		id.Null,                 // conparentid
+		constraint.tableRefOid,  // confrelid
+		constraint.fkUpdateType, // confupdtype
+		constraint.fkDeleteType, // confdeltype
+		constraint.fkMatchType,  // confmatchtype
+		true,                    // conislocal
+		int16(0),                // coninhcount
+		true,                    // connoinherit
+		conKey,                  // conkey
+		conFkey,                 // confkey
+		nil,                     // conpfeqop
+		nil,                     // conppeqop
+		nil,                     // conffeqop
+		nil,                     // confdelsetcols
+		nil,                     // conexclop
+		nil,                     // conbin
 	}
 }

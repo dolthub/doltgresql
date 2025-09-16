@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
+	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -46,6 +47,8 @@ type Callbacks struct {
 	Sequence func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error)
 	// Table is the callback for tables.
 	Table func(ctx *sql.Context, schema ItemSchema, table ItemTable) (cont bool, err error)
+	// Type is the callback for types.
+	Type func(ctx *sql.Context, schema ItemSchema, typ ItemType) (cont bool, err error)
 	// View is the callback for views.
 	View func(ctx *sql.Context, schema ItemSchema, view ItemView) (cont bool, err error)
 	// SearchSchemas represents the search path. If left empty, then all schemas are iterated over. If supplied, then
@@ -103,6 +106,12 @@ type ItemSequence struct {
 type ItemTable struct {
 	OID  id.Table
 	Item sql.Table
+}
+
+// ItemType contains the relevant information to pass to the Type callback.
+type ItemType struct {
+	Oid  id.Type
+	Item *types.DoltgresType
 }
 
 // ItemView contains the relevant information to pass to the View callback.
