@@ -70,7 +70,7 @@ type Parameter struct {
 	Source       ParameterSource
 	ResetVal     any
 	Scope        sql.SystemVariableScope
-	ValidateFunc func(any) (any, bool)
+	ValidateFunc func(currVal, newVal any) (any, bool)
 }
 
 // GetName implements sql.SystemVariable.
@@ -90,7 +90,9 @@ func (p *Parameter) GetSessionScope() sql.SystemVariableScope {
 
 // SetDefault implements sql.SystemVariable.
 func (p *Parameter) SetDefault(a any) {
-	p.Default = a
+	if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
+		p.Default = validatedVal
+	}
 }
 
 // GetDefault implements sql.SystemVariable.
@@ -104,8 +106,12 @@ func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.Syste
 	if err != nil {
 		return sql.SystemVarValue{}, err
 	}
+	currVal, err := ctx.GetSessionVariable(ctx, p.Name)
+	if err != nil {
+		return sql.SystemVarValue{}, err
+	}
 	if p.ValidateFunc != nil {
-		v, ok := p.ValidateFunc(convertedVal)
+		v, ok := p.ValidateFunc(currVal, convertedVal)
 		if !ok {
 			return sql.SystemVarValue{}, ErrInvalidValue.New(p.Name, convertedVal)
 		}
