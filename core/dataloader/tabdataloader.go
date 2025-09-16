@@ -31,7 +31,7 @@ const defaultNullChar = "\\N"
 // TabularDataLoader tracks the state of a load data operation from a tabular data source.
 type TabularDataLoader struct {
 	results       LoadDataResults
-	partialLine   string
+	partialLine   strings.Builder
 	nextDataChunk *bufio.Reader
 	colTypes      []*types.DoltgresType
 	sch           sql.Schema
@@ -91,7 +91,7 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 			// if the final contents of the data does NOT end in the
 			// delimiter. In this case, that means that we need to save
 			// the partial line and use it in the next chunk.
-			tdl.partialLine = line
+			tdl.partialLine.WriteString(line)
 			return nil, false, nil
 		}
 
@@ -100,13 +100,14 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 		// Data with windows line endings will also have a carriage return character that we need to remove.
 		line = strings.TrimSuffix(line, "\r")
 
-		if tdl.partialLine != "" {
-			line = tdl.partialLine + line
-			tdl.partialLine = ""
+		if tdl.partialLine.Len() > 0 {
+			tdl.partialLine.WriteString(line)
+			line = tdl.partialLine.String()
+			tdl.partialLine.Reset()
 		}
 
 		// If we see the end of data marker, return early
-		if line == "\\." {
+		if line == `\.` {
 			return nil, false, nil
 		}
 
@@ -129,6 +130,8 @@ func (tdl *TabularDataLoader) nextRow(ctx *sql.Context, data *bufio.Reader) (sql
 			if values[i] == tdl.nullChar {
 				row[i] = nil
 			} else {
+				// We must un-escape strings here since we're receiving everything verbatim
+				values[i] = strings.ReplaceAll(values[i], `\\`, `\`)
 				row[i], err = tdl.colTypes[i].IoInput(ctx, values[i])
 				if err != nil {
 					return nil, false, err
@@ -148,7 +151,7 @@ func (tdl *TabularDataLoader) SetNextDataChunk(ctx *sql.Context, data *bufio.Rea
 // Finish completes the current load data operation and finalizes the data that has been inserted.
 func (tdl *TabularDataLoader) Finish(ctx *sql.Context) (*LoadDataResults, error) {
 	// If there is partial data from the last chunk that hasn't been inserted, return an error.
-	if tdl.partialLine != "" {
+	if tdl.partialLine.Len() > 0 {
 		return nil, errors.Errorf("partial line found at end of data load")
 	}
 
