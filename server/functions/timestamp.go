@@ -149,6 +149,7 @@ const (
 	DateStyleGerman   = "German"
 )
 
+// getDateStyleOutputFormat returns the format layout for date/time values defined in the 'DateStyle' configuration parameter.
 func getDateStyleOutputFormat(ctx *sql.Context) string {
 	format := DateStyleISO // default
 	if ctx == nil {

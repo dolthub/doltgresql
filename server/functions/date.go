@@ -109,7 +109,7 @@ var date_cmp = framework.Function2{
 	},
 }
 
-// getDateStyleInputFormat returns set the defined format in DateStyle config as the first in the ordered list of date parsing modes.
+// getDateStyleInputFormat sets the defined format in DateStyle config as the first in the ordered list of date parsing modes.
 // TODO: this or something similar should be used in postgres/parser/sem/tree/datum.go when parsing timestamp/timestamptz/date values.
 func getDateStyleInputFormat(ctx *sql.Context) []pgdate.ParseMode {
 	formatsInOrder := []pgdate.ParseMode{pgdate.ParseModeMDY, pgdate.ParseModeDMY, pgdate.ParseModeYMD} // default
