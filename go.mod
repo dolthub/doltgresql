@@ -6,13 +6,13 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20250915123819-b0f06a49e04c
+	github.com/dolthub/dolt/go v0.40.5-0.20250916010500-fccf92e7a8e7
 	github.com/dolthub/eventsapi_schema v0.0.0-20250725194025-a087efa1ee55
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-icu-regex v0.0.0-20250820171420-f2b78f56ce9f
-	github.com/dolthub/go-mysql-server v0.20.1-0.20250912224150-1b9f80d3de10
+	github.com/dolthub/go-mysql-server v0.20.1-0.20250915234457-c43c7a6e628f
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20250902225707-0159e964d73d
+	github.com/dolthub/vitess v0.0.0-20250915221346-753c44800850
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
