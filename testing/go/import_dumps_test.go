@@ -31,16 +31,16 @@ import (
 	"github.com/dolthub/doltgresql/testing/dumps"
 )
 
+// TestImportingDumps are regression tests against dumps taken from various sources.
 func TestImportingDumps(t *testing.T) {
-	t.Skip("Currently here for demonstration")
 	RunImportTests(t, []ImportTest{
 		{
-			Name: "Example",
+			Name: "Scrubbed-1",
 			SetUpScript: []string{
-				"CREATE USER test WITH SUPERUSER PASSWORD 'password';",
+				"CREATE USER behfjgnf WITH SUPERUSER PASSWORD 'password';",
 			},
-			Breakpoints: []string{"CREATE TABLE public.table_name"},
-			SQLFilename: "file.sql",
+			SkipQueries: []string{"CREATE UNIQUE INDEX dawkmezfehakyikllr"},
+			SQLFilename: "scrubbed-1.sql",
 		},
 	})
 }
@@ -69,6 +69,11 @@ type ImportTest struct {
 
 // RunImportTests runs the given ImportTest scripts.
 func RunImportTests(t *testing.T, scripts []ImportTest) {
+	if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
+		if _, ok = os.LookupEnv("GITHUB_ACTION_IMPORT_DUMPS"); !ok {
+			t.Skip("These tests are run in their own dedicated action")
+		}
+	}
 	var psqlCommand string
 	switch runtime.GOOS {
 	case "windows":
