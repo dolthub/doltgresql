@@ -15,6 +15,9 @@
 package node
 
 import (
+	"fmt"
+
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -40,6 +43,8 @@ type CreateFunction struct {
 	ExtensionName   string
 	ExtensionSymbol string
 	Definition      string
+	SqlDef          string
+	SqlDefParsed    vitess.Statement
 }
 
 var _ sql.ExecSourceRel = (*CreateFunction)(nil)
@@ -57,7 +62,9 @@ func NewCreateFunction(
 	definition string,
 	extensionName string,
 	extensionSymbol string,
-	statements []plpgsql.InterpreterOperation) *CreateFunction {
+	statements []plpgsql.InterpreterOperation,
+	sqlDef string,
+	sqlDefParsed vitess.Statement) *CreateFunction {
 	return &CreateFunction{
 		FunctionName:    functionName,
 		SchemaName:      schemaName,
@@ -70,6 +77,8 @@ func NewCreateFunction(
 		ExtensionName:   extensionName,
 		ExtensionSymbol: extensionSymbol,
 		Definition:      definition,
+		SqlDef:          sqlDef,
+		SqlDefParsed:    sqlDefParsed,
 	}
 }
 
@@ -137,6 +146,7 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		ExtensionName:      extName,
 		ExtensionSymbol:    c.ExtensionSymbol,
 		Operations:         c.Statements,
+		SQLDefinition:      c.SqlDef,
 	})
 	if err != nil {
 		return nil, err
@@ -166,4 +176,70 @@ func (c *CreateFunction) WithResolvedChildren(children []any) (any, error) {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}
 	return c, nil
+}
+
+// FunctionColumn represents the deferred column used in functions.
+// It is a placeholder column reference later used for function calls.
+type FunctionColumn struct {
+	Name string
+	Typ  *pgtypes.DoltgresType
+	Idx  uint16
+}
+
+var _ vitess.Injectable = (*FunctionColumn)(nil)
+var _ sql.Expression = (*FunctionColumn)(nil)
+
+// Resolved implements the interface sql.Expression.
+func (f *FunctionColumn) Resolved() bool {
+	if f.Typ.IsEmptyType() {
+		return false
+	}
+	return true
+}
+
+// String implements the interface sql.Expression.
+func (f *FunctionColumn) String() string {
+	if f.Name != "" {
+		return fmt.Sprintf(`$%v`, f.Idx+1)
+	}
+	return f.Name
+}
+
+// Type implements the interface sql.Expression.
+func (f *FunctionColumn) Type() sql.Type {
+	if f.Typ.IsEmptyType() {
+		return pgtypes.Unknown
+	}
+	return f.Typ
+}
+
+// IsNullable implements the interface sql.Expression.
+func (f *FunctionColumn) IsNullable() bool {
+	return false
+}
+
+// Eval implements the interface sql.Expression.
+func (f *FunctionColumn) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
+	panic("FunctionColumn is a placeholder expression, but Eval() was called")
+}
+
+// Children implements the interface sql.Expression.
+func (f *FunctionColumn) Children() []sql.Expression {
+	return nil
+}
+
+// WithChildren implements the interface sql.Expression.
+func (f *FunctionColumn) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+	if len(children) != 0 {
+		return nil, sql.ErrInvalidChildrenNumber.New(f, len(children), 0)
+	}
+	return f, nil
+}
+
+// WithResolvedChildren implements the interface vitess.Injectable.
+func (f *FunctionColumn) WithResolvedChildren(children []any) (any, error) {
+	if len(children) != 0 {
+		return nil, errors.Errorf("invalid FunctionColumn child count, expected `0` but got `%d`", len(children))
+	}
+	return f, nil
 }

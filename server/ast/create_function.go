@@ -15,11 +15,13 @@
 package ast
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
@@ -68,6 +70,8 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}
 	// We only support PL/pgSQL and C for now, so we verify that here
 	var parsedBody []plpgsql.InterpreterOperation
+	var sqlDef string
+	var sqlDefParsed vitess.Statement
 	var extensionName, extensionSymbol string
 	if languageOption, ok := options[tree.OptionLanguage]; ok {
 		switch strings.ToLower(languageOption.Language) {
@@ -78,6 +82,32 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			if err != nil {
 				return nil, err
 			}
+		case "sql":
+			as, ok := options[tree.OptionAs1]
+			if !ok {
+				return nil, errors.Errorf("CREATE FUNCTION definition needed for LANGUAGE SQL")
+			}
+			stmts, err := parser.Parse(as.Definition)
+			if err != nil {
+				return nil, err
+			}
+			if len(stmts) > 1 {
+				return nil, fmt.Errorf("only a single statement at a time is currently supported")
+			}
+			if len(stmts) == 0 {
+				return nil, vitess.ErrEmpty
+			}
+			sqlDef = stmts[0].AST.String()
+			paramNames, err = replaceFunctionColumnAndUpdateParamNames(paramNames, paramTypes, stmts[0].AST)
+			if err != nil {
+				return nil, err
+			}
+			// stmts[0].AST is updated at this point with FunctionColumn
+			vitessAST, err := Convert(stmts[0])
+			if err != nil {
+				return nil, err
+			}
+			sqlDefParsed = vitessAST
 		case "c":
 			symbolOption, ok := options[tree.OptionAs2]
 			if !ok {
@@ -105,7 +135,79 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			extensionName,
 			extensionSymbol,
 			parsedBody,
+			sqlDef,
+			sqlDefParsed,
 		),
-		Children: nil,
 	}, nil
+}
+
+// replaceFunctionColumnAndUpdateParamNames replaces UnresolvedName and Placeholder expressions with FunctionColumn expression.
+// It also replaces empty parameter name with binding variable name to match the name used in FunctionColumn.
+// This function should be used for FUNCTION with SQL language statements only.
+func replaceFunctionColumnAndUpdateParamNames(paramNames []string, paramTypes []*pgtypes.DoltgresType, statement tree.Statement) ([]string, error) {
+	paramMap := make(map[string]*pgtypes.DoltgresType, len(paramNames))
+	if len(paramNames) != len(paramTypes) {
+		return paramNames, errors.Errorf("expected %d parameters but got %d", len(paramNames), len(paramTypes))
+	}
+	for i, paramName := range paramNames {
+		// placeholder name is empty
+		if paramName == "\"\"" {
+			n := fmt.Sprintf("$%v", i+1)
+			paramMap[n] = paramTypes[i]
+			paramNames[i] = n
+		} else {
+			paramMap[paramName] = paramTypes[i]
+		}
+	}
+
+	// Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING
+	switch s := statement.(type) {
+	case *tree.Select:
+		sc := s.Select.(*tree.SelectClause)
+		for i, e := range sc.Exprs {
+			sc.Exprs[i].Expr = replaceToFunctionColumn(paramMap, e.Expr)
+		}
+		return paramNames, nil
+	case *tree.Insert:
+		if s.Returning != nil {
+			return paramNames, errors.Errorf("INSERT ... RETURNING statement is not supported in functions yet")
+		}
+	case *tree.Update:
+		if s.Returning != nil {
+			return paramNames, errors.Errorf("UPDATE ... RETURNING statement is not supported in functions yet")
+		}
+	case *tree.Delete:
+		if s.Returning != nil {
+			return paramNames, errors.Errorf("DELETE ... RETURNING statement is not supported in functions yet")
+		}
+	}
+	return paramNames, errors.Errorf("Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING")
+}
+
+// replaceToFunctionColumn replaces Placeholder and UnresolvedName expressions with FunctionColumn if applicable
+// when the name of expression matches parameter in paramMap.
+func replaceToFunctionColumn(paramMap map[string]*pgtypes.DoltgresType, expr tree.Expr) tree.Expr {
+	e, _ := tree.SimpleVisit(expr, func(visitingExpr tree.Expr) (recurse bool, newExpr tree.Expr, err error) {
+		switch v := visitingExpr.(type) {
+		case *tree.Placeholder:
+			name := fmt.Sprintf("$%v", v.Idx+1)
+			if typ, ok := paramMap[name]; ok {
+				return false, tree.FunctionColumn{
+					Name: name,
+					Typ:  typ,
+					Idx:  uint16(v.Idx),
+				}, nil
+			}
+		case *tree.UnresolvedName:
+			name := v.String()
+			if typ, ok := paramMap[name]; ok {
+				return false, tree.FunctionColumn{
+					Name: name,
+					Typ:  typ,
+				}, nil
+			}
+		}
+		return true, visitingExpr, nil
+	})
+	return e
 }

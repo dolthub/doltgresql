@@ -36,6 +36,7 @@ const (
 	FIELD_NAME_DEFINITION        = "definition"
 	FIELD_NAME_EXTENSION_NAME    = "extension_name"
 	FIELD_NAME_EXTENSION_SYMBOL  = "extension_symbol"
+	FIELD_NAME_SQL_DEFINITION    = "sql_definition"
 )
 
 // DeserializeRootObject implements the interface objinterface.Collection.
@@ -138,6 +139,18 @@ func (pgf *Collection) DiffRootObjects(ctx context.Context, fromHash string, o o
 			ours.ExtensionSymbol = diff.OurValue.(string)
 		}
 	}
+	if ours.SQLDefinition != theirs.SQLDefinition {
+		diff := objinterface.RootObjectDiff{
+			Type:      pgtypes.Text,
+			FromHash:  fromHash,
+			FieldName: FIELD_NAME_SQL_DEFINITION,
+		}
+		if pgmerge.DiffValues(&diff, ours.SQLDefinition, theirs.SQLDefinition, ancestor.SQLDefinition, hasAncestor) {
+			diffs = append(diffs, diff)
+		} else {
+			ours.SQLDefinition = diff.OurValue.(string)
+		}
+	}
 	return diffs, ours, nil
 }
 
@@ -165,6 +178,8 @@ func (pgf *Collection) GetFieldType(ctx context.Context, fieldName string) *pgty
 	case FIELD_NAME_EXTENSION_NAME:
 		return pgtypes.Text
 	case FIELD_NAME_EXTENSION_SYMBOL:
+		return pgtypes.Text
+	case FIELD_NAME_SQL_DEFINITION:
 		return pgtypes.Text
 	default:
 		return nil
@@ -283,6 +298,8 @@ func (pgf *Collection) UpdateField(ctx context.Context, rootObject objinterface.
 		function.ExtensionName = newValue.(string)
 	case FIELD_NAME_EXTENSION_SYMBOL:
 		function.ExtensionSymbol = newValue.(string)
+	case FIELD_NAME_SQL_DEFINITION:
+		function.SQLDefinition = newValue.(string)
 	default:
 		return nil, errors.Newf("unknown field name: `%s`", fieldName)
 	}
