@@ -20,7 +20,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -124,8 +123,8 @@ type ItemView struct {
 // over. This is a central function that homogenizes all iteration, since OIDs depend on a deterministic iteration over
 // items. This function should be expanded as we add more items to iterate over.
 func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) error {
-	cat := sqlserver.GetRunningServer().Engine.Analyzer.Catalog
-	currentDatabase, err := cat.Database(ctx, database)
+	sess := ctx.Session.(*dsess.DoltSession)
+	currentDatabase, err := sess.Provider().Database(ctx, database)
 	if err != nil {
 		return err
 	}
@@ -216,8 +215,34 @@ func iterateSchemas(ctx *sql.Context, callbacks Callbacks, sortedSchemas []sql.D
 				return err
 			}
 		}
+
+		if callbacks.iteratesOverTypes() {
+			if err := iterateTypes(ctx, callbacks, itemSchema); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+func iterateTypes(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema) error {
+	ts, err := core.GetTypesCollectionFromContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	return ts.IterateTypes(ctx, func(typ *types.DoltgresType) (stop bool, err error) {
+		// TODO: this is pretty silly to do, but there's not a good way to construct a schema item here otherwise
+		if typ.ID.SchemaName() != itemSchema.Item.SchemaName() {
+			return true, nil
+		}
+		itemSchemaType := ItemType{
+			Oid:  typ.ID,
+			Item: typ,
+		}
+		callbacks.Type(ctx, itemSchema, itemSchemaType)
+		return false, nil
+	})
 }
 
 // iterateViews is called by iterateSchemas to handle views.
@@ -737,22 +762,27 @@ func runCallbackValidation(ctx *sql.Context, internalID id.Id, callbacks Callbac
 // iteratesOverSchemas returns whether we need to iterate over schemas based on the given callbacks.
 func (iter Callbacks) iteratesOverSchemas() bool {
 	return iter.Check != nil ||
-		iter.ColumnDefault != nil ||
-		iter.ForeignKey != nil ||
-		iter.Index != nil ||
-		iter.Schema != nil ||
-		iter.Sequence != nil ||
-		iter.Table != nil ||
-		iter.View != nil
+			iter.ColumnDefault != nil ||
+			iter.ForeignKey != nil ||
+			iter.Index != nil ||
+			iter.Schema != nil ||
+			iter.Sequence != nil ||
+			iter.Table != nil ||
+			iter.View != nil
 }
 
 // iteratesOverTables returns whether we need to iterate over tables based on the given callbacks.
 func (iter Callbacks) iteratesOverTables() bool {
 	return iter.Check != nil ||
-		iter.ColumnDefault != nil ||
-		iter.ForeignKey != nil ||
-		iter.Index != nil ||
-		iter.Table != nil
+			iter.ColumnDefault != nil ||
+			iter.ForeignKey != nil ||
+			iter.Index != nil ||
+			iter.Table != nil
+}
+
+// iteratesOverTypes returns whether we need to iterate over types based on the given callbacks.
+func (iter Callbacks) iteratesOverTypes() bool {
+	return iter.Type != nil
 }
 
 // schemaIterationOrder returns the order that the given schemas should be iterated over.
