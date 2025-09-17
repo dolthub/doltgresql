@@ -27,7 +27,7 @@ var createdReplacements = make(map[string]struct{})
 // replacementCharacters contains all of the characters that are valid substitutions for replacement.
 var replacementCharacters = []rune{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'}
 
-// replacementCharactersLimited contains all of the characters that are valid substitutions for replacement in UUIDs.
+// replacementCharactersLimited contains all of the characters that are valid substitutions in a limited context (such as hex-encoded strings).
 var replacementCharactersLimited = []rune{'a', 'b', 'c', 'd', 'e', 'f', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'}
 
 // getReplacement returns the replacement of the given string if applicable.
