@@ -1,17 +1,17 @@
 module github.com/dolthub/doltgresql
 
-go 1.24.6
+go 1.25
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20250916230528-26166b56e924
+	github.com/dolthub/dolt/go v0.40.5-0.20250918203941-09f7c7043be0
 	github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20250916220614-725f43cad1e7
+	github.com/dolthub/go-mysql-server v0.20.1-0.20250918184337-1e27be84307a
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20250915221346-753c44800850
+	github.com/dolthub/vitess v0.0.0-20250918181259-ed0e1c5cb192
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
@@ -96,7 +96,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 // indirect
-	github.com/dolthub/dolt-mcp v0.2.1-0.20250827202412-9d0f6e658fba // indirect
+	github.com/dolthub/dolt-mcp v0.2.2-0.20250917171427-13e4520d1c36 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20250916051405-78a38d478790 // indirect
 	github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 // indirect
