@@ -1643,7 +1643,6 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT (100.0::numeric)::name;",
-				Skip:  true, // TODO: Should return 100.0 instead of 100
 				Expected: []sql.Row{
 					{"100.0"},
 				},

@@ -364,6 +364,8 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		} else {
 			return nil, nil
 		}
+	case SQLFunction:
+		return CallSqlFunction(ctx, f, c.runner, args)
 	default:
 		return nil, cerrors.Errorf("unknown function type in CompiledFunction::Eval %T", f)
 	}

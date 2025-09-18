@@ -14,7 +14,12 @@
 
 package tree
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/parser/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
 
 var _ Statement = &CreateFunction{}
 
@@ -291,4 +296,23 @@ type Return struct {
 func (node *Return) Format(ctx *FmtCtx) {
 	ctx.WriteString("RETURN ")
 	ctx.FormatNode(node.Expr)
+}
+
+// FunctionColumn represents a function argument in CREATE FUNCTION statement.
+// It is not used directly during parsing, but replaces the ColumnItem
+// or Placeholder input.
+type FunctionColumn struct {
+	Name string
+	Idx  uint16
+	Typ  *pgtypes.DoltgresType
+}
+
+// ResolvedType implements the TypedExpr interface.
+func (f FunctionColumn) ResolvedType() *types.T {
+	return nil
+}
+
+// Format implements the NodeFormatter interface.
+func (f FunctionColumn) Format(ctx *FmtCtx) {
+	ctx.WriteString(f.Name)
 }

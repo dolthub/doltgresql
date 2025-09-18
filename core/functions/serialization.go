@@ -55,6 +55,7 @@ func (function Function) Serialize(ctx context.Context) ([]byte, error) {
 	// Write version 1 data
 	writer.String(function.ExtensionName)
 	writer.String(function.ExtensionSymbol)
+	writer.String(function.SQLDefinition)
 	// Returns the data
 	return writer.Data(), nil
 }
@@ -97,6 +98,7 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 	if version == 1 {
 		f.ExtensionName = reader.String()
 		f.ExtensionSymbol = reader.String()
+		f.SQLDefinition = reader.String()
 	}
 	if !reader.IsEmpty() {
 		return Function{}, errors.Errorf("extra data found while deserializing a function")

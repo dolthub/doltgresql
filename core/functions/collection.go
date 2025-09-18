@@ -52,9 +52,10 @@ type Function struct {
 	IsNonDeterministic bool
 	Strict             bool
 	Definition         string
-	ExtensionName      string // Only used when this is an extension function
-	ExtensionSymbol    string // Only used when this is an extension function
-	Operations         []plpgsql.InterpreterOperation
+	ExtensionName      string                         // Only used when this is an extension function
+	ExtensionSymbol    string                         // Only used when this is an extension function
+	Operations         []plpgsql.InterpreterOperation // Only used when this is a plpgsql language
+	SQLDefinition      string                         // Only used when this is a sql language
 }
 
 var _ objinterface.Collection = (*Collection)(nil)
