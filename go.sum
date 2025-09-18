@@ -250,6 +250,8 @@ github.com/dolthub/dolt-mcp v0.2.2-0.20250917171427-13e4520d1c36 h1:1OJhO12aBkZG
 github.com/dolthub/dolt-mcp v0.2.2-0.20250917171427-13e4520d1c36/go.mod h1:S8OtLV2B//aelmZlGnFO44q4YH+Tyfl7jQ9djb4gPJE=
 github.com/dolthub/dolt/go v0.40.5-0.20250918203941-09f7c7043be0 h1:mXvdg2gmPuGs+wuZYeSxtxn1aiWsv1GNSswLohMkGRI=
 github.com/dolthub/dolt/go v0.40.5-0.20250918203941-09f7c7043be0/go.mod h1:lv40Isuq1R2LDPnnbZpth81jakrByq938R8aeOotmzg=
+github.com/dolthub/dolt/go v0.40.5-0.20250918220233-6344018b7d20 h1:FL1HWEI03n6L6pJSnmmzH4aE9ktPUm2Ujl66P54ZP3I=
+github.com/dolthub/dolt/go v0.40.5-0.20250918220233-6344018b7d20/go.mod h1:2Os6dUkeXoxDkkr3HO7V871NGz7ypNzm43O90U8y3Bo=
 github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca h1:BGFz/0OlKIuC6qHIZQbvPapFvdAJkeEyGXWVgL5clmE=
 github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca/go.mod h1:CoDLfgPqHyBtth0Cp+fi/CmC4R81zJNX4wPjShdZ+Bw=
 github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 h1:u3PMzfF8RkKd3lB9pZ2bfn0qEG+1Gms9599cr0REMww=
