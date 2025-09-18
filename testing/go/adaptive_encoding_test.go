@@ -36,22 +36,27 @@ func makeTestBytes(size int, firstbyte byte) []byte {
 // A 4000 byte file starting with 0x01 and then consisting of all zeros.
 // This is larger than default target tuple size for outlining adaptive types.
 // We expect a tuple to always store this value out-of-band
+// The same value is inserted via LOAD_FILE('testdata/fullSize')
 var fullSizeString = string(makeTestBytes(4000, 1))
 
 // A 2000 byte file starting with 0x02 and then consisting of all zeros.
 // This is over half of the default target tuple size for outlining adaptive types.
 // We expect a tuple to be able to store this value inline once, but not twice.
+// The same value is inserted via LOAD_FILE('testdata/halfSize')
 var halfSizeString = string(makeTestBytes(2000, 2))
 
 // A 10 byte file starting with 0x03 and then consisting of 10 zero bytes.
 // This is file is smaller than an address hash.
 // We expect a tuple to never store this value out-of-band.
+// The same value is inserted via LOAD_FILE('testdata/tinyFile')
 var tinyString = string(makeTestBytes(10, 3))
 
 // A 72K byte file starting with 0x04 and then consisting of all zeros.
 // This is larger than the max tuple size. We should be able to write this without issues, and
 // we expect a tuple to always store this value out-of-band.
-var tooBigString = string(makeTestBytes(72000, 4))
+// The same value is inserted via LOAD_FILE('testdata/tooBigFile')
+
+// var tooBigString = string(makeTestBytes(72000, 4))
 
 func TestAdaptiveEncoding(t *testing.T) {
 	columnType := "text"
