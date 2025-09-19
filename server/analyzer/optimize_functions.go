@@ -33,15 +33,16 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	}
 
 	return pgtransform.NodeWithOpaque(node, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
-		_, ok := n.(*plan.Project)
+		pn, ok := n.(*plan.Project)
 		if !ok {
 			return n, transform.SameTree, nil
 		}
 
-		hasSRF := false
-		n, same, err := transform.NodeExprs(n, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		// Check if there is set returning function in the source node (e.g. SELECT * FROM unnest())
+		hasSRFAsTableFunction := false
+		n, sameNode, err := transform.NodeExprs(pn.Child, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
-				hasSRF = hasSRF || compiledFunction.IsSRF()
+				hasSRFAsTableFunction = hasSRFAsTableFunction || compiledFunction.IsSRF()
 				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
 					return quickFunction, transform.NewTree, nil
 				}
@@ -49,13 +50,36 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			return expr, transform.SameTree, nil
 		})
 
-		if hasSRF {
-			// Under some conditions, there will be no quick-function replacement, but changing the Project node to include
-			// nested iterators is still a change we need to tell the transform functions about.
-			same = transform.NewTree
-			n = n.(*plan.Project).WithIncludesNestedIters(true)
+		// Check if there is set returning function in the projection expressions (e.g. SELECT unnest() [FROM table/srf])
+		hasSRFAsProjection := false
+		sameExprs := transform.SameTree
+		for i, pExpr := range pn.Projections {
+			e, same, err := transform.Expr(pExpr, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+				if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
+					hasSRFAsProjection = hasSRFAsProjection || compiledFunction.IsSRF()
+					if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
+						return quickFunction, transform.NewTree, nil
+					}
+				}
+				return expr, transform.SameTree, nil
+			})
+			if err != nil {
+				return nil, transform.SameTree, err
+			}
+			if !same {
+				pn.Projections[i] = e
+				sameExprs = false
+			}
 		}
 
-		return n, same, err
+		// nested iter is used for set returning functions in the projections only
+		if hasSRFAsProjection {
+			// Under some conditions, there will be no quick-function replacement, but changing the Project node to include
+			// nested iterators is still a change we need to tell the transform functions about.
+			sameExprs = transform.NewTree
+			pn = pn.WithIncludesNestedIters(true)
+		}
+
+		return pn, sameNode && sameExprs, err
 	})
 }

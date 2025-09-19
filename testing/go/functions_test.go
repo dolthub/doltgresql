@@ -3945,6 +3945,15 @@ func TestSetReturningFunctions(t *testing.T) {
 					},
 				},
 			},
+			{
+				Name: "generate_series as table function and projection",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT *, unnest(ARRAY['cat', 'dog', 'bird']) AS animal FROM generate_series(1, 3);`,
+						Expected: []sql.Row{{1, "cat"}, {1, "dog"}, {1, "bird"}, {2, "cat"}, {2, "dog"}, {2, "bird"}, {3, "cat"}, {3, "dog"}, {3, "bird"}},
+					},
+				},
+			},
 		},
 	)
 }
