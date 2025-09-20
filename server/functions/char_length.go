@@ -37,6 +37,13 @@ var char_length_text = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return int32(len([]rune(val1.(string)))), nil
+		if wrapper, isWrapper := val1.(sql.AnyWrapper); isWrapper && wrapper.IsExactLength() {
+			return int32(wrapper.MaxByteLength()), nil
+		}
+		valString, _, err := sql.Unwrap[string](ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return int32(len([]rune(valString))), nil
 	},
 }

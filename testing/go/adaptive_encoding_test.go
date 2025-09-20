@@ -36,17 +36,27 @@ func makeTestBytes(size int, firstbyte byte) []byte {
 // A 4000 byte file starting with 0x01 and then consisting of all zeros.
 // This is larger than default target tuple size for outlining adaptive types.
 // We expect a tuple to always store this value out-of-band
+// The same value is inserted via LOAD_FILE('testdata/fullSize')
 var fullSizeString = string(makeTestBytes(4000, 1))
 
 // A 2000 byte file starting with 0x02 and then consisting of all zeros.
 // This is over half of the default target tuple size for outlining adaptive types.
 // We expect a tuple to be able to store this value inline once, but not twice.
+// The same value is inserted via LOAD_FILE('testdata/halfSize')
 var halfSizeString = string(makeTestBytes(2000, 2))
 
 // A 10 byte file starting with 0x03 and then consisting of 10 zero bytes.
 // This is file is smaller than an address hash.
 // We expect a tuple to never store this value out-of-band.
+// The same value is inserted via LOAD_FILE('testdata/tinyFile')
 var tinyString = string(makeTestBytes(10, 3))
+
+// A 72K byte file starting with 0x04 and then consisting of all zeros.
+// This is larger than the max tuple size. We should be able to write this without issues, and
+// we expect a tuple to always store this value out-of-band.
+// The same value is inserted via LOAD_FILE('testdata/tooBigFile')
+
+// var tooBigString = string(makeTestBytes(72000, 4))
 
 func TestAdaptiveEncoding(t *testing.T) {
 	columnType := "text"
@@ -56,7 +66,6 @@ func TestAdaptiveEncoding(t *testing.T) {
 			Name: "Adaptive Encoding With One Column",
 			SetUpScript: setup.SetupScript{
 				fmt.Sprintf(`create table blobt (i char(1) primary key, b %s);`, columnType),
-				fmt.Sprintf(`create table blobt2 (i char(2) primary key, b1 %s, b2 %s);`, columnType, columnType),
 				`insert into blobt values
     ('F', LOAD_FILE('testdata/fullSize')),
     ('H', LOAD_FILE('testdata/halfSize')),
@@ -177,6 +186,57 @@ func TestAdaptiveEncoding(t *testing.T) {
 						{"FT", fullSizeString},
 						{"HT", halfSizeString},
 						{"TT", tinyString},
+					},
+				},
+			},
+		},
+		{
+			Name: "Adaptive Encoding With values > 64K is not truncated",
+			SetUpScript: setup.SetupScript{
+				fmt.Sprintf(`create table blobt (i char(1) primary key, b %s);`, columnType),
+				`insert into blobt values
+    ('F', LOAD_FILE('testdata/tooBigFile')),
+    ('H', LOAD_FILE('testdata/halfSize')),
+    ('T', LOAD_FILE('testdata/tinyFile'))`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select LENGTH(b) from blobt where i = 'F'",
+					Expected: []sql.Row{{72001}},
+				},
+				{
+					// An out-of-line adaptive column can be used in a filter.
+					Query:    "select i from blobt where b = LOAD_FILE('testdata/tooBigFile')",
+					Expected: []sql.Row{{"F"}},
+				},
+			},
+		},
+		{
+			Name: "Adaptive Extended values can be read and re-inserted",
+			SetUpScript: setup.SetupScript{
+				fmt.Sprintf(`create table blobt2 (i1 char(1), i2 char(1), primary key (i1, i2), b1 %s, b2 %s);`, columnType, columnType),
+				`insert into blobt2 values
+    ('F', 'F', LOAD_FILE('testdata/fullSize'), LOAD_FILE('testdata/fullSize')),
+    ('H', 'H', LOAD_FILE('testdata/halfSize'), LOAD_FILE('testdata/halfSize')),
+    ('T', 'T', LOAD_FILE('testdata/tinyFile'), LOAD_FILE('testdata/tinyFile'))`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "insert into blobt2 select one.i1, two.i2, one.b1, two.b2 from blobt2 AS one join blobt2 AS two on one.i1 != two.i2;",
+				},
+				{
+					// Check that the out-of-band value halfSize is written correctly both when it fits in the new row inline, and when it doesn't.
+					Query: "select * from blobt2",
+					Expected: []sql.Row{
+						{"F", "F", fullSizeString, fullSizeString},
+						{"H", "F", halfSizeString, fullSizeString},
+						{"T", "F", tinyString, fullSizeString},
+						{"F", "H", fullSizeString, halfSizeString},
+						{"H", "H", halfSizeString, halfSizeString},
+						{"T", "H", tinyString, halfSizeString},
+						{"F", "T", fullSizeString, tinyString},
+						{"H", "T", halfSizeString, tinyString},
+						{"T", "T", tinyString, tinyString},
 					},
 				},
 			},
