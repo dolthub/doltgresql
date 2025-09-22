@@ -56,6 +56,9 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			}
 			return expr, transform.SameTree, nil
 		})
+		if err != nil {
+			return nil, transform.SameTree, err
+		}
 		if !sameNode {
 			projectNode.Child = n
 		}
