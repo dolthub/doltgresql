@@ -3954,6 +3954,26 @@ func TestSetReturningFunctions(t *testing.T) {
 					},
 				},
 			},
+			{
+				Name: "insert with set returning function",
+				SetUpScript: []string{
+					"create table hash_parted (a int, b int, c int);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `insert into hash_parted values(0, generate_series(1,3), generate_series(5,8));`,
+						Expected: []sql.Row{},
+					},
+					{
+						Query:       `insert into hash_parted values(0, generate_series(11,12), generate_series(51,54)), (1, generate_series(1,3), generate_series(5,8));`,
+						ExpectedErr: `set-returning functions are not allowed in VALUES`,
+					},
+					{
+						Query:    `select * from hash_parted;`,
+						Expected: []sql.Row{{0, 1, 5}, {0, 2, 6}, {0, 3, 7}, {0, nil, 8}},
+					},
+				},
+			},
 		},
 	)
 }
