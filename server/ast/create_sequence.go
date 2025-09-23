@@ -43,7 +43,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 		return nil, err
 	}
 	if len(name.DbQualifier.String()) > 0 {
-		return nil, errors.Errorf("CREATE SEQUENCE is currently only supported for the current database")
+		return nil, errors.Errorf("CREATE SEQUENCE for the non-current database is not yet supported")
 	}
 	// Read all options and check whether they've been set (if not, we'll use the defaults)
 	minValueLimit := int64(math.MinInt64)

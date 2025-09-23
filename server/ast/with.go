@@ -36,7 +36,7 @@ func nodeCTE(ctx *Context, node *tree.CTE) (*vitess.CommonTableExpr, error) {
 
 	subSelect, ok := node.Stmt.(*tree.Select)
 	if !ok {
-		return nil, errors.Errorf("unsupported CTE statement type: %T", node.Stmt)
+		return nil, errors.Errorf("CTE statement type '%T' is not yet supported", node.Stmt)
 	}
 
 	selectStmt, err := nodeSelect(ctx, subSelect)

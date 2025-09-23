@@ -28,7 +28,7 @@ func nodeAlterView(ctx *Context, stmt *tree.AlterView) (sqlparser.Statement, err
 
 	// We can handle the common ALTER VIEW .. TO OWNER case since it's a no-op
 	if _, ok := stmt.Cmd.(*tree.AlterViewOwnerTo); ok {
-		return NewNoOp([]string{"owners are unsupported"}), nil
+		return NewNoOp([]string{"owners are not yet supported"}), nil
 	}
 
 	return NotYetSupportedError("ALTER VIEW is not yet supported")

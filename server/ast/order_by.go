@@ -52,11 +52,11 @@ func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 			// If the NULL order is explicitly declared, then we want to error rather than return incorrect results.
 		case tree.NullsFirst:
 			if direction != vitess.AscScr {
-				return nil, errors.Errorf("this NULL ordering is not yet supported for this ORDER BY direction")
+				return nil, errors.Errorf("this NULL ordering for this ORDER BY direction is not yet supported")
 			}
 		case tree.NullsLast:
 			if direction != vitess.DescScr {
-				return nil, errors.Errorf("this NULL ordering is not yet supported for this ORDER BY direction")
+				return nil, errors.Errorf("this NULL ordering for this ORDER BY direction is not yet supported")
 			}
 		default:
 			return nil, errors.Errorf("unknown NULL ordering in ORDER BY")

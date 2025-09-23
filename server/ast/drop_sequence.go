@@ -36,7 +36,7 @@ func nodeDropSequence(ctx *Context, node *tree.DropSequence) (vitess.Statement, 
 		return nil, err
 	}
 	if len(name.DbQualifier.String()) > 0 {
-		return nil, errors.Errorf("DROP SEQUENCE is currently only supported for the current database")
+		return nil, errors.Errorf("DROP SEQUENCE for the non-current database is not yet supported")
 	}
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewDropSequence(node.IfExists, name.SchemaQualifier.String(), name.Name.String(),

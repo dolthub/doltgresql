@@ -90,7 +90,7 @@ func nodeVarName(ctx *Context, node tree.VarName) (vitess.Expr, error) {
 func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	switch node := node.(type) {
 	case *tree.AllColumnsSelector:
-		return nil, errors.Errorf("table.* syntax is not yet supported in this context")
+		return nil, errors.Errorf("table.* syntax in this context is not yet supported")
 	case *tree.AndExpr:
 		left, err := nodeExpr(ctx, node.Left)
 		if err != nil {
@@ -834,10 +834,10 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Children:   vitess.Exprs{expr},
 		}, nil
 	case tree.UnqualifiedStar:
-		return nil, errors.Errorf("* syntax is not yet supported in this context")
+		return nil, errors.Errorf("* syntax in this context is not yet supported")
 	case *tree.UnresolvedName:
 		if node.Star {
-			return nil, errors.Errorf("* syntax is not yet supported in this context")
+			return nil, errors.Errorf("* syntax in this context is not yet supported")
 		}
 		return unresolvedNameToColName(node)
 	case nil:
