@@ -972,5 +972,19 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "function returning multiple rows",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION gen(a int) RETURNS SETOF INT LANGUAGE SQL AS $$ SELECT generate_series(1, a) $$ STABLE;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM gen(3);`,
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+			},
+		},
 	})
 }

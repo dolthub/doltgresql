@@ -56,6 +56,7 @@ type Function struct {
 	ExtensionSymbol    string                         // Only used when this is an extension function
 	Operations         []plpgsql.InterpreterOperation // Only used when this is a plpgsql language
 	SQLDefinition      string                         // Only used when this is a sql language
+	SetOf              bool
 }
 
 var _ objinterface.Collection = (*Collection)(nil)

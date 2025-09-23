@@ -101,6 +101,7 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 				IsNonDeterministic: overload.IsNonDeterministic,
 				Strict:             overload.Strict,
 				SqlStatement:       overload.SQLDefinition,
+				SetOf:              overload.SetOf,
 			}); err != nil {
 				return nil, false
 			}

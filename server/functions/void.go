@@ -51,7 +51,7 @@ var void_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
-		return val.(string), nil
+		return "", nil
 	},
 }
 

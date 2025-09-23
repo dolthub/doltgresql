@@ -45,6 +45,7 @@ type CreateFunction struct {
 	Definition      string
 	SqlDef          string
 	SqlDefParsed    vitess.Statement
+	SetOf           bool
 }
 
 var _ sql.ExecSourceRel = (*CreateFunction)(nil)
@@ -64,7 +65,8 @@ func NewCreateFunction(
 	extensionSymbol string,
 	statements []plpgsql.InterpreterOperation,
 	sqlDef string,
-	sqlDefParsed vitess.Statement) *CreateFunction {
+	sqlDefParsed vitess.Statement,
+	setOf bool) *CreateFunction {
 	return &CreateFunction{
 		FunctionName:    functionName,
 		SchemaName:      schemaName,
@@ -79,6 +81,7 @@ func NewCreateFunction(
 		Definition:      definition,
 		SqlDef:          sqlDef,
 		SqlDefParsed:    sqlDefParsed,
+		SetOf:           setOf,
 	}
 }
 
@@ -147,6 +150,7 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		ExtensionSymbol:    c.ExtensionSymbol,
 		Operations:         c.Statements,
 		SQLDefinition:      c.SqlDef,
+		SetOf:              c.SetOf,
 	})
 	if err != nil {
 		return nil, err
@@ -191,10 +195,7 @@ var _ sql.Expression = (*FunctionColumn)(nil)
 
 // Resolved implements the interface sql.Expression.
 func (f *FunctionColumn) Resolved() bool {
-	if f.Typ.IsEmptyType() {
-		return false
-	}
-	return true
+	return !f.Typ.IsEmptyType()
 }
 
 // String implements the interface sql.Expression.

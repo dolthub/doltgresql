@@ -302,9 +302,10 @@ func (node *Return) Format(ctx *FmtCtx) {
 // It is not used directly during parsing, but replaces the ColumnItem
 // or Placeholder input.
 type FunctionColumn struct {
-	Name string
-	Idx  uint16
-	Typ  *pgtypes.DoltgresType
+	Name   string
+	Idx    uint16
+	Typ    *pgtypes.DoltgresType
+	StrVal string // Do not set it for CREATE FUNCTION
 }
 
 // ResolvedType implements the TypedExpr interface.
@@ -314,5 +315,9 @@ func (f FunctionColumn) ResolvedType() *types.T {
 
 // Format implements the NodeFormatter interface.
 func (f FunctionColumn) Format(ctx *FmtCtx) {
-	ctx.WriteString(f.Name)
+	if f.StrVal == "" {
+		ctx.WriteString(f.Name)
+	}
+	// only used when generating query with parameters replaced with actual value
+	ctx.WriteString(f.StrVal)
 }

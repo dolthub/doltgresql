@@ -68,7 +68,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			strict = true
 		}
 	}
-	// We only support PL/pgSQL and C for now, so we verify that here
+	// We only support PL/pgSQL, SQL and C for now, so we verify that here
 	var parsedBody []plpgsql.InterpreterOperation
 	var sqlDef string
 	var sqlDefParsed vitess.Statement
@@ -137,6 +137,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			parsedBody,
 			sqlDef,
 			sqlDefParsed,
+			node.SetOf,
 		),
 	}, nil
 }
@@ -167,6 +168,9 @@ func replaceFunctionColumnAndUpdateParamNames(paramNames []string, paramTypes []
 		for i, e := range sc.Exprs {
 			sc.Exprs[i].Expr = replaceToFunctionColumn(paramMap, e.Expr)
 		}
+		if sc.Where != nil {
+			sc.Where.Expr = replaceToFunctionColumn(paramMap, sc.Where.Expr)
+		}
 		return paramNames, nil
 	case *tree.Insert:
 		if s.Returning != nil {
@@ -190,7 +194,7 @@ func replaceToFunctionColumn(paramMap map[string]*pgtypes.DoltgresType, expr tre
 	e, _ := tree.SimpleVisit(expr, func(visitingExpr tree.Expr) (recurse bool, newExpr tree.Expr, err error) {
 		switch v := visitingExpr.(type) {
 		case *tree.Placeholder:
-			name := fmt.Sprintf("$%v", v.Idx+1)
+			name := fmt.Sprintf("$%d", v.Idx+1)
 			if typ, ok := paramMap[name]; ok {
 				return false, tree.FunctionColumn{
 					Name: name,

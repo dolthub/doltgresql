@@ -15,14 +15,13 @@
 package framework
 
 import (
-	"strconv"
-	"strings"
-
+	"fmt"
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/go-mysql-server/sql"
-
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // SQLFunction is the implementation of functions created using SQL.
@@ -35,6 +34,8 @@ type SQLFunction struct {
 	IsNonDeterministic bool
 	Strict             bool
 	SqlStatement       string
+	SetOf              bool
+	ReturnTableType    []*pgtypes.DoltgresType
 }
 
 var _ FunctionInterface = SQLFunction{}
@@ -90,8 +91,7 @@ func (sqlFunc SQLFunction) enforceInterfaceInheritance(error) {}
 
 // CallSqlFunction runs the given SQL definition inside the function on the given runner.
 func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner, args []any) (any, error) {
-	stmt := f.SqlStatement
-	// TODO: safer to parse and replace expression instead of replacing string representation
+	paramMap := make(map[string]string)
 	for i, name := range f.ParameterNames {
 		formattedVar, err := f.ParameterTypes[i].FormatValue(args[i])
 		if err != nil {
@@ -99,78 +99,90 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 		}
 		if name == "" {
 			// sanity check
-			stmt = strings.Replace(stmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
-		} else {
-			stmt = strings.Replace(stmt, name, formattedVar, -1)
+			name = fmt.Sprintf("$%d", i+1)
 		}
+		paramMap[name] = formattedVar
 	}
 
-	// TODO: handle single row or multiple row result
-	targetType := f.ReturnType
+	query, err := parseAndReplaceFunctionColumn(ctx, f.SqlStatement, paramMap)
+	if err != nil {
+		return nil, err
+	}
 
 	return sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
-		sch, rowIter, _, err := runner.QueryWithBindings(subCtx, stmt, nil, nil, nil)
+		sch, rowIter, _, err := runner.QueryWithBindings(ctx, query, nil, nil, nil)
 		if err != nil {
 			return nil, err
 		}
-		rows, err := sql.RowIterToRows(subCtx, rowIter)
-		if err != nil {
-			return nil, err
-		}
-		if len(sch) != 1 {
-			return nil, errors.New("expression does not result in a single value")
-		}
-		if len(rows) != 1 {
-			return nil, errors.New("expression returned multiple result sets")
-		}
-		if len(rows[0]) != 1 {
-			return nil, errors.New("expression returned multiple results")
-		}
-		if targetType == nil {
-			return rows[0][0], nil
-		}
-		if rows[0][0] == nil {
-			return nil, nil
-		}
-		fromType, ok := sch[0].Type.(*pgtypes.DoltgresType)
-		if !ok {
-			fromType, err = pgtypes.FromGmsTypeToDoltgresType(sch[0].Type)
+
+		if !f.SetOf {
+			// single row result
+			rows, err := sql.RowIterToRows(subCtx, rowIter)
 			if err != nil {
 				return nil, err
 			}
+			if len(sch) != 1 {
+				return nil, errors.New("expression does not result in a single value")
+			}
+			if len(rows) != 1 {
+				return nil, errors.New("expression returned multiple result sets")
+			}
+			if len(rows[0]) != 1 {
+				return nil, errors.New("expression returned multiple results")
+			}
+			return rows[0][0], nil
 		}
-		castFunc := GetAssignmentCast(fromType, targetType)
-		if castFunc == nil {
-			// TODO: We're using assignment casting, but for some reason we have to use I/O casting here, which is incorrect?
-			//  We need to dig into this and figure out exactly what's happening, as this is "wrong" according to what
-			//  I understand. This lines up more with explicit casting, but it's supposed to be assignment.
-			//  Maybe there are specific rules for pgsql?
-			if fromType.TypCategory == pgtypes.TypeCategory_StringTypes {
-				castFunc = func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-					if val == nil {
-						return nil, nil
-					}
-					str, err := fromType.IoOutput(ctx, val)
-					if err != nil {
-						return nil, err
-					}
-					return targetType.IoInput(ctx, str)
-				}
-			} else {
-				return nil, errors.New("no valid cast for return value")
+		// multiple row result
+		return rowIter, nil
+	})
+}
+
+// parseAndReplaceFunctionColumn parses and replaces function parameter expressions with given arguments.
+func parseAndReplaceFunctionColumn(ctx *sql.Context, q string, params map[string]string) (string, error) {
+	parsed, err := parser.ParseOne(q)
+	if err != nil {
+		return "", err
+	}
+
+	// Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING
+	switch s := parsed.AST.(type) {
+	case *tree.Select:
+		sc := s.Select.(*tree.SelectClause)
+		for i, e := range sc.Exprs {
+			sc.Exprs[i].Expr = replaceToFunctionColumn(params, e.Expr)
+		}
+		if sc.Where != nil {
+			sc.Where.Expr = replaceToFunctionColumn(params, sc.Where.Expr)
+		}
+	}
+
+	return parsed.AST.String(), nil
+}
+
+// replaceToFunctionColumn replaces Placeholder and UnresolvedName expressions with FunctionColumn containing
+// argument value if applicable when the name of expression matches function parameter.
+func replaceToFunctionColumn(paramMap map[string]string, expr tree.Expr) tree.Expr {
+	e, _ := tree.SimpleVisit(expr, func(visitingExpr tree.Expr) (recurse bool, newExpr tree.Expr, err error) {
+		switch v := visitingExpr.(type) {
+		case *tree.Placeholder:
+			name := fmt.Sprintf("$%d", v.Idx+1)
+			if strval, ok := paramMap[name]; ok {
+				return false, tree.FunctionColumn{
+					Name:   name,
+					Idx:    uint16(v.Idx),
+					StrVal: strval,
+				}, nil
+			}
+		case *tree.UnresolvedName:
+			name := v.String()
+			if strval, ok := paramMap[name]; ok {
+				return false, tree.FunctionColumn{
+					Name:   name,
+					StrVal: strval,
+				}, nil
 			}
 		}
-		return castFunc(subCtx, rows[0][0], targetType)
+		return true, visitingExpr, nil
 	})
-
-	//return sql.RunInterpreted(ctx, func(subCtx *sql.Context) ([]sql.Row, error) {
-	//	_, rowIter, _, err := runner.QueryWithBindings(subCtx, stmt, nil, nil, nil)
-	//	if err != nil {
-	//		return nil, err
-	//	}
-	//	// TODO: we should come up with a good way of carrying the RowIter out of the function without needing to wrap
-	//	//  each call to QueryMultiReturn with RunInterpreted. For now, we don't check the returned rows, so this is
-	//	//  fine.
-	//	return sql.RowIterToRows(subCtx, rowIter)
-	//})
+	return e
 }
