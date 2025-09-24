@@ -16,12 +16,14 @@ package framework
 
 import (
 	"fmt"
+
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // SQLFunction is the implementation of functions created using SQL.
