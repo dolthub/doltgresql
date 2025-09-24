@@ -153,6 +153,11 @@ ListenerLoop:
 				}
 				if expectedError == nil {
 					if responseError != nil {
+						if strings.HasPrefix(responseError.Message, "at or near") && strings.Contains(responseError.Message, ":syntax error") {
+							tracker.FailedToParse++
+						} else if strings.HasSuffix(responseError.Message, "not yet supported") {
+							tracker.Unsupported++
+						}
 						tracker.Failed++
 						tracker.AddFailure(ReplayTrackerItem{
 							Query:           "DESCRIBE",
@@ -283,6 +288,11 @@ ListenerLoop:
 				}
 				if expectedError == nil {
 					if responseError != nil {
+						if strings.HasPrefix(responseError.Message, "at or near") && strings.Contains(responseError.Message, ":syntax error") {
+							tracker.FailedToParse++
+						} else if strings.HasSuffix(responseError.Message, "not yet supported") {
+							tracker.Unsupported++
+						}
 						tracker.Failed++
 						tracker.AddFailure(ReplayTrackerItem{
 							Query:           fmt.Sprintf("Function OID: %d", message.Function),
@@ -408,6 +418,11 @@ ListenerLoop:
 				}
 				if expectedError == nil {
 					if responseError != nil {
+						if strings.HasPrefix(responseError.Message, "at or near") && strings.Contains(responseError.Message, ":syntax error") {
+							tracker.FailedToParse++
+						} else if strings.HasSuffix(responseError.Message, "not yet supported") {
+							tracker.Unsupported++
+						}
 						tracker.Failed++
 						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.Query,
@@ -554,6 +569,11 @@ ListenerLoop:
 				}
 				if expectedError == nil {
 					if responseError != nil {
+						if strings.HasPrefix(responseError.Message, "at or near") && strings.Contains(responseError.Message, ":syntax error") {
+							tracker.FailedToParse++
+						} else if strings.HasSuffix(responseError.Message, "not yet supported") {
+							tracker.Unsupported++
+						}
 						tracker.Failed++
 						tracker.AddFailure(ReplayTrackerItem{
 							Query:           message.String,
