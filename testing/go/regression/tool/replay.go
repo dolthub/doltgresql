@@ -153,7 +153,7 @@ ListenerLoop:
 				}
 				if expectedError == nil {
 					if responseError != nil {
-						if strings.HasPrefix(responseError.Message, "at or near") && strings.Contains(responseError.Message, ":syntax error") {
+						if strings.HasPrefix(responseError.Message, "at or near") {
 							tracker.FailedToParse++
 						} else if strings.HasSuffix(responseError.Message, "not yet supported") {
 							tracker.Unsupported++
@@ -288,7 +288,7 @@ ListenerLoop:
 				}
 				if expectedError == nil {
 					if responseError != nil {
-						if strings.HasPrefix(responseError.Message, "at or near") && strings.Contains(responseError.Message, ":syntax error") {
+						if strings.HasPrefix(responseError.Message, "at or near") {
 							tracker.FailedToParse++
 						} else if strings.HasSuffix(responseError.Message, "not yet supported") {
 							tracker.Unsupported++
@@ -418,7 +418,7 @@ ListenerLoop:
 				}
 				if expectedError == nil {
 					if responseError != nil {
-						if strings.HasPrefix(responseError.Message, "at or near") && strings.Contains(responseError.Message, ":syntax error") {
+						if strings.HasPrefix(responseError.Message, "at or near") {
 							tracker.FailedToParse++
 						} else if strings.HasSuffix(responseError.Message, "not yet supported") {
 							tracker.Unsupported++
@@ -569,7 +569,7 @@ ListenerLoop:
 				}
 				if expectedError == nil {
 					if responseError != nil {
-						if strings.HasPrefix(responseError.Message, "at or near") && strings.Contains(responseError.Message, ":syntax error") {
+						if strings.HasPrefix(responseError.Message, "at or near") {
 							tracker.FailedToParse++
 						} else if strings.HasSuffix(responseError.Message, "not yet supported") {
 							tracker.Unsupported++
