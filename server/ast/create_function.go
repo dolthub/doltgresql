@@ -100,7 +100,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			extensionName = symbolOption.ObjFile
 			extensionSymbol = symbolOption.LinkSymbol
 		default:
-			return nil, errors.Errorf("CREATE FUNCTION only supports PL/pgSQL for now")
+			return nil, errors.Errorf("CREATE FUNCTION only supports PL/pgSQL, C and SQL for now; others are not yet supported")
 		}
 	} else {
 		return nil, errors.Errorf("CREATE FUNCTION does not define an input language")

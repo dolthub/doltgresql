@@ -154,8 +154,8 @@ type ParamTypAndValue struct {
 	StrVal string
 }
 
-// ReplaceFunctionColumn parses and replaces function parameter expressions with given arguments.
-// replaceFunctionColumnAndUpdateParamNames replaces UnresolvedName and Placeholder expressions with FunctionColumn expression.
+// ReplaceFunctionColumn parses and replaces UnresolvedName and Placeholder expressions
+// with FunctionColumn expression containing parameter type and arguments if applicable.
 // It also replaces empty parameter name with binding variable name to match the name used in FunctionColumn.
 // This function should be used for FUNCTION with SQL language statements only.
 func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTypAndValue) error {
@@ -172,15 +172,15 @@ func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTyp
 		return nil
 	case *tree.Insert:
 		if s.Returning != nil {
-			return errors.Errorf("INSERT ... RETURNING statement is not supported in functions yet")
+			return errors.Errorf("INSERT ... RETURNING statement in functions is not yet supported")
 		}
 	case *tree.Update:
 		if s.Returning != nil {
-			return errors.Errorf("UPDATE ... RETURNING statement is not supported in functions yet")
+			return errors.Errorf("UPDATE ... RETURNING statement in functions is not yet supported")
 		}
 	case *tree.Delete:
 		if s.Returning != nil {
-			return errors.Errorf("DELETE ... RETURNING statement is not supported in functions yet")
+			return errors.Errorf("DELETE ... RETURNING statement in functions is not yet supported")
 		}
 	}
 	return errors.Errorf("Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING")
