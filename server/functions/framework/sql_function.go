@@ -93,7 +93,12 @@ func (sqlFunc SQLFunction) enforceInterfaceInheritance(error) {}
 
 // CallSqlFunction runs the given SQL definition inside the function on the given runner.
 func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner, args []any) (any, error) {
-	paramMap := make(map[string]string)
+	parsed, err := parser.ParseOne(f.SqlStatement)
+	if err != nil {
+		return "", err
+	}
+
+	paramMap := make(map[string]*ParamTypAndValue)
 	for i, name := range f.ParameterNames {
 		formattedVar, err := f.ParameterTypes[i].FormatValue(args[i])
 		if err != nil {
@@ -103,16 +108,19 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			// sanity check
 			name = fmt.Sprintf("$%d", i+1)
 		}
-		paramMap[name] = formattedVar
+		paramMap[name] = &ParamTypAndValue{
+			Typ:    f.ParameterTypes[i],
+			StrVal: formattedVar,
+		}
 	}
 
-	query, err := parseAndReplaceFunctionColumn(ctx, f.SqlStatement, paramMap)
+	err = ReplaceFunctionColumn(parsed.AST, paramMap)
 	if err != nil {
 		return nil, err
 	}
-
+	// stmt.AST is updated at this point with FunctionColumn
 	return sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
-		sch, rowIter, _, err := runner.QueryWithBindings(ctx, query, nil, nil, nil)
+		sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), nil, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -139,48 +147,67 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 	})
 }
 
-// parseAndReplaceFunctionColumn parses and replaces function parameter expressions with given arguments.
-func parseAndReplaceFunctionColumn(ctx *sql.Context, q string, params map[string]string) (string, error) {
-	parsed, err := parser.ParseOne(q)
-	if err != nil {
-		return "", err
-	}
+// ParamTypAndValue contains the parameter type and
+// string value of argument if applicable
+type ParamTypAndValue struct {
+	Typ    *pgtypes.DoltgresType
+	StrVal string
+}
 
+// ReplaceFunctionColumn parses and replaces function parameter expressions with given arguments.
+// replaceFunctionColumnAndUpdateParamNames replaces UnresolvedName and Placeholder expressions with FunctionColumn expression.
+// It also replaces empty parameter name with binding variable name to match the name used in FunctionColumn.
+// This function should be used for FUNCTION with SQL language statements only.
+func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTypAndValue) error {
 	// Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING
-	switch s := parsed.AST.(type) {
+	switch s := parsedAST.(type) {
 	case *tree.Select:
 		sc := s.Select.(*tree.SelectClause)
 		for i, e := range sc.Exprs {
-			sc.Exprs[i].Expr = replaceToFunctionColumn(params, e.Expr)
+			sc.Exprs[i].Expr = ReplaceUnresolvedToFunctionColumn(params, e.Expr)
 		}
 		if sc.Where != nil {
-			sc.Where.Expr = replaceToFunctionColumn(params, sc.Where.Expr)
+			sc.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, sc.Where.Expr)
+		}
+		return nil
+	case *tree.Insert:
+		if s.Returning != nil {
+			return errors.Errorf("INSERT ... RETURNING statement is not supported in functions yet")
+		}
+	case *tree.Update:
+		if s.Returning != nil {
+			return errors.Errorf("UPDATE ... RETURNING statement is not supported in functions yet")
+		}
+	case *tree.Delete:
+		if s.Returning != nil {
+			return errors.Errorf("DELETE ... RETURNING statement is not supported in functions yet")
 		}
 	}
-
-	return parsed.AST.String(), nil
+	return errors.Errorf("Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING")
 }
 
-// replaceToFunctionColumn replaces Placeholder and UnresolvedName expressions with FunctionColumn containing
-// argument value if applicable when the name of expression matches function parameter.
-func replaceToFunctionColumn(paramMap map[string]string, expr tree.Expr) tree.Expr {
+// ReplaceUnresolvedToFunctionColumn replaces Placeholder and UnresolvedName expressions with FunctionColumn containing
+// parameter type and argument value if applicable when the name of expression matches function parameter.
+func ReplaceUnresolvedToFunctionColumn(paramMap map[string]*ParamTypAndValue, expr tree.Expr) tree.Expr {
 	e, _ := tree.SimpleVisit(expr, func(visitingExpr tree.Expr) (recurse bool, newExpr tree.Expr, err error) {
 		switch v := visitingExpr.(type) {
 		case *tree.Placeholder:
 			name := fmt.Sprintf("$%d", v.Idx+1)
-			if strval, ok := paramMap[name]; ok {
+			if tv, ok := paramMap[name]; ok {
 				return false, tree.FunctionColumn{
 					Name:   name,
+					Typ:    tv.Typ,
 					Idx:    uint16(v.Idx),
-					StrVal: strval,
+					StrVal: tv.StrVal,
 				}, nil
 			}
 		case *tree.UnresolvedName:
 			name := v.String()
-			if strval, ok := paramMap[name]; ok {
+			if tv, ok := paramMap[name]; ok {
 				return false, tree.FunctionColumn{
 					Name:   name,
-					StrVal: strval,
+					Typ:    tv.Typ,
+					StrVal: tv.StrVal,
 				}, nil
 			}
 		}
