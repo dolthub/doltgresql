@@ -17,6 +17,7 @@ package pgcatalog
 import (
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -199,7 +200,7 @@ func formatIndexName(idx sql.Index) string {
 
 // getIndexScanRange implements the interface RangeConverter.
 func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgClass, bool, *pgClass, bool) {
-	var gte, lte *pgClass
+	var gte, lt *pgClass
 	var hasLowerBound, hasUpperBound bool
 
 	switch index.(pgCatalogInMemIndex).name {
@@ -221,8 +222,8 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
 			if ub != nil {
 				upperRangeCutKey := ub.(id.Id)
-				lte = &pgClass{
-					oidNative: idToOid(upperRangeCutKey),
+				lt = &pgClass{
+					oidNative: idToOid(upperRangeCutKey) + 1,
 				}
 				hasUpperBound = true
 			}
@@ -233,11 +234,14 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		relNameRange := msrng[0]
 		schemaOidRange := msrng[1]
 		var relnameLower, relnameUpper string
-		var schemaOidLower, schemaOidUpper uint32
+		schemaOidLower := uint32(0)
+		schemaOidUpper := uint32(math.MaxUint32)
+		schemaOidUpperSet := false
 
 		if relNameRange.HasLowerBound() {
 			lb := sql.GetMySQLRangeCutKey(relNameRange.LowerBound)
 			if lb != nil {
+
 				relnameLower = lb.(string)
 				hasLowerBound = true
 			}
@@ -262,6 +266,7 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 			if ub != nil {
 				upperRangeCutKey := ub.(id.Id)
 				schemaOidUpper = idToOid(upperRangeCutKey)
+				schemaOidUpperSet = true
 			}
 		}
 
@@ -273,7 +278,13 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		}
 
 		if relNameRange.HasUpperBound() || schemaOidRange.HasUpperBound() {
-			lte = &pgClass{
+			// our less-than upper bound depends on whether we have a prefix match or both fields were set
+			if !schemaOidUpperSet {
+				relnameUpper = fmt.Sprintf("%s%o", relnameUpper, rune(0))
+			} else {
+				schemaOidUpper = schemaOidUpper + 1
+			}
+			lt = &pgClass{
 				name:            relnameUpper,
 				schemaOidNative: schemaOidUpper,
 			}
@@ -282,7 +293,7 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		panic("unknown index name: " + index.(pgCatalogInMemIndex).name)
 	}
 
-	return gte, hasLowerBound, lte, hasUpperBound
+	return gte, hasLowerBound, lt, hasUpperBound
 }
 
 // idToOid converts an id.Id to its native uint32 OID representation. The type conversion process during index
@@ -394,7 +405,7 @@ func lessOid(a, b *pgClass) bool {
 
 // lessName is a sort function for pgClass based on name, then schemaOid.
 func lessName(a, b *pgClass) bool {
-	if a.name == b.name && a.schemaOidNative != 0 && b.schemaOidNative != 0 {
+	if a.name == b.name {
 		return a.schemaOidNative < b.schemaOidNative
 	}
 	return a.name < b.name

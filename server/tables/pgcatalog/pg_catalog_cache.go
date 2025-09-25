@@ -48,9 +48,7 @@ type pgCatalogCache struct {
 	schemaOids  []id.Id
 
 	// pg_attribute
-	attributeCols      []*sql.Column
-	attributeTableOIDs []id.Id
-	attributeColIdxs   []int
+	pgAttributes *pgAttributeCache
 
 	// pg_index / pg_indexes
 	pgIndexes *pgIndexCache
@@ -107,6 +105,27 @@ type pgIndexCache struct {
 }
 
 var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}
+
+// pgAttributeCache holds cached data for the pg_attribute table, including two btree indexes for fast lookups
+type pgAttributeCache struct {
+	attributes         []*pgAttribute
+	attrelidIdx        *inMemIndexStorage[*pgAttribute]
+	attrelidAttnameIdx *inMemIndexStorage[*pgAttribute]
+}
+
+var _ BTreeStorageAccess[*pgAttribute] = &pgAttributeCache{}
+
+// getIndex implements BTreeStorageAccess.
+func (p pgAttributeCache) getIndex(name string) *inMemIndexStorage[*pgAttribute] {
+	switch name {
+	case "pg_attribute_relid_attnum_index":
+		return p.attrelidIdx
+	case "pg_attribute_relid_attnam_index":
+		return p.attrelidAttnameIdx
+	default:
+		panic("unknown pg_attribute index: " + name)
+	}
+}
 
 // getIndex implements BTreeStorageAccess.
 func (p pgIndexCache) getIndex(name string) *inMemIndexStorage[*pgIndex] {
