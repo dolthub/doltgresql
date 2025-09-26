@@ -48,6 +48,7 @@ const (
 	ruleId_ValidateColumnDefaults                                        // validateColumnDefaults
 	ruleId_ValidateCreateTable                                           // validateCreateTable
 	ruleId_ResolveAlterColumn                                            // resolveAlterColumn
+	ruleId_ValidateCreateFunction
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -62,6 +63,7 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
 		analyzer.Rule{Id: ruleId_AssignTriggers, Apply: AssignTriggers},
 		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
+		analyzer.Rule{Id: ruleId_ValidateCreateFunction, Apply: ValidateCreateFunction},
 	)
 
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
@@ -97,7 +99,8 @@ func Init() {
 		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_ReplaceNode, Apply: ReplaceNode},
-		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer})
+		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer},
+	)
 
 	initEngine()
 }
