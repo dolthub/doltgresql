@@ -37,26 +37,7 @@ var current_setting_text = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		s := val1.(string)
-		_, variable, err := ctx.GetUserVariable(ctx, s)
-		if err != nil {
-			return nil, err
-		}
-
-		if variable != nil {
-			return fmt.Sprintf("%v", variable), nil
-		}
-
-		variable, err = ctx.GetSessionVariable(ctx, s)
-		if err != nil {
-			return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
-		}
-
-		if variable != nil {
-			return fmt.Sprintf("%v", variable), nil
-		}
-
-		return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
+		return getCurSetting(ctx, val1.(string), false)
 	},
 }
 
@@ -67,35 +48,39 @@ var current_setting_text_bool = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Bool},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		s := val1.(string)
-		missingOk := val2.(bool)
-		_, variable, err := ctx.GetUserVariable(ctx, s)
-		if err != nil {
-			if missingOk {
-				return nil, nil
-			}
-			return nil, err
-		}
+		return getCurSetting(ctx, val1.(string), val2.(bool))
+	},
+}
 
-		if variable != nil {
-			return fmt.Sprintf("%v", variable), nil
+// getCurSetting returns value set for given user variable. It returns nil instead of an error
+// if it doesn't exist and missingOk is set to true.
+func getCurSetting(ctx *sql.Context, s string, missingOk bool) (any, error) {
+	_, variable, err := ctx.GetUserVariable(ctx, s)
+	if err != nil {
+		if missingOk {
+			return nil, nil
 		}
+		return nil, err
+	}
 
-		variable, err = ctx.GetSessionVariable(ctx, s)
-		if err != nil {
-			if missingOk {
-				return nil, nil
-			}
-			return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
-		}
+	if variable != nil {
+		return fmt.Sprintf("%v", variable), nil
+	}
 
-		if variable != nil {
-			return fmt.Sprintf("%v", variable), nil
-		}
-
+	variable, err = ctx.GetSessionVariable(ctx, s)
+	if err != nil {
 		if missingOk {
 			return nil, nil
 		}
 		return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
-	},
+	}
+
+	if variable != nil {
+		return fmt.Sprintf("%v", variable), nil
+	}
+
+	if missingOk {
+		return nil, nil
+	}
+	return nil, errors.Errorf(`unrecognized configuration parameter "%s"`, s)
 }

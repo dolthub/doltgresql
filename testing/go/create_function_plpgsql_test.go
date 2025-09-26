@@ -20,7 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-func TestCreateFunction(t *testing.T) {
+func TestCreateFunctionLanguagePlpgsql(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "ALIAS",

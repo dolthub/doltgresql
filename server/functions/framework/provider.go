@@ -91,6 +91,20 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 			}); err != nil {
 				return nil, false
 			}
+		} else if len(overload.SQLDefinition) > 0 {
+			if err = overloadTree.Add(SQLFunction{
+				ID:                 overload.ID,
+				ReturnType:         returnType,
+				ParameterNames:     overload.ParameterNames,
+				ParameterTypes:     paramTypes,
+				Variadic:           overload.Variadic,
+				IsNonDeterministic: overload.IsNonDeterministic,
+				Strict:             overload.Strict,
+				SqlStatement:       overload.SQLDefinition,
+				SetOf:              overload.SetOf,
+			}); err != nil {
+				return nil, false
+			}
 		} else {
 			if err = overloadTree.Add(InterpretedFunction{
 				ID:                 overload.ID,
