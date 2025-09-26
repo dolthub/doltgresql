@@ -56,31 +56,23 @@ func main() {
 	fromSuccess := uint32(0)
 	fromPartial := uint32(0)
 	fromFail := uint32(0)
-	fromFailedToParse := uint32(0)
-	fromUnsupported := uint32(0)
 	for _, tracker := range trackersFrom {
 		fromTotal += tracker.Success
 		fromTotal += tracker.Failed
 		fromSuccess += tracker.Success
 		fromPartial += tracker.PartialSuccess
 		fromFail += tracker.Failed
-		fromFailedToParse += tracker.FailedToParse
-		fromUnsupported += tracker.Unsupported
 	}
 	toTotal := uint32(0)
 	toSuccess := uint32(0)
 	toPartial := uint32(0)
 	toFail := uint32(0)
-	toFailedToParse := uint32(0)
-	toUnsupported := uint32(0)
 	for _, tracker := range trackersTo {
 		toTotal += tracker.Success
 		toTotal += tracker.Failed
 		toSuccess += tracker.Success
 		toPartial += tracker.PartialSuccess
 		toFail += tracker.Failed
-		toFailedToParse += tracker.FailedToParse
-		toUnsupported += tracker.Unsupported
 	}
 	sb := strings.Builder{}
 	sb.WriteString("|   | Main | PR |\n")
@@ -88,9 +80,6 @@ func main() {
 	sb.WriteString(fmt.Sprintf("| Total | %d | %d |\n", fromTotal, toTotal))
 	sb.WriteString(fmt.Sprintf("| Successful | %d | %d |\n", fromSuccess, toSuccess))
 	sb.WriteString(fmt.Sprintf("| Total Failures | %d | %d |\n", fromFail, toFail))
-	sb.WriteString(fmt.Sprintf("| Failed To Parse | %d | %d |\n", fromFailedToParse, toFailedToParse))
-	sb.WriteString(fmt.Sprintf("| Unsupported | %d | %d |\n", fromUnsupported, toUnsupported))
-	sb.WriteString(fmt.Sprintf("| Supported Failures | %d | %d |\n", fromFail-fromFailedToParse-fromUnsupported, toFail-toFailedToParse-toUnsupported))
 	sb.WriteString(fmt.Sprintf("| Partial Successes[^1] | %d | %d |\n", fromPartial, toPartial))
 	sb.WriteString("\n|   | Main | PR |\n")
 	sb.WriteString("| --- | --- | --- |\n")
@@ -100,9 +89,6 @@ func main() {
 	sb.WriteString(fmt.Sprintf("| Failures | %.4f%% | %.4f%% |\n",
 		(float64(fromFail)/float64(fromTotal))*100.0,
 		(float64(toFail)/float64(toTotal))*100.0))
-	sb.WriteString(fmt.Sprintf("| Supported Failures | %.4f%% | %.4f%% |\n",
-		(float64(fromFail-fromFailedToParse-fromUnsupported)/float64(fromTotal))*100.0,
-		(float64(toFail-toFailedToParse-toUnsupported)/float64(toTotal))*100.0))
 	totalRegressions := 0
 	totalProgressions := 0
 	if len(trackersFrom) == len(trackersTo) {
