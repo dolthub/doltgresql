@@ -161,7 +161,7 @@ func nodeAlterTableCmds(
 		case *tree.AlterTableComputed:
 			return nil, nil, errors.New("This command does not currently support multiple actions in one statement")
 		default:
-			return nil, nil, errors.Errorf("ALTER TABLE with unsupported command type %T", cmd)
+			return nil, nil, errors.Errorf("ALTER TABLE with command type %T is not yet supported", cmd)
 		}
 	}
 

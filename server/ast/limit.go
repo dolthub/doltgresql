@@ -94,7 +94,7 @@ func int64ValueForLimit(l any) (int64, error) {
 	case float32:
 		limitValue = int64(l)
 	default:
-		return 0, errors.Errorf("unsupported limit/offset value type %T", l)
+		return 0, errors.Errorf("limit/offset value type %T is not yet supported", l)
 	}
 	return limitValue, nil
 }

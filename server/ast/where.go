@@ -38,7 +38,7 @@ func nodeWhere(ctx *Context, node *tree.Where) (*vitess.Where, error) {
 	case tree.AstHaving:
 		whereType = vitess.HavingStr
 	default:
-		return nil, errors.Errorf("WHERE-type statement not yet supported: `%s`", node.Type)
+		return nil, errors.Errorf("WHERE statement with type '%s' is not yet supported", node.Type)
 	}
 	return &vitess.Where{
 		Type: whereType,

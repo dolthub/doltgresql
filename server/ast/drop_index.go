@@ -49,7 +49,7 @@ func nodeDropIndex(ctx *Context, node *tree.DropIndex) (*vitess.AlterTable, erro
 			return nil, err
 		}
 		if !tableName.Name.IsEmpty() && tableName.String() != newTableName.String() {
-			return nil, errors.Errorf("only dropping indexes from the same table is currently supported")
+			return nil, errors.Errorf("dropping indexes from different tables is not yet supported")
 		}
 		tableName = newTableName
 		ddls[i] = &vitess.DDL{

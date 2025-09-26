@@ -28,7 +28,7 @@ func TestAlterStatements(t *testing.T) {
 					ExpectedNotices: []ExpectedNotice{
 						{
 							Severity: "WARNING",
-							Message:  "owners are unsupported",
+							Message:  "owners are not yet supported",
 						},
 					},
 				},
@@ -45,7 +45,7 @@ func TestAlterStatements(t *testing.T) {
 					ExpectedNotices: []ExpectedNotice{
 						{
 							Severity: "WARNING",
-							Message:  "owners are unsupported",
+							Message:  "owners are not yet supported",
 						},
 					},
 				},
@@ -62,7 +62,7 @@ func TestAlterStatements(t *testing.T) {
 					ExpectedNotices: []ExpectedNotice{
 						{
 							Severity: "WARNING",
-							Message:  "owners are unsupported",
+							Message:  "owners are not yet supported",
 						},
 					},
 				},
@@ -79,7 +79,7 @@ func TestAlterStatements(t *testing.T) {
 					ExpectedNotices: []ExpectedNotice{
 						{
 							Severity: "WARNING",
-							Message:  "owners are unsupported",
+							Message:  "owners are not yet supported",
 						},
 					},
 				},
@@ -96,7 +96,7 @@ func TestAlterStatements(t *testing.T) {
 					ExpectedNotices: []ExpectedNotice{
 						{
 							Severity: "WARNING",
-							Message:  "owners are unsupported",
+							Message:  "owners are not yet supported",
 						},
 					},
 				},
@@ -113,7 +113,7 @@ func TestAlterStatements(t *testing.T) {
 					ExpectedNotices: []ExpectedNotice{
 						{
 							Severity: "WARNING",
-							Message:  "owners are unsupported",
+							Message:  "owners are not yet supported",
 						},
 					},
 				},

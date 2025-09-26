@@ -33,7 +33,7 @@ func nodeCheckConstraintTableDef(
 	ifExists bool) (*vitess.DDL, error) {
 
 	if node.NoInherit {
-		return nil, errors.Errorf("NO INHERIT is not yet supported for check constraints")
+		return nil, errors.Errorf("NO INHERIT for check constraints is not yet supported")
 	}
 
 	expr, err := nodeExpr(ctx, node.Expr)
@@ -71,7 +71,7 @@ func nodeAlterTableDropConstraint(
 	ifExists bool) (*vitess.DDL, error) {
 
 	if node.DropBehavior == tree.DropCascade {
-		return nil, errors.Errorf("CASCADE is not yet supported for drop constraint")
+		return nil, errors.Errorf("CASCADE for drop constraint is not yet supported")
 	}
 
 	return &vitess.DDL{
@@ -99,7 +99,7 @@ func nodeUniqueConstraintTableDef(
 	ifExists bool) (*vitess.DDL, error) {
 
 	if len(node.IndexParams.StorageParams) > 0 {
-		return nil, errors.Errorf("STORAGE parameters not yet supported for indexes")
+		return nil, errors.Errorf("STORAGE parameters for indexes are not yet supported")
 	}
 
 	if node.IndexParams.Tablespace != "" {

@@ -38,16 +38,16 @@ func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (_ vitess.Stateme
 		return NotYetSupportedError("CREATE CONSTRAINT TRIGGER is not yet supported")
 	}
 	if !node.RefTable.IsEmpty() {
-		return NotYetSupportedError("FROM is not yet supported for CREATE TRIGGER")
+		return NotYetSupportedError("FROM for CREATE TRIGGER is not yet supported")
 	}
 	if node.Deferrable != tree.TriggerNotDeferrable {
-		return NotYetSupportedError("DEFERRABLE is not yet supported for CREATE TRIGGER")
+		return NotYetSupportedError("DEFERRABLE for CREATE TRIGGER is not yet supported")
 	}
 	if len(node.Relations) > 0 {
-		return NotYetSupportedError("REFERENCING is not yet supported for CREATE TRIGGER")
+		return NotYetSupportedError("REFERENCING for CREATE TRIGGER is not yet supported")
 	}
 	if !node.ForEachRow {
-		return NotYetSupportedError("FOR EACH STATEMENT is not yet supported for CREATE TRIGGER")
+		return NotYetSupportedError("FOR EACH STATEMENT for CREATE TRIGGER is not yet supported")
 	}
 	funcName := node.FuncName.ToTableName()
 	var timing triggers.TriggerTiming
@@ -57,7 +57,7 @@ func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (_ vitess.Stateme
 	case tree.TriggerTimeAfter:
 		timing = triggers.TriggerTiming_After
 	case tree.TriggerTimeInsteadOf:
-		return NotYetSupportedError("INSTEAD OF is not yet supported for CREATE TRIGGER")
+		return NotYetSupportedError("INSTEAD OF for CREATE TRIGGER is not yet supported")
 	}
 	var events []triggers.TriggerEvent
 	for _, event := range node.Events {
@@ -68,7 +68,7 @@ func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (_ vitess.Stateme
 			})
 		case tree.TriggerEventUpdate:
 			if len(event.Cols) > 0 {
-				return NotYetSupportedError("UPDATE specific columns are not yet supported for CREATE TRIGGER")
+				return NotYetSupportedError("UPDATE specific columns for CREATE TRIGGER are not yet supported")
 			}
 			events = append(events, triggers.TriggerEvent{
 				Type:        triggers.TriggerEventType_Update,
@@ -79,9 +79,9 @@ func nodeCreateTrigger(ctx *Context, node *tree.CreateTrigger) (_ vitess.Stateme
 				Type: triggers.TriggerEventType_Delete,
 			})
 		case tree.TriggerEventTruncate:
-			return NotYetSupportedError("TRUNCATE is not yet supported for CREATE TRIGGER")
+			return NotYetSupportedError("TRUNCATE for CREATE TRIGGER is not yet supported")
 		default:
-			return NotYetSupportedError("UNKNOWN EVENT TYPE is not yet supported for CREATE TRIGGER")
+			return NotYetSupportedError("UNKNOWN EVENT TYPE for CREATE TRIGGER is not yet supported")
 		}
 	}
 	// WHEN expressions seem to behave identically to interpreted functions, so we'll parse them as interpreted functions.

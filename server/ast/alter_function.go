@@ -29,7 +29,7 @@ func nodeAlterFunction(ctx *Context, node *tree.AlterFunction) (vitess.Statement
 
 	// We can handle the common ALTER FUNCTION .. TO OWNER case since it's a no-op
 	if node.Owner != "" {
-		return NewNoOp([]string{"owners are unsupported"}), nil
+		return NewNoOp([]string{"owners are not yet supported"}), nil
 	}
 
 	return NotYetSupportedError("ALTER FUNCTION statement is not yet supported")

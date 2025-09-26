@@ -29,6 +29,8 @@ type ReplayTracker struct {
 	File             string
 	Success          uint32
 	PartialSuccess   uint32
+	FailedToParse    uint32
+	Unsupported      uint32
 	Failed           uint32
 	SuccessItems     []ReplayTrackerItem
 	FailPartialItems []ReplayTrackerItem
@@ -76,6 +78,8 @@ func SerializeTrackers(trackers ...*ReplayTracker) []byte {
 		writer.String(tracker.File)
 		writer.Uint32(tracker.Success)
 		writer.Uint32(tracker.PartialSuccess)
+		writer.Uint32(tracker.FailedToParse)
+		writer.Uint32(tracker.Unsupported)
 		writer.Uint32(tracker.Failed)
 		writer.Uint32(uint32(len(tracker.SuccessItems)))
 		for _, item := range tracker.SuccessItems {
@@ -105,6 +109,8 @@ func DeserializeTrackers(data []byte) ([]*ReplayTracker, error) {
 		trackers[trackerIdx].File = reader.String()
 		trackers[trackerIdx].Success = reader.Uint32()
 		trackers[trackerIdx].PartialSuccess = reader.Uint32()
+		trackers[trackerIdx].FailedToParse = reader.Uint32()
+		trackers[trackerIdx].Unsupported = reader.Uint32()
 		trackers[trackerIdx].Failed = reader.Uint32()
 		trackers[trackerIdx].SuccessItems = make([]ReplayTrackerItem, reader.Uint32())
 		for itemIdx := 0; itemIdx < len(trackers[trackerIdx].SuccessItems); itemIdx++ {

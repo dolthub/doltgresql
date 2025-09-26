@@ -36,7 +36,7 @@ func nodeAnalyze(ctx *Context, node *tree.Analyze) (vitess.Statement, error) {
 
 	objectName, ok := node.Table.(*tree.UnresolvedObjectName)
 	if !ok {
-		return nil, errors.Errorf("unsupported table type in Analyze node: %T", node.Table)
+		return nil, errors.Errorf("table type in Analyze node: %T is not yet supported", node.Table)
 	}
 
 	return &vitess.Analyze{Tables: []vitess.TableName{

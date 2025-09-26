@@ -22,5 +22,5 @@ import (
 
 // nodeVacuum handles *tree.Vacuum nodes, returning a NoOp statement that issues an unimplemented warning
 func nodeVacuum(_ *Context, _ *tree.Vacuum) (vitess.Statement, error) {
-	return NewNoOp([]string{"VACUUM is not supported"}), nil
+	return NewNoOp([]string{"VACUUM is not yet supported"}), nil
 }
