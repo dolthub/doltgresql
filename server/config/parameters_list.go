@@ -3718,6 +3718,17 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		ResetVal:  int8(0),
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
+	"transaction_timeout": &Parameter{
+		Name:      "transaction_timeout",
+		Default:   int64(0), // Unit: "ms"
+		Category:  "Client Connection Defaults / Statement Behavior",
+		ShortDesc: "Sets the maximum allowed duration of any transaction within a session (not a prepared transaction).",
+		Context:   ParameterContextUser,
+		Type:      types.NewSystemIntType("transaction_timeout", 0, math.MaxInt32, false),
+		Source:    ParameterSourceDefault,
+		ResetVal:  int64(0),
+		Scope:     GetPgsqlScope(PsqlScopeSession),
+	},
 	"transform_null_equals": &Parameter{
 		Name:      "transform_null_equals",
 		Default:   int8(0),
