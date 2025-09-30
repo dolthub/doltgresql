@@ -1,18 +1,17 @@
 module github.com/dolthub/doltgresql
 
-go 1.24.6
+go 1.25
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20250915123819-b0f06a49e04c
-	github.com/dolthub/eventsapi_schema v0.0.0-20250725194025-a087efa1ee55
+	github.com/dolthub/dolt/go v0.40.5-0.20250923175150-9d9f7d8c96ce
+	github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-icu-regex v0.0.0-20250820171420-f2b78f56ce9f
-	github.com/dolthub/go-mysql-server v0.20.1-0.20250912224150-1b9f80d3de10
+	github.com/dolthub/go-mysql-server v0.20.1-0.20250924230334-0afe2a95c29f
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20250902225707-0159e964d73d
+	github.com/dolthub/vitess v0.0.0-20250924141028-c81f2df5db32
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
@@ -97,8 +96,9 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 // indirect
-	github.com/dolthub/dolt-mcp v0.2.1-0.20250827202412-9d0f6e658fba // indirect
+	github.com/dolthub/dolt-mcp v0.2.2-0.20250917171427-13e4520d1c36 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
+	github.com/dolthub/go-icu-regex v0.0.0-20250916051405-78a38d478790 // indirect
 	github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 // indirect
 	github.com/dolthub/ishell v0.0.0-20240701202509-2b217167d718 // indirect
 	github.com/dolthub/jsonpath v0.0.2-0.20240227200619-19675ab05c71 // indirect
@@ -164,7 +164,6 @@ require (
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
 	github.com/tealeg/xlsx v1.0.5 // indirect
-	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect

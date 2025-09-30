@@ -73,7 +73,7 @@ var timestamptz_out = framework.Function1{
 		t := val.(time.Time).In(serverLoc)
 
 		// Format timestamp with BC support and timezone
-		return FormatDateTimeWithBC(t, "2006-01-02 15:04:05.999999", true), nil
+		return FormatDateTimeWithBC(t, getLayoutStringFormat(ctx, false), true), nil
 	},
 }
 

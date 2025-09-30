@@ -35,12 +35,10 @@ RUN apt update -y && \
     libc6 \
     libgcc1 \
     r-base \
-    postgresql-16 \
-    postgresql-contrib-16 \
     libpq-dev \
     nodejs \
     lsof \
-    postgresql-server-dev-all && \
+    postgresql-server-dev-15 && \
     update-ca-certificates -f
 
 # install go
@@ -78,9 +76,6 @@ COPY ./testing/postgres-client-tests/ruby/Gemfile /postgres-client-tests/ruby/
 COPY ./testing/postgres-client-tests/ruby/Gemfile.lock /postgres-client-tests/ruby/
 WORKDIR /postgres-client-tests/ruby
 RUN gem install bundler -v 2.1.4 && bundle install
-
-# install postgres and psql
-RUN service postgresql start
 
 # install doltgres from source
 WORKDIR /root/building

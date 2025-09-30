@@ -584,6 +584,10 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		return vitess.InjectedExpr{
 			Expression: &pgnodes.DomainColumn{Typ: dataType},
 		}, nil
+	case tree.FunctionColumn:
+		return vitess.InjectedExpr{
+			Expression: &pgnodes.FunctionColumn{Name: node.Name, Typ: node.Typ, Idx: node.Idx},
+		}, nil
 	case *tree.FuncExpr:
 		return nodeFuncExpr(ctx, node)
 	case *tree.IfErrExpr:

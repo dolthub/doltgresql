@@ -44,7 +44,7 @@ func timestampAssignment() {
 		FromType: pgtypes.Timestamp,
 		ToType:   pgtypes.Time,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return timeofday.FromTime(val.(time.Time)), nil
+			return timeofday.FromTime(val.(time.Time)).ToTime(), nil
 		},
 	})
 }

@@ -23,7 +23,7 @@ import (
 func TestParameters(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "parameters",
+			Name: "default_with_oids",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT default_with_oids;",
@@ -32,6 +32,78 @@ func TestParameters(t *testing.T) {
 				{
 					Query:    "SET default_with_oids = false;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "DateStyle",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SHOW DateStyle;",
+					Expected: []sql.Row{{"ISO, MDY"}},
+				},
+				{
+					Query:    "SELECT timestamp '2001/02/04 04:05:06.789';",
+					Expected: []sql.Row{{"2001-02-04 04:05:06.789"}},
+				},
+				{
+					Query:    "SET datestyle = 'german';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SHOW DateStyle;",
+					Expected: []sql.Row{{"German, DMY"}},
+				},
+				{
+					Skip:     true, // TODO: the test passes but pgx cannot parse the result
+					Query:    "SELECT timestamp '2001/02/04 04:05:06.789';",
+					Expected: []sql.Row{{"04.02.2001 04:05:06.789"}},
+				},
+				{
+					Query:    "SET datestyle = 'YMD';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SHOW DateStyle;",
+					Expected: []sql.Row{{"German, YMD"}},
+				},
+				{
+					Query:    "SET datestyle = 'sQl';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SHOW DateStyle;",
+					Expected: []sql.Row{{"SQL, YMD"}},
+				},
+				{
+					Skip:     true, // TODO: the test passes but pgx cannot parse the result
+					Query:    "SELECT timestamp '2001/02/04 04:05:06.789';",
+					Expected: []sql.Row{{"02/04/2001 04:05:06.789"}},
+				},
+				{
+					Query:    "SET datestyle = 'postgreS';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SHOW DateStyle;",
+					Expected: []sql.Row{{"Postgres, YMD"}},
+				},
+				{
+					Skip:     true, // TODO: the test passes but pgx cannot parse the result
+					Query:    "SELECT timestamp '2001/02/04 04:05:06.789';",
+					Expected: []sql.Row{{"Sun Feb 04 04:05:06.789 2001"}},
+				},
+				{
+					Query:    "RESET datestyle;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SHOW DateStyle;",
+					Expected: []sql.Row{{"ISO, MDY"}},
+				},
+				{
+					Query:       "SET datestyle = 'unknown';",
+					ExpectedErr: `invalid value for parameter "DateStyle": "unknown"`,
 				},
 			},
 		},
