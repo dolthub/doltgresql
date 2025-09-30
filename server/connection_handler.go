@@ -224,7 +224,7 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 		if err = h.sendClientStartupMessages(); err != nil {
 			return false, err
 		}
-		if err = h.chooseInitialDatabase(sm); err != nil {
+		if err = h.chooseInitialParameters(sm); err != nil {
 			return false, err
 		}
 		return true, h.send(&pgproto3.ReadyForQuery{
@@ -281,9 +281,20 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 	})
 }
 
-// chooseInitialDatabase attempts to choose the initial database for the connection,
-// if one is specified in the startup message provided
-func (h *ConnectionHandler) chooseInitialDatabase(startupMessage *pgproto3.StartupMessage) error {
+// chooseInitialParameters attempts to choose the initial parameter settings for the connection,
+// if one is specified in the startup message provided.
+func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.StartupMessage) error {
+	for name, value := range startupMessage.Parameters {
+		// TODO: handle other parameters defined in StartupMessage
+		switch strings.ToLower(name) {
+		case "datestyle":
+			err := h.doltgresHandler.InitSessionParameterDefault(context.Background(), h.mysqlConn, "DateStyle", value)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	// set initial database
 	db, ok := startupMessage.Parameters["database"]
 	dbSpecified := ok && len(db) > 0
 	if !dbSpecified {

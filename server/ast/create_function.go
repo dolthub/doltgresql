@@ -15,13 +15,16 @@
 package ast
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -66,8 +69,10 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			strict = true
 		}
 	}
-	// We only support PL/pgSQL and C for now, so we verify that here
+	// We only support PL/pgSQL, SQL and C for now, so we verify that here
 	var parsedBody []plpgsql.InterpreterOperation
+	var sqlDef string
+	var sqlDefParsed vitess.Statement
 	var extensionName, extensionSymbol string
 	if languageOption, ok := options[tree.OptionLanguage]; ok {
 		switch strings.ToLower(languageOption.Language) {
@@ -75,6 +80,15 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
 			// This parser also requires the full `CREATE FUNCTION` string, so we'll pass that.
 			parsedBody, err = plpgsql.Parse(ctx.originalQuery)
+			if err != nil {
+				return nil, err
+			}
+		case "sql":
+			as, ok := options[tree.OptionAs1]
+			if !ok {
+				return nil, errors.Errorf("CREATE FUNCTION definition needed for LANGUAGE SQL")
+			}
+			sqlDef, sqlDefParsed, err = handleLanguageSQL(as.Definition, paramNames, paramTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -86,7 +100,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			extensionName = symbolOption.ObjFile
 			extensionSymbol = symbolOption.LinkSymbol
 		default:
-			return nil, errors.Errorf("CREATE FUNCTION only supports PL/pgSQL for now")
+			return nil, errors.Errorf("CREATE FUNCTION only supports PL/pgSQL, C and SQL for now; others are not yet supported")
 		}
 	} else {
 		return nil, errors.Errorf("CREATE FUNCTION does not define an input language")
@@ -105,7 +119,44 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			extensionName,
 			extensionSymbol,
 			parsedBody,
+			sqlDef,
+			sqlDefParsed,
+			node.SetOf,
 		),
-		Children: nil,
 	}, nil
+}
+
+func handleLanguageSQL(definition string, paramNames []string, paramTypes []*pgtypes.DoltgresType) (string, vitess.Statement, error) {
+	stmt, err := parser.ParseOne(definition)
+	if err != nil {
+		return "", nil, err
+	}
+	sqlDef := stmt.AST.String()
+
+	paramMap := make(map[string]*framework.ParamTypAndValue, len(paramNames))
+	if len(paramNames) != len(paramTypes) {
+		return "", nil, errors.Errorf("expected %d parameters but got %d", len(paramNames), len(paramTypes))
+	}
+	for i, paramName := range paramNames {
+		tv := &framework.ParamTypAndValue{
+			Typ:    paramTypes[i],
+			StrVal: "", // must be empty string
+		}
+		// placeholder name is empty
+		if paramName == "\"\"" {
+			n := fmt.Sprintf("$%d", i+1)
+			paramMap[n] = tv
+			paramNames[i] = n
+		} else {
+			paramMap[paramName] = tv
+		}
+	}
+
+	err = framework.ReplaceFunctionColumn(stmt.AST, paramMap)
+	if err != nil {
+		return "", nil, err
+	}
+	// stmt.AST is updated at this point with FunctionColumn
+	vitessAST, err := Convert(stmt)
+	return sqlDef, vitessAST, err
 }

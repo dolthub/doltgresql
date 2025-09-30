@@ -21,7 +21,6 @@ import (
 
 	"github.com/dolthub/doltgresql/server"
 
-	regex "github.com/dolthub/go-icu-regex"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,7 +29,6 @@ func TestRegressionTests(t *testing.T) {
 	if _, ok := os.LookupEnv("REGRESSION_TESTING"); !ok {
 		// t.Skip()
 	}
-	regex.ShouldPanic = false           // Something that is occurring in a test is causing this to panic, so we disable for now
 	server.EnableAuthentication = false // We have to disable authentication, since we can't replay the messages due to nonces
 	controller, port, err := CreateDoltgresServer()
 	require.NoError(t, err)

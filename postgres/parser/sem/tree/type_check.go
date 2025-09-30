@@ -1680,6 +1680,11 @@ func (d DomainColumn) TypeCheck(ctx context.Context, semaCtx *SemaContext, desir
 	return d, nil
 }
 
+// TypeCheck implements the Expr interface.
+func (f FunctionColumn) TypeCheck(ctx context.Context, semaCtx *SemaContext, desired *types.T) (TypedExpr, error) {
+	return f, nil
+}
+
 // typeCheckAndRequireTupleElems asserts that all elements in the Tuple are
 // comparable to the input Expr given the input comparison operator.
 func typeCheckAndRequireTupleElems(
