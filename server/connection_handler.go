@@ -41,7 +41,6 @@ import (
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/mitchellh/go-ps"
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/dataloader"
@@ -79,19 +78,19 @@ func init() {
 	if _, ok := os.LookupEnv(disablePanicHandlingEnvVar); ok {
 		HandlePanics = false
 	} else {
-		// This checks if the Go debugger is attached, so that we can disable panic catching automatically
-		pid := os.Getppid()
-		for pid != 0 {
-			p, err := ps.FindProcess(pid)
-			if err != nil || p == nil {
-				break
-			} else if strings.HasPrefix(p.Executable(), "dlv") {
-				HandlePanics = false
-				break
-			} else {
-				pid = p.PPid()
-			}
-		}
+		// // This checks if the Go debugger is attached, so that we can disable panic catching automatically
+		// pid := os.Getppid()
+		// for pid != 0 {
+		// 	p, err := ps.FindProcess(pid)
+		// 	if err != nil || p == nil {
+		// 		break
+		// 	} else if strings.HasPrefix(p.Executable(), "dlv") {
+		// 		HandlePanics = false
+		// 		break
+		// 	} else {
+		// 		pid = p.PPid()
+		// 	}
+		// }
 	}
 }
 

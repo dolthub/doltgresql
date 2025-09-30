@@ -28,7 +28,7 @@ import (
 func TestRegressionTests(t *testing.T) {
 	// We'll only run this on GitHub Actions, so set this environment variable to run locally
 	if _, ok := os.LookupEnv("REGRESSION_TESTING"); !ok {
-		t.Skip()
+		// t.Skip()
 	}
 	regex.ShouldPanic = false           // Something that is occurring in a test is causing this to panic, so we disable for now
 	server.EnableAuthentication = false // We have to disable authentication, since we can't replay the messages due to nonces
@@ -48,7 +48,7 @@ func TestRegressionTests(t *testing.T) {
 			File:         fileName,
 			Port:         port,
 			Messages:     messages,
-			PrintQueries: false,
+			PrintQueries: true,
 			FailPSQL:     true,
 			FailQueries:  queriesToSkip,
 		})
