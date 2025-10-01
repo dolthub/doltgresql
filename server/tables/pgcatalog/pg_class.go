@@ -444,7 +444,7 @@ func pgClassToRow(class *pgClass) sql.Row {
 		relam = id.NewAccessMethod("heap").AsId()
 	}
 
-	fmt.Printf("returning class object %+v\n", *class)
+	//fmt.Printf("returning class object %+v\n", *class)
 	
 	// TODO: Fill in the rest of the pg_class columns
 	return sql.Row{

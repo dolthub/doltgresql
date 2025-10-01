@@ -4461,6 +4461,22 @@ order by 1,2`,
 				},
 			},
 		},
+		{
+			Name: "regression test repro",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE SCHEMA regress_create_schema_role`,
+				`CREATE SCHEMA AUTHORIZATION regress_create_schema_role`,
+				`create table idxpart (a int, b int, c text) partition by range (a);`,
+				`create index idxpart_idx on idxpart (a);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: 				`select count(*) from pg_class where relname = 'idxpart_idx';`,
+					Expected: 		[]sql.Row{{2}},
+				},
+			},
+		},
 	})
 }
 
