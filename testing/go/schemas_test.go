@@ -350,6 +350,24 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Create schema authorized role",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "create schema AUTHORIZATION myUser",
+			},
+			{
+				Query: "CREATE TABLE myUser.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+			},
+			{
+				Query: "insert into myUser.test values (1,1), (2,2)",
+			},
+			{
+				Query: "CREATE SCHEMA myuser",
+				ExpectedErr: "schema exists",
+			},
+		},
+	},
+	{
 		Name: "create schema invalid names",
 		Assertions: []ScriptTestAssertion{
 			{
