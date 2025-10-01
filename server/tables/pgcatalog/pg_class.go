@@ -91,10 +91,6 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			tableHasIndexes[id.Cache().ToOID(table.OID.AsId())] = struct{}{}
 			schemaOid := schema.OID
-			if !schemaOid.IsValid() {
-				// TODO: the schema element is empty, not sure why yet
-				fmt.Println("invalid schema OID for index", index.Item)
-			}
 			class := &pgClass{
 				oid:             index.OID.AsId(),
 				oidNative:       id.Cache().ToOID(index.OID.AsId()),
@@ -444,8 +440,6 @@ func pgClassToRow(class *pgClass) sql.Row {
 		relam = id.NewAccessMethod("heap").AsId()
 	}
 
-	//fmt.Printf("returning class object %+v\n", *class)
-	
 	// TODO: Fill in the rest of the pg_class columns
 	return sql.Row{
 		class.oid,        // oid

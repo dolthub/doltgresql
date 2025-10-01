@@ -27,7 +27,7 @@ import (
 func TestRegressionTests(t *testing.T) {
 	// We'll only run this on GitHub Actions, so set this environment variable to run locally
 	if _, ok := os.LookupEnv("REGRESSION_TESTING"); !ok {
-		// t.Skip()
+		t.Skip()
 	}
 	server.EnableAuthentication = false // We have to disable authentication, since we can't replay the messages due to nonces
 	controller, port, err := CreateDoltgresServer()
@@ -46,7 +46,7 @@ func TestRegressionTests(t *testing.T) {
 			File:         fileName,
 			Port:         port,
 			Messages:     messages,
-			PrintQueries: true,
+			PrintQueries: false,
 			FailPSQL:     true,
 			FailQueries:  queriesToSkip,
 		})
