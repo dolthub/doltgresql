@@ -350,6 +350,20 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "create schema invalid names",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `create schema ""`,
+				ExpectedErr: "cannot be empty",
+			},
+			{
+				Query: "create schema dolt_123",
+				Skip: true, // TODO: reserve the dolt_ namespace
+				ExpectedErr: "invalid schema name",
+			},
+		},
+	},
+	{
 		Name: "schema already exists",
 		Assertions: []ScriptTestAssertion{
 			{

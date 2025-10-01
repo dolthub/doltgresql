@@ -69,10 +69,9 @@ func (root *RootValue) CreateDatabaseSchema(ctx context.Context, dbSchema schema
 		return nil, err
 	}
 
-	for _, s := range existingSchemas {
-		if strings.EqualFold(s.Name, dbSchema.Name) {
-			return nil, errors.Errorf("A schema with the name %s already exists", dbSchema.Name)
-		}
+	err = validateSchemaForCreate(existingSchemas, dbSchema)
+	if err != nil {
+		return nil, err
 	}
 
 	existingSchemas = append(existingSchemas, dbSchema)
@@ -86,6 +85,20 @@ func (root *RootValue) CreateDatabaseSchema(ctx context.Context, dbSchema schema
 	}
 
 	return root.withStorage(r), nil
+}
+
+// validateSchemaForCreate returns an error if a schema with the name given cannot be created
+func validateSchemaForCreate(existingSchemas []schema.DatabaseSchema, dbSchema schema.DatabaseSchema) error {
+	if dbSchema.Name == "" {
+		return errors.New("Schema name cannot be empty")
+	}
+	
+	for _, s := range existingSchemas {
+		if strings.EqualFold(s.Name, dbSchema.Name) {
+			return errors.Errorf("A schema with the name %s already exists", dbSchema.Name)
+		}
+	}
+	return nil
 }
 
 func (root *RootValue) TableListHash() uint64 {
