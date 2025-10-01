@@ -4462,11 +4462,10 @@ order by 1,2`,
 			},
 		},
 		{
-			Name: "regression test repro",
+			Name: "regression test for in-memory index corruption",
 			Focus: true,
 			SetUpScript: []string{
-				`CREATE SCHEMA regress_create_schema_role`,
-				`CREATE SCHEMA AUTHORIZATION regress_create_schema_role`,
+				`CREATE SCHEMA AUTHORIZATION s1`,
 				`create table idxpart (a int, b int, c text) partition by range (a);`,
 				`create index idxpart_idx on idxpart (a);`,
 			},
