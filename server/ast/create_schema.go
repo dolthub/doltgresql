@@ -33,7 +33,7 @@ func nodeCreateSchema(ctx *Context, node *tree.CreateSchema) (vitess.Statement, 
 	if schemaName == "" {
 		schemaName = node.AuthRole
 	}
-	
+
 	return &vitess.DBDDL{
 		Action:           "CREATE",
 		SchemaOrDatabase: "schema",

@@ -4470,8 +4470,8 @@ order by 1,2`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: 				`select count(*) from pg_class where relname = 'idxpart_idx';`,
-					Expected: 		[]sql.Row{{1}},
+					Query:    `select count(*) from pg_class where relname = 'idxpart_idx';`,
+					Expected: []sql.Row{{1}},
 				},
 			},
 		},

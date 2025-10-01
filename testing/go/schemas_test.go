@@ -362,7 +362,7 @@ var SchemaTests = []ScriptTest{
 				Query: "insert into myUser.test values (1,1), (2,2)",
 			},
 			{
-				Query: "CREATE SCHEMA myuser",
+				Query:       "CREATE SCHEMA myuser",
 				ExpectedErr: "schema exists",
 			},
 		},
@@ -371,12 +371,12 @@ var SchemaTests = []ScriptTest{
 		Name: "create schema invalid names",
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: `create schema ""`,
+				Query:       `create schema ""`,
 				ExpectedErr: "cannot be empty",
 			},
 			{
-				Query: "create schema dolt_123",
-				Skip: true, // TODO: reserve the dolt_ namespace
+				Query:       "create schema dolt_123",
+				Skip:        true, // TODO: reserve the dolt_ namespace
 				ExpectedErr: "invalid schema name",
 			},
 		},
