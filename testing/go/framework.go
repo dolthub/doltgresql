@@ -177,7 +177,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	// Run the setup
 	for _, query := range script.SetUpScript {
 		_, err := conn.Exec(ctx, query)
-		require.NoError(t, err)
+		require.NoError(t, err, "error running setup query: %s", query)
 	}
 
 	// Run the assertions

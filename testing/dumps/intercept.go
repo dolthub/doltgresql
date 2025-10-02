@@ -34,11 +34,30 @@ type ImportQueryError struct {
 	Error string
 }
 
+// InterceptArgs are the arguments that are passed to InterceptImportMessages.
+type InterceptArgs struct {
+	DoltgresPort      int
+	SkippedQueries    []string
+	BreakpointQueries []string
+	TriggerBreakpoint func(string)
+}
+
+// passthroughArguments are the arguments that are passed to createPassthrough.
+type passthroughArguments struct {
+	qeChan               chan ImportQueryError
+	terminate            *sync.WaitGroup
+	psqlConnBackend      *pgproto3.Backend
+	doltgresConnFrontend *pgproto3.Frontend
+	triggerBreakpoint    func(string)
+	skippedQueries       []string
+	breakpointQueries    []string
+}
+
 // InterceptImportMessages sits between PSQL and Doltgres, returning all error messages that are encountered. As we rely
 // on PSQL to handle the import process, we normally wouldn't be able to associate error messages with queries, as this
 // information is not returned by PSQL itself. Therefore, we create our own connection to Doltgres, and a server that
 // PSQL listens to. We then forward everything from PSQL to Doltgres, while inspecting the messages as they come and go.
-func InterceptImportMessages(t *testing.T, doltgresPort int, breakpointQueries []string, triggerBreakpoint func(string)) (int, chan ImportQueryError) {
+func InterceptImportMessages(t *testing.T, args InterceptArgs) (int, chan ImportQueryError) {
 	psqlPort, err := sql.GetEmptyPort()
 	require.NoError(t, err)
 	qeChan := make(chan ImportQueryError)
@@ -64,7 +83,7 @@ func InterceptImportMessages(t *testing.T, doltgresPort int, breakpointQueries [
 			terminate := &sync.WaitGroup{}
 			terminate.Add(1)
 			psqlConnBackend := pgproto3.NewBackend(psqlConn, psqlConn)
-			doltgresConn, err := (&net.Dialer{}).Dial("tcp", fmt.Sprintf("127.0.0.1:%d", doltgresPort))
+			doltgresConn, err := (&net.Dialer{}).Dial("tcp", fmt.Sprintf("127.0.0.1:%d", args.DoltgresPort))
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -75,7 +94,15 @@ func InterceptImportMessages(t *testing.T, doltgresPort int, breakpointQueries [
 				fmt.Println(err)
 				return
 			}
-			createPassthrough(qeChan, terminate, psqlConnBackend, doltgresConnFrontend, triggerBreakpoint, breakpointQueries)
+			createPassthrough(passthroughArguments{
+				qeChan:               qeChan,
+				terminate:            terminate,
+				psqlConnBackend:      psqlConnBackend,
+				doltgresConnFrontend: doltgresConnFrontend,
+				triggerBreakpoint:    args.TriggerBreakpoint,
+				skippedQueries:       args.SkippedQueries,
+				breakpointQueries:    args.BreakpointQueries,
+			})
 			terminate.Wait()
 			_ = psqlConn.Close()
 			_ = doltgresConn.Close()
@@ -148,13 +175,13 @@ func setAuthType(clientConnBackend *pgproto3.Backend, message pgproto3.BackendMe
 }
 
 // createPassthrough creates the go routines that will read from and write to the connections.
-func createPassthrough(qeChan chan ImportQueryError, terminate *sync.WaitGroup, psqlConnBackend *pgproto3.Backend, doltgresConnFrontend *pgproto3.Frontend, triggerBreakpoint func(string), breakpointQueries []string) {
+func createPassthrough(args passthroughArguments) {
 	lastQuery := ""
 	writeMutex := &sync.Mutex{}
 	go func() {
-		defer terminate.Done()
+		defer args.terminate.Done()
 		for {
-			psqlMessage, err := psqlConnBackend.Receive()
+			psqlMessage, err := args.psqlConnBackend.Receive()
 			if err != nil {
 				errStr := err.Error()
 				if errStr != "unexpected EOF" && !strings.HasSuffix(errStr, "use of closed network connection") {
@@ -169,17 +196,24 @@ func createPassthrough(qeChan chan ImportQueryError, terminate *sync.WaitGroup, 
 					lastQuery = msg.String
 				}
 				writeMutex.Unlock()
-				for _, query := range breakpointQueries {
+				for _, query := range args.skippedQueries {
 					if strings.HasPrefix(msg.String, query) {
-						triggerBreakpoint(msg.String)
+						// An empty query allows for the proper response messages to be sent.
+						msg.String = ";"
+						break
+					}
+				}
+				for _, query := range args.breakpointQueries {
+					if strings.HasPrefix(msg.String, query) {
+						args.triggerBreakpoint(msg.String)
 						break
 					}
 				}
 			case *pgproto3.Terminate:
 				return
 			}
-			doltgresConnFrontend.Send(psqlMessage)
-			if err = doltgresConnFrontend.Flush(); err != nil {
+			args.doltgresConnFrontend.Send(psqlMessage)
+			if err = args.doltgresConnFrontend.Flush(); err != nil {
 				errStr := err.Error()
 				if errStr != "unexpected EOF" && !strings.HasSuffix(errStr, "use of closed network connection") {
 					fmt.Println(err)
@@ -190,7 +224,7 @@ func createPassthrough(qeChan chan ImportQueryError, terminate *sync.WaitGroup, 
 	}()
 	go func() {
 		for {
-			doltgresMessage, err := doltgresConnFrontend.Receive()
+			doltgresMessage, err := args.doltgresConnFrontend.Receive()
 			if err != nil {
 				errStr := err.Error()
 				if errStr != "unexpected EOF" &&
@@ -204,12 +238,12 @@ func createPassthrough(qeChan chan ImportQueryError, terminate *sync.WaitGroup, 
 			case *pgproto3.ErrorResponse:
 				writeMutex.Lock()
 				if len(lastQuery) == 0 {
-					qeChan <- ImportQueryError{
+					args.qeChan <- ImportQueryError{
 						Query: "UNKNOWN QUERY HAS ERRORED",
 						Error: msg.Message,
 					}
 				} else {
-					qeChan <- ImportQueryError{
+					args.qeChan <- ImportQueryError{
 						Query: lastQuery,
 						Error: msg.Message,
 					}
@@ -220,13 +254,13 @@ func createPassthrough(qeChan chan ImportQueryError, terminate *sync.WaitGroup, 
 				lastQuery = ""
 				writeMutex.Unlock()
 			default:
-				if err = setAuthType(psqlConnBackend, doltgresMessage); err != nil {
+				if err = setAuthType(args.psqlConnBackend, doltgresMessage); err != nil {
 					fmt.Println(err)
 					return
 				}
 			}
-			psqlConnBackend.Send(doltgresMessage)
-			if err = psqlConnBackend.Flush(); err != nil {
+			args.psqlConnBackend.Send(doltgresMessage)
+			if err = args.psqlConnBackend.Flush(); err != nil {
 				errStr := err.Error()
 				if errStr != "unexpected EOF" &&
 					!strings.HasSuffix(errStr, "use of closed network connection") &&

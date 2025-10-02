@@ -15,6 +15,7 @@
 package config
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -699,6 +700,79 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		ResetVal:  "ISO, MDY",
 		// Sourcefile: postgresql.conf
 		Scope: GetPgsqlScope(PsqlScopeSession),
+		ValidateFunc: func(curr, new any) (any, bool) {
+			ds := "ISO"
+			do := "MDY"
+			if oldVal, ok := curr.(string); ok {
+				currentVal := strings.Split(strings.ReplaceAll(oldVal, " ", ""), ",")
+				if len(currentVal) == 2 {
+					// the first must be date style and second must be date ordering
+					ds = currentVal[0]
+					do = currentVal[1]
+				}
+			}
+			newVal, ok := new.(string)
+			if !ok {
+				return "", false
+			}
+
+			var dsSet, doSet bool
+			values := strings.Split(strings.ReplaceAll(strings.ToLower(newVal), " ", ""), ",")
+			for _, value := range values {
+				switch value {
+				case "iso":
+					if dsSet {
+						return "", false
+					}
+					ds = "ISO"
+					dsSet = true
+				case "sql":
+					if dsSet {
+						return "", false
+					}
+					ds = "SQL"
+					dsSet = true
+				case "postgres":
+					if dsSet {
+						return "", false
+					}
+					ds = "Postgres"
+					dsSet = true
+				case "german":
+					if dsSet {
+						return "", false
+					}
+					ds = "German"
+					dsSet = true
+					if !doSet {
+						do = "DMY"
+					}
+				case "us", "noneuropean", "mdy":
+					// MDY
+					if doSet {
+						return "", false
+					}
+					do = "MDY"
+					doSet = true
+				case "european", "dmy":
+					// DMY
+					if doSet {
+						return "", false
+					}
+					do = "DMY"
+					doSet = true
+				case "ymd":
+					if doSet {
+						return "", false
+					}
+					do = "YMD"
+					doSet = true
+				default:
+					return "", false
+				}
+			}
+			return fmt.Sprintf(`%s, %s`, ds, do), true
+		},
 	},
 	"db_user_namespace": &Parameter{
 		Name:      "db_user_namespace",
@@ -3464,8 +3538,8 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		// BootVal: "GMT",
 		ResetVal: "America/Los_Angeles",
 		Scope:    GetPgsqlScope(PsqlScopeSession),
-		ValidateFunc: func(a any) (any, bool) {
-			switch v := a.(type) {
+		ValidateFunc: func(_, new any) (any, bool) {
+			switch v := new.(type) {
 			case string:
 				if strings.ToLower(v) == "local" {
 					// TODO: fix this
@@ -3486,7 +3560,7 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 					return nil, false
 				}
 			}
-			return a, true
+			return new, true
 		},
 	},
 	"timezone_abbreviations": &Parameter{
@@ -3642,6 +3716,17 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Type:      types.NewSystemBoolType("transaction_read_only"),
 		Source:    ParameterSourceOverride,
 		ResetVal:  int8(0),
+		Scope:     GetPgsqlScope(PsqlScopeSession),
+	},
+	"transaction_timeout": &Parameter{
+		Name:      "transaction_timeout",
+		Default:   int64(0), // Unit: "ms"
+		Category:  "Client Connection Defaults / Statement Behavior",
+		ShortDesc: "Sets the maximum allowed duration of any transaction within a session (not a prepared transaction).",
+		Context:   ParameterContextUser,
+		Type:      types.NewSystemIntType("transaction_timeout", 0, math.MaxInt32, false),
+		Source:    ParameterSourceDefault,
+		ResetVal:  int64(0),
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"transform_null_equals": &Parameter{

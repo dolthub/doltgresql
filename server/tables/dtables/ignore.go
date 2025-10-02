@@ -60,20 +60,35 @@ func convertTupleToIgnoreBoolean(ctx context.Context, valueDesc val.TupleDesc, v
 
 // getIgnoreTablePatternKey reads the pattern key from a tuple and returns it.
 func getIgnoreTablePatternKey(ctx context.Context, keyDesc val.TupleDesc, keyTuple val.Tuple) (string, error) {
+	// First we'll try with ref (address) encoding
 	extendedTuple := val.NewTupleDescriptorWithArgs(
 		val.TupleDescriptorArgs{Comparator: keyDesc.Comparator(), Handlers: keyDesc.Handlers},
-		val.Type{Enc: val.ExtendedAdaptiveEnc, Nullable: false},
+		val.Type{Enc: val.ExtendedAddrEnc, Nullable: false},
 	)
+	var keyAddrBytes []byte
 	if !keyDesc.Equals(extendedTuple) {
-		return "", fmt.Errorf("dolt_ignore had unexpected key type, this should never happen")
+		// Ref encoding didn't work, so now we'll try adaptive encoding
+		extendedTuple = val.NewTupleDescriptorWithArgs(
+			val.TupleDescriptorArgs{Comparator: keyDesc.Comparator(), Handlers: keyDesc.Handlers},
+			val.Type{Enc: val.ExtendedAdaptiveEnc, Nullable: false},
+		)
+		if !keyDesc.Equals(extendedTuple) {
+			return "", fmt.Errorf("dolt_ignore had unexpected key type, this should never happen")
+		}
+		var ok bool
+		keyAddrBytes, ok = keyDesc.GetExtendedAdaptiveValue(0, keyTuple)
+		if !ok {
+			return "", fmt.Errorf("could not read pattern")
+		}
+	} else {
+		keyAddr, ok := keyDesc.GetExtendedAddr(0, keyTuple)
+		if !ok {
+			return "", fmt.Errorf("could not read pattern")
+		}
+		keyAddrBytes = keyAddr[:]
 	}
 
-	keyAddr, ok := keyDesc.GetExtendedAdaptiveValue(0, keyTuple)
-	if !ok {
-		return "", fmt.Errorf("could not read pattern")
-	}
-
-	key, err := keyDesc.Handlers[0].DeserializeValue(ctx, keyAddr[:])
+	key, err := keyDesc.Handlers[0].DeserializeValue(ctx, keyAddrBytes)
 	if err != nil {
 		return "", err
 	}

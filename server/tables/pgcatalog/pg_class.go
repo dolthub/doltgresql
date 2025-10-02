@@ -90,14 +90,15 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			tableHasIndexes[id.Cache().ToOID(table.OID.AsId())] = struct{}{}
+			schemaOid := schema.OID
 			class := &pgClass{
 				oid:             index.OID.AsId(),
 				oidNative:       id.Cache().ToOID(index.OID.AsId()),
 				name:            formatIndexName(index.Item),
 				hasIndexes:      false,
 				kind:            "i",
-				schemaOid:       schema.OID.AsId(),
-				schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
+				schemaOid:       schemaOid.AsId(),
+				schemaOidNative: id.Cache().ToOID(schemaOid.AsId()),
 			}
 			nameIdx.Add(class)
 			oidIdx.Add(class)

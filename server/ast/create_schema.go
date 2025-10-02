@@ -27,10 +27,17 @@ func nodeCreateSchema(ctx *Context, node *tree.CreateSchema) (vitess.Statement, 
 	if node == nil {
 		return nil, nil
 	}
+
+	// CREATE SCHEMA AUTHORIZATION s1 creates a schema of the same name
+	schemaName := node.Schema
+	if schemaName == "" {
+		schemaName = node.AuthRole
+	}
+
 	return &vitess.DBDDL{
 		Action:           "CREATE",
 		SchemaOrDatabase: "schema",
-		DBName:           node.Schema,
+		DBName:           schemaName,
 		IfNotExists:      node.IfNotExists,
 		CharsetCollate:   nil, // TODO
 		Auth: vitess.AuthInformation{
