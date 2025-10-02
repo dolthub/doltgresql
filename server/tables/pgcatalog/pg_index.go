@@ -117,7 +117,7 @@ func (p PgIndexHandler) LookupPartitions(context *sql.Context, lookup sql.IndexL
 
 // getIndexScanRange implements the interface RangeConverter.
 func (p PgIndexHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgIndex, bool, *pgIndex, bool) {
-	var gte, lte *pgIndex
+	var gte, lt *pgIndex
 	var hasLowerBound, hasUpperBound bool
 
 	switch index.(pgCatalogInMemIndex).name {
@@ -138,8 +138,8 @@ func (p PgIndexHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgIn
 			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
 			if ub != nil {
 				upperRangeCutKey := ub.(id.Id)
-				lte = &pgIndex{
-					indexOidNative: idToOid(upperRangeCutKey),
+				lt = &pgIndex{
+					indexOidNative: idToOid(upperRangeCutKey) + 1,
 				}
 				hasUpperBound = true
 			}
@@ -162,8 +162,8 @@ func (p PgIndexHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgIn
 			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
 			if ub != nil {
 				upperRangeCutKey := ub.(id.Id)
-				lte = &pgIndex{
-					tableOidNative: idToOid(upperRangeCutKey),
+				lt = &pgIndex{
+					tableOidNative: idToOid(upperRangeCutKey) + 1,
 				}
 				hasUpperBound = true
 			}
@@ -172,7 +172,7 @@ func (p PgIndexHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgIn
 		panic("unknown index name: " + index.(pgCatalogInMemIndex).name)
 	}
 
-	return gte, hasLowerBound, lte, hasUpperBound
+	return gte, hasLowerBound, lt, hasUpperBound
 }
 
 // pgIndexSchema is the schema for pg_index.

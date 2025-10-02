@@ -158,7 +158,9 @@ func TestPgAttribute(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT attname FROM "pg_catalog"."pg_attribute" a JOIN "pg_catalog"."pg_class" c ON a.attrelid = c.oid WHERE c.relname = 'test';`,
+					Query: `SELECT attname FROM "pg_catalog"."pg_attribute" a
+    JOIN "pg_catalog"."pg_class" c ON a.attrelid = c.oid
+               WHERE c.relname = 'test';`,
 					Expected: []sql.Row{
 						{"pk"},
 						{"v1"},
@@ -4130,7 +4132,7 @@ func TestPgViews(t *testing.T) {
 	})
 }
 
-func TestPgCatalogIndexes(t *testing.T) {
+func TestPgClassIndexes(t *testing.T) {
 	sharedSetupScript := []string{
 		`create table t1 (a int primary key, b int not null)`,
 		`create table t2 (c int primary key, d int not null)`,
@@ -4388,6 +4390,102 @@ ORDER BY "Schema", "Name"`,
 				},
 			},
 		},
+		{
+			Name: "tables in multiple schemas",
+			SetUpScript: []string{
+				`CREATE SCHEMA s1;`,
+				`CREATE SCHEMA s2;`,
+				`create schema s3;`,
+				`CREATE TABLE s2.t (a INT);`,
+				`CREATE TABLE s1.t (b INT);`,
+				`CREATE TABLE s3.t (c INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `select relname, nspname FROM pg_catalog.pg_class c 
+join pg_catalog.pg_namespace n on c.relnamespace = n.oid
+where c.relname = 't' and c.relkind = 'r'
+order by 1,2`,
+					Expected: []sql.Row{
+						{"t", "s1"},
+						{"t", "s2"},
+						{"t", "s3"},
+					},
+				},
+				{
+					Query: `select relname, relnamespace FROM pg_catalog.pg_class c 
+where c.relname = 't' and c.relkind = 'r'
+order by 1,2`,
+					Expected: []sql.Row{
+						{"t", 1634633383},
+						{"t", 1916695891},
+						{"t", 2153117264},
+					},
+				},
+				{
+					// TODO: this is missing a pushdown index lookup on relnamespace, not sure why
+					Query: `explain select relname, nspname FROM pg_catalog.pg_class c 
+join pg_catalog.pg_namespace n on c.relnamespace = n.oid
+where c.relname = 't' and c.relkind = 'r'
+order by 1,2`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname, n.nspname]"},
+						{" └─ Sort(c.relname ASC, n.nspname ASC)"},
+						{"     └─ InnerJoin"},
+						{"         ├─ c.relnamespace = n.oid"},
+						{"         ├─ TableAlias(n)"},
+						{"         │   └─ Table"},
+						{"         │       └─ name: pg_namespace"},
+						{"         └─ Filter"},
+						{"             ├─ (c.relname = 't' AND c.relkind = 'r')"},
+						{"             └─ TableAlias(c)"},
+						{"                 └─ Table"},
+						{"                     └─ name: pg_class"},
+					},
+				},
+				{
+					Query: `explain select relname, relnamespace FROM pg_catalog.pg_class c 
+where c.relname = 't' and c.relkind = 'r'
+order by 1,2`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [c.relname, c.relnamespace]"},
+						{" └─ Filter"},
+						{"     ├─ (c.relname = 't' AND c.relkind = 'r')"},
+						{"     └─ TableAlias(c)"},
+						{"         └─ IndexedTableAccess(pg_class)"},
+						{"             ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"             └─ filters: [{[t, t], [NULL, ∞)}]"},
+					},
+				},
+			},
+		},
+		{
+			Name: "regression test for in-memory index corruption (caused by empty schema name)",
+			SetUpScript: []string{
+				`CREATE SCHEMA AUTHORIZATION s1`,
+				`create table idxpart (a int, b int, c text) partition by range (a);`,
+				`create index idxpart_idx on idxpart (a);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select count(*) from pg_class where relname = 'idxpart_idx';`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+	})
+}
+
+func TestPgIndexIndexes(t *testing.T) {
+	sharedSetupScript := []string{
+		`create table t1 (a int primary key, b int not null)`,
+		`create table t2 (c int primary key, d int not null)`,
+		`create index on t2 (d)`,
+	}
+
+	RunScripts(t, []ScriptTest{
 		{
 			Name:        "pg_index index lookup",
 			SetUpScript: sharedSetupScript,
@@ -5211,6 +5309,90 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{4126412490, "commit_hash", 25, 1, "t", "f", "f"},
 						{4126412490, "parent_hash", 25, 2, "t", "f", "f"},
 						{4126412490, "parent_index", 23, 3, "t", "f", "f"},
+					},
+				},
+			},
+		},
+	})
+}
+
+func TestPgAttributeIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_attribute indexes",
+			SetUpScript: []string{
+				`CREATE SCHEMA test_schema;`,
+				`SET search_path TO test_schema;`,
+				`CREATE TABLE test_table (
+					id INT PRIMARY KEY,
+					name TEXT NOT NULL,
+					description VARCHAR(255),
+					created_at TIMESTAMP DEFAULT NOW()
+				);`,
+				`CREATE TABLE another_table (
+					pk BIGINT PRIMARY KEY,
+					value TEXT
+				);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Test index on attrelid (non-unique index) using JOIN instead of regclass
+					Query: `SELECT a.attname, a.attnum FROM pg_catalog.pg_attribute a
+							JOIN pg_catalog.pg_class c ON a.attrelid = c.oid 
+							WHERE c.relname = 'test_table'
+							ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", int16(1)},
+						{"name", int16(2)},
+						{"description", int16(3)},
+						{"created_at", int16(4)},
+					},
+				},
+				{
+					// Test unique index on attrelid + attname (using string values for boolean fields)
+					Query: `SELECT a.attnum, a.attnotnull, a.atthasdef FROM pg_catalog.pg_attribute a
+							JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+							WHERE c.relname = 'test_table' 
+							AND a.attname = 'name';`,
+					Expected: []sql.Row{
+						{int16(2), "t", "f"},
+					},
+				},
+				{
+					// Test another unique index lookup
+					Query: `SELECT a.attnum FROM pg_catalog.pg_attribute a
+							JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+							WHERE c.relname = 'another_table' 
+							AND a.attname = 'pk';`,
+					Expected: []sql.Row{
+						{int16(1)},
+					},
+				},
+				{
+					// Test range lookup on attrelid index
+					Query: `SELECT COUNT(*) FROM pg_catalog.pg_attribute a
+							WHERE a.attrelid IN (
+								SELECT oid FROM pg_catalog.pg_class 
+								WHERE relname IN ('test_table', 'another_table')
+							);`,
+					Expected: []sql.Row{
+						{6},
+					},
+				},
+				{
+					// Test JOIN using the indexes
+					Query: `SELECT c.relname, a.attname, a.attnum 
+							FROM pg_catalog.pg_class c 
+							JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid 
+							WHERE c.relname IN ('test_table', 'another_table') 
+							ORDER BY c.relname, a.attnum;`,
+					Expected: []sql.Row{
+						{"another_table", "pk", int16(1)},
+						{"another_table", "value", int16(2)},
+						{"test_table", "id", int16(1)},
+						{"test_table", "name", int16(2)},
+						{"test_table", "description", int16(3)},
+						{"test_table", "created_at", int16(4)},
 					},
 				},
 			},
