@@ -1247,5 +1247,47 @@ ORDER BY 1,2;`,
 				},
 			},
 		},
+		{
+			Name: "ALTER SEQUENCE OWNED BY",
+			SetUpScript: []string{
+				"CREATE TABLE test (id int4 NOT NULL);",
+				"CREATE SEQUENCE seq1;",
+				"CREATE SEQUENCE seq2;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT nextval('seq1');",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT nextval('seq2');",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "ALTER SEQUENCE seq1 OWNED BY test.id;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER SEQUENCE seq2 OWNED BY test.id;",
+					Expected: []sql.Row{},
+				},
+				{ // Setting OWNED BY back to NONE ensures that we properly handle this case
+					Query:    "ALTER SEQUENCE seq2 OWNED BY NONE;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP TABLE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT nextval('seq1');",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:    "SELECT nextval('seq2');",
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
 	})
 }

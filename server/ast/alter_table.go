@@ -52,7 +52,7 @@ func nodeAlterTable(ctx *Context, node *tree.AlterTable) (vitess.Statement, erro
 
 	// If there are no valid statements return a no-op statement
 	if len(noOps) > 0 && len(statements) == 0 {
-		return NewNoOp(noOps), nil
+		return NewNoOp(noOps...), nil
 	}
 
 	// Otherwise emit warnings now, then return an AlterTable statement
