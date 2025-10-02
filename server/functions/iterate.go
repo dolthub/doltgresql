@@ -762,22 +762,22 @@ func runCallbackValidation(ctx *sql.Context, internalID id.Id, callbacks Callbac
 // iteratesOverSchemas returns whether we need to iterate over schemas based on the given callbacks.
 func (iter Callbacks) iteratesOverSchemas() bool {
 	return iter.Check != nil ||
-			iter.ColumnDefault != nil ||
-			iter.ForeignKey != nil ||
-			iter.Index != nil ||
-			iter.Schema != nil ||
-			iter.Sequence != nil ||
-			iter.Table != nil ||
-			iter.View != nil
+		iter.ColumnDefault != nil ||
+		iter.ForeignKey != nil ||
+		iter.Index != nil ||
+		iter.Schema != nil ||
+		iter.Sequence != nil ||
+		iter.Table != nil ||
+		iter.View != nil
 }
 
 // iteratesOverTables returns whether we need to iterate over tables based on the given callbacks.
 func (iter Callbacks) iteratesOverTables() bool {
 	return iter.Check != nil ||
-			iter.ColumnDefault != nil ||
-			iter.ForeignKey != nil ||
-			iter.Index != nil ||
-			iter.Table != nil
+		iter.ColumnDefault != nil ||
+		iter.ForeignKey != nil ||
+		iter.Index != nil ||
+		iter.Table != nil
 }
 
 // iteratesOverTypes returns whether we need to iterate over types based on the given callbacks.
