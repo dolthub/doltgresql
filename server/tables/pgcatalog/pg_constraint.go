@@ -284,8 +284,8 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 	tableOIDs := make(map[id.Id]map[string]id.Id)
 	tableColToIdxMap := make(map[string]int16)
 	oidIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintOid)
-	connameNspIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintConnameNsp)
-	conrelidIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintConrelid)
+	nameSchemaIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintNameSchema)
+	relidTypNameIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintRelidTypeName)
 
 	// We iterate over all tables first to obtain their OIDs, which we'll need to reference for foreign keys
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
@@ -321,10 +321,11 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				tableOidNative:  id.Cache().ToOID(table.OID.AsId()),
 				idxOid:          id.Null,
 				tableRefOid:     id.Null,
+				typeOid:         id.Null,
 			}
 			oidIdx.Add(constraint)
-			conrelidIdx.Add(constraint)
-			connameNspIdx.Add(constraint)
+			relidTypNameIdx.Add(constraint)
+			nameSchemaIdx.Add(constraint)
 			constraints = append(constraints, constraint)
 			return true, nil
 		},
@@ -365,10 +366,11 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				fkMatchType:     "s",
 				conKey:          conKey,
 				conFkey:         conFkey,
+				typeOid:         id.Null,
 			}
 			oidIdx.Add(constraint)
-			conrelidIdx.Add(constraint)
-			connameNspIdx.Add(constraint)
+			relidTypNameIdx.Add(constraint)
+			nameSchemaIdx.Add(constraint)
 			constraints = append(constraints, constraint)
 			return true, nil
 		},
@@ -402,10 +404,11 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				tableRefOid:     id.Null,
 				conKey:          conKey,
 				conFkey:         nil,
+				typeOid:         id.Null,
 			}
 			oidIdx.Add(constraint)
-			conrelidIdx.Add(constraint)
-			connameNspIdx.Add(constraint)
+			relidTypNameIdx.Add(constraint)
+			nameSchemaIdx.Add(constraint)
 			constraints = append(constraints, constraint)
 			return true, nil
 		},
@@ -421,10 +424,11 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 					conType:         "c",
 					idxOid:          id.Null,
 					tableRefOid:     id.Null,
+					typeOid:         id.Null,
 				}
 				oidIdx.Add(constraint)
-				conrelidIdx.Add(constraint)
-				connameNspIdx.Add(constraint)
+				relidTypNameIdx.Add(constraint)
+				nameSchemaIdx.Add(constraint)
 				constraints = append(constraints, constraint)
 			}
 			return true, nil
@@ -435,10 +439,10 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 	}
 
 	pgCatalogCache.pgConstraints = &pgConstraintCache{
-		constraints:   constraints,
-		oidIdx:        oidIdx,
-		conrelidIdx:   conrelidIdx,
-		connameNspIdx: connameNspIdx,
+		constraints:     constraints,
+		oidIdx:          oidIdx,
+		relidTypNameIdx: relidTypNameIdx,
+		nameSchemaIdx:   nameSchemaIdx,
 	}
 
 	return nil
@@ -449,13 +453,19 @@ func lessConstraintOid(a, b *pgConstraint) bool {
 	return a.oidNative < b.oidNative
 }
 
-// lessConstraintConrelid is a sort function for pgConstraint based on conrelid.
-func lessConstraintConrelid(a, b *pgConstraint) bool {
+// lessConstraintRelidTypeName is a sort function for pgConstraint based on conrelid.
+func lessConstraintRelidTypeName(a, b *pgConstraint) bool {
+	if a.tableOidNative == b.tableOidNative {
+		if a.typeOidNative == b.typeOidNative {
+			return a.name < b.name
+		}
+		return a.typeOidNative < b.typeOidNative
+	}
 	return a.tableOidNative < b.tableOidNative
 }
 
-// lessConstraintConnameNsp is a sort function for pgConstraint based on conname, then schemaOid.
-func lessConstraintConnameNsp(a, b *pgConstraint) bool {
+// lessConstraintNameSchema is a sort function for pgConstraint based on conname, then schemaOid.
+func lessConstraintNameSchema(a, b *pgConstraint) bool {
 	if a.name == b.name {
 		return a.schemaOidNative < b.schemaOidNative
 	}
@@ -503,14 +513,15 @@ type pgConstraint struct {
 	conType         string // c = check constraint, f = foreign key constraint, p = primary key constraint, u = unique constraint, t = constraint trigger, x = exclusion constraint
 	tableOid        id.Id
 	tableOidNative  uint32
-	// typeOid      id.Id
-	idxOid       id.Id
-	tableRefOid  id.Id
-	fkUpdateType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
-	fkDeleteType string // a = no action, r = restrict, c = cascade, n = set null, d = set default
-	fkMatchType  string // f = full, p = partial, s = simple
-	conKey       []any
-	conFkey      []any
+	typeOid         id.Id
+	typeOidNative   uint32
+	idxOid          id.Id
+	tableRefOid     id.Id
+	fkUpdateType    string // a = no action, r = restrict, c = cascade, n = set null, d = set default
+	fkDeleteType    string // a = no action, r = restrict, c = cascade, n = set null, d = set default
+	fkMatchType     string // f = full, p = partial, s = simple
+	conKey          []any
+	conFkey         []any
 }
 
 // pgConstraintTableScanIter is the sql.RowIter for the pg_constraint table.
@@ -562,7 +573,7 @@ func pgConstraintToRow(constraint *pgConstraint) sql.Row {
 		false,                   // condeferred
 		true,                    // convalidated
 		constraint.tableOid,     // conrelid
-		id.Null,                 // contypid
+		constraint.typeOid,      // contypid
 		constraint.idxOid,       // conindid
 		id.Null,                 // conparentid
 		constraint.tableRefOid,  // confrelid

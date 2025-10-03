@@ -108,10 +108,10 @@ var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}
 
 // pgConstraintCache holds cached data for the pg_constraint table, including three btree indexes for fast lookups
 type pgConstraintCache struct {
-	constraints    []*pgConstraint
-	oidIdx         *inMemIndexStorage[*pgConstraint]
-	conrelidIdx    *inMemIndexStorage[*pgConstraint]
-	connameNspIdx  *inMemIndexStorage[*pgConstraint]
+	constraints     []*pgConstraint
+	oidIdx          *inMemIndexStorage[*pgConstraint]
+	relidTypNameIdx *inMemIndexStorage[*pgConstraint]
+	nameSchemaIdx   *inMemIndexStorage[*pgConstraint]
 }
 
 var _ BTreeStorageAccess[*pgConstraint] = &pgConstraintCache{}
@@ -121,10 +121,10 @@ func (p pgConstraintCache) getIndex(name string) *inMemIndexStorage[*pgConstrain
 	switch name {
 	case "pg_constraint_oid_index":
 		return p.oidIdx
-	case "pg_constraint_conrelid_index":
-		return p.conrelidIdx
+	case "pg_constraint_conrelid_contypid_conname_index":
+		return p.relidTypNameIdx
 	case "pg_constraint_conname_nsp_index":
-		return p.connameNspIdx
+		return p.nameSchemaIdx
 	default:
 		panic("unknown pg_constraint index: " + name)
 	}
