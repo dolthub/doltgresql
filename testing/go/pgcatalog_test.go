@@ -634,13 +634,13 @@ func TestPgConstraint(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_constraint" WHERE conrelid='testing2'::regclass OR conrelid='testing'::regclass;`,
+					Query: `SELECT * FROM "pg_catalog"."pg_constraint" WHERE conrelid='testing2'::regclass OR conrelid='testing'::regclass order by 1`,
 					Expected: []sql.Row{
-						{3757635986, "testing_pkey", 2200, "p", "f", "f", "t", 2147906242, 0, 3757635986, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
-						// TODO: postgres names this index testing_v1_key
-						{3050361446, "v1", 2200, "u", "f", "f", "t", 2147906242, 0, 3050361446, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},
 						{1719906648, "testing2_pktesting_fkey", 2200, "f", "f", "f", "t", 2694106299, 0, 1719906648, 0, 2147906242, "a", "a", "s", "t", 0, "t", "{0}", "{1}", nil, nil, nil, nil, nil, nil},
 						{2068729390, "testing2_pkey", 2200, "p", "f", "f", "t", 2694106299, 0, 2068729390, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
+						{3050361446, "v1", 2200, "u", "f", "f", "t", 2147906242, 0, 3050361446, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},
+						{3259318326, "v1_check", 2200, "c", "f", "f", "t", 2694106299, 0, 0, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						{3757635986, "testing_pkey", 2200, "p", "f", "f", "t", 2147906242, 0, 3757635986, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -669,11 +669,39 @@ func TestPgConstraint(t *testing.T) {
 						{3259318326, "v1_check", 2694106299, "testing2"},
 					},
 				},
+			},
+		},
+	})
+}
+
+func TestPgConstraintIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_constraint",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE testing2 (pk INT primary key, pktesting INT REFERENCES testing(pk), v1 TEXT);`,
+				`ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '')`,
+				`CREATE DOMAIN mydomain AS INT CHECK (VALUE > 0);`,
+			},
+			Assertions: []ScriptTestAssertion{
 				// Test index lookups
 				{
 					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE oid = 2068729390;",
 					Expected: []sql.Row{
 						{2068729390, "testing2_pkey"},
+					},
+				},
+				{
+					Query: "explain SELECT oid, conname FROM pg_catalog.pg_constraint WHERE oid = 2068729390 order by 1",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_constraint.oid, pg_constraint.conname]"},
+						{" └─ Filter"},
+						{"     ├─ pg_constraint.oid = 2068729390"},
+						{"     └─ IndexedTableAccess(pg_constraint)"},
+						{"         ├─ index: [pg_constraint.oid]"},
+						{"         └─ filters: [{[{Index:[\"public\",\"testing2\",\"PRIMARY\"]}, {Index:[\"public\",\"testing2\",\"PRIMARY\"]}]}]"},
 					},
 				},
 				{
@@ -1181,10 +1209,10 @@ func TestPgIndex(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT i.* from pg_class c " +
-						"JOIN pg_index i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN pg_index i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
 						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
@@ -1201,18 +1229,18 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT i.indexrelid from pg_class c " +
-						"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {1322775662}, {3185790121}},
 				},
 				{
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i " +
-						"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
-						"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
-						"JOIN pg_namespace n ON t.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
+							"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
+							"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
+							"JOIN pg_namespace n ON t.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, "testing_pkey", "testing"},
 						{1322775662, 3120782595, "v1", "testing"},
