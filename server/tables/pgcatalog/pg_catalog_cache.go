@@ -126,6 +126,8 @@ func (p pgConstraintCache) getIndex(name string) *inMemIndexStorage[*pgConstrain
 		return p.relidTypNameIdx
 	case "pg_constraint_conname_nsp_index":
 		return p.nameSchemaIdx
+	case "pg_constraint_contyp_index":
+		return p.typIdx
 	default:
 		panic("unknown pg_constraint index: " + name)
 	}
