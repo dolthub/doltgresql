@@ -428,7 +428,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 					conType:         "c",
 					idxOid:          id.Null,
 					tableRefOid:     id.Null,
-					typeOid:         id.Null,
+					typeOid:         typ.Oid.AsId(),
 				}
 				oidIdx.Add(constraint)
 				relidTypNameIdx.Add(constraint)

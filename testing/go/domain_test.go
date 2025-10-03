@@ -54,6 +54,15 @@ func TestDomain(t *testing.T) {
 					Query:       `CREATE TABLE test_table (id int primary key, v non_existing_domain);`,
 					ExpectedErr: `type "non_existing_domain" does not exist`,
 				},
+				{
+					Query: `SELECT conname, contype, conrelid, contypid from pg_constraint WHERE conname IN ('year_check', 'year_check_min', 'year_check_max') ORDER BY conname;`,
+					Expected: []sql.Row{
+						{"year_check", "c", 0, 2637102637},
+						{"year_check", "c", 0, 1287570634},
+						{"year_check_max", "c", 0, 2938087575},
+						{"year_check_min", "c", 0, 2938087575},
+					},
+				},
 			},
 		},
 		{
