@@ -112,6 +112,7 @@ type pgConstraintCache struct {
 	oidIdx          *inMemIndexStorage[*pgConstraint]
 	relidTypNameIdx *inMemIndexStorage[*pgConstraint]
 	nameSchemaIdx   *inMemIndexStorage[*pgConstraint]
+	typIdx          *inMemIndexStorage[*pgConstraint]
 }
 
 var _ BTreeStorageAccess[*pgConstraint] = &pgConstraintCache{}

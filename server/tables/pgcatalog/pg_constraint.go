@@ -284,8 +284,9 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 	tableOIDs := make(map[id.Id]map[string]id.Id)
 	tableColToIdxMap := make(map[string]int16)
 	oidIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintOid)
-	nameSchemaIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintNameSchema)
+	nameSchemaIdx := NewNonUniqueInMemIndexStorage[*pgConstraint](lessConstraintNameSchema)
 	relidTypNameIdx := NewUniqueInMemIndexStorage[*pgConstraint](lessConstraintRelidTypeName)
+	typIdx := NewNonUniqueInMemIndexStorage[*pgConstraint](lessConstraintType)
 
 	// We iterate over all tables first to obtain their OIDs, which we'll need to reference for foreign keys
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
@@ -326,6 +327,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 			oidIdx.Add(constraint)
 			relidTypNameIdx.Add(constraint)
 			nameSchemaIdx.Add(constraint)
+			typIdx.Add(constraint)
 			constraints = append(constraints, constraint)
 			return true, nil
 		},
@@ -371,6 +373,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 			oidIdx.Add(constraint)
 			relidTypNameIdx.Add(constraint)
 			nameSchemaIdx.Add(constraint)
+			typIdx.Add(constraint)
 			constraints = append(constraints, constraint)
 			return true, nil
 		},
@@ -409,6 +412,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 			oidIdx.Add(constraint)
 			relidTypNameIdx.Add(constraint)
 			nameSchemaIdx.Add(constraint)
+			typIdx.Add(constraint)
 			constraints = append(constraints, constraint)
 			return true, nil
 		},
@@ -429,6 +433,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				oidIdx.Add(constraint)
 				relidTypNameIdx.Add(constraint)
 				nameSchemaIdx.Add(constraint)
+				typIdx.Add(constraint)
 				constraints = append(constraints, constraint)
 			}
 			return true, nil
@@ -443,6 +448,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 		oidIdx:          oidIdx,
 		relidTypNameIdx: relidTypNameIdx,
 		nameSchemaIdx:   nameSchemaIdx,
+		typIdx:          typIdx,
 	}
 
 	return nil
@@ -453,7 +459,7 @@ func lessConstraintOid(a, b *pgConstraint) bool {
 	return a.oidNative < b.oidNative
 }
 
-// lessConstraintRelidTypeName is a sort function for pgConstraint based on conrelid.
+// lessConstraintRelidTypeName is a sort function for pgConstraint based on conrelid, contypid, then conname.
 func lessConstraintRelidTypeName(a, b *pgConstraint) bool {
 	if a.tableOidNative == b.tableOidNative {
 		if a.typeOidNative == b.typeOidNative {
@@ -465,11 +471,16 @@ func lessConstraintRelidTypeName(a, b *pgConstraint) bool {
 }
 
 // lessConstraintNameSchema is a sort function for pgConstraint based on conname, then schemaOid.
-func lessConstraintNameSchema(a, b *pgConstraint) bool {
-	if a.name == b.name {
-		return a.schemaOidNative < b.schemaOidNative
+func lessConstraintNameSchema(a, b []*pgConstraint) bool {
+	if a[0].name == b[0].name {
+		return a[0].schemaOidNative < b[0].schemaOidNative
 	}
-	return a.name < b.name
+	return a[0].name < b[0].name
+}
+
+// lessConstraintType is a sort function for pgConstraint based on type oid.
+func lessConstraintType(a, b []*pgConstraint) bool {
+	return a[0].typeOidNative < b[0].typeOidNative
 }
 
 // PgConstraintSchema is the schema for pg_constraint.
