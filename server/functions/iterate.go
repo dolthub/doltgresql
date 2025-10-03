@@ -191,11 +191,11 @@ func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
 
 // iterateSchemas is called by IterateCurrentDatabase to handle schemas and elements contained within schemas.
 func iterateSchemas(
-		ctx *sql.Context,
-		callbacks Callbacks,
-		sortedSchemas []sql.DatabaseSchema,
-		sequenceMap map[string][]*sequences.Sequence,
-		typeMap map[string][]*types.DoltgresType,
+	ctx *sql.Context,
+	callbacks Callbacks,
+	sortedSchemas []sql.DatabaseSchema,
+	sequenceMap map[string][]*sequences.Sequence,
+	typeMap map[string][]*types.DoltgresType,
 ) error {
 	// Iterate over the sorted schemas by the iteration order
 	for _, schemaIndex := range callbacks.schemaIterationOrder(sortedSchemas) {
@@ -797,23 +797,23 @@ func runCallbackValidation(ctx *sql.Context, internalID id.Id, callbacks Callbac
 // iteratesOverSchemas returns whether we need to iterate over schemas based on the given callbacks.
 func (iter Callbacks) iteratesOverSchemas() bool {
 	return iter.Check != nil ||
-			iter.ColumnDefault != nil ||
-			iter.ForeignKey != nil ||
-			iter.Index != nil ||
-			iter.Schema != nil ||
-			iter.Sequence != nil ||
-			iter.Table != nil ||
-			iter.Type != nil ||
-			iter.View != nil
+		iter.ColumnDefault != nil ||
+		iter.ForeignKey != nil ||
+		iter.Index != nil ||
+		iter.Schema != nil ||
+		iter.Sequence != nil ||
+		iter.Table != nil ||
+		iter.Type != nil ||
+		iter.View != nil
 }
 
 // iteratesOverTables returns whether we need to iterate over tables based on the given callbacks.
 func (iter Callbacks) iteratesOverTables() bool {
 	return iter.Check != nil ||
-			iter.ColumnDefault != nil ||
-			iter.ForeignKey != nil ||
-			iter.Index != nil ||
-			iter.Table != nil
+		iter.ColumnDefault != nil ||
+		iter.ForeignKey != nil ||
+		iter.Index != nil ||
+		iter.Table != nil
 }
 
 // iteratesOverTypes returns whether we need to iterate over types based on the given callbacks.

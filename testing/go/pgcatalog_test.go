@@ -630,8 +630,7 @@ func TestPgConstraint(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
 				`CREATE TABLE testing2 (pk INT primary key, pktesting INT REFERENCES testing(pk), v1 TEXT);`,
-				// TODO: Uncomment when check constraints supported
-				// `ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '')`,
+				`ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '')`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -659,6 +658,7 @@ func TestPgConstraint(t *testing.T) {
 						{"testing2_pktesting_fkey"},
 						{"testing_pkey"},
 						{"v1"},
+						{"v1_check"},
 					},
 				},
 				{
@@ -666,6 +666,7 @@ func TestPgConstraint(t *testing.T) {
 					Expected: []sql.Row{
 						{2068729390, "testing2_pkey", 2694106299, "testing2"},
 						{1719906648, "testing2_pktesting_fkey", 2694106299, "testing2"},
+						{3259318326, "v1_check", 2694106299, "testing2"},
 					},
 				},
 				// Test index lookups
@@ -680,6 +681,7 @@ func TestPgConstraint(t *testing.T) {
 					Expected: []sql.Row{
 						{2068729390, "testing2_pkey"},
 						{1719906648, "testing2_pktesting_fkey"},
+						{3259318326, "v1_check"},
 					},
 				},
 				{

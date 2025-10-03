@@ -320,9 +320,6 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				conType:         "c",
 				tableOid:        table.OID.AsId(),
 				tableOidNative:  id.Cache().ToOID(table.OID.AsId()),
-				idxOid:          id.Null,
-				tableRefOid:     id.Null,
-				typeOid:         id.Null,
 			}
 			oidIdx.Add(constraint)
 			relidTypNameIdx.Add(constraint)
@@ -368,7 +365,6 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				fkMatchType:     "s",
 				conKey:          conKey,
 				conFkey:         conFkey,
-				typeOid:         id.Null,
 			}
 			oidIdx.Add(constraint)
 			relidTypNameIdx.Add(constraint)
@@ -404,10 +400,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				tableOid:        table.OID.AsId(),
 				tableOidNative:  id.Cache().ToOID(table.OID.AsId()),
 				idxOid:          index.OID.AsId(),
-				tableRefOid:     id.Null,
 				conKey:          conKey,
-				conFkey:         nil,
-				typeOid:         id.Null,
 			}
 			oidIdx.Add(constraint)
 			relidTypNameIdx.Add(constraint)
@@ -426,8 +419,6 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 					schemaOid:       schema.OID.AsId(),
 					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 					conType:         "c",
-					idxOid:          id.Null,
-					tableRefOid:     id.Null,
 					typeOid:         typ.Oid.AsId(),
 				}
 				oidIdx.Add(constraint)
