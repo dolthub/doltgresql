@@ -45,7 +45,7 @@ func TestAlterStatements(t *testing.T) {
 					ExpectedNotices: []ExpectedNotice{
 						{
 							Severity: "WARNING",
-							Message:  "owners are unsupported",
+							Message:  "OWNER TO is unsupported and ignored",
 						},
 					},
 				},

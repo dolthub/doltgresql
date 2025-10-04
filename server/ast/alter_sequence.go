@@ -48,7 +48,7 @@ func nodeAlterSequence(ctx *Context, node *tree.AlterSequence) (vitess.Statement
 		return nil, err
 	}
 	if len(name.DbQualifier.String()) > 0 {
-		return nil, errors.Errorf("ALTER SEQUENCE is currently only supported for the current database")
+		return NotYetSupportedError("ALTER SEQUENCE does not yet support specifying the database")
 	}
 
 	ownedBy := pgnodes.AlterSequenceOwnedBy{}
@@ -71,6 +71,9 @@ func nodeAlterSequence(ctx *Context, node *tree.AlterSequence) (vitess.Statement
 				}
 				if len(colName.Qualifier.DbQualifier.String()) > 0 {
 					return nil, errors.New("database specification is not yet supported for sequences")
+				}
+				if len(colName.Name.String()) == 0 || len(colName.Qualifier.Name.String()) == 0 {
+					return nil, errors.New("invalid OWNED BY option")
 				}
 				ownedBy.Table = colName.Qualifier.Name.String()
 				ownedBy.Column = colName.Name.String()
