@@ -38,7 +38,7 @@ func init() {
 
 // NewNoOp returns a new NoOp statement which does nothing and issues zero or more warnings when run.
 // Used for statements that aren't directly supported but which we don't want to cause errors.
-func NewNoOp(warnings []string) vitess.InjectedStatement {
+func NewNoOp(warnings ...string) vitess.InjectedStatement {
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NoOp{
 			Warnings: warnings,
@@ -50,7 +50,7 @@ func NewNoOp(warnings []string) vitess.InjectedStatement {
 // variable DOLTGRES_IGNORE_UNSUPPORTED is set.
 func NotYetSupportedError(errorMsg string) (vitess.Statement, error) {
 	if ignoreUnsupportedStatements {
-		return NewNoOp([]string{errorMsg}), nil
+		return NewNoOp(errorMsg), nil
 	}
 
 	return nil, errors.New(errorMsg)

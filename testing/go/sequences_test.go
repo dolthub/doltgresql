@@ -1247,5 +1247,68 @@ ORDER BY 1,2;`,
 				},
 			},
 		},
+		{
+			Name: "ALTER SEQUENCE OWNED BY",
+			SetUpScript: []string{
+				"CREATE SCHEMA other;",
+				"CREATE TABLE test (id int4 NOT NULL);",
+				"CREATE TABLE other.test (id int4 NOT NULL);",
+				"CREATE SEQUENCE seq1;",
+				"CREATE SEQUENCE seq2;",
+				"CREATE FUNCTION f_trigger() RETURNS TRIGGER AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER trig_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION f_trigger();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT nextval('seq1');",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT nextval('seq2');",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:       "ALTER SEQUENCE seq1 OWNED BY test.non_existent;",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:       "ALTER SEQUENCE public.seq1 OWNED BY other.test.non_existent;",
+					ExpectedErr: "same schema",
+				},
+				{
+					Query:       "ALTER SEQUENCE seq1 OWNED BY test;",
+					ExpectedErr: "invalid",
+				},
+				{
+					Query:       "ALTER SEQUENCE seq1 OWNED BY trig_trigger.trig;",
+					Skip:        true, // TODO: need to add triggers to relation checking
+					ExpectedErr: "cannot be owned by relation",
+				},
+				{
+					Query:    "ALTER SEQUENCE seq1 OWNED BY test.id;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER SEQUENCE seq2 OWNED BY test.id;",
+					Expected: []sql.Row{},
+				},
+				{ // Setting OWNED BY back to NONE ensures that we properly handle this case
+					Query:    "ALTER SEQUENCE seq2 OWNED BY NONE;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP TABLE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT nextval('seq1');",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:    "SELECT nextval('seq2');",
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
 	})
 }
