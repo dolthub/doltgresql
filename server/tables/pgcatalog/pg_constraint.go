@@ -190,25 +190,100 @@ func (p PgConstraintHandler) getIndexScanRange(rng sql.Range, index sql.Index) (
 
 	case "pg_constraint_conrelid_contypid_conname_index":
 		msrng := rng.(sql.MySQLRange)
-		oidRng := msrng[0]
-		if oidRng.HasLowerBound() {
-			lb := sql.GetMySQLRangeCutKey(oidRng.LowerBound)
+		relOidRng := msrng[0]
+		typOidRng := msrng[1]
+		nameRng := msrng[2]
+
+		relOidLower := uint32(0)
+		relOidUpper := uint32(math.MaxUint32)
+		relOidUpperSet := false
+
+		typOidLower := uint32(0)
+		typOidUpper := uint32(math.MaxUint32)
+		typOidUpperSet := false
+
+		nameLower := ""
+		nameUpper := ""
+		nameUpperSet := false
+
+		if relOidRng.HasLowerBound() {
+			lb := sql.GetMySQLRangeCutKey(relOidRng.LowerBound)
 			if lb != nil {
 				lowerRangeCutKey := lb.(id.Id)
-				gte = &pgConstraint{
-					tableOidNative: idToOid(lowerRangeCutKey),
-				}
+				relOidLower = idToOid(lowerRangeCutKey)
 				hasLowerBound = true
 			}
 		}
-		if oidRng.HasUpperBound() {
-			ub := sql.GetMySQLRangeCutKey(oidRng.UpperBound)
+		if relOidRng.HasUpperBound() {
+			ub := sql.GetMySQLRangeCutKey(relOidRng.UpperBound)
 			if ub != nil {
 				upperRangeCutKey := ub.(id.Id)
-				lt = &pgConstraint{
-					tableOidNative: idToOid(upperRangeCutKey) + 1,
-				}
+				relOidUpper = idToOid(upperRangeCutKey)
+				relOidUpperSet = true
 				hasUpperBound = true
+			}
+		}
+
+		if typOidRng.HasLowerBound() {
+			lb := sql.GetMySQLRangeCutKey(typOidRng.LowerBound)
+			if lb != nil {
+				lowerRangeCutKey := lb.(id.Id)
+				typOidLower = idToOid(lowerRangeCutKey)
+				hasLowerBound = true
+			}
+		}
+		if typOidRng.HasUpperBound() {
+			ub := sql.GetMySQLRangeCutKey(typOidRng.UpperBound)
+			if ub != nil {
+				upperRangeCutKey := ub.(id.Id)
+				typOidUpper = idToOid(upperRangeCutKey)
+				typOidUpperSet = true
+				hasUpperBound = true
+			}
+		}
+
+		if nameRng.HasLowerBound() {
+			lb := sql.GetMySQLRangeCutKey(nameRng.LowerBound)
+			if lb != nil {
+				nameLower = lb.(string)
+				hasLowerBound = true
+			}
+		}
+		if nameRng.HasUpperBound() {
+			ub := sql.GetMySQLRangeCutKey(nameRng.UpperBound)
+			if ub != nil {
+				nameUpper = ub.(string)
+				nameUpperSet = true
+				hasUpperBound = true
+			}
+		}
+
+		if hasLowerBound {
+			gte = &pgConstraint{
+				tableOidNative: relOidLower,
+				typeOidNative:  typOidLower,
+				name:           nameLower,
+			}
+		}
+
+		if hasUpperBound {
+			// our less-than upper bounds depend on how many fields were set
+			if typOidUpperSet {
+				if nameUpperSet {
+					nameUpper = fmt.Sprintf("%s%o", nameUpper, rune(0))
+				} else {
+					typOidUpper = typOidUpper + 1
+				}
+			} else {
+				if !relOidUpperSet {
+					relOidUpper = relOidUpper + 1
+				}
+			}
+
+			lt = &pgConstraint{
+				tableOidNative: relOidUpper,
+				typeOidNative:  typOidUpper,
+				name:           nameUpper,
 			}
 		}
 
@@ -269,6 +344,29 @@ func (p PgConstraintHandler) getIndexScanRange(rng sql.Range, index sql.Index) (
 			lt = &pgConstraint{
 				name:            conNameUpper,
 				schemaOidNative: schemaOidUpper,
+			}
+		}
+	case "pg_constraint_contypid_index":
+		msrng := rng.(sql.MySQLRange)
+		typOidRng := msrng[0]
+		if typOidRng.HasLowerBound() {
+			lb := sql.GetMySQLRangeCutKey(typOidRng.LowerBound)
+			if lb != nil {
+				lowerRangeCutKey := lb.(id.Id)
+				gte = &pgConstraint{
+					typeOidNative: idToOid(lowerRangeCutKey),
+				}
+				hasLowerBound = true
+			}
+		}
+		if typOidRng.HasUpperBound() {
+			ub := sql.GetMySQLRangeCutKey(typOidRng.UpperBound)
+			if ub != nil {
+				upperRangeCutKey := ub.(id.Id)
+				lt = &pgConstraint{
+					typeOidNative: idToOid(upperRangeCutKey) + 1,
+				}
+				hasUpperBound = true
 			}
 		}
 	default:

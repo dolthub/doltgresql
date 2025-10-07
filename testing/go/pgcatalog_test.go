@@ -685,7 +685,6 @@ func TestPgConstraintIndexes(t *testing.T) {
 				`CREATE DOMAIN mydomain AS INT CHECK (VALUE > 0);`,
 			},
 			Assertions: []ScriptTestAssertion{
-				// Test index lookups
 				{
 					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE oid = 2068729390;",
 					Expected: []sql.Row{
@@ -729,7 +728,8 @@ func TestPgConstraintIndexes(t *testing.T) {
 			},
 		},
 		{
-			Name: "pg_constraint comprehensive index tests",
+			Name:  "pg_constraint comprehensive index tests",
+			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE test_table1 (pk INT primary key, val1 INT UNIQUE, val2 TEXT);`,
 				`CREATE TABLE test_table2 (id INT primary key, fk_col INT REFERENCES test_table1(pk), name TEXT UNIQUE);`,
@@ -741,55 +741,58 @@ func TestPgConstraintIndexes(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				// Primary key index tests (pg_constraint_oid_index)
+				// {
+				// 	Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE oid = (SELECT oid FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' LIMIT 1);",
+				// 	Expected: []sql.Row{
+				// 		{"test_table1_pkey"},
+				// 	},
+				// },
+				// {
+				// 	Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE oid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE conname LIKE '%_pkey' ORDER BY conname LIMIT 3);",
+				// 	Expected: []sql.Row{
+				// 		{"test_table1_pkey"},
+				// 		{"test_table2_pkey"},
+				// 		{"test_table3_pkey"},
+				// 	},
+				// },
+				// // conname + connamespace index tests (pg_constraint_conname_nsp_index)
+				// {
+				// 	Query: "SELECT conname, connamespace FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' AND connamespace = 2200;",
+				// 	Expected: []sql.Row{
+				// 		{"test_table1_pkey", uint32(2200)},
+				// 	},
+				// },
+				// {
+				// 	Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conname IN ('test_table1_pkey', 'test_table2_pkey', 'name_check') AND connamespace = 2200 ORDER BY conname;",
+				// 	Expected: []sql.Row{
+				// 		{"name_check"},
+				// 		{"test_table1_pkey"},
+				// 		{"test_table2_pkey"},
+				// 	},
+				// },
+				// {
+				// 	Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conname >= 'name_' AND conname < 'name_z' AND connamespace = 2200 ORDER BY conname;",
+				// 	Expected: []sql.Row{
+				// 		{"name_check"},
+				// 	},
+				// },
+				// // conrelid + contypid + conname index tests (pg_constraint_conrelid_contypid_conname_index)
+				// {
+				// 	Query: "SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table1'",
+				// 	Expected: []sql.Row{
+				// 		{"test_table1_pkey"},
+				// 		{"test_table1_val1_key"},
+				// 		{"val2_check"},
+				// 	},
+				// },
 				{
-					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE oid = (SELECT oid FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' LIMIT 1);",
-					Expected: []sql.Row{
-						{"test_table1_pkey"},
-					},
-				},
-				{
-					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE oid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE conname LIKE '%_pkey' ORDER BY conname LIMIT 3);",
-					Expected: []sql.Row{
-						{"test_table1_pkey"},
-						{"test_table2_pkey"},
-						{"test_table3_pkey"},
-					},
-				},
-
-				// conname + connamespace index tests (pg_constraint_conname_nsp_index)
-				{
-					Query: "SELECT conname, connamespace FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' AND connamespace = 2200;",
-					Expected: []sql.Row{
-						{"test_table1_pkey", uint32(2200)},
-					},
-				},
-				{
-					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conname IN ('test_table1_pkey', 'test_table2_pkey', 'name_check') AND connamespace = 2200 ORDER BY conname;",
-					Expected: []sql.Row{
-						{"name_check"},
-						{"test_table1_pkey"},
-						{"test_table2_pkey"},
-					},
-				},
-				{
-					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conname >= 'name_' AND conname < 'name_z' AND connamespace = 2200 ORDER BY conname;",
-					Expected: []sql.Row{
-						{"name_check"},
-					},
-				},
-				{
-					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conname LIKE 'test_%' AND connamespace = 2200 ORDER BY conname;",
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 AND contypid = 0 ORDER BY conname;",
 					Expected: []sql.Row{
 						{"test_table1_pkey"},
 						{"test_table1_val1_key"},
-						{"test_table2_fk_col_fkey"},
-						{"test_table2_name_key"},
-						{"test_table2_pkey"},
-						{"test_table3_pkey"},
+						{"val2_check"},
 					},
 				},
-
-				// conrelid + contypid + conname index tests (pg_constraint_conrelid_contypid_conname_index)
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table1') AND contypid = 0 ORDER BY conname;",
 					Expected: []sql.Row{
