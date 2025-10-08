@@ -237,15 +237,15 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 
 				if normalizeRows {
 					if orderBy {
-						assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows)
+						assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows, "wrong result for query %s", assertion.Query)
 					} else {
-						assert.ElementsMatch(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows)
+						assert.ElementsMatch(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows, "wrong result for query %s", assertion.Query)
 					}
 				} else {
 					if orderBy {
-						assert.Equal(t, assertion.Expected, readRows)
+						assert.Equal(t, assertion.Expected, readRows, "wrong result for query %s", assertion.Query)
 					} else {
-						assert.ElementsMatch(t, assertion.Expected, readRows)
+						assert.ElementsMatch(t, assertion.Expected, readRows, "wrong result for query %s", assertion.Query)
 					}
 				}
 
@@ -664,7 +664,7 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 		// This value type is used for TIME type.
 		return timeofday.FromInt(val.Microseconds).ToTime()
 	case pgtype.Interval:
-		//This value type is used for INTERVAL type.
+		// This value type is used for INTERVAL type.
 		return duration.MakeDuration(val.Microseconds*functions.NanosPerMicro, int64(val.Days), int64(val.Months))
 	case [16]byte:
 		// This value type is used for UUID type.
