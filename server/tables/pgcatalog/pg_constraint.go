@@ -521,6 +521,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 					schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
 					conType:         "c",
 					typeOid:         typ.Oid.AsId(),
+					typeOidNative:   id.Cache().ToOID(typ.Oid.AsId()),
 				}
 				oidIdx.Add(constraint)
 				relidTypNameIdx.Add(constraint)
