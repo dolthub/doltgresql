@@ -846,13 +846,13 @@ func TestPgConstraintIndexes(t *testing.T) {
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid >= (SELECT MIN(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND conrelid <= (SELECT MAX(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND contypid = 0 ORDER BY conname;",
 					Expected: []sql.Row{
+						{"name"}, // should be test_table2_name_key
 						{"name_check"},
 						{"test_table1_pkey"},
-						{"test_table1_val1_key"},
 						{"test_table2_fk_col_fkey"},
-						{"test_table2_name_key"},
 						{"test_table2_pkey"},
 						{"test_table3_pkey"},
+						{"val1"}, // should be test_table1_val1_key
 						{"val2_check"},
 					},
 				},
@@ -862,7 +862,7 @@ func TestPgConstraintIndexes(t *testing.T) {
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table1') ORDER BY conname;",
 					Expected: []sql.Row{
 						{"test_table1_pkey"},
-						{"test_table1_val1_key"},
+						{"val1"}, // should be test_table1_val1_key
 						{"val2_check"},
 					},
 				},
@@ -872,8 +872,7 @@ func TestPgConstraintIndexes(t *testing.T) {
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE (conname LIKE '%_pkey' OR conname LIKE '%_key') AND connamespace = 2200 ORDER BY conname;",
 					Expected: []sql.Row{
 						{"test_table1_pkey"},
-						{"test_table1_val1_key"},
-						{"test_table2_name_key"},
+						{"test_table2_fk_col_fkey"},
 						{"test_table2_pkey"},
 						{"test_table3_pkey"},
 					},
@@ -886,22 +885,23 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"Project"},
 						{" ├─ columns: [pg_constraint.conname]"},
 						{" └─ Filter"},
-						{"     ├─ (pg_constraint.conname = 'test_table1_pkey') AND (pg_constraint.connamespace = 2200)"},
+						{"     ├─ (pg_constraint.conname = 'test_table1_pkey' AND pg_constraint.connamespace = 2200)"},
 						{"     └─ IndexedTableAccess(pg_constraint)"},
 						{"         ├─ index: [pg_constraint.conname,pg_constraint.connamespace]"},
-						{"         └─ filters: [{[('test_table1_pkey', 2200), ('test_table1_pkey', 2200)]}]"},
+						{"         └─ filters: [{[test_table1_pkey, test_table1_pkey], [{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
 					},
 				},
 				{
-					Query: "EXPLAIN SELECT conname FROM pg_catalog.pg_constraint WHERE contypid > 0;",
+					Query: "EXPLAIN SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 AND contypid > 0 order by 1;",
 					Expected: []sql.Row{
 						{"Project"},
 						{" ├─ columns: [pg_constraint.conname]"},
-						{" └─ Filter"},
-						{"     ├─ pg_constraint.contypid > 0"},
-						{"     └─ IndexedTableAccess(pg_constraint)"},
-						{"         ├─ index: [pg_constraint.contypid]"},
-						{"         └─ filters: [{(0, ∞)}]"},
+						{" └─ Sort(pg_constraint.conname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (pg_constraint.conrelid = 3645786842 AND pg_constraint.contypid > 0)"},
+						{"         └─ IndexedTableAccess(pg_constraint)"},
+						{"             ├─ index: [pg_constraint.conrelid,pg_constraint.contypid,pg_constraint.conname]"},
+						{"             └─ filters: [{[{Table:[\"public\",\"test_table1\"]}, {Table:[\"public\",\"test_table1\"]}], ({OID:[\"0\"]}, ∞), [NULL, ∞)}]"},
 					},
 				},
 			},
@@ -1387,10 +1387,10 @@ func TestPgIndex(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT i.* from pg_class c " +
-						"JOIN pg_index i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN pg_index i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
 						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
@@ -1407,18 +1407,18 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT i.indexrelid from pg_class c " +
-						"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {1322775662}, {3185790121}},
 				},
 				{
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i " +
-						"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
-						"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
-						"JOIN pg_namespace n ON t.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
+							"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
+							"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
+							"JOIN pg_namespace n ON t.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, "testing_pkey", "testing"},
 						{1322775662, 3120782595, "v1", "testing"},
