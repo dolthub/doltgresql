@@ -411,7 +411,11 @@ func (stmt *plpgSQL_stmt_exit) Convert() Statement {
 func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 	// We store all GOTOs that will need to go to the end of the block. Since we can't know that ahead of time, we store
 	// their indexes and set them at the end of the function.
-	var gotoEndIndexes []int32
+	type gotoEndIndex struct {
+		BodyIndex int
+		GotoIndex int32
+	}
+	var gotoEndIndexes []gotoEndIndex
 	returnBlock := Block{
 		Body: []Statement{
 			If{
@@ -431,7 +435,10 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 	returnBlock.Body = append(returnBlock.Body, thenStmts...)
 	// Then we want to append the GOTO that finishes the THEN block, but we don't know the end just yet, so we'll save
 	// its index and fill it in later
-	gotoEndIndexes = append(gotoEndIndexes, OperationSizeForStatements(returnBlock.Body))
+	gotoEndIndexes = append(gotoEndIndexes, gotoEndIndex{
+		BodyIndex: len(returnBlock.Body),
+		GotoIndex: OperationSizeForStatements(returnBlock.Body),
+	})
 	returnBlock.Body = append(returnBlock.Body, Goto{})
 	// We repeat the same process for each ELSIF statement (refer to the comments above)
 	for _, elseIf := range stmt.ElseIf {
@@ -445,7 +452,10 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 		}
 		returnBlock.Body = append(returnBlock.Body, Goto{Offset: OperationSizeForStatements(elseIfStmts) + 2})
 		returnBlock.Body = append(returnBlock.Body, elseIfStmts...)
-		gotoEndIndexes = append(gotoEndIndexes, OperationSizeForStatements(returnBlock.Body))
+		gotoEndIndexes = append(gotoEndIndexes, gotoEndIndex{
+			BodyIndex: len(returnBlock.Body),
+			GotoIndex: OperationSizeForStatements(returnBlock.Body),
+		})
 		returnBlock.Body = append(returnBlock.Body, Goto{})
 	}
 	// Finally we handle our ELSE statements. We don't have a condition to check, so we don't have to append any
@@ -457,8 +467,8 @@ func (stmt *plpgSQL_stmt_if) Convert() (Block, error) {
 	returnBlock.Body = append(returnBlock.Body, elseStmts...)
 	// Now we'll set all of our GOTOs so that they skip to the end of the block.
 	// We have to take their index position into account, since we want to skip to the end from their relative position.
-	for _, gotoEndIndex := range gotoEndIndexes {
-		returnBlock.Body[gotoEndIndex] = Goto{Offset: OperationSizeForStatements(returnBlock.Body) - gotoEndIndex}
+	for _, idx := range gotoEndIndexes {
+		returnBlock.Body[idx.BodyIndex] = Goto{Offset: OperationSizeForStatements(returnBlock.Body) - idx.GotoIndex}
 	}
 	return returnBlock, nil
 }
