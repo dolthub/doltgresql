@@ -413,23 +413,30 @@ $$ LANGUAGE plpgsql;`},
 		{
 			Name: "RAISE",
 			SetUpScript: []string{
-				`CREATE FUNCTION interpreted_raise(input TEXT) RETURNS TEXT AS $$
+				`CREATE FUNCTION interpreted_raise1(input TEXT) RETURNS TEXT AS $$
 				DECLARE
 					var1 TEXT;
 				BEGIN
 					RAISE WARNING 'MyMessage';
-					RAISE NOTICE USING MESSAGE = 'MyNoticeMessage'; 
+					RAISE NOTICE USING MESSAGE = 'MyNoticeMessage';
 					RAISE DEBUG 'DebugTest1' USING MESSAGE = 'DebugMessage';
+					var1 := input;
+					RETURN var1;
+				END;
+				$$ LANGUAGE plpgsql;`, // TODO: this is incorrect, cannot raise both NOTICE USING MESSAGE and DEBUG USING MESSAGE, need to fix
+				`CREATE FUNCTION interpreted_raise2(input TEXT) RETURNS TEXT AS $$
+				DECLARE
+					var1 TEXT;
+				BEGIN
 					RAISE EXCEPTION '% %% bar %', 'foo', 1+1;
 					var1 := input;
 					RETURN var1;
 				END;
-				$$ LANGUAGE plpgsql;
-				`,
+				$$ LANGUAGE plpgsql;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "SELECT interpreted_raise('123');",
+					Query:    "SELECT interpreted_raise1('123');",
 					Expected: []sql.Row{{"123"}},
 					ExpectedNotices: []ExpectedNotice{
 						{
@@ -444,11 +451,11 @@ $$ LANGUAGE plpgsql;`},
 							Severity: "DEBUG",
 							Message:  "'DebugMessage'",
 						},
-						{
-							Severity: "EXCEPTION",
-							Message:  "foo % bar 2",
-						},
 					},
+				},
+				{
+					Query:       "SELECT interpreted_raise2('123');",
+					ExpectedErr: "foo % bar 2",
 				},
 			},
 		},
@@ -836,7 +843,7 @@ $$ LANGUAGE plpgsql;`,
 			},
 		},
 		{
-			Name: "create function on different branch",
+			Name: "Create function on different branch",
 			Skip: true, // several issues prevent this from working yet
 			SetUpScript: []string{
 				`CREATE FUNCTION f1(input TEXT) RETURNS TEXT AS $$
@@ -866,6 +873,61 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    `SELECT f1(55);`,
 					Expected: []sql.Row{{66}},
+				},
+			},
+		},
+		{
+			Name: "Nested IF statements with exceptions",
+			SetUpScript: []string{
+				`CREATE TABLE public.table_name (start_date DATE NOT NULL, end_date DATE);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION public.fn_name() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.start_date IS NOT NULL
+       AND NEW.end_date IS NULL
+    THEN
+        NEW.end_date := NEW.start_date + INTERVAL '31 day';
+    END IF;
+    IF NEW.start_date IS NOT NULL
+       AND NEW.end_date IS NOT NULL
+    THEN
+        IF NEW.end_date < NEW.start_date THEN
+            RAISE EXCEPTION 'end_date (%) start_date (%)',
+                NEW.end_date, NEW.start_date;
+        END IF;
+        IF NEW.end_date > (NEW.start_date + INTERVAL '31 day') THEN
+            RAISE EXCEPTION 'Too far (start_date=%, end_date=%)',
+                NEW.start_date, NEW.end_date;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TRIGGER trig_name BEFORE INSERT OR UPDATE ON public.table_name FOR EACH ROW EXECUTE FUNCTION public.fn_name();`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO public.table_name VALUES ('2025-01-02', '2025-02-02');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO public.table_name VALUES ('2025-04-05', NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO public.table_name VALUES ('2025-09-10', '2025-07-08');",
+					ExpectedErr: "end_date (2025-07-08) start_date (2025-09-10)",
+				},
+				{
+					Query:       "INSERT INTO public.table_name VALUES ('2025-11-11', '2025-12-31');",
+					ExpectedErr: "Too far (start_date=2025-11-11, end_date=2025-12-31)",
 				},
 			},
 		},

@@ -32,6 +32,7 @@ func nodeAlterSequence(ctx *Context, node *tree.AlterSequence) (vitess.Statement
 
 	var warnings []string
 	if len(node.Owner) > 0 {
+		// We intentionally don't support OWNER TO since we don't support owning objects
 		if len(node.Options) == 0 {
 			return NewNoOp("OWNER TO is unsupported and ignored"), nil
 		} else {

@@ -26,9 +26,9 @@ func nodeAlterSchema(ctx *Context, node *tree.AlterSchema) (vitess.Statement, er
 		return nil, nil
 	}
 
-	// We can handle the common ALTER SCHEMA .. TO OWNER case since it's a no-op
+	// We intentionally don't support OWNER TO since we don't support owning objects
 	if _, ok := node.Cmd.(*tree.AlterSchemaOwner); ok {
-		return NewNoOp("owners are unsupported"), nil
+		return NewNoOp("OWNER TO is unsupported and ignored"), nil
 	}
 
 	return NotYetSupportedError("ALTER SCHEMA is not yet supported")
