@@ -969,8 +969,7 @@ func TestPgConstraintIndexes(t *testing.T) {
 			},
 		},
 		{
-			Name: "regressions",
-			Focus: true,
+			Name: "text constant to oid conversion",
 			SetUpScript: []string{
 				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
 				`CREATE TABLE testing2 (pk INT primary key, pktesting INT REFERENCES testing(pk), v1 TEXT);`,
@@ -979,6 +978,7 @@ func TestPgConstraintIndexes(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					// We don't care about the result, we just want to make sure it doens't error
 					Query: "SELECT true as sametable, conname," +
 						"pg_catalog.pg_get_constraintdef(r.oid, true) as condef," +
 						"conrelid::pg_catalog.regclass AS ontable " +
@@ -4527,6 +4527,15 @@ ORDER BY 1;`,
 					Query: `SELECT c.relname
 FROM pg_catalog.pg_class c 
 WHERE c.oid = 1496157034
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid = '1496157034'
 ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t2"},
