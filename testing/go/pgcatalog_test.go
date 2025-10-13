@@ -729,7 +729,6 @@ func TestPgConstraintIndexes(t *testing.T) {
 		},
 		{
 			Name:  "pg_constraint comprehensive index tests",
-			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE test_table1 (pk INT primary key, val1 INT UNIQUE, val2 TEXT);`,
 				`CREATE TABLE test_table2 (id INT primary key, fk_col INT REFERENCES test_table1(pk), name TEXT UNIQUE);`,
@@ -966,6 +965,27 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"             ├─ index: [pg_constraint.conrelid,pg_constraint.contypid,pg_constraint.conname]"},
 						{"             └─ filters: [{[{Table:[\"public\",\"test_table1\"]}, {Table:[\"public\",\"test_table1\"]}], ({OID:[\"0\"]}, ∞), [NULL, ∞)}]"},
 					},
+				},
+			},
+		},
+		{
+			Name: "regressions",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE testing2 (pk INT primary key, pktesting INT REFERENCES testing(pk), v1 TEXT);`,
+				`ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '')`,
+				`CREATE DOMAIN mydomain AS INT CHECK (VALUE > 0);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT true as sametable, conname," +
+						"pg_catalog.pg_get_constraintdef(r.oid, true) as condef," +
+						"conrelid::pg_catalog.regclass AS ontable " +
+						"FROM pg_catalog.pg_constraint r " +
+						"WHERE r.conrelid = '145181' AND r.contype = 'f' " +
+						"     AND conparentid = 0 " +
+						"ORDER BY conname",
 				},
 			},
 		},

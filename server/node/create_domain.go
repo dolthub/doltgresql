@@ -113,6 +113,11 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	return sql.RowsToRowIter(), nil
 }
 
+// generateCheckNameForDomain generates a unique check constraint name for a domain when one is not provided. The
+// name must be unique for this type, but doesn't need to be unique across all constraint names in the database.
+// Postgres generates names like `domainname_check`, and then uses `domainname_check1`, `domainname_check2`, etc.
+// Our behavior varies slightly, in that if a user provides a name that collides with a generated name, we will use 
+// `domain_check` (no suffix) before moving on to `domain_check2` etc.
 func generateCheckNameForDomain(domainName string, allNames []string) string {
 	name := domainName + "_check"
 	for i := 1; ; i++ {

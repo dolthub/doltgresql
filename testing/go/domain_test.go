@@ -67,7 +67,6 @@ func TestDomain(t *testing.T) {
 		},
 		{
 			Name:        "multiple checks",
-			Focus:       true,
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
