@@ -15,8 +15,10 @@
 package node
 
 import (
-	"github.com/cockroachdb/errors"
+	"fmt"
+	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -82,6 +84,13 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 
 	checkDefs := make([]*sql.CheckDefinition, len(c.CheckConstraints))
 	for i, check := range c.CheckConstraints {
+		checkName := c.CheckConstraintNames[i]
+		if checkName == "" {
+			checkName = generateCheckNameForDomain(c.Name, c.CheckConstraintNames)
+			// add this to the list of names to avoid duplicates later in the loop
+			c.CheckConstraintNames[i] = checkName
+			check.Name = checkName
+		}
 		checkDefs[i], err = plan.NewCheckDefinition(ctx, check)
 		if err != nil {
 			return nil, err
@@ -102,6 +111,21 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	}
 
 	return sql.RowsToRowIter(), nil
+}
+
+// generateCheckNameForDomain generates a unique check constraint name for a domain when one is not provided. The
+// name must be unique for this type, but doesn't need to be unique across all constraint names in the database.
+// Postgres generates names like `domainname_check`, and then uses `domainname_check1`, `domainname_check2`, etc.
+// Our behavior varies slightly, in that if a user provides a name that collides with a generated name, we will use
+// `domain_check` (no suffix) before moving on to `domain_check2` etc.
+func generateCheckNameForDomain(domainName string, allNames []string) string {
+	name := domainName + "_check"
+	for i := 1; ; i++ {
+		if !slices.Contains(allNames, name) {
+			return name
+		}
+		name = fmt.Sprintf("%s_check%d", domainName, i)
+	}
 }
 
 // Schema implements the interface sql.ExecSourceRel.

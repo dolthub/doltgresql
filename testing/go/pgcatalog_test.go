@@ -630,18 +630,17 @@ func TestPgConstraint(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
 				`CREATE TABLE testing2 (pk INT primary key, pktesting INT REFERENCES testing(pk), v1 TEXT);`,
-				// TODO: Uncomment when check constraints supported
-				// `ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '')`,
+				`ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '')`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT * FROM "pg_catalog"."pg_constraint" WHERE conrelid='testing2'::regclass OR conrelid='testing'::regclass;`,
+					Query: `SELECT * FROM "pg_catalog"."pg_constraint" WHERE conrelid='testing2'::regclass OR conrelid='testing'::regclass order by 1`,
 					Expected: []sql.Row{
-						{3757635986, "testing_pkey", 2200, "p", "f", "f", "t", 2147906242, 0, 3757635986, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
-						// TODO: postgres names this index testing_v1_key
-						{3050361446, "v1", 2200, "u", "f", "f", "t", 2147906242, 0, 3050361446, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},
 						{1719906648, "testing2_pktesting_fkey", 2200, "f", "f", "f", "t", 2694106299, 0, 1719906648, 0, 2147906242, "a", "a", "s", "t", 0, "t", "{0}", "{1}", nil, nil, nil, nil, nil, nil},
 						{2068729390, "testing2_pkey", 2200, "p", "f", "f", "t", 2694106299, 0, 2068729390, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
+						{3050361446, "v1", 2200, "u", "f", "f", "t", 2147906242, 0, 3050361446, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},
+						{3259318326, "v1_check", 2200, "c", "f", "f", "t", 2694106299, 0, 0, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
+						{3757635986, "testing_pkey", 2200, "p", "f", "f", "t", 2147906242, 0, 3757635986, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -659,6 +658,7 @@ func TestPgConstraint(t *testing.T) {
 						{"testing2_pktesting_fkey"},
 						{"testing_pkey"},
 						{"v1"},
+						{"v1_check"},
 					},
 				},
 				{
@@ -666,7 +666,326 @@ func TestPgConstraint(t *testing.T) {
 					Expected: []sql.Row{
 						{2068729390, "testing2_pkey", 2694106299, "testing2"},
 						{1719906648, "testing2_pktesting_fkey", 2694106299, "testing2"},
+						{3259318326, "v1_check", 2694106299, "testing2"},
 					},
+				},
+			},
+		},
+	})
+}
+
+func TestPgConstraintIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_constraint",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE testing2 (pk INT primary key, pktesting INT REFERENCES testing(pk), v1 TEXT);`,
+				`ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '')`,
+				`CREATE DOMAIN mydomain AS INT CHECK (VALUE > 0);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE oid = 2068729390;",
+					Expected: []sql.Row{
+						{2068729390, "testing2_pkey"},
+					},
+				},
+				{
+					Query: "explain SELECT oid, conname FROM pg_catalog.pg_constraint WHERE oid = 2068729390 order by 1",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_constraint.oid, pg_constraint.conname]"},
+						{" └─ Filter"},
+						{"     ├─ pg_constraint.oid = 2068729390"},
+						{"     └─ IndexedTableAccess(pg_constraint)"},
+						{"         ├─ index: [pg_constraint.oid]"},
+						{"         └─ filters: [{[{Index:[\"public\",\"testing2\",\"PRIMARY\"]}, {Index:[\"public\",\"testing2\",\"PRIMARY\"]}]}]"},
+					},
+				},
+				{
+					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE conrelid = 2694106299 ORDER BY conname;",
+					Expected: []sql.Row{
+						{2068729390, "testing2_pkey"},
+						{1719906648, "testing2_pktesting_fkey"},
+						{3259318326, "v1_check"},
+					},
+				},
+				{
+					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE conname = 'testing_pkey' AND connamespace = 2200;",
+					Expected: []sql.Row{
+						{3757635986, "testing_pkey"},
+					},
+				},
+				{
+					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE conname >= 'testing' AND conname < 'testingz' ORDER BY conname;",
+					Expected: []sql.Row{
+						{2068729390, "testing2_pkey"},
+						{1719906648, "testing2_pktesting_fkey"},
+						{3757635986, "testing_pkey"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_constraint comprehensive index tests",
+			SetUpScript: []string{
+				`CREATE TABLE test_table1 (pk INT primary key, val1 INT UNIQUE, val2 TEXT);`,
+				`CREATE TABLE test_table2 (id INT primary key, fk_col INT REFERENCES test_table1(pk), name TEXT UNIQUE);`,
+				`CREATE TABLE test_table3 (pk1 INT, pk2 INT, val TEXT, PRIMARY KEY(pk1, pk2));`,
+				`ALTER TABLE test_table2 ADD CONSTRAINT name_check CHECK (name != '');`,
+				`ALTER TABLE test_table1 ADD CONSTRAINT val2_check CHECK (val2 IS NOT NULL);`,
+				`CREATE DOMAIN test_domain AS INT CHECK (VALUE > 0);`,
+				`CREATE DOMAIN test_domain2 AS TEXT CHECK (LENGTH(VALUE) > 2);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				// Primary key index tests (pg_constraint_oid_index)
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE oid = (SELECT oid FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' LIMIT 1);",
+					Expected: []sql.Row{
+						{"test_table1_pkey"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE oid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE conname LIKE '%_pkey' ORDER BY conname LIMIT 3);",
+					Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"test_table2_pkey"},
+						{"test_table3_pkey"},
+					},
+				},
+				// conname + connamespace index tests (pg_constraint_conname_nsp_index)
+				{
+					Query: "SELECT conname, connamespace FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' AND connamespace = 2200;",
+					Expected: []sql.Row{
+						{"test_table1_pkey", uint32(2200)},
+					},
+				},
+				{
+					Query: "explain SELECT conname, connamespace FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' AND connamespace = 2200 order by 1",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_constraint.conname, pg_constraint.connamespace]"},
+						{" └─ Filter"},
+						{"     ├─ (pg_constraint.conname = 'test_table1_pkey' AND pg_constraint.connamespace = 2200)"},
+						{"     └─ IndexedTableAccess(pg_constraint)"},
+						{"         ├─ index: [pg_constraint.conname,pg_constraint.connamespace]"},
+						{"         └─ filters: [{[test_table1_pkey, test_table1_pkey], [{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conname IN ('test_table1_pkey', 'test_table2_pkey', 'name_check') AND connamespace = 2200 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"name_check"},
+						{"test_table1_pkey"},
+						{"test_table2_pkey"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conname >= 'name_' AND conname < 'name_z' AND connamespace = 2200 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"name_check"},
+					},
+				},
+				// conrelid + contypid + conname index tests (pg_constraint_conrelid_contypid_conname_index)
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 AND contypid = 0 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"val1"}, // TODO: postgres names this "test_table1_val1_key"
+						{"val2_check"},
+					},
+				},
+				{
+					Query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 AND contypid = 0 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_constraint.conname]"},
+						{" └─ Sort(pg_constraint.conname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (pg_constraint.conrelid = 3645786842 AND pg_constraint.contypid = 0)"},
+						{"         └─ IndexedTableAccess(pg_constraint)"},
+						{"             ├─ index: [pg_constraint.conrelid,pg_constraint.contypid,pg_constraint.conname]"},
+						{"             └─ filters: [{[{Table:[\"public\",\"test_table1\"]}, {Table:[\"public\",\"test_table1\"]}], [{OID:[\"0\"]}, {OID:[\"0\"]}], [NULL, ∞)}]"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table1') AND contypid = 0 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"val1"}, // TODO: postgres names this "test_table1_val1_key"
+						{"val2_check"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid IN (SELECT oid FROM pg_catalog.pg_class WHERE relname IN ('test_table1', 'test_table2')) AND contypid = 0 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"name"}, // should be test_table2_name_key
+						{"name_check"},
+						{"test_table1_pkey"},
+						{"test_table2_fk_col_fkey"},
+						{"test_table2_pkey"},
+						{"val1"}, // should be test_table1_val1_key
+						{"val2_check"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table2') AND contypid = 0 AND conname = 'name_check';",
+					Expected: []sql.Row{
+						{"name_check"},
+					},
+				},
+
+				// contypid index tests (pg_constraint_contypid_index)
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE contypid = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'test_domain') ORDER BY conname;",
+					Expected: []sql.Row{
+						{"test_domain_check"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE contypid = 1309307140 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"test_domain_check"},
+					},
+				},
+				{
+					Query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE contypid = 1309307140 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_constraint.conname]"},
+						{" └─ Sort(pg_constraint.conname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ pg_constraint.contypid = 1309307140"},
+						{"         └─ IndexedTableAccess(pg_constraint)"},
+						{"             ├─ index: [pg_constraint.contypid]"},
+						{"             └─ filters: [{[{Type:[\"public\",\"test_domain\"]}, {Type:[\"public\",\"test_domain\"]}]}]"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE contypid IN (SELECT oid FROM pg_catalog.pg_type WHERE typname LIKE 'test_domain%') ORDER BY conname;",
+					Expected: []sql.Row{
+						{"test_domain2_check"},
+						{"test_domain_check"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE contypid > 0 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"test_domain2_check"},
+						{"test_domain_check"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid >= (SELECT MIN(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND conrelid <= (SELECT MAX(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND contypid = 0 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"name"}, // should be test_table2_name_key
+						{"name_check"},
+						{"test_table1_pkey"},
+						{"test_table2_fk_col_fkey"},
+						{"test_table2_pkey"},
+						{"test_table3_pkey"},
+						{"val1"}, // should be test_table1_val1_key
+						{"val2_check"},
+					},
+				},
+				{
+					Query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid >= (SELECT MIN(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND conrelid <= (SELECT MAX(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND contypid = 0 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_constraint.conname]"},
+						{" └─ Sort(pg_constraint.conname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ ((pg_constraint.conrelid >= Subquery((select min(oid) from pg_class where relname like 'test_%')) AND pg_constraint.conrelid <= Subquery((select max(oid) from pg_class where relname like 'test_%'))) AND pg_constraint.contypid = 0)"},
+						{"         └─ IndexedTableAccess(pg_constraint)"},
+						{"             ├─ index: [pg_constraint.contypid]"},
+						{"             └─ filters: [{[{OID:[\"0\"]}, {OID:[\"0\"]}]}]"},
+					},
+				},
+				// Prefix match on 3-column index
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table1') ORDER BY conname;",
+					Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"val1"}, // should be test_table1_val1_key
+						{"val2_check"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"val1"}, // should be test_table1_val1_key
+						{"val2_check"},
+					},
+				},
+				{
+					Query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_constraint.conname]"},
+						{" └─ Sort(pg_constraint.conname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ pg_constraint.conrelid = 3645786842"},
+						{"         └─ IndexedTableAccess(pg_constraint)"},
+						{"             ├─ index: [pg_constraint.conrelid,pg_constraint.contypid,pg_constraint.conname]"},
+						{"             └─ filters: [{[{Table:[\"public\",\"test_table1\"]}, {Table:[\"public\",\"test_table1\"]}], [NULL, ∞), [NULL, ∞)}]"},
+					},
+				},
+				{
+					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE (conname LIKE '%_pkey' OR conname LIKE '%_key') AND connamespace = 2200 ORDER BY conname;",
+					Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"test_table2_fk_col_fkey"},
+						{"test_table2_pkey"},
+						{"test_table3_pkey"},
+					},
+				},
+				{
+					Query: "EXPLAIN SELECT conname FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' AND connamespace = 2200;",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_constraint.conname]"},
+						{" └─ Filter"},
+						{"     ├─ (pg_constraint.conname = 'test_table1_pkey' AND pg_constraint.connamespace = 2200)"},
+						{"     └─ IndexedTableAccess(pg_constraint)"},
+						{"         ├─ index: [pg_constraint.conname,pg_constraint.connamespace]"},
+						{"         └─ filters: [{[test_table1_pkey, test_table1_pkey], [{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
+					},
+				},
+				{
+					Query: "EXPLAIN SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 AND contypid > 0 order by 1;",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_constraint.conname]"},
+						{" └─ Sort(pg_constraint.conname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (pg_constraint.conrelid = 3645786842 AND pg_constraint.contypid > 0)"},
+						{"         └─ IndexedTableAccess(pg_constraint)"},
+						{"             ├─ index: [pg_constraint.conrelid,pg_constraint.contypid,pg_constraint.conname]"},
+						{"             └─ filters: [{[{Table:[\"public\",\"test_table1\"]}, {Table:[\"public\",\"test_table1\"]}], ({OID:[\"0\"]}, ∞), [NULL, ∞)}]"},
+					},
+				},
+			},
+		},
+		{
+			Name: "text constant to oid conversion",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
+				`CREATE TABLE testing2 (pk INT primary key, pktesting INT REFERENCES testing(pk), v1 TEXT);`,
+				`ALTER TABLE testing2 ADD CONSTRAINT v1_check CHECK (v1 != '')`,
+				`CREATE DOMAIN mydomain AS INT CHECK (VALUE > 0);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// We don't care about the result, we just want to make sure it doens't error
+					Query: "SELECT true as sametable, conname," +
+						"pg_catalog.pg_get_constraintdef(r.oid, true) as condef," +
+						"conrelid::pg_catalog.regclass AS ontable " +
+						"FROM pg_catalog.pg_constraint r " +
+						"WHERE r.conrelid = '145181' AND r.contype = 'f' " +
+						"     AND conparentid = 0 " +
+						"ORDER BY conname",
 				},
 			},
 		},
@@ -4208,6 +4527,15 @@ ORDER BY 1;`,
 					Query: `SELECT c.relname
 FROM pg_catalog.pg_class c 
 WHERE c.oid = 1496157034
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"t2"},
+					},
+				},
+				{
+					Query: `SELECT c.relname
+FROM pg_catalog.pg_class c 
+WHERE c.oid = '1496157034'
 ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t2"},

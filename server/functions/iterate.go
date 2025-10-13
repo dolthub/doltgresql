@@ -20,12 +20,13 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/core/typecollection"
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 // Callbacks are a set of callbacks that are used to simplify and coalesce all iteration involving database elements and
@@ -46,6 +47,8 @@ type Callbacks struct {
 	Sequence func(ctx *sql.Context, schema ItemSchema, sequence ItemSequence) (cont bool, err error)
 	// Table is the callback for tables.
 	Table func(ctx *sql.Context, schema ItemSchema, table ItemTable) (cont bool, err error)
+	// Type is the callback for types.
+	Type func(ctx *sql.Context, schema ItemSchema, typ ItemType) (cont bool, err error)
 	// View is the callback for views.
 	View func(ctx *sql.Context, schema ItemSchema, view ItemView) (cont bool, err error)
 	// SearchSchemas represents the search path. If left empty, then all schemas are iterated over. If supplied, then
@@ -105,6 +108,12 @@ type ItemTable struct {
 	Item sql.Table
 }
 
+// ItemType contains the relevant information to pass to the Type callback.
+type ItemType struct {
+	Oid  id.Type
+	Item *types.DoltgresType
+}
+
 // ItemView contains the relevant information to pass to the View callback.
 type ItemView struct {
 	OID  id.View
@@ -115,8 +124,8 @@ type ItemView struct {
 // over. This is a central function that homogenizes all iteration, since OIDs depend on a deterministic iteration over
 // items. This function should be expanded as we add more items to iterate over.
 func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) error {
-	cat := sqlserver.GetRunningServer().Engine.Analyzer.Catalog
-	currentDatabase, err := cat.Database(ctx, database)
+	sess := ctx.Session.(*dsess.DoltSession)
+	currentDatabase, err := sess.Provider().Database(ctx, database)
 	if err != nil {
 		return err
 	}
@@ -145,11 +154,32 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 				return err
 			}
 		}
-		if err = iterateSchemas(ctx, callbacks, schemas, sequenceMap); err != nil {
+
+		var typeMap map[string][]*types.DoltgresType
+		if callbacks.Type != nil {
+			coll, err := core.GetTypesCollectionFromContext(ctx)
+			if err != nil {
+				return err
+			}
+
+			typeMap = typesBySchema(ctx, coll)
+		}
+
+		if err = iterateSchemas(ctx, callbacks, schemas, sequenceMap, typeMap); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// typesBySchema returns a map of schema name to types within that schema.
+func typesBySchema(ctx *sql.Context, coll *typecollection.TypeCollection) map[string][]*types.DoltgresType {
+	m := make(map[string][]*types.DoltgresType)
+	_ = coll.IterateTypes(ctx, func(typ *types.DoltgresType) (stop bool, err error) {
+		m[typ.Schema()] = append(m[typ.Schema()], typ)
+		return false, nil
+	})
+	return m
 }
 
 // IterateCurrentDatabase iterates over the current database, calling each callback as the relevant items are iterated
@@ -160,7 +190,13 @@ func IterateCurrentDatabase(ctx *sql.Context, callbacks Callbacks) error {
 }
 
 // iterateSchemas is called by IterateCurrentDatabase to handle schemas and elements contained within schemas.
-func iterateSchemas(ctx *sql.Context, callbacks Callbacks, sortedSchemas []sql.DatabaseSchema, sequenceMap map[string][]*sequences.Sequence) error {
+func iterateSchemas(
+	ctx *sql.Context,
+	callbacks Callbacks,
+	sortedSchemas []sql.DatabaseSchema,
+	sequenceMap map[string][]*sequences.Sequence,
+	typeMap map[string][]*types.DoltgresType,
+) error {
 	// Iterate over the sorted schemas by the iteration order
 	for _, schemaIndex := range callbacks.schemaIterationOrder(sortedSchemas) {
 		schema := sortedSchemas[schemaIndex]
@@ -182,18 +218,12 @@ func iterateSchemas(ctx *sql.Context, callbacks Callbacks, sortedSchemas []sql.D
 				return err
 			}
 		}
-		// Iterate over sequences. The map will only be populated if the sequence callback exists.
-		for _, sequence := range sequenceMap[schema.SchemaName()] {
-			itemSequence := ItemSequence{
-				OID:  sequence.Id,
-				Item: sequence,
-			}
-			if cont, err := callbacks.Sequence(ctx, itemSchema, itemSequence); err != nil {
-				return err
-			} else if !cont {
-				return nil
-			}
+
+		err := iterateSequences(ctx, callbacks, sequenceMap, schema, itemSchema)
+		if err != nil {
+			return err
 		}
+
 		// Check if we need to iterate over tables
 		if callbacks.iteratesOverTables() {
 			tableNames, err := schema.GetTableNames(ctx)
@@ -206,6 +236,45 @@ func iterateSchemas(ctx *sql.Context, callbacks Callbacks, sortedSchemas []sql.D
 			if err = iterateTables(ctx, callbacks, itemSchema, tableNames); err != nil {
 				return err
 			}
+		}
+
+		if callbacks.iteratesOverTypes() {
+			if err := iterateTypes(ctx, callbacks, itemSchema, typeMap); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// iterateSequences is called by iterateSchemas to handle sequence callbacks
+func iterateSequences(ctx *sql.Context, callbacks Callbacks, sequenceMap map[string][]*sequences.Sequence, schema sql.DatabaseSchema, itemSchema ItemSchema) error {
+	for _, sequence := range sequenceMap[schema.SchemaName()] {
+		itemSequence := ItemSequence{
+			OID:  sequence.Id,
+			Item: sequence,
+		}
+		if cont, err := callbacks.Sequence(ctx, itemSchema, itemSequence); err != nil {
+			return err
+		} else if !cont {
+			return nil
+		}
+	}
+	return nil
+}
+
+// iterateTypes is called by iterateSchemas to handle type callbacks
+func iterateTypes(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema, typeMap map[string][]*types.DoltgresType) error {
+	for _, typ := range typeMap[itemSchema.Item.SchemaName()] {
+		itemSchemaType := ItemType{
+			Oid:  typ.ID,
+			Item: typ,
+		}
+		cont, err := callbacks.Type(ctx, itemSchema, itemSchemaType)
+		if err != nil {
+			return err
+		} else if !cont {
+			return nil
 		}
 	}
 	return nil
@@ -734,6 +803,7 @@ func (iter Callbacks) iteratesOverSchemas() bool {
 		iter.Schema != nil ||
 		iter.Sequence != nil ||
 		iter.Table != nil ||
+		iter.Type != nil ||
 		iter.View != nil
 }
 
@@ -744,6 +814,11 @@ func (iter Callbacks) iteratesOverTables() bool {
 		iter.ForeignKey != nil ||
 		iter.Index != nil ||
 		iter.Table != nil
+}
+
+// iteratesOverTypes returns whether we need to iterate over types based on the given callbacks.
+func (iter Callbacks) iteratesOverTypes() bool {
+	return iter.Type != nil
 }
 
 // schemaIterationOrder returns the order that the given schemas should be iterated over.

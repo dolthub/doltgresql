@@ -404,6 +404,24 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 
 	castFn := GetAssignmentCast(dt, t)
 	if castFn == nil {
+		// In the case that we have an unknown type string literal, we attempt to parse it with the target type's
+		// input function
+		// TODO: this is probably not the best place to perform this conversion, it would probably be better as an
+		//  analyzer step. This currently only takes place for foreign key checks and some index lookups, and could be
+		//  generalized to many more places.
+		if dt.ID.TypeName() == "unknown" {
+			strVal, ok, err := sql.Unwrap[string](ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				converted, err := t.IoInput(ctx, strVal)
+				if err != nil {
+					return nil, err
+				}
+				return converted, nil
+			}
+		}
 		return nil, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
 	}
 

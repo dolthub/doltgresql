@@ -242,7 +242,6 @@ func (p PgClassHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgCl
 		if relNameRange.HasLowerBound() {
 			lb := sql.GetMySQLRangeCutKey(relNameRange.LowerBound)
 			if lb != nil {
-
 				relnameLower = lb.(string)
 				hasLowerBound = true
 			}

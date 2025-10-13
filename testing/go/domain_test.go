@@ -54,6 +54,66 @@ func TestDomain(t *testing.T) {
 					Query:       `CREATE TABLE test_table (id int primary key, v non_existing_domain);`,
 					ExpectedErr: `type "non_existing_domain" does not exist`,
 				},
+				{
+					Query: `SELECT conname, contype, conrelid, contypid from pg_constraint WHERE conname IN ('year_check', 'year_check_min', 'year_check_max') ORDER BY conname;`,
+					Expected: []sql.Row{
+						{"year_check", "c", 0, 2637102637},
+						{"year_check", "c", 0, 1287570634},
+						{"year_check_max", "c", 0, 2938087575},
+						{"year_check_min", "c", 0, 2938087575},
+					},
+				},
+			},
+		},
+		{
+			Name:        "multiple checks",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE DOMAIN d1 AS integer CONSTRAINT check1 CHECK (VALUE > 100) CONSTRAINT check2 CHECK (VALUE < 200);`,
+				},
+				{
+					Query: `SELECT conname, contype, conrelid, contypid from pg_constraint WHERE conname IN ('check1', 'check2') ORDER BY conname;`,
+					Expected: []sql.Row{
+						{"check1", "c", 0, 2005192443},
+						{"check2", "c", 0, 2005192443},
+					},
+				},
+				{
+					Query: "create table t1 (pk int primary key, v d1);",
+				},
+				{
+					Query:       "insert into t1 values (1, 50);",
+					ExpectedErr: "constraint \"check1\"",
+				},
+				{
+					Query: "insert into t1 values (2, 150);",
+				},
+				{
+					Query:       "insert into t1 values (3, 250);",
+					ExpectedErr: "constraint \"check2\"",
+				},
+				{
+					Query: "CREATE DOMAIN d2 AS integer CHECK (VALUE > 300) CHECK (VALUE < 400);",
+				},
+				{
+					Query: `SELECT conname, contype, conrelid, contypid from pg_constraint WHERE conname IN ('d2_check', 'd2_check1') ORDER BY conname;`,
+					Expected: []sql.Row{
+						{"d2_check", "c", 0, 1691630863},
+						{"d2_check1", "c", 0, 1691630863},
+					},
+				},
+				{
+					Query: "CREATE DOMAIN d3 AS integer CONSTRAINT d3_check1 CHECK (VALUE > 300) CHECK (VALUE < 400);",
+				},
+				{
+					// TODO: this is slightly different behavior from Postgres, but the important thing is two different names are generated
+					Query: `SELECT conname, contype, conrelid, contypid from pg_constraint WHERE conname IN ('d3_check1', 'd3_check') ORDER BY conname;`,
+					Expected: []sql.Row{
+						{"d3_check", "c", 0, 2529148428},
+						{"d3_check1", "c", 0, 2529148428},
+					},
+				},
 			},
 		},
 		{

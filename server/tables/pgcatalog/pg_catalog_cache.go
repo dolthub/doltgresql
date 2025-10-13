@@ -41,7 +41,7 @@ type pgCatalogCache struct {
 	pgClasses *pgClassCache
 
 	// pg_constraints
-	pgConstraints []pgConstraint
+	pgConstraints *pgConstraintCache
 
 	// pg_namespace
 	schemaNames []string
@@ -105,6 +105,33 @@ type pgIndexCache struct {
 }
 
 var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}
+
+// pgConstraintCache holds cached data for the pg_constraint table, including three btree indexes for fast lookups
+type pgConstraintCache struct {
+	constraints     []*pgConstraint
+	oidIdx          *inMemIndexStorage[*pgConstraint]
+	relidTypNameIdx *inMemIndexStorage[*pgConstraint]
+	nameSchemaIdx   *inMemIndexStorage[*pgConstraint]
+	typIdx          *inMemIndexStorage[*pgConstraint]
+}
+
+var _ BTreeStorageAccess[*pgConstraint] = &pgConstraintCache{}
+
+// getIndex implements BTreeStorageAccess.
+func (p pgConstraintCache) getIndex(name string) *inMemIndexStorage[*pgConstraint] {
+	switch name {
+	case "pg_constraint_oid_index":
+		return p.oidIdx
+	case "pg_constraint_conrelid_contypid_conname_index":
+		return p.relidTypNameIdx
+	case "pg_constraint_conname_nsp_index":
+		return p.nameSchemaIdx
+	case "pg_constraint_contypid_index":
+		return p.typIdx
+	default:
+		panic("unknown pg_constraint index: " + name)
+	}
+}
 
 // pgAttributeCache holds cached data for the pg_attribute table, including two btree indexes for fast lookups
 type pgAttributeCache struct {
