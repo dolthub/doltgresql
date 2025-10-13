@@ -42,6 +42,6 @@ func TestIndexes(t *testing.T) {
 		&pgConstraint{tableOidNative: 300, typeOidNative: 1},
 		cb,
 	)
-	
+
 	assert.Equal(t, []*pgConstraint{con1}, foundElements)
 }

@@ -728,7 +728,7 @@ func TestPgConstraintIndexes(t *testing.T) {
 			},
 		},
 		{
-			Name:  "pg_constraint comprehensive index tests",
+			Name: "pg_constraint comprehensive index tests",
 			SetUpScript: []string{
 				`CREATE TABLE test_table1 (pk INT primary key, val1 INT UNIQUE, val2 TEXT);`,
 				`CREATE TABLE test_table2 (id INT primary key, fk_col INT REFERENCES test_table1(pk), name TEXT UNIQUE);`,
@@ -835,7 +835,7 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"name_check"},
 					},
 				},
-				
+
 				// contypid index tests (pg_constraint_contypid_index)
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE contypid = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'test_domain') ORDER BY conname;",
