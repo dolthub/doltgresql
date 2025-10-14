@@ -102,23 +102,10 @@ func (iFunc InterpretedFunction) VariadicIndex() int {
 }
 
 // QuerySingleReturn handles queries that are supposed to return a single value.
-func (InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error) {
-	if len(bindings) > 0 {
-		for i, bindingName := range bindings {
-			variable := stack.GetVariable(bindingName)
-			if variable.Type == nil {
-				return nil, fmt.Errorf("variable `%s` could not be found", bindingName)
-			}
-			formattedVar, err := variable.Type.FormatValue(*variable.Value)
-			if err != nil {
-				return nil, err
-			}
-			switch variable.Type.TypCategory {
-			case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_StringTypes:
-				formattedVar = pq.QuoteLiteral(formattedVar)
-			}
-			stmt = strings.Replace(stmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
-		}
+func (iFunc InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error) {
+	stmt, _, err = iFunc.ApplyBindings(ctx, stack, stmt, bindings, true)
+	if err != nil {
+		return nil, err
 	}
 	return sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
 		sch, rowIter, _, err := stack.Runner().QueryWithBindings(subCtx, stmt, nil, nil, nil)
@@ -177,23 +164,10 @@ func (InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgsql.Int
 }
 
 // QueryMultiReturn handles queries that may return multiple values over multiple rows.
-func (InterpretedFunction) QueryMultiReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, bindings []string) (rows []sql.Row, err error) {
-	if len(bindings) > 0 {
-		for i, bindingName := range bindings {
-			variable := stack.GetVariable(bindingName)
-			if variable.Type == nil {
-				return nil, fmt.Errorf("variable `%s` could not be found", bindingName)
-			}
-			formattedVar, err := variable.Type.FormatValue(*variable.Value)
-			if err != nil {
-				return nil, err
-			}
-			switch variable.Type.TypCategory {
-			case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_StringTypes:
-				formattedVar = pq.QuoteLiteral(formattedVar)
-			}
-			stmt = strings.Replace(stmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
-		}
+func (iFunc InterpretedFunction) QueryMultiReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, bindings []string) (rows []sql.Row, err error) {
+	stmt, _, err = iFunc.ApplyBindings(ctx, stack, stmt, bindings, true)
+	if err != nil {
+		return nil, err
 	}
 	return sql.RunInterpreted(ctx, func(subCtx *sql.Context) ([]sql.Row, error) {
 		_, rowIter, _, err := stack.Runner().QueryWithBindings(subCtx, stmt, nil, nil, nil)
@@ -205,6 +179,44 @@ func (InterpretedFunction) QueryMultiReturn(ctx *sql.Context, stack plpgsql.Inte
 		//  fine.
 		return sql.RowIterToRows(subCtx, rowIter)
 	})
+}
+
+// ApplyBindings applies the given bindings to the statement. If `varFound` is false, then the error will be state that
+// the variable was not found (which means the error may be ignored if you're only concerned with finding a variable).
+// If `varFound` is true, then the error is related to formatting the variable. `enforceType` adds casting and quotes to
+// ensure that the value is correctly represented in the string.
+func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, bindings []string, enforceType bool) (newStmt string, varFound bool, err error) {
+	if len(bindings) == 0 {
+		return stmt, false, nil
+	}
+	newStmt = stmt
+	for i, bindingName := range bindings {
+		variable := stack.GetVariable(bindingName)
+		if variable.Type == nil {
+			return newStmt, false, fmt.Errorf("variable `%s` could not be found", bindingName)
+		}
+		var formattedVar string
+		if *variable.Value != nil {
+			formattedVar, err = variable.Type.FormatValue(*variable.Value)
+			if err != nil {
+				return newStmt, true, err
+			}
+			if enforceType {
+				switch variable.Type.TypCategory {
+				case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_DateTimeTypes, pgtypes.TypeCategory_StringTypes:
+					formattedVar = pq.QuoteLiteral(formattedVar)
+				}
+			}
+		} else {
+			formattedVar = "NULL"
+		}
+		if enforceType {
+			newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`(%s)::%s`, formattedVar, variable.Type.String()), 1)
+		} else {
+			newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
+		}
+	}
+	return newStmt, true, nil
 }
 
 // enforceInterfaceInheritance implements the interface FunctionInterface.

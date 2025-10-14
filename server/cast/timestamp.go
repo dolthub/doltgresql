@@ -37,7 +37,11 @@ func timestampAssignment() {
 		FromType: pgtypes.Timestamp,
 		ToType:   pgtypes.Date,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return pgdate.MakeDateFromTime(val.(time.Time))
+			d, err := pgdate.MakeDateFromTime(val.(time.Time))
+			if err != nil {
+				return nil, err
+			}
+			return d.ToTime()
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{

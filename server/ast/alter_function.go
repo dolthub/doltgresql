@@ -27,9 +27,9 @@ func nodeAlterFunction(ctx *Context, node *tree.AlterFunction) (vitess.Statement
 		return nil, err
 	}
 
-	// We can handle the common ALTER FUNCTION .. TO OWNER case since it's a no-op
-	if node.Owner != "" {
-		return NewNoOp("owners are unsupported"), nil
+	// We intentionally don't support OWNER TO since we don't support owning objects
+	if node.Owner != "" && len(node.Options) == 0 {
+		return NewNoOp("OWNER TO is unsupported and ignored"), nil
 	}
 
 	return NotYetSupportedError("ALTER FUNCTION statement is not yet supported")

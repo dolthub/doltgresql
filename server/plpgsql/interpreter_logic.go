@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5/pgproto3"
@@ -32,6 +33,7 @@ import (
 // InterpretedFunction is an interface that essentially mirrors the implementation of InterpretedFunction in the
 // framework package.
 type InterpretedFunction interface {
+	ApplyBindings(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string, enforceType bool) (newStmt string, varFound bool, err error)
 	GetParameters() []*pgtypes.DoltgresType
 	GetParameterNames() []string
 	GetReturn() *pgtypes.DoltgresType
@@ -207,23 +209,25 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			//       notice levels to send to the client.
 			// https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-CLIENT-MIN-MESSAGES
 
-			// TODO: Notices at the EXCEPTION level should also abort the current tx.
-
 			message, err := evaluteNoticeMessage(ctx, iFunc, operation, stack)
 			if err != nil {
 				return nil, err
 			}
 
-			noticeResponse := &pgproto3.NoticeResponse{
-				Severity: operation.PrimaryData,
-				Message:  message,
+			if operation.PrimaryData == "EXCEPTION" {
+				// TODO: Notices at the EXCEPTION level should also abort the current tx.
+				return nil, errors.New(message)
+			} else {
+				noticeResponse := &pgproto3.NoticeResponse{
+					Severity: operation.PrimaryData,
+					Message:  message,
+				}
+				if err = applyNoticeOptions(ctx, noticeResponse, operation.Options); err != nil {
+					return nil, err
+				}
+				sess := dsess.DSessFromSess(ctx.Session)
+				sess.Notice(noticeResponse)
 			}
-
-			if err = applyNoticeOptions(ctx, noticeResponse, operation.Options); err != nil {
-				return nil, err
-			}
-			sess := dsess.DSessFromSess(ctx.Session)
-			sess.Notice(noticeResponse)
 		case OpCode_Return:
 			if len(operation.PrimaryData) == 0 {
 				return nil, nil
@@ -295,21 +299,35 @@ func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
 	message := operation.SecondaryData[0]
 	if len(operation.SecondaryData) > 1 {
 		params := operation.SecondaryData[1:]
-		currentParam := 0
+		currentParamIdx := 0
 
 		parts := strings.Split(message, "%%")
 		for i, part := range parts {
 			for strings.Contains(part, "%") {
-				retVal, err := iFunc.QuerySingleReturn(ctx, stack, "SELECT "+params[currentParam], nil, nil)
-				if err != nil {
-					return "", err
+				if currentParamIdx >= len(params) {
+					return "", errors.New("too few parameters specified for RAISE")
 				}
-				currentParam += 1
-
-				s := fmt.Sprintf("%v", retVal)
-				part = strings.Replace(part, "%", s, 1)
+				currentParam := params[currentParamIdx]
+				currentParamIdx += 1
+				formattedVar, varFound, err := iFunc.ApplyBindings(ctx, stack, "$1", []string{currentParam}, false)
+				if varFound {
+					if err != nil {
+						return "", err
+					}
+					part = strings.Replace(part, "%", formattedVar, 1)
+				} else {
+					retVal, err := iFunc.QuerySingleReturn(ctx, stack, fmt.Sprintf("SELECT (%s)::text", currentParam), nil, nil)
+					if err != nil {
+						return "", err
+					}
+					stringVal := fmt.Sprintf("%v", retVal) // We should always return a string, but this is just a safety net
+					part = strings.Replace(part, "%", stringVal, 1)
+				}
 			}
 			parts[i] = part
+		}
+		if currentParamIdx < len(params) {
+			return "", errors.New("too many parameters specified for RAISE")
 		}
 		message = strings.Join(parts, "%")
 	}
