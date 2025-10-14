@@ -1807,6 +1807,383 @@ func TestPgNamespace(t *testing.T) {
 	})
 }
 
+func TestPgNamespaceIndexLookups(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_namespace_index_lookups",
+			Assertions: []ScriptTestAssertion{
+				// Setup: Create additional schemas for more comprehensive testing
+				{
+					Query:    "CREATE SCHEMA testschema1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SCHEMA testschema2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SCHEMA testschema3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SCHEMA z_schema;", // For testing alphabetical ordering
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SCHEMA a_schema;", // For testing alphabetical ordering
+					Expected: []sql.Row{},
+				},
+
+				// Test OID index lookups - exact matches
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE oid = 11;`,
+					Expected: []sql.Row{
+						{"pg_catalog"},
+					},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE oid = 2200;`,
+					Expected: []sql.Row{
+						{"public"},
+					},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE oid = 13183;`,
+					Expected: []sql.Row{
+						{"information_schema"},
+					},
+				},
+
+				// Test OID index lookups - range conditions
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid >= 11 AND oid < 2200 ORDER BY oid;`,
+					Expected: []sql.Row{
+						{11, "pg_catalog"},
+						{13183, "information_schema"},
+					},
+				},
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid > 11 AND oid <= 2200 ORDER BY oid;`,
+					Expected: []sql.Row{
+						{13183, "information_schema"},
+						{2200, "public"},
+					},
+				},
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid BETWEEN 11 AND 13183 ORDER BY oid;`,
+					Expected: []sql.Row{
+						{11, "pg_catalog"},
+						{13183, "information_schema"},
+					},
+				},
+
+				// Test OID index lookups - greater than conditions
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid > 10000 ORDER BY oid LIMIT 3;`,
+					Expected: []sql.Row{
+						{13183, "information_schema"},
+						{2200, "public"},
+					},
+				},
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid >= 2200 ORDER BY oid;`,
+					Expected: []sql.Row{
+						{2200, "public"},
+					},
+				},
+
+				// Test OID index lookups - less than conditions
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid < 10000 ORDER BY oid;`,
+					Expected: []sql.Row{
+						{11, "pg_catalog"},
+					},
+				},
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid <= 13183 ORDER BY oid;`,
+					Expected: []sql.Row{
+						{11, "pg_catalog"},
+						{13183, "information_schema"},
+					},
+				},
+
+				// Test OID index lookups - no matches
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE oid = 999999;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE oid > 999999;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE oid < 1;`,
+					Expected: []sql.Row{},
+				},
+
+				// Test name index lookups - exact matches
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = 'public';`,
+					Expected: []sql.Row{
+						{2200},
+					},
+				},
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = 'pg_catalog';`,
+					Expected: []sql.Row{
+						{11},
+					},
+				},
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = 'information_schema';`,
+					Expected: []sql.Row{
+						{13183},
+					},
+				},
+
+				// Test name index lookups - range conditions (lexicographic ordering)
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE nspname >= 'a' AND nspname < 'p' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"a_schema"},
+						{"information_schema"},
+						{"dolt"},
+					},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE nspname > 'a' AND nspname <= 'public' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"dolt"},
+						{"information_schema"},
+						{"pg_catalog"},
+						{"public"},
+					},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE nspname BETWEEN 'p' AND 't' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"pg_catalog"},
+						{"public"},
+						{"testschema1"},
+						{"testschema2"},
+						{"testschema3"},
+					},
+				},
+
+				// Test name index lookups - greater than conditions
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE nspname > 'p' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"public"},
+						{"testschema1"},
+						{"testschema2"},
+						{"testschema3"},
+						{"z_schema"},
+					},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE nspname >= 'test' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"testschema1"},
+						{"testschema2"},
+						{"testschema3"},
+						{"z_schema"},
+					},
+				},
+
+				// Test name index lookups - less than conditions
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE nspname < 'p' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"a_schema"},
+						{"dolt"},
+						{"information_schema"},
+					},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE nspname <= 'information_schema' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"a_schema"},
+						{"dolt"},
+						{"information_schema"},
+					},
+				},
+
+				// Test name index lookups - no matches
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = 'nonexistent';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname > 'zzz';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname < 'a';`,
+					Expected: []sql.Row{},
+				},
+
+				// Test case sensitivity in name lookups
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = 'PUBLIC';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = 'Public';`,
+					Expected: []sql.Row{},
+				},
+
+				// Test complex range conditions with both indexes
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid >= 11 AND nspname >= 'p' ORDER BY oid;`,
+					Expected: []sql.Row{
+						{11, "pg_catalog"},
+						{2200, "public"},
+					},
+				},
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid < 20000 AND nspname < 't' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"a_schema"},
+						{"dolt"},
+						{"information_schema"},
+						{"pg_catalog"},
+						{"public"},
+					},
+				},
+
+				// Test edge cases with empty strings and special characters
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = '';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname >= '' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"a_schema"},
+						{"dolt"},
+						{"information_schema"},
+						{"pg_catalog"},
+						{"public"},
+						{"testschema1"},
+						{"testschema2"},
+						{"testschema3"},
+						{"z_schema"},
+					},
+				},
+
+				// Test index lookups with ORDER BY to verify index usage
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid > 10 ORDER BY oid LIMIT 3;`,
+					Expected: []sql.Row{
+						{11, "pg_catalog"},
+						{13183, "information_schema"},
+						{2200, "public"},
+					},
+				},
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE nspname >= 't' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"testschema1"},
+						{"testschema2"},
+						{"testschema3"},
+						{"z_schema"},
+					},
+				},
+
+				// Test index lookups with COUNT to verify index usage
+				{
+					Query: `SELECT COUNT(*) FROM "pg_catalog"."pg_namespace" WHERE oid >= 11;`,
+					Expected: []sql.Row{
+						{4},
+					},
+				},
+				{
+					Query: `SELECT COUNT(*) FROM "pg_catalog"."pg_namespace" WHERE nspname LIKE 'test%';`,
+					Expected: []sql.Row{
+						{3},
+					},
+				},
+
+				// Test index lookups with DISTINCT
+				{
+					Query: `SELECT DISTINCT nspname FROM "pg_catalog"."pg_namespace" WHERE oid > 10000 ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"information_schema"},
+						{"public"},
+					},
+				},
+
+				// Test index lookups with subqueries
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE oid IN (11, 2200) ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"pg_catalog"},
+						{"public"},
+					},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE nspname IN ('public', 'pg_catalog') ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"pg_catalog"},
+						{"public"},
+					},
+				},
+
+				// Test index lookups with NOT conditions
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE oid != 11 ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"a_schema"},
+						{"dolt"},
+						{"information_schema"},
+						{"public"},
+						{"testschema1"},
+						{"testschema2"},
+						{"testschema3"},
+						{"z_schema"},
+					},
+				},
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE nspname != 'public' ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{"a_schema"},
+						{"dolt"},
+						{"information_schema"},
+						{"pg_catalog"},
+						{"testschema1"},
+						{"testschema2"},
+						{"testschema3"},
+						{"z_schema"},
+					},
+				},
+
+				// Test cleanup
+				{
+					Query:    "DROP SCHEMA testschema1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP SCHEMA testschema2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP SCHEMA testschema3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP SCHEMA z_schema;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP SCHEMA a_schema;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
 func TestPgOpclass(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
