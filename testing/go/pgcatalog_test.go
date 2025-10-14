@@ -1853,6 +1853,19 @@ func TestPgNamespaceIndexLookups(t *testing.T) {
 						{"information_schema"},
 					},
 				},
+				{
+					Query: "Explain SELECT nspname FROM pg_namespace WHERE oid = 2200 order by 1",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_namespace.nspname]"},
+						{" └─ Sort(pg_namespace.nspname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ pg_namespace.oid = 2200"},
+						{"         └─ IndexedTableAccess(pg_namespace)"},
+						{"             ├─ index: [pg_namespace.oid]"},
+						{"             └─ filters: [{[{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
+					},
+				},
 
 				// Test OID index lookups - range conditions
 				{
@@ -1865,6 +1878,18 @@ func TestPgNamespaceIndexLookups(t *testing.T) {
 					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid > 11 AND oid <= 2200 ORDER BY oid;`,
 					Expected: []sql.Row{
 						{2200, "public"},
+					},
+				},
+				{
+					Query: `explain SELECT oid, nspname FROM "pg_catalog"."pg_namespace" WHERE oid > 11 AND oid <= 2200 ORDER BY oid;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_namespace.oid, pg_namespace.nspname]"},
+						{" └─ Filter"},
+						{"     ├─ (pg_namespace.oid > 11 AND pg_namespace.oid <= 2200)"},
+						{"     └─ IndexedTableAccess(pg_namespace)"},
+						{"         ├─ index: [pg_namespace.oid]"},
+						{"         └─ filters: [{({Namespace:[\"pg_catalog\"]}, {Namespace:[\"public\"]}]}]"},
 					},
 				},
 				{
@@ -1916,6 +1941,19 @@ func TestPgNamespaceIndexLookups(t *testing.T) {
 					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = 'pg_catalog';`,
 					Expected: []sql.Row{
 						{11},
+					},
+				},
+				{
+					Query: `explain SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = 'pg_catalog' order by 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_namespace.oid]"},
+						{" └─ Sort(pg_namespace.oid ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ pg_namespace.nspname = 'pg_catalog'"},
+						{"         └─ IndexedTableAccess(pg_namespace)"},
+						{"             ├─ index: [pg_namespace.nspname]"},
+						{"             └─ filters: [{[pg_catalog, pg_catalog]}]"},
 					},
 				},
 				{
