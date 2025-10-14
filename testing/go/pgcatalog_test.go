@@ -1778,6 +1778,30 @@ func TestPgNamespace(t *testing.T) {
 						{2638679668, "testschema", 0, nil},
 					},
 				},
+				// Test index lookups - first let's see what the actual OID values are
+				{
+					Query: `SELECT oid, nspname FROM "pg_catalog"."pg_namespace" ORDER BY nspname;`,
+					Expected: []sql.Row{
+						{1882653564, "dolt"},
+						{13183, "information_schema"},
+						{11, "pg_catalog"},
+						{2200, "public"},
+						{2638679668, "testschema"},
+					},
+				},
+				// Test simple index lookups
+				{
+					Query: `SELECT nspname FROM "pg_catalog"."pg_namespace" WHERE oid = 11;`,
+					Expected: []sql.Row{
+						{"pg_catalog"},
+					},
+				},
+				{
+					Query: `SELECT oid FROM "pg_catalog"."pg_namespace" WHERE nspname = 'public';`,
+					Expected: []sql.Row{
+						{2200},
+					},
+				},
 			},
 		},
 	})

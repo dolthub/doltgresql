@@ -27,6 +27,14 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// pgNamespace represents a row in the pg_namespace table.
+// We store oids in their native format as well so that we can do range scans on them.
+type pgNamespace struct {
+	oid       id.Id
+	oidNative uint32
+	name      string
+}
+
 // pgCatalogCache is a session cache that stores the contents of pg_catalog tables. Since this cache instance is only
 // ever used by a single session, it does not include any synchronization for concurrent data access. A pgCatalogCache
 // only caches data for the length of a single query, using |pid| to identify the current query. This means that the
@@ -44,8 +52,7 @@ type pgCatalogCache struct {
 	pgConstraints *pgConstraintCache
 
 	// pg_namespace
-	schemaNames []string
-	schemaOids  []id.Id
+	pgNamespaces *pgNamespaceCache
 
 	// pg_attribute
 	pgAttributes *pgAttributeCache
@@ -142,7 +149,27 @@ type pgAttributeCache struct {
 
 var _ BTreeStorageAccess[*pgAttribute] = &pgAttributeCache{}
 
+// pgNamespaceCache holds cached data for the pg_namespace table, including two btree indexes for fast lookups by OID and by name
+type pgNamespaceCache struct {
+	namespaces []*pgNamespace
+	oidIdx     *inMemIndexStorage[*pgNamespace]
+	nameIdx    *inMemIndexStorage[*pgNamespace]
+}
+
+var _ BTreeStorageAccess[*pgNamespace] = &pgNamespaceCache{}
+
 // getIndex implements BTreeStorageAccess.
+func (p pgNamespaceCache) getIndex(name string) *inMemIndexStorage[*pgNamespace] {
+	switch name {
+	case "pg_namespace_oid_index":
+		return p.oidIdx
+	case "pg_namespace_nspname_index":
+		return p.nameIdx
+	default:
+		panic("unknown pg_namespace index: " + name)
+	}
+}
+
 func (p pgAttributeCache) getIndex(name string) *inMemIndexStorage[*pgAttribute] {
 	switch name {
 	case "pg_attribute_relid_attnum_index":
