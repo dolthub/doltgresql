@@ -20,10 +20,11 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeCall handles *tree.Call nodes.
-func nodeCall(ctx *Context, node *tree.Call) (*vitess.Call, error) {
+func nodeCall(ctx *Context, node *tree.Call) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -62,11 +63,8 @@ func nodeCall(ctx *Context, node *tree.Call) (*vitess.Call, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &vitess.Call{
-		ProcName: vitess.ProcedureName{
-			Name:      name,
-			Qualifier: qualifier,
-		},
-		Params: exprs,
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewCall(qualifier.String(), name.String(), exprs),
+		Children:  exprs,
 	}, nil
 }
