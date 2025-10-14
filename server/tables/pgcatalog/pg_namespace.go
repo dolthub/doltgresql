@@ -223,7 +223,6 @@ var pgNamespaceSchema = sql.Schema{
 	{Name: "nspacl", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgNamespaceName}, // TODO: type aclitem[]
 }
 
-
 // lessNamespaceOid is a sort function for pgNamespace based on oid.
 func lessNamespaceOid(a, b *pgNamespace) bool {
 	return a.oidNative < b.oidNative
@@ -261,7 +260,7 @@ func (iter *pgNamespaceTableScanIter) Close(ctx *sql.Context) error {
 func pgNamespaceToRow(namespace *pgNamespace) sql.Row {
 	// TODO: columns are incomplete
 	return sql.Row{
-		namespace.oid, // oid
+		namespace.oid,  // oid
 		namespace.name, // nspname
 		id.Null,        // nspowner
 		nil,            // nspacl
