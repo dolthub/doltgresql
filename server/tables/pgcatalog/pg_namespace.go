@@ -15,6 +15,7 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -154,6 +155,7 @@ func (p PgNamespaceHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*
 			ub := sql.GetMySQLRangeCutKey(nameRng.UpperBound)
 			if ub != nil {
 				nameUpper = ub.(string)
+				nameUpper = fmt.Sprintf("%s%o", nameUpper, rune(0))
 				hasUpperBound = true
 			}
 		}
