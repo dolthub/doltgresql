@@ -70,8 +70,6 @@ func (p PgAttributeHandler) RowIter(ctx *sql.Context, partition sql.Partition) (
 			rangeConverter: p,
 			btreeAccess:    pgCatalogCache.pgAttributes,
 			rowConverter:   pgAttributeToRow,
-			rangeIdx:       0,
-			nextChan:       nil,
 		}, nil
 	}
 

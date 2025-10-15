@@ -69,8 +69,6 @@ func (p PgClassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 			rangeConverter: p,
 			btreeAccess:    pgCatalogCache.pgClasses,
 			rowConverter:   pgClassToRow,
-			rangeIdx:       0,
-			nextChan:       nil,
 		}, nil
 	}
 

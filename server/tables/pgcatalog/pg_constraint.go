@@ -67,8 +67,6 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context, partition sql.Partition) 
 			rangeConverter: p,
 			btreeAccess:    pgCatalogCache.pgConstraints,
 			rowConverter:   pgConstraintToRow,
-			rangeIdx:       0,
-			nextChan:       nil,
 		}, nil
 	}
 

@@ -90,18 +90,18 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 
 	inMemIndex := l.lookup.Index.(pgCatalogInMemIndex)
 	rng := l.lookup.Ranges.ToRanges()[l.rangeIdx]
-		gte, hasLowerBound, lt, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
-		idx := l.btreeAccess.getIndex(inMemIndex.name)
-		if hasLowerBound && hasUpperBound {
-			l.next, l.stop = idx.IterRange(gte, lt)
-		} else if hasLowerBound {
-			l.next, l.stop = idx.IterGreaterThanEqual(gte)
-		} else if hasUpperBound {
-			l.next, l.stop = idx.IterLessThan(lt)
-		} else {
-			// We don't support nil lookups for this kind of index, there are never nillable elements
-			return nil, io.EOF
-		}
+	gte, hasLowerBound, lt, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
+	idx := l.btreeAccess.getIndex(inMemIndex.name)
+	if hasLowerBound && hasUpperBound {
+		l.next, l.stop = idx.IterRange(gte, lt)
+	} else if hasLowerBound {
+		l.next, l.stop = idx.IterGreaterThanEqual(gte)
+	} else if hasUpperBound {
+		l.next, l.stop = idx.IterLessThan(lt)
+	} else {
+		// We don't support nil lookups for this kind of index, there are never nillable elements
+		return nil, io.EOF
+	}
 
 	return l.nextItem()
 }
@@ -275,10 +275,40 @@ func (s *inMemIndexStorage[T]) IterRange(gte, lt T) (next func() (T, bool), stop
 			s.uniqTree.AscendRange(gte, lt, yield)
 		})
 	} else {
-		aNext, aStop := iter.Pull(func(yield func([]T) bool) {
+		next, stop := iter.Pull(func(yield func([]T) bool) {
 			s.nonUniqTree.AscendRange([]T{gte}, []T{lt}, yield)
 		})
-		return s.unnestIter(aNext, aStop)
+		return s.unnestIter(next, stop)
+	}
+}
+
+// IterGreaterThanEqual implements an in-order iteration over the index values greater than or equal to the given value.
+// All values in the index greater than or equal to the given value are sent to the channel.
+func (s *inMemIndexStorage[T]) IterGreaterThanEqual(gte T) (next func() (T, bool), stop func()) {
+	if s.uniqTree != nil {
+		return iter.Pull(func(yield func(T) bool) {
+			s.uniqTree.AscendGreaterOrEqual(gte, yield)
+		})
+	} else {
+		next, stop := iter.Pull(func(yield func([]T) bool) {
+			s.nonUniqTree.AscendGreaterOrEqual([]T{gte}, yield)
+		})
+		return s.unnestIter(next, stop)
+	}
+}
+
+// IterLessThan implements an in-order iteration over the index values less than the given value.
+// All values in the index less than or equal to the given value are sent to the channel.
+func (s *inMemIndexStorage[T]) IterLessThan(lt T) (next func() (T, bool), stop func()) {
+	if s.uniqTree != nil {
+		return iter.Pull(func(yield func(T) bool) {
+			s.uniqTree.AscendLessThan(lt, yield)
+		})
+	} else {
+		next, stop := iter.Pull(func(yield func([]T) bool) {
+			s.nonUniqTree.AscendLessThan([]T{lt}, yield)
+		})
+		return s.unnestIter(next, stop)
 	}
 }
 
@@ -298,34 +328,4 @@ func (s *inMemIndexStorage[T]) unnestIter(sNext func() ([]T, bool), sStop func()
 			}
 		}
 	})
-}
-
-// IterGreaterThanEqual implements an in-order iteration over the index values greater than or equal to the given value.
-// All values in the index greater than or equal to the given value are sent to the channel.
-func (s *inMemIndexStorage[T]) IterGreaterThanEqual(gte T) (next func() (T, bool), stop func()) {
-	if s.uniqTree != nil {
-		return iter.Pull(func(yield func(T) bool) {
-			s.uniqTree.AscendGreaterOrEqual(gte, yield)
-		})
-	} else {
-		aNext, aStop := iter.Pull(func(yield func([]T) bool) {
-			s.nonUniqTree.AscendGreaterOrEqual([]T{gte}, yield)
-		})
-		return s.unnestIter(aNext, aStop)
-	}
-}
-
-// IterLessThan implements an in-order iteration over the index values less than the given value.
-// All values in the index less than or equal to the given value are sent to the channel.
-func (s *inMemIndexStorage[T]) IterLessThan(lt T) (next func() (T, bool), stop func()) {
-	if s.uniqTree != nil {
-		return iter.Pull(func(yield func(T) bool) {
-			s.uniqTree.AscendLessThan(lt, yield)
-		})
-	} else {
-		aNext, aStop := iter.Pull(func(yield func([]T) bool) {
-			s.nonUniqTree.AscendLessThan([]T{lt}, yield)
-		})
-		return s.unnestIter(aNext, aStop)
-	}
 }
