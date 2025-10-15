@@ -16,6 +16,7 @@ package pgcatalog
 
 import (
 	"io"
+	"iter"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/google/btree"
@@ -29,7 +30,8 @@ type inMemIndexScanIter[T any] struct {
 	btreeAccess    BTreeStorageAccess[T]
 	rowConverter   rowConverter[T]
 	rangeIdx       int
-	nextChan       chan T
+	next           func() (T, bool)
+	stop           func()
 }
 
 var _ sql.RowIter = (*inMemIndexScanIter[any])(nil)
@@ -61,6 +63,9 @@ func (l *inMemIndexScanIter[T]) Next(ctx *sql.Context) (sql.Row, error) {
 
 // Close implements the sql.RowIter interface.
 func (l *inMemIndexScanIter[T]) Close(ctx *sql.Context) error {
+	if l.stop != nil {
+		l.stop()
+	}
 	return nil
 }
 
@@ -71,10 +76,12 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 		return nil, io.EOF
 	}
 
-	if l.nextChan != nil {
-		next, ok := <-l.nextChan
+	if l.next != nil {
+		next, ok := l.next()
 		if !ok {
-			l.nextChan = nil
+			l.stop()
+			l.next = nil
+			l.stop = nil
 			l.rangeIdx++
 			return l.nextItem()
 		}
@@ -82,27 +89,19 @@ func (l *inMemIndexScanIter[T]) nextItem() (*T, error) {
 	}
 
 	inMemIndex := l.lookup.Index.(pgCatalogInMemIndex)
-
-	l.nextChan = make(chan T)
 	rng := l.lookup.Ranges.ToRanges()[l.rangeIdx]
-	go func() {
-		defer func() {
-			close(l.nextChan)
-		}()
-
 		gte, hasLowerBound, lt, hasUpperBound := l.rangeConverter.getIndexScanRange(rng, l.lookup.Index)
 		idx := l.btreeAccess.getIndex(inMemIndex.name)
 		if hasLowerBound && hasUpperBound {
-			idx.IterRange(gte, lt, l.nextChan)
+			l.next, l.stop = idx.IterRange(gte, lt)
 		} else if hasLowerBound {
-			idx.IterGreaterThanEqual(gte, l.nextChan)
+			l.next, l.stop = idx.IterGreaterThanEqual(gte)
 		} else if hasUpperBound {
-			idx.IterLessThan(lt, l.nextChan)
+			l.next, l.stop = idx.IterLessThan(lt)
 		} else {
 			// We don't support nil lookups for this kind of index, there are never nillable elements
-			return
+			return nil, io.EOF
 		}
-	}()
 
 	return l.nextItem()
 }
@@ -270,50 +269,63 @@ func (s *inMemIndexStorage[T]) Add(val T) {
 
 // IterRange implements an in-order iteration over the index values in the range [gte, lt). All values in the
 // index in the range are sent to the channel
-func (s *inMemIndexStorage[T]) IterRange(gte, lt T, c chan T) {
+func (s *inMemIndexStorage[T]) IterRange(gte, lt T) (next func() (T, bool), stop func()) {
 	if s.uniqTree != nil {
-		s.uniqTree.AscendRange(gte, lt, s.sendItem(c))
+		return iter.Pull(func(yield func(T) bool) {
+			s.uniqTree.AscendRange(gte, lt, yield)
+		})
 	} else {
-		s.nonUniqTree.AscendRange([]T{gte}, []T{lt}, s.sendItems(c))
+		aNext, aStop := iter.Pull(func(yield func([]T) bool) {
+			s.nonUniqTree.AscendRange([]T{gte}, []T{lt}, yield)
+		})
+		return s.unnestIter(aNext, aStop)
 	}
+}
+
+// unnestIter takes an iterator that returns slices of T, and returns an iterator that returns individual T values.
+func (s *inMemIndexStorage[T]) unnestIter(sNext func() ([]T, bool), sStop func()) (next func() (T, bool), stop func()) {
+	return iter.Pull(func(yield func(T) bool) {
+		defer sStop()
+		for {
+			items, ok := sNext()
+			if !ok {
+				return
+			}
+			for _, item := range items {
+				if !yield(item) {
+					return
+				}
+			}
+		}
+	})
 }
 
 // IterGreaterThanEqual implements an in-order iteration over the index values greater than or equal to the given value.
 // All values in the index greater than or equal to the given value are sent to the channel.
-func (s *inMemIndexStorage[T]) IterGreaterThanEqual(gte T, c chan T) {
+func (s *inMemIndexStorage[T]) IterGreaterThanEqual(gte T) (next func() (T, bool), stop func()) {
 	if s.uniqTree != nil {
-		s.uniqTree.AscendGreaterOrEqual(gte, s.sendItem(c))
+		return iter.Pull(func(yield func(T) bool) {
+			s.uniqTree.AscendGreaterOrEqual(gte, yield)
+		})
 	} else {
-		s.nonUniqTree.AscendGreaterOrEqual([]T{gte}, s.sendItems(c))
+		aNext, aStop := iter.Pull(func(yield func([]T) bool) {
+			s.nonUniqTree.AscendGreaterOrEqual([]T{gte}, yield)
+		})
+		return s.unnestIter(aNext, aStop)
 	}
 }
 
 // IterLessThan implements an in-order iteration over the index values less than the given value.
 // All values in the index less than or equal to the given value are sent to the channel.
-func (s *inMemIndexStorage[T]) IterLessThan(lt T, c chan T) {
+func (s *inMemIndexStorage[T]) IterLessThan(lt T) (next func() (T, bool), stop func()) {
 	if s.uniqTree != nil {
-		s.uniqTree.AscendLessThan(lt, s.sendItem(c))
+		return iter.Pull(func(yield func(T) bool) {
+			s.uniqTree.AscendLessThan(lt, yield)
+		})
 	} else {
-		s.nonUniqTree.AscendLessThan([]T{lt}, s.sendItems(c))
-	}
-}
-
-// sendItem returns an iterator function that sends the given item to the channel. This function returns a bool to
-// conform to the interface for the Ascend* methods in the btree package.
-func (s *inMemIndexStorage[T]) sendItem(c chan T) btree.ItemIteratorG[T] {
-	return func(item T) bool {
-		c <- item
-		return true
-	}
-}
-
-// sendItems returns an iterator function that sends all items in the given slice to the channel. This function
-// returns a bool to conform to the interface for the Ascend* methods in the btree package.
-func (s *inMemIndexStorage[T]) sendItems(c chan T) btree.ItemIteratorG[[]T] {
-	return func(items []T) bool {
-		for _, item := range items {
-			c <- item
-		}
-		return true
+		aNext, aStop := iter.Pull(func(yield func([]T) bool) {
+			s.nonUniqTree.AscendLessThan([]T{lt}, yield)
+		})
+		return s.unnestIter(aNext, aStop)
 	}
 }
