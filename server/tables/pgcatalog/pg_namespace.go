@@ -66,8 +66,6 @@ func (p PgNamespaceHandler) RowIter(ctx *sql.Context, partition sql.Partition) (
 			rangeConverter: p,
 			btreeAccess:    pgCatalogCache.pgNamespaces,
 			rowConverter:   pgNamespaceToRow,
-			rangeIdx:       0,
-			nextChan:       nil,
 		}, nil
 	}
 
