@@ -27,6 +27,7 @@ import (
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/triggers"
@@ -44,6 +45,7 @@ var (
 		&triggers.Collection{},
 		&extensions.Collection{},
 		&conflicts.Collection{},
+		&procedures.Collection{},
 	}
 )
 

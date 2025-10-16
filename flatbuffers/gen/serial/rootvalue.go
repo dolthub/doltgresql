@@ -371,7 +371,41 @@ func (rcv *RootValue) MutateConflicts(j int, n byte) bool {
 	return false
 }
 
-const RootValueNumFields = 11
+func (rcv *RootValue) Procedures(j int) byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		a := rcv._tab.Vector(o)
+		return rcv._tab.GetByte(a + flatbuffers.UOffsetT(j*1))
+	}
+	return 0
+}
+
+func (rcv *RootValue) ProceduresLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
+	}
+	return 0
+}
+
+func (rcv *RootValue) ProceduresBytes() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
+func (rcv *RootValue) MutateProcedures(j int, n byte) bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(26))
+	if o != 0 {
+		a := rcv._tab.Vector(o)
+		return rcv._tab.MutateByte(a+flatbuffers.UOffsetT(j*1), n)
+	}
+	return false
+}
+
+const RootValueNumFields = 12
 
 func RootValueStart(builder *flatbuffers.Builder) {
 	builder.StartObject(RootValueNumFields)
@@ -434,6 +468,12 @@ func RootValueAddConflicts(builder *flatbuffers.Builder, conflicts flatbuffers.U
 	builder.PrependUOffsetTSlot(10, flatbuffers.UOffsetT(conflicts), 0)
 }
 func RootValueStartConflictsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(1, numElems, 1)
+}
+func RootValueAddProcedures(builder *flatbuffers.Builder, procedures flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(11, flatbuffers.UOffsetT(procedures), 0)
+}
+func RootValueStartProceduresVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(1, numElems, 1)
 }
 func RootValueEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {

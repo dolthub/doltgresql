@@ -86,6 +86,24 @@ func TestAlterStatements(t *testing.T) {
 			},
 		},
 		{
+			Name: "alter procedure",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT8);",
+				"CREATE PROCEDURE testproc() AS $$ BEGIN INSERT INTO test VALUES (1); END; $$ LANGUAGE plpgsql;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER PROCEDURE testproc() OWNER TO foo;",
+					ExpectedNotices: []ExpectedNotice{
+						{
+							Severity: "WARNING",
+							Message:  "OWNER TO is unsupported and ignored",
+						},
+					},
+				},
+			},
+		},
+		{
 			Name: "alter schema",
 			SetUpScript: []string{
 				"CREATE SCHEMA testschema",

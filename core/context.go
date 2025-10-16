@@ -26,6 +26,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/triggers"
@@ -40,6 +41,7 @@ type contextValues struct {
 	// TODO: all these collection fields need to be mapped by database name as seqs above
 	types          *typecollection.TypeCollection
 	funcs          *functions.Collection
+	procs          *procedures.Collection
 	trigs          *triggers.Collection
 	exts           *extensions.Collection
 	pgCatalogCache any
@@ -276,6 +278,31 @@ func GetFunctionsCollectionFromContext(ctx *sql.Context) (*functions.Collection,
 	return cv.funcs, nil
 }
 
+// GetProceduresCollectionFromContext returns the procedures collection from the given context. Will always return a
+// collection if no error is returned.
+func GetProceduresCollectionFromContext(ctx *sql.Context) (*procedures.Collection, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	_, root, err := GetRootFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cv.procs == nil {
+		cv.procs, err = procedures.LoadProcedures(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+	} else if cv.procs.DiffersFrom(ctx, root) {
+		cv.procs, err = procedures.LoadProcedures(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return cv.procs, nil
+}
+
 // GetSequencesCollectionFromContext returns the given sequence collection from the context for the database
 // named. If no database is provided, the context's current database is used.
 // Will always return a collection if no error is returned.
@@ -391,6 +418,15 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 		cv.funcs = nil
 	}
 
+	if cv.procs != nil && cv.procs.DiffersFrom(ctx, root) {
+		retRoot, err := cv.procs.UpdateRoot(ctx, newRoot)
+		if err != nil {
+			return err
+		}
+		newRoot = retRoot.(*RootValue)
+		cv.procs = nil
+	}
+
 	if cv.trigs != nil && cv.trigs.DiffersFrom(ctx, root) {
 		retRoot, err := cv.trigs.UpdateRoot(ctx, newRoot)
 		if err != nil {
@@ -489,6 +525,8 @@ func (cv *contextValues) clear(objID objinterface.RootObjectID) {
 		// We don't cache these
 	case objinterface.RootObjectID_Conflicts:
 		// We don't cache these
+	case objinterface.RootObjectID_Procedures:
+		cv.procs = nil
 	default:
 		panic("unhandled context clear object ID")
 	}

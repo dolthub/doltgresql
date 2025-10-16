@@ -37,6 +37,7 @@ const (
 	RootObjectID_Triggers
 	RootObjectID_Extensions
 	RootObjectID_Conflicts
+	RootObjectID_Procedures
 )
 
 const (

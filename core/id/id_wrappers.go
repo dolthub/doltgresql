@@ -52,6 +52,9 @@ type Namespace Id
 // Oid is an Id wrapper for OIDs. This wrapper must not be returned to the client.
 type Oid Id
 
+// Procedure is an Id wrapper for procedures. This wrapper must not be returned to the client.
+type Procedure Id
+
 // Sequence is an Id wrapper for sequences. This wrapper must not be returned to the client.
 type Sequence Id
 
@@ -164,6 +167,20 @@ func NewNamespace(schemaName string) Namespace {
 // NewOID returns a new Oid. This wrapper must not be returned to the client.
 func NewOID(val uint32) Oid {
 	return Oid(NewId(Section_OID, strconv.FormatUint(uint64(val), 10)))
+}
+
+// NewProcedure returns a new Procedure. This wrapper must not be returned to the client.
+func NewProcedure(schemaName string, procName string, params ...Type) Procedure {
+	if len(schemaName) == 0 && len(procName) == 0 && len(params) == 0 {
+		return NullProcedure
+	}
+	data := make([]string, len(params)+2)
+	data[0] = schemaName
+	data[1] = procName
+	for i := range params {
+		data[2+i] = string(params[i])
+	}
+	return Procedure(NewId(Section_Procedure, data...))
 }
 
 // NewSequence returns a new Sequence. This wrapper must not be returned to the client.
@@ -337,6 +354,31 @@ func (id Oid) OID() uint32 {
 	return uint32(val)
 }
 
+// ProcedureName returns the procedure's name.
+func (id Procedure) ProcedureName() string {
+	return Id(id).Segment(1)
+}
+
+// Parameters returns the procedure's parameters.
+func (id Procedure) Parameters() []Type {
+	data := Id(id).Data()[2:]
+	params := make([]Type, len(data))
+	for i := range data {
+		params[i] = Type(data[i])
+	}
+	return params
+}
+
+// ParameterCount returns the procedure's parameter count.
+func (id Procedure) ParameterCount() int {
+	return Id(id).SegmentCount() - 2
+}
+
+// SchemaName returns the schema name of the procedure.
+func (id Procedure) SchemaName() string {
+	return Id(id).Segment(0)
+}
+
 // SchemaName returns the schema name of the sequence.
 func (id Sequence) SchemaName() string {
 	return Id(id).Segment(0)
@@ -429,6 +471,9 @@ func (id Namespace) IsValid() bool { return Id(id).IsValid() }
 func (id Oid) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
+func (id Procedure) IsValid() bool { return Id(id).IsValid() }
+
+// IsValid returns whether the ID is valid.
 func (id Sequence) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
@@ -478,6 +523,9 @@ func (id Namespace) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id Oid) AsId() Id { return Id(id) }
+
+// AsId returns the unwrapped ID.
+func (id Procedure) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id Sequence) AsId() Id { return Id(id) }
