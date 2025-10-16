@@ -21,6 +21,8 @@ import (
 	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/plpgsql"
+
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 )
 
 // Init initializes this package.
@@ -29,6 +31,7 @@ func Init() {
 	doltdb.NewRootValue = newRootValue
 	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
 	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
+	gmstypes.IsValidFloat = isValidFloat
 	conflicts.ClearContextValues = ClearContextValues
 	plpgsql.GetTypesCollectionFromContext = GetTypesCollectionFromContext
 	id.RegisterListener(sequenceIDListener{}, id.Section_Table)

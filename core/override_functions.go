@@ -97,6 +97,10 @@ func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeSt
 	return &RootValue{vrw, ns, st, nil, hash.Hash{}}, nil
 }
 
+func isValidFloat(f float64) bool {
+	return true
+}
+
 // rootValueHumanReadableStringAtIndentationLevel is Doltgres' implementation of
 // types.DoltgresRootValueHumanReadableStringAtIndentationLevel.
 func rootValueHumanReadableStringAtIndentationLevel(sm types.SerialMessage, level int) string {
