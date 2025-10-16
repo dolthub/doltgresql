@@ -97,6 +97,12 @@ func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeSt
 	return &RootValue{vrw, ns, st, nil, hash.Hash{}}, nil
 }
 
+// isValidFloat replaces the IsValidFloat function in go-mysql-server since gms does not allow NaN and infinity values
+// while Doltgres does
+func isValidFloat(f float64) bool {
+	return true
+}
+
 // rootValueHumanReadableStringAtIndentationLevel is Doltgres' implementation of
 // types.DoltgresRootValueHumanReadableStringAtIndentationLevel.
 func rootValueHumanReadableStringAtIndentationLevel(sm types.SerialMessage, level int) string {
