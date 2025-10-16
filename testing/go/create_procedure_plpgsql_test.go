@@ -23,7 +23,7 @@ import (
 func TestCreateProcedureLanguagePlpgsql(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "Smoke test",
+			Name: "Simple example",
 			SetUpScript: []string{
 				`CREATE TABLE test (v1 INT8);`,
 				`CREATE PROCEDURE example(input INT8) AS $$
@@ -47,6 +47,219 @@ func TestCreateProcedureLanguagePlpgsql(t *testing.T) {
 						{1},
 						{2},
 					},
+				},
+			},
+		},
+		{
+			Name: "WHILE Label",
+			SetUpScript: []string{
+				`CREATE TABLE test (v1 INT8);`,
+				`CREATE PROCEDURE interpreted_while_label(input INT4) AS $$
+DECLARE
+	counter INT4;
+BEGIN
+	<<while_label>>
+	WHILE input < 1000 LOOP
+		input := input + 1;
+		counter := counter + 1;
+		IF counter >= 10 THEN
+			EXIT while_label;
+		END IF;
+	END LOOP;
+	INSERT INTO test VALUES (input);
+END;
+$$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CALL interpreted_while_label(42);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{52}},
+				},
+			},
+		},
+		{
+			Name: "Branching",
+			SetUpScript: []string{
+				`CREATE TABLE test(v1 INT4, v2 INT4);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE PROCEDURE interpreted_branch(input INT4) AS $$
+BEGIN
+	DELETE FROM test WHERE v1 = 1;
+	INSERT INTO test VALUES (1, input + 100);
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CALL interpreted_branch(4);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{1, 104}},
+				},
+				{
+					Query:    "DELETE FROM test WHERE v1 = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT dolt_checkout('-b', 'other')`,
+					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+				},
+				{
+					Query: `CREATE OR REPLACE PROCEDURE interpreted_branch(input INT4) AS $$
+BEGIN
+	DELETE FROM test WHERE v1 = 2;
+	INSERT INTO test VALUES (2, input + 1000);
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "CALL interpreted_branch(56);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{2, 1056}},
+				},
+				{
+					Query:    "DELETE FROM test WHERE v1 = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_checkout('main')",
+					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+				},
+				{
+					Query:    "CALL interpreted_branch(57);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{1, 157}},
+				},
+			},
+		},
+		{
+			Name: "Merging No Conflict",
+			SetUpScript: []string{
+				`CREATE TABLE test(v1 INT4, v2 INT4);`,
+				`INSERT INTO test VALUES (1, 77);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE PROCEDURE interpreted_merging(input TEXT) AS $$
+BEGIN
+	DELETE FROM test WHERE v1 = 2;
+	INSERT INTO test VALUES (2, input::int4 + 100);
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CALL interpreted_merging('12');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{1, 77}, {2, 112}},
+				},
+				{
+					Query:       "CALL interpreted_merging(55);",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT dolt_checkout('-b', 'other')`,
+					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+				},
+				{
+					Query: `CREATE PROCEDURE interpreted_merging(input INT4) AS $$
+BEGIN
+	DELETE FROM test WHERE v1 = 3;
+	INSERT INTO test VALUES (3, input::int4 + 1000);
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT dolt_checkout('main')",
+					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+				},
+				{
+					Query:       "CALL interpreted_merging(55);",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query: `CREATE OR REPLACE PROCEDURE interpreted_merging(input TEXT) AS $$
+BEGIN
+	DELETE FROM test WHERE v1 = 2;
+	INSERT INTO test VALUES (2, input::int4 + 10000);
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 34;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT length(dolt_merge('other')::text) = 57;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "CALL interpreted_merging('33');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CALL interpreted_merging(77);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{1, 77}, {2, 10033}, {3, 1077}},
 				},
 			},
 		},
