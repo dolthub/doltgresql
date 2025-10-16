@@ -246,10 +246,10 @@ github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5Xh
 github.com/docker/go-units v0.4.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 h1:IdqX7J8vi/Kn3T3Ee0VzqnLqwFmgA2hr8WZETPcQjfM=
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12/go.mod h1:rN7X8BHwkjPcfMQQ2QTAq/xM3leUSGLfb+1Js7Y6TVo=
-github.com/dolthub/dolt-mcp v0.2.2-0.20250917171427-13e4520d1c36 h1:1OJhO12aBkZG7WQzAbu1WKCLSPT4AeoSEYeRwCirIi4=
-github.com/dolthub/dolt-mcp v0.2.2-0.20250917171427-13e4520d1c36/go.mod h1:S8OtLV2B//aelmZlGnFO44q4YH+Tyfl7jQ9djb4gPJE=
-github.com/dolthub/dolt/go v0.40.5-0.20250923175150-9d9f7d8c96ce h1:vNwEj5mO7F0E4Nc4tswqBrcSS0qU4t7XB8somEyI3vE=
-github.com/dolthub/dolt/go v0.40.5-0.20250923175150-9d9f7d8c96ce/go.mod h1:eVqjIlZw1EOBN5iJJK3Y5s+CbTFF0X7YOIIHt3aqLEc=
+github.com/dolthub/dolt-mcp v0.2.2 h1:bpROmam74n95uU4EA3BpOIVlTDT0pzeFMBwe/YRq2mI=
+github.com/dolthub/dolt-mcp v0.2.2/go.mod h1:S++DJ4QWTAXq+0TNzFa7Oq3IhoT456DJHwAINFAHgDQ=
+github.com/dolthub/dolt/go v0.40.5-0.20251016203215-5661cdbc1d23 h1:Gq50QgHI/ZZ3RdSpk4Ff7IWPHLaRke+u9xAhRcxZ/Lc=
+github.com/dolthub/dolt/go v0.40.5-0.20251016203215-5661cdbc1d23/go.mod h1:2QX6+dvwheW+LF7mzJ10bDpg8f+BUCl5YIAN3hnC8TU=
 github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca h1:BGFz/0OlKIuC6qHIZQbvPapFvdAJkeEyGXWVgL5clmE=
 github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca/go.mod h1:CoDLfgPqHyBtth0Cp+fi/CmC4R81zJNX4wPjShdZ+Bw=
 github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 h1:u3PMzfF8RkKd3lB9pZ2bfn0qEG+1Gms9599cr0REMww=
