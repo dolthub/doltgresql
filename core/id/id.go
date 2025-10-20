@@ -69,6 +69,8 @@ const (
 	NullIndex Index = ""
 	// NullNamespace is an empty, invalid ID. This is exactly equivalent to Null.
 	NullNamespace Namespace = ""
+	// NullProcedure is an empty, invalid ID. This is exactly equivalent to Null.
+	NullProcedure Procedure = ""
 	// NullSequence is an empty, invalid ID. This is exactly equivalent to Null.
 	NullSequence Sequence = ""
 	// NullTable is an empty, invalid ID. This is exactly equivalent to Null.

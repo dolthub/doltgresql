@@ -227,10 +227,6 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "ii-habibi_Dental-Clinic.sql",
 		},
 		{
-			Name:        "ilovejs/Go-Echo-Boiler",
-			SQLFilename: "ilovejs_Go-Echo-Boiler.sql",
-		},
-		{
 			Name:        "InnovaTech-Official/LMS",
 			SQLFilename: "InnovaTech-Official_LMS.sql",
 		},

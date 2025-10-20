@@ -126,6 +126,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}, nil
 }
 
+// handleLanguageSQL handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE.
 func handleLanguageSQL(definition string, paramNames []string, paramTypes []*pgtypes.DoltgresType) (string, vitess.Statement, error) {
 	stmt, err := parser.ParseOne(definition)
 	if err != nil {
@@ -159,4 +160,18 @@ func handleLanguageSQL(definition string, paramNames []string, paramTypes []*pgt
 	// stmt.AST is updated at this point with FunctionColumn
 	vitessAST, err := Convert(stmt)
 	return sqlDef, vitessAST, err
+}
+
+// validateRoutineOptions ensures that each option is defined only once. Returns a map containing all options, or an
+// error if an option is invalid or is defined multiple times.
+func validateRoutineOptions(ctx *Context, options []tree.RoutineOption) (map[tree.FunctionOption]tree.RoutineOption, error) {
+	var optDefined = make(map[tree.FunctionOption]tree.RoutineOption)
+	for _, opt := range options {
+		if _, ok := optDefined[opt.OptionType]; ok {
+			return nil, errors.Errorf("ERROR:  conflicting or redundant options")
+		} else {
+			optDefined[opt.OptionType] = opt
+		}
+	}
+	return optDefined, nil
 }

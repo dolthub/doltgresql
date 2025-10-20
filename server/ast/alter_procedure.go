@@ -27,5 +27,10 @@ func nodeAlterProcedure(ctx *Context, node *tree.AlterProcedure) (vitess.Stateme
 		return nil, err
 	}
 
+	// We intentionally don't support OWNER TO since we don't support owning objects
+	if node.Owner != "" && len(node.Options) == 0 {
+		return NewNoOp("OWNER TO is unsupported and ignored"), nil
+	}
+
 	return NotYetSupportedError("ALTER PROCEDURE statement is not yet supported")
 }
