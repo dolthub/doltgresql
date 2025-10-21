@@ -97,6 +97,15 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Free up disk space
+        shell: bash
+        run: |
+          sudo find /opt -maxdepth 1 -mindepth 1 \
+            ! -path /opt/containerd \
+            ! -path /opt/actionarchivecache \
+            ! -path /opt/runner \
+            ! -path /opt/runner-cache \
+            -exec rm -rf {} \;
       - name: Build Binaries
         id: build_binaries
         run: |
