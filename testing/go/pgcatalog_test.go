@@ -4294,6 +4294,7 @@ func TestPgTables(t *testing.T) {
 						{"dolt", "conflicts"},
 						{"dolt", "constraint_violations"},
 						{"dolt", "dolt_backups"},
+						{"dolt", "dolt_branch_activity"},
 						{"dolt", "dolt_help"},
 						{"dolt", "dolt_stashes"},
 						{"dolt", "log"},
