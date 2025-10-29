@@ -105,6 +105,7 @@ func Init() {
 	initEngine()
 }
 
+// TODO: introduce a real pluggable architecture for this instead of swapping function pointers
 func initEngine() {
 	// This technically takes place at execution time rather than as part of analysis, but we don't have a better
 	// place to put it. Our foreign key validation logic is different from MySQL's, and since it's not an analyzer rule
@@ -117,7 +118,6 @@ func initEngine() {
 
 	// There are a couple places during analysis where SplitConjunction in GMS cannot correctly split up
 	// Doltgres expressions, so we need to override the default function used.
-	// TODO: introduce a real pluggable architecture for this.
 	analyzer.SplitConjunction = index.SplitConjunction
 	memo.SplitConjunction = index.SplitConjunction
 }
