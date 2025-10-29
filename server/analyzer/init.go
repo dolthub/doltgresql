@@ -15,13 +15,12 @@
 package analyzer
 
 import (
+	"github.com/dolthub/doltgresql/server/index"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/memo"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
-
-	"github.com/dolthub/doltgresql/server/index"
 
 	pgexpression "github.com/dolthub/doltgresql/server/expression"
 )
@@ -116,6 +115,9 @@ func initEngine() {
 
 	expression.DefaultExpressionFactory = pgexpression.PostgresExpressionFactory{}
 
+	// There are a couple places during analysis where SplitConjunction in GMS cannot correctly split up
+	// Doltgres expressions, so we need to override the default function used.
+	// TODO: introduce a real pluggable architecture for this.
 	analyzer.SplitConjunction = index.SplitConjunction
 	memo.SplitConjunction = index.SplitConjunction
 }
