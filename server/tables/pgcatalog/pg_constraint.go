@@ -427,8 +427,9 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 		},
 		ForeignKey: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, foreignKey functions.ItemForeignKey) (cont bool, err error) {
 			conKey := make([]any, len(foreignKey.Item.Columns))
-			for i, expr := range foreignKey.Item.Columns {
-				conKey[i] = tableColToIdxMap[expr]
+			for i, col := range foreignKey.Item.Columns {
+				keyExpr := fmt.Sprintf("%s.%s", foreignKey.Item.Table, col)
+				conKey[i] = tableColToIdxMap[keyExpr]
 			}
 
 			parentTableColToIdxMap := make(map[string]int16)

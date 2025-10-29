@@ -174,14 +174,15 @@ func TestPgAttribute(t *testing.T) {
 					Expected: []sql.Row{{0}},
 				},
 				{
-					Focus: true,
 					Query: `SELECT "con"."conname" AS "constraint_name", 
 					"con"."nspname" AS "table_schema",
 					"con"."relname" AS "table_name",
 					"con"."confdeltype" AS "on_delete",
 					"con"."confupdtype" AS "on_update",
 					"con"."condeferrable" AS "deferrable",
-					"con"."condeferred" AS "deferred"
+					"con"."condeferred" AS "deferred",
+          "con"."parent" as "parent",
+          "con"."child" as "child"
 					FROM
 				( SELECT UNNEST ("con1"."conkey") AS "parent",
 					UNNEST ("con1"."confkey") AS "child",
@@ -216,11 +217,10 @@ func TestPgAttribute(t *testing.T) {
 					WHERE "con1"."contype" = 'f'
 					AND (("ns"."nspname" = 'testschema' AND "cl"."relname" = 'test2')) ) "con" order by 1`,
 					Expected: []sql.Row{
-						{"test2_pktesting_fkey", "testschema", "test2", "NO ACTION", "NO ACTION", "f", "INITIALLY IMMEDIATE"},
+						{"test2_pktesting_fkey", "testschema", "test2", "NO ACTION", "NO ACTION", "f", "INITIALLY IMMEDIATE", 2, 1},
 					},
 				},
 				{
-					Focus: true,
 					Query: `SELECT "con"."conname" AS "constraint_name", 
        "con"."nspname" AS "table_schema", 
        "con"."relname" AS "table_name", 
@@ -268,7 +268,8 @@ FROM
     INNER JOIN "pg_attribute" "att" ON "att"."attrelid" = "con"."confrelid" AND "att"."attnum" = "con"."child"
     INNER JOIN "pg_class" "cl" ON "cl"."oid" = "con"."confrelid"  AND "cl"."relispartition" = 'f'
     INNER JOIN "pg_namespace" "ns" ON "cl"."relnamespace" = "ns"."oid" 
-    INNER JOIN "pg_attribute" "att2" ON "att2"."attrelid" = "con"."conrelid" AND "att2"."attnum" = "con"."parent" order by 1,2;`,
+    INNER JOIN "pg_attribute" "att2" ON "att2"."attrelid" = "con"."conrelid" AND "att2"."attnum" = "con"."parent"
+order by 1,2;`,
 					Expected: []sql.Row{
 						{"test2_pktesting_fkey", "testschema", "test2", "pktesting", "testschema", "test", "pk", "NO ACTION", "NO ACTION", "f", "INITIALLY IMMEDIATE"},
 					},
