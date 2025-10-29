@@ -599,9 +599,6 @@ func TestPgClass(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: Now that catalog data is cached for each query, this query no longer iterates the database
-					//       100k times, and this query executes in a couple seconds. This is still slow and should
-					//       be improved with lookup index support now that we have cached data available.
 					Query: `SELECT ix.relname AS index_name, upper(am.amname) AS index_algorithm FROM pg_index i 
 JOIN pg_class t ON t.oid = i.indrelid 
 JOIN pg_class ix ON ix.oid = i.indexrelid 
@@ -679,7 +676,7 @@ func TestPgConstraint(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_constraint" WHERE conrelid='testing2'::regclass OR conrelid='testing'::regclass order by 1`,
 					Expected: []sql.Row{
-						{1719906648, "testing2_pktesting_fkey", 2200, "f", "f", "f", "t", 2694106299, 0, 1719906648, 0, 2147906242, "a", "a", "s", "t", 0, "t", "{0}", "{1}", nil, nil, nil, nil, nil, nil},
+						{1719906648, "testing2_pktesting_fkey", 2200, "f", "f", "f", "t", 2694106299, 0, 1719906648, 0, 2147906242, "a", "a", "s", "t", 0, "t", "{2}", "{1}", nil, nil, nil, nil, nil, nil},
 						{2068729390, "testing2_pkey", 2200, "p", "f", "f", "t", 2694106299, 0, 2068729390, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
 						{3050361446, "v1", 2200, "u", "f", "f", "t", 2147906242, 0, 3050361446, 0, 0, "", "", "", "t", 0, "t", "{2}", nil, nil, nil, nil, nil, nil, nil},
 						{3259318326, "v1_check", 2200, "c", "f", "f", "t", 2694106299, 0, 0, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
@@ -5181,8 +5178,9 @@ order by 1,2`,
 						{"         ├─ Filter"},
 						{"         │   ├─ (c.relname = 't' AND c.relkind = 'r')"},
 						{"         │   └─ TableAlias(c)"},
-						{"         │       └─ Table"},
-						{"         │           └─ name: pg_class"},
+						{"         │       └─ IndexedTableAccess(pg_class)"},
+						{"         │           ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"         │           └─ filters: [{[t, t], [NULL, ∞)}]"},
 						{"         └─ TableAlias(n)"},
 						{"             └─ IndexedTableAccess(pg_namespace)"},
 						{"                 ├─ index: [pg_namespace.oid]"},
