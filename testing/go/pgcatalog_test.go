@@ -174,10 +174,52 @@ func TestPgAttribute(t *testing.T) {
 					Expected: []sql.Row{{0}},
 				},
 				{
-					// TODO: Even with the caching added to prevent having to regenerate pg_catalog table data
-					//       multiple times within the same query, this massive query still times out. The problem
-					//       is that this query joins over 7 tables and without a way to do index lookups into the
-					//       table data, we end up iterating over the results over and over.
+					Focus: true,
+					Query: `SELECT "con"."conname" AS "constraint_name", 
+					"con"."nspname" AS "table_schema",
+					"con"."relname" AS "table_name",
+					"con"."confdeltype" AS "on_delete",
+					"con"."confupdtype" AS "on_update",
+					"con"."condeferrable" AS "deferrable",
+					"con"."condeferred" AS "deferred"
+					FROM
+				( SELECT UNNEST ("con1"."conkey") AS "parent",
+					UNNEST ("con1"."confkey") AS "child",
+					"con1"."confrelid",
+					"con1"."conrelid",
+					"con1"."conname",
+					"con1"."contype",
+					"ns"."nspname",
+					"cl"."relname",
+					"con1"."condeferrable",
+					CASE
+					WHEN "con1"."condeferred" THEN 'INITIALLY DEFERRED'
+					ELSE 'INITIALLY IMMEDIATE'
+					END as condeferred,
+					CASE "con1"."confdeltype"
+					WHEN 'a' THEN 'NO ACTION'
+					WHEN 'r' THEN 'RESTRICT'
+					WHEN 'c' THEN 'CASCADE'
+					WHEN 'n' THEN 'SET NULL'
+					WHEN 'd' THEN 'SET DEFAULT'
+					END as "confdeltype",
+					CASE "con1"."confupdtype"
+					WHEN 'a' THEN 'NO ACTION'
+					WHEN 'r' THEN 'RESTRICT'
+					WHEN 'c' THEN 'CASCADE'
+					WHEN 'n' THEN 'SET NULL'
+					WHEN 'd' THEN 'SET DEFAULT'
+					END as "confupdtype"
+					FROM "pg_class" "cl"
+					INNER JOIN "pg_namespace" "ns" ON "cl"."relnamespace" = "ns"."oid"
+					INNER JOIN "pg_constraint" "con1" ON "con1"."conrelid" = "cl"."oid"
+					WHERE "con1"."contype" = 'f'
+					AND (("ns"."nspname" = 'testschema' AND "cl"."relname" = 'test2')) ) "con" order by 1`,
+					Expected: []sql.Row{
+						{"test2_pktesting_fkey", "testschema", "test2", "NO ACTION", "NO ACTION", "f", "INITIALLY IMMEDIATE"},
+					},
+				},
+				{
 					Focus: true,
 					Query: `SELECT "con"."conname" AS "constraint_name", 
        "con"."nspname" AS "table_schema", 
@@ -226,7 +268,7 @@ FROM
     INNER JOIN "pg_attribute" "att" ON "att"."attrelid" = "con"."confrelid" AND "att"."attnum" = "con"."child"
     INNER JOIN "pg_class" "cl" ON "cl"."oid" = "con"."confrelid"  AND "cl"."relispartition" = 'f'
     INNER JOIN "pg_namespace" "ns" ON "cl"."relnamespace" = "ns"."oid" 
-    INNER JOIN "pg_attribute" "att2" ON "att2"."attrelid" = "con"."conrelid" AND "att2"."attnum" = "con"."parent";`,
+    INNER JOIN "pg_attribute" "att2" ON "att2"."attrelid" = "con"."conrelid" AND "att2"."attnum" = "con"."parent" order by 1,2;`,
 					Expected: []sql.Row{
 						{"test2_pktesting_fkey", "testschema", "test2", "pktesting", "testschema", "test", "pk", "NO ACTION", "NO ACTION", "f", "INITIALLY IMMEDIATE"},
 					},
