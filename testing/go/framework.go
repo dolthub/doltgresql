@@ -84,6 +84,7 @@ type ScriptTestAssertion struct {
 	Expected        []sql.Row
 	ExpectedErr     string
 	ExpectedNotices []ExpectedNotice
+	Focus           bool
 
 	BindVars []any
 
@@ -180,8 +181,27 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 		require.NoError(t, err, "error running setup query: %s", query)
 	}
 
-	// Run the assertions
+	assertions := script.Assertions
+	// First, we'll run through the scripts to check for the Focus variable. If it's true, then append it to the new slice.
+	focusAssertions := make([]ScriptTestAssertion, 0, len(script.Assertions))
 	for _, assertion := range script.Assertions {
+		if assertion.Focus {
+			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
+			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
+				panic(fmt.Sprintf("The assertion `%s` has Focus set to `true`. GitHub Actions requires that "+
+					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+					"all tests.", assertion.Query))
+			}
+			focusAssertions = append(focusAssertions, assertion)
+		}
+	}
+	// If we have assertions with Focus set, then we replace the normal script slice with the new slice.
+	if len(focusAssertions) > 0 {
+		assertions = focusAssertions
+	}
+
+	// Run the assertions
+	for _, assertion := range assertions {
 		t.Run(assertion.Query, func(t *testing.T) {
 			if assertion.Skip {
 				t.Skip("Skip has been set in the assertion")
