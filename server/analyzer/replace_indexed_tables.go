@@ -27,10 +27,14 @@ import (
 // ReplaceIndexedTables replaces Dolt tables with Doltgres tables that can properly handle indexed access.
 func ReplaceIndexedTables(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	return transform.Node(node, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
-		if filter, ok := n.(*plan.Filter); ok {
-			return transform.Node(filter, replaceIndexedTablesFilter)
+		switch n := n.(type) {
+		case *plan.Filter:
+			return transform.Node(n, replaceIndexedTablesFilter)
+		case *plan.JoinNode:
+			return transform.Node(n, replaceIndexedTablesFilter)
+		default:
+			return n, transform.SameTree, nil
 		}
-		return n, transform.SameTree, nil
 	})
 }
 
