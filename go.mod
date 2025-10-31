@@ -6,10 +6,10 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20251027213034-2692fa147013
+	github.com/dolthub/dolt/go v0.40.5-0.20251031172053-97d5f87fd649
 	github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20251022212313-70b084ecf8af
+	github.com/dolthub/go-mysql-server v0.20.1-0.20251030230949-c706e02d9136
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20250930230441-70c2c6a98e33
 	github.com/fatih/color v1.13.0
@@ -30,7 +30,7 @@ require (
 	github.com/pierrre/geohash v1.0.0
 	github.com/pkg/profile v1.5.0
 	github.com/sergi/go-diff v1.1.0
-	github.com/shopspring/decimal v1.3.1
+	github.com/shopspring/decimal v1.4.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.10.0
 	github.com/twpayne/go-geom v1.3.6
