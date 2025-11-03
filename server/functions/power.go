@@ -72,7 +72,10 @@ var power_numeric_numeric = framework.Function2{
 		if d1.Equal(decimal.Zero) && d2.Cmp(decimal.Zero) == -1 {
 			return nil, errPowerZeroToNegative
 		}
-		// TODO: this doesn't handle non-integer exponents
+		// decimal.Pow() no longer handles 0 exponents properly
+		if d2.Equal(decimal.Zero) {
+			return numericOne, nil
+		}
 		return d1.Pow(d2), nil
 	},
 }
