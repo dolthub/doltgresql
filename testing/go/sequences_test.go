@@ -949,7 +949,7 @@ func TestSequences(t *testing.T) {
 		},
 		{
 			Name: "insert on a different branch",
-			// Skip: true, // currently dies on creating the sequence on a non-current DB table
+			Skip: true, // currently dies on creating the sequence on a non-current DB table
 			SetUpScript: []string{
 				"create table test (pk serial primary key, v1 int);",
 				"insert into test (v1) values (2), (3), (5), (7), (11);",
