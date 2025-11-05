@@ -168,7 +168,6 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		return 0, err
 	}
 
-	// TODO: use IoCompare
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -514,7 +513,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 // IsArrayType returns true if the type is of 'array' category
 func (t *DoltgresType) IsArrayType() bool {
 	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType) ||
-		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
+			(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a
@@ -688,10 +687,27 @@ func (t *DoltgresType) SerializedCompare(ctx context.Context, v1 []byte, v2 []by
 		return -1, nil
 	}
 
-	if t.TypCategory == TypeCategory_StringTypes {
+	switch t.TypCategory {
+	case TypeCategory_StringTypes:
 		return serializedStringCompare(v1, v2), nil
+	default:
+		// TODO: there are certainly other types that could be compared in serialized form
+		return deserializeAndCompare(ctx, t, v1, v2)
 	}
-	return bytes.Compare(v1, v2), nil
+}
+
+// deserializeAndCompare deserializes the given serialized values and compares them
+func deserializeAndCompare(ctx context.Context, t *DoltgresType, v1 []byte, v2 []byte) (int, error) {
+	val1, err := t.DeserializeValue(ctx, v1)
+	if err != nil {
+		return 0, err
+	}
+	val2, err := t.DeserializeValue(ctx, v2)
+	if err != nil {
+		return 0, err
+	}
+
+	return t.Compare(ctx, val1, val2)
 }
 
 // IsNullType implements the sql.NullType interface.
