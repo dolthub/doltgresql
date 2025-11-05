@@ -15,7 +15,6 @@
 package analyzer
 
 import (
-	"github.com/dolthub/doltgresql/server/index"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/memo"
@@ -117,8 +116,8 @@ func initEngine() {
 
 	// There are a couple places during analysis where SplitConjunction in GMS cannot correctly split up
 	// Doltgres expressions, so we need to override the default function used.
-	analyzer.SplitConjunction = index.SplitConjunction
-	memo.SplitConjunction = index.SplitConjunction
+	analyzer.SplitConjunction = SplitConjunction
+	memo.SplitConjunction = SplitConjunction
 }
 
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by
