@@ -62,7 +62,6 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
 		analyzer.Rule{Id: ruleId_AssignTriggers, Apply: AssignTriggers},
-		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 		analyzer.Rule{Id: ruleId_ValidateCreateFunction, Apply: ValidateCreateFunction},
 	)
 

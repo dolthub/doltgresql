@@ -513,7 +513,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 // IsArrayType returns true if the type is of 'array' category
 func (t *DoltgresType) IsArrayType() bool {
 	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType) ||
-			(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
+		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a
