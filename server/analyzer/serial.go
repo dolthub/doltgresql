@@ -36,6 +36,12 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// maxSequenceAutoNames is the maximum number of otherwise-identical sequence names that can be generated before
+// resulting in an error. Under normal operation, sequence names should be automatically cleaned up when their table
+// gets dropped, so except in extremely unusual circumstances this limit should never be reached. If it is, it's
+// probably an indicator of a bug in sequence cleanup (or an extremely large schema).
+const maxSequenceAutoNames = 10_000
+
 // ReplaceSerial replaces a CreateTable node containing a SERIAL type with a node that can create sequences alongside
 // the table.
 func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
@@ -151,9 +157,9 @@ func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *
 	}
 	if relationType != core.RelationType_DoesNotExist {
 		seqIndex := 1
-		for ; seqIndex <= 100; seqIndex++ {
+		for ; seqIndex <= maxSequenceAutoNames; seqIndex++ {
 			sequenceName = fmt.Sprintf("%s%d", baseSequenceName, seqIndex)
-			relationType, err = core.GetRelationType(ctx, schemaName, baseSequenceName)
+			relationType, err = core.GetRelationType(ctx, schemaName, sequenceName)
 			if err != nil {
 				return "", err
 			}
@@ -161,7 +167,7 @@ func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *
 				break
 			}
 		}
-		if seqIndex > 100 {
+		if seqIndex > maxSequenceAutoNames {
 			return "", errors.Errorf("SERIAL sequence name reached max iterations")
 		}
 	}
