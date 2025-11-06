@@ -154,16 +154,13 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "explain SELECT * FROM test WHERE v1 = 2 AND v2 = 22 ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
-						{" └─ Filter"},
-						{"     ├─ (test.v1 = 2 AND test.v2 = 22)"},
-						{"     └─ IndexedTableAccess(test)"},
-						{"         ├─ index: [test.v1,test.v2]"},
-						{"         ├─ filters: [DoltgresRange]"},
-						{"         └─ columns: [pk v1 v2]"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1,test.v2]"},
+						{"     ├─ filters: [{[2, 2], [22, 22]}]"},
+						{"     └─ columns: [pk v1 v2]"},
 					},
 				},
 				{
-					Skip:  true, // bug in index join lookup
 					Query: "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{12, 2, 22, 2, 22},
