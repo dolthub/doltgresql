@@ -15,7 +15,7 @@
 package information_schema
 
 import (
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/information_schema"
 	"github.com/dolthub/go-mysql-server/sql/mysql_db"
@@ -26,7 +26,7 @@ func allDatabasesWithNames(ctx *sql.Context, cat sql.Catalog, privCheck bool) ([
 	var dbs []information_schema.DbWithNames
 
 	currentDB := ctx.GetCurrentDatabase()
-	currentRevDB, _ := dsess.SplitRevisionDbName(currentDB)
+	currentRevDB, _ := doltdb.SplitRevisionDbName(currentDB)
 
 	allDbs := cat.AllDatabases(ctx)
 	for _, db := range allDbs {
@@ -46,7 +46,7 @@ func allDatabasesWithNames(ctx *sql.Context, cat sql.Catalog, privCheck bool) ([
 
 			for _, schema := range schemas {
 				dbName := db.Name()
-				revDb, _ := dsess.SplitRevisionDbName(dbName)
+				revDb, _ := doltdb.SplitRevisionDbName(dbName)
 				// Add database it is the current database/revision database and if SchemaName exists
 				if schema.SchemaName() != "" && (dbName == currentDB || revDb == currentRevDB) {
 					dbsForSchema = append(dbsForSchema, information_schema.DbWithNames{

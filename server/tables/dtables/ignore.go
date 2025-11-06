@@ -35,7 +35,7 @@ func getDoltIgnoreSchema() sql.Schema {
 }
 
 // convertTupleToIgnoreBoolean reads a boolean from a tuple and returns it.
-func convertTupleToIgnoreBoolean(ctx context.Context, valueDesc val.TupleDesc, valueTuple val.Tuple) (bool, error) {
+func convertTupleToIgnoreBoolean(ctx context.Context, valueDesc *val.TupleDesc, valueTuple val.Tuple) (bool, error) {
 	extendedTuple := val.NewTupleDescriptorWithArgs(
 		val.TupleDescriptorArgs{Comparator: valueDesc.Comparator(), Handlers: valueDesc.Handlers},
 		val.Type{Enc: val.ExtendedEnc, Nullable: false},
@@ -59,7 +59,7 @@ func convertTupleToIgnoreBoolean(ctx context.Context, valueDesc val.TupleDesc, v
 }
 
 // getIgnoreTablePatternKey reads the pattern key from a tuple and returns it.
-func getIgnoreTablePatternKey(ctx context.Context, keyDesc val.TupleDesc, keyTuple val.Tuple) (string, error) {
+func getIgnoreTablePatternKey(ctx context.Context, keyDesc *val.TupleDesc, keyTuple val.Tuple) (string, error) {
 	// First we'll try with ref (address) encoding
 	extendedTuple := val.NewTupleDescriptorWithArgs(
 		val.TupleDescriptorArgs{Comparator: keyDesc.Comparator(), Handlers: keyDesc.Handlers},
