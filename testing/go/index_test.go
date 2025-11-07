@@ -134,7 +134,8 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
-			Name: "Covering Composite Index",
+			Name:  "Covering Composite Index",
+			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT);",
 				"INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24);",
@@ -161,6 +162,7 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Focus: true,
 					Query: "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{12, 2, 22, 2, 22},
