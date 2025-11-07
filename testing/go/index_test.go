@@ -138,13 +138,75 @@ func TestBasicIndexing(t *testing.T) {
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT);",
 				"INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24);",
-				"CREATE INDEX v1_idx ON test(v1, v2);",
+				"CREATE INDEX v1_v2_idx ON test(v1, v2);",
+				"CREATE TABLE jointable (v3 bigint, v4 bigint)",
+				// note that we need a few values in this table so that a lookup is deemed faster than a cross join
+				"INSERT INTO jointable VALUES (1, 21), (2, 22), (3, 30), (4, 40), (5, 25), (100, 99), (1, 11);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT * FROM test WHERE v1 = 2 AND v2 = 22 ORDER BY pk;",
 					Expected: []sql.Row{
 						{12, 2, 22},
+					},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 = 2 AND v2 = 22 ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ Filter"},
+						{"     ├─ (test.v1 = 2 AND test.v2 = 22)"},
+						{"     └─ IndexedTableAccess(test)"},
+						{"         ├─ index: [test.v1,test.v2]"},
+						{"         ├─ filters: [DoltgresRange]"},
+						{"         └─ columns: [pk v1 v2]"},
+					},
+				},
+				{
+					Skip:  true, // bug in index join lookup
+					Query: "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+					Expected: []sql.Row{
+						{12, 2, 22, 2, 22},
+					},
+				},
+				{
+					Query: "explain select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [test.pk, test.v1, test.v2, jointable.v3, jointable.v4]"},
+						{" └─ Sort(test.pk ASC)"},
+						{"     └─ LookupJoin"},
+						{"         ├─ Table"},
+						{"         │   ├─ name: jointable"},
+						{"         │   └─ columns: [v3 v4]"},
+						{"         └─ IndexedTableAccess(test)"},
+						{"             ├─ index: [test.v1,test.v2]"},
+						{"             ├─ columns: [pk v1 v2]"},
+						{"             └─ keys: jointable.v3, 22"},
+					},
+				},
+				{
+					Query: "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
+					Expected: []sql.Row{
+						{11, 1, 21, 1, 21},
+						{12, 2, 22, 2, 22},
+						{15, 5, 25, 5, 25},
+					},
+				},
+				{
+					Query: "explain select * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [test.pk, test.v1, test.v2, jointable.v3, jointable.v4]"},
+						{" └─ Sort(test.pk ASC)"},
+						{"     └─ LookupJoin"},
+						{"         ├─ Table"},
+						{"         │   ├─ name: jointable"},
+						{"         │   └─ columns: [v3 v4]"},
+						{"         └─ IndexedTableAccess(test)"},
+						{"             ├─ index: [test.v1,test.v2]"},
+						{"             ├─ columns: [pk v1 v2]"},
+						{"             └─ keys: jointable.v3, jointable.v4"},
 					},
 				},
 				{
@@ -334,7 +396,6 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			Name: "Covering Index IN",
 			SetUpScript: []string{

@@ -17,6 +17,7 @@ package analyzer
 import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/memo"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 
@@ -105,6 +106,7 @@ func Init() {
 	initEngine()
 }
 
+// TODO: introduce a real pluggable architecture for this instead of swapping function pointers
 func initEngine() {
 	// This technically takes place at execution time rather than as part of analysis, but we don't have a better
 	// place to put it. Our foreign key validation logic is different from MySQL's, and since it's not an analyzer rule
@@ -115,7 +117,10 @@ func initEngine() {
 
 	expression.DefaultExpressionFactory = pgexpression.PostgresExpressionFactory{}
 
+	// There are a couple places during analysis where SplitConjunction in GMS cannot correctly split up
+	// Doltgres expressions, so we need to override the default function used.
 	analyzer.SplitConjunction = index.SplitConjunction
+	memo.SplitConjunction = index.SplitConjunction
 }
 
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by
