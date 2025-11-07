@@ -1388,7 +1388,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Persistence> opt_temp opt_persistence_temp_table opt_persistence_sequence
 %type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_grant_option_for
 
-%type <str> comment_opt comment_list
+%type <str> opt_comment comment_list
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 %type <*tree.FullBackupClause> opt_full_backup_clause
@@ -10649,46 +10649,49 @@ empty_select:
 //        [ OFFSET <expr> [ ROW | ROWS ] ]
 // %SeeAlso: WEBDOCS/select-clause.html
 simple_select_clause:
-  SELECT opt_all_clause target_list
+  SELECT opt_comment opt_all_clause target_list
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
     $$.val = &tree.SelectClause{
-      Exprs:   $3.selExprs(),
-      From:    $4.from(),
-      Where:   tree.NewWhere(tree.AstWhere, $5.expr()),
-      GroupBy: $6.groupBy(),
-      Having:  tree.NewWhere(tree.AstHaving, $7.expr()),
-      Window:  $8.window(),
+      BlockComment: $2,
+      Exprs:   $4.selExprs(),
+      From:    $5.from(),
+      Where:   tree.NewWhere(tree.AstWhere, $6.expr()),
+      GroupBy: $7.groupBy(),
+      Having:  tree.NewWhere(tree.AstHaving, $8.expr()),
+      Window:  $9.window(),
     }
   }
-| SELECT distinct_clause target_list
+| SELECT opt_comment distinct_clause target_list
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
     $$.val = &tree.SelectClause{
-      Distinct: $2.bool(),
-      Exprs:    $3.selExprs(),
-      From:     $4.from(),
-      Where:    tree.NewWhere(tree.AstWhere, $5.expr()),
-      GroupBy:  $6.groupBy(),
-      Having:   tree.NewWhere(tree.AstHaving, $7.expr()),
-      Window:   $8.window(),
+      BlockComment: $2,    
+      Distinct: $3.bool(),
+      Exprs:    $4.selExprs(),
+      From:     $5.from(),
+      Where:    tree.NewWhere(tree.AstWhere, $6.expr()),
+      GroupBy:  $7.groupBy(),
+      Having:   tree.NewWhere(tree.AstHaving, $8.expr()),
+      Window:   $9.window(),
     }
   }
-| SELECT distinct_on_clause target_list
+| SELECT opt_comment distinct_on_clause target_list
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
     $$.val = &tree.SelectClause{
+      BlockComment: $2,
       Distinct:   true,
-      DistinctOn: $2.distinctOn(),
-      Exprs:      $3.selExprs(),
-      From:       $4.from(),
-      Where:      tree.NewWhere(tree.AstWhere, $5.expr()),
-      GroupBy:    $6.groupBy(),
-      Having:     tree.NewWhere(tree.AstHaving, $7.expr()),
-      Window:     $8.window(),
+      DistinctOn: $3.distinctOn(),
+      Exprs:      $4.selExprs(),
+      From:       $5.from(),
+      Where:      tree.NewWhere(tree.AstWhere, $6.expr()),
+      GroupBy:    $7.groupBy(),
+      Having:     tree.NewWhere(tree.AstHaving, $8.expr()),
+      Window:     $9.window(),
     }
   }
 | SELECT error // SHOW HELP: SELECT
@@ -10699,7 +10702,7 @@ simple_select_clause:
 // always reduce, and the skipped delimiter acts as a entry/
 // exit for enabling COMMENT tokens to be consumed rather
 // than skipped.
-comment_opt:
+opt_comment:
   {
     setAllowComments(sqllex, true)
   }
