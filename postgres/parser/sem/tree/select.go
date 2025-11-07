@@ -91,15 +91,16 @@ func (node *ParenSelect) Format(ctx *FmtCtx) {
 
 // SelectClause represents a SELECT statement.
 type SelectClause struct {
-	Distinct    bool
-	DistinctOn  DistinctOn
-	Exprs       SelectExprs
-	From        From
-	Where       *Where
-	GroupBy     GroupBy
-	Having      *Where
-	Window      Window
-	TableSelect bool
+	Distinct     bool
+	DistinctOn   DistinctOn
+	Exprs        SelectExprs
+	From         From
+	Where        *Where
+	GroupBy      GroupBy
+	Having       *Where
+	Window       Window
+	TableSelect  bool
+	BlockComment string
 }
 
 // Format implements the NodeFormatter interface.
@@ -687,7 +688,7 @@ func (node *Order) Format(ctx *FmtCtx) {
 // Equal checks if the node ordering is equivalent to other.
 func (node *Order) Equal(other *Order) bool {
 	return node.Expr.String() == other.Expr.String() && node.Direction == other.Direction &&
-		node.OrderType == other.OrderType && node.NullsOrder == other.NullsOrder
+			node.OrderType == other.OrderType && node.NullsOrder == other.NullsOrder
 }
 
 // Limit represents a LIMIT clause.

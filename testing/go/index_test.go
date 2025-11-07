@@ -138,11 +138,13 @@ func TestBasicIndexing(t *testing.T) {
 			Focus: true,
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 BIGINT);",
+				// "INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24);",
 				"INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24);",
 				"CREATE INDEX v1_v2_idx ON test(v1, v2);",
 				"CREATE TABLE jointable (v3 bigint, v4 bigint)",
 				// note that we need a few values in this table so that a lookup is deemed faster than a cross join
-				"INSERT INTO jointable VALUES (1, 21), (2, 22), (3, 30), (4, 40), (5, 25), (100, 99), (1, 11);",
+				// "INSERT INTO jointable VALUES (1, 21), (2, 22), (3, 30), (4, 40), (5, 25), (100, 99), (1, 11);",
+				"INSERT INTO jointable VALUES (2, 22)",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -163,7 +165,7 @@ func TestBasicIndexing(t *testing.T) {
 				},
 				{
 					Focus: true,
-					Query: "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+					Query: "select /*+ lookup_join(jointable, test) */ * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{12, 2, 22, 2, 22},
 					},

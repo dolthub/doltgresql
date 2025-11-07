@@ -56,6 +56,11 @@ func setErr(sqllex sqlLexer, err error) int {
     return 1
 }
 
+func setAllowComments(sqllex sqlLexer, allow bool) int {
+    sqllex.(*lexer).setAllowComments(allow)
+    return 1
+}
+
 func unimplementedWithIssue(sqllex sqlLexer, issue int) int {
     sqllex.(*lexer).UnimplementedWithIssue(issue)
     return 1
@@ -719,6 +724,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
 %token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
 %token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMBINEFUNC COMMENT COMMENTS
+%token <str> BLOCK_COMMENT
 %token <str> COMMIT COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COST CREATE CREATEDB CREATELOGIN CREATEROLE
@@ -1381,6 +1387,8 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %type <tree.Persistence> opt_temp opt_persistence_temp_table opt_persistence_sequence
 %type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_grant_option_for
+
+%type <str> comment_opt comment_list
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 %type <*tree.FullBackupClause> opt_full_backup_clause
@@ -10684,6 +10692,34 @@ simple_select_clause:
     }
   }
 | SELECT error // SHOW HELP: SELECT
+
+// XXXX: the skipped '|' delimiter in comment_opt and
+// non-standard list empty terminal pattern in comment_list
+// are intentional. The empty terminal means the rule will
+// always reduce, and the skipped delimiter acts as a entry/
+// exit for enabling COMMENT tokens to be consumed rather
+// than skipped.
+comment_opt:
+  {
+    setAllowComments(sqllex, true)
+  }
+ comment_list
+  {
+    // this is an extension of the previous rule, so
+    // we use $2 here
+    $$ = $2
+    setAllowComments(sqllex, false)
+  }
+  
+comment_list:
+ {
+    $$ = ""
+ }
+| comment_list BLOCK_COMMENT
+  {
+    // we concatenate all comments together because we only care about their content in one narrow use case
+    $$ = $1 + string($2)
+  }
 
 set_operation:
   select_clause UNION all_or_distinct select_clause

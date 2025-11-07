@@ -157,6 +157,9 @@ func (p *Parser) scanOneStmt() (sql string, tokens []sqlSymType, done bool) {
 		if lval.id == 0 || lval.id == ';' {
 			return p.scanner.in[startPos:posBeforeScan], tokens, (lval.id == 0)
 		}
+		if lval.id == BLOCK_COMMENT && !p.scanner.allowComments {
+			continue
+		}
 		lval.pos -= startPos
 		tokens = append(tokens, lval)
 	}

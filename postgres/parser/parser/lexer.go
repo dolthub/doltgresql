@@ -56,6 +56,8 @@ type lexer struct {
 	numAnnotations  tree.AnnotationIdx
 
 	lastError error
+
+	allowComments bool
 }
 
 func (l *lexer) init(sql string, tokens []sqlSymType, nakedIntType *types.T) {
@@ -201,6 +203,11 @@ func (l *lexer) setErr(err error) {
 	err = pgerror.WithCandidateCode(err, pgcode.Syntax)
 	l.lastError = err
 	l.populateErrorDetails()
+}
+
+// setAllowComments sets whether comments are considered tokens or skipped entirely.
+func (l *lexer) setAllowComments(allow bool) {
+	l.allowComments = allow
 }
 
 func (l *lexer) Error(e string) {
