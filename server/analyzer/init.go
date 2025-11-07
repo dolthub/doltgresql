@@ -15,12 +15,13 @@
 package analyzer
 
 import (
-	"github.com/dolthub/doltgresql/server/index"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/memo"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
+
+	"github.com/dolthub/doltgresql/server/index"
 
 	pgexpression "github.com/dolthub/doltgresql/server/expression"
 )
