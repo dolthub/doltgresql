@@ -165,7 +165,7 @@ func TestBasicIndexing(t *testing.T) {
 				},
 				{
 					Focus: true,
-					Query: "select /*+ lookup_join(jointable, test) */ * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+					Query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{12, 2, 22, 2, 22},
 					},

@@ -458,9 +458,9 @@ func (s *scanner) skipWhitespace(lval *sqlSymType, allowComments bool) (blockCom
 		}
 		if allowComments {
 			if cmt, present, cok := s.scanComment(lval); !cok {
-				return cmt, false, false
+				return "", false, false
 			} else if present {
-				continue
+				return cmt, false, true
 			}
 		}
 		break
@@ -485,6 +485,8 @@ func (s *scanner) scanComment(lval *sqlSymType) (comment string, present, ok boo
 			s.pos--
 			return "", false, true
 		}
+		sb.WriteRune('*')
+
 		s.pos++
 		depth := 1
 		for {

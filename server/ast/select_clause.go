@@ -187,5 +187,6 @@ PostJoinRewrite:
 		GroupBy:     groupBy,
 		Having:      having,
 		Window:      window,
+		Comments:    vitess.Comments{[]byte(node.BlockComment)},
 	}, nil
 }
