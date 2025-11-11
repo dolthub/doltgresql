@@ -1388,7 +1388,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Persistence> opt_temp opt_persistence_temp_table opt_persistence_sequence
 %type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_grant_option_for
 
-%type <str> opt_comment
+%type <str> opt_join_hint_comment
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 %type <*tree.FullBackupClause> opt_full_backup_clause
@@ -10649,7 +10649,7 @@ empty_select:
 //        [ OFFSET <expr> [ ROW | ROWS ] ]
 // %SeeAlso: WEBDOCS/select-clause.html
 simple_select_clause:
-  SELECT opt_comment opt_all_clause target_list
+  SELECT opt_join_hint_comment opt_all_clause target_list
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
@@ -10663,7 +10663,7 @@ simple_select_clause:
       Window:  $9.window(),
     }
   }
-| SELECT opt_comment distinct_clause target_list
+| SELECT opt_join_hint_comment distinct_clause target_list
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
@@ -10678,7 +10678,7 @@ simple_select_clause:
       Window:   $9.window(),
     }
   }
-| SELECT opt_comment distinct_on_clause target_list
+| SELECT opt_join_hint_comment distinct_on_clause target_list
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
@@ -10696,7 +10696,7 @@ simple_select_clause:
   }
 | SELECT error // SHOW HELP: SELECT
 
-opt_comment:
+opt_join_hint_comment:
   {
     // empty
   }
