@@ -457,6 +457,15 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Query: "explain SELECT * FROM test WHERE v1 IN (2, '3', 4) ORDER BY v1;",
+					Expected: []sql.Row{
+						{"IndexedTableAccess(test)"},
+						{" ├─ index: [test.v1]"},
+						{" ├─ filters: [{[2, 2]}, {[3, 3]}, {[4, 4]}]"},
+						{" └─ columns: [pk v1 v2]"},
+					},
+				},
+				{
 					Query:    "CREATE INDEX v2_idx ON test(v2);",
 					Expected: []sql.Row{},
 				},
