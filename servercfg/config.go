@@ -488,6 +488,12 @@ func (cfg *DoltgresConfig) AutoGCBehavior() servercfg.AutoGCBehavior {
 	return DoltgresAutoGCBehavior{}
 }
 
+func (cfg *DoltgresConfig) BranchActivityTracking() bool {
+	// TODO In Dolt we require branch activity tracking to be configurable because it does incur a performance cost.
+	// We could make this configurable in Doltgres as well if we need to shave a couple percent off performance.
+	return true
+}
+
 func (cfg *DoltgresConfig) ValueSet(value string) bool {
 	switch value {
 	case readTimeoutKey:
