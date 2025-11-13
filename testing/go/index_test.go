@@ -39,6 +39,16 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Query: "explain SELECT * FROM test WHERE v1 = 2 ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{[2, 2]}]"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+				{
 					Query: "SELECT * FROM test WHERE v1 > 2 ORDER BY pk;",
 					Expected: []sql.Row{
 						{13, 3},
@@ -47,10 +57,65 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Query: "explain SELECT * FROM test WHERE v1 > 2 ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{(2, ∞)}]"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 IN (2, 4) ORDER BY pk;",
+					Expected: []sql.Row{
+						{12, 2},
+						{14, 4},
+					},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 IN (2, 4) ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{[2, 2]}, {[4, 4]}]"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 NOT IN (2, 4) ORDER BY pk;",
+					Expected: []sql.Row{
+						{11, 1},
+						{13, 3},
+						{15, 5},
+					},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 NOT IN (2, 4) ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{(NULL, 2)}, {(2, 4)}, {(4, ∞)}]"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+				{
 					Query: "SELECT * FROM test WHERE v1 >= 4 ORDER BY pk;",
 					Expected: []sql.Row{
 						{14, 4},
 						{15, 5},
+					},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 >= 4 ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{[4, ∞)}]"},
+						{"     └─ columns: [pk v1]"},
 					},
 				},
 				{
