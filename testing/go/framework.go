@@ -538,6 +538,10 @@ func UnmarshalAndMarshalJsonString(val string) string {
 // There are an infinite number of ways to represent the same value in-memory,
 // so we must at least normalize Numeric values.
 func NormalizeValToString(dt *types.DoltgresType, v any) any {
+	if v == nil {
+		return nil
+	}
+
 	switch dt.ID {
 	case types.Json.ID:
 		str, err := json.Marshal(v)
