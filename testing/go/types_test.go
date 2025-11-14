@@ -1067,6 +1067,19 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query: "Insert into t_json values (100, null) returning *",
+				Expected: []sql.Row{
+					{100, nil},
+				},
+			},
+			{
+				Query:    "Insert into t_json values ($1, $2) returning *",
+				BindVars: []any{"101", nil},
+				Expected: []sql.Row{
+					{101, nil},
+				},
+			},
+			{
 				Query: "SELECT '5'::json;",
 				Expected: []sql.Row{
 					{`5`},
@@ -1133,6 +1146,19 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, `{"key": "value"}`},
 					{2, `{"num": 42}`},
+				},
+			},
+			{
+				Query: "insert into t_jsonb values (3, null) returning *",
+				Expected: []sql.Row{
+					{3, nil},
+				},
+			},
+			{
+				Query:    "insert into t_jsonb values ($1, $2) returning *",
+				BindVars: []any{"4", nil},
+				Expected: []sql.Row{
+					{4, nil},
 				},
 			},
 			{
@@ -2954,8 +2980,8 @@ var typesTests = []ScriptTest{
 			"create table t_uuid2 (id int primary key, v1 uuid, v2 uuid);",
 			"create index on t_uuid2(v1, v2);",
 			"insert into t_uuid2 values " +
-				"(1, 'f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), " +
-				"(2, 'dcf783c8-49c2-44b4-8b90-34ad8c52ea1e', 'f99802e8-0018-4913-806c-bcad5d246d46');",
+					"(1, 'f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), " +
+					"(2, 'dcf783c8-49c2-44b4-8b90-34ad8c52ea1e', 'f99802e8-0018-4913-806c-bcad5d246d46');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{

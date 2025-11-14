@@ -486,7 +486,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					// try using text type
 					dt = types.Text
 				}
-				if dt.ID == types.Json.ID {
+				if dt.ID == types.Json.ID && row[i] != nil {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
 				} else if dt.IsArrayType() && dt.ArrayBaseType().ID == types.Json.ID {
 					// TODO: need to have valid sql.Context
