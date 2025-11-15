@@ -320,6 +320,11 @@ func (cfg *DoltgresConfig) MaxWaitConnectionsTimeout() time.Duration {
 	return 0
 }
 
+func (cfg *DoltgresConfig) CACert() string {
+	// TODO: add support for specifying a CA server and configuration TLS for client cert authentication
+	return ""
+}
+
 func (cfg *DoltgresConfig) TLSKey() string {
 	if cfg.ListenerConfig == nil || cfg.ListenerConfig.TLSKey == nil {
 		return ""
