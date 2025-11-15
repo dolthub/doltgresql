@@ -281,11 +281,15 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 		if !ok {
 			return nil, errors.Errorf("unhandled oid type: %v", types[i])
 		}
-		v, err := pgTyp.IoInput(ctx, bindVarString)
-		if err != nil {
-			return nil, err
+		if bindVarString == nil {
+			bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(nil, pgTyp)}
+		} else {
+			v, err := pgTyp.IoInput(ctx, *bindVarString)
+			if err != nil {
+				return nil, err
+			}
+			bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, pgTyp)}
 		}
-		bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, pgTyp)}
 	}
 	return bindings, nil
 }
@@ -299,50 +303,75 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 // This function relies on the pgtype library to decode values, in text and binary formats,
 // however, a few types cannot be scanned directly into strings from the binary format by this
 // library, so there is special handling for them.
-func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte, formatCode int16) (bindVarString string, err error) {
+func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte, formatCode int16) (bindVarString *string, err error) {
 	isBinaryFormat := formatCode == pgtype.BinaryFormatCode
 
 	switch {
 	case (typ == pgtype.TimestampOID || typ == pgtype.TimestamptzOID) && isBinaryFormat:
-		var t time.Time
+		var t *time.Time
 		if err := h.pgTypeMap.Scan(typ, formatCode, value, &t); err != nil {
-			return "", err
+			return nil, err
 		}
-		bindVarString = t.Format("2006-01-02 15:04:05")
+		if t != nil {
+			format := t.Format("2006-01-02 15:04:05")
+			bindVarString = &format
+		}
 	case typ == pgtype.DateOID && isBinaryFormat:
-		var d pgtype.Date
+		var d *pgtype.Date
 		if err := h.pgTypeMap.Scan(typ, formatCode, value, &d); err != nil {
-			return "", err
+			return nil, err
 		}
-		bindVarString = d.Time.Format("2006-01-02")
+		if d != nil {
+			format := d.Time.Format("2006-01-02")
+			bindVarString = &format
+		}
 	case typ == pgtype.BoolOID && isBinaryFormat:
-		var b bool
+		var b *bool
 		if err := h.pgTypeMap.Scan(typ, formatCode, value, &b); err != nil {
-			return "", err
+			return nil, err
 		}
-		if b {
-			bindVarString = "true"
-		} else {
-			bindVarString = "false"
+		if b != nil {
+			if *b {
+				var t = "true"
+				bindVarString = &t
+			} else {
+				var f = "false"
+				bindVarString = &f
+			}
 		}
 	case typ == pgtype.ByteaOID && isBinaryFormat:
-		bindVarString = `\x` + hex.EncodeToString(value)
-	case typ == pgtype.Int2OID && isBinaryFormat:
-		bindVarString = strconv.FormatInt(int64(binary.BigEndian.Uint16(value)), 10)
-	case typ == pgtype.Int4OID && isBinaryFormat:
-		bindVarString = strconv.FormatInt(int64(binary.BigEndian.Uint32(value)), 10)
-	case typ == pgtype.Int8OID && isBinaryFormat:
-		bindVarString = strconv.FormatInt(int64(binary.BigEndian.Uint64(value)), 10)
-	case typ == pgtype.UUIDOID && isBinaryFormat:
-		u, err := uuid.FromBytes(value)
-		if err != nil {
-			return "", err
+		if value != nil {
+			s := `\x` + hex.EncodeToString(value)
+			bindVarString = &s
 		}
-		bindVarString = u.String()
+	case typ == pgtype.Int2OID && isBinaryFormat:
+		if value != nil {
+			formatInt := strconv.FormatInt(int64(binary.BigEndian.Uint16(value)), 10)
+			bindVarString = &formatInt
+		}
+	case typ == pgtype.Int4OID && isBinaryFormat:
+		if value != nil {
+			formatInt := strconv.FormatInt(int64(binary.BigEndian.Uint32(value)), 10)
+			bindVarString = &formatInt
+		}
+	case typ == pgtype.Int8OID && isBinaryFormat:
+		if value != nil {
+			formatInt := strconv.FormatInt(int64(binary.BigEndian.Uint64(value)), 10)
+			bindVarString = &formatInt
+		}
+	case typ == pgtype.UUIDOID && isBinaryFormat:
+		if value != nil {
+			u, err := uuid.FromBytes(value)
+			if err != nil {
+				return nil, err
+			}
+			s := u.String()
+			bindVarString = &s
+		}
 	default:
 		// For text format or types that can handle binary-to-string conversion
 		if err := h.pgTypeMap.Scan(typ, formatCode, value, &bindVarString); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
