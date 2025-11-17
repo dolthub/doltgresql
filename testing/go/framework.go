@@ -486,7 +486,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					// try using text type
 					dt = types.Text
 				}
-				if dt.ID == types.Json.ID {
+				if dt.ID == types.Json.ID && row[i] != nil {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
 				} else if dt.IsArrayType() && dt.ArrayBaseType().ID == types.Json.ID {
 					// TODO: need to have valid sql.Context
@@ -538,6 +538,10 @@ func UnmarshalAndMarshalJsonString(val string) string {
 // There are an infinite number of ways to represent the same value in-memory,
 // so we must at least normalize Numeric values.
 func NormalizeValToString(dt *types.DoltgresType, v any) any {
+	if v == nil {
+		return nil
+	}
+
 	switch dt.ID {
 	case types.Json.ID:
 		str, err := json.Marshal(v)

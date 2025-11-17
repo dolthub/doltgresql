@@ -1067,6 +1067,25 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query: "Insert into t_json values (100, null) returning *",
+				Expected: []sql.Row{
+					{100, nil},
+				},
+			},
+			{
+				Query: "select * from t_json where id = 100",
+				Expected: []sql.Row{
+					{100, nil},
+				},
+			},
+			{
+				Query:    "Insert into t_json values ($1, $2) returning *",
+				BindVars: []any{"101", nil},
+				Expected: []sql.Row{
+					{101, nil},
+				},
+			},
+			{
 				Query: "SELECT '5'::json;",
 				Expected: []sql.Row{
 					{`5`},
@@ -1085,6 +1104,13 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query: `SELECT null::json;`,
+				Expected: []sql.Row{
+					{nil},
+				},
+			},
+			{
+				Skip:  true, // https://github.com/jackc/pgx/issues/2430
 				Query: `SELECT 'null'::json;`,
 				Expected: []sql.Row{
 					{`null`},
@@ -1133,6 +1159,19 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, `{"key": "value"}`},
 					{2, `{"num": 42}`},
+				},
+			},
+			{
+				Query: "insert into t_jsonb values (3, null) returning *",
+				Expected: []sql.Row{
+					{3, nil},
+				},
+			},
+			{
+				Query:    "insert into t_jsonb values ($1, $2) returning *",
+				BindVars: []any{"4", nil},
+				Expected: []sql.Row{
+					{4, nil},
 				},
 			},
 			{
@@ -1287,7 +1326,7 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_jsonb ORDER BY v1;",
 				Expected: []sql.Row{
-					{`null`},
+					{nil}, // should be "null", but https://github.com/jackc/pgx/issues/2430
 					{`"random string"`},
 					{`789.123`},
 					{`123456`},
