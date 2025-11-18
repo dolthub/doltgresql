@@ -127,6 +127,7 @@ jobs:
         shell: bash
         run: |
           sed 's|__DOLTGRES_VERSION__|'"$DOLTGRES_VERSION"'|' scripts/install.sh > out/install.sh
+          chmod 755 out/install.sh
         env:
           DOLTGRES_VERSION: ${{ needs.format-version.outputs.version }}
       - name: Upload Linux AMD64 Distro
