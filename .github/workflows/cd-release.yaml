@@ -122,6 +122,14 @@ jobs:
           release_name: ${{ needs.format-version.outputs.version }}
           draft: false
           commitish: ${{ steps.build_binaries.outputs.commitish }}
+      - name: Create install script
+        id: create-install-script
+        shell: bash
+        run: |
+          sed 's|__DOLTGRES_VERSION__|'"$DOLTGRES_VERSION"'|' scripts/install.sh > out/install.sh
+          chmod 755 out/install.sh
+        env:
+          DOLTGRES_VERSION: ${{ needs.format-version.outputs.version }}
       - name: Upload Linux AMD64 Distro
         id: upload-linux-amd64-distro
         uses: dolthub/upload-release-asset@v2
@@ -182,6 +190,16 @@ jobs:
           asset_path: out/doltgresql-windows-amd64.7z
           asset_name: doltgresql-windows-amd64.7z
           asset_content_type: application/x-7z-compressed
+      - name: Upload install script
+        id: upload-install-script
+        uses: dolthub/upload-release-asset@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: out/install.sh
+          asset_name: install.sh
+          asset_content_type: text/plain
 
   create-release-notes:
     needs: [format-version, create-release]
