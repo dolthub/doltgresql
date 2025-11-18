@@ -17,7 +17,7 @@ _() {
 
 set -euo pipefail
 
-DOLT_VERSION='__DOLTGRES_VERSION__'
+DOLTGRES_VERSION='__DOLTGRES_VERSION__'
 RELEASES_BASE_URL="https://github.com/dolthub/doltgresql/releases/download/v$DOLTGRES_VERSION"
 INSTALL_URL="$RELEASES_BASE_URL/install.sh"
 
@@ -100,7 +100,7 @@ create_workdir() {
 }
 
 install_binary_release() {
-  local FILE="dolt-$PLATFORM_TUPLE.tar.gz"
+  local FILE="doltgresql-$PLATFORM_TUPLE.tar.gz"
   local URL="$RELEASES_BASE_URL/$FILE"
 
   echo "Downloading: $URL"
@@ -109,9 +109,10 @@ install_binary_release() {
 
   echo 'Installing dolt into /usr/local/bin.'
   [ ! -d /usr/local/bin ] && install -o 0 -g 0 -d /usr/local/bin
-  install -o 0 -g 0 "dolt-$PLATFORM_TUPLE/bin/dolt" /usr/local/bin
-  install -o 0 -g 0 -d /usr/local/share/doc/dolt/
-  install -o 0 -g 0 -m 644 "dolt-$PLATFORM_TUPLE/LICENSES" /usr/local/share/doc/dolt/
+  install -o 0 -g 0 "doltgresql-$PLATFORM_TUPLE/bin/doltgres" /usr/local/bin
+  install -o 0 -g 0 -d /usr/local/share/doc/doltgresql/
+  # TODO: vend licenses
+#  install -o 0 -g 0 -m 644 "dolt-$PLATFORM_TUPLE/LICENSES" /usr/local/share/doc/doltgresql/
 }
 
 assert_linux_or_macos
