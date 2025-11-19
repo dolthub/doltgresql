@@ -144,9 +144,12 @@ type DoltgresPerformanceConfig struct {
 }
 
 type DoltgesMetricsConfig struct {
-	Labels map[string]string `yaml:"labels,omitempty" minver:"0.7.4"`
-	Host   *string           `yaml:"host,omitempty" minver:"0.7.4"`
-	Port   *int              `yaml:"port,omitempty" minver:"0.7.4"`
+	Labels  map[string]string `yaml:"labels,omitempty" minver:"0.7.4"`
+	Host    *string           `yaml:"host,omitempty" minver:"0.7.4"`
+	Port    *int              `yaml:"port,omitempty" minver:"0.7.4"`
+	TlsCert *string           `yaml:"tls_cert,omitempty" minver:"TBD"`
+	TlsKey  *string           `yaml:"tls_key,omitempty" minver:"TBD"`
+	TlsCa   *string           `yaml:"tls_ca,omitempty" minver:"TBD"`
 }
 
 type DoltgresRemotesapiConfig struct {
@@ -395,6 +398,28 @@ func (cfg *DoltgresConfig) MetricsPort() int {
 	}
 
 	return *cfg.MetricsConfig.Port
+}
+
+func (cfg *DoltgresConfig) MetricsTLSCert() string {
+	if cfg.MetricsConfig.TlsCert == nil {
+		return ""
+	}
+
+	return *cfg.MetricsConfig.TlsCert
+}
+
+func (cfg *DoltgresConfig) MetricsTLSKey() string {
+	if cfg.MetricsConfig.TlsKey == nil {
+		return ""
+	}
+	return *cfg.MetricsConfig.TlsKey
+}
+
+func (cfg *DoltgresConfig) MetricsTLSCA() string {
+	if cfg.MetricsConfig.TlsCa == nil {
+		return ""
+	}
+	return *cfg.MetricsConfig.TlsCa
 }
 
 func (cfg *DoltgresConfig) PrivilegeFilePath() string {
