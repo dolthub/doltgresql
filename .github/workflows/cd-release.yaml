@@ -112,6 +112,8 @@ jobs:
           latest=$(git rev-parse HEAD)
           echo "commitish=$latest" >> $GITHUB_OUTPUT
           GO_BUILD_VERSION=1.25 scripts/build_binaries.sh
+      - name: Fix ownership of build artifacts
+        run: sudo chown -R "$USER:$USER" out
       - name: Create Release
         id: create_release
         uses: dolthub/create-release@v2
@@ -125,11 +127,8 @@ jobs:
       - name: Create install script
         id: create-install-script
         shell: bash
-        run: |
-          sed 's|__DOLTGRES_VERSION__|'"$DOLTGRES_VERSION"'|' scripts/install.sh > $FILE
-          chmod 755 $FILE
+        run: scripts/build_install_script.sh
         env:
-          FILE: ${{ format('{0}/out/install.sh', github.workspace) }}
           DOLTGRES_VERSION: ${{ needs.format-version.outputs.version }}
       - name: Upload Linux AMD64 Distro
         id: upload-linux-amd64-distro
