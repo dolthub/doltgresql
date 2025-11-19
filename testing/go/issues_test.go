@@ -56,8 +56,7 @@ func TestIssues(t *testing.T) {
 			},
 		},
 		{
-			Name:  "Issue #65",
-			Focus: true,
+			Name: "Issue #65",
 			SetUpScript: []string{
 				`CREATE TABLE sub_entities (
   project_id VARCHAR(256) NOT NULL,
