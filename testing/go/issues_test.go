@@ -99,7 +99,6 @@ CREATE TABLE conversations (
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Focus: true,
 					Query: `select
   "entities"."project_id",
   "entities"."id",
