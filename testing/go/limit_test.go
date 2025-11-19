@@ -34,6 +34,11 @@ func TestLimitOffset(t *testing.T) {
 					Expected: []sql.Row{{1, 1}, {2, 2}},
 				},
 				{
+					Query:    `SELECT * FROM t LIMIT $1`,
+					BindVars: []interface{}{int64(2)},
+					Expected: []sql.Row{{1, 1}, {2, 2}},
+				},
+				{
 					Query:    `SELECT * FROM t LIMIT 2 OFFSET 2`,
 					Expected: []sql.Row{{3, 3}, {4, 4}},
 				},

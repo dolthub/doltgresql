@@ -40,6 +40,9 @@ import (
 // to GMS types, so by taking care of all conversions here, we can ensure that Doltgres only needs to worry about its
 // own types.
 func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+	// TODO: this probably should not be opaque, we should let the analyzer dig into subqueries and analyze them when
+	//  it chooses. Doing all type transformations upfront like this masks bugs where certain tyupe conversion errors
+	//  only manifest in a subquery
 	return pgtransform.NodeExprsWithNodeWithOpaque(node, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		// This can be updated if we find more expressions that return GMS types.
 		// These should eventually be replaced with Doltgres-equivalents over time, rendering this function unnecessary.
@@ -58,7 +61,12 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			}
 			return expr, transform.SameTree, nil
 		case *expression.Literal:
-			return typeSanitizerLiterals(ctx, expr)
+			// We want to leave limit literals alone, as they are expected to be GMS types when they appear in certain
+			// parts of the query (subqueries in particular)
+			// TODO: fix the limit validation analysis to handle doltgres types
+			if _, isLimit := n.(*plan.Limit); !isLimit {
+				return typeSanitizerLiterals(ctx, expr)
+			}
 		case *expression.Not, *expression.And, *expression.Or, *expression.Like:
 			return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 		case sql.FunctionExpression:
