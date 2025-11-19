@@ -125,11 +125,8 @@ jobs:
       - name: Create install script
         id: create-install-script
         shell: bash
-        run: |
-          sed 's|__DOLTGRES_VERSION__|'"$DOLTGRES_VERSION"'|' scripts/install.sh > $FILE
-          chmod 755 $FILE
+        run: scripts/build_install_script.sh
         env:
-          FILE: ${{ format('{0}/out/install.sh', github.workspace) }}
           DOLTGRES_VERSION: ${{ needs.format-version.outputs.version }}
       - name: Upload Linux AMD64 Distro
         id: upload-linux-amd64-distro
