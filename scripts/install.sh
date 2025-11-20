@@ -49,7 +49,7 @@ assert_linux_or_macos() {
   OS="$(uname)"
   ARCH="$(uname -m)"
   if [ "$OS" != 'Linux' ] && [ "$OS" != 'Darwin' ]; then
-    fail 'E_UNSUPPORTED_OS' 'dolt install.sh only supports macOS and Linux.'
+    fail 'E_UNSUPPORTED_OS' 'doltgres install.sh only supports macOS and Linux.'
   fi
 
   # Translate aarch64 to arm64, since that's what GOARCH calls it
@@ -58,7 +58,7 @@ assert_linux_or_macos() {
   fi
 
   if [ "$ARCH-$OS" != 'x86_64-Linux' ] && [ "$ARCH-$OS" != 'x86_64-Darwin' ] && [ "$ARCH-$OS" != 'arm64-Linux' ] && [ "$ARCH-$OS" != 'arm64-Darwin' ]; then
-    fail 'E_UNSUPPOSED_ARCH' 'dolt install.sh only supports installing dolt on Linux-x86_64, Darwin-x86_64, Linux-aarch64, or Darwin-arm64.'
+    fail 'E_UNSUPPOSED_ARCH' 'doltgres install.sh only supports installing doltgres on Linux-x86_64, Darwin-x86_64, Linux-aarch64, or Darwin-arm64.'
   fi
 
   if [ "$OS" == 'Linux' ]; then
@@ -85,12 +85,12 @@ assert_dependencies() {
 assert_uid_zero() {
   uid="$(id -u)"
   if [ "$uid" != 0 ]; then
-    fail 'E_UID_NONZERO' "dolt install.sh must run as root; please try running with sudo or running\n\`curl $INSTALL_URL | sudo bash\`."
+    fail 'E_UID_NONZERO' "doltgres install.sh must run as root; please try running with sudo or running\n\`curl $INSTALL_URL | sudo bash\`."
   fi
 }
 
 create_workdir() {
-  WORK_DIR="$(mktemp -d -t dolt-installer.XXXXXX)"
+  WORK_DIR="$(mktemp -d -t doltgres-installer.XXXXXX)"
   cleanup() {
     rm -rf "$WORK_DIR"
   }
@@ -107,12 +107,11 @@ install_binary_release() {
   curl -A "$CURL_USER_AGENT" -fsL "$URL" > "$FILE"
   tar zxf "$FILE"
 
-  echo 'Installing dolt into /usr/local/bin.'
+  echo 'Installing doltgres into /usr/local/bin.'
   [ ! -d /usr/local/bin ] && install -o 0 -g 0 -d /usr/local/bin
   install -o 0 -g 0 "doltgresql-$PLATFORM_TUPLE/bin/doltgres" /usr/local/bin
   install -o 0 -g 0 -d /usr/local/share/doc/doltgresql/
-  # TODO: vend licenses
-#  install -o 0 -g 0 -m 644 "dolt-$PLATFORM_TUPLE/LICENSES" /usr/local/share/doc/doltgresql/
+  install -o 0 -g 0 -m 644 "doltgresql-$PLATFORM_TUPLE/licenses" /usr/local/share/doc/doltgresql/
 }
 
 assert_linux_or_macos
