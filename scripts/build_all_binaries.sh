@@ -1,15 +1,14 @@
 #!/bin/bash
 
-# build_binaries.sh
-#
-# Builds a doltgres binary with os-arch tuples provided as arguments, e.g. windows-amd64 linux-amd64
-#
-# This script is intended to be run in a docker environment via build.sh or
-# build_all_binaries.sh. You can also use it to build locally, but it needs to run apt-get and other
-# commands which modify the system/.
-#
-# To build doltgres for the OS / arch of this machine, use build.sh.
+set -e
+set -o pipefail
 
+script_dir=$(dirname "$0")
+cd $script_dir/..
+
+[ ! -z "$GO_BUILD_VERSION" ] || (echo "Must supply GO_BUILD_VERSION"; exit 1)
+
+docker run --rm -v `pwd`:/src golang:"$GO_BUILD_VERSION"-trixie /bin/bash -c '
 set -e
 set -o pipefail
 apt-get update && apt-get install -y p7zip-full pigz curl xz-utils mingw-w64 clang-19
@@ -23,7 +22,8 @@ export PATH=/opt/cross/bin:"$PATH"
 
 cd /src
 
-OS_ARCH_TUPLES="$*"
+BINS="doltgres"
+OS_ARCH_TUPLES="windows-amd64 linux-amd64 linux-arm64 darwin-amd64 darwin-arm64"
 
 declare -A platform_cc
 platform_cc["linux-arm64"]="aarch64-linux-musl-gcc"
@@ -70,25 +70,25 @@ for tuple in $OS_ARCH_TUPLES; do
   mkdir -p "$o/licenses"
   cp -r ./licenses "$o/licenses"
   cp LICENSE "$o/licenses"
-  echo Building "$o/$bin"
-  obin="$bin"
-  if [ "$os" = windows ]; then
+  for bin in $BINS; do
+    echo Building "$o/$bin"
+    obin="$bin"
+    if [ "$os" = windows ]; then
       obin="$bin.exe"
-  fi
-  CGO_ENABLED=1 \
+    fi
+    CGO_ENABLED=1 \
       GOOS="$os" \
       GOARCH="$arch" \
       CC="${platform_cc[${tuple}]}" \
       CXX="${platform_cxx[${tuple}]}" \
       AS="${platform_as[${tuple}]}" \
       CGO_LDFLAGS="${platform_cgo_ldflags[${tuple}]}" \
-      go build -buildvcs=false -trimpath \
-      -ldflags="${platform_go_ldflags[${tuple}]}" \
-      -tags icu_static -o "$o/bin/$obin" \
-      ./cmd/doltgres
+      go build -buildvcs=false -trimpath -ldflags="${platform_go_ldflags[${tuple}]}" -tags icu_static -o "$o/bin/$obin" ./cmd/doltgres
+  done
   if [ "$os" = windows ]; then
     (cd out && 7z a "doltgresql-$os-$arch.zip" "doltgresql-$os-$arch" && 7z a "doltgresql-$os-$arch.7z" "doltgresql-$os-$arch")
   else
     tar cf - -C out "doltgresql-$os-$arch" | pigz -9 > "out/doltgresql-$os-$arch.tar.gz"
   fi
 done
+'
