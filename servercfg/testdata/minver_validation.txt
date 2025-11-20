@@ -29,6 +29,9 @@ MetricsConfig *servercfg.DoltgesMetricsConfig 0.7.4 metrics,omitempty
 -Labels map[string]string 0.7.4 labels,omitempty
 -Host *string 0.7.4 host,omitempty
 -Port *int 0.7.4 port,omitempty
+-TlsCert *string 0.53.4 tls_cert,omitempty
+-TlsKey *string 0.53.4 tls_key,omitempty
+-TlsCa *string 0.53.4 tls_ca,omitempty
 RemotesapiConfig *servercfg.DoltgresRemotesapiConfig 0.7.4 remotesapi,omitempty
 -Port *int 0.7.4 port,omitempty
 -ReadOnly *bool 0.7.4 read_only,omitempty
