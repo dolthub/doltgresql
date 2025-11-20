@@ -13,7 +13,6 @@ arch=`go version | cut -d" " -f 4 | sed "s|.*/||"`
 echo "os is $os"
 echo "arch is $arch"
 echo "go version is $go_version"
-echo "pwd is " . `pwd`
 
 # Run the build script in docker, using the current working directory as the docker src
 # directory. Packaged binaries will be placed in out/
