@@ -130,6 +130,12 @@ func TestInsert(t *testing.T) {
 						{2, "world", "world"},
 					},
 				},
+				{
+					Query: `INSERT INTO t2 (id, c1, c2) 
+VALUES ($1, $2, $3)
+ON CONFLICT (id) do update set c1 = $4`,
+					BindVars: []any{1, "x", "y", "no conflict expected"},
+				},
 			},
 		},
 		{
