@@ -138,7 +138,6 @@ limit $4`,
 					},
 				},
 				{
-					Focus: true,
 					Query: `select
   "entities"."project_id",
   "entities"."id",
