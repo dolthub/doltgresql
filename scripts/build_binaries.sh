@@ -2,11 +2,11 @@
 
 # build_binaries.sh
 #
-# Builds a doltgres binary with os-arch tuples provided as arguments, e.g. windows-amd64 linux-amd64
+# Builds doltgres binaries with os-arch tuples provided as arguments, e.g. windows-amd64 linux-amd64
 #
 # This script is intended to be run in a docker environment via build.sh or
 # build_all_binaries.sh. You can also use it to build locally, but it needs to run apt-get and other
-# commands which modify the system/.
+# commands which modify the system.
 #
 # To build doltgres for the OS / arch of this machine, use build.sh.
 

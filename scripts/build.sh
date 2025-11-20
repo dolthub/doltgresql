@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# build.sh
+#
+# This script builds doltgres from source for this machine's OS and architecture.
+# Requires a locally running docker server.
+
 set -e
 set -o pipefail
 
