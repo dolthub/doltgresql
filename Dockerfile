@@ -18,18 +18,11 @@ RUN echo $(pwd)
 COPY . /tmp/doltgresql/
 WORKDIR /tmp/doltgresql/
 
-# Check for source to avoid unnecessary installation of build dependencies
-RUN if [ "$DOLGRES_VERSION" = "source" ]; then \
-        cd /tmp/doltgresql/ || { echo "Make sure the `doltgresql/` directory exists in your workspace to build from source."; exit 1; }; \
-        apt-get update -y && \
-        apt-get install -y libicu-dev && \
-        rm -rf /var/lib/apt/lists/*; \
-    fi
-
 # Separate layers to avoid redundant downloads
 RUN if [ "$DOLTGRES_VERSION" = "source" ]; then \
         go mod download; \
-        ./scripts/build_binaries.sh; \
+        ./scripts/build.sh; \
+        mv out/doltgresql-*/bin/doltgres /usr/local/bin; \
     fi
 
 FROM base AS download-binary
@@ -45,31 +38,23 @@ RUN if [ "$DOLTGRES_VERSION" = "latest" ]; then \
         curl -L "https://github.com/dolthub/doltgresql/releases/download/v${DOLTGRES_VERSION}/install.sh" | bash; \
     fi
 
-
 FROM base AS runtime
 ARG DOLTGRES_VERSION
 
 RUN apt-get update -y && apt-get install -y --no-install-recommends bzip2 gzip xz-utils zstd \
   && rm -rf /var/lib/apt/lists/*
-# icu dependency for source builds
-RUN if [ "$DOLTGRES_VERSION" = "source" ]; then \
-        apt-get update -y && \
-        apt-get install -y --no-install-recommends libicu-dev && \
-        rm -rf /var/lib/apt/lists/*; \
-    fi
 
 # Only one binary is possible due to DOLTGRES_VERSION, so we optionally copy from either stage
-COPY --from=download-binary /usr/local/bin/dolt* /usr/local/bin/
-COPY --from=build-from-source /usr/local/bin/dolt* /usr/local/bin/
+COPY --from=download-binary /usr/local/bin/doltgres /usr/local/bin/
+COPY --from=build-from-source /usr/local/bin/doltgres /usr/local/bin/
 
-RUN /usr/local/bin/dolt version
+RUN /usr/local/bin/doltgres version
 
 RUN mkdir /docker-entrypoint-initdb.d && \
     mkdir -p /var/lib/doltgres && \
     chmod 755 /var/lib/doltgres
 
-COPY docker*/docker-entrypoint*.sh /usr/local/bin/
-COPY dolt*/docker*/docker-entrypoint*.sh /usr/local/bin/
+COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 VOLUME /var/lib/doltgres
