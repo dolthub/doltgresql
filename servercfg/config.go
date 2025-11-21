@@ -352,6 +352,11 @@ func (cfg *DoltgresConfig) RequireSecureTransport() bool {
 	return *cfg.ListenerConfig.RequireSecureTransport
 }
 
+func (cfg *DoltgresConfig) RequireClientCert() bool {
+	// TODO: add support for verifying client certs
+	return false
+}
+
 func (cfg *DoltgresConfig) MaxLoggedQueryLen() int {
 	if cfg.MaxLenInLogs == nil {
 		return 1000
