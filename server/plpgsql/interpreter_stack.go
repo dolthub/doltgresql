@@ -28,7 +28,7 @@ import (
 // interacted with. InterpreterVariableReference are, instead, the avenue of interaction as a variable may be an
 // aggregate type (such as a record).
 type interpreterVariable struct {
-	Record sql.Schema
+	Record sql.Schema // TODO: all records carry their type information alongside the value, so this is redundant
 	Type   *pgtypes.DoltgresType
 	Value  any
 }
@@ -119,6 +119,18 @@ func (is *InterpreterStack) GetVariable(name string) InterpreterVariableReferenc
 					Type:  iv.Record[fieldIdx].Type.(*pgtypes.DoltgresType),
 					Value: &(iv.Value.(sql.Row)[fieldIdx]),
 				}
+			} else if iv.Type.IsCompositeType() {
+				for fieldIdx := range iv.Type.CompositeAttrs {
+					if iv.Type.CompositeAttrs[fieldIdx].Name == fieldName {
+						vals := iv.Value.([]pgtypes.RecordValue)
+						return InterpreterVariableReference{
+							Type:  vals[fieldIdx].Type.(*pgtypes.DoltgresType),
+							Value: &(vals[fieldIdx].Value),
+						}
+					}
+				}
+				// The field could not be found
+				return InterpreterVariableReference{}
 			} else {
 				// Can't access fields on an empty record
 				return InterpreterVariableReference{}

@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -98,6 +99,49 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if castFunction == nil {
 		if fromType.ID == pgtypes.Unknown.ID {
 			castFunction = framework.UnknownLiteralCast
+		} else if fromType.IsRecordType() && c.castToType.IsCompositeType() { // TODO: should this only be in explicit, or assignment and implicit too?
+			// Casting to a record type will always work for any composite type.
+			// TODO: is the above statement true for all cases?
+			// When casting to a composite type, then we must match the arity and have valid casts for every position.
+			if c.castToType.IsRecordType() {
+				castFunction = framework.IdentityCast
+			} else {
+				castFunction = func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+					vals, ok := val.([]pgtypes.RecordValue)
+					if !ok {
+						// TODO: better error message
+						return nil, errors.New("casting input error from record type")
+					}
+					if len(targetType.CompositeAttrs) != len(vals) {
+						return nil, errors.Newf("cannot cast type %s to %s", "", targetType.Name())
+					}
+					typeCollection, err := core.GetTypesCollectionFromContext(ctx)
+					if err != nil {
+						return nil, err
+					}
+					outputVals := make([]pgtypes.RecordValue, len(vals))
+					for i := range vals {
+						valType, ok := vals[i].Type.(*pgtypes.DoltgresType)
+						if !ok {
+							// TODO: if this is a GMS type, then we should cast to a Doltgres type here
+							return nil, errors.New("cannot cast record containing GMS type")
+						}
+						outputVals[i].Type, err = typeCollection.GetType(ctx, targetType.CompositeAttrs[i].TypeID)
+						if err != nil {
+							return nil, err
+						}
+						innerExplicit := ExplicitCast{
+							sqlChild:   NewUnsafeLiteral(vals[i].Value, valType),
+							castToType: outputVals[i].Type.(*pgtypes.DoltgresType),
+						}
+						outputVals[i].Value, err = innerExplicit.Eval(ctx, nil)
+						if err != nil {
+							return nil, err
+						}
+					}
+					return outputVals, nil
+				}
+			}
 		} else {
 			return nil, errors.Errorf("EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
 				fromType.String(), c.castToType.String(), c.sqlChild.String())
