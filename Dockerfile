@@ -27,14 +27,26 @@ RUN if [ "$DOLTGRES_VERSION" = "source" ]; then \
 
 FROM base AS download-binary
 ARG DOLTGRES_VERSION
+
+RUN if [ -z "$DOLTGRES_VERSION" ]; then \
+    DOLTGRES_VERSION="latest"; \
+fi
+
 RUN if [ "$DOLTGRES_VERSION" = "latest" ]; then \
-        # Fetch latest version number from GitHub API
+    # Fetch latest version number from GitHub API
+        echo "latest version is: "; \
+        echo $(curl -s https://api.github.com/repos/dolthub/doltgresql/releases/latest \
+            | grep '"tag_name"' \
+            | cut -d'"' -f4 \
+            | sed 's/^v//'); \
+
         DOLTGRES_VERSION=$(curl -s https://api.github.com/repos/dolthub/doltgresql/releases/latest \
             | grep '"tag_name"' \
             | cut -d'"' -f4 \
             | sed 's/^v//'); \
     fi && \
     if [ "$DOLTGRES_VERSION" != "source" ]; then \
+        echo "fetching https://github.com/dolthub/doltgresql/releases/download/v${DOLTGRES_VERSION}/install.sh"; \
         curl -L "https://github.com/dolthub/doltgresql/releases/download/v${DOLTGRES_VERSION}/install.sh" | bash; \
     fi
 
