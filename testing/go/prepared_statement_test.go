@@ -1432,7 +1432,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 	for _, query := range script.SetUpScript {
 		rows, err := conn.Query(ctx, query)
 		require.NoError(t, err)
-		_, err = ReadRows(rows, true)
+		_, _, err = ReadRows(rows, true)
 		assert.NoError(t, err)
 	}
 
@@ -1458,10 +1458,14 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 					}
 
 					if errorSeen == "" {
-						foundRows, err := ReadRows(rows, true)
+						foundRows, foundRawRows, err := ReadRows(rows, true)
 						if assertion.ExpectedErr == "" {
 							require.NoError(t, err)
-							assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), foundRows)
+							if assertion.ExpectedRaw != nil {
+								assert.Equal(t, assertion.ExpectedRaw, foundRawRows)
+							} else {
+								assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), foundRows)
+							}
 						} else if err != nil {
 							errorSeen = err.Error()
 						}

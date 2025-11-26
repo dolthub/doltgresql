@@ -127,5 +127,6 @@ func GetRowResults(query string) ([]sql.Row, error) {
 	if err != nil {
 		return nil, err
 	}
-	return framework.ReadRows(pgxRows, true)
+	readRows, _, err := framework.ReadRows(pgxRows, true)
+	return readRows, err
 }

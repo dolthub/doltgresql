@@ -51,7 +51,7 @@ type ReplicationTest struct {
 	// The SQL statements to execute as setup, in order. Results are not checked, but statements must not error.
 	// An initial comment can be used to Setup is always run on the primary.
 	SetUpScript []string
-	// The set of assertions to make after setup, in order
+	// The set of assertions to make after setup, in order. These should not use ExpectedRaw, as it is not handled.
 	Assertions []ScriptTestAssertion
 	// When using RunScripts, setting this on one (or more) tests causes RunScripts to ignore all tests that have this
 	// set to false (which is the default value). This allows a developer to easily "focus" on a specific test without
@@ -581,7 +581,8 @@ func newReplicator(t *testing.T, walFilePath string, replicaConn *pgx.Conn, prim
 	return r
 }
 
-// runReplicationScript runs the script given on the postgres connection provided
+// runReplicationScript runs the script given on the postgres connection provided. This does not handle assertions that
+// use ExpectedRaw.
 func runReplicationScript(
 	ctx context.Context,
 	t *testing.T,
@@ -652,7 +653,7 @@ func runReplicationScript(
 				} else {
 					rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 					require.NoError(t, err)
-					readRows, err := ReadRows(rows, true)
+					readRows, _, err := ReadRows(rows, true)
 					require.NoError(t, err)
 					normalizedRows := NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected)
 

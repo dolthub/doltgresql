@@ -172,5 +172,29 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #2049",
+			SetUpScript: []string{
+				`CREATE TABLE jsonb_test (id VARCHAR(256) NOT NULL PRIMARY KEY, "jsonbColumn" JSONB);`,
+				`INSERT INTO jsonb_test VALUES ('test', '{"test": "value\n"}');`,
+				`INSERT INTO jsonb_test VALUES ('test2', '{"test": "value\t"}');`,
+				`INSERT INTO jsonb_test VALUES ('test3', '{"test": "value\r"}');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM jsonb_test;",
+					// The pgx library incorrectly reinterprets our JSON value by replacing the individual newline
+					// characters (ASCII 92,110) with the actual newline character (ASCII 10), which is incorrect for us.
+					// Therefore, we have to use the raw returned values. To make it more clear, we aren't using a raw
+					// string literal and instead escaping the characters in the byte slice. We also test other escape
+					// characters that are replaced.
+					ExpectedRaw: [][][]byte{
+						{[]byte("test"), []byte("{\"test\": \"value\\n\"}")},
+						{[]byte("test2"), []byte("{\"test\": \"value\\t\"}")},
+						{[]byte("test3"), []byte("{\"test\": \"value\\r\"}")},
+					},
+				},
+			},
+		},
 	})
 }

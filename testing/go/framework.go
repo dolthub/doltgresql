@@ -81,7 +81,8 @@ type ExpectedNotice struct {
 // ScriptTestAssertion are the assertions upon which the script executes its main "testing" logic.
 type ScriptTestAssertion struct {
 	Query           string
-	Expected        []sql.Row
+	Expected        []sql.Row  // Expected or ExpectedRaw should be used, but not both at the same time
+	ExpectedRaw     [][][]byte // ExpectedRaw or Expected should be used, but not both at the same time
 	ExpectedErr     string
 	ExpectedNotices []ExpectedNotice
 	Focus           bool
@@ -240,7 +241,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			} else {
 				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 				require.NoError(t, err)
-				readRows, err := ReadRows(rows, normalizeRows)
+				readRows, readRawRows, err := ReadRows(rows, normalizeRows)
 				require.NoError(t, err)
 
 				if assertion.ExpectedColNames != nil {
@@ -255,17 +256,25 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 				// not an exact match but works well enough for our tests
 				orderBy := strings.Contains(strings.ToLower(assertion.Query), "order by")
 
-				if normalizeRows {
+				if assertion.ExpectedRaw != nil {
 					if orderBy {
-						assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows, "wrong result for query %s", assertion.Query)
+						assert.Equal(t, assertion.ExpectedRaw, readRawRows, "wrong result for query %s", assertion.Query)
 					} else {
-						assert.ElementsMatch(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows, "wrong result for query %s", assertion.Query)
+						assert.ElementsMatch(t, assertion.ExpectedRaw, readRawRows, "wrong result for query %s", assertion.Query)
 					}
 				} else {
-					if orderBy {
-						assert.Equal(t, assertion.Expected, readRows, "wrong result for query %s", assertion.Query)
+					if normalizeRows {
+						if orderBy {
+							assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows, "wrong result for query %s", assertion.Query)
+						} else {
+							assert.ElementsMatch(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), readRows, "wrong result for query %s", assertion.Query)
+						}
 					} else {
-						assert.ElementsMatch(t, assertion.Expected, readRows, "wrong result for query %s", assertion.Query)
+						if orderBy {
+							assert.Equal(t, assertion.Expected, readRows, "wrong result for query %s", assertion.Query)
+						} else {
+							assert.ElementsMatch(t, assertion.Expected, readRows, "wrong result for query %s", assertion.Query)
+						}
 					}
 				}
 
@@ -422,20 +431,26 @@ func CreateServerWithPort(t *testing.T, database string, port int) (context.Cont
 }
 
 // ReadRows reads all of the given rows into a slice, then closes the rows. If `normalizeRows` is true, then the rows
-// will be normalized such that all integers are int64, etc.
-func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, err error) {
+// will be normalized such that all integers are int64, etc. Normalization does not affect the raw returned bytes.
+func ReadRows(rows pgx.Rows, normalizeRows bool) (readRows []sql.Row, readRawRows [][][]byte, err error) {
 	defer func() {
 		err = goerrors.Join(err, rows.Err())
 	}()
-	var slice []sql.Row
+	var slices []sql.Row
+	var rawSlices [][][]byte
 	for rows.Next() {
+		var rawSlice [][]byte
+		for _, rawValue := range rows.RawValues() {
+			rawSlice = append(rawSlice, append([]byte{}, rawValue...))
+		}
+		rawSlices = append(rawSlices, rawSlice)
 		row, err := rows.Values()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		slice = append(slice, row)
+		slices = append(slices, row)
 	}
-	return NormalizeRows(rows.FieldDescriptions(), slice, normalizeRows), nil
+	return NormalizeRows(rows.FieldDescriptions(), slices, normalizeRows), rawSlices, nil
 }
 
 // NormalizeRows normalizes each value's type within each row, as the tests only want to compare values. Returns a new
