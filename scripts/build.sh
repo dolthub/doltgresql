@@ -23,5 +23,6 @@ echo "go version is $go_version"
 # directory. Packaged binaries will be placed in out/
 docker run --rm \
        -v `pwd`:/src \
+       -w /src \
        golang:"$go_version"-trixie \
        /src/scripts/build_binaries.sh "$os-$arch"

@@ -14,14 +14,15 @@ set -e
 set -o pipefail
 apt-get update && apt-get install -y p7zip-full pigz curl xz-utils mingw-w64 clang-19
 
-cd /
+mkdir -p /tmp/build-deps
+pushd /tmp/build-deps
 curl -o optcross.tar.xz https://dolthub-tools.s3.us-west-2.amazonaws.com/optcross/"$(uname -m)"-linux_20250327_0.0.3_trixie.tar.xz
-tar Jxf optcross.tar.xz
+tar Jxf optcross.tar.xz -C /
 curl -o icustatic.tar.xz https://dolthub-tools.s3.us-west-2.amazonaws.com/icustatic/20250327_0.0.3_trixie.tar.xz
-tar Jxf icustatic.tar.xz
+tar Jxf icustatic.tar.xz -C /
 export PATH=/opt/cross/bin:"$PATH"
 
-cd /src
+popd
 
 OS_ARCH_TUPLES="$*"
 
