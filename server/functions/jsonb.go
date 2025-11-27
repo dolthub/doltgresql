@@ -51,7 +51,10 @@ var jsonb_in = framework.Function1{
 			doc, err := pgtypes.UnmarshalToJsonDocument(inputBytes)
 			return doc, err
 		}
-		return nil, pgtypes.ErrInvalidSyntaxForType.New("jsonb", input[:10]+"...")
+		if len(input) > 10 {
+			input = input[:10] + "..."
+		}
+		return nil, pgtypes.ErrInvalidSyntaxForType.New("jsonb", input)
 	},
 }
 

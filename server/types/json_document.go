@@ -15,6 +15,7 @@
 package types
 
 import (
+	"bytes"
 	"sort"
 	"strings"
 
@@ -339,6 +340,11 @@ func JsonValueFormatter(sb *strings.Builder, value JsonValue) {
 
 // UnmarshalToJsonDocument converts a JSON document byte slice into the actual JSON document.
 func UnmarshalToJsonDocument(val []byte) (JsonDocument, error) {
+	// The JSON unmarshaller incorrectly replaces the two ASCII characters for a newline (92 & 110) with a single ASCII
+	// newline character (10). We also handle \t and \r.
+	val = bytes.ReplaceAll(val, []byte{'\\', 'n'}, []byte{'\\', '\\', 'n'})
+	val = bytes.ReplaceAll(val, []byte{'\\', 'r'}, []byte{'\\', '\\', 'r'})
+	val = bytes.ReplaceAll(val, []byte{'\\', 't'}, []byte{'\\', '\\', 't'})
 	var decoded interface{}
 	if err := json.Unmarshal(val, &decoded); err != nil {
 		return JsonDocument{}, err
