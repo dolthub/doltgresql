@@ -147,9 +147,9 @@ type DoltgesMetricsConfig struct {
 	Labels  map[string]string `yaml:"labels,omitempty" minver:"0.7.4"`
 	Host    *string           `yaml:"host,omitempty" minver:"0.7.4"`
 	Port    *int              `yaml:"port,omitempty" minver:"0.7.4"`
-	TlsCert *string           `yaml:"tls_cert,omitempty" minver:"TBD"`
-	TlsKey  *string           `yaml:"tls_key,omitempty" minver:"TBD"`
-	TlsCa   *string           `yaml:"tls_ca,omitempty" minver:"TBD"`
+	TlsCert *string           `yaml:"tls_cert,omitempty" minver:"0.53.5"`
+	TlsKey  *string           `yaml:"tls_key,omitempty" minver:"0.53.5"`
+	TlsCa   *string           `yaml:"tls_ca,omitempty" minver:"0.53.5"`
 }
 
 type DoltgresRemotesapiConfig struct {
