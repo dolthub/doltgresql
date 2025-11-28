@@ -81,6 +81,8 @@ var record_send = framework.Function1{
 		if !ok {
 			return nil, fmt.Errorf("expected []RecordValue, but got %T", val)
 		}
+		// TODO: converting from a string back to the record doesn't work as we lose type information, so we need to
+		//  figure out how to retain this information
 		output, err := pgtypes.RecordToString(ctx, values)
 		if err != nil {
 			return nil, err
