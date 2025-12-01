@@ -120,10 +120,12 @@ exec_sql() {
   done
 }
 
-CONTAINER_DATA_DIR="/var/lib/dolt"
+CONTAINER_DATA_DIR="/var/lib/doltgres"
 INIT_COMPLETED="$CONTAINER_DATA_DIR/.init_completed"
+
+# TODO: remove
 DOLT_CONFIG_DIR="/etc/dolt/doltcfg.d"
-SERVER_CONFIG_DIR="/etc/dolt/servercfg.d"
+SERVER_CONFIG_DIR="/etc/doltgres/servercfg.d"
 DOLT_ROOT_PATH="/.dolt"
 SERVER_PID=-1
 
@@ -201,6 +203,8 @@ get_config_file_path_if_exists() {
     else
       CONFIG_PROVIDED=
     fi
+  else
+      note "No config dir found in $CONFIG_DIR"
   fi
 }
 
@@ -341,6 +345,9 @@ start_server() {
     if [ "$SERVER_PID" -eq -1 ] || ! kill -0 "$SERVER_PID" 2>/dev/null; then
       [ "$SERVER_PID" -ne -1 ] && wait "$SERVER_PID" 2>/dev/null || true
       SERVER_PID=-1
+      # echo "running dlv --listen=:2345 --headless=true --api-version=2 exec /usr/local/bin/doltgres -- $@"
+      # dlv --listen=:2345 --headless=true --api-version=2 exec /usr/local/bin/doltgres -- "$@" 2>&1 &
+      echo "running doltgres $@"
       doltgres "$@" 2>&1 &
       SERVER_PID=$!
 
@@ -367,10 +374,10 @@ start_server() {
 
 # _main is the main entrypoint for the Dolt Docker container initialization.
 _main() {
-  check_for_dolt_binary
+  check_for_doltgres_binary
 
   local doltgres_version
-  doltgres_version=$(doltgres version | grep 'doltgres version' | cut -f3 -d " ")
+  doltgres_version=$(doltgres --version | cut -f3 -d " ")
   note "Entrypoint script for Doltgres Server $doltgres_version starting..."
 
   declare -g CONFIG_PROVIDED
