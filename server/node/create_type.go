@@ -128,7 +128,10 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		newType = types.NewEnumType(ctx, arrayID, typeID, enumLabelMap)
 		// TODO: store labels somewhere
 	case types.TypeType_Composite:
-		relID := id.Null // TODO: create relation with c.AsTypes
+		// TODO: non-composite types have a zero oid for their relID, which for us would be a null ID.
+		//  We need to find a way to distinguish a null ID from a composite type that does not reference a table
+		//  (which is what relID points to if it represents a table row's composite type)
+		relID := id.Null
 		attrs := make([]types.CompositeAttribute, len(c.AsTypes))
 		for i, a := range c.AsTypes {
 			attrs[i] = types.NewCompositeAttribute(ctx, relID, a.AttrName, a.Typ.ID, int16(i+1), a.Collation)

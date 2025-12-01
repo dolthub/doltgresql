@@ -95,7 +95,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 
 	defer tempfiles.MovableTempFileProvider.Clean()
 
-	sql.SystemVariables.SetGlobal(sql.NewContext(ctx), dsess.DoltStatsEnabled, false)
+	sql.SystemVariables.SetGlobal(sql.NewNonEngineContext(ctx), dsess.DoltStatsEnabled, false)
 
 	err := dsess.InitPersistedSystemVars(dEnv)
 	if err != nil {

@@ -122,11 +122,11 @@ func DeserializeType(serializedType []byte) (sql.ExtendedType, error) {
 			num := reader.Int16()
 			collation := reader.String()
 			typ.CompositeAttrs[k] = CompositeAttribute{
-				relID:     relID,
-				name:      name,
-				typeID:    id.Type(typeID),
-				num:       num,
-				collation: collation,
+				RelID:     relID,
+				Name:      name,
+				TypeID:    id.Type(typeID),
+				Num:       num,
+				Collation: collation,
 			}
 		}
 	}
@@ -196,11 +196,11 @@ func (t *DoltgresType) Serialize() []byte {
 	writer.VariableUint(uint64(len(t.CompositeAttrs)))
 	if len(t.CompositeAttrs) > 0 {
 		for _, l := range t.CompositeAttrs {
-			writer.Id(l.relID)
-			writer.String(l.name)
-			writer.Id(l.typeID.AsId())
-			writer.Int16(l.num)
-			writer.String(l.collation)
+			writer.Id(l.RelID)
+			writer.String(l.Name)
+			writer.Id(l.TypeID.AsId())
+			writer.Int16(l.Num)
+			writer.String(l.Collation)
 		}
 	}
 	writer.String(t.InternalName)

@@ -931,5 +931,69 @@ $$;`,
 				},
 			},
 		},
+		{
+			Name: "Table as type for functions",
+			SetUpScript: []string{
+				// TODO: test case sensitivity of parameter names
+				`CREATE TABLE test (id INT4 PRIMARY KEY, name TEXT NOT NULL, qty INT4 NOT NULL, price REAL NOT NULL);`,
+				`INSERT INTO test VALUES (1, 'apple', 3, 2.5), (2, 'banana', 5, 1.2);`,
+				`CREATE FUNCTION total(t test) RETURNS REAL AS $$ BEGIN RETURN t.qty * t.price; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION priceHike(t test, pricehike REAL) RETURNS test AS $$ BEGIN RETURN (t.id, t.name, t.qty, t.price + pricehike)::test; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION singleReturn() RETURNS test AS $$ DECLARE result test; BEGIN SELECT * INTO result FROM test WHERE id = 1; RETURN result; END; $$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT total(t) FROM test AS t;`,
+					Expected: []sql.Row{
+						{7.5},
+						{6.0},
+					},
+				},
+				{
+					Query: `SELECT priceHike(t, 10.0) FROM test AS t;`,
+					Expected: []sql.Row{
+						{"(1,apple,3,12.5)"},
+						{"(2,banana,5,11.2)"},
+					},
+				},
+				{
+					Query: `SELECT priceHike(ROW(3, 'orange', 1, 1.8)::test, 100.0);`,
+					Expected: []sql.Row{
+						{"(3,orange,1,101.8)"},
+					},
+				},
+				{
+					Query: `SELECT singleReturn();`,
+					Skip:  true, // TODO: better PL/pgSQL internal support for non-trigger composite types
+					Expected: []sql.Row{
+						{"(1,apple,3,2.5)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "Table as type for columns",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (v1 INT4 PRIMARY KEY, v2 TEXT NOT NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE t2 (v1 INT4 PRIMARY KEY, v2 t1 NOT NULL);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t2 VALUES (1, ROW(0, 'hello')::t1), (2, ROW(10, 'world')::t1);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2 ORDER BY v1;`,
+					Skip:  true, // TODO: need to implement record_recv
+					Expected: []sql.Row{
+						{1, "(0,hello)"},
+						{2, "(10,world)"},
+					},
+				},
+			},
+		},
 	})
 }

@@ -25,6 +25,7 @@ import (
 
 // Init handles initialization of all Postgres-specific and Doltgres-specific Dolt procedures.
 func Init() {
+	// TODO: need to find out why this is broken on Dolt main and never fixed
 	dprocedures.UserHasSuperAccess = userHasSuperAccess
 }
 

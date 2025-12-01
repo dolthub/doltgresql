@@ -9,9 +9,9 @@ require (
 	github.com/dolthub/dolt/go v0.40.5-0.20251121014835-d565cf29551c
 	github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20251119215901-006ebc8e42ce
+	github.com/dolthub/go-mysql-server v0.20.1-0.20251127010731-fb850094e182
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20251107003339-843d10a6a8d4
+	github.com/dolthub/vitess v0.0.0-20251124192614-8039a9881a64
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
@@ -203,3 +203,7 @@ require (
 )
 
 replace github.com/pganalyze/pg_query_go/v6 => github.com/dolthub/pg_query_go/v6 v6.0.0-20250702135351-29eb6bfc4ea6
+
+replace github.com/dolthub/dolt/go => ../dolt/go
+
+replace github.com/dolthub/go-mysql-server => ../go-mysql-server
