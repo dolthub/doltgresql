@@ -84,7 +84,6 @@ for tuple in $OS_ARCH_TUPLES; do
       AS="${platform_as[${tuple}]}" \
       CGO_LDFLAGS="${platform_cgo_ldflags[${tuple}]}" \
       go build -buildvcs=false -trimpath \
-      -gcflags="all=-N -l" \
       -ldflags="${platform_go_ldflags[${tuple}]}" \
       -tags icu_static -o "$o/bin/$obin" \
       ./cmd/doltgres

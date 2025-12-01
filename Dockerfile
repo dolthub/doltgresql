@@ -19,8 +19,8 @@ WORKDIR /tmp/doltgresql/
 
 RUN if [ "$DOLTGRES_VERSION" = "source" ]; then \
     go mod download; \
-    go install github.com/go-delve/delve/cmd/dlv@latest; \
-    mv /go/bin/dlv /usr/local/bin/dlv; \
+#    go install github.com/go-delve/delve/cmd/dlv@latest; \
+#    mv /go/bin/dlv /usr/local/bin/dlv; \
     ./scripts/build_binaries.sh "linux-amd64"; \
     mv out/doltgresql-*/bin/doltgres /usr/local/bin; \
     fi
@@ -45,9 +45,9 @@ RUN if [ "$DOLTGRES_VERSION" != "latest" ] && [ "$DOLTGRES_VERSION" != "source" 
 FROM base AS runtime
 
 # Only one binary is possible due to DOLT_VERSION, so we optionally copy from either stage
-#COPY --from=download-binary /usr/local/bin/dolt* /usr/local/bin/
+COPY --from=download-binary /usr/local/bin/dolt* /usr/local/bin/
 COPY --from=build-from-source /usr/local/bin/dolt* /usr/local/bin/
-COPY --from=build-from-source /usr/local/bin/dlv /usr/local/bin/
+#COPY --from=build-from-source /usr/local/bin/dlv /usr/local/bin/
 
 RUN /usr/local/bin/doltgres --version
 
