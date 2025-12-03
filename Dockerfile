@@ -19,6 +19,7 @@ WORKDIR /tmp/doltgresql/
 
 RUN if [ "$DOLTGRES_VERSION" = "source" ]; then \
     go mod download; \
+    ./postgres/parser/build.sh; \
     ./scripts/build_binaries.sh "linux-amd64"; \
     mv out/doltgresql-*/bin/doltgres /usr/local/bin; \
     fi
@@ -27,12 +28,13 @@ FROM base AS download-binary
 ARG DOLTGRES_VERSION="latest"
 
 RUN if [ "$DOLTGRES_VERSION" = "latest" ]; then \
-    DOLTGRES_VERSION=$(curl -s "https://api.github.com/repos/dolthub/doltgresql/releases/latest" \
+    version=$(curl -s "https://api.github.com/repos/dolthub/doltgresql/releases/latest" \
       | grep '"tag_name"' \
       | cut -d'"' -f4 \
       | sed 's/^v//'); \
-    echo "fetching https://github.com/dolthub/doltgresql/releases/download/v${DOLTGRES_VERSION}/install.sh"; \
-    curl -L "https://github.com/dolthub/doltgresql/releases/download/v${DOLTGRES_VERSION}/install.sh" | bash; \
+
+    echo "fetching https://github.com/dolthub/doltgresql/releases/download/v${version}/install.sh"; \
+    curl -L "https://github.com/dolthub/doltgresql/releases/download/v${version}/install.sh" | bash; \
     fi
 
 RUN if [ "$DOLTGRES_VERSION" != "latest" ] && [ "$DOLTGRES_VERSION" != "source" ]; then \
@@ -56,7 +58,7 @@ COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 VOLUME /var/lib/doltgres
-# TODO: are all these ports on doltgres?
-EXPOSE 5432 33060 7007
+
+EXPOSE 5432 
 WORKDIR /var/lib/doltgres
 ENTRYPOINT ["tini", "-v", "--", "docker-entrypoint.sh"]
