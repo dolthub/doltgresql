@@ -111,7 +111,8 @@ install_binary_release() {
   [ ! -d /usr/local/bin ] && install -o 0 -g 0 -d /usr/local/bin
   install -o 0 -g 0 "doltgresql-$PLATFORM_TUPLE/bin/doltgres" /usr/local/bin
   install -o 0 -g 0 -d /usr/local/share/doc/doltgresql/
-  install -o 0 -g 0 -m 644 "doltgresql-$PLATFORM_TUPLE/licenses" /usr/local/share/doc/doltgresql/
+  # TODO: doltgres's licenses directory needs to be reorganized for the install command below to work
+#  install -o 0 -g 0 -m 644 "doltgresql-$PLATFORM_TUPLE/licenses" /usr/local/share/doc/doltgresql/
 }
 
 assert_linux_or_macos
