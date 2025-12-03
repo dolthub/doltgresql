@@ -42,7 +42,6 @@ integration-tests/
 
 # Datadirs created locally (from .gitignore)
 doltgres/
-postgres/
 
 # Extension build outputs
 core/extensions/pg_extension/output/
