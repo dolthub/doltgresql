@@ -378,6 +378,33 @@ start_server() {
   done
 }
 
+write_default_config_yaml() {
+    cat <<EOF > config.yaml
+log_level: info
+
+encode_logged_query: false
+
+behavior:
+  read_only: false
+  dolt_transaction_commit: false
+
+listener:
+  host: 0.0.0.0
+  port: 5432
+  read_timeout_millis: 28800000
+  write_timeout_millis: 28800000
+  allow_cleartext_passwords: false
+
+data_dir: /var/lib/doltgres/
+
+cfg_dir: .doltcfg
+
+privilege_file: .doltcfg/privileges.db
+
+branch_control_file: .doltcfg/branch_control.db
+EOF
+}
+    
 # _main is the main entrypoint for the Dolt Docker container initialization.
 _main() {
   check_for_doltgres_binary
@@ -394,7 +421,17 @@ _main() {
   # it will be used to start the server with --config flag.
   get_config_file_path_if_exists "$SERVER_CONFIG_DIR" "yaml"
   if [ -n "$CONFIG_PROVIDED" ]; then
-    set -- "$@" --config="$CONFIG_PROVIDED"
+      set -- "$@" --config="$CONFIG_PROVIDED"
+  elif [ -e config.yaml ]; then
+      set -- "$@" --config=config.yaml
+  else
+      echo "generating config.yaml for first run"
+      write_default_config_yaml
+      echo "config.yaml is"
+      echo $(cat config.yaml)
+      echo "files in dir:"
+      echo $(ls)
+      set -- "$@" --config=config.yaml
   fi
 
   note "Starting Doltgres server"
