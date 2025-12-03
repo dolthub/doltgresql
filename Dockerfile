@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
-    curl tini ca-certificates && \
+    curl tini ca-certificates postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
 # We use bookworm since the icu dependency ver. between the base and golang images is the same 

@@ -81,6 +81,7 @@ exec_sql() {
     show_result=1
     shift
   fi
+  show_result=1
 
   local error_message="$1"
   local query="${2:-}"
@@ -89,13 +90,22 @@ exec_sql() {
 
   start_time=$(date +%s)
 
+  echo "running psql command found in: "
+  echo $(which psql)
+  
   while true; do
-    if [ -n "$query" ]; then
-      output=$(psql -c "$query" 2>&1)
-      status=$?
+      if [ -n "$query" ]; then
+          set +e
+          cmd="psql -u postgres -c \"$query\" 2>&1"
+          echo "running $cmd"
+          output=$(PGPASSWORD=password psql -h 127.0.0.1 -U postgres -c "$query" 2>&1)
+          echo "command done"
+          echo $output
+          status=$?
+          set -e
     else
       set +e # tmp disabled to initdb.d/ file err
-      output=$(psql < /dev/stdin 2>&1)
+      output=$(PGPASSWORD=password psql -h 127.0.0.1 -U postgres < /dev/stdin 2>&1)
       status=$?
       set -e
     fi
@@ -299,8 +309,8 @@ create_user_from_env() {
     user_host="${user_host:-${DOLT_ROOT_HOST:-localhost}}"
 
     note "Creating user '${user}@${user_host}'"
-    exec_sql "Failed to create user '$user': " "CREATE USER IF NOT EXISTS '$user'@'$user_host' IDENTIFIED BY '$password';"
-    exec_sql "Failed to grant server access to user '$user': " "GRANT USAGE ON *.* TO '$user'@'$user_host';"
+    exec_sql "Failed to create user '$user': " "CREATE USER $user WITH PASSWORD '$password';"
+    exec_sql "Failed to grant server access to user '$user': " "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $user;"
 
     if [ -n "$database" ]; then
       exec_sql "Failed to grant permissions to user '$user' on database '$database': " "GRANT ALL ON \`$database\`.* TO '$user'@'$user_host';"
