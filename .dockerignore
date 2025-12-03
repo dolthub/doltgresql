@@ -1,0 +1,52 @@
+# Exclude VCS and CI metadata
+.git
+.git/**
+.github/
+.gitmodules
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Node modules (only present in test helpers)
+node_modules/
+**/node_modules/
+
+# Tests and large fixtures (not needed for image build)
+testing/
+
+# Build artifacts and caches (created locally or by scripts)
+out/
+bin/
+dist/
+coverage/
+*.log
+*.tmp
+*.cache
+*.pprof
+
+# Go vendor cache (not used; modules are downloaded in image)
+vendor/
+
+# Local env/virtualenvs
+venv/
+
+# Sysbench copied files (from .gitignore)
+SysbenchDockerfile
+SysbenchDockerfile.dockerignore
+sysbench-runner-tests-entrypoint.sh
+config.json
+integration-tests/
+
+# Datadirs created locally (from .gitignore)
+doltgres/
+postgres/
+
+# Extension build outputs
+core/extensions/pg_extension/output/
+
+# Keep only what we might need for source builds
+# (Go source, scripts, entrypoint, flatbuffers, core, server, utils, etc. remain included by default)
+# If you need to further constrain context, switch to an allowlist pattern.
