@@ -474,7 +474,6 @@ var replicationTests = []ReplicationTest{
 	},
 	{
 		Name: "all types",
-		Skip: true, // some types don't work yet: DATE and DATETIME not round-tripping correctly
 		SetUpScript: []string{
 			dropReplicationSlot,
 			createReplicationSlot,
@@ -493,7 +492,7 @@ var replicationTests = []ReplicationTest{
 			{
 				Query: "/* replica */ SELECT * FROM public.test order by id",
 				Expected: []sql.Row{
-					{int32(2), "three", int32(2), false, 2.2, "2021-02-02", "2021-02-02 13:00:00"},
+					{int32(2), "three", int32(2), "f", 2.2, "2021-02-02", "2021-02-02 13:00:00"},
 				},
 			},
 		},
