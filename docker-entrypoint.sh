@@ -122,11 +122,7 @@ exec_sql() {
 
 CONTAINER_DATA_DIR="/var/lib/doltgres"
 INIT_COMPLETED="$CONTAINER_DATA_DIR/.init_completed"
-
-# TODO: remove
-DOLT_CONFIG_DIR="/etc/dolt/doltcfg.d"
 SERVER_CONFIG_DIR="/etc/doltgres/servercfg.d"
-DOLT_ROOT_PATH="/.dolt"
 SERVER_PID=-1
 
 # check_for_doltgres_binary verifies that the dolt binary is present and executable in the system PATH.
@@ -139,41 +135,41 @@ check_for_doltgres_binary() {
   fi
 }
 
-# get_env_var returns the value of an environment variable, preferring DOLT_* over MYSQL_*.
+# get_env_var returns the value of an environment variable, preferring DOLTGRES_* over POSTGRES_*.
 # Arguments:
-#   $1 - The base variable name (e.g., "USER" for MYSQL_USER or DOLT_USER)
+#   $1 - The base variable name (e.g., "USER" for POSTGRES_USER or DOLTGRES_USER)
 # Output:
 #   Prints the value of the first set variable, or an empty string if neither is set.
 get_env_var() {
   local var_name="$1"
-  local dolt_var="DOLT_${var_name}"
-  local mysql_var="MYSQL_${var_name}"
+  local doltgres_var="DOLTGRES_${var_name}"
+  local postgres_var="POSTGRES_${var_name}"
 
-  if [ -n "${!dolt_var}" ]; then
-    echo "${!dolt_var}"
-  elif [ -n "${!mysql_var}" ]; then
-    echo "${!mysql_var}"
+  if [ -n "${!doltgres_var}" ]; then
+    echo "${!doltgres_var}"
+  elif [ -n "${!postgres_var}" ]; then
+    echo "${!postgres_var}"
   else
     echo ""
   fi
 }
 
-# get_env_var_name returns the name of the environment variable that is set, preferring DOLT_* over MYSQL_*.
+# get_env_var_name returns the name of the environment variable that is set, preferring DOLTGRES_* over POSTGRES_*.
 # Arguments:
-#   $1 - The base variable name (e.g., "USER" for MYSQL_USER or DOLT_USER)
+#   $1 - The base variable name (e.g., "USER" for POSTGRES_USER or DOLTGRES_USER)
 # Output:
 #   Prints the name of the first set variable, or both names if neither is set.
 get_env_var_name() {
   local var_name="$1"
-  local dolt_var="DOLT_${var_name}"
-  local mysql_var="MYSQL_${var_name}"
+  local doltgres_var="DOLTGRES_${var_name}"
+  local postgres_var="POSTGRES_${var_name}"
 
-  if [ -n "${!dolt_var}" ]; then
-    echo "DOLT_${var_name}"
-  elif [ -n "${!mysql_var}" ]; then
-    echo "MYSQL_${var_name}"
+  if [ -n "${!doltgres_var}" ]; then
+    echo "DOLTGRES_${var_name}"
+  elif [ -n "${!postgres_var}" ]; then
+    echo "POSTGRES_${var_name}"
   else
-    echo "MYSQL_${var_name}/DOLT_${var_name}"
+    echo "POSTGRES_${var_name}/DOLTGRES_${var_name}"
   fi
 }
 
