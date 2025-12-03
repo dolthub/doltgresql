@@ -81,7 +81,6 @@ exec_sql() {
     show_result=1
     shift
   fi
-  show_result=1
 
   local error_message="$1"
   local query="${2:-}"
@@ -96,11 +95,7 @@ exec_sql() {
   while true; do
       if [ -n "$query" ]; then
           set +e
-          cmd="psql -u postgres -c \"$query\" 2>&1"
-          echo "running $cmd"
           output=$(PGPASSWORD=password psql -h 127.0.0.1 -U postgres -c "$query" 2>&1)
-          echo "command done"
-          echo $output
           status=$?
           set -e
     else
@@ -271,7 +266,7 @@ docker_process_init_files() {
 # and attempts to create the database using exec_sql.
 create_database_from_env() {
   local database
-  database=$(get_env_var "DATABASE")
+  database=$(get_env_var "DB")
 
   if [ -n "$database" ]; then
     note "Creating database '${database}'"
@@ -427,10 +422,6 @@ _main() {
   else
       echo "generating config.yaml for first run"
       write_default_config_yaml
-      echo "config.yaml is"
-      echo $(cat config.yaml)
-      echo "files in dir:"
-      echo $(ls)
       set -- "$@" --config=config.yaml
   fi
 
