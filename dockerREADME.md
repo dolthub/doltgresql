@@ -21,7 +21,7 @@ far](https://www.dolthub.com/blog/2022-07-11-dolt-case-studies/).
 
 # How to use this image
 
-This image is for the Doltgres server, and is similar to the Postgres Docker image. Running this
+This image is for the Doltgres server and is similar to the Postgres Docker image. Running this
 image without any arguments is equivalent to running the `doltgres` command inside a Docker
 container.
 
