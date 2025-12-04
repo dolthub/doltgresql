@@ -159,6 +159,17 @@ get_env_var() {
   fi
 }
 
+# get_pgdata_var returns the value of either the DOLTGRES_DATA var or the PGDATA var, in that order.
+get_pgdata_var() {
+  if [ -n "${DOLTGRES_DATA}" ]; then
+    echo "${DOLTGRES_DATA}"
+  elif [ -n "${PGDATA}" ]; then
+    echo "${PGDATA}"
+  else
+    echo ""
+  fi
+}
+
 # get_env_var_name returns the name of the environment variable that is set, preferring DOLTGRES_* over POSTGRES_*.
 # Arguments:
 #   $1 - The base variable name (e.g., "USER" for POSTGRES_USER or DOLTGRES_USER)
@@ -274,45 +285,6 @@ create_database_from_env() {
   fi
 }
 
-# create_user_from_env creates a new database user from environment variables.
-# It looks for USER/PASSWORD and optionally grants access to a database.
-# Requires both USER and PASSWORD to be set; if only the password is set, it logs a warning and does nothing.
-# It does not allow creating a 'root' user via these environment variables.
-create_user_from_env() {
-  local user
-  local password
-  local database
-
-  user=$(get_env_var "USER")
-  password=$(get_env_var "PASSWORD")
-  database=$(get_env_var "DATABASE")
-
-  if [ "$user" = 'root' ]; then
-    log_error "$(get_env_var_name "USER")="root", $(get_env_var_name "USER") and $(get_env_var_name "PASSWORD") are for configuring the regular user and cannot be used for the root user."
-  fi
-
-  if [ -n "$user" ] && [ -z "$password" ]; then
-    log_error "$(get_env_var_name "USER") specified, but missing $(get_env_var_name "PASSWORD"); user creation requires a password."
-  elif [ -z "$user" ] && [ -n "$password" ]; then
-    warn "$(get_env_var_name "PASSWORD") specified, but missing $(get_env_var_name "USER"); password will be ignored"
-    return
-  fi
-
-  if [ -n "$user" ]; then
-    local user_host
-    user_host=$(get_env_var "USER_HOST")
-    user_host="${user_host:-${DOLT_ROOT_HOST:-localhost}}"
-
-    note "Creating user '${user}@${user_host}'"
-    exec_sql "Failed to create user '$user': " "CREATE USER $user WITH PASSWORD '$password';"
-    exec_sql "Failed to grant server access to user '$user': " "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $user;"
-
-    if [ -n "$database" ]; then
-      exec_sql "Failed to grant permissions to user '$user' on database '$database': " "GRANT ALL ON \`$database\`.* TO '$user'@'$user_host';"
-    fi
-  fi
-}
-
 # is_port_open checks if a TCP port is open on a given host.
 # Arguments:
 #   $1 - Host (IP or hostname)
@@ -338,6 +310,13 @@ start_server() {
   local start_time
   start_time=$(date +%s)
 
+  # If either of the doltgres or postgres specific user and password env vars are set, export them
+  # to the ones that doltgres understands so they can be used during initialization.
+  user=$(get_env_var "USER")
+  password=$(get_env_var "PASSWORD")
+  export DOLTGRES_USER=$user
+  export DOLTGRES_PASSWORD=$password
+  
   SERVER_PID=-1
 
   trap 'note "Caught Ctrl+C, shutting down Doltgres server..."; [ $SERVER_PID -ne -1 ] && kill "$SERVER_PID"; exit 1' INT TERM
@@ -374,6 +353,16 @@ start_server() {
 }
 
 write_default_config_yaml() {
+    data_dir=$(get_pgdata_var)
+    
+    if [ -z $data_dir ]; then
+        data_dir="/var/lib/doltgres/"
+    fi
+
+    if [ ! -d $data_dir ]; then
+        mkdir -p $data_dir
+    fi
+    
     cat <<EOF > config.yaml
 log_level: info
 
@@ -390,7 +379,7 @@ listener:
   write_timeout_millis: 28800000
   allow_cleartext_passwords: false
 
-data_dir: /var/lib/doltgres/
+data_dir: $data_dir
 
 cfg_dir: .doltcfg
 
@@ -400,7 +389,7 @@ branch_control_file: .doltcfg/branch_control.db
 EOF
 }
     
-# _main is the main entrypoint for the Dolt Docker container initialization.
+# _main is the main entrypoint for the Doltgres Docker container initialization.
 _main() {
   check_for_doltgres_binary
 
@@ -422,6 +411,7 @@ _main() {
   else
       echo "generating config.yaml for first run"
       write_default_config_yaml
+      cat config.yaml
       set -- "$@" --config=config.yaml
   fi
 
@@ -430,8 +420,6 @@ _main() {
   start_server "$@"
 
   create_database_from_env
-
-  create_user_from_env
 
   if [[ ! -f $INIT_COMPLETED ]]; then
     if ls /docker-entrypoint-initdb.d/* >/dev/null 2>&1; then
