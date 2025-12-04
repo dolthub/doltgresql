@@ -52,7 +52,7 @@ $ docker build --build-arg DOLTGRES_VERSION=source -t doltgres:source .
 
 ## Connect to the server in the container from the host system
 
-From the host system, to connect to a server running in a container, we need to map a port on the
+To connect to a server running in a container from the host system, we need to map a port on the
 host system to the port our server is running on in the container.
 
 ```bash
