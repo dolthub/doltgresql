@@ -15,7 +15,8 @@ node_modules/
 **/node_modules/
 
 # Tests and large fixtures (not needed for image build)
-testing/
+# TODO: restore this ignore, required for CI for now
+#testing/
 
 # Build artifacts and caches (created locally or by scripts)
 out/
