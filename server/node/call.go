@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -98,7 +99,12 @@ func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, err
 	}
 	if len(overloads) == 0 {
-		// We're going to assume that this is calling one of the few remaining Dolt stored procedures
+		// We're going to assume that this is calling one of the few remaining Dolt stored procedures Check AdminOnly
+		// authorization before executing.
+		if err := functions.CheckDoltStoredProcedureAccess(ctx, c.ProcedureName); err != nil {
+			return nil, err
+		}
+
 		sch, rowIter, _, err := c.Runner.Runner.QueryWithBindings(ctx, "", &vitess.Call{
 			ProcName: vitess.ProcedureName{
 				Name:      vitess.NewColIdent(c.ProcedureName),
