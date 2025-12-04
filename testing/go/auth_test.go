@@ -15,10 +15,18 @@
 package _go
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
 )
+
+// fileUrl returns a file:// URL path for a temp file.
+func fileUrl(path string) string {
+	path = filepath.Join(os.TempDir(), path)
+	return "file://" + filepath.ToSlash(filepath.Clean(path))
+}
 
 func TestAuthTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
@@ -528,6 +536,783 @@ func TestAuthTests(t *testing.T) {
 					Username:    `user1`,
 					Password:    `a`,
 					ExpectedErr: `denied`,
+				},
+			},
+		},
+	})
+}
+
+func TestDoltStoredProceduresAuth(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Super user access to Dolt procedures",
+			SetUpScript: []string{
+				"CREATE USER super_user WITH SUPERUSER PASSWORD 'test456';",
+				"CREATE TABLE test_table (pk INT PRIMARY KEY);",
+				"INSERT INTO test_table VALUES (1);",
+				"CALL dolt_add('test_table');",
+				"CALL dolt_commit('-m', 'initial commit');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "CALL dolt_add('.');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "CALL dolt_backup('add', 'backup1', '" + fileUrl("test_backup") + "');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "CALL dolt_branch();",
+					Skip:  true,
+				},
+				{
+					Query:            "CALL dolt_checkout('main');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "CALL dolt_cherry_pick('HEAD~1', '--allow-empty');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "CALL dolt_clean();",
+					Skip:  true,
+				},
+				{
+					Query:       "CALL dolt_clone('" + fileUrl("test_repo") + "');",
+					Username:    "super_user",
+					Password:    "test456",
+					ExpectedErr: "The system cannot find the file specified",
+				},
+				{
+					Query:            "CALL dolt_commit('-m', 'test commit', '--allow-empty');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "CALL dolt_commit_hash_out();",
+					Skip:  true,
+				},
+				{
+					Query:            "CALL dolt_conflicts_resolve('--ours', 'test_table');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "CALL dolt_count_commits();",
+					Skip:  true,
+				},
+				{
+					Query:            "CALL dolt_fetch();",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+					Skip:             true,
+				},
+				{
+					Query:       "CALL dolt_undrop('db1');",
+					Username:    "super_user",
+					Password:    "test456",
+					ExpectedErr: "no database named 'db1' found to undrop", // Auth passed, but logic failed
+				},
+				{
+					Query:            "CALL dolt_update_column_tag();",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+					Skip:             true,
+				},
+				{
+					Query:            "CALL dolt_purge_dropped_databases();",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+					Skip:             true,
+				},
+				{
+					Query: "CALL dolt_rebase();",
+					Skip:  true,
+				},
+				{
+					Query:            "CALL dolt_rm('test_table');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "CALL dolt_gc();",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+					Skip:             true,
+				},
+				{
+					Query:            "CALL dolt_thread_dump();",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+					Skip:             true,
+				},
+				{
+					Query:            "CALL dolt_merge('main');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "CALL dolt_remote('add', 'test_remote', '" + fileUrl("remote") + "');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "CALL dolt_pull();",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+					Skip:             true,
+				},
+				{
+					Query:            "CALL dolt_push();",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+					Skip:             true,
+				},
+				{
+					Query: "CALL dolt_reset();",
+					Skip:  true,
+				},
+				{
+					Query:       "CALL dolt_revert('HEAD');",
+					Username:    "super_user",
+					Password:    "test456",
+					ExpectedErr: "You must commit any changes",
+				},
+				{
+					Query: "CALL dolt_stash();",
+					Skip:  true,
+				},
+				{
+					Query:            "CALL dolt_tag('v1.0', '-m', 'tag message');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "CALL dolt_verify_constraints();",
+					Skip:  true,
+				},
+				{Query: "CALL dolt_stats_restart();", Skip: true},
+				{Query: "CALL dolt_stats_stop();", Skip: true},
+				{Query: "CALL dolt_stats_info();", Skip: true},
+				{Query: "CALL dolt_stats_purge();", Skip: true},
+				{Query: "CALL dolt_stats_wait();", Skip: true},
+				{Query: "CALL dolt_stats_flush();", Skip: true},
+				{Query: "CALL dolt_stats_once();", Skip: true},
+				{Query: "CALL dolt_stats_gc();", Skip: true},
+				{Query: "CALL dolt_stats_timers();", Skip: true},
+			},
+		},
+		{
+			Name: "Regular user access to Dolt procedures",
+			SetUpScript: []string{
+				"CREATE USER regular_user PASSWORD 'test123';",
+				"CREATE TABLE test_table (pk INT PRIMARY KEY);",
+				"INSERT INTO test_table VALUES (1);",
+				"CALL dolt_add('test_table');",
+				"CALL dolt_commit('-m', 'initial commit');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "CALL dolt_add('.');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "CALL dolt_backup('add', 'backup1', '" + fileUrl("test_backup_reg") + "');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_backup",
+				},
+				{
+					Query: "CALL dolt_branch();",
+					Skip:  true,
+				},
+				{
+					Query:            "CALL dolt_checkout('main');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "CALL dolt_cherry_pick('HEAD~1', '--allow-empty');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "CALL dolt_clean();",
+					Skip:  true,
+				},
+				{
+					Query:       "CALL dolt_clone('" + fileUrl("test_repo_reg") + "');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_clone",
+				},
+				{
+					Query:            "CALL dolt_commit('-m', 'test commit', '--allow-empty');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "CALL dolt_commit_hash_out();",
+					Skip:  true,
+				},
+				{
+					Query:            "CALL dolt_conflicts_resolve('--ours', 'test_table');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "CALL dolt_count_commits();",
+					Skip:  true,
+				},
+				{
+					Query:       "CALL dolt_fetch();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_fetch",
+					Skip:        true,
+				},
+				{
+					Query:       "CALL dolt_undrop('db1');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_undrop",
+				},
+				{
+					Query:       "CALL dolt_update_column_tag();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_update_column_tag",
+					Skip:        true,
+				},
+				{
+					Query:       "CALL dolt_purge_dropped_databases();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_purge_dropped_databases",
+					Skip:        true,
+				},
+				{
+					Query: "CALL dolt_rebase();",
+					Skip:  true,
+				},
+				{
+					Query:            "CALL dolt_rm('test_table');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "CALL dolt_gc();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_gc",
+					Skip:        true,
+				},
+				{
+					Query:       "CALL dolt_thread_dump();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_thread_dump",
+					Skip:        true,
+				},
+				{
+					Query:            "CALL dolt_merge('main');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "CALL dolt_remote('add', 'test_remote', '" + fileUrl("remote_reg") + "');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_remote",
+				},
+				{
+					Query:       "CALL dolt_pull();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_pull",
+					Skip:        true,
+				},
+				{
+					Query:       "CALL dolt_push();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_push",
+					Skip:        true,
+				},
+				{
+					Query: "CALL dolt_reset();",
+					Skip:  true,
+				},
+				{
+					Query:       "CALL dolt_revert('HEAD');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "You must commit any changes",
+				},
+				{
+					Query: "CALL dolt_stash();",
+					Skip:  true,
+				},
+				{
+					Query:            "CALL dolt_tag('v1.0', '-m', 'tag message');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "CALL dolt_verify_constraints();",
+					Skip:  true,
+				},
+				{Query: "CALL dolt_stats_restart();", Skip: true},
+				{Query: "CALL dolt_stats_stop();", Skip: true},
+				{Query: "CALL dolt_stats_info();", Skip: true},
+				{Query: "CALL dolt_stats_purge();", Skip: true},
+				{Query: "CALL dolt_stats_wait();", Skip: true},
+				{Query: "CALL dolt_stats_flush();", Skip: true},
+				{Query: "CALL dolt_stats_once();", Skip: true},
+				{Query: "CALL dolt_stats_gc();", Skip: true},
+				{Query: "CALL dolt_stats_timers();", Skip: true},
+			},
+		},
+		{
+			Name: "Super user access to Dolt procedures (SELECT)",
+			SetUpScript: []string{
+				"CREATE USER super_user WITH SUPERUSER PASSWORD 'test456';",
+				"CREATE TABLE test_table (pk INT PRIMARY KEY);",
+				"INSERT INTO test_table VALUES (1);",
+				"SELECT dolt_add('test_table');",
+				"SELECT dolt_commit('-m', 'initial commit');",
+				// Create a backup to generate the remote repo
+				"SELECT dolt_backup('add', 'temp_backup', '" + fileUrl("origin_repo") + "');",
+				"SELECT dolt_backup('remove', 'temp_backup')",
+				//"SELECT dolt_backup('sync', 'temp_backup');",
+				//"SELECT dolt_backup('remove', 'temp_backup');", // Remove backup to avoid conflict
+				// Add the generated repo as a remote
+				"SELECT dolt_remote('add', 'origin', '" + fileUrl("origin_repo") + "');",
+				// Setup for undrop
+				"CREATE DATABASE db_to_drop;",
+				"DROP DATABASE db_to_drop;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT dolt_add('.');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_backup('add', 'backup1_sel', '" + fileUrl("test_backup_sel") + "');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_branch();",
+					ExpectedErr: "invalid usage",
+				},
+				{
+					Query:            "SELECT dolt_checkout('main');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_cherry_pick('HEAD~1', '--allow-empty');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_clean();",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_clone('" + fileUrl("origin_repo") + "', 'cloned_db');",
+					Username:    "super_user",
+					Password:    "test456",
+					ExpectedErr: "failed to init repo",
+				},
+				{
+					Query:            "SELECT dolt_commit('-m', 'test commit', '--allow-empty');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_commit_hash_out();",
+					ExpectedErr: "Call with too few input arguments",
+				},
+				{
+					Query:            "SELECT dolt_conflicts_resolve('--ours', 'test_table');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_count_commits();",
+					ExpectedErr: "missing from ref",
+				},
+				{
+					Query:            "SELECT dolt_fetch('origin');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+					Skip:             true, // memory filesystem incompatibility on Windows
+				},
+				{
+					Query:            "SELECT dolt_undrop('db_to_drop');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_update_column_tag();",
+					Username:    "super_user",
+					Password:    "test456",
+					ExpectedErr: "incorrect number of arguments",
+				},
+				{
+					Query:       "SELECT dolt_purge_dropped_databases();",
+					Username:    "super_user",
+					Password:    "test456",
+					ExpectedErr: "unable to check user privileges",
+				},
+				{
+					Query:       "SELECT dolt_rebase();",
+					ExpectedErr: "not enough args",
+				},
+				{
+					Query:            "SELECT dolt_rm('test_table');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_thread_dump();",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_merge('main');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_remote('add', 'test_remote', '" + fileUrl("remote_sel") + "');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_pull('origin', 'main');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+					Skip:             true,
+				},
+				{
+					Query:       "SELECT dolt_push('origin', 'main');",
+					Username:    "super_user",
+					Password:    "test456",
+					ExpectedErr: "unknown push error",
+				},
+				{
+					Query:            "SELECT dolt_reset();",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_revert('HEAD');",
+					Username:    "super_user",
+					Password:    "test456",
+					ExpectedErr: "You must commit any changes",
+				},
+				{
+					Query:       "SELECT dolt_stash();",
+					ExpectedErr: "invalid arguments",
+				},
+				{
+					Query:            "SELECT dolt_tag('v1.0', '-m', 'tag message');",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_verify_constraints();",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_stats_restart();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_stop();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_info();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_purge();",
+					ExpectedErr: "stats not persisted, cannot purge",
+				},
+				{
+					Query:       "SELECT dolt_stats_wait();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_flush();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_once();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_gc();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_timers();",
+					ExpectedErr: "expected timer arguments",
+				},
+				{
+					Query:            "SELECT dolt_gc();",
+					Username:         "super_user",
+					Password:         "test456",
+					SkipResultsCheck: true,
+				},
+			},
+		},
+		{
+			Name: "Regular user access to Dolt procedures (SELECT)",
+			SetUpScript: []string{
+				"CREATE USER regular_user PASSWORD 'test123';",
+				"CREATE TABLE test_table (pk INT PRIMARY KEY);",
+				"INSERT INTO test_table VALUES (1);",
+				"SELECT dolt_add('test_table');",
+				"SELECT dolt_commit('-m', 'initial commit');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT dolt_add('.');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_backup('add', 'backup1_sel_reg', '" + fileUrl("test_backup_sel_reg") + "');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_backup",
+				},
+				{
+					Query:       "SELECT dolt_branch();",
+					ExpectedErr: "invalid usage",
+				},
+				{
+					Query:            "SELECT dolt_checkout('main');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_cherry_pick('HEAD~1', '--allow-empty');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_clean();",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_clone('" + fileUrl("test_repo_sel_reg") + "');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_clone",
+				},
+				{
+					Query:            "SELECT dolt_commit('-m', 'test commit', '--allow-empty');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_commit_hash_out();",
+					ExpectedErr: "Call with too few input arguments",
+				},
+				{
+					Query:            "SELECT dolt_conflicts_resolve('--ours', 'test_table');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_count_commits();",
+					ExpectedErr: "missing from ref",
+				},
+				{
+					Query:       "SELECT dolt_fetch();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_fetch",
+				},
+				{
+					Query:       "SELECT dolt_undrop('db1');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_undrop",
+				},
+				{
+					Query:       "SELECT dolt_update_column_tag();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_update_column_tag",
+				},
+				{
+					Query:       "SELECT dolt_purge_dropped_databases();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_purge_dropped_databases",
+				},
+				{
+					Query:       "SELECT dolt_rebase();",
+					ExpectedErr: "not enough args",
+				},
+				{
+					Query:            "SELECT dolt_rm('test_table');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_gc();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_gc",
+				},
+				{
+					Query:       "SELECT dolt_thread_dump();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_thread_dump",
+				},
+				{
+					Query:            "SELECT dolt_merge('main');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_remote('add', 'test_remote', '" + fileUrl("remote_sel_reg") + "');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_remote",
+				},
+				{
+					Query:       "SELECT dolt_pull();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_pull",
+				},
+				{
+					Query:       "SELECT dolt_push();",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "permission denied for procedure dolt_push",
+				},
+				{
+					Query:            "SELECT dolt_reset();",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_revert('HEAD');",
+					Username:    "regular_user",
+					Password:    "test123",
+					ExpectedErr: "You must commit any changes",
+				},
+				{
+					Query:       "SELECT dolt_stash();",
+					ExpectedErr: "invalid arguments",
+				},
+				{
+					Query:            "SELECT dolt_tag('v1.0', '-m', 'tag message');",
+					Username:         "regular_user",
+					Password:         "test123",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_verify_constraints();",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:       "SELECT dolt_stats_restart();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_stop();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_info();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_purge();",
+					ExpectedErr: "stats not persisted, cannot purge",
+				},
+				{
+					Query:       "SELECT dolt_stats_wait();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_flush();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_once();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_gc();",
+					ExpectedErr: "provider does not implement ExtendedStatsProvider",
+				},
+				{
+					Query:       "SELECT dolt_stats_timers();",
+					ExpectedErr: "expected timer arguments",
 				},
 			},
 		},

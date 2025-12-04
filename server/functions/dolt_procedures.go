@@ -19,6 +19,7 @@ import (
 	"io"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -34,12 +35,17 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// doltExternalProcedures caches resolved Dolt procedures for quick lookup by name.
+var doltExternalProcedures = make(map[string]*plan.ExternalProcedure)
+
 func initDoltProcedures() {
 	for _, procDef := range dprocedures.DoltProcedures {
 		p, err := resolveExternalStoredProcedure(nil, procDef)
 		if err != nil {
 			panic(err)
 		}
+
+		doltExternalProcedures[strings.ToLower(procDef.Name)] = p
 
 		funcVal := reflect.ValueOf(procDef.Function)
 		varArgCallable := varArgCallableForDoltProcedure(p, funcVal)
@@ -60,13 +66,19 @@ func initDoltProcedures() {
 	}
 }
 
-// checkExternalProcedureAccess verifies the user has permission to execute the given external |procedure|. Returns
-// error if the user lacks required privileges for AdminOnly procedures.
-func checkExternalProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedure) error {
+// GetDoltStoredProcedure returns the cached ExternalProcedure for the given Dolt procedure name. Returns nil if the
+// procedure is not found.
+func GetDoltStoredProcedure(procedureName string) *plan.ExternalProcedure {
+	return doltExternalProcedures[strings.ToLower(procedureName)]
+}
+
+// CheckDoltStoredProcedureAccess verifies the user has permission to execute the given Dolt procedure. For AdminOnly
+// procedures, the user must have SUPERUSER role.
+func CheckDoltStoredProcedureAccess(ctx *sql.Context, procName string) error {
 	// TODO: This auth check should be handled by AuthType_EXECUTE in auth_handler.go when procedure auth is integrated
-	//  into the authorization system. For now we check AdminOnly directly here where we have access to the procedure
-	//  definition.
-	if !procedure.AdminOnly {
+	//  into the authorization system.
+	proc := GetDoltStoredProcedure(procName)
+	if proc == nil || !proc.AdminOnly {
 		return nil
 	}
 
@@ -76,7 +88,7 @@ func checkExternalProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProc
 	})
 
 	if !userRole.IsValid() || !userRole.IsSuperUser {
-		return fmt.Errorf("permission denied for procedure %s", procedure.Name)
+		return fmt.Errorf("permission denied for procedure %s", procName)
 	}
 	return nil
 }
@@ -87,8 +99,7 @@ func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.V
 	funcType := funcVal.Type()
 
 	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		err := checkExternalProcedureAccess(ctx, p)
-		if err != nil {
+		if err := CheckDoltStoredProcedureAccess(ctx, p.Name); err != nil {
 			return nil, err
 		}
 
@@ -142,8 +153,7 @@ func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.V
 // calling "DOLT_PROC_NAME()".
 func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context) (any, error) {
 	return func(ctx *sql.Context) (any, error) {
-		err := checkExternalProcedureAccess(ctx, p)
-		if err != nil {
+		if err := CheckDoltStoredProcedureAccess(ctx, p.Name); err != nil {
 			return nil, err
 		}
 
