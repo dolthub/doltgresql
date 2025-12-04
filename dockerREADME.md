@@ -1,6 +1,6 @@
 # Doltgres is Dolt for Postgres!
 
-From the creators of [Dolt](https://www.doltdb.com), the world's first version controlled SQL
+From the creators of [Dolt](https://www.doltdb.com), the world's first version-controlled SQL
 database, comes [Doltgres](https://www.doltgres.com), the Postgres-flavored version of Dolt. It's a
 SQL database that you can branch and merge, fork and clone, push and pull just like a Git
 repository. Connect to your Doltgres server just like any Postgres database to read or modify schema
