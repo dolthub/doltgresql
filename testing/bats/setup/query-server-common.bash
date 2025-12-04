@@ -1,6 +1,8 @@
 SERVER_REQS_INSTALLED="FALSE"
 SERVER_PID=""
 DEFAULT_DB=""
+PASSWORD=""
+USERNAME=""
 
 # wait_for_connection(<PORT>, <TIMEOUT IN MS>) attempts to connect to the sql-server at the specified
 # port on localhost, using the $SQL_USER (or 'postgres' if unspecified) as the user name, and trying once
@@ -10,12 +12,14 @@ DEFAULT_DB=""
 wait_for_connection() {
   port=$1
   timeout=$2
-  user=${SQL_USER:-postgres}
   end_time=$((SECONDS+($timeout/1000)))
-  nativevar PGPASSWORD "password" /w
+  USERNAME="${USERNAME:=postgres}"
+  PASSWORD="${PASSWORD:=password}"
 
+  nativevar PGPASSWORD "$PASSWORD" /w
+  
   while [ $SECONDS -lt $end_time ]; do
-    run psql -U $user -h localhost -p $port -c "SELECT 1;" postgres
+    run psql -U $USERNAME -h localhost -p $port -c "SELECT 1;" postgres
     if [ $status -eq 0 ]; then
       echo "Connected successfully!"
       return 0
@@ -30,9 +34,17 @@ wait_for_connection() {
 start_sql_server() {
     DEFAULT_DB="$1"
     DEFAULT_DB="${DEFAULT_DB:=postgres}"
-    nativevar PGPASSWORD "password" /w
+    logFile=$2
+    USERNAME=$3
+    USERNAME="${USERNAME:=postgres}"
+    PASSWORD=$4
+    PASSWORD="${PASSWORD:=password}"
+
     nativevar DEFAULT_DB "$DEFAULT_DB" /w
-    logFile="$2"
+    nativevar PGPASSWORD "$PASSWORD" /w
+    nativevar DOLTGRES_PASSWORD "$PASSWORD" /w
+    nativevar DOLTGRES_USER "$USERNAME" /w
+
     PORT=$( definePORT )
     CONFIG=$( defineCONFIG $PORT )
     echo "$CONFIG" > config.yaml
@@ -107,10 +119,6 @@ defineCONFIG() {
       read_only: false
       disable_client_multi_statements: false
       dolt_transaction_commit: false
-
-    user:
-      name: "postgres"
-      password: "password"
 
     listener:
       host: localhost

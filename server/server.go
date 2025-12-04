@@ -38,6 +38,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/logrepl"
 	"github.com/dolthub/doltgresql/servercfg"
@@ -196,7 +197,9 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 // createDatabase creates the database named on the local server using the configuration values to connect, returning
 // any error
 func createDatabase(cfg doltservercfg.ServerConfig, dbName string) error {
-	dsn := fmt.Sprintf("postgres://postgres:password@localhost:%d", cfg.Port())
+	user, password := auth.GetSuperUserAndPassword()
+
+	dsn := fmt.Sprintf("postgres://%s:%s@localhost:%d", user, password, cfg.Port())
 
 	// Connect to the server and create the default database with the given name.
 	ctx := context.Background()

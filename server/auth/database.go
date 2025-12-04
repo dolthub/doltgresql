@@ -162,17 +162,20 @@ func dbInit(dEnv *env.DoltEnv) {
 
 // dbInitDefault initializes the database and fills it with default users for testing.
 func dbInitDefault() {
-	var err error
+	user, password := GetSuperUserAndPassword()
+
 	public := CreateDefaultRole("public")
 	SetRole(public)
-	postgres := CreateDefaultRole("postgres")
-	postgres.IsSuperUser = true
-	postgres.CanCreateRoles = true
-	postgres.CanCreateDB = true
-	postgres.CanLogin = true
-	postgres.Password, err = NewScramSha256Password("password")
+	superUser := CreateDefaultRole(user)
+	superUser.IsSuperUser = true
+	superUser.CanCreateRoles = true
+	superUser.CanCreateDB = true
+	superUser.CanLogin = true
+
+	var err error
+	superUser.Password, err = NewScramSha256Password(password)
 	if err != nil {
 		panic(err)
 	}
-	SetRole(postgres)
+	SetRole(superUser)
 }
