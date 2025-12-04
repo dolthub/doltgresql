@@ -15,6 +15,7 @@
 package config
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -39,6 +40,12 @@ func Init() {
 	if sql.SystemVariables == nil {
 		// unlikely this would happen since init() in gms package is executed first
 		variables.InitSystemVariables()
+	}
+	// Regression tests assume the Los Angeles timezone, so we'll set that here if the env var is set
+	if _, ok := os.LookupEnv("REGRESSION_TESTING"); ok {
+		timezone := postgresConfigParameters["timezone"].(*Parameter)
+		timezone.Default = "America/Los_Angeles"
+		timezone.ResetVal = "America/Los_Angeles"
 	}
 	params := make([]sql.SystemVariable, len(postgresConfigParameters))
 	i := 0

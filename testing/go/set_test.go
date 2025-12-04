@@ -37,7 +37,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW timezone",
-				Expected: []sql.Row{{"America/Los_Angeles"}},
+				Expected: []sql.Row{{"Local"}},
 			},
 			{
 				Query:    "SET timezone TO '+00:00';",
@@ -53,7 +53,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW timezone",
-				Expected: []sql.Row{{"America/Los_Angeles"}},
+				Expected: []sql.Row{{"Local"}},
 			},
 			{
 				Query:    "SET TIME ZONE '+00:00';",
@@ -69,11 +69,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW timezone",
-				Expected: []sql.Row{{"America/Los_Angeles"}},
+				Expected: []sql.Row{{"Local"}},
 			},
 			{
 				Query:    "SELECT current_setting('timezone')",
-				Expected: []sql.Row{{"America/Los_Angeles"}},
+				Expected: []sql.Row{{"Local"}},
 			},
 		},
 	},
@@ -7387,7 +7387,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW TimeZone",
-				Expected: []sql.Row{{"America/Los_Angeles"}},
+				Expected: []sql.Row{{"Local"}},
 			},
 			{
 				Query:    "SET TimeZone TO 'UTC'",
@@ -7403,11 +7403,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW TimeZone",
-				Expected: []sql.Row{{"America/Los_Angeles"}},
+				Expected: []sql.Row{{"Local"}},
 			},
 			{
 				Query:    "SELECT current_setting('TimeZone')",
-				Expected: []sql.Row{{"America/Los_Angeles"}},
+				Expected: []sql.Row{{"Local"}},
 			},
 		},
 	},

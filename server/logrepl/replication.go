@@ -30,6 +30,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 )
@@ -797,10 +798,17 @@ func whereClause(str strings.Builder) string {
 
 // decodeTextColumnData decodes the given data using the given data type OID and returns the result as a golang value
 func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (interface{}, error) {
-	if dt, ok := mi.TypeForOID(dataType); ok {
-		return dt.Codec.DecodeValue(mi, dataType, pgtype.TextFormatCode, data)
+	switch oid.Oid(dataType) {
+	case oid.T_date, oid.T_time, oid.T_timestamp, oid.T_timestamptz, oid.T__date, oid.T__time, oid.T__timestamp, oid.T__timestamptz:
+		// The codec converts time values into a format that breaks our assumptions later on, which is unnecessary as
+		// the server sends the correctly-formatted time anyway.
+		return string(data), nil
+	default:
+		if dt, ok := mi.TypeForOID(dataType); ok {
+			return dt.Codec.DecodeValue(mi, dataType, pgtype.TextFormatCode, data)
+		}
+		return string(data), nil
 	}
-	return string(data), nil
 }
 
 // encodeColumnData encodes the given data using the given data type OID and returns the result as a string to be

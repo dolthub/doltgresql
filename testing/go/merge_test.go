@@ -70,6 +70,7 @@ func TestMerge(t *testing.T) {
 		{
 			Name: "merge with check expressions and column defaults",
 			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
 				"CREATE TABLE t1 (a INT, b timestamptz default '2020-01-01 00:00:00'::timestamptz, PRIMARY KEY (a))",
 				"ALTER TABLE t1 ADD CONSTRAINT check_b CHECK (b >= '2020-01-01 00:00:00'::timestamptz)",
 				"INSERT INTO t1 VALUES (1, '2020-01-02 00:00:00'), (2, '2020-01-03 00:00:00')",
@@ -90,10 +91,10 @@ func TestMerge(t *testing.T) {
 				{
 					Query: "SELECT * FROM t1 order by a",
 					Expected: []sql.Row{
-						{1, "2020-01-02 00:00:00-08"},
-						{2, "2020-01-03 00:00:00-08"},
-						{3, "2020-01-04 00:00:00-08"},
-						{4, "2020-01-05 00:00:00-08"},
+						{1, "2020-01-02 00:00:00+00"},
+						{2, "2020-01-03 00:00:00+00"},
+						{3, "2020-01-04 00:00:00+00"},
+						{4, "2020-01-05 00:00:00+00"},
 					},
 				},
 				{

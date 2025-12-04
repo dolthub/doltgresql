@@ -3529,22 +3529,21 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 	},
 	"timezone": &Parameter{
 		Name:      "TimeZone",
-		Default:   "America/Los_Angeles",
+		Default:   time.Local.String(),
 		Category:  "Client Connection Defaults / Locale and Formatting",
 		ShortDesc: "Sets the time zone for displaying and interpreting time stamps.",
 		Context:   ParameterContextUser,
 		Type:      types.NewSystemStringType("timezone"),
 		Source:    ParameterSourceConfigurationFile,
-		// BootVal: "GMT",
-		ResetVal: "America/Los_Angeles",
-		Scope:    GetPgsqlScope(PsqlScopeSession),
+		ResetVal:  time.Local.String(),
+		Scope:     GetPgsqlScope(PsqlScopeSession),
 		ValidateFunc: func(_, new any) (any, bool) {
 			switch v := new.(type) {
 			case string:
 				if strings.ToLower(v) == "local" {
-					// TODO: fix this
+					// TODO: this should be the IANA name, not whatever Go decides to use
 					//   https://pkg.go.dev/github.com/thlib/go-timezone-local/tzlocal seems useful in this case.
-					return "America/Los_Angeles", true
+					return time.Local.String(), true
 				} else {
 					if strings.ToLower(v) == "utc" {
 						v = "UTC"
