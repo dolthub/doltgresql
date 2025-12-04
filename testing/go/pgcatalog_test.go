@@ -5910,6 +5910,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1060579466, "status", 25, 3, "t", "f", "f"},
 						{1167248682, "name", 25, 1, "t", "f", "f"},
 						{1167248682, "url", 25, 2, "t", "f", "f"},
+						{1167248682, "params", 114, 3, "t", "f", "f"},
 						{1212681264, "commit_hash", 25, 1, "t", "f", "f"},
 						{1212681264, "table_name", 25, 2, "t", "f", "f"},
 						{1212681264, "column_name", 25, 3, "t", "f", "f"},
