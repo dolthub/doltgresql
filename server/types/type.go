@@ -191,8 +191,8 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 
 	switch ab := v1.(type) {
 	case bool:
-		bb := v2.(bool)
-		if ab == bb {
+		bb, _, _ := Bool.Convert(ctx, v2)
+		if ab == bb.(bool) {
 			return 0, nil
 		} else if !ab {
 			return -1, nil
