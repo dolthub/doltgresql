@@ -111,7 +111,7 @@ jobs:
         run: |
           latest=$(git rev-parse HEAD)
           echo "commitish=$latest" >> $GITHUB_OUTPUT
-          GO_BUILD_VERSION=1.25 scripts/build_binaries.sh
+          GO_BUILD_VERSION=1.25 scripts/build_all_binaries.sh
       - name: Fix ownership of build artifacts
         run: sudo chown -R "$USER:$USER" out
       - name: Create Release
