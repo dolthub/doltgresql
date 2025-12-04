@@ -21,6 +21,6 @@ OS_ARCH_TUPLES="windows-amd64 linux-amd64 linux-arm64 darwin-amd64 darwin-arm64"
 
 docker run --rm \
        -v `pwd`:/src \
-       -w /src
+       -w /src \
        golang:"$GO_BUILD_VERSION"-trixie \
        /src/scripts/build_binaries.sh "$OS_ARCH_TUPLES"
