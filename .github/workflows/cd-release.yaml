@@ -123,6 +123,7 @@ jobs:
           tag_name: v${{ needs.format-version.outputs.version }}
           release_name: ${{ needs.format-version.outputs.version }}
           draft: false
+          prerelease: true
           commitish: ${{ steps.build_binaries.outputs.commitish }}
       - name: Create install script
         id: create-install-script
@@ -222,3 +223,14 @@ jobs:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
           event-type: release-doltgres
           client-payload: '{"version": "${{ needs.format-version.outputs.version }}", "actor": "${{ github.actor }}"}'
+
+  docker-image-push:
+    needs: [format-version, create-release]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Trigger Push Docker Image
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          event-type: push-docker-image
+          client-payload: '{"version": "${{ needs.format-version.outputs.version }}", "release_id": "${{ needs.create-pgo-release.outputs.release_id }}" }'
