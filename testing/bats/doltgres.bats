@@ -347,3 +347,32 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" =~ "postgres" ]] || false
 }
+
+@test 'doltgres: user name and pass via env' {
+    export DOLTGRES_USER="myuser"
+    export DOLTGRES_PASSWORD="mypass"
+
+    [ ! -d "auth.db" ]
+    
+    start_sql_server postgres log.txt myuser mypass
+    cat log.txt
+
+    query_server_for_user_and_pass myuser mypass -c "create table myTable (a int);"
+
+    run query_server_for_user_and_pass myuser mypass -c "insert into mytable values (1), (2)"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "INSERT" ]] || false
+
+    run query_server_for_user_and_pass postgres password -c "insert into mytable values (1), (2)"
+    [ "$status" -ne 0 ]
+}
+
+query_server_for_user_and_pass() {
+    user=$1
+    pass=$2
+    shift
+    shift
+    
+    nativevar PGPASSWORD "$pass" /w
+    psql -U "$user" -h localhost -p $PORT "$@" postgres
+}
