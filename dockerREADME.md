@@ -60,7 +60,7 @@ $ docker run -p 5432:5432 dolthub/doltgresql:latest
 ```
 
 *Note*: if you have Postgres installed on this machine already, port `5432` will be in use. Either
-choose a different port to map, or shut down Postgres.
+choose a different port to map or shut down Postgres.
 
 Now connect with `psql` or another Postgres-compatible client.
 
