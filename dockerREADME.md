@@ -1,8 +1,8 @@
 # Doltgres is Dolt for Postgres!
 
-From the creators of [Dolt](https://www.doltdb.com), the world's first version controlled SQL
+From the creators of [Dolt](https://www.doltdb.com), the world's first version-controlled SQL
 database, comes [Doltgres](https://www.doltgres.com), the Postgres-flavored version of Dolt. It's a
-SQL database that you can branch and merge, fork and clone, push and pull just like a Git
+SQL database that you can branch and merge, fork and clone, push and pull, just like a Git
 repository. Connect to your Doltgres server just like any Postgres database to read or modify schema
 and data. Version control functionality is exposed in SQL via system tables, functions, and
 procedures.
@@ -21,7 +21,7 @@ far](https://www.dolthub.com/blog/2022-07-11-dolt-case-studies/).
 
 # How to use this image
 
-This image is for the Doltgres server, and is similar to the Postgres Docker image. Running this
+This image is for the Doltgres server and is similar to the Postgres Docker image. Running this
 image without any arguments is equivalent to running the `doltgres` command inside a Docker
 container.
 
@@ -52,7 +52,7 @@ $ docker build --build-arg DOLTGRES_VERSION=source -t doltgres:source .
 
 ## Connect to the server in the container from the host system
 
-From the host system, to connect to a server running in a container, we need to map a port on the
+To connect to a server running in a container from the host system, we need to map a port on the
 host system to the port our server is running on in the container.
 
 ```bash
@@ -60,7 +60,7 @@ $ docker run -p 5432:5432 dolthub/doltgresql:latest
 ```
 
 *Note*: if you have Postgres installed on this machine already, port `5432` will be in use. Either
-choose a different port to map, or shut down Postgres.
+choose a different port to map or shut down Postgres.
 
 Now connect with `psql` or another Postgres-compatible client.
 
