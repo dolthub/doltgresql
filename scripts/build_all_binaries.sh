@@ -9,7 +9,7 @@
 #
 # GO_BUILD_VERSION is the major version of Go to target, e.g. 1.25. Must be set in ENV.
 
-set -e
+set -ex
 set -o pipefail
 
 script_dir=$(dirname "$0")
