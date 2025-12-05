@@ -108,7 +108,7 @@ jobs:
             -exec rm -rf {} \;
       - name: Build Binaries
         id: build_binaries
-        shell: bash -ex
+        shell: bash -ex {0}
         run: |
           latest=$(git rev-parse HEAD)
           echo "commitish=$latest" >> $GITHUB_OUTPUT
