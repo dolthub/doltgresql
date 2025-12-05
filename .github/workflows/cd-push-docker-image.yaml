@@ -73,5 +73,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
           REPO_OWNER: dolthub
-          REPO_NAME: dolt
+          REPO_NAME: doltgresql
           RELEASE_ID: ${{ needs.get-release-id.outputs.release_id }}
