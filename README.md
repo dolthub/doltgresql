@@ -51,11 +51,21 @@ your `$PATH`.
 Download the latest Microsoft Installer (`.msi` file) in
 [releases](https://github.com/dolthub/doltgresql/releases) and run it.
 
+## Docker
+
+Doltgres publishes an official Docker image on every release:
+
+* [dolthub/doltgresql](https://hub.docker.com/r/dolthub/doltgresql)
+
+Run it on your local Docker like this:
+
+```bash
+$ docker run -e DOLTGRES_PASSWORD=myPassword -p 5432:5432 dolthub/doltgresql:latest
+```
+
 ## Building From Source
 
-Please follow the [Contributor's
-Guide](https://github.com/dolthub/doltgresql/blob/main/CONTRIBUTING.md#getting-set-up) to learn how
-to build from source.
+To produce a binary from source code, run `./scripts/build.sh`.
 
 # Getting Started
 
@@ -63,6 +73,9 @@ to build from source.
 directory. The default password will be `password`, just like in Postgres. You can use a
 `config.yaml` file or set the `DOLTGRES_DATA_DIR` environment variable to use a different directory
 for your databases.
+
+You can change the name and password of the super-user by setting the `DOLTGRES_USER` and
+`DOLTGRES_PASSWORD` environment variables before running `doltgres` for the first time.
 
 ```bash
 $ doltgres
