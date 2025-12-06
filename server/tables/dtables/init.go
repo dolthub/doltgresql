@@ -18,12 +18,15 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/adapters"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
 )
 
 // Init handles initialization of all Postgres-specific and Doltgres-specific Dolt system tables.
 func Init() {
+	adapters.DoltTableAdapterRegistry.AddAdapter(DoltgresDoltStatusTableName, DoltgresDoltStatusTableAdapter{}, doltdb.StatusTableName)
+	
 	// Table names
 	doltdb.GetBranchesTableName = getBranchesTableName
 	doltdb.GetDocTableName = getDocTableName
@@ -37,7 +40,6 @@ func Init() {
 	doltdb.GetRemoteBranchesTableName = getRemoteBranchesTableName
 	doltdb.GetRemotesTableName = getRemotesTableName
 	doltdb.GetSchemaConflictsTableName = getSchemaConflictsTableName
-	doltdb.GetStatusTableName = getStatusTableName
 	doltdb.GetTableOfTablesInConflictName = getTableOfTablesInConflictName
 	doltdb.GetTableOfTablesWithViolationsName = getTableOfTablesWithViolationsName
 	doltdb.GetTagsTableName = getTagsTableName
@@ -48,7 +50,6 @@ func Init() {
 	dtables.GetDoltIgnoreSchema = getDoltIgnoreSchema
 	dtables.GetDoltMergeStatusSchema = getDoltMergeStatusSchema
 	dprocedures.GetDoltRebaseSystemTableSchema = getRebaseSchema
-	dtables.GetDoltStatusSchema = getDoltStatusSchema
 	dtables.GetUnscopedDoltDiffSchema = getUnscopedDoltDiffSchema
 	dtables.GetDoltWorkspaceBaseSqlSchema = getDoltWorkspaceBaseSqlSchema
 

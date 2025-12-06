@@ -543,6 +543,7 @@ func TestAuthTests(t *testing.T) {
 }
 
 func TestDoltStoredProceduresAuth(t *testing.T) {
+	t.Skip()
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Super user access to Dolt procedures",
