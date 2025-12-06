@@ -22,11 +22,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	gms "github.com/dolthub/go-mysql-server"
 	"gopkg.in/yaml.v2"
+
+	"github.com/dolthub/doltgresql/server/overrides"
 )
 
 const (
@@ -542,6 +544,12 @@ func (cfg *DoltgresConfig) ValueSet(value string) bool {
 	}
 
 	return false
+}
+
+func (cfg *DoltgresConfig) Overrides() gms.EngineOverrides {
+	return gms.EngineOverrides{
+		Builder: overrides.PlanBuilder,
+	}
 }
 
 func (cfg *DoltgresConfig) ToSqlServerConfig() servercfg.ServerConfig {

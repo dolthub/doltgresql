@@ -29,6 +29,13 @@ func NewRecordExpr() *RecordExpr {
 	return &RecordExpr{}
 }
 
+// NewRecordExprFromFields creates a new record expression from the given fields.
+func NewRecordExprFromFields(fields []sql.Expression) sql.Expression {
+	return &RecordExpr{
+		exprs: fields,
+	}
+}
+
 // RecordExpr is a set of sql.Expressions wrapped together in a single value.
 type RecordExpr struct {
 	exprs []sql.Expression
