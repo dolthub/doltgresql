@@ -17,9 +17,10 @@ package initialization
 import (
 	"sync"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
-	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/rootobject"
@@ -34,7 +35,6 @@ import (
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/functions/unary"
 	"github.com/dolthub/doltgresql/server/tables"
-	"github.com/dolthub/doltgresql/server/tables/dprocedures"
 	"github.com/dolthub/doltgresql/server/tables/dtables"
 	"github.com/dolthub/doltgresql/server/tables/information_schema"
 	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
@@ -64,6 +64,5 @@ func Initialize(dEnv *env.DoltEnv) {
 		pgcatalog.Init()
 		information_schema.Init()
 		dtables.Init()
-		dprocedures.Init()
 	})
 }
