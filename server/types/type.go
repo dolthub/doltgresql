@@ -191,11 +191,8 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 
 	switch ab := v1.(type) {
 	case bool:
-		bb, _, err := Bool.Convert(ctx, v2)
-		if err != nil {
-			return 0, err
-		}
-		if ab == bb.(bool) {
+		bb := v2.(bool)
+		if ab == bb {
 			return 0, nil
 		} else if !ab {
 			return -1, nil
@@ -321,12 +318,8 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	}
 	switch t.ID.TypeName() {
 	case "bool":
-		switch val := v.(type) {
-		case bool:
-			return val, sql.InRange, nil
-		case byte:
-			// Handle byte (uint8) from Dolt tables that use byte for bool compatibility with MySQL wire protocol
-			return val != 0, sql.InRange, nil
+		if _, ok := v.(bool); ok {
+			return v, sql.InRange, nil
 		}
 	case "bytea":
 		if _, ok := v.([]byte); ok {

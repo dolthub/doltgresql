@@ -57,11 +57,7 @@ var boolout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bool},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		converted, _, err := pgtypes.Bool.Convert(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		if converted.(bool) {
+		if val.(bool) {
 			return "true", nil
 		} else {
 			return "false", nil

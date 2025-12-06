@@ -78,14 +78,6 @@ func initBinaryEqual() {
 
 // booleq_callable is the callable logic for the booleq function.
 func booleq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	val1, _, err := pgtypes.Bool.Convert(ctx, val1)
-	if err != nil {
-		return nil, err
-	}
-	val2, _, err = pgtypes.Bool.Convert(ctx, val2)
-	if err != nil {
-		return nil, err
-	}
 	res, err := pgtypes.Bool.Compare(ctx, val1.(bool), val2.(bool))
 	return res == 0, err
 }
