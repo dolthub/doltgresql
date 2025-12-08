@@ -33,8 +33,8 @@ type DoltgresDoltStatusTableAdapter struct{}
 
 var _ adapters.TableAdapter = DoltgresDoltStatusTableAdapter{}
 
-// CreateTable returns the [sql.Table] for Doltgres' version of [doltdtables.StatusTable].
-func (a DoltgresDoltStatusTableAdapter) CreateTable(ctx *sql.Context, tableName string, ddb *doltdb.DoltDB, ws *doltdb.WorkingSet, rp env.RootsProvider[*sql.Context]) sql.Table {
+// NewTable returns a new [sql.Table] for Doltgres' version of [doltdtables.StatusTable].
+func (a DoltgresDoltStatusTableAdapter) NewTable(ctx *sql.Context, tableName string, ddb *doltdb.DoltDB, ws *doltdb.WorkingSet, rp env.RootsProvider[*sql.Context]) sql.Table {
 	doltTable := doltdtables.NewStatusTable(ctx, tableName, ddb, ws, rp)
 	return &doltgresDoltStatusTable[*doltdtables.StatusTable]{
 		srcDoltStatus: doltTable.(*doltdtables.StatusTable),
