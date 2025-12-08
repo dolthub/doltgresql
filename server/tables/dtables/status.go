@@ -35,7 +35,7 @@ var _ adapters.TableAdapter = DoltgresDoltStatusTableAdapter{}
 
 // NewTable returns a new [sql.Table] for Doltgres' version of [doltdtables.StatusTable].
 func (a DoltgresDoltStatusTableAdapter) NewTable(ctx *sql.Context, tableName string, ddb *doltdb.DoltDB, ws *doltdb.WorkingSet, rp env.RootsProvider[*sql.Context]) sql.Table {
-	doltTable := doltdtables.NewStatusTable(ctx, tableName, ddb, ws, rp)
+	doltTable := doltdtables.NewStatusTableWithNoAdapter(ctx, tableName, ddb, ws, rp)
 	return &doltgresDoltStatusTable[*doltdtables.StatusTable]{
 		srcDoltStatus: doltTable.(*doltdtables.StatusTable),
 	}
