@@ -15,7 +15,6 @@
 package functions
 
 import (
-	"fmt"
 	"io"
 	"reflect"
 	"strconv"
@@ -24,6 +23,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/mysql_db"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 
@@ -33,6 +33,20 @@ import (
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+var (
+	ErrProcedurePermissionDenied = errors.New("permission denied for procedure")
+
+	// DoltProcedureCallables is a map between Dolt procedure names and Doltgres' respective DoltProcedureCallable.
+	DoltProcedureCallables = make(map[string]DoltProcedureCallable)
+)
+
+// DoltProcedureCallable is the function signature for Doltgres' Dolt procedure wrappers. These functions are called
+// when executing Dolt procedures under SELECT or CALL statements. |typeSignature| is required to match the
+// [framework.Function1.Callable] to register as a function, but is not used by these callables; type information is
+// instead obtained through the direct external procedure. |parameterValues| are the raw values passed into the
+// procedure. The result from the procedure is returned as [pgtypes.TextArray].
+type DoltProcedureCallable func(ctx *sql.Context, typeSignature [2]*pgtypes.DoltgresType, parameterValues any) (resultSet any, err error)
 
 func initDoltProcedures() {
 	for _, procDef := range dprocedures.DoltProcedures {
@@ -44,7 +58,7 @@ func initDoltProcedures() {
 		funcVal := reflect.ValueOf(procDef.Function)
 		varArgCallable := varArgCallableForDoltProcedure(p, funcVal)
 		noArgCallable := noArgCallableForDoltProcedure(p, funcVal)
-
+		DoltProcedureCallables[procDef.Name] = varArgCallable
 		framework.RegisterFunction(framework.Function1{
 			Name:       procDef.Name,
 			Return:     pgtypes.TextArray,
@@ -60,33 +74,17 @@ func initDoltProcedures() {
 	}
 }
 
-// CheckDoltStoredProcedureAccess verifies the user has permission to execute the given Dolt procedure. For AdminOnly
-// procedures, the user must have SUPERUSER role.
-func CheckDoltStoredProcedureAccess(ctx *sql.Context, doltProcedure *plan.ExternalProcedure) error {
-	// TODO: This auth check should be handled by AuthType_EXECUTE in auth_handler.go when doltProcedure auth is integrated
-	//  into the authorization system.
-	if !doltProcedure.AdminOnly {
-		return nil
-	}
-
-	var userRole auth.Role
-	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
-	})
-
-	if !userRole.IsValid() || !userRole.IsSuperUser {
-		return fmt.Errorf("permission denied for procedure %s", doltProcedure.Name)
-	}
-	return nil
-}
-
 // varArgCallableForDoltProcedure creates a callable function that takes in a variadic number of parameters. This is
 // equivalent to calling "DOLT_PROC_NAME('abc', ...)".
 func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 	funcType := funcVal.Type()
 
 	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if err := CheckDoltStoredProcedureAccess(ctx, p); err != nil {
+		// We have to restore any context's PrivilegeSet changes caused by setDoltProcedureAccess.
+		ctxPrivilegeSet, ctxPrivilegeSetCounter := ctx.GetPrivilegeSet()
+		defer ctx.SetPrivilegeSet(ctxPrivilegeSet, ctxPrivilegeSetCounter)
+		err := setDoltProcedureAccess(ctx, p)
+		if err != nil {
 			return nil, err
 		}
 
@@ -140,7 +138,11 @@ func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.V
 // calling "DOLT_PROC_NAME()".
 func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context) (any, error) {
 	return func(ctx *sql.Context) (any, error) {
-		if err := CheckDoltStoredProcedureAccess(ctx, p); err != nil {
+		// We have to restore any context's PrivilegeSet changes caused by setDoltProcedureAccess.
+		ctxPrivilegeSet, ctxPrivilegeSetCounter := ctx.GetPrivilegeSet()
+		defer ctx.SetPrivilegeSet(ctxPrivilegeSet, ctxPrivilegeSetCounter)
+		err := setDoltProcedureAccess(ctx, p)
+		if err != nil {
 			return nil, err
 		}
 
@@ -158,6 +160,30 @@ func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Va
 		}
 		return drainRowIter(ctx, rowIter)
 	}
+}
+
+// setDoltProcedureAccess ensures the current user is authorized to execute |procedure|. This function overwrites the
+// current |ctx| [sql.PrivilegeSet] to contain the [sql.PrivilegeType_Super] if the user is authorized. Certain Dolt
+// procedures do internal checks that require this type to exist, see dolt_purged_dropped_databases.go.
+func setDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedure) error {
+	if !procedure.AdminOnly {
+		return nil
+	}
+
+	var userRole auth.Role
+	auth.LockRead(func() {
+		userRole = auth.GetRole(ctx.Client().User)
+	})
+
+	if !userRole.IsValid() || !userRole.IsSuperUser {
+		return ErrProcedurePermissionDenied
+	}
+
+	mockPrivilegeSet := mysql_db.NewPrivilegeSet()
+	mockPrivilegeSet.AddGlobalStatic(sql.PrivilegeType_Super)
+	ctx.SetPrivilegeSet(mockPrivilegeSet, 1)
+
+	return nil
 }
 
 func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {

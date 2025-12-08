@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -99,15 +100,25 @@ func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 	if len(overloads) == 0 {
 		// We're going to assume that this is calling one of the few remaining Dolt stored procedures
-		sch, rowIter, _, err := c.Runner.Runner.QueryWithBindings(ctx, "", &vitess.Call{
-			ProcName: vitess.ProcedureName{
-				Name:      vitess.NewColIdent(c.ProcedureName),
-				Qualifier: vitess.NewTableIdent(c.SchemaName),
-			},
-			Params: c.originalExprs,
-		}, nil, nil)
-		c.cachedSch = sch
-		return rowIter, err
+		doltProcedureCallable, ok := functions.DoltProcedureCallables[c.ProcedureName]
+		if !ok {
+			return nil, err
+		}
+
+		args := make([]any, len(c.Exprs))
+		for i, expr := range c.Exprs {
+			val, err := expr.Eval(ctx, nil)
+			if err != nil {
+				return nil, err
+			}
+			args[i] = val
+		}
+		_, err := doltProcedureCallable(ctx, [2]*pgtypes.DoltgresType{}, args)
+		if err != nil {
+			return nil, err
+		}
+
+		return sql.RowsToRowIter(), nil
 	}
 
 	overloadTree := framework.NewOverloads()
