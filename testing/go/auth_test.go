@@ -736,7 +736,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				assertAsBasic("call dolt_gc('--shallow');", nil, functions.ErrProcedurePermissionDenied.Error()),
 
-				// TODO(elianddb): These no-param CALL TODOs are covered in the function doc comment.
+				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
 				//  assertAsBasic("call dolt_thread_dump();", []sql.Row{}, ""),
 
 				assertAsBasic("call dolt_commit('-m', 'rm to_rm');", []sql.Row{}, ""),
