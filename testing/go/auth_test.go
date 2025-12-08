@@ -780,9 +780,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				assertAsSuper("insert into test_table values (2);", []sql.Row{}, ""),
 				assertAsSuper("select * from dolt_add('.');", []sql.Row{{"{0}"}}, ""),
-				// These hash values are non-deterministic, so we pass in nil for the expected result set to skip result
-				// checks. This does not affect error checks, they will still fail.
-				assertAsSuper("select * from dolt_commit('-m', 'amend test table');", nil, ""),
+				assertAsSuper("select length(dolt_commit('-m', 'amend test table')::text) = 34;", []sql.Row{{"t"}}, ""),
 
 				assertAsSuper("select * from dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
 				assertAsSuper("select * from dolt_cherry_pick('test');", nil, ""),
@@ -796,10 +794,10 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				assertAsSuper("select * from dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
 				assertAsSuper("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
-				assertAsSuper("select * from dolt_commit('-am', 'amend 1 to -1');", nil, ""),
+				assertAsSuper("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsSuper("select * from dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
 				assertAsSuper("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
-				assertAsSuper("select * from dolt_commit('-am', 'amend 2 to -2');", nil, ""),
+				assertAsSuper("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsSuper("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
 				assertAsSuper("select * from dolt_merge('conflict');", []sql.Row{{"{0,1,\"conflicts found\"}"}}, ""),
 
@@ -816,7 +814,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 				assertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
 				assertAsSuper("select * from dolt_undrop('cloned_bak1');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsSuper("select * from dolt_commit('-am', 'resolve conflicts');", nil, ""),
+				assertAsSuper("select length(dolt_commit('-am', 'resolve conflicts')::text) = 34;", []sql.Row{{"t"}}, ""),
 				// TODO(elianddb): table test_table does not exist (also tried with public.test_table)
 				//  assertAsSuper("select * from dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
 
@@ -832,15 +830,15 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				assertAsSuper("create table to_rm (v int);", []sql.Row{}, ""),
 				assertAsSuper("select * from dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
-				assertAsSuper("select * from dolt_commit('-m', 'clean state to_rm');", nil, ""),
+				assertAsSuper("select length(dolt_commit('-m', 'clean state to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsSuper("select * from dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
 
 				assertAsSuper("select * from dolt_gc('--shallow');", []sql.Row{{"{0}"}}, ""),
 
-				// The result set has non-deterministic memory addresses.
+				// The result set is non-deterministic; it can change from directory changes and memory addresses.
 				assertAsSuper("select * from dolt_thread_dump();", nil, ""),
 
-				assertAsSuper("select * from dolt_commit('-m', 'rm to_rm');", nil, ""),
+				assertAsSuper("select length(dolt_commit('-m', 'rm to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsSuper(
 					"select * from dolt_push('origin', 'test');",
 					[]sql.Row{{fmt.Sprintf("{0,\"To %s\n * [new branch]          test -> test\"}", fileUrl("bak1"))}},
@@ -889,9 +887,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				assertAsBasic("insert into test_table values (2);", []sql.Row{}, ""),
 				assertAsBasic("select * from dolt_add('.');", []sql.Row{{"{0}"}}, ""),
-				// These hash values are non-deterministic, so we pass in nil for the expected result set to skip result
-				// checks. This does not affect error checks, they will still fail.
-				assertAsBasic("select * from dolt_commit('-m', 'amend test table');", nil, ""),
+				assertAsBasic("select length(dolt_commit('-m', 'amend test table')::text) = 34;", []sql.Row{{"t"}}, ""),
 
 				assertAsBasic("select * from dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
 				assertAsBasic("select * from dolt_cherry_pick('test');", nil, ""),
@@ -906,10 +902,10 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				assertAsBasic("select * from dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
 				assertAsBasic("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
-				assertAsBasic("select * from dolt_commit('-am', 'amend 1 to -1');", nil, ""),
+				assertAsBasic("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsBasic("select * from dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
 				assertAsBasic("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
-				assertAsBasic("select * from dolt_commit('-am', 'amend 2 to -2');", nil, ""),
+				assertAsBasic("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsBasic("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
 				assertAsBasic("select * from dolt_merge('conflict');", []sql.Row{{"{0,1,\"conflicts found\"}"}}, ""),
 
@@ -926,7 +922,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 				assertAsBasic("drop database cloned_bak1", []sql.Row{}, ""),
 				assertAsBasic("select * from dolt_undrop('cloned_bak1');", nil, functions.ErrProcedurePermissionDenied.Error()),
 
-				assertAsBasic("select * from dolt_commit('-am', 'resolve conflicts');", nil, ""),
+				assertAsBasic("select length(dolt_commit('-am', 'resolve conflicts')::text) = 34;", []sql.Row{{"t"}}, ""),
 				// TODO(elianddb): table test_table does not exist (also tried with public.test_table)
 				//  assertAsBasic("select * from dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
 
@@ -941,15 +937,15 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				assertAsBasic("create table to_rm (v int);", []sql.Row{}, ""),
 				assertAsBasic("select * from dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
-				assertAsBasic("select * from dolt_commit('-m', 'clean state to_rm');", nil, ""),
+				assertAsBasic("select length(dolt_commit('-m', 'clean state to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsBasic("select * from dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
 
 				assertAsBasic("select * from dolt_gc('--shallow');", nil, functions.ErrProcedurePermissionDenied.Error()),
 
-				// The result set has non-deterministic memory addresses.
+				// The result set is non-deterministic; it can change from directory changes and memory addresses.
 				assertAsBasic("select * from dolt_thread_dump();", nil, functions.ErrProcedurePermissionDenied.Error()),
 
-				assertAsBasic("select * from dolt_commit('-m', 'rm to_rm');", nil, ""),
+				assertAsBasic("select length(dolt_commit('-m', 'rm to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsBasic("select * from dolt_push('origin', 'test');", nil, functions.ErrProcedurePermissionDenied.Error()),
 				assertAsBasic("select * from dolt_pull('origin', 'test');", nil, functions.ErrProcedurePermissionDenied.Error()),
 
