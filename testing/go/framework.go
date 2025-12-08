@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -37,6 +36,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/env"
+	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
@@ -51,6 +54,9 @@ import (
 // runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
 // rather than starting a doltgres server.
 const runOnPostgres = false
+
+// serverHost is the host of the local Doltgres server used for testing; set to IPv4 loopback address.
+var serverHost = "127.0.0.1"
 
 // ScriptTest defines a consistent structure for testing queries.
 type ScriptTest struct {
@@ -70,6 +76,8 @@ type ScriptTest struct {
 	Focus bool
 	// Skip is used to completely skip a test including setup
 	Skip bool
+	// UseLocalFileSystem determines if the test should use the local filesystem
+	UseLocalFileSystem bool
 }
 
 // ExpectedNotice specifies what notices are expected during a script test assertion.
@@ -156,7 +164,13 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 		}()
 	} else {
 		var controller *svcs.Controller
-		ctx, conn, controller = CreateServer(t, scriptDatabase)
+		if script.UseLocalFileSystem {
+			port, err := sql.GetEmptyPort()
+			require.NoError(t, err)
+			ctx, conn, controller = CreateServerLocalWithPort(t, scriptDatabase, port)
+		} else {
+			ctx, conn, controller = CreateServer(t, scriptDatabase)
+		}
 		defer func() {
 			conn.Close(ctx)
 			controller.Stop()
@@ -360,8 +374,8 @@ func init() {
 }
 
 // CreateServer creates a server with the given database, returning a connection to the server. The server will close
-// when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
-// until the server has closed.
+// when the connection is closed (or loses its connection to the server). The accompanying [svcs.Controller] may be used
+// to wait until the server has closed.
 func CreateServer(t *testing.T, database string) (context.Context, *Connection, *svcs.Controller) {
 	port, err := sql.GetEmptyPort()
 	require.NoError(t, err)
@@ -369,65 +383,95 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 }
 
 // CreateServerWithPort creates a server with the given database and port, returning a connection to the server. The server will close
-// when the connection is closed (or loses its connection to the server). The accompanying WaitGroup may be used to wait
-// until the server has closed.
+// when the connection is closed (or loses its connection to the server). The accompanying [svcs.Controller] may be used
+// to wait until the server has closed.
 func CreateServerWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
 	require.NotEmpty(t, database)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
 		ListenerConfig: &servercfg.DoltgresListenerConfig{
 			PortNumber: &port,
-			HostStr:    ptr("127.0.0.1"),
+			HostStr:    &serverHost,
 		},
-		LogLevelStr: ptr(testServerLogLevel),
+		LogLevelStr: &testServerLogLevel,
 	}, dserver.NewListener)
 	require.NoError(t, err)
 	auth.ClearDatabase()
-
 	fmt.Printf("port is %d\n", port)
 
 	ctx := context.Background()
-	err = func() error {
-		// The connection attempt may be made before the server has grabbed the port, so we'll retry the first
-		// connection a few times.
+	connection := newTestDatabaseConnection(t, ctx, database, serverHost, port)
+	return ctx, connection, controller
+}
+
+// CreateServerLocalWithPort creates a server using the local file system at [os.TempDir]. A Connection is returned to
+// |database| at 127.0.0.1:|port|. The server will close when the connection is closed or lost. The returned
+// [svcs.Controller] may be used to wait for the server to stop.
+func CreateServerLocalWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
+	// We avoid using [T.TempDir] because it results in a file lock conflict on Windows. [T.TempDir] registers a
+	// [T.Cleanup] function that runs without checking the [svcs.Controller] and it cannot be overwritten.
+	// TODO(elianddb): Setup an optional [T.Cleanup] function for the temporary directory. Our default setup for now is
+	//  preferable for debugging the database after a failure.
+	dbDir, err := os.MkdirTemp(os.TempDir(), t.Name())
+	require.NoError(t, err)
+	fileSys, err := filesys.LocalFilesysWithWorkingDir(dbDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	doltEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fileSys, doltdb.LocalDirDoltDB, dserver.Version)
+
+	controller, err := dserver.RunOnDisk(ctx, &servercfg.DoltgresConfig{
+		ListenerConfig: &servercfg.DoltgresListenerConfig{
+			PortNumber: &port,
+			HostStr:    &serverHost,
+		},
+		LogLevelStr: &testServerLogLevel,
+	}, doltEnv)
+	require.NoError(t, err)
+	auth.ClearDatabase()
+	fmt.Printf("port is %d\n", port)
+
+	connection := newTestDatabaseConnection(t, ctx, database, serverHost, port)
+	return ctx, connection, controller
+}
+
+// newTestDatabaseConnection returns a Connection to the test |database| at |host|:|port|. If the |database| provided
+// does not exist, it will be automatically created.
+func newTestDatabaseConnection(t *testing.T, ctx context.Context, database, host string, port int) *Connection {
+	const connectionUrlFmt = "postgres://postgres:password@%s:%d/%s"
+	func() {
 		var conn *pgx.Conn
 		var err error
-		for i := 0; i < 3; i++ {
-			conn, err = pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/", port))
+		// Connections can happen before the server has a chance to grab the port so we retry.
+		for range 3 {
+			conn, err = pgx.Connect(ctx, fmt.Sprintf(connectionUrlFmt, host, port, ""))
 			if err == nil {
 				break
-			} else {
-				time.Sleep(time.Second)
 			}
-		}
-		if err != nil {
-			return err
-		}
 
-		defer conn.Close(ctx)
-		if database != "postgres" {
-			_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s;", database))
-			return err
+			time.Sleep(time.Second)
 		}
-		return nil
+		require.NoError(t, err)
+
+		_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", database))
+		require.NoError(t, err)
+
+		defer require.NoError(t, conn.Close(ctx))
 	}()
-	require.NoError(t, err)
 
-	connectionString := fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/%s", port, database)
-	config, err := pgx.ParseConfig(connectionString)
+	config, err := pgx.ParseConfig(fmt.Sprintf(connectionUrlFmt, host, port, database))
 	require.NoError(t, err)
-	config.OnNotice = func(c *pgconn.PgConn, notice *pgconn.Notice) {
+	config.OnNotice = func(conn *pgconn.PgConn, notice *pgconn.Notice) {
 		receivedNotices = append(receivedNotices, notice)
 	}
 
 	conn, err := pgx.ConnectConfig(ctx, config)
 	require.NoError(t, err)
-
-	// Ping the connection to test that it's alive, and also to test that Doltgres handles empty queries correctly
+	// Ping tests that Doltgres can handle empty queries, and makes sure connection is alive.
 	require.NoError(t, conn.Ping(ctx))
-	return ctx, &Connection{
+	return &Connection{
 		Default: conn,
 		Current: conn,
-	}, controller
+	}
 }
 
 // ReadRows reads all of the given rows into a slice, then closes the rows. If `normalizeRows` is true, then the rows
