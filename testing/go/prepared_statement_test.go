@@ -186,6 +186,36 @@ var preparedStatementTests = []ScriptTest{
 					{3, 4},
 				},
 			},
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2) returning *",
+				BindVars: []any{2, nil},
+				Expected: []sql.Row{
+					{2, nil},
+				},
+			},
+		},
+	},
+	{
+		Name: "Integer types",
+		SetUpScript: []string{
+			"drop table if exists test",
+			"CREATE TABLE test (pk BIGINT PRIMARY KEY, v2 SMALLINT, v4 INTEGER, v5 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2, $3, $4) returning *",
+				BindVars: []any{1, 10, 100, 1000},
+				Expected: []sql.Row{
+					{1, 10, 100, 1000},
+				},
+			},
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2, $3, $4) returning *",
+				BindVars: []any{2, nil, nil, nil},
+				Expected: []sql.Row{
+					{2, nil, nil, nil},
+				},
+			},
 		},
 	},
 	{
@@ -272,6 +302,13 @@ var preparedStatementTests = []ScriptTest{
 				BindVars: []any{"hello!"},
 				Expected: []sql.Row{
 					{1, "hello"},
+				},
+			},
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2) returning *",
+				BindVars: []any{2, nil},
+				Expected: []sql.Row{
+					{2, nil},
 				},
 			},
 		},
@@ -503,6 +540,13 @@ var preparedStatementTests = []ScriptTest{
 					{3, "2024-04-01"},
 				},
 			},
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2) returning *;",
+				BindVars: []any{"5", nil},
+				Expected: []sql.Row{
+					{5, nil},
+				},
+			},
 		},
 	},
 	{
@@ -605,6 +649,13 @@ var preparedStatementTests = []ScriptTest{
 				Query: "SELECT * FROM test ORDER BY pk;",
 				Expected: []sql.Row{
 					{2, "2024-12-25 09:15:30"},
+				},
+			},
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2) returning *;",
+				BindVars: []any{"3", nil},
+				Expected: []sql.Row{
+					{3, nil},
 				},
 			},
 		},
@@ -860,6 +911,13 @@ var preparedStatementTests = []ScriptTest{
 					{2, "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
 				},
 			},
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2) returning *;",
+				BindVars: []any{"3", nil},
+				Expected: []sql.Row{
+					{3, nil},
+				},
+			},
 		},
 	},
 	{
@@ -956,6 +1014,13 @@ var preparedStatementTests = []ScriptTest{
 				Query: "SELECT * FROM test ORDER BY pk;",
 				Expected: []sql.Row{
 					{2, Numeric("999.99"), Numeric("12.345")},
+				},
+			},
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2, $3) returning *;",
+				BindVars: []any{"3", nil, nil},
+				Expected: []sql.Row{
+					{3, nil, nil},
 				},
 			},
 		},
@@ -1064,6 +1129,13 @@ var preparedStatementTests = []ScriptTest{
 				Query: "SELECT * FROM test ORDER BY pk;",
 				Expected: []sql.Row{
 					{3, "t"},
+				},
+			},
+			{
+				Query:    "INSERT INTO test VALUES ($1, $2) returning *;",
+				BindVars: []any{"4", nil},
+				Expected: []sql.Row{
+					{4, nil},
 				},
 			},
 		},
@@ -1213,6 +1285,13 @@ var preparedStatementTests = []ScriptTest{
 					{4, []byte{0xC0, 0xFF, 0xEE}},
 				},
 			},
+			{
+				Query:    "INSERT INTO t_bytea VALUES ($1, $2) returning *;",
+				BindVars: []any{5, nil},
+				Expected: []sql.Row{
+					{5, nil},
+				},
+			},
 		},
 	},
 }
@@ -1353,7 +1432,7 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 	for _, query := range script.SetUpScript {
 		rows, err := conn.Query(ctx, query)
 		require.NoError(t, err)
-		_, err = ReadRows(rows, true)
+		_, _, err = ReadRows(rows, true)
 		assert.NoError(t, err)
 	}
 
@@ -1379,10 +1458,14 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 					}
 
 					if errorSeen == "" {
-						foundRows, err := ReadRows(rows, true)
+						foundRows, foundRawRows, err := ReadRows(rows, true)
 						if assertion.ExpectedErr == "" {
 							require.NoError(t, err)
-							assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), foundRows)
+							if assertion.ExpectedRaw != nil {
+								assert.Equal(t, assertion.ExpectedRaw, foundRawRows)
+							} else {
+								assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), foundRows)
+							}
 						} else if err != nil {
 							errorSeen = err.Error()
 						}

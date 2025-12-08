@@ -144,9 +144,12 @@ type DoltgresPerformanceConfig struct {
 }
 
 type DoltgesMetricsConfig struct {
-	Labels map[string]string `yaml:"labels,omitempty" minver:"0.7.4"`
-	Host   *string           `yaml:"host,omitempty" minver:"0.7.4"`
-	Port   *int              `yaml:"port,omitempty" minver:"0.7.4"`
+	Labels  map[string]string `yaml:"labels,omitempty" minver:"0.7.4"`
+	Host    *string           `yaml:"host,omitempty" minver:"0.7.4"`
+	Port    *int              `yaml:"port,omitempty" minver:"0.7.4"`
+	TlsCert *string           `yaml:"tls_cert,omitempty" minver:"0.53.5"`
+	TlsKey  *string           `yaml:"tls_key,omitempty" minver:"0.53.5"`
+	TlsCa   *string           `yaml:"tls_ca,omitempty" minver:"0.53.5"`
 }
 
 type DoltgresRemotesapiConfig struct {
@@ -320,6 +323,11 @@ func (cfg *DoltgresConfig) MaxWaitConnectionsTimeout() time.Duration {
 	return 0
 }
 
+func (cfg *DoltgresConfig) CACert() string {
+	// TODO: add support for specifying a CA server and configuration TLS for client cert authentication
+	return ""
+}
+
 func (cfg *DoltgresConfig) TLSKey() string {
 	if cfg.ListenerConfig == nil || cfg.ListenerConfig.TLSKey == nil {
 		return ""
@@ -342,6 +350,11 @@ func (cfg *DoltgresConfig) RequireSecureTransport() bool {
 	}
 
 	return *cfg.ListenerConfig.RequireSecureTransport
+}
+
+func (cfg *DoltgresConfig) RequireClientCert() bool {
+	// TODO: add support for verifying client certs
+	return false
 }
 
 func (cfg *DoltgresConfig) MaxLoggedQueryLen() int {
@@ -390,6 +403,28 @@ func (cfg *DoltgresConfig) MetricsPort() int {
 	}
 
 	return *cfg.MetricsConfig.Port
+}
+
+func (cfg *DoltgresConfig) MetricsTLSCert() string {
+	if cfg.MetricsConfig.TlsCert == nil {
+		return ""
+	}
+
+	return *cfg.MetricsConfig.TlsCert
+}
+
+func (cfg *DoltgresConfig) MetricsTLSKey() string {
+	if cfg.MetricsConfig.TlsKey == nil {
+		return ""
+	}
+	return *cfg.MetricsConfig.TlsKey
+}
+
+func (cfg *DoltgresConfig) MetricsTLSCA() string {
+	if cfg.MetricsConfig.TlsCa == nil {
+		return ""
+	}
+	return *cfg.MetricsConfig.TlsCa
 }
 
 func (cfg *DoltgresConfig) PrivilegeFilePath() string {
@@ -486,6 +521,12 @@ func (cfg *DoltgresConfig) EventSchedulerStatus() string {
 
 func (cfg *DoltgresConfig) AutoGCBehavior() servercfg.AutoGCBehavior {
 	return DoltgresAutoGCBehavior{}
+}
+
+func (cfg *DoltgresConfig) BranchActivityTracking() bool {
+	// TODO In Dolt we require branch activity tracking to be configurable because it does incur a performance cost.
+	// We could make this configurable in Doltgres as well if we need to shave a couple percent off performance.
+	return true
 }
 
 func (cfg *DoltgresConfig) ValueSet(value string) bool {

@@ -108,10 +108,6 @@ type PreparedStatementData struct {
 // the types defined.
 func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 	inspectNode := queryPlan
-	switch queryPlan := queryPlan.(type) {
-	case *plan.InsertInto:
-		inspectNode = queryPlan.Source
-	}
 
 	types := make(map[string]uint32)
 	var err error
@@ -197,6 +193,13 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 
 	transform.InspectExpressionsWithNode(inspectNode, extractBindVars)
 
+	// Insert nodes are special, as their source expressions are not returned by the Expressions()
+	// interface and must be walked separately.
+	switch queryPlan := queryPlan.(type) {
+	case *plan.InsertInto:
+		transform.InspectExpressionsWithNode(queryPlan.Source, extractBindVars)
+	}
+
 	// above finds types of bindvars in unordered form.
 	// the list of types needs to be ordered as v1, v2, v3, etc.
 	typesArr := make([]uint32, len(types))
@@ -206,7 +209,7 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 			return nil, errors.Errorf("could not determine the index of placeholder %s: %e", i, err)
 		}
 		if int(idx-1) >= len(types) {
-			return nil, errors.Errorf("could not determine the index of placeholder %s: %e", i, err)
+			return nil, errors.Errorf("could not determine the index of placeholder %s in slice of %d elements", i, len(types))
 		}
 		typesArr[idx-1] = t
 	}

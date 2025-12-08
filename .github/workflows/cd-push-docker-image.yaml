@@ -1,0 +1,77 @@
+name: Push Docker Image to DockerHub
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'SemVer format release tag, i.e. 0.24.5'
+        required: true
+  repository_dispatch:
+    types: [ push-docker-image ]
+
+jobs:
+  get-release-id:
+    name: Get Doltgres Release Id
+    runs-on: ubuntu-22.04
+    outputs:
+      release_id: ${{ steps.get_release.outputs.release_id }}
+    steps:
+      - name: Get Release
+        id: get_release
+        run: |
+          release_id="$RELEASE_ID"
+          if [ "$EVENT_TYPE" == "workflow_dispatch" ]; then
+            release_id=$(curl -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/dolthub/doltgresql/releases/tags/v${{ github.event.inputs.version }} | jq '.id')
+          fi
+          echo "release_id=$release_id" >> $GITHUB_OUTPUT
+        env:
+          EVENT_TYPE: ${{ github.event_name }}
+          RELEASE_ID: ${{ github.event.client_payload.release_id }}
+
+  docker-image-push:
+    name: Push Docker Image
+    needs: get-release-id
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+      - name: Build and push doltgres image
+        uses: docker/build-push-action@v5
+        with:
+          platforms: linux/amd64,linux/arm64
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: dolthub/doltgresql:${{ github.event.inputs.version || github.event.client_payload.version }} , dolthub/doltgresql:latest
+          build-args: |
+            DOLTGRES_VERSION=${{ github.event.inputs.version || github.event.client_payload.version }}
+      - name: Update Docker Hub Readme for doltgres image
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+          repository: dolthub/doltgresql
+          readme-filepath: ./dockerREADME.md
+      - run: |
+          gh api \
+          --method PATCH \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          /repos/$REPO_OWNER/$REPO_NAME/releases/$RELEASE_ID \
+          -F "draft=false" -F "prerelease=false" -F "make_latest=true"
+        env:
+          GH_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO_OWNER: dolthub
+          REPO_NAME: doltgresql
+          RELEASE_ID: ${{ needs.get-release-id.outputs.release_id }}

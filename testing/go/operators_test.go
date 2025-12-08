@@ -24,6 +24,9 @@ func TestOperators(t *testing.T) {
 	RunScriptsWithoutNormalization(t, []ScriptTest{
 		{
 			Name: "Addition",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 1::float4 + 2::float4;`,
@@ -191,12 +194,15 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `select interval '2 days' + timestamp with time zone '2021-04-08 12:23:45-0700';`,
-					Expected: []sql.Row{{"2021-04-10 12:23:45-07"}},
+					Expected: []sql.Row{{"2021-04-10 19:23:45+00"}},
 				},
 			},
 		},
 		{
 			Name: "Subtraction",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 1::float4 - 2::float4;`,
@@ -350,6 +356,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Multiplication",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 1::float4 * 2::float4;`,
@@ -503,6 +512,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Division",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 8::float4 / 2::float4;`,
@@ -656,6 +668,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Mod",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 11::int2 % 3::int2;`,
@@ -725,6 +740,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Shift Left",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 5::int2 << 2::int2;`,
@@ -766,6 +784,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Shift Right",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 17::int2 >> 2::int2;`,
@@ -807,6 +828,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Less Than",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT false < true;`,
@@ -1108,6 +1132,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Greater Than",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT false > true;`,
@@ -1413,6 +1440,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Less Or Equal",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT false <= true;`,
@@ -1862,6 +1892,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Greater Or Equal",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT false >= true;`,
@@ -2311,6 +2344,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Equal",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT true = true;`,
@@ -2616,6 +2652,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Not Equal Standard Syntax (<>)",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT true <> true;`,
@@ -2917,6 +2956,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Not Equal Alternate Syntax (!=)", // This should be exactly equivalent to <>, so this is only a subset
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 10::int2 != 10::int2;`,
@@ -2994,6 +3036,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Bit And",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 13::int2 & 7::int2;`,
@@ -3035,6 +3080,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Bit Or",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 13::int2 | 7::int2;`,
@@ -3076,6 +3124,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Bit Xor",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 13::int2 # 7::int2;`,
@@ -3117,6 +3168,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Negate",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT -(7::float4);`,
@@ -3150,6 +3204,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Unary Plus",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT +(7::float4);`,
@@ -3179,6 +3236,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Binary JSON",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT '[{"a":"foo"},{"b":"bar"},{"c":"baz"}]'::json -> 2;`,
@@ -3356,6 +3416,9 @@ func TestOperators(t *testing.T) {
 		},
 		{
 			Name: "Concatenate",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT 'Hello, ' || 'World!';`,
@@ -3403,11 +3466,11 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '2000-01-01 00:00:00-08'::timestamptz || ' happy new year';`,
-					Expected: []sql.Row{{"2000-01-01 00:00:00-08 happy new year"}},
+					Expected: []sql.Row{{"2000-01-01 08:00:00+00 happy new year"}},
 				},
 				{
 					Query:    `SELECT 'hello ' || '2000-01-01 00:00:00-08'::timestamptz;`,
-					Expected: []sql.Row{{"hello 2000-01-01 00:00:00-08"}},
+					Expected: []sql.Row{{"hello 2000-01-01 08:00:00+00"}},
 				},
 				{
 					Query:    `SELECT '00:00:00'::time || ' midnight';`,

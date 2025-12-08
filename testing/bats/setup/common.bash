@@ -10,11 +10,7 @@ nativebatsdir() { echo `nativepath $BATS_TEST_DIRNAME/$1`; }
 batshelper() { echo `nativebatsdir helper/$1`; }
 
 setup_common() {
-    run psql --version
-    if [[ ! "$output" =~ "(PostgreSQL) 15" ]] && [[ ! "$output" =~ "(PostgreSQL) 16" ]]; then
-        echo "PSQL must be version 15, got $output"
-        return 1
-    fi
+    psql --version
 
     export PATH=$PATH:~/go/bin
     cd $BATS_TMPDIR

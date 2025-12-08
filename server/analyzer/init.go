@@ -21,6 +21,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 
+	"github.com/dolthub/doltgresql/server/index"
+
 	pgexpression "github.com/dolthub/doltgresql/server/expression"
 )
 

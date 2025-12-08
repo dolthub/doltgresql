@@ -21,6 +21,16 @@ import (
 )
 
 func TestSequences(t *testing.T) {
+	// special setup script that drops and creates a table >1k times to ensure that sequence
+	// name generation still works
+	dropAndCreateTableSetUpScript := []string{
+		"create table serial_table (pk serial primary key);",
+		"drop table serial_table;",
+	}
+	for i := 0; i < 10; i++ {
+		dropAndCreateTableSetUpScript = append(dropAndCreateTableSetUpScript, dropAndCreateTableSetUpScript...)
+	}
+
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Basic CREATE SEQUENCE and DROP SEQUENCE",
@@ -847,6 +857,38 @@ func TestSequences(t *testing.T) {
 				{
 					Query:    "SELECT * FROM pg_catalog.pg_sequence;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "seq name generation",
+			SetUpScript: []string{
+				"CREATE SEQUENCE my_table_id_seq;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE TABLE my_table (id SERIAL PRIMARY KEY, val INT);",
+				},
+				{
+					Query: "select nextval('my_table_id_seq1');",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+				{
+					Query: "Select count(*) from pg_catalog.pg_sequence where seqrelid = 'my_table_id_seq1'::regclass;",
+					Expected: []sql.Row{
+						{1},
+					},
+				},
+			},
+		},
+		{
+			Name:        "drop and create table with same name (issue 659)",
+			SetUpScript: dropAndCreateTableSetUpScript,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "create table serial_table (pk serial primary key);",
 				},
 			},
 		},

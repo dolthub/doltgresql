@@ -108,10 +108,13 @@ jobs:
             -exec rm -rf {} \;
       - name: Build Binaries
         id: build_binaries
+        shell: bash -ex {0}
         run: |
           latest=$(git rev-parse HEAD)
           echo "commitish=$latest" >> $GITHUB_OUTPUT
-          GO_BUILD_VERSION=1.25 scripts/build_binaries.sh
+          GO_BUILD_VERSION=1.25 scripts/build_all_binaries.sh
+      - name: Fix ownership of build artifacts
+        run: sudo chown -R "$USER:$USER" out
       - name: Create Release
         id: create_release
         uses: dolthub/create-release@v2
@@ -121,7 +124,14 @@ jobs:
           tag_name: v${{ needs.format-version.outputs.version }}
           release_name: ${{ needs.format-version.outputs.version }}
           draft: false
+          prerelease: true
           commitish: ${{ steps.build_binaries.outputs.commitish }}
+      - name: Create install script
+        id: create-install-script
+        shell: bash
+        run: scripts/build_install_script.sh
+        env:
+          DOLTGRES_VERSION: ${{ needs.format-version.outputs.version }}
       - name: Upload Linux AMD64 Distro
         id: upload-linux-amd64-distro
         uses: dolthub/upload-release-asset@v2
@@ -182,6 +192,16 @@ jobs:
           asset_path: out/doltgresql-windows-amd64.7z
           asset_name: doltgresql-windows-amd64.7z
           asset_content_type: application/x-7z-compressed
+      - name: Upload install script
+        id: upload-install-script
+        uses: dolthub/upload-release-asset@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: out/install.sh
+          asset_name: install.sh
+          asset_content_type: text/plain
 
   create-release-notes:
     needs: [format-version, create-release]
@@ -204,3 +224,14 @@ jobs:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
           event-type: release-doltgres
           client-payload: '{"version": "${{ needs.format-version.outputs.version }}", "actor": "${{ github.actor }}"}'
+
+  docker-image-push:
+    needs: [format-version, create-release]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Trigger Push Docker Image
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          event-type: push-docker-image
+          client-payload: '{"version": "${{ needs.format-version.outputs.version }}", "release_id": "${{ needs.create-pgo-release.outputs.release_id }}" }'

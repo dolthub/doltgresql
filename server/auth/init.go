@@ -15,12 +15,37 @@
 package auth
 
 import (
+	"os"
+
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/go-mysql-server/sql"
 )
+
+// doltgresPasswordEnvVar is the name of the environment variable that can be used to set the password for the
+// default user.
+const doltgresPasswordEnvVar = "DOLTGRES_PASSWORD"
+
+// doltgresUserEnvVar is the name of the environment variable that can be used to set the password for the
+// default user.
+const doltgresUserEnvVar = "DOLTGRES_USER"
 
 // Init handles all initialization needs in this package.
 func Init(dEnv *env.DoltEnv) {
 	dbInit(dEnv)
 	sql.SetAuthorizationHandlerFactory(AuthorizationHandlerFactory{})
+}
+
+// GetSuperUserAndPassword returns the superuser and password for the server to use, as defined in the environment
+func GetSuperUserAndPassword() (string, string) {
+	password := "password"
+	if envPassword := os.Getenv(doltgresPasswordEnvVar); envPassword != "" {
+		password = envPassword
+	}
+
+	user := "postgres"
+	if envUser := os.Getenv(doltgresUserEnvVar); envUser != "" {
+		user = envUser
+	}
+
+	return user, password
 }

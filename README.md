@@ -35,31 +35,64 @@ If you're excited about this project, you can also help speed it along in a few 
 
 Doltgres has a [documentation website](https://docs.doltgres.com) with extensive documentation.
 
+# Installation
+
+To install Doltgres on Linx or Mac based systems run this command in your terminal:
+
+```
+sudo bash -c 'curl -L https://github.com/dolthub/doltgresql/releases/latest/download/install.sh | bash'
+```
+
+This will download the latest doltgres release and put it in `/usr/local/bin/`, which is probably on
+your `$PATH`.
+
+## Windows
+
+Download the latest Microsoft Installer (`.msi` file) in
+[releases](https://github.com/dolthub/doltgresql/releases) and run it.
+
+## Docker
+
+Doltgres publishes an official Docker image on every release:
+
+* [dolthub/doltgresql](https://hub.docker.com/r/dolthub/doltgresql)
+
+Run it on your local Docker like this:
+
+```bash
+$ docker run -e DOLTGRES_PASSWORD=myPassword -p 5432:5432 dolthub/doltgresql:latest
+```
+
+## Building From Source
+
+To produce a binary from source code, run `./scripts/build.sh`.
+
 # Getting Started
 
-1. Download the latest release of `doltgres`
-2. Put `doltgres` on your `PATH`
-3. Run `doltgres`. This will create a `postgres` user and a `postgres` database in
-   `~/doltgres/databases`. The default password will be `password`, just like in Postgres. You can
-   use a `config.yaml` file or set the `DOLTGRES_DATA_DIR` environment variable to use a different
-   directory for your databases.
+1. Run `doltgres`. This will create a `postgres` user and a `postgres` database in the current
+directory. The default password will be `password`, just like in Postgres. You can use a
+`config.yaml` file or set the `DOLTGRES_DATA_DIR` environment variable to use a different directory
+for your databases.
+
+You can change the name and password of the super-user by setting the `DOLTGRES_USER` and
+`DOLTGRES_PASSWORD` environment variables before running `doltgres` for the first time.
 
 ```bash
 $ doltgres
 INFO[0000] Server ready. Accepting connections.
 ```
 
-4. Install Postgres to get the `psql` tool. I used Homebrew to install Postgres on my Mac.  This
-   requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path. We only need Postgres
-   in order to use `psql`, so feel free to skip this step if you already have `psql`, or if you
-   have another Postgres client you use instead.
+2. Install Postgres to get the `psql` tool. I used Homebrew to install Postgres on my Mac.  This
+requires I manually add `/opt/homebrew/opt/postgresql@15/bin` to my path. We only need Postgres in
+order to use `psql`, so feel free to skip this step if you already have `psql`, or if you have
+another Postgres client you use instead.
 
 ```
 export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
 ```
 
-5. Open a new terminal. Connect with the following command: `PGPASSWORD=password psql -h localhost
-   -U postgres`. This will connect to the `postgres` database with the `postgres` user.
+3. Open a new terminal. Connect with the following command: `PGPASSWORD=password psql -h localhost
+-U postgres`. This will connect to the `postgres` database with the `postgres` user.
 
 ```bash
 $ PGPASSWORD=password psql -h localhost
@@ -69,7 +102,7 @@ Type "help" for help.
 postgres=>
 ```
 
-6. Create a `getting_started` database. Create the `getting_started` example tables.
+4. Create a `getting_started` database. Create the `getting_started` example tables.
 
 ```sql
 postgres=> create database getting_started;
@@ -113,7 +146,7 @@ getting_started=> \d
 (3 rows)
 ```
 
-7. Make a Dolt Commit.
+5. Make a Dolt Commit.
 
 ```sql
 getting_started=> select * from dolt.status;
@@ -144,7 +177,7 @@ getting_started=> select dolt_commit('-m', 'Created initial schema');
 (1 row)
 ```
 
-8. View the Dolt log.
+6. View the Dolt log.
 
 ```sql
 getting_started=> select * from dolt.log;
@@ -155,12 +188,8 @@ getting_started=> select * from dolt.log;
 (2 rows)
 ```
 
-9. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
+7. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
    to test out more Doltgres versioning functionality.
-
-# Building From Source
-
-Please follow the [Contributor's Guide](https://github.com/dolthub/doltgresql/blob/main/CONTRIBUTING.md#getting-set-up) to learn how to build from source.
 
 # Limitations and differences from Dolt
 
