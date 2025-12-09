@@ -56,6 +56,9 @@ type doltgresDoltStatusTable struct {
 	srcDoltStatus *doltdtables.StatusTable
 }
 
+var _ sql.Table = (*doltgresDoltStatusTable)(nil)
+var _ sql.StatisticsTable = (*doltgresDoltStatusTable)(nil)
+
 // Name returns the name of Doltgres' version of the Dolt status table.
 func (w *doltgresDoltStatusTable) Name() string {
 	return w.srcDoltStatus.Name()
