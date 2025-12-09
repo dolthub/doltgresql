@@ -36,7 +36,7 @@ var _ adapters.TableAdapter = DoltgresDoltStatusTableAdapter{}
 // NewTable returns a new [sql.Table] for Doltgres' version of [doltdtables.StatusTable].
 func (a DoltgresDoltStatusTableAdapter) NewTable(ctx *sql.Context, tableName string, ddb *doltdb.DoltDB, ws *doltdb.WorkingSet, rp env.RootsProvider[*sql.Context]) sql.Table {
 	doltTable := doltdtables.NewStatusTableWithNoAdapter(ctx, tableName, ddb, ws, rp)
-	return &doltgresDoltStatusTable[*doltdtables.StatusTable]{
+	return &doltgresDoltStatusTable{
 		srcDoltStatus: doltTable.(*doltdtables.StatusTable),
 	}
 }
@@ -52,20 +52,17 @@ const DoltgresDoltStatusTableName = "status"
 // doltgresDoltStatusTable translates the [doltdtables.StatusTable] into a Doltgres-compatible version.
 //
 // doltgresDoltStatusTable implements the [sql.Table] and [sql.StatisticsTable] interfaces.
-type doltgresDoltStatusTable[T interface {
-	sql.Table
-	sql.StatisticsTable
-}] struct {
-	srcDoltStatus T
+type doltgresDoltStatusTable struct {
+	srcDoltStatus *doltdtables.StatusTable
 }
 
 // Name returns the name of Doltgres' version of the Dolt status table.
-func (w *doltgresDoltStatusTable[T]) Name() string {
+func (w *doltgresDoltStatusTable) Name() string {
 	return w.srcDoltStatus.Name()
 }
 
 // Schema returns the schema for Doltgres' version of the Dolt status table.
-func (w *doltgresDoltStatusTable[T]) Schema() sql.Schema {
+func (w *doltgresDoltStatusTable) Schema() sql.Schema {
 	return []*sql.Column{
 		{Name: "table_name", Type: pgtypes.Text, Source: DoltgresDoltStatusTableName, PrimaryKey: true, Nullable: false},
 		{Name: "staged", Type: pgtypes.Bool, Source: DoltgresDoltStatusTableName, PrimaryKey: true, Nullable: false},
@@ -74,24 +71,24 @@ func (w *doltgresDoltStatusTable[T]) Schema() sql.Schema {
 }
 
 // String returns the string representation of [doltdtables.StatusTable].
-func (w *doltgresDoltStatusTable[T]) String() string {
+func (w *doltgresDoltStatusTable) String() string {
 	return w.srcDoltStatus.String()
 }
 
 // Collation returns the [sql.CollationID] from [doltdtables.StatusTable].
-func (w *doltgresDoltStatusTable[T]) Collation() sql.CollationID {
+func (w *doltgresDoltStatusTable) Collation() sql.CollationID {
 	return w.srcDoltStatus.Collation()
 }
 
 // Partitions returns a [sql.PartitionIter] on the partitions of [doltdtables.StatusTable].
-func (w *doltgresDoltStatusTable[T]) Partitions(ctx *sql.Context) (sql.PartitionIter, error) {
+func (w *doltgresDoltStatusTable) Partitions(ctx *sql.Context) (sql.PartitionIter, error) {
 	return w.srcDoltStatus.Partitions(ctx)
 }
 
 // PartitionRows returns a wrapped [sql.RowIter] for the rows in |partition| from
 // [doltdtables.StatusTable.PartitionRows] to later apply column transformations that match Doltgres' version of the
 // Dolt status table schema.
-func (w *doltgresDoltStatusTable[T]) PartitionRows(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
+func (w *doltgresDoltStatusTable) PartitionRows(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	iter, err := w.srcDoltStatus.PartitionRows(ctx, partition)
 	if err != nil {
 		return nil, err
@@ -100,12 +97,12 @@ func (w *doltgresDoltStatusTable[T]) PartitionRows(ctx *sql.Context, partition s
 }
 
 // DataLength returns the length of the data in bytes from [doltdtables.StatusTable].
-func (w *doltgresDoltStatusTable[T]) DataLength(ctx *sql.Context) (uint64, error) {
+func (w *doltgresDoltStatusTable) DataLength(ctx *sql.Context) (uint64, error) {
 	return w.srcDoltStatus.DataLength(ctx)
 }
 
 // RowCount returns exact (true) or estimate (false) number of rows from [doltdtables.StatusTable].
-func (w *doltgresDoltStatusTable[T]) RowCount(ctx *sql.Context) (uint64, bool, error) {
+func (w *doltgresDoltStatusTable) RowCount(ctx *sql.Context) (uint64, bool, error) {
 	return w.srcDoltStatus.RowCount(ctx)
 }
 
