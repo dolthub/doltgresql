@@ -100,25 +100,7 @@ func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 	if len(overloads) == 0 {
 		// We're going to assume that this is calling one of the few remaining Dolt stored procedures
-		doltProcedureCallable, ok := functions.DoltProcedureCallables[c.ProcedureName]
-		if !ok {
-			return nil, err
-		}
-
-		args := make([]any, len(c.Exprs))
-		for i, expr := range c.Exprs {
-			val, err := expr.Eval(ctx, nil)
-			if err != nil {
-				return nil, err
-			}
-			args[i] = val
-		}
-		_, err := doltProcedureCallable(ctx, [2]*pgtypes.DoltgresType{}, args)
-		if err != nil {
-			return nil, err
-		}
-
-		return sql.RowsToRowIter(), nil
+		return nil, functions.ErrDoltProcedureSelectOnly
 	}
 
 	overloadTree := framework.NewOverloads()
