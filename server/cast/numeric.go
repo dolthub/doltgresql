@@ -40,7 +40,7 @@ func numericAssignment() {
 			if d.LessThan(pgtypes.NumericValueMinInt16) || d.GreaterThan(pgtypes.NumericValueMaxInt16) {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "smallint out of range")
 			}
-			return int16(d.IntPart()), nil
+			return int16(d.Round(0).IntPart()), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
@@ -51,7 +51,7 @@ func numericAssignment() {
 			if d.LessThan(pgtypes.NumericValueMinInt32) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "integer out of range")
 			}
-			return int32(d.IntPart()), nil
+			return int32(d.Round(0).IntPart()), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
@@ -62,7 +62,7 @@ func numericAssignment() {
 			if d.LessThan(pgtypes.NumericValueMinInt64) || d.GreaterThan(pgtypes.NumericValueMaxInt64) {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "bigint out of range")
 			}
-			return int64(d.IntPart()), nil
+			return int64(d.Round(0).IntPart()), nil
 		},
 	})
 }
