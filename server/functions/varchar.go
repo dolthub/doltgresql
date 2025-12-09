@@ -48,11 +48,11 @@ var varcharin = framework.Function3{
 		if maxChars < pgtypes.StringUnbounded {
 			return input, nil
 		}
-		input, runeLength := truncateString(input, maxChars)
+		truncated, runeLength := truncateString(input, maxChars)
 		if runeLength > maxChars {
-			return input, errors.Errorf("value too long for type varying(%v)", maxChars)
+			return input, errors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type varying(%v)", maxChars))
 		} else {
-			return input, nil
+			return truncated, nil
 		}
 	},
 }

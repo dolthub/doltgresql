@@ -427,7 +427,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 
 	castResult, err := castFn(ctx, val, t)
 	if err != nil && errors.Is(err, ErrCastOutOfRange) {
-		return nil, sql.OutOfRange, nil
+		return castResult, sql.OutOfRange, nil
 	} else if err != nil {
 		return nil, sql.OutOfRange, err
 	}
