@@ -23,12 +23,10 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
 )
 
-func init() {
-	adapters.DoltTableAdapterRegistry.AddAdapter(doltdb.StatusTableName, DoltgresDoltStatusTableAdapter{}, DoltgresDoltStatusTableName)
-}
-
 // Init handles initialization of all Postgres-specific and Doltgres-specific Dolt system tables.
 func Init() {
+	adapters.DoltTableAdapterRegistry.AddAdapter(doltdb.StatusTableName, DoltgresDoltStatusTableAdapter{}, DoltgresDoltStatusTableName)
+
 	// Table names
 	doltdb.GetBranchesTableName = getBranchesTableName
 	doltdb.GetDocTableName = getDocTableName
