@@ -92,6 +92,7 @@ type DoltgresType struct {
 var _ sql.ExtendedType = &DoltgresType{}
 var _ sql.NullType = &DoltgresType{}
 var _ sql.StringType = &DoltgresType{}
+var _ sql.NumberType = &DoltgresType{}
 
 // NewUnresolvedDoltgresType returns DoltgresType that is not resolved.
 // The type will have the schema and name defined with given values, with IsUnresolved == true.
@@ -613,6 +614,46 @@ func (t *DoltgresType) MaxCharacterLength() int64 {
 		return StringUnbounded
 	} else {
 		return int64(t.TypLength)
+	}
+}
+
+// IsNumericType implements the sql.NumberType interface.
+func (t *DoltgresType) IsNumericType() bool {
+	switch t.TypCategory {
+	case TypeCategory_NumericTypes:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsFloat implements the sql.NumberType interface.
+func (t *DoltgresType) IsFloat() bool {
+	switch t.ID.TypeName() {
+	case "float4", "float8", "numeric", "decimal":
+		return true
+	default:
+		return false
+	}
+}
+
+// DisplayWidth implements the sql.NumberType interface.
+func (t *DoltgresType) DisplayWidth() int {
+	switch t.ID.TypeName() {
+	case "int2":
+		return 6
+	case "int4":
+		return 11
+	case "int8":
+		return 20
+	case "float4":
+		return 14
+	case "float8":
+		return 25
+	case "numeric", "decimal":
+		return 131089 // maximum display width for numeric/decimal in Postgres
+	default:
+		return 0
 	}
 }
 
