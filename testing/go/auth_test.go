@@ -27,15 +27,15 @@ import (
 )
 
 const (
-	superUser = "doltgres_super"
-	superPass = "admin_password"
-	basicUser = "doltgres_basic"
-	basicPass = "user_password"
+	authTestSuperUser = "auth_test_super"
+	authTestSuperPass = "auth_test_spass"
+	authTestBasicUser = "auth_test_basic"
+	authTestBasicPass = "auth_test_bpass"
 )
 
 var (
-	createSuperUser = fmt.Sprintf("create user if not exists '%s' with superuser password '%s';", superUser, superPass)
-	createBasicUser = fmt.Sprintf("create user if not exists '%s' with password '%s'", basicUser, basicPass)
+	createSuperUser = fmt.Sprintf("create user if not exists '%s' with superuser password '%s';", authTestSuperUser, authTestSuperPass)
+	createBasicUser = fmt.Sprintf("create user if not exists '%s' with password '%s'", authTestBasicUser, authTestBasicPass)
 )
 
 func TestAuthTests(t *testing.T) {
@@ -552,10 +552,10 @@ func TestAuthTests(t *testing.T) {
 	})
 }
 
-// TestAuthDoltProcedures checks that Dolt procedures apply permission checks for SUPERUSERs and basic users in CALL and
-// SELECT statements. We test both to avoid regressions in [node.Call], where previous Doltgres' versions fell back to
-// the node runner, which does not have the ability to check permission. Some procedures also use [os] package calls
-// like [os.TempDir] which can crash [filesys.InMemFS], so we use the local file system.
+// TestAuthDoltProcedures tests that Dolt procedure functions apply permission checks for SUPERUSERs and basic users in
+// SELECT statements. We test both CALL and SELECT to avoid regressions in [node.Call], where previous Doltgres'
+// versions fell back to the node runner (on CALL an error is returned to use SELECT now). Some procedures also use [os]
+// package calls like [os.TempDir] which can crash [filesys.InMemFS], so we use the local file system.
 //
 // Each time a new Dolt procedure is introduced in a ScriptTest, it's grouped into a set of related procedures. Each set
 // is separated by a new line.
@@ -568,94 +568,90 @@ func TestAuthDoltProcedures(t *testing.T) {
 				createSuperUser,
 				"create table test_table (v int);",
 				"insert into test_table values (1);",
-				"call dolt_add('test_table');",
-				"call dolt_commit('-m', 'add test table');",
+				"select dolt_add('test_table');",
+				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				assertAsSuper(fmt.Sprintf("call dolt_backup('sync-url', '%s');", fileUrl("bak1")), []sql.Row{}, ""),
-				assertAsSuper(fmt.Sprintf("call dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), []sql.Row{}, ""),
+				assertAsSuper(fmt.Sprintf("call dolt_backup('sync-url', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper(fmt.Sprintf("call dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_checkout('-b', 'test');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_checkout('-b', 'test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_branch('new_branch');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_branch('new_branch');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				assertAsSuper("insert into test_table values (2);", []sql.Row{}, ""),
-				assertAsSuper("call dolt_add('.');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_commit('-m', 'amend test table');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_add('.');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_commit('-m', 'amend test table');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_checkout('main');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_cherry_pick('test');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_checkout('main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_cherry_pick('test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_clean('--dry-run');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_clean('--dry-run');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper(fmt.Sprintf("call dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), []sql.Row{}, ""),
+				assertAsSuper(fmt.Sprintf("call dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				// TODO(elianddb): MySQL dialect
-				//  assertAsSuper("call dolt_commit_hash_out(@Var, '-am', 'add val 3 to test table')", []sql.Row{}, ""),
+				assertAsSuper("set authtest.hash = ''", []sql.Row{}, ""),
+				assertAsSuper("call dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table')", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_checkout('-b', 'conflict');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_checkout('-b', 'conflict');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				assertAsSuper("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
-				assertAsSuper("call dolt_commit('-am', 'amend 1 to -1');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_checkout('main');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_commit('-am', 'amend 1 to -1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_checkout('main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				assertAsSuper("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
-				assertAsSuper("call dolt_commit('-am', 'amend 2 to -2');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_commit('-am', 'amend 2 to -2');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				assertAsSuper("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				assertAsSuper("call dolt_merge('conflict');", nil, ""),
+				assertAsSuper("call dolt_merge('conflict');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_conflicts_resolve('--theirs', 'test_table');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				// TODO(elianddb): unsupported type uint64
-				//  assertAsSuper("call dolt_count_commits('--from=main', '--to=test');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_count_commits('--from=main', '--to=test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_backup('remove', 'bak1');", []sql.Row{}, ""),
-				assertAsSuper(fmt.Sprintf("call dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), []sql.Row{}, ""),
+				assertAsSuper("call dolt_backup('remove', 'bak1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper(fmt.Sprintf("call dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_fetch('origin', 'main');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
-				assertAsSuper("call dolt_undrop('cloned_bak1');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_undrop('cloned_bak1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_commit('-am', 'resolve conflicts');", []sql.Row{}, ""),
-				// TODO(elianddb): table test_table does not exist (tried public.test_table too)
-				//  assertAsSuper("call dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_commit('-am', 'resolve conflicts');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_update_column_tag('test_table', 'v', '123');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
 				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
-				// 	assertAsSuper("call dolt_purge_dropped_databases();", []sql.Row{}, ""),
+				skipAssertAsSuper("call dolt_purge_dropped_databases();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_checkout('test');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_rebase('-i', 'main');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_rebase('--abort');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_checkout('test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_rebase('-i', 'main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_rebase('--abort');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				assertAsSuper("create table to_rm (v int);", []sql.Row{}, ""),
-				assertAsSuper("call dolt_add('to_rm');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_commit('-m', 'clean state to_rm');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_rm('to_rm');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_add('to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_commit('-m', 'clean state to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_rm('to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_gc('--shallow');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_gc('--shallow');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
-				//  assertAsSuper("call dolt_thread_dump();", []sql.Row{}, ""),
+				skipAssertAsSuper("call dolt_thread_dump();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_commit('-m', 'rm to_rm');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_push('origin', 'test');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_pull('origin', 'test');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_commit('-m', 'rm to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_push('origin', 'test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_pull('origin', 'test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_reset('--soft', 'HEAD~1');", []sql.Row{}, ""),
-				// TODO(elianddb): unsupported type int
-				//  assertAsSuper("call dolt_stash('push', 'to_rm');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_reset('--soft', 'HEAD~1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_stash('push', 'to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsSuper("call dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{}, ""),
-				assertAsSuper("call dolt_verify_constraints('--all');", []sql.Row{}, ""),
+				assertAsSuper("call dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsSuper("call dolt_verify_constraints('--all');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				// TODO(elianddb): provider does not implement ExtendedStatsProvider
-				// 	assertAsSuper("call dolt_stats_info('--short');", []sql.Row{}, ""),
-				// 	assertAsSuper("call dolt_stats_wait();", []sql.Row{}, ""),
-				//  assertAsSuper("call dolt_stats_flush();", []sql.Row{}, ""),
-				//  assertAsSuper("call dolt_stats_gc();", []sql.Row{}, ""),
-				//  assertAsSuper("call dolt_stats_purge();", []sql.Row{}, ""),
-				//  assertAsSuper("call dolt_stats_restart();", []sql.Row{}, ""),
-				// 	assertAsSuper("call dolt_stats_once();", []sql.Row{}, ""),
+				assertAsSuper("call dolt_stats_info('--short');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+
+				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
+				skipAssertAsSuper("call dolt_stats_wait();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsSuper("call dolt_stats_flush();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsSuper("call dolt_stats_gc();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsSuper("call dolt_stats_purge();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsSuper("call dolt_stats_restart();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsSuper("call dolt_stats_once();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 			},
 		},
 		{
@@ -663,101 +659,99 @@ func TestAuthDoltProcedures(t *testing.T) {
 			Name:               "Basic user authentication for CALL executing Dolt stored procedures",
 			SetUpScript: []string{
 				createBasicUser,
-				fmt.Sprintf("alter user %s createdb;", basicUser),
+				fmt.Sprintf("alter user %s createdb;", authTestBasicUser),
 				createSuperUser,
 				"create table test_table (v int);",
 				"insert into test_table values (1);",
-				"call dolt_add('test_table');",
-				"call dolt_commit('-m', 'add test table');",
+				"select dolt_add('test_table');",
+				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				assertAsBasic(fmt.Sprintf("call dolt_backup('sync-url', '%s');", fileUrl("bak1")), nil, functions.ErrProcedurePermissionDenied.Error()),
-				assertAsBasic(fmt.Sprintf("call dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic(fmt.Sprintf("call dolt_backup('sync-url', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic(fmt.Sprintf("call dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				// Grant user access to test_table before checkout to avoid merge conflict in later cherry-pick.
 				grantBasic("schema public", "all"),
 				grantBasic("test_table", "select", "insert", "delete", "update"),
-				assertAsBasic("call dolt_checkout('-b', 'test');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_checkout('-b', 'test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_branch('new_branch');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_branch('new_branch');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				assertAsBasic("insert into test_table values (2);", []sql.Row{}, ""),
-				assertAsBasic("call dolt_add('.');", []sql.Row{}, ""),
-				assertAsBasic("call dolt_commit('-m', 'amend test table');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_add('.');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_commit('-m', 'amend test table');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_checkout('main');", []sql.Row{}, ""),
-				assertAsBasic("call dolt_cherry_pick('test');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_checkout('main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_cherry_pick('test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_clean('--dry-run');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_clean('--dry-run');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic(fmt.Sprintf("call dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), []sql.Row{}, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic(fmt.Sprintf("call dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				assertAsBasic("create database cloned_bak1;", []sql.Row{}, ""),
 
-				// TODO(elianddb): MySQL dialect
-				//  assertAsBasic("call dolt_commit_hash_out(@Var, '-am', 'add val 3 to test table')", []sql.Row{}, ""),
+				assertAsSuper("set authtest.hash = '';", []sql.Row{}, ""),
+				assertAsSuper("call dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_checkout('-b', 'conflict');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_checkout('-b', 'conflict');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				assertAsBasic("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
-				assertAsBasic("call dolt_commit('-am', 'amend 1 to -1');", []sql.Row{}, ""),
-				assertAsBasic("call dolt_checkout('main');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_commit('-am', 'amend 1 to -1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_checkout('main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				assertAsBasic("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
-				assertAsBasic("call dolt_commit('-am', 'amend 2 to -2');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_commit('-am', 'amend 2 to -2');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				assertAsBasic("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				assertAsBasic("call dolt_merge('conflict');", nil, ""),
+				assertAsBasic("call dolt_merge('conflict');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_conflicts_resolve('--theirs', 'test_table');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				// TODO(elianddb): unsupported type uint64
-				//  assertAsBasic("call dolt_count_commits('--from=main', '--to=test');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_count_commits('--from=main', '--to=test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_backup('remove', 'bak1');", nil, functions.ErrProcedurePermissionDenied.Error()),
-				assertAsBasic(fmt.Sprintf("call dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("call dolt_backup('remove', 'bak1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic(fmt.Sprintf("call dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_fetch('origin', 'main');", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("call dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_undrop('cloned_bak1');", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("call dolt_undrop('cloned_bak1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_commit('-am', 'resolve conflicts');", []sql.Row{}, ""),
-				// TODO(elianddb): table test_table does not exist (tried public.test_table too)
-				//  assertAsBasic("call dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_commit('-am', 'resolve conflicts');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_update_column_tag('test_table', 'v', '123');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				assertAsBasic("drop database cloned_bak1;", []sql.Row{}, ""),
 				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
-				// 	assertAsBasic("call dolt_purge_dropped_databases();", []sql.Row{}, ""),
+				skipAssertAsBasic("call dolt_purge_dropped_databases();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_checkout('test');", []sql.Row{}, ""),
-				assertAsBasic("call dolt_rebase('-i', 'main');", []sql.Row{}, ""),
-				assertAsBasic("call dolt_rebase('--abort');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_checkout('test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_rebase('-i', 'main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_rebase('--abort');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				assertAsBasic("create table to_rm (v int);", []sql.Row{}, ""),
-				assertAsBasic("call dolt_add('to_rm');", []sql.Row{}, ""),
-				assertAsBasic("call dolt_commit('-m', 'clean state to_rm');", []sql.Row{}, ""),
-				assertAsBasic("call dolt_rm('to_rm');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_add('to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_commit('-m', 'clean state to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_rm('to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_gc('--shallow');", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("call dolt_gc('--shallow');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
-				//  assertAsBasic("call dolt_thread_dump();", []sql.Row{}, ""),
+				skipAssertAsBasic("call dolt_thread_dump();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_commit('-m', 'rm to_rm');", []sql.Row{}, ""),
-				assertAsBasic("call dolt_push('origin', 'test');", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("call dolt_commit('-m', 'rm to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_push('origin', 'test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_pull('origin', 'test');", nil, functions.ErrProcedurePermissionDenied.Error()),
-				assertAsBasic("call dolt_reset('--soft', 'HEAD~1');", []sql.Row{}, ""),
-				// TODO(elianddb): unsupported type int
-				//  assertAsBasic("call dolt_stash('push', 'to_rm');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_pull('origin', 'test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_reset('--soft', 'HEAD~1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_stash('push', 'to_rm');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				assertAsBasic("call dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{}, ""),
-				assertAsBasic("call dolt_verify_constraints('--all');", []sql.Row{}, ""),
+				assertAsBasic("call dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				assertAsBasic("call dolt_verify_constraints('--all');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				// TODO(elianddb): provider does not implement ExtendedStatsProvider
-				// 	assertAsBasic("call dolt_stats_info('--short');", []sql.Row{}, ""),
-				// 	assertAsBasic("call dolt_stats_wait();", []sql.Row{}, ""),
-				//  assertAsBasic("call dolt_stats_flush();", []sql.Row{}, ""),
-				//  assertAsBasic("call dolt_stats_gc();", []sql.Row{}, ""),
-				//  assertAsBasic("call dolt_stats_purge();", []sql.Row{}, ""),
-				//  assertAsBasic("call dolt_stats_restart();", []sql.Row{}, ""),
-				// 	assertAsBasic("call dolt_stats_once();", []sql.Row{}, ""),
+				assertAsBasic("call dolt_stats_info('--short');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+
+				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
+				skipAssertAsBasic("call dolt_stats_wait();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsBasic("call dolt_stats_flush();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsBasic("call dolt_stats_gc();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsBasic("call dolt_stats_purge();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsBasic("call dolt_stats_restart();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				skipAssertAsBasic("call dolt_stats_once();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 			},
 		},
 		{
@@ -767,99 +761,100 @@ func TestAuthDoltProcedures(t *testing.T) {
 				createSuperUser,
 				"create table test_table (v int);",
 				"insert into test_table values (1);",
-				"call dolt_add('test_table');",
-				"call dolt_commit('-m', 'add test table');",
+				"select dolt_add('test_table');",
+				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				assertAsSuper(fmt.Sprintf("select * from dolt_backup('sync-url', '%s');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
-				assertAsSuper(fmt.Sprintf("select * from dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				assertAsSuper(fmt.Sprintf("select dolt_backup('sync-url', '%s');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				assertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
 
-				assertAsSuper("select * from dolt_checkout('-b', 'test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				assertAsSuper("select dolt_checkout('-b', 'test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
 
-				assertAsSuper("select * from dolt_branch('new_branch');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_branch('new_branch');", []sql.Row{{"{0}"}}, ""),
 
 				assertAsSuper("insert into test_table values (2);", []sql.Row{}, ""),
-				assertAsSuper("select * from dolt_add('.');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_add('.');", []sql.Row{{"{0}"}}, ""),
 				assertAsSuper("select length(dolt_commit('-m', 'amend test table')::text) = 34;", []sql.Row{{"t"}}, ""),
 
-				assertAsSuper("select * from dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
-				assertAsSuper("select * from dolt_cherry_pick('test');", nil, ""),
+				assertAsSuper("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				assertAsSuper("select length(dolt_cherry_pick('test')::text);", []sql.Row{{40}}, ""),
 
-				assertAsSuper("select * from dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsSuper(fmt.Sprintf("select * from dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				assertAsSuper(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
 
-				// TODO(elianddb): MySQL dialect
-				// 	assertAsSuper("select * from dolt_commit_hash_out(@Var, '-am', 'add val 3 to test table')", []sql.Row{{"{0}"}}, nil),
+				assertAsSuper("set authtest.hash = '';", []sql.Row{}, ""),
+				// TODO(elianddb): variadic parameter support for Dolt stored procedures functions
+				skipAssertAsSuper("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsSuper("select * from dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
+				assertAsSuper("select dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
 				assertAsSuper("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
 				assertAsSuper("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 34;", []sql.Row{{"t"}}, ""),
-				assertAsSuper("select * from dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				assertAsSuper("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
 				assertAsSuper("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
 				assertAsSuper("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsSuper("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				assertAsSuper("select * from dolt_merge('conflict');", []sql.Row{{"{0,1,\"conflicts found\"}"}}, ""),
+				assertAsSuper("select dolt_merge('conflict');", []sql.Row{{"{0,1,\"conflicts found\"}"}}, ""),
 
-				assertAsSuper("select * from dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
 
 				// TODO(elianddb): unsupported type uint64
-				//  assertAsSuper("select * from dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsSuper("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsSuper("select * from dolt_backup('remove', 'bak1');", []sql.Row{{"{0}"}}, ""),
-				assertAsSuper(fmt.Sprintf("select * from dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_backup('remove', 'bak1');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
 
-				assertAsSuper("select * from dolt_fetch('origin', 'main');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_fetch('origin', 'main');", []sql.Row{{"{0}"}}, ""),
 
 				assertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
-				assertAsSuper("select * from dolt_undrop('cloned_bak1');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_undrop('cloned_bak1');", []sql.Row{{"{0}"}}, ""),
 
 				assertAsSuper("select length(dolt_commit('-am', 'resolve conflicts')::text) = 34;", []sql.Row{{"t"}}, ""),
 				// TODO(elianddb): table test_table does not exist (also tried with public.test_table)
-				//  assertAsSuper("select * from dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsSuper("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
 
 				assertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
-				assertAsSuper("select * from dolt_purge_dropped_databases();", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_purge_dropped_databases();", []sql.Row{{"{0}"}}, ""),
 
-				assertAsSuper("select * from dolt_checkout('test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				assertAsSuper("select dolt_checkout('test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
 				assertAsSuper(
-					"select * from dolt_rebase('-i', 'main');",
+					"select dolt_rebase('-i', 'main');",
 					[]sql.Row{{"{0,\"interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')\"}"}},
 					""),
-				assertAsSuper("select * from dolt_rebase('--abort');", []sql.Row{{"{0,\"Interactive rebase aborted\"}"}}, ""),
+				assertAsSuper("select dolt_rebase('--abort');", []sql.Row{{"{0,\"Interactive rebase aborted\"}"}}, ""),
 
 				assertAsSuper("create table to_rm (v int);", []sql.Row{}, ""),
-				assertAsSuper("select * from dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
 				assertAsSuper("select length(dolt_commit('-m', 'clean state to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
-				assertAsSuper("select * from dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsSuper("select * from dolt_gc('--shallow');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_gc('--shallow');", []sql.Row{{"{0}"}}, ""),
 
-				// The result set is non-deterministic; it can change from directory changes and memory addresses.
-				assertAsSuper("select * from dolt_thread_dump();", nil, ""),
+				// The paths for files, memory addresses, and number of goroutines can be different per OS.
+				assertAsSuper("select instr(dolt_thread_dump()::text, 'goroutine') > 0;", []sql.Row{{"t"}}, ""),
 
 				assertAsSuper("select length(dolt_commit('-m', 'rm to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsSuper(
-					"select * from dolt_push('origin', 'test');",
+					"select dolt_push('origin', 'test');",
 					[]sql.Row{{fmt.Sprintf("{0,\"To %s\n * [new branch]          test -> test\"}", fileUrl("bak1"))}},
 					""),
-				assertAsSuper("select * from dolt_pull('origin', 'test');", []sql.Row{{"{0,0,\"Everything up-to-date\"}"}}, ""),
+				assertAsSuper("select dolt_pull('origin', 'test');", []sql.Row{{"{0,0,\"Everything up-to-date\"}"}}, ""),
 
-				assertAsSuper("select * from dolt_reset('--soft', 'HEAD~1');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{"{0}"}}, ""),
 				// TODO(elianddb): unsupported type int
-				//  assertAsSuper("select * from dolt_stash('push', 'to_rm');", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsSuper("select dolt_stash('push', 'to_rm');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsSuper("select * from dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{"{0}"}}, ""),
-				assertAsSuper("select * from dolt_verify_constraints('--all');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{"{0}"}}, ""),
+				assertAsSuper("select dolt_verify_constraints('--all');", []sql.Row{{"{0}"}}, ""),
 
 				// TODO(elianddb): provider does not implement ExtendedStatsProvider
-				// 	assertAsSuper("select * from dolt_stats_info('--short');", []sql.Row{{"{0}"}}),
-				// 	assertAsSuper("select * from dolt_stats_wait();", []sql.Row{{"{0}"}}),
-				//  assertAsSuper("select * from dolt_stats_flush();", []sql.Row{{"{0}"}}),
-				//  assertAsSuper("select * from dolt_stats_gc();", []sql.Row{{"{0}"}}),
-				//  assertAsSuper("select * from dolt_stats_purge();", []sql.Row{{"{0}"}}),
-				//  assertAsSuper("select * from dolt_stats_restart();", []sql.Row{{"{0}"}}),
-				// 	assertAsSuper("select * from dolt_stats_once();", []sql.Row{{"{0}"}}),
+				skipAssertAsSuper("select dolt_stats_info('--short');", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsSuper("select dolt_stats_wait();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsSuper("select dolt_stats_flush();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsSuper("select dolt_stats_gc();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsSuper("select dolt_stats_purge();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsSuper("select dolt_stats_restart();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsSuper("select dolt_stats_once();", []sql.Row{{"{0}"}}, ""),
 			},
 		},
 		{
@@ -867,150 +862,153 @@ func TestAuthDoltProcedures(t *testing.T) {
 			Name:               "Basic user authorization for SELECT executing Dolt stored procedures",
 			SetUpScript: []string{
 				createBasicUser,
-				fmt.Sprintf("alter user %s createdb;", basicUser),
+				fmt.Sprintf("alter user %s createdb;", authTestBasicUser),
 				createSuperUser,
 				"create table test_table (v int);",
 				"insert into test_table values (1);",
-				"call dolt_add('test_table');",
-				"call dolt_commit('-m', 'add test table');",
+				"select dolt_add('test_table');",
+				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				assertAsBasic(fmt.Sprintf("select * from dolt_backup('sync-url', '%s');", fileUrl("bak1")), nil, functions.ErrProcedurePermissionDenied.Error()),
-				assertAsBasic(fmt.Sprintf("select * from dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic(fmt.Sprintf("select dolt_backup('sync-url', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				assertAsBasic(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				// Grant user access to test_table before checkout to avoid merge conflict in later cherry-pick.
 				grantBasic("schema public", "all"),
 				grantBasic("test_table", "select", "insert", "delete", "update"),
-				assertAsBasic("select * from dolt_checkout('-b', 'test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				assertAsBasic("select dolt_checkout('-b', 'test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
 
-				assertAsBasic("select * from dolt_branch('new_branch');", []sql.Row{{"{0}"}}, ""),
+				assertAsBasic("select dolt_branch('new_branch');", []sql.Row{{"{0}"}}, ""),
 
 				assertAsBasic("insert into test_table values (2);", []sql.Row{}, ""),
-				assertAsBasic("select * from dolt_add('.');", []sql.Row{{"{0}"}}, ""),
+				assertAsBasic("select dolt_add('.');", []sql.Row{{"{0}"}}, ""),
 				assertAsBasic("select length(dolt_commit('-m', 'amend test table')::text) = 34;", []sql.Row{{"t"}}, ""),
 
-				assertAsBasic("select * from dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
-				assertAsBasic("select * from dolt_cherry_pick('test');", nil, ""),
+				assertAsBasic("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				assertAsBasic("select length(dolt_cherry_pick('test')::text);", []sql.Row{{40}}, ""),
 
-				assertAsBasic("select * from dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
+				assertAsBasic("select dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsBasic(fmt.Sprintf("select * from dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 				assertAsBasic("create database cloned_bak1;", []sql.Row{}, ""),
 
-				// TODO(elianddb): MySQL dialect
-				// 	assertAsBasic("select * from dolt_commit_hash_out(@Var, '-am', 'add val 3 to test table')", []sql.Row{{"{0}"}}, nil),
+				assertAsBasic("set authtest.hash = '';", []sql.Row{}, ""),
+				// TODO(elianddb): variadic parameter support for Dolt stored procedures
+				skipAssertAsBasic("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsBasic("select * from dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
+				assertAsBasic("select dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
 				assertAsBasic("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
 				assertAsBasic("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 34;", []sql.Row{{"t"}}, ""),
-				assertAsBasic("select * from dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				assertAsBasic("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
 				assertAsBasic("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
 				assertAsBasic("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
 				assertAsBasic("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				assertAsBasic("select * from dolt_merge('conflict');", []sql.Row{{"{0,1,\"conflicts found\"}"}}, ""),
+				assertAsBasic("select dolt_merge('conflict');", []sql.Row{{"{0,1,\"conflicts found\"}"}}, ""),
 
-				assertAsBasic("select * from dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
+				assertAsBasic("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
 
 				// TODO(elianddb): unsupported type uint64
-				//  assertAsBasic("select * from dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsBasic("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsBasic("select * from dolt_backup('remove', 'bak1');", nil, functions.ErrProcedurePermissionDenied.Error()),
-				assertAsBasic(fmt.Sprintf("select * from dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("select dolt_backup('remove', 'bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				assertAsBasic(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				assertAsBasic("select * from dolt_fetch('origin', 'main');", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("select dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				assertAsBasic("drop database cloned_bak1", []sql.Row{}, ""),
-				assertAsBasic("select * from dolt_undrop('cloned_bak1');", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("select dolt_undrop('cloned_bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				assertAsBasic("select length(dolt_commit('-am', 'resolve conflicts')::text) = 34;", []sql.Row{{"t"}}, ""),
 				// TODO(elianddb): table test_table does not exist (also tried with public.test_table)
-				//  assertAsBasic("select * from dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsBasic("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsBasic("select * from dolt_purge_dropped_databases();", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("select dolt_purge_dropped_databases();", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				assertAsBasic("select * from dolt_checkout('test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				assertAsBasic("select dolt_checkout('test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
 				assertAsBasic(
-					"select * from dolt_rebase('-i', 'main');",
+					"select dolt_rebase('-i', 'main');",
 					[]sql.Row{{"{0,\"interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')\"}"}},
 					""),
-				assertAsBasic("select * from dolt_rebase('--abort');", []sql.Row{{"{0,\"Interactive rebase aborted\"}"}}, ""),
+				assertAsBasic("select dolt_rebase('--abort');", []sql.Row{{"{0,\"Interactive rebase aborted\"}"}}, ""),
 
 				assertAsBasic("create table to_rm (v int);", []sql.Row{}, ""),
-				assertAsBasic("select * from dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
+				assertAsBasic("select dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
 				assertAsBasic("select length(dolt_commit('-m', 'clean state to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
-				assertAsBasic("select * from dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
+				assertAsBasic("select dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsBasic("select * from dolt_gc('--shallow');", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("select dolt_gc('--shallow');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				// The result set is non-deterministic; it can change from directory changes and memory addresses.
-				assertAsBasic("select * from dolt_thread_dump();", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("select dolt_thread_dump();", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				assertAsBasic("select length(dolt_commit('-m', 'rm to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
-				assertAsBasic("select * from dolt_push('origin', 'test');", nil, functions.ErrProcedurePermissionDenied.Error()),
-				assertAsBasic("select * from dolt_pull('origin', 'test');", nil, functions.ErrProcedurePermissionDenied.Error()),
+				assertAsBasic("select dolt_push('origin', 'test');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				assertAsBasic("select dolt_pull('origin', 'test');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				assertAsBasic("select * from dolt_reset('--soft', 'HEAD~1');", []sql.Row{{"{0}"}}, ""),
+				assertAsBasic("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{"{0}"}}, ""),
 				// TODO(elianddb): unsupported type int
-				//  assertAsBasic("select * from dolt_stash('push', 'to_rm');", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsBasic("select dolt_stash('push', 'to_rm');", []sql.Row{{"{0}"}}, ""),
 
-				assertAsBasic("select * from dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{"{0}"}}, ""),
-				assertAsBasic("select * from dolt_verify_constraints('--all');", []sql.Row{{"{0}"}}, ""),
+				assertAsBasic("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{"{0}"}}, ""),
+				assertAsBasic("select dolt_verify_constraints('--all');", []sql.Row{{"{0}"}}, ""),
 
 				// TODO(elianddb): provider does not implement ExtendedStatsProvider
-				// 	assertAsBasic("select * from dolt_stats_info('--short');", []sql.Row{{"{0}"}}),
-				// 	assertAsBasic("select * from dolt_stats_wait();", []sql.Row{{"{0}"}}),
-				//  assertAsBasic("select * from dolt_stats_flush();", []sql.Row{{"{0}"}}),
-				//  assertAsBasic("select * from dolt_stats_gc();", []sql.Row{{"{0}"}}),
-				//  assertAsBasic("select * from dolt_stats_purge();", []sql.Row{{"{0}"}}),
-				//  assertAsBasic("select * from dolt_stats_restart();", []sql.Row{{"{0}"}}),
-				// 	assertAsBasic("select * from dolt_stats_once();", []sql.Row{{"{0}"}}),
+				skipAssertAsBasic("select dolt_stats_info('--short');", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsBasic("select dolt_stats_wait();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsBasic("select dolt_stats_flush();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsBasic("select dolt_stats_gc();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsBasic("select dolt_stats_purge();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsBasic("select dolt_stats_restart();", []sql.Row{{"{0}"}}, ""),
+				skipAssertAsBasic("select dolt_stats_once();", []sql.Row{{"{0}"}}, ""),
 			},
 		},
 	})
 }
 
 // assertAsSuper returns a ScriptTestAssertion for the given |query|, |expectedResultSet|, and/or |expectedErr| using
-// superUser. If nil is provided for |expectedResultSet|, the ScriptTestAssertion.SkipResultsCheck is implicitly set
-// (pass in [][sql.Row]{} to be explicit). This can help with non-deterministic result set values like hashes or memory
-// addresses.
+// authTestSuperUser.
 func assertAsSuper(query string, expectedResultSet []sql.Row, expectedErr string) ScriptTestAssertion {
-	assertion := ScriptTestAssertion{
-		Username:    superUser,
-		Password:    superPass,
+	return ScriptTestAssertion{
+		Username:    authTestSuperUser,
+		Password:    authTestSuperPass,
 		Query:       query,
 		Expected:    expectedResultSet,
 		ExpectedErr: expectedErr,
 	}
-	if expectedResultSet == nil {
-		assertion.SkipResultsCheck = true
-	}
+}
+
+// skipAssertAsSuper skips the returned assertion from assertAsSuper.
+func skipAssertAsSuper(query string, expectedResultSet []sql.Row, expectedErr string) ScriptTestAssertion {
+	assertion := assertAsSuper(query, expectedResultSet, expectedErr)
+	assertion.Skip = true
 	return assertion
 }
 
 // assertAsBasic returns a ScriptTestAssertion for the given |query|, |expectedResultSet|, and/or |expectedErr| using
-// basicUser. If nil is provided for |expectedResultSet|, the ScriptTestAssertion.SkipResultsCheck is implicitly set
-// (pass in [][sql.Row]{} to be explicit). This can help with non-deterministic result set values like hashes or memory
-// addresses.
+// authTestBasicUser.
 func assertAsBasic(query string, expected []sql.Row, expectedErr string) ScriptTestAssertion {
-	assertion := ScriptTestAssertion{
-		Username:    basicUser,
-		Password:    basicPass,
+	return ScriptTestAssertion{
+		Username:    authTestBasicUser,
+		Password:    authTestBasicPass,
 		Query:       query,
 		Expected:    expected,
 		ExpectedErr: expectedErr,
 	}
-	if expected == nil {
-		assertion.SkipResultsCheck = true
-	}
+}
+
+// skipAssertAsBasic skips the returned assertion from assertAsBasic.
+func skipAssertAsBasic(query string, expected []sql.Row, expectedErr string) ScriptTestAssertion {
+	assertion := assertAsBasic(query, expected, expectedErr)
+	assertion.Skip = true
 	return assertion
 }
 
-// grantBasic grants |privileges| to basicUser on given |object| (include the object type in |object| if applicable).
+// grantBasic grants |privileges| to authTestBasicUser on given |object| (include the object type in |object| if
+// applicable).
 func grantBasic(object string, privileges ...string) ScriptTestAssertion {
 	return ScriptTestAssertion{
 		Username: "postgres",
 		Password: "password",
-		Query:    fmt.Sprintf("GRANT %s ON %s TO %s", strings.Join(privileges, ","), object, basicUser),
+		Query:    fmt.Sprintf("GRANT %s ON %s TO %s", strings.Join(privileges, ","), object, authTestBasicUser),
 		Expected: []sql.Row{},
 	}
 }
