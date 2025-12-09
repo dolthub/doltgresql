@@ -69,7 +69,7 @@ func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.V
 	funcType := funcVal.Type()
 
 	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		err := checkSuperUserRole(ctx, p)
+		err := checkDoltProcedureAccess(ctx, p)
 		if err != nil {
 			return nil, err
 		}
@@ -124,7 +124,7 @@ func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.V
 // calling "DOLT_PROC_NAME()".
 func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context) (any, error) {
 	return func(ctx *sql.Context) (any, error) {
-		err := checkSuperUserRole(ctx, p)
+		err := checkDoltProcedureAccess(ctx, p)
 		if err != nil {
 			return nil, err
 		}
@@ -145,8 +145,9 @@ func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Va
 	}
 }
 
-// checkSuperUserRole ensures the current user is authorized as a SUPERUSER.
-func checkSuperUserRole(ctx *sql.Context, procedure *plan.ExternalProcedure) error {
+// checkDoltProcedureAccess ensures the current user is authorized as a SUPERUSER if the given |procedure| requires
+// admin.
+func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedure) error {
 	if !procedure.AdminOnly {
 		return nil
 	}
