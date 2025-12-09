@@ -17,6 +17,7 @@ package types
 import (
 	"sort"
 
+	"github.com/cockroachdb/errors"
 	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -292,3 +293,8 @@ func init() {
 		}
 	}
 }
+
+// ErrCastOutOfRange is returned when a value is out of range for a given cast function.
+// We use this error type as a sentinel error when a type conversion function fails only due to the range of the
+// input in order to conform to expectations in go-mysql-server.
+var ErrCastOutOfRange = errors.New("out of range")

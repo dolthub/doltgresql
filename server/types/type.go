@@ -395,10 +395,10 @@ var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCas
 var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
 
 // ConvertToType implements the types.ExtendedType interface.
-func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, error) {
+func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
-		return nil, errors.Errorf("expected DoltgresType, got %T", typ)
+		return nil, sql.OutOfRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
 	castFn := GetAssignmentCast(dt, t)
@@ -411,20 +411,27 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		if dt.ID.TypeName() == "unknown" {
 			strVal, ok, err := sql.Unwrap[string](ctx, val)
 			if err != nil {
-				return nil, err
+				return nil, sql.OutOfRange, err
 			}
 			if ok {
 				converted, err := t.IoInput(ctx, strVal)
 				if err != nil {
-					return nil, err
+					return nil, sql.OutOfRange, err
 				}
-				return converted, nil
+				return converted, sql.InRange, nil
 			}
 		}
-		return nil, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
+		return nil, sql.OutOfRange, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
 	}
 
-	return castFn(ctx, val, t)
+	castResult, err := castFn(ctx, val, t)
+	if err != nil && errors.Is(err, ErrCastOutOfRange) {
+		return nil, sql.OutOfRange, nil
+	} else if err != nil {
+		return nil, sql.OutOfRange, err
+	}
+
+	return castResult, sql.InRange, nil
 }
 
 // DomainUnderlyingBaseType returns an underlying base type of this domain type.

@@ -38,7 +38,7 @@ func int64Assignment() {
 		ToType:   pgtypes.Int16,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int64) > 32767 || val.(int64) < -32768 {
-				return nil, errors.Errorf("smallint out of range")
+				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "smallint out of range")
 			}
 			return int16(val.(int64)), nil
 		},
@@ -48,7 +48,7 @@ func int64Assignment() {
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int64) > 2147483647 || val.(int64) < -2147483648 {
-				return nil, errors.Errorf("integer out of range")
+				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "integer out of range")
 			}
 			return int32(val.(int64)), nil
 		},

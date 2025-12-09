@@ -328,8 +328,7 @@ func TestBasicIndexing(t *testing.T) {
 		},
 		{
 			// TODO: lookups when the join key is specified by a subquery
-			Name:  "Covering Composite Index join, different types",
-			Focus: true,
+			Name: "Covering Composite Index join, different types",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 smallint, v2 smallint);",
 				"INSERT INTO test VALUES (13, 3, 23), (11, 1, 21), (15, 5, 25), (12, 2, 22), (14, 4, 24), (16, 2, 25);",

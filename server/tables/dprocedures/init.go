@@ -17,7 +17,6 @@ package dprocedures
 import (
 	"fmt"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/auth"
@@ -25,7 +24,7 @@ import (
 
 // Init handles initialization of all Postgres-specific and Doltgres-specific Dolt procedures.
 func Init() {
-	dprocedures.UserHasSuperAccess = userHasSuperAccess
+	// dprocedures.UserHasSuperAccess = userHasSuperAccess
 }
 
 // userHasSuperAccess is a function that checks if the current user has super access.
