@@ -108,12 +108,16 @@ func (s *scanner) scan(lval *sqlSymType) {
 	lval.pos = int32(s.pos)
 	lval.str = "EOF"
 
-	if comment, _, ok := s.skipWhitespace(lval, true); !ok {
-		return
-	} else if comment != "" {
-		lval.str = comment
-		lval.id = BLOCK_COMMENT
-		return
+	for {
+		if comment, _, ok := s.skipWhitespace(lval, true); !ok {
+			return
+		} else if comment != "" {
+			lval.str = comment
+			lval.id = BLOCK_COMMENT
+			return
+		} else {
+			break
+		}
 	}
 
 	ch := s.next()
@@ -443,8 +447,11 @@ func (s *scanner) next() int {
 	return ch
 }
 
+// skipWhitespace skips over whitespace characters (space, tab, newline, etc) and comments. Multiple consecutive
+// block comments and whitespace will be concatenated together into the final return value.
 func (s *scanner) skipWhitespace(lval *sqlSymType, allowComments bool) (blockComment string, newline, ok bool) {
 	newline = false
+	var blockComments string
 	for {
 		ch := s.peek()
 		if ch == '\n' {
@@ -460,12 +467,16 @@ func (s *scanner) skipWhitespace(lval *sqlSymType, allowComments bool) (blockCom
 			if cmt, present, cok := s.scanComment(lval); !cok {
 				return "", false, false
 			} else if present {
-				return cmt, false, true
+				if len(blockComment) > 0 {
+					blockComments += " "
+				}
+				blockComments += cmt
+				continue
 			}
 		}
 		break
 	}
-	return "", newline, true
+	return blockComment, newline, true
 }
 
 // scanComment scans for a comment starting at the current position.

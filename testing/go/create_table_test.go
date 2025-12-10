@@ -30,10 +30,10 @@ func TestCreateTable(t *testing.T) {
 					// TODO: we don't currently have a way to check for warnings in these tests, but this query was incorrectly
 					//  producing a warning. Would be nice to assert no warnings on most queries.
 					Query: "create table employees (" +
-						"    id int8," +
-						"    last_name text," +
-						"    first_name text," +
-						"    primary key(id));",
+							"    id int8," +
+							"    last_name text," +
+							"    first_name text," +
+							"    primary key(id));",
 				},
 				{
 					Query: "insert into employees (id, last_name, first_name) values (1, 'Doe', 'John');",
@@ -350,6 +350,30 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:    "select * from collate_test1;",
 					Expected: []sql.Row{{1, "foo"}},
+				},
+			},
+		},
+		{
+			Name:  "inline comments",
+			Focus: true,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE TABLE inline_comments (
+	a int,
+	b int,
+	c int, -- comment on end of line
+	CONSTRAINT check_b CHECK (b IS NULL OR b = 'a'),
+	CONSTRAINT check_a CHECK (a IS NOT NULL AND a = 7)
+);`,
+				},
+				{
+					Query: `CREATE TABLE block_comments (
+	a int,
+	b /* block comment */ /* one more thing */ int, -- comment on end of line
+	c int, -- comment on end of line /* block comment */
+	CONSTRAINT check_b CHECK (b IS NULL OR b = 'a'),
+	CONSTRAINT check_a CHECK (a IS NOT NULL AND a = 7)
+);`,
 				},
 			},
 		},
