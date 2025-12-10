@@ -15,6 +15,8 @@
 package node
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -99,8 +101,10 @@ func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, err
 	}
 	if len(overloads) == 0 {
-		// We're going to assume that this is calling one of the few remaining Dolt stored procedures
-		return nil, functions.ErrDoltProcedureSelectOnly
+		if strings.HasPrefix(c.ProcedureName, "dolt_") {
+			return nil, functions.ErrDoltProcedureSelectOnly
+		}
+		return nil, sql.ErrStoredProcedureDoesNotExist.New(c.ProcedureName)
 	}
 
 	overloadTree := framework.NewOverloads()
