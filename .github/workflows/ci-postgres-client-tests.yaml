@@ -11,9 +11,20 @@ jobs:
     timeout-minutes: 45
     name: Run tests
     steps:
+      - name: Free disk space
+        run: |
+          NAME="DISK-CLEANUP"
+          echo "[${NAME}] Starting background cleanup..."
+          [ -d "$AGENT_TOOLSDIRECTORY" ] && sudo rm -rf "$AGENT_TOOLSDIRECTORY" &
+          [ -d /usr/share/dotnet ] && sudo rm -rf /usr/share/dotnet &
+          [ -d /usr/local/lib/android ] && sudo rm -rf /usr/local/lib/android &
+          [ -d /opt/ghc ] && sudo rm -rf /opt/ghc &
+          [ -d /usr/local/share/boost ] && sudo rm -rf /usr/local/share/boost &
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Build docker image
+      - name: Set up Docker
+        uses: docker/setup-docker-action@v4
+      - name: Build Docker image
         run: docker build -t postgres-client-tests --file testing/PostgresDockerfile .
       - name: Run tests
         run: docker run --detach=false postgres-client-tests

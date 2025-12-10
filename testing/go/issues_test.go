@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+/// Copyright 2023 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,28 +30,28 @@ func TestIssues(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:       `call dolt_add(".");`,
+					Query:       `select dolt_add(".");`,
 					ExpectedErr: "could not be found in any table in scope",
 				},
 				{
-					Query:            `call dolt_add('.');`,
-					SkipResultsCheck: true,
+					Query:    `select dolt_add('.');`,
+					Expected: []sql.Row{{"{0}"}},
 				},
 				{
-					Query:       `call dolt_commit("-m", "look ma");`,
+					Query:       `select dolt_commit("-m", "look ma");`,
 					ExpectedErr: "could not be found in any table in scope",
 				},
 				{
-					Query:            `call dolt_commit('-m', 'look ma');`,
-					SkipResultsCheck: true,
+					Query:    `select length(dolt_commit('-m', 'look ma')::text);`,
+					Expected: []sql.Row{{34}},
 				},
 				{
-					Query:       `call dolt_branch("br1");`,
+					Query:       `select dolt_branch("br1");`,
 					ExpectedErr: "could not be found in any table in scope",
 				},
 				{
-					Query:            `call dolt_branch('br1');`,
-					SkipResultsCheck: true,
+					Query:    `select dolt_branch('br1');`,
+					Expected: []sql.Row{{"{0}"}},
 				},
 			},
 		},

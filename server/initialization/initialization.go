@@ -34,7 +34,6 @@ import (
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/functions/unary"
 	"github.com/dolthub/doltgresql/server/tables"
-	"github.com/dolthub/doltgresql/server/tables/dprocedures"
 	"github.com/dolthub/doltgresql/server/tables/dtables"
 	"github.com/dolthub/doltgresql/server/tables/information_schema"
 	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
@@ -64,6 +63,5 @@ func Initialize(dEnv *env.DoltEnv) {
 		pgcatalog.Init()
 		information_schema.Init()
 		dtables.Init()
-		dprocedures.Init()
 	})
 }

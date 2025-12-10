@@ -427,6 +427,10 @@ func (cfg *DoltgresConfig) MetricsTLSCA() string {
 	return *cfg.MetricsConfig.TlsCa
 }
 
+func (cfg *DoltgresConfig) MetricsJwksConfig() *servercfg.JwksConfig {
+	return nil
+}
+
 func (cfg *DoltgresConfig) PrivilegeFilePath() string {
 	if cfg.PrivilegeFile == nil {
 		return ""
