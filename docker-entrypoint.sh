@@ -272,19 +272,6 @@ docker_process_init_files() {
   done
 }
 
-# create_database_from_env creates a database if the DATABASE environment variable is set.
-# It retrieves the database name from environment the env var DATABASE
-# and attempts to create the database using exec_sql.
-create_database_from_env() {
-  local database
-  database=$(get_env_var "DB")
-
-  if [ -n "$database" ]; then
-    note "Creating database '${database}'"
-    exec_sql "Failed to create database '$database': " "CREATE DATABASE IF NOT EXISTS \"$database\";"
-  fi
-}
-
 # is_port_open checks if a TCP port is open on a given host.
 # Arguments:
 #   $1 - Host (IP or hostname)
@@ -310,12 +297,14 @@ start_server() {
   local start_time
   start_time=$(date +%s)
 
-  # If either of the doltgres or postgres specific user and password env vars are set, export them
+  # If any of the doltgres or postgres specific user, password, and DB env vars are set, export them
   # to the ones that doltgres understands so they can be used during initialization.
   user=$(get_env_var "USER")
   password=$(get_env_var "PASSWORD")
+  db=$(get_env_var "DB")
   export DOLTGRES_USER=$user
   export DOLTGRES_PASSWORD=$password
+  export DOLTGRES_DB=$db
   
   SERVER_PID=-1
 
@@ -418,8 +407,6 @@ _main() {
   note "Starting Doltgres server"
   
   start_server "$@"
-
-  create_database_from_env
 
   if [[ ! -f $INIT_COMPLETED ]]; then
     if ls /docker-entrypoint-initdb.d/* >/dev/null 2>&1; then

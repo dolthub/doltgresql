@@ -218,8 +218,8 @@ func createDefaultDatabase(cfg doltservercfg.ServerConfig) error {
 // If the environment variable DOLTGRES_DB is set, that value is used. Otherwise, the username is used.
 // The username is in turn configured with the environment variable DOLTGRES_USER, defaulting to "postgres".
 func getDefaultDatabaseName(userName string) string {
-	defaultDbName, defaultDbNameSet := os.LookupEnv(DefaultDbNameEnvVar)
-	if defaultDbNameSet {
+	defaultDbName := os.Getenv(DefaultDbNameEnvVar)
+	if defaultDbName != "" {
 		return defaultDbName
 	}
 	return userName
