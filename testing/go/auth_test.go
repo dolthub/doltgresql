@@ -572,8 +572,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				authTestAssertAsSuper(fmt.Sprintf("call dolt_backup('sync-url', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
-				authTestAssertAsSuper(fmt.Sprintf("call dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				authTestAssertAsSuper(fmt.Sprintf("call dolt_backup('sync-url', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				authTestAssertAsSuper(fmt.Sprintf("call dolt_backup('add', 'bak1', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				authTestAssertAsSuper("call dolt_checkout('-b', 'test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
@@ -588,7 +588,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				authTestAssertAsSuper("call dolt_clean('--dry-run');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				authTestAssertAsSuper(fmt.Sprintf("call dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				authTestAssertAsSuper(fmt.Sprintf("call dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				authTestAssertAsSuper("set authtest.hash = ''", []sql.Row{}, ""),
 				authTestAssertAsSuper("call dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table')", nil, functions.ErrDoltProcedureSelectOnly.Error()),
@@ -607,7 +607,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestAssertAsSuper("call dolt_count_commits('--from=main', '--to=test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				authTestAssertAsSuper("call dolt_backup('remove', 'bak1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
-				authTestAssertAsSuper(fmt.Sprintf("call dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				authTestAssertAsSuper(fmt.Sprintf("call dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				authTestAssertAsSuper("call dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
@@ -667,8 +667,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				authTestAssertAsBasic(fmt.Sprintf("call dolt_backup('sync-url', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
-				authTestAssertAsBasic(fmt.Sprintf("call dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("call dolt_backup('sync-url', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("call dolt_backup('add', 'bak1', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				// Grant user access to test_table before checkout to avoid merge conflict in later cherry-pick.
 				authTestGrantBasic("schema public", "all"),
@@ -686,7 +686,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				authTestAssertAsBasic("call dolt_clean('--dry-run');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				authTestAssertAsBasic(fmt.Sprintf("call dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("call dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				authTestAssertAsBasic("create database cloned_bak1;", []sql.Row{}, ""),
 
 				authTestAssertAsSuper("set authtest.hash = '';", []sql.Row{}, ""),
@@ -706,7 +706,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestAssertAsBasic("call dolt_count_commits('--from=main', '--to=test');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				authTestAssertAsBasic("call dolt_backup('remove', 'bak1');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
-				authTestAssertAsBasic(fmt.Sprintf("call dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("call dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
 				authTestAssertAsBasic("call dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
@@ -765,8 +765,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('sync-url', '%s');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('sync-url', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
 
 				authTestAssertAsSuper("select dolt_checkout('-b', 'test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
 
@@ -781,7 +781,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				authTestAssertAsSuper("select dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
 
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
 
 				authTestAssertAsSuper("set authtest.hash = '';", []sql.Row{}, ""),
 				// TODO(elianddb): variadic parameter support for Dolt stored procedures functions
@@ -802,7 +802,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestSkipAsSuper("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
 
 				authTestAssertAsSuper("select dolt_backup('remove', 'bak1');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
 
 				authTestAssertAsSuper("select dolt_fetch('origin', 'main');", []sql.Row{{"{0}"}}, ""),
 
@@ -836,7 +836,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestAssertAsSuper("select length(dolt_commit('-m', 'rm to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsSuper(
 					"select dolt_push('origin', 'test');",
-					[]sql.Row{{fmt.Sprintf("{0,\"To %s\n * [new branch]          test -> test\"}", fileUrl("bak1"))}},
+					[]sql.Row{{fmt.Sprintf("{0,\"To %s\n * [new branch]          test -> test\"}", authTestFireUrl("bak1"))}},
 					""),
 				authTestAssertAsSuper("select dolt_pull('origin', 'test');", []sql.Row{{"{0,0,\"Everything up-to-date\"}"}}, ""),
 
@@ -870,8 +870,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				authTestAssertAsBasic(fmt.Sprintf("select dolt_backup('sync-url', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
-				authTestAssertAsBasic(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("select dolt_backup('sync-url', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				// Grant user access to test_table before checkout to avoid merge conflict in later cherry-pick.
 				authTestGrantBasic("schema public", "all"),
@@ -889,7 +889,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				authTestAssertAsBasic("select dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
 
-				authTestAssertAsBasic(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", fileUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 				authTestAssertAsBasic("create database cloned_bak1;", []sql.Row{}, ""),
 
 				authTestAssertAsBasic("set authtest.hash = '';", []sql.Row{}, ""),
@@ -911,7 +911,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestSkipAssertAsBasic("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
 
 				authTestAssertAsBasic("select dolt_backup('remove', 'bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
-				authTestAssertAsBasic(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", fileUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				authTestAssertAsBasic("select dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
@@ -1013,8 +1013,8 @@ func authTestGrantBasic(object string, privileges ...string) ScriptTestAssertion
 	}
 }
 
-// fileUrl returns a file:// URL path for a temp file.
-func fileUrl(path string) string {
+// authTestFireUrl returns a file:// URL path for a temp file.
+func authTestFireUrl(path string) string {
 	path = filepath.Join(os.TempDir(), path)
 	return "file://" + filepath.ToSlash(filepath.Clean(path))
 }
