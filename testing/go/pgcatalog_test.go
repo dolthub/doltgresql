@@ -936,7 +936,7 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{" ├─ columns: [pg_constraint.conname]"},
 						{" └─ Sort(pg_constraint.conname ASC)"},
 						{"     └─ Filter"},
-						{"         ├─ ((pg_constraint.conrelid >= Subquery((select min(oid) from pg_class where relname like 'test_%')) AND pg_constraint.conrelid <= Subquery((select max(oid) from pg_class where relname like 'test_%'))) AND pg_constraint.contypid = 0)"},
+						{"         ├─ ((pg_constraint.conrelid >= Subquery((select  min(oid) from pg_class where relname like 'test_%')) AND pg_constraint.conrelid <= Subquery((select min max(oid) from pg_class where relname like 'test_%'))) AND pg_constraint.contypid = 0)"},
 						{"         └─ IndexedTableAccess(pg_constraint)"},
 						{"             ├─ index: [pg_constraint.contypid]"},
 						{"             └─ filters: [{[{OID:[\"0\"]}, {OID:[\"0\"]}]}]"},
@@ -1020,12 +1020,12 @@ func TestPgConstraintIndexes(t *testing.T) {
 				{
 					// We don't care about the result, we just want to make sure it doens't error
 					Query: "SELECT true as sametable, conname," +
-						"pg_catalog.pg_get_constraintdef(r.oid, true) as condef," +
-						"conrelid::pg_catalog.regclass AS ontable " +
-						"FROM pg_catalog.pg_constraint r " +
-						"WHERE r.conrelid = '145181' AND r.contype = 'f' " +
-						"     AND conparentid = 0 " +
-						"ORDER BY conname",
+							"pg_catalog.pg_get_constraintdef(r.oid, true) as condef," +
+							"conrelid::pg_catalog.regclass AS ontable " +
+							"FROM pg_catalog.pg_constraint r " +
+							"WHERE r.conrelid = '145181' AND r.contype = 'f' " +
+							"     AND conparentid = 0 " +
+							"ORDER BY conname",
 				},
 			},
 		},
@@ -1510,10 +1510,10 @@ func TestPgIndex(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "SELECT i.* from pg_class c " +
-						"JOIN pg_index i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN pg_index i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
 						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
@@ -1530,18 +1530,18 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT i.indexrelid from pg_class c " +
-						"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {1322775662}, {3185790121}},
 				},
 				{
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i " +
-						"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
-						"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
-						"JOIN pg_namespace n ON t.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
+							"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
+							"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
+							"JOIN pg_namespace n ON t.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, "testing_pkey", "testing"},
 						{1322775662, 3120782595, "v1", "testing"},
@@ -5292,7 +5292,7 @@ ORDER BY 1;`,
 						{" ├─ columns: [i.indrelid]"},
 						{" └─ Sort(i.indrelid ASC)"},
 						{"     └─ Filter"},
-						{"         ├─ i.indexrelid = Subquery((select c.oid from pg_class as c where ? = ?))"},
+						{"         ├─ i.indexrelid = Subquery((select  c.oid from pg_class as c where ? = ?))"},
 						{"         └─ TableAlias(i)"},
 						{"             └─ Table"},
 						{"                 └─ name: pg_index"},
@@ -5306,8 +5306,8 @@ WHERE i.indrelid = 1496157034 ORDER BY 1`,
 						{" ├─ columns: [count(1) as count]"},
 						{" └─ Sort(count(1) as count ASC)"},
 						{"     └─ GroupBy"},
-						{"         ├─ SelectDeps(COUNT(1))"},
-						{"         ├─ Grouping()"},
+						{"         ├─ select: COUNT(1)"},
+						{"         ├─ group: "},
 						{"         └─ Filter"},
 						{"             ├─ i.indrelid = 1496157034"},
 						{"             └─ TableAlias(i)"},
@@ -5324,8 +5324,8 @@ WHERE i.indrelid IN (1496157033, 1496157034) ORDER BY 1`,
 						{" ├─ columns: [count(1) as count]"},
 						{" └─ Sort(count(1) as count ASC)"},
 						{"     └─ GroupBy"},
-						{"         ├─ SelectDeps(COUNT(1))"},
-						{"         ├─ Grouping()"},
+						{"         ├─ select: COUNT(1)"},
+						{"         ├─ group: "},
 						{"         └─ Filter"},
 						{"             ├─ i.indrelid IN (1496157033, 1496157034)"},
 						{"             └─ TableAlias(i)"},
