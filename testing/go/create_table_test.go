@@ -354,8 +354,7 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
-			Name:  "inline comments",
-			Focus: true,
+			Name: "inline comments",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `CREATE TABLE inline_comments (
