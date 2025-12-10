@@ -652,14 +652,14 @@ var SchemaTests = []ScriptTest{
 	{
 		Name: "merge new table in new schema",
 		SetUpScript: []string{
-			"call dolt_checkout('-b', 'branch1')",
+			"select dolt_checkout('-b', 'branch1')",
 			"CREATE SCHEMA branchschema",
 			"Create table branchschema.mytbl (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			"INSERT INTO branchschema.mytbl VALUES (1, 1), (2, 2)",
 			"Create table branchschema.mytbl2 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			"INSERT INTO branchschema.mytbl2 VALUES (3, 3), (4, 4)",
 			"select dolt_commit('-Am', 'new table in new schema')",
-			"call dolt_checkout('main')",
+			"select dolt_checkout('main')",
 			"create schema mainschema",
 			"create table mainschema.maintable (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			"insert into mainschema.maintable values (5, 5), (6, 6)",
@@ -667,7 +667,8 @@ var SchemaTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "call dolt_merge('branch1')",
+				Query:    "select length(dolt_merge('branch1')::text)",
+				Expected: []sql.Row{{57}},
 			},
 			{
 				Query: "SELECT * from mainschema.maintable",

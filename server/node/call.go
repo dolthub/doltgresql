@@ -15,6 +15,8 @@
 package node
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -24,6 +26,7 @@ import (
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -98,16 +101,10 @@ func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		return nil, err
 	}
 	if len(overloads) == 0 {
-		// We're going to assume that this is calling one of the few remaining Dolt stored procedures
-		sch, rowIter, _, err := c.Runner.Runner.QueryWithBindings(ctx, "", &vitess.Call{
-			ProcName: vitess.ProcedureName{
-				Name:      vitess.NewColIdent(c.ProcedureName),
-				Qualifier: vitess.NewTableIdent(c.SchemaName),
-			},
-			Params: c.originalExprs,
-		}, nil, nil)
-		c.cachedSch = sch
-		return rowIter, err
+		if strings.HasPrefix(c.ProcedureName, "dolt_") {
+			return nil, functions.ErrDoltProcedureSelectOnly
+		}
+		return nil, sql.ErrStoredProcedureDoesNotExist.New(c.ProcedureName)
 	}
 
 	overloadTree := framework.NewOverloads()

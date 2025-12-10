@@ -27,9 +27,9 @@ func TestAsOf(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE TABLE test (a INT)`,
 				`INSERT INTO test VALUES (1)`,
-				`CALL DOLT_COMMIT('-Am', 'new table')`,
+				`SELECT DOLT_COMMIT('-Am', 'new table')`,
 				`INSERT INTO test VALUES (2)`,
-				`CALL DOLT_COMMIT('-am', 'new row')`,
+				`SELECT DOLT_COMMIT('-am', 'new row')`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -52,14 +52,14 @@ func TestAsOf(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE TABLE test (a INT)`,
 				`INSERT INTO test VALUES (1)`,
-				`CALL DOLT_COMMIT('-Am', 'new table')`,
+				`SELECT DOLT_COMMIT('-Am', 'new table')`,
 				`INSERT INTO test VALUES (2)`,
-				`CALL DOLT_COMMIT('-am', 'new row')`,
+				`SELECT DOLT_COMMIT('-am', 'new row')`,
 				`CREATE TABLE test2 (b INT)`,
 				`INSERT INTO test2 VALUES (1)`,
-				`CALL DOLT_COMMIT('-Am', 'new table')`,
+				`SELECT DOLT_COMMIT('-Am', 'new table')`,
 				`INSERT INTO test2 VALUES (2)`,
-				`CALL DOLT_COMMIT('-am', 'new row')`,
+				`SELECT DOLT_COMMIT('-am', 'new row')`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -100,14 +100,14 @@ func TestAsOf(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE TABLE test (a INT)`,
 				`INSERT INTO test VALUES (1)`,
-				`CALL DOLT_COMMIT('-Am', 'new table')`,
+				`SELECT DOLT_COMMIT('-Am', 'new table')`,
 				`INSERT INTO test VALUES (2)`,
-				`CALL DOLT_COMMIT('-am', 'new row')`,
+				`SELECT DOLT_COMMIT('-am', 'new row')`,
 				`CREATE TABLE test2 (b INT)`,
 				`INSERT INTO test2 VALUES (1)`,
-				`CALL DOLT_COMMIT('-Am', 'new table')`,
+				`SELECT DOLT_COMMIT('-Am', 'new table')`,
 				`INSERT INTO test2 VALUES (2)`,
-				`CALL DOLT_COMMIT('-am', 'new row')`,
+				`SELECT DOLT_COMMIT('-am', 'new row')`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{

@@ -10,13 +10,13 @@
         "create table test (pk int, value int, d1 decimal(9, 3), f1 float, c1 char(10), t1 text, primary key(pk))" => 0,
         "insert into test (pk, value, d1, f1, c1, t1) values (0,0,0.0,0.0,'abc','a1')" => 0,
         "select * from test" => 1,
-        "call dolt_add('-A');" => 0,
-        "call dolt_commit('-m', 'my commit')" => 0,
-        "call dolt_checkout('-b', 'mybranch')" => 0,
+        "select dolt_add('-A');" => 1,
+        "select dolt_commit('-m', 'my commit')" => 1,
+        "select dolt_checkout('-b', 'mybranch')" => 1,
         "insert into test (pk, value, d1, f1, c1, t1) values (1,1, 123456.789, 420.42,'example','some text')" => 0,
-        "call dolt_commit('-a', '-m', 'my commit2')" => 0,
-        "call dolt_checkout('main')" => 0,
-        "call dolt_merge('mybranch')" => 0,
+        "select dolt_commit('-a', '-m', 'my commit2')" => 1,
+        "select dolt_checkout('main')" => 1,
+        "select dolt_merge('mybranch')" => 1,
         "select COUNT(*) FROM dolt.log" => 1
     ];
 

@@ -42,8 +42,8 @@ func TestGettingStartedGuide(t *testing.T) {
 					},
 				},
 				{
-					Query:    "call dolt_add('teams', 'employees', 'employees_teams');",
-					Expected: []sql.Row{},
+					Query:    "select dolt_add('teams', 'employees', 'employees_teams');",
+					Expected: []sql.Row{{"{0}"}},
 				},
 				{
 					Query: "select * from dolt.status;",
@@ -54,8 +54,8 @@ func TestGettingStartedGuide(t *testing.T) {
 					},
 				},
 				{
-					Query:    "call dolt_commit('-m', 'Created initial schema');",
-					Expected: []sql.Row{},
+					Query:    "select length(dolt_commit('-m', 'Created initial schema')::text);",
+					Expected: []sql.Row{{34}},
 				},
 				{
 					// TODO: employees_teams is still marked as modified even though we staged and committed it. The diff
@@ -63,8 +63,8 @@ func TestGettingStartedGuide(t *testing.T) {
 					//       remove this artifact and prevent it from showing up in later test assertions, but this can
 					//       be removed once the issue is fixed.
 					//       https://github.com/dolthub/doltgresql/issues/734
-					Query:    "call dolt_reset('--hard');",
-					Expected: []sql.Row{},
+					Query:    "select dolt_reset('--hard');",
+					Expected: []sql.Row{{"{0}"}},
 				},
 				{
 					Query:    "select * from dolt.status;",
@@ -123,8 +123,8 @@ func TestGettingStartedGuide(t *testing.T) {
 					},
 				},
 				{
-					Query:    "call dolt_commit('-am', 'Populated tables with data');",
-					Expected: []sql.Row{},
+					Query:    "select length(dolt_commit('-am', 'Populated tables with data')::text);",
+					Expected: []sql.Row{{34}},
 				},
 				{
 					Query:    "select * from dolt.status order by table_name;",
@@ -161,8 +161,8 @@ func TestGettingStartedGuide(t *testing.T) {
 					ExpectedErr: "table not found: employees_teams",
 				},
 				{
-					Query:    "call dolt_reset('--hard');",
-					Expected: []sql.Row{},
+					Query:    "select dolt_reset('--hard');",
+					Expected: []sql.Row{{"{0}"}},
 				},
 				{
 					Query:    "select count(*) from employees_teams;",
@@ -171,8 +171,8 @@ func TestGettingStartedGuide(t *testing.T) {
 
 				// Make changes on a branch
 				{
-					Query:    "call dolt_checkout('-b','modifications');",
-					Expected: []sql.Row{},
+					Query:    "select dolt_checkout('-b','modifications');",
+					Expected: []sql.Row{{"{0,\"Switched to branch 'modifications'\"}"}},
 				},
 				{
 					Query:    "update employees SET first_name='Timothy' where first_name='Tim';",
@@ -191,12 +191,12 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "call dolt_commit('-am', 'Modifications on a branch');",
-					Expected: []sql.Row{},
+					Query:    "select length(dolt_commit('-am', 'Modifications on a branch')::text);",
+					Expected: []sql.Row{{34}},
 				},
 				{
-					Query:    "call dolt_checkout('main');",
-					Expected: []sql.Row{},
+					Query:    "select dolt_checkout('main');",
+					Expected: []sql.Row{{"{0,\"Switched to branch 'main'\"}"}},
 				},
 				{
 					Query: "select name, latest_commit_message from dolt.branches;",
@@ -230,8 +230,8 @@ func TestGettingStartedGuide(t *testing.T) {
 				// Make a schema change on another branch
 				// TODO: Most ALTER TABLE statements aren't supported yet
 				{
-					Query:    "call dolt_checkout('-b', 'schema_changes');",
-					Expected: []sql.Row{},
+					Query:    "select dolt_checkout('-b', 'schema_changes');",
+					Expected: []sql.Row{{"{0,\"Switched to branch 'schema_changes'\"}"}},
 				},
 			},
 		},
