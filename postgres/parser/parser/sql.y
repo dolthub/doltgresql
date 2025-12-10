@@ -56,11 +56,6 @@ func setErr(sqllex sqlLexer, err error) int {
     return 1
 }
 
-func setAllowComments(sqllex sqlLexer, allow bool) int {
-    sqllex.(*lexer).setAllowComments(allow)
-    return 1
-}
-
 func unimplementedWithIssue(sqllex sqlLexer, issue int) int {
     sqllex.(*lexer).UnimplementedWithIssue(issue)
     return 1
