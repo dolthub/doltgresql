@@ -30,10 +30,10 @@ func TestCreateTable(t *testing.T) {
 					// TODO: we don't currently have a way to check for warnings in these tests, but this query was incorrectly
 					//  producing a warning. Would be nice to assert no warnings on most queries.
 					Query: "create table employees (" +
-							"    id int8," +
-							"    last_name text," +
-							"    first_name text," +
-							"    primary key(id));",
+						"    id int8," +
+						"    last_name text," +
+						"    first_name text," +
+						"    primary key(id));",
 				},
 				{
 					Query: "insert into employees (id, last_name, first_name) values (1, 'Doe', 'John');",
