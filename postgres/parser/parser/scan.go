@@ -451,7 +451,6 @@ func (s *scanner) next() int {
 // block comments and whitespace will be concatenated together into the final return value.
 func (s *scanner) skipWhitespace(lval *sqlSymType, allowComments bool) (blockComment string, newline, ok bool) {
 	newline = false
-	var blockComments string
 	for {
 		ch := s.peek()
 		if ch == '\n' {
@@ -468,9 +467,9 @@ func (s *scanner) skipWhitespace(lval *sqlSymType, allowComments bool) (blockCom
 				return "", false, false
 			} else if present {
 				if len(blockComment) > 0 {
-					blockComments += " "
+					blockComment += " "
 				}
-				blockComments += cmt
+				blockComment += cmt
 				continue
 			}
 		}
