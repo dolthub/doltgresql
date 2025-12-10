@@ -44,14 +44,14 @@ public class PostgresTest {
         // TODO: doltgres DECIMAL type result is returned as "2.3", should be "2.30"
         // new PostgresTest("select * from test", null, "d1", new String[]{"2.30","4.56"}),
         new PostgresTest("select * from test", null, "c1", new String[]{"hi        ","hello     "}),
-        new PostgresTest("call dolt_add('-A')", 0, null, null),
-        new PostgresTest("call dolt_commit('-m', 'my commit')", 0, null, null),
+        new PostgresTest("select dolt_add('-A')", null, "dolt_add", new String[]{"{0}"}),
+        new PostgresTest("select length(dolt_commit('-m', 'my commit')::text)", null, 1, new String[]{"34"}),
         new PostgresTest("select COUNT(*) FROM dolt.log", null, 1, new String[]{"3"}),
-        new PostgresTest("call dolt_checkout('-b', 'mybranch')", 0, null, null),
+        new PostgresTest("select dolt_checkout('-b', 'mybranch')", null, "dolt_checkout", new String[]{"{0,\"Switched to branch 'mybranch'\"}"}),
         new PostgresTest("insert into test (pk, value, d1, c1) values (1,1,12.34,'bye')", 1, null, null),
-        new PostgresTest("call dolt_commit('-a', '-m', 'my commit2')", 0, null, null),
-        new PostgresTest("call dolt_checkout('main')", 0, null, null),
-        new PostgresTest("call dolt_merge('mybranch')", 0, null, null),
+        new PostgresTest("select length(dolt_commit('-a', '-m', 'my commit2')::text)", null, 1, new String[]{"34"}),
+        new PostgresTest("select dolt_checkout('main')", null, "dolt_checkout", new String[]{"{0,\"Switched to branch 'main'\"}"}),
+        new PostgresTest("select length(dolt_merge('mybranch')::text)", null, 1, new String[]{"57"}),
         new PostgresTest("select COUNT(*) FROM dolt.log", null, "COUNT", new String[]{"4"}), // returns res
     };
 

@@ -27,8 +27,14 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+)
+
+var (
+	ErrDoltProcedurePermissionDenied = errors.New("permission denied for Dolt procedure")
+	ErrDoltProcedureSelectOnly       = errors.New("Dolt stored procedure may only be invoked using SELECT")
 )
 
 func initDoltProcedures() {
@@ -40,8 +46,7 @@ func initDoltProcedures() {
 
 		funcVal := reflect.ValueOf(procDef.Function)
 		varArgCallable := varArgCallableForDoltProcedure(p, funcVal)
-		noArgCallable := noArgCallableForDoltProcedure(funcVal)
-
+		noArgCallable := noArgCallableForDoltProcedure(p, funcVal)
 		framework.RegisterFunction(framework.Function1{
 			Name:       procDef.Name,
 			Return:     pgtypes.TextArray,
@@ -63,6 +68,11 @@ func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.V
 	funcType := funcVal.Type()
 
 	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		err := checkDoltProcedureAccess(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+
 		values, ok := val1.([]any)
 		if !ok {
 			return nil, sql.ErrExternalProcedureInvalidParamType.New(reflect.TypeOf(val1).String())
@@ -111,8 +121,13 @@ func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.V
 
 // noArgCallableForDoltProcedure creates a callable function that does not take any parameters. This is equivalent to
 // calling "DOLT_PROC_NAME()".
-func noArgCallableForDoltProcedure(funcVal reflect.Value) func(ctx *sql.Context) (any, error) {
+func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context) (any, error) {
 	return func(ctx *sql.Context) (any, error) {
+		err := checkDoltProcedureAccess(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+
 		funcParams := []reflect.Value{reflect.ValueOf(ctx)}
 		out := funcVal.Call(funcParams)
 		if err, ok := out[1].Interface().(error); ok { // Only evaluates to true when error is not nil
@@ -127,6 +142,25 @@ func noArgCallableForDoltProcedure(funcVal reflect.Value) func(ctx *sql.Context)
 		}
 		return drainRowIter(ctx, rowIter)
 	}
+}
+
+// checkDoltProcedureAccess ensures the current user is authorized as a SUPERUSER if the given |procedure| requires
+// admin.
+func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedure) error {
+	if !procedure.AdminOnly {
+		return nil
+	}
+
+	var userRole auth.Role
+	auth.LockRead(func() {
+		userRole = auth.GetRole(ctx.Client().User)
+	})
+
+	if !userRole.IsValid() || !userRole.IsSuperUser {
+		return ErrDoltProcedurePermissionDenied
+	}
+
+	return nil
 }
 
 func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {

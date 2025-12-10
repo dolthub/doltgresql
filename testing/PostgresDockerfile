@@ -79,7 +79,12 @@ RUN gem install bundler -v 2.1.4 && bundle install
 
 # install doltgres from source
 WORKDIR /root/building
-COPY ./ ./doltgresql
+COPY go.mod doltgresql/
+# download dependencies first to persist Go dependencies download cache for doltgres despite other edits
+WORKDIR doltgresql
+RUN go mod download
+# exclude clients directory to persist build-cache for doltgres when only editing client code
+COPY --exclude=testing/postgres-client-tests/ . .
 
 # Build the parser
 WORKDIR /root/building/doltgresql/postgres/parser
