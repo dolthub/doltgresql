@@ -17,12 +17,12 @@ package dtables
 import (
 	"fmt"
 
-	"github.com/dolthub/go-mysql-server/sql"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/adapters"
 	doltdtables "github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
+	"github.com/dolthub/go-mysql-server/sql"
+
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
