@@ -91,15 +91,16 @@ func (node *ParenSelect) Format(ctx *FmtCtx) {
 
 // SelectClause represents a SELECT statement.
 type SelectClause struct {
-	Distinct    bool
-	DistinctOn  DistinctOn
-	Exprs       SelectExprs
-	From        From
-	Where       *Where
-	GroupBy     GroupBy
-	Having      *Where
-	Window      Window
-	TableSelect bool
+	Distinct     bool
+	DistinctOn   DistinctOn
+	Exprs        SelectExprs
+	From         From
+	Where        *Where
+	GroupBy      GroupBy
+	Having       *Where
+	Window       Window
+	TableSelect  bool
+	BlockComment string
 }
 
 // Format implements the NodeFormatter interface.

@@ -15,6 +15,7 @@
 package cast
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -29,41 +30,41 @@ var errOutOfRange = errors.NewKind("%s out of range")
 
 // handleStringCast handles casts to the string types that may have length restrictions. Returns an error if other types
 // are passed in. Will always return the correct string, even on error, as some contexts may ignore the error.
-func handleStringCast(str string, targetType *pgtypes.DoltgresType) (string, error) {
+func handleStringCast(input string, targetType *pgtypes.DoltgresType) (string, error) {
 	tm := targetType.GetAttTypMod()
 	switch targetType.ID {
 	case pgtypes.BpChar.ID:
 		if tm == -1 {
-			return str, nil
+			return input, nil
 		}
 		maxChars, err := pgtypes.GetTypModFromCharLength("char", tm)
 		if err != nil {
 			return "", err
 		}
 		length := uint32(maxChars)
-		str, runeLength := truncateString(str, length)
+		str, runeLength := truncateString(input, length)
 		if runeLength > length {
-			return str, cerrors.Errorf("value too long for type %s", targetType.String())
+			return input, cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String()))
 		} else if runeLength < length {
 			return str + strings.Repeat(" ", int(length-runeLength)), nil
 		} else {
 			return str, nil
 		}
 	case pgtypes.InternalChar.ID:
-		str, _ := truncateString(str, pgtypes.InternalCharLength)
+		str, _ := truncateString(input, pgtypes.InternalCharLength)
 		return str, nil
 	case pgtypes.Name.ID:
 		// Name seems to never throw an error, regardless of the context or how long the input is
-		str, _ := truncateString(str, uint32(targetType.TypLength))
+		str, _ := truncateString(input, uint32(targetType.TypLength))
 		return str, nil
 	case pgtypes.VarChar.ID:
 		if tm == -1 {
-			return str, nil
+			return input, nil
 		}
 		length := uint32(pgtypes.GetCharLengthFromTypmod(tm))
-		str, runeLength := truncateString(str, length)
+		str, runeLength := truncateString(input, length)
 		if runeLength > length {
-			return str, cerrors.Errorf("value too long for type %s", targetType.String())
+			return input, cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String()))
 		} else {
 			return str, nil
 		}

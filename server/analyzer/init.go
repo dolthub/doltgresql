@@ -21,8 +21,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 
-	"github.com/dolthub/doltgresql/server/index"
-
 	pgexpression "github.com/dolthub/doltgresql/server/expression"
 )
 
@@ -63,7 +61,6 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
 		analyzer.Rule{Id: ruleId_AssignTriggers, Apply: AssignTriggers},
-		analyzer.Rule{Id: ruleId_ReplaceIndexedTables, Apply: ReplaceIndexedTables},
 		analyzer.Rule{Id: ruleId_ValidateCreateFunction, Apply: ValidateCreateFunction},
 	)
 
@@ -119,8 +116,8 @@ func initEngine() {
 
 	// There are a couple places during analysis where SplitConjunction in GMS cannot correctly split up
 	// Doltgres expressions, so we need to override the default function used.
-	analyzer.SplitConjunction = index.SplitConjunction
-	memo.SplitConjunction = index.SplitConjunction
+	analyzer.SplitConjunction = SplitConjunction
+	memo.SplitConjunction = SplitConjunction
 }
 
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by

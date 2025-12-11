@@ -108,8 +108,16 @@ func (s *scanner) scan(lval *sqlSymType) {
 	lval.pos = int32(s.pos)
 	lval.str = "EOF"
 
-	if _, ok := s.skipWhitespace(lval, true); !ok {
-		return
+	for {
+		if comment, _, ok := s.skipWhitespace(lval, true); !ok {
+			return
+		} else if comment != "" {
+			lval.str = comment
+			lval.id = BLOCK_COMMENT
+			return
+		} else {
+			break
+		}
 	}
 
 	ch := s.next()
@@ -352,7 +360,7 @@ func (s *scanner) scan(lval *sqlSymType) {
 			s.pos++
 			lval.id = CONTAINS
 			return
-		case '@': //@@
+		case '@': // @@
 			s.pos++
 			lval.id = TEXTSEARCHMATCH
 		}
@@ -439,7 +447,9 @@ func (s *scanner) next() int {
 	return ch
 }
 
-func (s *scanner) skipWhitespace(lval *sqlSymType, allowComments bool) (newline, ok bool) {
+// skipWhitespace skips over whitespace characters (space, tab, newline, etc) and comments. Multiple consecutive
+// block comments and whitespace will be concatenated together into the final return value.
+func (s *scanner) skipWhitespace(lval *sqlSymType, allowComments bool) (blockComment string, newline, ok bool) {
 	newline = false
 	for {
 		ch := s.peek()
@@ -453,37 +463,55 @@ func (s *scanner) skipWhitespace(lval *sqlSymType, allowComments bool) (newline,
 			continue
 		}
 		if allowComments {
-			if present, cok := s.scanComment(lval); !cok {
-				return false, false
+			if cmt, present, cok := s.scanComment(lval); !cok {
+				return "", false, false
 			} else if present {
+				if len(blockComment) > 0 {
+					blockComment += " "
+				}
+				blockComment += cmt
 				continue
 			}
 		}
 		break
 	}
-	return newline, true
+	return blockComment, newline, true
 }
 
-func (s *scanner) scanComment(lval *sqlSymType) (present, ok bool) {
+// scanComment scans for a comment starting at the current position.
+// For block-style comments, returns the comment string scanned.
+// For line-style comments, returns an empty string.
+// In either case, also returns whether a comment was present, and whether scanning succeeded.
+func (s *scanner) scanComment(lval *sqlSymType) (comment string, present, ok bool) {
 	start := s.pos
 	ch := s.peek()
 
 	if ch == '/' {
+		sb := strings.Builder{}
+		sb.WriteRune('/')
+
 		s.pos++
 		if s.peek() != '*' {
 			s.pos--
-			return false, true
+			return "", false, true
 		}
+		sb.WriteRune('*')
+
 		s.pos++
 		depth := 1
 		for {
-			switch s.next() {
+			next := s.next()
+			sb.WriteRune(rune(next))
+
+			switch next {
 			case '*':
 				if s.peek() == '/' {
 					s.pos++
 					depth--
+					sb.WriteRune(rune('/'))
+
 					if depth == 0 {
-						return true, true
+						return sb.String(), true, true
 					}
 					continue
 				}
@@ -492,6 +520,7 @@ func (s *scanner) scanComment(lval *sqlSymType) (present, ok bool) {
 				if s.peek() == '*' {
 					s.pos++
 					depth++
+					sb.WriteRune(rune('*'))
 					continue
 				}
 
@@ -499,7 +528,7 @@ func (s *scanner) scanComment(lval *sqlSymType) (present, ok bool) {
 				lval.id = ERROR
 				lval.pos = int32(start)
 				lval.str = "unterminated comment"
-				return false, false
+				return "", false, false
 			}
 		}
 	}
@@ -508,17 +537,17 @@ func (s *scanner) scanComment(lval *sqlSymType) (present, ok bool) {
 		s.pos++
 		if s.peek() != '-' {
 			s.pos--
-			return false, true
+			return "", false, true
 		}
 		for {
 			switch s.next() {
 			case eof, '\n':
-				return true, true
+				return "", true, true
 			}
 		}
 	}
 
-	return false, true
+	return "", false, true
 }
 
 func (s *scanner) scanIdent(lval *sqlSymType) {
@@ -535,7 +564,7 @@ func (s *scanner) scanIdent(lval *sqlSymType) {
 	// of whether the string is only ASCII or only ASCII lowercase for later.
 	for {
 		ch := s.peek()
-		//fmt.Println(ch, ch >= utf8.RuneSelf, ch >= 'A' && ch <= 'Z')
+		// fmt.Println(ch, ch >= utf8.RuneSelf, ch >= 'A' && ch <= 'Z')
 
 		if ch >= utf8.RuneSelf {
 			isASCII = false
@@ -549,7 +578,7 @@ func (s *scanner) scanIdent(lval *sqlSymType) {
 
 		s.pos++
 	}
-	//fmt.Println("parsed: ", s.in[start:s.pos], isASCII, isLower)
+	// fmt.Println("parsed: ", s.in[start:s.pos], isASCII, isLower)
 
 	if isLower {
 		// Already lowercased - nothing to do.
@@ -730,7 +759,7 @@ outer:
 		b := s.next()
 		switch b {
 		case ch:
-			newline, ok := s.skipWhitespace(lval, false)
+			_, newline, ok := s.skipWhitespace(lval, false)
 			if !ok {
 				return false
 			}
@@ -783,7 +812,7 @@ outer:
 		b := s.next()
 		switch b {
 		case ch:
-			newline, ok := s.skipWhitespace(lval, false)
+			_, newline, ok := s.skipWhitespace(lval, false)
 			if !ok {
 				return false
 			}
@@ -832,7 +861,7 @@ outer:
 				continue
 			}
 
-			newline, ok := s.skipWhitespace(lval, false)
+			_, newline, ok := s.skipWhitespace(lval, false)
 			if !ok {
 				return false
 			}

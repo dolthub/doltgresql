@@ -45,7 +45,7 @@ func float64Assignment() {
 		Function: func(ctx *sql.Context, valInterface any, targetType *pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
 			if val > 32767 || val < -32768 {
-				return nil, errors.Errorf("smallint out of range")
+				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "smallint out of range")
 			}
 			return int16(val), nil
 		},
@@ -56,7 +56,7 @@ func float64Assignment() {
 		Function: func(ctx *sql.Context, valInterface any, targetType *pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
 			if val > 2147483647 || val < -2147483648 {
-				return nil, errors.Errorf("integer out of range")
+				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "integer out of range")
 			}
 			return int32(val), nil
 		},
@@ -67,7 +67,7 @@ func float64Assignment() {
 		Function: func(ctx *sql.Context, valInterface any, targetType *pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
 			if val > 9223372036854775807 || val < -9223372036854775808 {
-				return nil, errors.Errorf("bigint out of range")
+				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "bigint out of range")
 			}
 			return int64(val), nil
 		},

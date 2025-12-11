@@ -92,6 +92,7 @@ type DoltgresType struct {
 var _ sql.ExtendedType = &DoltgresType{}
 var _ sql.NullType = &DoltgresType{}
 var _ sql.StringType = &DoltgresType{}
+var _ sql.NumberType = &DoltgresType{}
 
 // NewUnresolvedDoltgresType returns DoltgresType that is not resolved.
 // The type will have the schema and name defined with given values, with IsUnresolved == true.
@@ -168,7 +169,6 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		return 0, err
 	}
 
-	// TODO: use IoCompare
 	if v1 == nil && v2 == nil {
 		return 0, nil
 	} else if v1 != nil && v2 == nil {
@@ -328,7 +328,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	case "bpchar", "char", "json", "name", "text", "unknown", "varchar":
 		_, ok, err := sql.Unwrap[string](ctx, v)
 		if err != nil {
-			return nil, sql.OutOfRange, err
+			return nil, sql.InRange, err
 		}
 		if ok {
 			return v, sql.InRange, nil
@@ -380,7 +380,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	default:
 		return v, sql.InRange, nil
 	}
-	return nil, sql.OutOfRange, ErrUnhandledType.New(t.String(), v)
+	return nil, sql.InRange, ErrUnhandledType.New(t.String(), v)
 }
 
 // GetImplicitCast is a reference to the implicit cast logic in the functions/framework package, which we can't use
@@ -396,10 +396,10 @@ var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCas
 var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
 
 // ConvertToType implements the types.ExtendedType interface.
-func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, error) {
+func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
-		return nil, errors.Errorf("expected DoltgresType, got %T", typ)
+		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
 	castFn := GetAssignmentCast(dt, t)
@@ -412,20 +412,28 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		if dt.ID.TypeName() == "unknown" {
 			strVal, ok, err := sql.Unwrap[string](ctx, val)
 			if err != nil {
-				return nil, err
+				return nil, sql.InRange, err
 			}
 			if ok {
 				converted, err := t.IoInput(ctx, strVal)
 				if err != nil {
-					return nil, err
+					return nil, sql.InRange, err
 				}
-				return converted, nil
+				return converted, sql.InRange, nil
 			}
 		}
-		return nil, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
+		return nil, sql.InRange, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
 	}
 
-	return castFn(ctx, val, t)
+	castResult, err := castFn(ctx, val, t)
+	if err != nil && errors.Is(err, ErrCastOutOfRange) {
+		// TODO: this could be either an overflow or an underflow, we should distinguish
+		return castResult, sql.Overflow, nil
+	} else if err != nil {
+		return nil, sql.InRange, err
+	}
+
+	return castResult, sql.InRange, nil
 }
 
 // DomainUnderlyingBaseType returns an underlying base type of this domain type.
@@ -610,6 +618,46 @@ func (t *DoltgresType) MaxCharacterLength() int64 {
 	}
 }
 
+// IsNumericType implements the sql.NumberType interface.
+func (t *DoltgresType) IsNumericType() bool {
+	switch t.TypCategory {
+	case TypeCategory_NumericTypes:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsFloat implements the sql.NumberType interface.
+func (t *DoltgresType) IsFloat() bool {
+	switch t.ID.TypeName() {
+	case "float4", "float8", "numeric", "decimal":
+		return true
+	default:
+		return false
+	}
+}
+
+// DisplayWidth implements the sql.NumberType interface.
+func (t *DoltgresType) DisplayWidth() int {
+	switch t.ID.TypeName() {
+	case "int2":
+		return 6
+	case "int4":
+		return 11
+	case "int8":
+		return 20
+	case "float4":
+		return 14
+	case "float8":
+		return 25
+	case "numeric", "decimal":
+		return 131089 // maximum display width for numeric/decimal in Postgres
+	default:
+		return 0
+	}
+}
+
 // MaxSerializedWidth implements the types.ExtendedType interface.
 func (t *DoltgresType) MaxSerializedWidth() sql.ExtendedTypeSerializedWidth {
 	if t.TypLength < 0 {
@@ -688,10 +736,27 @@ func (t *DoltgresType) SerializedCompare(ctx context.Context, v1 []byte, v2 []by
 		return -1, nil
 	}
 
-	if t.TypCategory == TypeCategory_StringTypes {
+	switch t.TypCategory {
+	case TypeCategory_StringTypes:
 		return serializedStringCompare(v1, v2), nil
+	default:
+		// TODO: there are certainly other types that could be compared in serialized form
+		return deserializeAndCompare(ctx, t, v1, v2)
 	}
-	return bytes.Compare(v1, v2), nil
+}
+
+// deserializeAndCompare deserializes the given serialized values and compares them
+func deserializeAndCompare(ctx context.Context, t *DoltgresType, v1 []byte, v2 []byte) (int, error) {
+	val1, err := t.DeserializeValue(ctx, v1)
+	if err != nil {
+		return 0, err
+	}
+	val2, err := t.DeserializeValue(ctx, v2)
+	if err != nil {
+		return 0, err
+	}
+
+	return t.Compare(ctx, val1, val2)
 }
 
 // IsNullType implements the sql.NullType interface.

@@ -56,11 +56,11 @@ var bpcharin = framework.Function3{
 				maxChars = pgtypes.StringMaxLength
 			}
 		}
-		input, runeLength := truncateString(input, maxChars)
+		str, runeLength := truncateString(input, maxChars)
 		if runeLength > maxChars {
-			return input, errors.Errorf("value too long for type varying(%v)", maxChars)
+			return input, errors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type varying(%v)", maxChars))
 		} else {
-			return input, nil
+			return str, nil
 		}
 	},
 }

@@ -719,6 +719,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
 %token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
 %token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMBINEFUNC COMMENT COMMENTS
+%token <str> BLOCK_COMMENT HINT
 %token <str> COMMIT COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COST CREATE CREATEDB CREATELOGIN CREATEROLE
@@ -1381,6 +1382,8 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %type <tree.Persistence> opt_temp opt_persistence_temp_table opt_persistence_sequence
 %type <bool> role_or_group_or_user role_or_user opt_with_grant_option opt_grant_option_for
+
+%type <str> opt_join_hint_comment
 
 %type <tree.Expr>  cron_expr opt_description sconst_or_placeholder
 %type <*tree.FullBackupClause> opt_full_backup_clause
@@ -10641,50 +10644,62 @@ empty_select:
 //        [ OFFSET <expr> [ ROW | ROWS ] ]
 // %SeeAlso: WEBDOCS/select-clause.html
 simple_select_clause:
-  SELECT opt_all_clause target_list
+  SELECT opt_join_hint_comment opt_all_clause target_list
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
     $$.val = &tree.SelectClause{
-      Exprs:   $3.selExprs(),
-      From:    $4.from(),
-      Where:   tree.NewWhere(tree.AstWhere, $5.expr()),
-      GroupBy: $6.groupBy(),
-      Having:  tree.NewWhere(tree.AstHaving, $7.expr()),
-      Window:  $8.window(),
+      BlockComment: $2,
+      Exprs:   $4.selExprs(),
+      From:    $5.from(),
+      Where:   tree.NewWhere(tree.AstWhere, $6.expr()),
+      GroupBy: $7.groupBy(),
+      Having:  tree.NewWhere(tree.AstHaving, $8.expr()),
+      Window:  $9.window(),
     }
   }
-| SELECT distinct_clause target_list
+| SELECT opt_join_hint_comment distinct_clause target_list
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
     $$.val = &tree.SelectClause{
-      Distinct: $2.bool(),
-      Exprs:    $3.selExprs(),
-      From:     $4.from(),
-      Where:    tree.NewWhere(tree.AstWhere, $5.expr()),
-      GroupBy:  $6.groupBy(),
-      Having:   tree.NewWhere(tree.AstHaving, $7.expr()),
-      Window:   $8.window(),
+      BlockComment: $2,    
+      Distinct: $3.bool(),
+      Exprs:    $4.selExprs(),
+      From:     $5.from(),
+      Where:    tree.NewWhere(tree.AstWhere, $6.expr()),
+      GroupBy:  $7.groupBy(),
+      Having:   tree.NewWhere(tree.AstHaving, $8.expr()),
+      Window:   $9.window(),
     }
   }
-| SELECT distinct_on_clause target_list
+| SELECT opt_join_hint_comment distinct_on_clause target_list
     from_clause opt_where_clause
     group_clause having_clause window_clause
   {
     $$.val = &tree.SelectClause{
+      BlockComment: $2,
       Distinct:   true,
-      DistinctOn: $2.distinctOn(),
-      Exprs:      $3.selExprs(),
-      From:       $4.from(),
-      Where:      tree.NewWhere(tree.AstWhere, $5.expr()),
-      GroupBy:    $6.groupBy(),
-      Having:     tree.NewWhere(tree.AstHaving, $7.expr()),
-      Window:     $8.window(),
+      DistinctOn: $3.distinctOn(),
+      Exprs:      $4.selExprs(),
+      From:       $5.from(),
+      Where:      tree.NewWhere(tree.AstWhere, $6.expr()),
+      GroupBy:    $7.groupBy(),
+      Having:     tree.NewWhere(tree.AstHaving, $8.expr()),
+      Window:     $9.window(),
     }
   }
 | SELECT error // SHOW HELP: SELECT
 
+opt_join_hint_comment:
+  {
+    // empty
+  }
+| BLOCK_COMMENT HINT
+  {
+    $$ = $1
+  }
+  
 set_operation:
   select_clause UNION all_or_distinct select_clause
   {
@@ -15113,6 +15128,7 @@ col_name_keyword:
 | GEOMETRY
 | GREATEST
 | GROUPING
+| HINT
 | IF
 | IFERROR
 | IFNULL

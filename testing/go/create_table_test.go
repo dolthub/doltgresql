@@ -353,6 +353,29 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "inline comments",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE TABLE inline_comments (
+	a int,
+	b int,
+	c int, -- comment on end of line
+	CONSTRAINT check_b CHECK (b IS NULL OR b = 'a'),
+	CONSTRAINT check_a CHECK (a IS NOT NULL AND a = 7)
+);`,
+				},
+				{
+					Query: `CREATE TABLE block_comments (
+	a int,
+	b /* block comment */ /* one more thing */ int, -- comment on end of line
+	c int, -- comment on end of line /* block comment */
+	CONSTRAINT check_b CHECK (b IS NULL OR b = 'a'),
+	CONSTRAINT check_a CHECK (a IS NOT NULL AND a = 7)
+);`,
+				},
+			},
+		},
 	})
 }
 

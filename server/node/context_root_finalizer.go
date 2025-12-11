@@ -16,7 +16,6 @@ package node
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/rowexec"
 
 	"github.com/dolthub/doltgresql/core"
 )
@@ -26,7 +25,7 @@ type ContextRootFinalizer struct {
 	child sql.Node
 }
 
-var _ sql.ExecSourceRel = (*ContextRootFinalizer)(nil)
+var _ sql.ExecBuilderNode = (*ContextRootFinalizer)(nil)
 
 // NewContextRootFinalizer returns a new *ContextRootFinalizer.
 func NewContextRootFinalizer(child sql.Node) *ContextRootFinalizer {
@@ -55,9 +54,9 @@ func (rf *ContextRootFinalizer) Resolved() bool {
 	return rf.child.Resolved()
 }
 
-// RowIter implements the interface sql.ExecSourceRel.
-func (rf *ContextRootFinalizer) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	childIter, err := rowexec.DefaultBuilder.Build(ctx, rf.child, r)
+// BuildRowIter implements the interface sql.ExecSourceRel.
+func (rf *ContextRootFinalizer) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sql.Row) (sql.RowIter, error) {
+	childIter, err := b.Build(ctx, rf.child, r)
 	if err != nil {
 		return nil, err
 	}

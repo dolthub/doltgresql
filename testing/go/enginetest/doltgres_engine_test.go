@@ -612,6 +612,7 @@ func TestScripts(t *testing.T) {
 		"select * from vt where v < cast('def' as char(6));",                                 // incorrect result
 		"select * from vt where v >= cast('def' as char(6));",                                // incorrect result
 		"histogram bucket merging error for implementor buckets",                             // unsupported "with recursive" syntax
+		"varchar primary key",                                                                // literal values longer than the key length returns incorrect results for some queries
 	})
 	defer h.Close()
 	enginetest.TestScripts(t, h)

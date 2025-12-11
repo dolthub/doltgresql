@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -29,9 +28,8 @@ type Not struct {
 	child sql.Expression
 }
 
-var _ vitess.Injectable = (*BinaryOperator)(nil)
-var _ sql.Expression = (*BinaryOperator)(nil)
-var _ expression.BinaryExpression = (*BinaryOperator)(nil)
+var _ vitess.Injectable = (*Not)(nil)
+var _ sql.Expression = (*Not)(nil)
 
 // NewNot returns a new *Not.
 func NewNot() *Not {
@@ -39,6 +37,8 @@ func NewNot() *Not {
 		child: nil,
 	}
 }
+
+var _ sql.IndexComparisonExpression = (*Not)(nil)
 
 // Children implements the sql.Expression interface.
 func (n *Not) Children() []sql.Expression {
@@ -106,4 +106,14 @@ func (n *Not) WithResolvedChildren(children []any) (any, error) {
 	return &Not{
 		child: child,
 	}, nil
+}
+
+// IndexScanOperation implements the sql.IndexComparisonExpression interface.
+func (n *Not) IndexScanOperation() (sql.IndexScanOp, sql.Expression, sql.Expression, bool) {
+	it, ok := n.child.(*InTuple)
+	if !ok {
+		return 0, nil, nil, false
+	}
+
+	return sql.IndexScanOpNotInSet, it.Left(), it.Right(), true
 }
