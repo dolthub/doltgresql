@@ -315,6 +315,8 @@ remotesapi: {}
 
 privilege_file: .doltcfg/privileges.db
 
+auth_file: .doltcfg/auth.db
+
 branch_control_file: .doltcfg/branch_control.db
 
 user_session_vars: []
@@ -332,6 +334,9 @@ EOF
     run query_server -c "select * from t1" -t
     [ "$status" -eq 0 ]
     [[ "$output" =~ "1 | 2" ]] || false
+
+    run test -f ".doltcfg/auth.db"
+    [ "$status" -eq 0 ]
 }
 
 @test 'doltgres: DOLTGRES_DATA_DIR set to current dir' {

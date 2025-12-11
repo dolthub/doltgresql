@@ -88,7 +88,7 @@ func RunInMemory(cfg *servercfg.DoltgresConfig, protocolListenerFactory server.P
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.DoltEnv, protocolListenerFactory server.ProtocolListenerFunc) (*svcs.Controller, error) {
-	initialization.Initialize(dEnv)
+	initialization.Initialize(dEnv, cfg)
 
 	if dEnv.HasDoltDataDir() {
 		cwd, _ := dEnv.FS.Abs(".")
