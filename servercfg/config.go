@@ -431,6 +431,10 @@ func (cfg *DoltgresConfig) MetricsJwksConfig() *servercfg.JwksConfig {
 	return nil
 }
 
+func (cfg *DoltgresConfig) MetricsJWTRequiredForLocalhost() bool {
+	return false
+}
+
 func (cfg *DoltgresConfig) PrivilegeFilePath() string {
 	if cfg.PrivilegeFile == nil {
 		return ""
