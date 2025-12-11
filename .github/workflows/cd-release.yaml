@@ -234,4 +234,4 @@ jobs:
         with:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
           event-type: push-docker-image
-          client-payload: '{"version": "${{ needs.format-version.outputs.version }}", "release_id": "${{ needs.create-pgo-release.outputs.release_id }}" }'
+          client-payload: '{"version": "${{ needs.format-version.outputs.version }}", "release_id": "${{ needs.create-release.outputs.release_id }}" }'
