@@ -19,10 +19,12 @@ wait_for_connection() {
   nativevar PGPASSWORD "$PASSWORD" /w
   
   while [ $SECONDS -lt $end_time ]; do
-    run psql -U $USERNAME -h localhost -p $port -c "SELECT 1;" postgres
+    run psql -U $USERNAME -h localhost -p $port -c "SELECT 1;" $DEFAULT_DB
     if [ $status -eq 0 ]; then
       echo "Connected successfully!"
       return 0
+    else
+      echo "$output"
     fi
     sleep 1
   done
@@ -33,17 +35,32 @@ wait_for_connection() {
 
 start_sql_server() {
     DEFAULT_DB="$1"
-    DEFAULT_DB="${DEFAULT_DB:=postgres}"
     logFile=$2
     USERNAME=$3
-    USERNAME="${USERNAME:=postgres}"
     PASSWORD=$4
-    PASSWORD="${PASSWORD:=password}"
 
-    nativevar DEFAULT_DB "$DEFAULT_DB" /w
-    nativevar PGPASSWORD "$PASSWORD" /w
-    nativevar DOLTGRES_PASSWORD "$PASSWORD" /w
-    nativevar DOLTGRES_USER "$USERNAME" /w
+    if [ -n "$DEFAULT_DB" ]; then
+        nativevar DOLTGRES_DB "$DEFAULT_DB" /w
+    fi
+
+    if [ -n "$PASSWORD" ]; then
+        nativevar PGPASSWORD "password" /w
+        nativevar DOLTGRES_PASSWORD "$PASSWORD" /w
+    else
+        nativevar PGPASSWORD "$PASSWORD" /w
+        PASSWORD="password"
+    fi
+
+    if [ -n "$USERNAME" ]; then
+        nativevar DOLTGRES_USER "$USERNAME" /w
+        if [ -z "$DEFAULT_DB" ]; then
+            DEFAULT_DB="$USERNAME"
+        fi
+    else
+        USERNAME="postgres"
+    fi
+
+    DEFAULT_DB="${DEFAULT_DB:=postgres}"
 
     PORT=$( definePORT )
     CONFIG=$( defineCONFIG $PORT )

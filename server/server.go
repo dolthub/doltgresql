@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	_ "net/http/pprof"
+	"os"
 	"path/filepath"
 
 	"github.com/cockroachdb/errors"
@@ -49,9 +50,10 @@ import (
 const (
 	Version = "0.54.4"
 
-	DefUserName  = "postres"
-	DefUserEmail = "postgres@somewhere.com"
-	DoltgresDir  = "postgres"
+	DefUserName         = "postres"
+	DefUserEmail        = "postgres@somewhere.com"
+	DefUserEmailFmt     = "%s@somewhere.com"
+	DefaultDbNameEnvVar = "DOLTGRES_DB"
 )
 
 func init() {
@@ -121,9 +123,10 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	}
 
 	// We need a username and password for many SQL commands, so set defaults if they don't exist
+	user, _ := auth.GetSuperUserAndPassword()
 	dEnv.Config.SetFailsafes(map[string]string{
-		config.UserNameKey:  DefUserName,
-		config.UserEmailKey: DefUserEmail,
+		config.UserNameKey:  user,
+		config.UserEmailKey: fmt.Sprintf(DefUserEmailFmt, user),
 	})
 
 	// Reload the dolt environment with the correct data dir that was specified in the configuration.
@@ -134,19 +137,16 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	}
 	dEnv = env.Load(ctx, dEnv.GetUserHomeDir, dataDirFs, doltdb.LocalDirDoltDB, dEnv.Version)
 
-	// Automatically initialize a doltgres database if necessary
-	// TODO: probably should only do this if there are no databases in the data dir already
-	createDoltgresDatabase := false
-	if exists, isDirectory := dataDirFs.Exists(DoltgresDir); !exists {
-		createDoltgresDatabase = true
-	} else if !isDirectory {
-		workingDir, _ := dataDirFs.Abs(".")
-		// The else branch means that there's a Doltgres item, so we need to error if it's a file since we
-		// enforce the creation of a Doltgres database/directory, which would create a name conflict with the file
-		return nil, errors.Errorf("Attempted to create the default `postgres` database at `%s`, but a file with "+
-			"the same name was found. Either remove the file, change the directory using the `--data-dir` argument, "+
-			"or change the environment variable `%s` so that it points to a different directory.", workingDir, servercfg.DOLTGRES_DATA_DIR)
+	// Determine whether we need to initialize the default database
+	initializeDefaultDatabase := true
+	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFs, Version, dEnv)
+	if err != nil {
+		return nil, err
 	}
+	mrEnv.Iter(func(_ string, _ *env.DoltEnv) (stop bool, err error) {
+		initializeDefaultDatabase = false
+		return true, nil
+	})
 
 	controller := svcs.NewController()
 	newCtx, cancelF := context.WithCancel(ctx)
@@ -178,8 +178,8 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return nil, err
 	}
 
-	if createDoltgresDatabase {
-		err = createDatabase(ssCfg, "postgres")
+	if initializeDefaultDatabase {
+		err = createDefaultDatabase(ssCfg)
 		if err != nil {
 			return nil, err
 		}
@@ -194,10 +194,11 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	return controller, nil
 }
 
-// createDatabase creates the database named on the local server using the configuration values to connect, returning
+// createDefaultDatabase creates the database named on the local server using the configuration values to connect, returning
 // any error
-func createDatabase(cfg doltservercfg.ServerConfig, dbName string) error {
+func createDefaultDatabase(cfg doltservercfg.ServerConfig) error {
 	user, password := auth.GetSuperUserAndPassword()
+	dbName := getDefaultDatabaseName(user)
 
 	dsn := fmt.Sprintf("postgres://%s:%s@localhost:%d", user, password, cfg.Port())
 
@@ -211,6 +212,17 @@ func createDatabase(cfg doltservercfg.ServerConfig, dbName string) error {
 
 	_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s;", dbName))
 	return err
+}
+
+// getDefaultDatabaseName returns the name of the default database to create on first server start.
+// If the environment variable DOLTGRES_DB is set, that value is used. Otherwise, the username is used.
+// The username is in turn configured with the environment variable DOLTGRES_USER, defaulting to "postgres".
+func getDefaultDatabaseName(userName string) string {
+	defaultDbName := os.Getenv(DefaultDbNameEnvVar)
+	if defaultDbName != "" {
+		return defaultDbName
+	}
+	return userName
 }
 
 // startReplication begins the background thread that replicates from Postgres, if one is configured.

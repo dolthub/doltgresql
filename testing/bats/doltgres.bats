@@ -354,25 +354,44 @@ EOF
 
     [ ! -d "auth.db" ]
     
-    start_sql_server postgres log.txt myuser mypass
+    start_sql_server "" log.txt myuser mypass
     cat log.txt
 
-    query_server_for_user_and_pass myuser mypass -c "create table myTable (a int);"
+    # db matches user name since DOLTGRES_DB was not set
+    query_server_for_user_and_pass myuser mypass myuser -c "create table myTable (a int);"
 
-    run query_server_for_user_and_pass myuser mypass -c "insert into mytable values (1), (2)"
+    run query_server_for_user_and_pass myuser mypass myuser -c "insert into mytable values (1), (2)"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "INSERT" ]] || false
 
-    run query_server_for_user_and_pass postgres password -c "insert into mytable values (1), (2)"
+    run query_server_for_user_and_pass postgres password myuser -c "insert into mytable values (1), (2)"
+    [ "$status" -ne 0 ]
+}
+
+@test 'doltgres: default db via env' {
+    [ ! -d "auth.db" ]
+    
+    start_sql_server mydb log.txt myuser
+    cat log.txt
+
+    query_server_for_user_and_pass myuser password mydb -c "create table myTable (a int);"
+
+    run query_server_for_user_and_pass myuser password mydb -c "insert into mytable values (1), (2)"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "INSERT" ]] || false
+
+    run query_server_for_user_and_pass postgres password mydb -c "insert into mytable values (1), (2)"
     [ "$status" -ne 0 ]
 }
 
 query_server_for_user_and_pass() {
     user=$1
     pass=$2
+    db=$3
+    shift
     shift
     shift
     
     nativevar PGPASSWORD "$pass" /w
-    psql -U "$user" -h localhost -p $PORT "$@" postgres
+    psql -U "$user" -h localhost -p $PORT "$@" $db
 }

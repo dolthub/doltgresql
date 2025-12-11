@@ -37,14 +37,14 @@ func Init(dEnv *env.DoltEnv) {
 
 // GetSuperUserAndPassword returns the superuser and password for the server to use, as defined in the environment
 func GetSuperUserAndPassword() (string, string) {
-	password := "password"
-	if envPassword := os.Getenv(doltgresPasswordEnvVar); envPassword != "" {
-		password = envPassword
-	}
-
 	user := "postgres"
 	if envUser := os.Getenv(doltgresUserEnvVar); envUser != "" {
 		user = envUser
+	}
+
+	password := "password"
+	if envPassword := os.Getenv(doltgresPasswordEnvVar); envPassword != "" {
+		password = envPassword
 	}
 
 	return user, password
