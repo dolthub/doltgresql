@@ -328,7 +328,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	case "bpchar", "char", "json", "name", "text", "unknown", "varchar":
 		_, ok, err := sql.Unwrap[string](ctx, v)
 		if err != nil {
-			return nil, sql.OutOfRange, err
+			return nil, sql.InRange, err
 		}
 		if ok {
 			return v, sql.InRange, nil
@@ -380,7 +380,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	default:
 		return v, sql.InRange, nil
 	}
-	return nil, sql.OutOfRange, ErrUnhandledType.New(t.String(), v)
+	return nil, sql.InRange, ErrUnhandledType.New(t.String(), v)
 }
 
 // GetImplicitCast is a reference to the implicit cast logic in the functions/framework package, which we can't use
@@ -399,7 +399,7 @@ var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastF
 func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
-		return nil, sql.OutOfRange, errors.Errorf("expected DoltgresType, got %T", typ)
+		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
 	castFn := GetAssignmentCast(dt, t)
@@ -412,24 +412,24 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		if dt.ID.TypeName() == "unknown" {
 			strVal, ok, err := sql.Unwrap[string](ctx, val)
 			if err != nil {
-				return nil, sql.OutOfRange, err
+				return nil, sql.InRange, err
 			}
 			if ok {
 				converted, err := t.IoInput(ctx, strVal)
 				if err != nil {
-					return nil, sql.OutOfRange, err
+					return nil, sql.InRange, err
 				}
 				return converted, sql.InRange, nil
 			}
 		}
-		return nil, sql.OutOfRange, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
+		return nil, sql.InRange, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
 	}
 
 	castResult, err := castFn(ctx, val, t)
 	if err != nil && errors.Is(err, ErrCastOutOfRange) {
-		return castResult, sql.OutOfRange, nil
+		return castResult, sql.InRange, nil
 	} else if err != nil {
-		return nil, sql.OutOfRange, err
+		return nil, sql.InRange, err
 	}
 
 	return castResult, sql.InRange, nil
