@@ -61,6 +61,7 @@ const (
 	DefaultDataDir                    = "."
 	DefaultCfgDir                     = ".doltcfg"
 	DefaultPrivilegeFilePath          = "privileges.db"
+	DefaultAuthFilePath               = "auth.db"
 	DefaultBranchControlFilePath      = "branch_control.db"
 	DefaultMetricsHost                = ""
 	DefaultMetricsPort                = -1
@@ -175,6 +176,7 @@ type DoltgresConfig struct {
 	MetricsConfig     *DoltgesMetricsConfig      `yaml:"metrics,omitempty" minver:"0.7.4"`
 	RemotesapiConfig  *DoltgresRemotesapiConfig  `yaml:"remotesapi,omitempty" minver:"0.7.4"`
 	PrivilegeFile     *string                    `yaml:"privilege_file,omitempty" minver:"0.7.4"`
+	AuthFile          *string                    `yaml:"auth_file,omitempty" minver:"0.54.4"`
 	BranchControlFile *string                    `yaml:"branch_control_file,omitempty" minver:"0.7.4"`
 
 	// TODO: Rename to UserVars_
@@ -587,6 +589,7 @@ func DefaultServerConfig() *DoltgresConfig {
 		DataDirStr:        Ptr(dataDir),
 		CfgDirStr:         Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir)),
 		PrivilegeFile:     Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultPrivilegeFilePath)),
+		AuthFile:          Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultAuthFilePath)),
 		BranchControlFile: Ptr(filepath.Join(DefaultDataDir, DefaultCfgDir, DefaultBranchControlFilePath)),
 	}
 }

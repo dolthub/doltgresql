@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 )
 
 // doltgresPasswordEnvVar is the name of the environment variable that can be used to set the password for the
@@ -30,8 +32,8 @@ const doltgresPasswordEnvVar = "DOLTGRES_PASSWORD"
 const doltgresUserEnvVar = "DOLTGRES_USER"
 
 // Init handles all initialization needs in this package.
-func Init(dEnv *env.DoltEnv) {
-	dbInit(dEnv)
+func Init(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
+	dbInit(dEnv, cfg)
 	sql.SetAuthorizationHandlerFactory(AuthorizationHandlerFactory{})
 }
 

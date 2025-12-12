@@ -16,15 +16,18 @@ package auth
 
 import (
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+
+	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 )
 
 // authFileName is the name of the file that contains all authorization-related data.
-const authFileName = "auth.db"
+var authFileName = "auth.db"
 
 var (
 	globalDatabase Database
@@ -128,7 +131,7 @@ func LockWrite(f func()) {
 
 // dbInit handle the global database initialization. Panics if an error occurs, since it points to something going
 // terribly wrong.
-func dbInit(dEnv *env.DoltEnv) {
+func dbInit(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 	globalDatabase = Database{
 		rolesByName:        make(map[string]RoleID),
 		rolesByID:          make(map[RoleID]Role),
@@ -140,10 +143,16 @@ func dbInit(dEnv *env.DoltEnv) {
 	globalLock = &sync.RWMutex{}
 	if dEnv != nil {
 		if _, ok := dEnv.FS.(*filesys.InMemFS); !ok {
+			if cfg != nil && cfg.AuthFile != nil && len(*cfg.AuthFile) > 0 {
+				authFileName = *cfg.AuthFile
+			}
 			fileSystem = dEnv.FS
 			authData, err := fileSystem.ReadFile(authFileName)
 			if os.IsNotExist(err) {
 				dbInitDefault()
+				if err = dbInitCreateAuthDirectory(authFileName); err != nil {
+					panic(err)
+				}
 				if err = fileSystem.WriteFile(authFileName, globalDatabase.serialize(), 0644); err != nil {
 					panic(err)
 				}
@@ -178,4 +187,21 @@ func dbInitDefault() {
 		panic(err)
 	}
 	SetRole(superUser)
+}
+
+// dbInitCreateAuthDirectory creates the directory structure pointed to by the auth file if it does not already exist.
+func dbInitCreateAuthDirectory(authFileName string) error {
+	dir, _ := filepath.Split(authFileName)
+	// If there's no directory, then we have nothing to create
+	if len(dir) == 0 {
+		return nil
+	}
+	fullDir, err := fileSystem.Abs(dir)
+	if err != nil {
+		return err
+	}
+	if exists, _ := fileSystem.Exists(fullDir); !exists {
+		return fileSystem.MkDirs(fullDir)
+	}
+	return nil
 }

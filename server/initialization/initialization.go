@@ -43,11 +43,11 @@ import (
 var once = &sync.Once{}
 
 // Initialize initializes each package across the project. This function should be used instead of an init() function.
-func Initialize(dEnv *env.DoltEnv) {
+func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 	once.Do(func() {
 		core.Init()
 		rootobject.Init()
-		auth.Init(dEnv)
+		auth.Init(dEnv, cfg)
 		analyzer.Init()
 		config.Init()
 		binary.Init()
