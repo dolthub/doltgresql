@@ -357,17 +357,12 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 		token := scanResult.Tokens[i]
 		substring := expression[token.Start:token.End]
 		// varMap lowercases everything, so we'll lowercase our substring to enable case-insensitivity
-		if fieldNames, ok := varMap[strings.ToLower(substring)]; ok {
-			// If there's a '.', then we'll check if this is accessing a record's field (`NEW.val1` for example)
-			if len(fieldNames) > 0 && i+2 < len(scanResult.Tokens) && scanResult.Tokens[i+1].Token == '.' {
-				possibleFieldSubstring := expression[scanResult.Tokens[i+2].Start:scanResult.Tokens[i+2].End]
-				for _, fieldName := range fieldNames {
-					if fieldName == strings.ToLower(possibleFieldSubstring) {
-						substring += "." + fieldName
-						i += 2
-						break
-					}
-				}
+		if _, ok := varMap[strings.ToLower(substring)]; ok {
+			// If there's a '.', then we'll assume this is accessing a record's field (`NEW.val1` for example)
+			for i+2 < len(scanResult.Tokens) && scanResult.Tokens[i+1].Token == '.' {
+				nextFieldSubstring := expression[scanResult.Tokens[i+2].Start:scanResult.Tokens[i+2].End]
+				substring += "." + nextFieldSubstring
+				i += 2
 			}
 			// Variables cannot have a '(' after their name as that would classify them as functions, so we have to
 			// explicitly check for that. This is because variables and functions can share names, for example:

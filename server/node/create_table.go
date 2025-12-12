@@ -20,7 +20,6 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
-	"github.com/dolthub/go-mysql-server/sql/rowexec"
 
 	"github.com/dolthub/doltgresql/core"
 )
@@ -31,7 +30,7 @@ type CreateTable struct {
 	sequences      []*CreateSequence
 }
 
-var _ sql.ExecSourceRel = (*CreateTable)(nil)
+var _ sql.ExecBuilderNode = (*CreateTable)(nil)
 var _ sql.SchemaTarget = (*CreateTable)(nil)
 var _ sql.Expressioner = (*CreateTable)(nil)
 
@@ -43,23 +42,33 @@ func NewCreateTable(createTable *plan.CreateTable, sequences []*CreateSequence) 
 	}
 }
 
-// Children implements the interface sql.ExecSourceRel.
+// Children implements the interface sql.ExecBuilderNode.
 func (c *CreateTable) Children() []sql.Node {
 	return c.gmsCreateTable.Children()
 }
 
-// IsReadOnly implements the interface sql.ExecSourceRel.
+// DebugString implements the sql.DebugStringer interface
+func (c *CreateTable) DebugString() string {
+	return sql.DebugString(c.gmsCreateTable)
+}
+
+// Expressions implements the sql.Expressioner interface.
+func (c *CreateTable) Expressions() []sql.Expression {
+	return c.gmsCreateTable.Expressions()
+}
+
+// IsReadOnly implements the interface sql.ExecBuilderNode.
 func (c *CreateTable) IsReadOnly() bool {
 	return false
 }
 
-// Resolved implements the interface sql.ExecSourceRel.
+// Resolved implements the interface sql.ExecBuilderNode.
 func (c *CreateTable) Resolved() bool {
 	return c.gmsCreateTable != nil && c.gmsCreateTable.Resolved()
 }
 
-// RowIter implements the interface sql.ExecSourceRel.
-func (c *CreateTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+// BuildRowIter implements the interface sql.ExecBuilderNode.
+func (c *CreateTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sql.Row) (sql.RowIter, error) {
 	// Prevent tables from having names like `guid()`, which resembles a function
 	leftParen := strings.IndexByte(c.gmsCreateTable.Name(), '(')
 	rightParen := strings.IndexByte(c.gmsCreateTable.Name(), ')')
@@ -67,7 +76,7 @@ func (c *CreateTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 		return nil, fmt.Errorf("table name `%s` cannot contain a parenthesized portion", c.gmsCreateTable.Name())
 	}
 
-	createTableIter, err := rowexec.DefaultBuilder.Build(ctx, c.gmsCreateTable, r)
+	createTableIter, err := b.Build(ctx, c.gmsCreateTable, r)
 	if err != nil {
 		return nil, err
 	}
@@ -87,22 +96,22 @@ func (c *CreateTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 	return createTableIter, err
 }
 
-// Schema implements the interface sql.ExecSourceRel.
+// Schema implements the interface sql.ExecBuilderNode.
 func (c *CreateTable) Schema() sql.Schema {
 	return c.gmsCreateTable.Schema()
 }
 
-// String implements the interface sql.ExecSourceRel.
+// String implements the interface sql.ExecBuilderNode.
 func (c *CreateTable) String() string {
 	return c.gmsCreateTable.String()
 }
 
-// DebugString implements the sql.DebugStringer interface
-func (c *CreateTable) DebugString() string {
-	return sql.DebugString(c.gmsCreateTable)
+// TargetSchema implements the interface sql.SchemaTarget.
+func (c *CreateTable) TargetSchema() sql.Schema {
+	return c.gmsCreateTable.TargetSchema()
 }
 
-// WithChildren implements the interface sql.ExecSourceRel.
+// WithChildren implements the interface sql.ExecBuilderNode.
 func (c *CreateTable) WithChildren(children ...sql.Node) (sql.Node, error) {
 	gmsCreateTable, err := c.gmsCreateTable.WithChildren(children...)
 	if err != nil {
@@ -114,27 +123,7 @@ func (c *CreateTable) WithChildren(children ...sql.Node) (sql.Node, error) {
 	}, nil
 }
 
-func (c *CreateTable) TargetSchema() sql.Schema {
-	return c.gmsCreateTable.TargetSchema()
-}
-
-func (c CreateTable) WithTargetSchema(schema sql.Schema) (sql.Node, error) {
-	n, err := c.gmsCreateTable.WithTargetSchema(schema)
-	if err != nil {
-		return nil, err
-	}
-
-	c.gmsCreateTable = n.(*plan.CreateTable)
-
-	return &c, nil
-}
-
-// Expressions implements the sql.Expressioner interface.
-func (c *CreateTable) Expressions() []sql.Expression {
-	return c.gmsCreateTable.Expressions()
-}
-
-// WithExpressions implements the sql.Expressioner interface.
+// WithExpressions implements the interface sql.Expressioner.
 func (c *CreateTable) WithExpressions(expression ...sql.Expression) (sql.Node, error) {
 	nc := *c
 	n, err := nc.gmsCreateTable.WithExpressions(expression...)
@@ -144,4 +133,16 @@ func (c *CreateTable) WithExpressions(expression ...sql.Expression) (sql.Node, e
 
 	nc.gmsCreateTable = n.(*plan.CreateTable)
 	return &nc, nil
+}
+
+// WithTargetSchema implements the interface sql.SchemaTarget.
+func (c CreateTable) WithTargetSchema(schema sql.Schema) (sql.Node, error) {
+	n, err := c.gmsCreateTable.WithTargetSchema(schema)
+	if err != nil {
+		return nil, err
+	}
+
+	c.gmsCreateTable = n.(*plan.CreateTable)
+
+	return &c, nil
 }

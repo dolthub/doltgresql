@@ -134,7 +134,7 @@ func GetExplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 	// parameters). If one of the types are a string type, then we do not use the identity, and use the I/O conversions
 	// below.
 	if fromType.ID == toType.ID && toType.TypCategory != pgtypes.TypeCategory_StringTypes && fromType.TypCategory != pgtypes.TypeCategory_StringTypes {
-		return identityCast
+		return IdentityCast
 	}
 	// All types have a built-in explicit cast from string types: https://www.postgresql.org/docs/15/sql-createcast.html
 	if fromType.TypCategory == pgtypes.TypeCategory_StringTypes {
@@ -175,7 +175,7 @@ func GetAssignmentCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresT
 	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
 	// parameters). If the "to" type is a string type, then we do not use the identity, and use the I/O conversion below.
 	if fromType.ID == toType.ID && fromType.TypCategory != pgtypes.TypeCategory_StringTypes {
-		return identityCast
+		return IdentityCast
 	}
 	// All types have a built-in assignment cast to string types: https://www.postgresql.org/docs/15/sql-createcast.html
 	if toType.TypCategory == pgtypes.TypeCategory_StringTypes {
@@ -202,7 +202,7 @@ func GetImplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
 	// parameters).
 	if fromType.ID == toType.ID {
-		return identityCast
+		return IdentityCast
 	}
 	return nil
 }
@@ -282,8 +282,8 @@ func getCast(mutex *sync.RWMutex,
 	return nil
 }
 
-// identityCast returns the input value.
-func identityCast(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+// IdentityCast returns the input value.
+func IdentityCast(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 	return val, nil
 }
 

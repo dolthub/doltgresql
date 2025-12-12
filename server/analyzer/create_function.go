@@ -21,7 +21,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
-	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/node"
 )
 
@@ -37,8 +36,7 @@ func ValidateCreateFunction(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, 
 		return n, transform.SameTree, nil
 	}
 
-	parser := psql.NewPostgresParser()
-	builder := planbuilder.New(ctx, a.Catalog, nil, parser)
+	builder := planbuilder.New(ctx, a.Catalog, nil)
 	_, _, err := builder.BindOnly(ct.SqlDefParsed, ct.SqlDef, nil)
 	if err != nil {
 		return nil, transform.SameTree, err

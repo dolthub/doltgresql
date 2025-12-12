@@ -639,5 +639,36 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "Table as type",
+			Skip: true, // TODO: figure out why this is not recognizing rec.qty as valid
+			SetUpScript: []string{
+				`CREATE TABLE test (id INT4 PRIMARY KEY, name TEXT NOT NULL, qty INT4 NOT NULL, price REAL NOT NULL);`,
+				`CREATE FUNCTION trigger_func() RETURNS trigger AS $$
+DECLARE
+	rec test;
+BEGIN
+	rec := NEW;
+	IF rec.qty < 0 THEN
+		rec.qty := -rec.qty;
+	END IF;
+	NEW := rec;
+	RETURN NEW;
+END; $$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO test VALUES (1, 'apple', 3, 2.5), (2, 'banana', -5, -1.2);`,
+					Expected: []sql.Row{},
+				}, {
+					Query: `SELECT * FROM test;`,
+					Expected: []sql.Row{
+						{1, "apple", 3, 2.5},
+						{2, "banana", 5, -1.2},
+					},
+				},
+			},
+		},
 	})
 }

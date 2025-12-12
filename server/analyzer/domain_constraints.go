@@ -84,7 +84,7 @@ func getDomainDefault(ctx *sql.Context, a *analyzer.Analyzer, defExpr, tblName s
 	if defExpr == "" {
 		return nil, nil
 	}
-	parsed, err := sql.GlobalParser.ParseSimple(fmt.Sprintf("select %s from %s", defExpr, tblName))
+	parsed, err := a.Parser.ParseSimple(fmt.Sprintf("select %s from %s", defExpr, tblName))
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func getDomainDefault(ctx *sql.Context, a *analyzer.Analyzer, defExpr, tblName s
 	if !ok {
 		return nil, sql.ErrInvalidColumnDefaultValue.New(defExpr)
 	}
-	builder := planbuilder.New(ctx, a.Catalog, nil, sql.GlobalParser)
+	builder := planbuilder.New(ctx, a.Catalog, nil)
 	return builder.BuildColumnDefaultValueWithTable(ae.Expr, selectStmt.From[0], typ, nullable), nil
 }
 
@@ -228,7 +228,7 @@ func parseAndReplaceDomainCheckConstraint(ctx *sql.Context, a *analyzer.Analyzer
 		return nil, sql.ErrInvalidCheckConstraint.New(checkExpr)
 	}
 
-	builder := planbuilder.New(ctx, a.Catalog, nil, sql.GlobalParser)
+	builder := planbuilder.New(ctx, a.Catalog, nil)
 	var tblExpr vitess.TableExpr
 	if len(convertedSelectStmt.From) == 1 {
 		tblExpr = convertedSelectStmt.From[0]

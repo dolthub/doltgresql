@@ -22,8 +22,6 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
-
-	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 )
 
 // authFileName is the name of the file that contains all authorization-related data.
@@ -131,7 +129,7 @@ func LockWrite(f func()) {
 
 // dbInit handle the global database initialization. Panics if an error occurs, since it points to something going
 // terribly wrong.
-func dbInit(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
+func dbInit(dEnv *env.DoltEnv, cfg Config) {
 	globalDatabase = Database{
 		rolesByName:        make(map[string]RoleID),
 		rolesByID:          make(map[RoleID]Role),
@@ -143,8 +141,8 @@ func dbInit(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 	globalLock = &sync.RWMutex{}
 	if dEnv != nil {
 		if _, ok := dEnv.FS.(*filesys.InMemFS); !ok {
-			if cfg != nil && cfg.AuthFile != nil && len(*cfg.AuthFile) > 0 {
-				authFileName = *cfg.AuthFile
+			if cfg != nil && len(cfg.AuthFilePath()) > 0 {
+				authFileName = cfg.AuthFilePath()
 			}
 			fileSystem = dEnv.FS
 			authData, err := fileSystem.ReadFile(authFileName)

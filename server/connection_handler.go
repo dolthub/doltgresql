@@ -302,7 +302,8 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 		db = h.mysqlConn.User
 	}
 	useStmt := fmt.Sprintf("SET database TO '%s';", db)
-	parsed, err := sql.GlobalParser.ParseSimple(useStmt)
+	postgresParser := psql.PostgresParser{}
+	parsed, err := postgresParser.ParseSimple(useStmt)
 	if err != nil {
 		return err
 	}
@@ -748,7 +749,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		}
 
 		// we build an insert node to use for the full insert plan, for which the copy from node will be the row source
-		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil, psql.NewPostgresParser())
+		builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil)
 		node, flags, err := builder.BindOnly(copyFromStdinNode.InsertStub, "", nil)
 		if err != nil {
 			return false, false, err

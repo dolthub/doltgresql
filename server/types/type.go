@@ -528,7 +528,12 @@ func (t *DoltgresType) IsArrayType() bool {
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a
 // user-created composite type.
 func (t *DoltgresType) IsCompositeType() bool {
-	return t.ID.TypeName() == "record" || t.TypType == TypeType_Composite
+	return t.TypType == TypeType_Composite || t.IsRecordType()
+}
+
+// IsRecordType returns true if the type is an anonymous record type.
+func (t *DoltgresType) IsRecordType() bool {
+	return t.TypType == TypeType_Pseudo && t.ID.TypeName() == "record"
 }
 
 // IsEmptyType returns true if the type is not valid.
@@ -996,6 +1001,8 @@ func (t *DoltgresType) DeserializeValue(ctx context.Context, val []byte) (any, e
 		}
 	} else if t.TypType == TypeType_Enum {
 		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.ID.AsId())
+	} else if t.IsCompositeType() {
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.ID.AsId(), t.attTypMod)
 	} else {
 		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val)
 	}

@@ -22,11 +22,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/yaml.v2"
+
+	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
+	"github.com/dolthub/doltgresql/server/expression"
 )
 
 const (
@@ -445,6 +448,13 @@ func (cfg *DoltgresConfig) PrivilegeFilePath() string {
 	return *cfg.PrivilegeFile
 }
 
+func (cfg *DoltgresConfig) AuthFilePath() string {
+	if cfg.AuthFile == nil {
+		return ""
+	}
+	return *cfg.AuthFile
+}
+
 func (cfg *DoltgresConfig) BranchControlFilePath() string {
 	if cfg.BranchControlFile == nil {
 		return ""
@@ -552,6 +562,16 @@ func (cfg *DoltgresConfig) ValueSet(value string) bool {
 	}
 
 	return false
+}
+
+func (cfg *DoltgresConfig) Overrides() sql.EngineOverrides {
+	return sql.EngineOverrides{
+		Builder: sql.BuilderOverrides{
+			ParseTableAsColumn: expression.NewTableToComposite,
+			Parser:             pgsql.NewPostgresParser(),
+		},
+		SchemaFormatter: pgsql.NewPostgresSchemaFormatter(),
+	}
 }
 
 func (cfg *DoltgresConfig) ToSqlServerConfig() servercfg.ServerConfig {

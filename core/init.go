@@ -20,6 +20,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/typecollection"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
@@ -35,4 +36,6 @@ func Init() {
 	conflicts.ClearContextValues = ClearContextValues
 	plpgsql.GetTypesCollectionFromContext = GetTypesCollectionFromContext
 	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
+	typecollection.GetSqlTableFromContext = GetSqlTableFromContext
+	typecollection.GetSchemaName = GetSchemaName
 }
