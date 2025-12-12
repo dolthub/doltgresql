@@ -19,11 +19,9 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
-	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/rootobject"
-	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/cast"
@@ -56,8 +54,6 @@ func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 		aggregate.Init()
 		cast.Init()
 		framework.Initialize()
-		sql.GlobalParser = pgsql.NewPostgresParser()
-		sql.GlobalSchemaFormatter = pgsql.NewPostgresSchemaFormatter()
 		servercfg.DefaultUnixSocketFilePath = doltgresservercfg.DefaultPostgresUnixSocketFilePath
 		tables.Init()
 		pgcatalog.Init()

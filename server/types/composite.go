@@ -62,20 +62,20 @@ func NewCompositeType(ctx *sql.Context, relID id.Id, arrayID, typeID id.Type, at
 // CompositeAttribute represents a composite type attribute.
 // This is a partial pg_attribute row entry.
 type CompositeAttribute struct {
-	relID     id.Id // ID of the relation it belongs to
-	name      string
-	typeID    id.Type // ID of DoltgresType
-	num       int16   // number of the column in relation
-	collation string
+	RelID     id.Id // ID of the relation it belongs to
+	Name      string
+	TypeID    id.Type // ID of DoltgresType
+	Num       int16   // 1-based number of the column in relation
+	Collation string
 }
 
-// NewCompositeAttribute creates new instance of composite type attribute.
+// NewCompositeAttribute creates new instance of composite type attribute. `num` is 1-based rather than 0-based.
 func NewCompositeAttribute(ctx *sql.Context, relID id.Id, name string, typeID id.Type, num int16, collation string) CompositeAttribute {
 	return CompositeAttribute{
-		relID:     relID,
-		name:      name,
-		typeID:    typeID,
-		num:       num,
-		collation: collation,
+		RelID:     relID,
+		Name:      name,
+		TypeID:    typeID,
+		Num:       num,
+		Collation: collation,
 	}
 }

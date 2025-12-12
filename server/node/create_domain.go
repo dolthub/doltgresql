@@ -39,9 +39,11 @@ type CreateDomain struct {
 	IsNotNull            bool
 	CheckConstraintNames []string
 	CheckConstraints     sql.CheckConstraints
+	overrides            sql.EngineOverrides
 }
 
 var _ sql.ExecSourceRel = (*CreateDomain)(nil)
+var _ sql.NodeOverriding = (*CreateDomain)(nil)
 var _ vitess.Injectable = (*CreateDomain)(nil)
 
 // Children implements the interface sql.ExecSourceRel.
@@ -91,7 +93,7 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 			c.CheckConstraintNames[i] = checkName
 			check.Name = checkName
 		}
-		checkDefs[i], err = plan.NewCheckDefinition(ctx, check)
+		checkDefs[i], err = plan.NewCheckDefinition(ctx, check, sql.GetSchemaFormatter(c.overrides))
 		if err != nil {
 			return nil, err
 		}
@@ -141,6 +143,12 @@ func (c *CreateDomain) String() string {
 // WithChildren implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) WithChildren(children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
+}
+
+// WithOverrides implements the interface sql.NodeOverriding.
+func (c *CreateDomain) WithOverrides(overrides sql.EngineOverrides) sql.Node {
+	c.overrides = overrides
+	return c
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.

@@ -20,7 +20,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/rowexec"
 
 	"github.com/dolthub/doltgresql/core/triggers"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
@@ -50,7 +49,7 @@ type TriggerExecution struct {
 	Runner   pgexprs.StatementRunner
 }
 
-var _ sql.ExecSourceRel = (*TriggerExecution)(nil)
+var _ sql.ExecBuilderNode = (*TriggerExecution)(nil)
 var _ sql.Expressioner = (*TriggerExecution)(nil)
 
 func (te *TriggerExecution) Children() []sql.Node {
@@ -62,19 +61,19 @@ func (te *TriggerExecution) Expressions() []sql.Expression {
 	return []sql.Expression{te.Runner}
 }
 
-// IsReadOnly implements the interface sql.ExecSourceRel.
+// IsReadOnly implements the interface sql.ExecBuilderNode.
 func (te *TriggerExecution) IsReadOnly() bool {
 	return te.Source.IsReadOnly()
 }
 
-// Resolved implements the interface sql.ExecSourceRel.
+// Resolved implements the interface sql.ExecBuilderNode.
 func (te *TriggerExecution) Resolved() bool {
 	return te.Source.Resolved()
 }
 
-// RowIter implements the interface sql.ExecSourceRel.
-func (te *TriggerExecution) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	sourceIter, err := rowexec.DefaultBuilder.Build(ctx, te.Source, r)
+// BuildRowIter implements the interface sql.ExecBuilderNode.
+func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sql.Row) (sql.RowIter, error) {
+	sourceIter, err := b.Build(ctx, te.Source, r)
 	if err != nil {
 		return nil, err
 	}
@@ -109,17 +108,17 @@ func (te *TriggerExecution) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, e
 	}, nil
 }
 
-// Schema implements the interface sql.ExecSourceRel.
+// Schema implements the interface sql.ExecBuilderNode.
 func (te *TriggerExecution) Schema() sql.Schema {
 	return te.Source.Schema()
 }
 
-// String implements the interface sql.ExecSourceRel.
+// String implements the interface sql.ExecBuilderNode.
 func (te *TriggerExecution) String() string {
 	return "TRIGGER EXECUTION"
 }
 
-// WithChildren implements the interface sql.ExecSourceRel.
+// WithChildren implements the interface sql.ExecBuilderNode.
 func (te *TriggerExecution) WithChildren(children ...sql.Node) (sql.Node, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(te, len(children), 1)

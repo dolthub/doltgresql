@@ -19,7 +19,6 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
-	"github.com/dolthub/go-mysql-server/sql/rowexec"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
@@ -30,7 +29,7 @@ type DropTable struct {
 	gmsDropTable *plan.DropTable
 }
 
-var _ sql.ExecSourceRel = (*DropTable)(nil)
+var _ sql.ExecBuilderNode = (*DropTable)(nil)
 
 // NewDropTable returns a new *DropTable.
 func NewDropTable(dropTable *plan.DropTable) *DropTable {
@@ -39,24 +38,24 @@ func NewDropTable(dropTable *plan.DropTable) *DropTable {
 	}
 }
 
-// Children implements the interface sql.ExecSourceRel.
+// Children implements the interface sql.ExecBuilderNode.
 func (c *DropTable) Children() []sql.Node {
 	return c.gmsDropTable.Children()
 }
 
-// IsReadOnly implements the interface sql.ExecSourceRel.
+// IsReadOnly implements the interface sql.ExecBuilderNode.
 func (c *DropTable) IsReadOnly() bool {
 	return false
 }
 
-// Resolved implements the interface sql.ExecSourceRel.
+// Resolved implements the interface sql.ExecBuilderNode.
 func (c *DropTable) Resolved() bool {
 	return c.gmsDropTable != nil && c.gmsDropTable.Resolved()
 }
 
-// RowIter implements the interface sql.ExecSourceRel.
-func (c *DropTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	dropTableIter, err := rowexec.DefaultBuilder.Build(ctx, c.gmsDropTable, r)
+// BuildRowIter implements the interface sql.ExecBuilderNode.
+func (c *DropTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sql.Row) (sql.RowIter, error) {
+	dropTableIter, err := b.Build(ctx, c.gmsDropTable, r)
 	if err != nil {
 		return nil, err
 	}
@@ -88,17 +87,17 @@ func (c *DropTable) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	return dropTableIter, err
 }
 
-// Schema implements the interface sql.ExecSourceRel.
+// Schema implements the interface sql.ExecBuilderNode.
 func (c *DropTable) Schema() sql.Schema {
 	return c.gmsDropTable.Schema()
 }
 
-// String implements the interface sql.ExecSourceRel.
+// String implements the interface sql.ExecBuilderNode.
 func (c *DropTable) String() string {
 	return c.gmsDropTable.String()
 }
 
-// WithChildren implements the interface sql.ExecSourceRel.
+// WithChildren implements the interface sql.ExecBuilderNode.
 func (c *DropTable) WithChildren(children ...sql.Node) (sql.Node, error) {
 	gmsDropTable, err := c.gmsDropTable.WithChildren(children...)
 	if err != nil {

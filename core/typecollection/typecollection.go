@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -101,8 +102,10 @@ func (pgs *TypeCollection) DropType(ctx context.Context, names ...id.Type) (err 
 }
 
 // GetAllTypes returns a map containing all types in the collection, grouped by the schema they're contained in.
-// Each type array is also sorted by the type name. It includes built-in types.
+// Each type array is also sorted by the type name. It includes built-in types, but does not include types referring to
+// a table's row type.
 func (pgs *TypeCollection) GetAllTypes(ctx context.Context) (typeMap map[string][]*pgtypes.DoltgresType, schemaNames []string, totalCount int, err error) {
+	// TODO: this should probably get tables as well since tables create composite types matching their rows
 	schemaNamesMap := make(map[string]struct{})
 	typeMap = make(map[string][]*pgtypes.DoltgresType)
 	err = pgs.IterateTypes(ctx, func(t *pgtypes.DoltgresType) (stop bool, err error) {
@@ -158,8 +161,20 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 	}
 	// The initial load is from the internal map
 	h, err := pgs.underlyingMap.Get(ctx, string(name))
-	if err != nil || h.IsEmpty() {
+	if err != nil {
 		return nil, err
+	}
+	if h.IsEmpty() {
+		// If it's not a built-in type or created type, then check if it's a composite table row type
+		sqlCtx, ok := ctx.(*sql.Context)
+		if !ok {
+			return nil, nil
+		}
+		tbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), name.TypeName())
+		if err != nil || tbl == nil {
+			return nil, err
+		}
+		return pgs.tableToType(sqlCtx, tbl, schema)
 	}
 	data, err := pgs.ns.ReadBytes(ctx, h)
 	if err != nil {
@@ -180,7 +195,7 @@ func (pgs *TypeCollection) HasType(ctx context.Context, name id.Type) bool {
 	if _, ok := pgtypes.IDToBuiltInDoltgresType[name]; ok {
 		return true
 	}
-
+	// Now we'll check our created types
 	if _, ok := pgs.accessedMap[name]; ok {
 		return true
 	}
@@ -188,11 +203,18 @@ func (pgs *TypeCollection) HasType(ctx context.Context, name id.Type) bool {
 	if err == nil && ok {
 		return true
 	}
-	return false
+	// If it's not a built-in type or created type, then check if it's a composite table row type
+	sqlCtx, ok := ctx.(*sql.Context)
+	if !ok {
+		return false
+	}
+	tbl, _, err := pgs.getTable(sqlCtx, name.SchemaName(), name.TypeName())
+	return err == nil && tbl != nil
 }
 
 // resolveName returns the fully resolved name of the given type. Returns an error if the name is ambiguous.
 func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, typeName string) (id.Type, error) {
+	// TODO: this should probably check table names as well since tables create composite types matching their rows
 	// First check for an exact match in the built-in types
 	inputID := id.NewType(schemaName, typeName)
 	if _, ok := pgtypes.IDToBuiltInDoltgresType[inputID]; ok {
@@ -251,6 +273,7 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 
 // IterateTypes iterates over all types in the collection.
 func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes.DoltgresType) (stop bool, err error)) error {
+	// TODO: this should probably iterate tables as well since tables create composite types matching their rows
 	// We can iterate the built-in types first
 	for _, t := range pgtypes.GetAllBuitInTypes() {
 		stop, err := f(t)
@@ -368,3 +391,50 @@ func (pgs *TypeCollection) writeCache(ctx context.Context) (err error) {
 	clear(pgs.accessedMap)
 	return nil
 }
+
+// getTable returns the SQL table that matches the given schema and table name. Returns a nil table if one is not found.
+// This is intended for use with tableToType.
+func (*TypeCollection) getTable(ctx *sql.Context, schema string, tblName string) (tbl sql.Table, actualSchema string, err error) {
+	actualSchema, err = GetSchemaName(ctx, nil, schema)
+	if err != nil {
+		return nil, "", err
+	}
+	tbl, err = GetSqlTableFromContext(ctx, "", doltdb.TableName{
+		Name:   tblName,
+		Schema: actualSchema,
+	})
+	if err != nil || tbl == nil {
+		return nil, "", err
+	}
+	if schTbl, ok := tbl.(sql.DatabaseSchemaTable); ok {
+		actualSchema = schTbl.DatabaseSchema().SchemaName()
+	}
+	return tbl, actualSchema, nil
+}
+
+// tableToType handles type creation related to a table's composite row type.
+// https://www.postgresql.org/docs/15/sql-createtable.html
+func (*TypeCollection) tableToType(ctx *sql.Context, tbl sql.Table, schema string) (*pgtypes.DoltgresType, error) {
+	tblName := tbl.Name()
+	tblSch := tbl.Schema()
+	typeID := id.NewType(schema, tblName)
+	relID := id.NewTable(schema, tblName).AsId()
+	arrayID := id.NewType(schema, "_"+tblName)
+	attrs := make([]pgtypes.CompositeAttribute, len(tblSch))
+	for i, col := range tblSch {
+		collation := "" // TODO: what should we use for the collation?
+		colType, ok := col.Type.(*pgtypes.DoltgresType)
+		if !ok {
+			// TODO: perhaps we should use a better error message stating that it uses a non-Doltgres type?
+			return nil, pgtypes.ErrTypeDoesNotExist.New(tblName)
+		}
+		attrs[i] = pgtypes.NewCompositeAttribute(ctx, relID, col.Name, colType.ID, int16(i+1), collation)
+	}
+	return pgtypes.NewCompositeType(ctx, relID, arrayID, typeID, attrs), nil
+}
+
+// GetSqlTableFromContext is a forward declaration to get around import cycles
+var GetSqlTableFromContext func(ctx *sql.Context, databaseName string, tableName doltdb.TableName) (sql.Table, error)
+
+// GetSchemaName is a forward declaration to get around import cycles
+var GetSchemaName func(ctx *sql.Context, db sql.Database, schemaName string) (string, error)

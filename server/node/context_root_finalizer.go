@@ -25,6 +25,7 @@ type ContextRootFinalizer struct {
 	child sql.Node
 }
 
+var _ sql.DebugStringer = (*ContextRootFinalizer)(nil)
 var _ sql.ExecBuilderNode = (*ContextRootFinalizer)(nil)
 
 // NewContextRootFinalizer returns a new *ContextRootFinalizer.
@@ -39,22 +40,27 @@ func (rf *ContextRootFinalizer) Child() sql.Node {
 	return rf.child
 }
 
-// Children implements the interface sql.ExecSourceRel.
+// Children implements the interface sql.ExecBuilderNode.
 func (rf *ContextRootFinalizer) Children() []sql.Node {
 	return []sql.Node{rf.child}
 }
 
-// IsReadOnly implements the interface sql.ExecSourceRel.
+// DebugString implements the interface sql.DebugStringer.
+func (rf *ContextRootFinalizer) DebugString() string {
+	return sql.DebugString(rf.child)
+}
+
+// IsReadOnly implements the interface sql.ExecBuilderNode.
 func (rf *ContextRootFinalizer) IsReadOnly() bool {
 	return false
 }
 
-// Resolved implements the interface sql.ExecSourceRel.
+// Resolved implements the interface sql.ExecBuilderNode.
 func (rf *ContextRootFinalizer) Resolved() bool {
 	return rf.child.Resolved()
 }
 
-// BuildRowIter implements the interface sql.ExecSourceRel.
+// BuildRowIter implements the interface sql.ExecBuilderNode.
 func (rf *ContextRootFinalizer) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sql.Row) (sql.RowIter, error) {
 	childIter, err := b.Build(ctx, rf.child, r)
 	if err != nil {
@@ -66,21 +72,17 @@ func (rf *ContextRootFinalizer) BuildRowIter(ctx *sql.Context, b sql.NodeExecBui
 	return &rootFinalizerIter{childIter: childIter}, nil
 }
 
-// Schema implements the interface sql.ExecSourceRel.
+// Schema implements the interface sql.ExecBuilderNode.
 func (rf *ContextRootFinalizer) Schema() sql.Schema {
 	return rf.child.Schema()
 }
 
-// String implements the interface sql.ExecSourceRel.
+// String implements the interface sql.ExecBuilderNode.
 func (rf *ContextRootFinalizer) String() string {
 	return rf.child.String()
 }
 
-func (rf *ContextRootFinalizer) DebugString() string {
-	return sql.DebugString(rf.child)
-}
-
-// WithChildren implements the interface sql.ExecSourceRel.
+// WithChildren implements the interface sql.ExecBuilderNode.
 func (rf *ContextRootFinalizer) WithChildren(children ...sql.Node) (sql.Node, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(rf, len(children), 1)
