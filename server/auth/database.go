@@ -191,19 +191,17 @@ func dbInitDefault() {
 
 // dbInitCreateAuthDirectory creates the directory structure pointed to by the auth file if it does not already exist.
 func dbInitCreateAuthDirectory(authFileName string) error {
-	fullAuthFileName, err := fileSystem.Abs(authFileName)
+	dir, _ := filepath.Split(authFileName)
+	// If there's no directory, then we have nothing to create
+	if len(dir) == 0 {
+		return nil
+	}
+	fullDir, err := fileSystem.Abs(dir)
 	if err != nil {
 		return err
 	}
-	fullAuthDir := filepath.Dir(fullAuthFileName)
-	if _, err := fileSystem.ReadFile(fullAuthDir); err != nil {
-		if os.IsNotExist(err) {
-			if err = fileSystem.MkDirs(fullAuthDir); err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
+	if exists, _ := fileSystem.Exists(fullDir); !exists {
+		return fileSystem.MkDirs(fullDir)
 	}
 	return nil
 }

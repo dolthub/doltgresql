@@ -29,13 +29,14 @@ import (
 	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/types"
+	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 )
 
 // TestCsvDataLoader tests the CsvDataLoader implementation.
 func TestCsvDataLoader(t *testing.T) {
 	db := memory.NewDatabase("mydb")
 	provider := memory.NewDBProvider(db)
-	initialization.Initialize(nil)
+	initialization.Initialize(nil, doltgresservercfg.DefaultServerConfig())
 
 	ctx := &sql.Context{
 		Context: context.Background(),

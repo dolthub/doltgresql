@@ -22,6 +22,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/initialization"
+	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/testing/generation/utils"
 )
 
@@ -33,7 +34,7 @@ type Assertion struct {
 }
 
 func main() {
-	initialization.Initialize(nil)
+	initialization.Initialize(nil, doltgresservercfg.DefaultServerConfig())
 	rootFolder, err := utils.GetRootFolder()
 	if err != nil {
 		fmt.Printf("%s\n", err.Error())

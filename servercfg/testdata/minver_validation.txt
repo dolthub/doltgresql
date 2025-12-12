@@ -36,6 +36,7 @@ RemotesapiConfig *servercfg.DoltgresRemotesapiConfig 0.7.4 remotesapi,omitempty
 -Port *int 0.7.4 port,omitempty
 -ReadOnly *bool 0.7.4 read_only,omitempty
 PrivilegeFile *string 0.7.4 privilege_file,omitempty
+AuthFile *string 0.54.4 auth_file,omitempty
 BranchControlFile *string 0.7.4 branch_control_file,omitempty
 Vars []servercfg.DoltgresUserSessionVars 0.7.4 user_session_vars,omitempty
 -Name string 0.0.0 name
