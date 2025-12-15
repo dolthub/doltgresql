@@ -21,7 +21,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/cockroachdb/errors"
-	pg_query "github.com/pganalyze/pg_query_go/v6"
+	pg_query "github.com/dolthub/pg_query_go/v6"
 )
 
 // Statement represents a PL/pgSQL statement.

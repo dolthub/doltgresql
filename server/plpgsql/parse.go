@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 
 	"github.com/cockroachdb/errors"
-	pg_query "github.com/pganalyze/pg_query_go/v6"
+	pg_query "github.com/dolthub/pg_query_go/v6"
 )
 
 // Parse parses the given CREATE FUNCTION string (which must be the entire string, not just the body) into a Block

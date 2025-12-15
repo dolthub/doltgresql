@@ -10,6 +10,7 @@ require (
 	github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-mysql-server v0.20.1-0.20251212235309-4422a1ca9f43
+	github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20251210200925-1d33d416d162
 	github.com/fatih/color v1.13.0
@@ -26,7 +27,6 @@ require (
 	github.com/madflojo/testcerts v1.1.1
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/go-wordwrap v1.0.1
-	github.com/pganalyze/pg_query_go/v6 v6.1.0
 	github.com/pierrre/geohash v1.0.0
 	github.com/pkg/profile v1.5.0
 	github.com/sergi/go-diff v1.1.0
@@ -201,5 +201,3 @@ require (
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/pganalyze/pg_query_go/v6 => github.com/dolthub/pg_query_go/v6 v6.0.0-20250702135351-29eb6bfc4ea6
