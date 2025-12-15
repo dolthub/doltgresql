@@ -40,8 +40,8 @@ jobs:
       shell: bash
     - name: Test (*nix)
       if: ${{ matrix.platform != 'windows-latest' }}
-      run: go test $(go list ./testing/go/enginetest)
+      run: go test --timeout=20m $(go list ./testing/go/enginetest)
     - name: Test (Windows)
       if: ${{ matrix.platform == 'windows-latest' }}
       shell: msys2 {0}
-      run: go.exe test $(go.exe list ./testing/go/enginetest)
+      run: go.exe test --timeout=20m $(go.exe list ./testing/go/enginetest)

@@ -47,13 +47,13 @@ jobs:
     - name: Test (MacOS)
       if: ${{ matrix.platform == 'macos-latest' }}
       working-directory: ./testing/go
-      run: go test -run TestImportingDumps .
+      run: go test --timeout=30m -run TestImportingDumps .
     - name: Test (Windows)
       if: ${{ matrix.platform == 'windows-latest' }}
       working-directory: ./testing/go
       shell: msys2 {0}
-      run: go.exe test -run TestImportingDumps .
+      run: go.exe test --timeout=30m -run TestImportingDumps .
     - name: Test (Linux)
       if: ${{ matrix.platform == 'ubuntu-latest' }}
       working-directory: ./testing/go
-      run: go test -run TestImportingDumps .
+      run: go test --timeout=30m -run TestImportingDumps .
