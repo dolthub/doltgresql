@@ -625,12 +625,7 @@ func (t *DoltgresType) MaxCharacterLength() int64 {
 
 // IsNumericType implements the sql.NumberType interface.
 func (t *DoltgresType) IsNumericType() bool {
-	switch t.TypCategory {
-	case TypeCategory_NumericTypes:
-		return true
-	default:
-		return false
-	}
+	return t.TypCategory == TypeCategory_NumericTypes
 }
 
 // IsFloat implements the sql.NumberType interface.
@@ -661,6 +656,11 @@ func (t *DoltgresType) DisplayWidth() int {
 	default:
 		return 0
 	}
+}
+
+// IsStringType implements the sql.StringType interface.
+func (t *DoltgresType) IsStringType() bool {
+	return t.TypCategory == TypeCategory_StringTypes
 }
 
 // MaxSerializedWidth implements the types.ExtendedType interface.
