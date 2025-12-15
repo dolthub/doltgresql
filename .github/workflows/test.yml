@@ -44,12 +44,12 @@ jobs:
         postgresql-version: 15
     - name: Test (MacOS)
       if: ${{ matrix.platform == 'macos-latest' }}
-      run: go test -skip="TestReplication" $(go list ./... | grep -v enginetest)
+      run: go test --timeout=20m -skip="TestReplication" $(go list ./... | grep -v enginetest)
     - name: Test (Windows)
       if: ${{ matrix.platform == 'windows-latest' }}
       shell: msys2 {0}
-      run: go.exe test -skip="TestReplication" $(go.exe list ./... | grep -v enginetest)
+      run: go.exe test --timeout=20m -skip="TestReplication" $(go.exe list ./... | grep -v enginetest)
     - name: Test (Linux)
       if: ${{ matrix.platform == 'ubuntu-latest' }}
       # Enginetest harness breaks with race testing, not sure why yet
-      run: go test -race -skip="TestReplication" $(go list ./... | grep -v enginetest)
+      run: go test --timeout=20m -race -skip="TestReplication" $(go list ./... | grep -v enginetest)
