@@ -48,6 +48,9 @@ func SplitConjunction(expr sql.Expression) []sql.Expression {
 	}
 }
 
+// LogicTreeWalker is a walker that removes GMSCast and other Doltgres specific expression nodes from
+// logic expression trees. This allows the analyzer logic to correctly reason about expressions in filters
+// to apply indexes.
 type LogicTreeWalker struct{}
 
 var _ analyzer.LogicTreeWalker = &LogicTreeWalker{}
@@ -59,13 +62,4 @@ func (l *LogicTreeWalker) Next(e sql.Expression) sql.Expression {
 	default:
 		return e
 	}
-}
-
-func (l *LogicTreeWalker) Children(e sql.Expression) []sql.Expression {
-	children := e.Children()
-	newChildren := make([]sql.Expression, len(children))
-	for i, child := range children {
-		newChildren[i] = l.Next(child)
-	}
-	return newChildren
 }
