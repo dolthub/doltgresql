@@ -25,6 +25,7 @@ import (
 
 	dserver "github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
+	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
 // CreateDoltgresServer creates and returns a Doltgres server.
@@ -34,12 +35,14 @@ func CreateDoltgresServer() (controller *svcs.Controller, port int, err error) {
 		return nil, 0, err
 	}
 	address := "127.0.0.1"
-	logLevel := servercfg.LogLevel_Panic
+	logLevel := cfgdetails.LogLevel_Panic
 	controller, err = dserver.RunInMemory(&servercfg.DoltgresConfig{
-		LogLevelStr: &logLevel,
-		ListenerConfig: &servercfg.DoltgresListenerConfig{
-			PortNumber: &port,
-			HostStr:    &address,
+		DoltgresConfig: cfgdetails.DoltgresConfig{
+			LogLevelStr: &logLevel,
+			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
+				PortNumber: &port,
+				HostStr:    &address,
+			},
 		},
 	}, dserver.NewListener)
 	if err != nil {

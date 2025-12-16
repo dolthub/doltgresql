@@ -21,7 +21,7 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/utils/minver"
 
-	"github.com/dolthub/doltgresql/servercfg"
+	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
 func main() {
@@ -31,7 +31,7 @@ func main() {
 
 	outFile := os.Args[1]
 
-	err := minver.GenValidationFile(&servercfg.DoltgresConfig{}, outFile)
+	err := minver.GenValidationFile(&cfgdetails.DoltgresConfig{}, outFile)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -48,6 +48,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
+	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
 type DoltgresHarness struct {
@@ -611,9 +612,11 @@ const port = 5433
 
 func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQueryEngine {
 	ctrl, err := server.RunInMemory(&servercfg.DoltgresConfig{
-		LogLevelStr: Ptr("debug"),
-		ListenerConfig: &servercfg.DoltgresListenerConfig{
-			PortNumber: Ptr(port),
+		DoltgresConfig: cfgdetails.DoltgresConfig{
+			LogLevelStr: Ptr("debug"),
+			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
+				PortNumber: Ptr(port),
+			},
 		},
 	}, server.NewListener)
 	require.NoError(t, err)
