@@ -1261,6 +1261,16 @@ func TestBasicIndexing(t *testing.T) {
 						{5, 9},
 					},
 				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 BETWEEN 3 AND 5 OR v1 BETWEEN 7 AND 9 order by 1;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{[3, 5]}, {[7, 9]}]"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
 			},
 		},
 		{

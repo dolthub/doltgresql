@@ -117,6 +117,7 @@ func initEngine() {
 	// There are a couple places during analysis where SplitConjunction in GMS cannot correctly split up
 	// Doltgres expressions, so we need to override the default function used.
 	analyzer.SplitConjunction = SplitConjunction
+	analyzer.CostedIndexScanExpressionWalker = &LogicTreeWalker{}
 	memo.SplitConjunction = SplitConjunction
 }
 
