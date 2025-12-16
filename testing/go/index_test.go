@@ -483,8 +483,8 @@ func TestBasicIndexing(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "select /*+ lookup_join(sq, test) */ HINT * from test join " +
-							"(select * from jointable) sq " +
-							"on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
+						"(select * from jointable) sq " +
+						"on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
 					Expected: []sql.Row{
 						{11, 1, 21, 1, 21},
 					},

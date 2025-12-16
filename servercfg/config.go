@@ -18,9 +18,10 @@ import (
 	"github.com/cockroachdb/errors"
 	doltservercfg "github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
-	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/yaml.v2"
+
+	"github.com/dolthub/doltgresql/server/analyzer"
 
 	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/expression"
