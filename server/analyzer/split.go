@@ -55,6 +55,7 @@ type LogicTreeWalker struct{}
 
 var _ analyzer.LogicTreeWalker = &LogicTreeWalker{}
 
+// Next implements the analyzer.LogicTreeWalker interface.
 func (l *LogicTreeWalker) Next(e sql.Expression) sql.Expression {
 	switch expr := e.(type) {
 	case *pgexprs.GMSCast:

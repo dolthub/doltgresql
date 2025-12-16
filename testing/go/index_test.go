@@ -67,6 +67,39 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Query: "SELECT * FROM test WHERE (v1 > 3 OR v1 < 2) AND v1 <> 5 ORDER BY pk;",
+					Expected: []sql.Row{
+						{11, 1},
+						{14, 4}},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE (v1 > 3 OR v1 < 2) AND v1 <> 5 ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{(NULL, 2)}, {(3, 5)}, {(5, ∞)}]"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 = 2 OR v1 = 4 ORDER BY pk;",
+					Expected: []sql.Row{
+						{12, 2},
+						{14, 4},
+					},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 = 2 OR v1 = 4 ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{[2, 2]}, {[4, 4]}]"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+				{
 					Query: "SELECT * FROM test WHERE v1 IN (2, 4) ORDER BY pk;",
 					Expected: []sql.Row{
 						{12, 2},
@@ -149,6 +182,24 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "SELECT * FROM test WHERE v1 = 'twelve' ORDER BY pk;",
 					Expected: []sql.Row{
 						{12, "twelve"},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 > 't' OR v1 < 'f' ORDER BY pk;",
+					Expected: []sql.Row{
+						{11, "eleven"},
+						{12, "twelve"},
+						{13, "thirteen"},
+					},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 > 't' OR v1 < 'f' ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.pk,test.v1]"},
+						{"     ├─ filters: [{[NULL, ∞), (NULL, f)}, {[NULL, ∞), (t, ∞)}]"},
+						{"     └─ columns: [pk v1]"},
 					},
 				},
 				{
@@ -432,8 +483,8 @@ func TestBasicIndexing(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: "select /*+ lookup_join(sq, test) */ HINT * from test join " +
-						"(select * from jointable) sq " +
-						"on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
+							"(select * from jointable) sq " +
+							"on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
 					Expected: []sql.Row{
 						{11, 1, 21, 1, 21},
 					},
