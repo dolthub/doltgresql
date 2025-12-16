@@ -159,6 +159,8 @@ func TestShowTables(t *testing.T) {
 		{
 			Name: "show tables in single schema",
 			SetUpScript: []string{
+				// Create a sequence to ensure it isn't included
+				`CREATE SEQUENCE seq1;`,
 				`CREATE TABLE t1 (a INT PRIMARY KEY, name TEXT)`,
 				`CREATE TABLE t2 (b INT PRIMARY KEY, name TEXT)`,
 				`create schema schema2`,
