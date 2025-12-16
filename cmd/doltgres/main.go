@@ -41,6 +41,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
+	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -320,7 +321,7 @@ func getDataDirFromParams(params map[string]*string) (string, dataDirType, error
 		return dataDir, dataDirExplicitParam, nil
 	}
 
-	if envDir := os.Getenv(servercfg.DOLTGRES_DATA_DIR); len(envDir) > 0 {
+	if envDir := os.Getenv(cfgdetails.DOLTGRES_DATA_DIR); len(envDir) > 0 {
 		return envDir, dataDirEnv, nil
 	} else {
 		homeDir, err := env.GetCurrentUserHomeDir()
@@ -328,7 +329,7 @@ func getDataDirFromParams(params map[string]*string) (string, dataDirType, error
 			return "", dataDirDefault, errors.Errorf("failed to get current user's home directory: %w", err)
 		}
 
-		dbDir := filepath.Join(homeDir, servercfg.DOLTGRES_DATA_DIR_DEFAULT)
+		dbDir := filepath.Join(homeDir, cfgdetails.DOLTGRES_DATA_DIR_DEFAULT)
 		return dbDir, dataDirDefault, nil
 	}
 }

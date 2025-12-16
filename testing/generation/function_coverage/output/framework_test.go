@@ -35,6 +35,7 @@ import (
 
 	dserver "github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
+	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 	"github.com/dolthub/doltgresql/utils"
 )
 
@@ -179,9 +180,11 @@ func CreateServer(t *testing.T, database string) (context.Context, *pgx.Conn, *s
 	port, err := sql.GetEmptyPort()
 	require.NoError(t, err)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
-		ListenerConfig: &servercfg.DoltgresListenerConfig{
-			PortNumber: &port,
-			HostStr:    ptr("127.0.0.1"),
+		DoltgresConfig: cfgdetails.DoltgresConfig{
+			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
+				PortNumber: &port,
+				HostStr:    ptr("127.0.0.1"),
+			},
 		},
 	}, dserver.NewListener)
 	require.NoError(t, err)

@@ -49,6 +49,7 @@ import (
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/servercfg"
+	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
 // runOnPostgres is a debug setting to redirect the test framework to a local running postgres server,
@@ -388,11 +389,13 @@ func CreateServer(t *testing.T, database string) (context.Context, *Connection, 
 func CreateServerWithPort(t *testing.T, database string, port int) (context.Context, *Connection, *svcs.Controller) {
 	require.NotEmpty(t, database)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
-		ListenerConfig: &servercfg.DoltgresListenerConfig{
-			PortNumber: &port,
-			HostStr:    &serverHost,
+		DoltgresConfig: cfgdetails.DoltgresConfig{
+			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
+				PortNumber: &port,
+				HostStr:    &serverHost,
+			},
+			LogLevelStr: &testServerLogLevel,
 		},
-		LogLevelStr: &testServerLogLevel,
 	}, dserver.NewListener)
 	require.NoError(t, err)
 	auth.ClearDatabase()
@@ -420,11 +423,13 @@ func CreateServerLocalWithPort(t *testing.T, database string, port int) (context
 	doltEnv := env.Load(ctx, env.GetCurrentUserHomeDir, fileSys, doltdb.LocalDirDoltDB, dserver.Version)
 
 	controller, err := dserver.RunOnDisk(ctx, &servercfg.DoltgresConfig{
-		ListenerConfig: &servercfg.DoltgresListenerConfig{
-			PortNumber: &port,
-			HostStr:    &serverHost,
+		DoltgresConfig: cfgdetails.DoltgresConfig{
+			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
+				PortNumber: &port,
+				HostStr:    &serverHost,
+			},
+			LogLevelStr: &testServerLogLevel,
 		},
-		LogLevelStr: &testServerLogLevel,
 	}, doltEnv)
 	require.NoError(t, err)
 	auth.ClearDatabase()
