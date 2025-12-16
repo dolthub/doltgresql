@@ -36,6 +36,7 @@ import (
 	"github.com/dolthub/doltgresql/server/tables/information_schema"
 	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
 	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
+	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
 var once = &sync.Once{}
@@ -54,7 +55,7 @@ func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 		aggregate.Init()
 		cast.Init()
 		framework.Initialize()
-		servercfg.DefaultUnixSocketFilePath = doltgresservercfg.DefaultPostgresUnixSocketFilePath
+		servercfg.DefaultUnixSocketFilePath = cfgdetails.DefaultPostgresUnixSocketFilePath
 		tables.Init()
 		pgcatalog.Init()
 		information_schema.Init()

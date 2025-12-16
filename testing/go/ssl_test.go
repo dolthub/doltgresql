@@ -1,3 +1,17 @@
+// Copyright 2023 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package _go
 
 import (
@@ -17,6 +31,7 @@ import (
 
 	dserver "github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
+	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
 type SSLListener struct {
@@ -49,9 +64,11 @@ func TestSSL(t *testing.T) {
 	port, err := sql.GetEmptyPort()
 	require.NoError(t, err)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
-		ListenerConfig: &servercfg.DoltgresListenerConfig{
-			PortNumber: &port,
-			HostStr:    ptr("127.0.0.1"),
+		DoltgresConfig: cfgdetails.DoltgresConfig{
+			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
+				PortNumber: &port,
+				HostStr:    ptr("127.0.0.1"),
+			},
 		},
 	}, NewSslListener)
 	require.NoError(t, err)
