@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	doltservercfg "github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/yaml.v2"
 
@@ -43,7 +44,8 @@ func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 			ParseTableAsColumn: expression.NewTableToComposite,
 			Parser:             pgsql.NewPostgresParser(),
 		},
-		SchemaFormatter: pgsql.NewPostgresSchemaFormatter(),
+		SchemaFormatter:                 pgsql.NewPostgresSchemaFormatter(),
+		CostedIndexScanExpressionFilter: &analyzer.LogicTreeWalker{},
 	}
 }
 

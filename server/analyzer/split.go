@@ -16,7 +16,6 @@ package analyzer
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
@@ -53,9 +52,9 @@ func SplitConjunction(expr sql.Expression) []sql.Expression {
 // to apply indexes.
 type LogicTreeWalker struct{}
 
-var _ analyzer.LogicTreeWalker = &LogicTreeWalker{}
+var _ sql.ExpressionTreeFilter = &LogicTreeWalker{}
 
-// Next implements the analyzer.LogicTreeWalker interface.
+// Next implements the sql.ExpressionTreeFilter interface.
 func (l *LogicTreeWalker) Next(e sql.Expression) sql.Expression {
 	switch expr := e.(type) {
 	case *pgexprs.GMSCast:
