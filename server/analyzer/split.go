@@ -22,34 +22,6 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// SplitDisjunction breaks OR expressions into their left and right parts, recursively. Also handles expressions that
-// can be approximated as OR expressions, such as IN for tuples.
-func SplitDisjunction(expr sql.Expression) []sql.Expression {
-	if expr == nil {
-		return nil
-	}
-	switch expr := expr.(type) {
-	case *expression.Or:
-		return append(
-			SplitDisjunction(expr.LeftChild),
-			SplitDisjunction(expr.RightChild)...,
-		)
-	case *pgexprs.GMSCast:
-		// We should check to see if we need to preserve the cast on each child individually
-		split := SplitDisjunction(expr.Child())
-		for i := range split {
-			if _, ok := split[i].Type().(*pgtypes.DoltgresType); !ok {
-				split[i] = pgexprs.NewGMSCast(split[i])
-			}
-		}
-		return split
-	case *pgexprs.InTuple:
-		return SplitDisjunction(expr.Decay())
-	default:
-		return []sql.Expression{expr}
-	}
-}
-
 // SplitConjunction breaks AND expressions into their left and right parts, recursively.
 func SplitConjunction(expr sql.Expression) []sql.Expression {
 	if expr == nil {
@@ -75,28 +47,19 @@ func SplitConjunction(expr sql.Expression) []sql.Expression {
 	}
 }
 
-// SplitDisjunctions performs the same operation as SplitDisjunction, except that it applies to a slice.
-func SplitDisjunctions(exprs []sql.Expression) []sql.Expression {
-	if len(exprs) == 0 {
-		return nil
-	}
-	// New slice will be at least the size of the incoming slice
-	newExprs := make([]sql.Expression, 0, len(exprs))
-	for _, expr := range exprs {
-		newExprs = append(newExprs, SplitDisjunction(expr)...)
-	}
-	return newExprs
-}
+// LogicTreeWalker is a walker that removes GMSCast and other Doltgres specific expression nodes from
+// logic expression trees. This allows the analyzer logic to correctly reason about expressions in filters
+// to apply indexes.
+type LogicTreeWalker struct{}
 
-// SplitConjunctions performs the same operation as SplitConjunction, except that it applies to a slice.
-func SplitConjunctions(exprs []sql.Expression) []sql.Expression {
-	if len(exprs) == 0 {
-		return nil
+var _ sql.ExpressionTreeFilter = &LogicTreeWalker{}
+
+// Next implements the sql.ExpressionTreeFilter interface.
+func (l *LogicTreeWalker) Next(e sql.Expression) sql.Expression {
+	switch expr := e.(type) {
+	case *pgexprs.GMSCast:
+		return l.Next(expr.Child())
+	default:
+		return e
 	}
-	// New slice will be at least the size of the incoming slice
-	newExprs := make([]sql.Expression, 0, len(exprs))
-	for _, expr := range exprs {
-		newExprs = append(newExprs, SplitConjunction(expr)...)
-	}
-	return newExprs
 }

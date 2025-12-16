@@ -67,6 +67,39 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Query: "SELECT * FROM test WHERE (v1 > 3 OR v1 < 2) AND v1 <> 5 ORDER BY pk;",
+					Expected: []sql.Row{
+						{11, 1},
+						{14, 4}},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE (v1 > 3 OR v1 < 2) AND v1 <> 5 ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{(NULL, 2)}, {(3, 5)}, {(5, ∞)}]"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 = 2 OR v1 = 4 ORDER BY pk;",
+					Expected: []sql.Row{
+						{12, 2},
+						{14, 4},
+					},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 = 2 OR v1 = 4 ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{[2, 2]}, {[4, 4]}]"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+				{
 					Query: "SELECT * FROM test WHERE v1 IN (2, 4) ORDER BY pk;",
 					Expected: []sql.Row{
 						{12, 2},
@@ -149,6 +182,24 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "SELECT * FROM test WHERE v1 = 'twelve' ORDER BY pk;",
 					Expected: []sql.Row{
 						{12, "twelve"},
+					},
+				},
+				{
+					Query: "SELECT * FROM test WHERE v1 > 't' OR v1 < 'f' ORDER BY pk;",
+					Expected: []sql.Row{
+						{11, "eleven"},
+						{12, "twelve"},
+						{13, "thirteen"},
+					},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 > 't' OR v1 < 'f' ORDER BY pk;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.pk,test.v1]"},
+						{"     ├─ filters: [{[NULL, ∞), (NULL, f)}, {[NULL, ∞), (t, ∞)}]"},
+						{"     └─ columns: [pk v1]"},
 					},
 				},
 				{
@@ -1259,6 +1310,16 @@ func TestBasicIndexing(t *testing.T) {
 						{3, 5},
 						{4, 7},
 						{5, 9},
+					},
+				},
+				{
+					Query: "explain SELECT * FROM test WHERE v1 BETWEEN 3 AND 5 OR v1 BETWEEN 7 AND 9 order by 1;",
+					Expected: []sql.Row{
+						{"Sort(test.pk ASC)"},
+						{" └─ IndexedTableAccess(test)"},
+						{"     ├─ index: [test.v1]"},
+						{"     ├─ filters: [{[3, 5]}, {[7, 9]}]"},
+						{"     └─ columns: [pk v1]"},
 					},
 				},
 			},
