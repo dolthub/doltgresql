@@ -220,9 +220,9 @@ func (d *DropFunction) findFunctionBySignature(ctx *sql.Context, routineWithArgs
 			typeName = strings.ToLower(typ.SQLString())
 		}
 
-		// TODO: types shouldn't be hardcoded to go in pg_catalog, should use the search path
+		// TODO: we need to add a way to search for a matching type along the search path, rather than hardcoding
+		//  pg_catalog and the current schema
 		typeId := id.NewType("pg_catalog", typeName)
-
 		typeCollection, err := core.GetTypesCollectionFromContext(ctx)
 		if err != nil {
 			return functions.Function{}, err
@@ -232,17 +232,20 @@ func (d *DropFunction) findFunctionBySignature(ctx *sql.Context, routineWithArgs
 			return functions.Function{}, err
 		}
 		if getType == nil {
-			return functions.Function{}, types.ErrTypeDoesNotExist.New(typeName)
+			// TODO: we're doing a second check on the current schema, but this should use the search path instead
+			typeId = id.NewType(schemaName, typeName)
+			getType, err = typeCollection.GetType(ctx, typeId)
+			if err != nil {
+				return functions.Function{}, err
+			}
+			if getType == nil {
+				return functions.Function{}, types.ErrTypeDoesNotExist.New(typeName)
+			}
 		}
 		typeIds = append(typeIds, getType.ID)
 	}
 
-	schema, err := core.GetSchemaName(ctx, nil, schemaName)
-	if err != nil {
-		return functions.Function{}, err
-	}
-
-	functionId := id.NewFunction(schema, routineName, typeIds...)
+	functionId := id.NewFunction(schemaName, routineName, typeIds...)
 	return collection.GetFunction(ctx, functionId)
 }
 

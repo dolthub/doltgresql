@@ -21,10 +21,10 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/yaml.v2"
 
-	"github.com/dolthub/doltgresql/server/analyzer"
-
 	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
+	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/hook"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
@@ -44,6 +44,11 @@ func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 		Builder: sql.BuilderOverrides{
 			ParseTableAsColumn: expression.NewTableToComposite,
 			Parser:             pgsql.NewPostgresParser(),
+		},
+		Hooks: sql.ExecutionHooks{
+			DropTable: sql.DropTable{
+				PreSQLExecution: hook.BeforeTableDeletion,
+			},
 		},
 		SchemaFormatter:                 pgsql.NewPostgresSchemaFormatter(),
 		CostedIndexScanExpressionFilter: &analyzer.LogicTreeWalker{},

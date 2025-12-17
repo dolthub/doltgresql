@@ -970,15 +970,16 @@ func (t *DoltgresType) SerializeValue(ctx context.Context, val any) ([]byte, err
 	if val == nil {
 		return nil, nil
 	}
+	sqlCtx, _ := ctx.(*sql.Context) // There are cases where it's okay to serialize with a nil SQL context
 	var o any
 	var err error
 	if t.ModInFunc != 0 || t.IsArrayType() {
 		send := globalFunctionRegistry.GetFunction(t.SendFunc)
 		resolvedTypes := send.ResolvedTypes()
 		resolvedTypes[0] = t
-		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(nil, val)
+		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(sqlCtx, val)
 	} else {
-		o, err = globalFunctionRegistry.GetFunction(t.SendFunc).CallVariadic(nil, val)
+		o, err = globalFunctionRegistry.GetFunction(t.SendFunc).CallVariadic(sqlCtx, val)
 	}
 	if err != nil || o == nil {
 		return nil, err
@@ -991,20 +992,21 @@ func (t *DoltgresType) DeserializeValue(ctx context.Context, val []byte) (any, e
 	if len(val) == 0 {
 		return nil, nil
 	}
+	sqlCtx, _ := ctx.(*sql.Context) // There are cases where it's okay to deserialize with a nil SQL context
 	if t.TypType == TypeType_Domain {
-		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.BaseTypeID.AsId(), t.attTypMod)
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.BaseTypeID.AsId(), t.attTypMod)
 	} else if t.ModInFunc != 0 || t.IsArrayType() {
 		if t.Elem != id.NullType {
-			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.Elem.AsId(), t.attTypMod)
+			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.Elem.AsId(), t.attTypMod)
 		} else {
-			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.ID.AsId(), t.attTypMod)
+			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.ID.AsId(), t.attTypMod)
 		}
 	} else if t.TypType == TypeType_Enum {
-		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.ID.AsId())
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.ID.AsId())
 	} else if t.IsCompositeType() {
-		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val, t.ID.AsId(), t.attTypMod)
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.ID.AsId(), t.attTypMod)
 	} else {
-		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(nil, val)
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val)
 	}
 }
 
