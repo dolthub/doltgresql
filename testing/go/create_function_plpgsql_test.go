@@ -987,7 +987,6 @@ $$;`,
 				},
 				{
 					Query: `SELECT * FROM t2 ORDER BY v1;`,
-					Skip:  true, // TODO: need to implement record_recv
 					Expected: []sql.Row{
 						{1, "(0,hello)"},
 						{2, "(10,world)"},

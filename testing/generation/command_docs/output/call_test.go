@@ -18,7 +18,7 @@ import "testing"
 
 func TestCall(t *testing.T) {
 	tests := []QueryParses{
-		Parses("CALL name ( )"),
+		Converts("CALL name ( )"),
 		Converts("CALL name ( argument )"),
 		Converts("CALL name ( argument , argument )"),
 	}

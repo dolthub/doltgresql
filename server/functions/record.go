@@ -15,9 +15,12 @@
 package functions
 
 import (
-	"fmt"
-
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -40,7 +43,7 @@ var record_in = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		return nil, fmt.Errorf("record_in not implemented")
+		return nil, errors.Errorf("record_in not implemented")
 	},
 }
 
@@ -53,24 +56,66 @@ var record_out = framework.Function1{
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		values, ok := val.([]pgtypes.RecordValue)
 		if !ok {
-			return nil, fmt.Errorf("expected []RecordValue, but got %T", val)
+			return nil, errors.Errorf("expected []RecordValue, but got %T", val)
 		}
 		return pgtypes.RecordToString(ctx, values)
 	},
 }
 
-// record_recv represents the PostgreSQL function of record type IO receive.
+// record_recv represents the PostgreSQL function of record type IO receive. The input of this function is expected to
+// be the output of record_send.
 var record_recv = framework.Function3{
 	Name:       "record_recv",
 	Return:     pgtypes.Record,
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		return nil, fmt.Errorf("record_recv not implemented")
+		data, ok := val1.([]byte)
+		if !ok {
+			return nil, errors.Errorf("expected []byte, but got `%T`", val1)
+		}
+		typeColl, err := core.GetTypesCollectionFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		reader := utils.NewReader(data)
+		version := reader.Byte()
+		switch version {
+		case 0:
+			valuesLen := reader.VariableUint()
+			values := make([]pgtypes.RecordValue, valuesLen)
+			for i := uint64(0); i < valuesLen; i++ {
+				typeId := id.Type(reader.Id())
+				valueData := reader.ByteSlice()
+				dgtype, err := typeColl.GetType(ctx, typeId)
+				if err != nil {
+					return nil, err
+				}
+				if dgtype == nil {
+					return nil, errors.Errorf("record_recv encountered type `%s.%s` which could not be found",
+						typeId.SchemaName(), typeId.TypeName())
+				}
+				value, err := dgtype.DeserializeValue(ctx, valueData)
+				if err != nil {
+					return nil, err
+				}
+				values[i] = pgtypes.RecordValue{
+					Value: value,
+					Type:  dgtype,
+				}
+			}
+			if reader.RemainingBytes() > 0 {
+				return nil, errors.New("record_recv encountered extra data during deserialization")
+			}
+			return values, nil
+		default:
+			return nil, errors.Errorf("version %d of record serialization is not supported, please upgrade the server", version)
+		}
 	},
 }
 
-// record_send represents the PostgreSQL function of record type IO send.
+// record_send represents the PostgreSQL function of record type IO send. The output of this function is expected to
+// be the input of record_recv.
 var record_send = framework.Function1{
 	Name:       "record_send",
 	Return:     pgtypes.Bytea,
@@ -79,16 +124,24 @@ var record_send = framework.Function1{
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		values, ok := val.([]pgtypes.RecordValue)
 		if !ok {
-			return nil, fmt.Errorf("expected []RecordValue, but got %T", val)
+			return nil, errors.Errorf("expected []RecordValue, but got %T", val)
 		}
-		// TODO: converting from a string back to the record doesn't work as we lose type information, so we need to
-		//  figure out how to retain this information
-		output, err := pgtypes.RecordToString(ctx, values)
-		if err != nil {
-			return nil, err
+		writer := utils.NewWriter(uint64(16 * len(values)))
+		writer.Byte(0) // Version
+		writer.VariableUint(uint64(len(values)))
+		for _, value := range values {
+			dgtype, ok := value.Type.(*pgtypes.DoltgresType)
+			if !ok {
+				return nil, errors.Errorf("record_send only supports Doltgres types, but received `%T`", value.Type)
+			}
+			valBytes, err := dgtype.SerializeValue(ctx, value.Value)
+			if err != nil {
+				return nil, err
+			}
+			writer.Id(dgtype.ID.AsId())
+			writer.ByteSlice(valBytes)
 		}
-
-		return []byte(output.(string)), nil
+		return writer.Data(), nil
 	},
 }
 

@@ -37,7 +37,7 @@ func nodeCall(ctx *Context, node *tree.Call) (vitess.Statement, error) {
 	if node.Procedure.WindowDef != nil {
 		return nil, errors.Errorf("procedure window definitions are not yet supported")
 	}
-	if node.Procedure.AggType != tree.GeneralAgg {
+	if node.Procedure.AggType == tree.OrderedSetAgg {
 		return nil, errors.Errorf("procedure aggregation is not yet supported")
 	}
 	if len(node.Procedure.OrderBy) > 0 {

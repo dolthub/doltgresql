@@ -129,6 +129,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDropFunction(ctx, stmt)
 	case *tree.DropIndex:
 		return nodeDropIndex(ctx, stmt)
+	case *tree.DropProcedure:
+		return nodeDropProcedure(ctx, stmt)
 	case *tree.DropRole:
 		return nodeDropRole(ctx, stmt)
 	case *tree.DropSchema:
