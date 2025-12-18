@@ -24,7 +24,7 @@ import (
 // IsNull is an implementation of sql.Expression for the IS NULL operator and
 // includes Postgres-specific logic for handling records and composites.
 type IsNull struct {
-	expression.UnaryExpression
+	expression.UnaryExpressionStub
 }
 
 var _ sql.Expression = (*IsNull)(nil)
@@ -33,7 +33,7 @@ var _ sql.IsNullExpression = (*IsNull)(nil)
 
 // NewIsNull creates a new IsNull expression.
 func NewIsNull(child sql.Expression) *IsNull {
-	return &IsNull{expression.UnaryExpression{Child: child}}
+	return &IsNull{expression.UnaryExpressionStub{Child: child}}
 }
 
 // IsNullExpression implements the sql.IsNullExpression interface. This function exists primarily
