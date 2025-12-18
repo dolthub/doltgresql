@@ -65,9 +65,13 @@ var jsonb_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.JsonB},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		res, err := sql.UnwrapAny(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		sb := strings.Builder{}
 		sb.Grow(256)
-		pgtypes.JsonValueFormatter(&sb, val.(pgtypes.JsonDocument).Value)
+		pgtypes.JsonValueFormatter(&sb, res.(pgtypes.JsonDocument).Value)
 		return sb.String(), nil
 	},
 }
