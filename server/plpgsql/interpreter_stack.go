@@ -55,6 +55,9 @@ type InterpreterStack struct {
 	stack   *utils.Stack[*InterpreterScopeDetails]
 	runner  sql.StatementRunner
 	labelID int
+
+	// returnQueryBuffer buffers results from RETURN QUERY statements
+	returnQueryBuffer [][]pgtypes.RecordValue
 }
 
 // NewInterpreterStack creates a new InterpreterStack.
@@ -234,4 +237,16 @@ func (is *InterpreterStack) SetAnonymousLabel() {
 	// Postgres labels cannot have a tab character, so we can generate a label with one to guarantee it's unique
 	is.stack.Peek().label = fmt.Sprintf("\t%d", is.labelID)
 	is.labelID++
+}
+
+// BufferReturnQueryResults buffers |results| from a RETURN QUERY statement so that they can be returned when
+// the function exits. If results from a previous RETURN QUERY call have already been buffered, |results| will
+// be appended.
+func (is *InterpreterStack) BufferReturnQueryResults(results [][]pgtypes.RecordValue) {
+	is.returnQueryBuffer = append(is.returnQueryBuffer, results...)
+}
+
+// ReturnQueryResults returns the buffered results from a RETURN QUERY statement.
+func (is *InterpreterStack) ReturnQueryResults() [][]pgtypes.RecordValue {
+	return is.returnQueryBuffer
 }

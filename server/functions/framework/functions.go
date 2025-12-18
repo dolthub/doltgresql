@@ -39,8 +39,8 @@ type FunctionInterface interface {
 	// IsStrict returns whether the function is STRICT, which means if any parameter is NULL, then it returns NULL.
 	// Otherwise, if it's not, the NULL input must be handled by user.
 	IsStrict() bool
-	// IsSRF returns whether the function is set returning function, meaning whether the function returns one or more
-	// rows as a result.
+	// IsSRF returns whether the function is a set returning function, meaning whether the
+	// function returns one or more rows as a result.
 	IsSRF() bool
 	// InternalID returns the ID associated with this function.
 	InternalID() id.Id
