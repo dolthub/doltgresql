@@ -20,26 +20,25 @@ type OpCode uint16
 
 const (
 	// New OpCode values MUST be added to the END of this list!
-	// Function OpCodes are persisted to disk, so these values MUST be stable across Doltgres versions.
-	OpCode_Alias       OpCode = 0  // https://www.postgresql.org/docs/15/plpgsql-declarations.html#PLPGSQL-DECLARATION-ALIAS
-	OpCode_Assign      OpCode = 1  // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-ASSIGNMENT
-	OpCode_Case        OpCode = 2  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
-	OpCode_Declare     OpCode = 3  // https://www.postgresql.org/docs/15/plpgsql-declarations.html
-	OpCode_DeleteInto  OpCode = 4  // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_Exception   OpCode = 5  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-ERROR-TRAPPING
-	OpCode_Execute     OpCode = 6  // Executing a standard SQL statement (expects no rows returned unless Target is specified)
-	OpCode_Get         OpCode = 7  // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-DIAGNOSTICS
-	OpCode_Goto        OpCode = 8  // All control-flow structures can be represented using Goto
-	OpCode_If          OpCode = 9  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
-	OpCode_InsertInto  OpCode = 10 // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_Perform     OpCode = 11 // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_Raise       OpCode = 12 // https://www.postgresql.org/docs/15/plpgsql-errors-and-messages.html
-	OpCode_Return      OpCode = 13 // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING
-	OpCode_ScopeBegin  OpCode = 14 // This is used for scope control, specific to Doltgres
-	OpCode_ScopeEnd    OpCode = 15 // This is used for scope control, specific to Doltgres
-	OpCode_SelectInto  OpCode = 16 // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_UpdateInto  OpCode = 17 // https://www.postgresql.org/docs/15/plpgsql-statements.html
-	OpCode_ReturnQuery OpCode = 18 // https://www.postgresql.org/docs/current/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING-RETURN-NEXT
+	// Function OpCodes are persisted to disk, so these values MUST be stable across Doltgres versions.OpCode_Alias       OpCode = 0 // https://www.postgresql.org/docs/15/plpgsql-declarations.html#PLPGSQL-DECLARATION-ALIAS
+	OpCode_Assign                  OpCode = 1  // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-ASSIGNMENT
+	OpCode_Case                    OpCode = 2  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
+	OpCode_Declare                 OpCode = 3  // https://www.postgresql.org/docs/15/plpgsql-declarations.html
+	OpCode_DeleteInto              OpCode = 4  // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_Exception               OpCode = 5  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-ERROR-TRAPPING
+	OpCode_Execute                 OpCode = 6  // Executing a standard SQL statement (expects no rows returned unless Target is specified)
+	OpCode_Get                     OpCode = 7  // https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-DIAGNOSTICS
+	OpCode_Goto                    OpCode = 8  // All control-flow structures can be represented using Goto
+	OpCode_If                      OpCode = 9  // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-CONDITIONALS
+	OpCode_InsertInto               OpCode = 10 // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_Perform                  OpCode = 11 // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_Raise                    OpCode = 12 // https://www.postgresql.org/docs/15/plpgsql-errors-and-messages.html
+	OpCode_Return                   OpCode = 13 // https://www.postgresql.org/docs/15/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING
+	OpCode_ScopeBegin               OpCode = 14 // This is used for scope control, specific to Doltgres
+	OpCode_ScopeEnd                 OpCode = 15 // This is used for scope control, specific to Doltgres
+	OpCode_SelectInto               OpCode = 16 // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_UpdateInto               OpCode = 17 // https://www.postgresql.org/docs/15/plpgsql-statements.html
+	OpCode_ReturnQuery              OpCode = 18 // https://www.postgresql.org/docs/current/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING-RETURN-NEXT
 	// New OpCode values MUST be added to the END of this list!
 	// Function OpCodes are persisted to disk, so these values MUST be stable across Doltgres versions.
 )
