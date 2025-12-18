@@ -203,6 +203,12 @@ type plpgSQL_stmt_return struct {
 	LineNumber int32 `json:"lineno"`
 }
 
+// plpgSQL_stmt_return_query exists to match the expected JSON format.
+type plpgSQL_stmt_return_query struct {
+	Query      expr  `json:"query"`
+	LineNumber int32 `json:"lineno"`
+}
+
 // plpgSQL_stmt_while exists to match the expected JSON format.
 type plpgSQL_stmt_while struct {
 	Condition  cond        `json:"cond"`
@@ -231,17 +237,18 @@ type sqlstmt struct {
 // statement exists to match the expected JSON format. Unlike other structs, this is used like a union rather than
 // having a singular expected implementation.
 type statement struct {
-	Assignment *plpgSQL_stmt_assign  `json:"PLpgSQL_stmt_assign"`
-	Case       *plpgSQL_stmt_case    `json:"PLpgSQL_stmt_case"`
-	ExecSQL    *plpgSQL_stmt_execsql `json:"PLpgSQL_stmt_execsql"`
-	Exit       *plpgSQL_stmt_exit    `json:"PLpgSQL_stmt_exit"`
-	If         *plpgSQL_stmt_if      `json:"PLpgSQL_stmt_if"`
-	Loop       *plpgSQL_stmt_loop    `json:"PLpgSQL_stmt_loop"`
-	Perform    *plpgSQL_stmt_perform `json:"PLpgSQL_stmt_perform"`
-	Raise      *plpgSQL_stmt_raise   `json:"PLpgSQL_stmt_raise"`
-	Return     *plpgSQL_stmt_return  `json:"PLpgSQL_stmt_return"`
-	When       *plpgSQL_case_when    `json:"PLpgSQL_case_when"`
-	While      *plpgSQL_stmt_while   `json:"PLpgSQL_stmt_while"`
+	Assignment  *plpgSQL_stmt_assign       `json:"PLpgSQL_stmt_assign"`
+	Case        *plpgSQL_stmt_case         `json:"PLpgSQL_stmt_case"`
+	ExecSQL     *plpgSQL_stmt_execsql      `json:"PLpgSQL_stmt_execsql"`
+	Exit        *plpgSQL_stmt_exit         `json:"PLpgSQL_stmt_exit"`
+	If          *plpgSQL_stmt_if           `json:"PLpgSQL_stmt_if"`
+	Loop        *plpgSQL_stmt_loop         `json:"PLpgSQL_stmt_loop"`
+	Perform     *plpgSQL_stmt_perform      `json:"PLpgSQL_stmt_perform"`
+	Raise       *plpgSQL_stmt_raise        `json:"PLpgSQL_stmt_raise"`
+	Return      *plpgSQL_stmt_return       `json:"PLpgSQL_stmt_return"`
+	ReturnQuery *plpgSQL_stmt_return_query `json:"PLpgSQL_stmt_return_query"`
+	When        *plpgSQL_case_when         `json:"PLpgSQL_case_when"`
+	While       *plpgSQL_stmt_while        `json:"PLpgSQL_stmt_while"`
 }
 
 // Convert converts the JSON statement into its output form.
@@ -519,6 +526,13 @@ func (stmt *plpgSQL_stmt_raise) Convert() Raise {
 func (stmt *plpgSQL_stmt_return) Convert() Return {
 	return Return{
 		Expression: stmt.Expression.Expression.Query,
+	}
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_return_query) Convert() ReturnQuery {
+	return ReturnQuery{
+		Query: stmt.Query.Expression.Query,
 	}
 }
 

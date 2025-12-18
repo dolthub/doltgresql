@@ -38,8 +38,11 @@ type InterpretedFunction interface {
 	GetParameterNames() []string
 	GetReturn() *pgtypes.DoltgresType
 	GetStatements() []InterpreterOperation
-	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (rows []sql.Row, err error)
+	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (schema sql.Schema, rows []sql.Row, err error)
 	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
+	// IsSRF returns whether the function is a set returning function, meaning whether the
+	// function returns one or more rows as a result.
+	IsSRF() bool
 }
 
 // GetTypesCollectionFromContext is declared within the core package, but is assigned to this variable to work around
@@ -159,7 +162,7 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 					return nil, err
 				}
 			} else {
-				_, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+				_, _, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 				if err != nil {
 					return nil, err
 				}
@@ -200,7 +203,7 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		case OpCode_InsertInto:
 			// TODO: implement
 		case OpCode_Perform:
-			_, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			_, _, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
 				return nil, err
 			}
@@ -229,9 +232,22 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				sess.Notice(noticeResponse)
 			}
 		case OpCode_Return:
+			// If RETURN QUERY results are being buffered, return those
+			if len(stack.ReturnQueryResults()) > 0 {
+				records := stack.ReturnQueryResults()
+
+				rows := make([]sql.Row, len(records))
+				for i, record := range records {
+					rows[i] = sql.Row{record}
+				}
+
+				return sql.RowsToRowIter(rows...), nil
+			}
+
 			if len(operation.PrimaryData) == 0 {
 				return nil, nil
 			}
+
 			// TODO: handle record types properly, we'll special case triggers for now
 			if iFunc.GetReturn().ID == pgtypes.Trigger.ID && len(operation.SecondaryData) == 1 {
 				normalized := strings.ReplaceAll(strings.ToLower(operation.PrimaryData), " ", "")
@@ -243,7 +259,22 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 					}
 				}
 			}
-			return iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
+			val, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
+
+			// If this is a set returning function, then we need to return a RowIter and wrap
+			// the composite value in a sql.Row.
+			if iFunc.IsSRF() {
+				return sql.RowsToRowIter(sql.Row{val}), nil
+			}
+			return val, err
+
+		case OpCode_ReturnQuery:
+			schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			if err != nil {
+				return nil, err
+			}
+			stack.BufferReturnQueryResults(convertRowsToRecords(schema, rows))
+
 		case OpCode_ScopeBegin:
 			stack.PushScope()
 		case OpCode_ScopeEnd:
@@ -257,6 +288,30 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		}
 	}
 	return nil, nil
+}
+
+// convertRowsToRecords iterates overs |rows| and converts each field in each row
+// into a RecordValue. |schema| is specified for type information.
+func convertRowsToRecords(schema sql.Schema, rows []sql.Row) [][]pgtypes.RecordValue {
+	records := make([][]pgtypes.RecordValue, 0, len(rows))
+	for _, row := range rows {
+		record := make([]pgtypes.RecordValue, len(row))
+		for i, field := range row {
+			t := schema[i].Type
+			doltgresType, ok := t.(*pgtypes.DoltgresType)
+			if !ok {
+				panic("expected Doltgres type")
+			}
+
+			record[i] = pgtypes.RecordValue{
+				Value: field,
+				Type:  doltgresType,
+			}
+		}
+		records = append(records, record)
+	}
+
+	return records
 }
 
 // applyNoticeOptions adds the specified |options| to the |noticeResponse|.
