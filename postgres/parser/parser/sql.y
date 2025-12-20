@@ -14549,6 +14549,7 @@ complex_db_object_name_no_keywords:
 simple_ident:
   IDENT
 | PUBLIC // PUBLIC is a keyword, but its use as the default schema makes it nice to include here
+| STATUS // STATUS is a keyword, but needed for dolt.status system table (issue #1057)
 
 // DB object name component -- this cannot not include any reserved
 // keyword because of ambiguity after FROM, but we've been too lax
