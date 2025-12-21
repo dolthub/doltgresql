@@ -2746,12 +2746,19 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 					},
 				},
 				{
-					Skip:     true, // TODO: function dolt_clean() does not exist
-					Query:    "SELECT DOLT_CLEAN();",
+					Query:    "SELECT DOLT_CLEAN('t1');",
 					Expected: []sql.Row{{"{0}"}},
 				},
 				{
-					Query:    "SELECT DOLT_CLEAN('t1');",
+					Query:    "SELECT * FROM dolt.status;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE t1 (pk int primary key);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT DOLT_CLEAN();",
 					Expected: []sql.Row{{"{0}"}},
 				},
 				{
@@ -2769,12 +2776,10 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 					},
 				},
 				{
-					Skip:     true, // TODO: function dolt_clean() does not exist
 					Query:    "SELECT DOLT_CLEAN();",
 					Expected: []sql.Row{{"{0}"}},
 				},
 				{
-					Skip:     true,
 					Query:    "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{},
 				},
