@@ -581,8 +581,6 @@ func TestScripts(t *testing.T) {
 		"division and int division operation on negative, small and big value for decimal type column of table",   // numeric keys broken
 		"different cases of function name should result in the same outcome",                                      // ERROR: blob/text column 'b' used in key specification without a key length
 		"Multi-db Aliasing",                                                                  // need harness support for qualified table names
-		"Complex Filter Index Scan #2",                                                       // panic in index lookup, needs investigation
-		"Complex Filter Index Scan #3",                                                       // panic in index lookup, needs investigation
 		"update columns with default",                                                        // broken, see repro in update_test.go
 		"select * from t0 where i > 0.1 or i >= 0.1 order by i;",                             // incorrect result, needs a fix
 		"int secondary index with float filter",                                              // panic
@@ -592,27 +590,26 @@ func TestScripts(t *testing.T) {
 		"SELECT -col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING NOT col2 <= - col0;",      // incorrect result
 		"SELECT -col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING col2 > -col0;",            // incorrect result
 		"select col2-100 as col0 from tab2 group by col0 having col0 > 0;",                   // incorrect result
-		"complicated range tree",                                                             // panic in index lookup, needs investigation
-		"preserve now()",                                                                     // harness error
-		"binary type primary key",                                                            // ERROR: blob/text column 'b' used in key specification without a key length
-		"varbinary primary key",                                                              // ERROR: blob/text column 'b' used in key specification without a key length
-		"insert into t1 (a, b) values ('1234567890', '12345')",                               // different error message
-		"insert into t2 (a, b) values ('1234567890', '12345')",                               // different error message
-		"invalid utf8 encoding strings",                                                      // need to investigate why some strings aren't giving errors, might be a harness error
-		"mismatched collation using hash in tuples",                                          // ERROR: plan is not resolved because of node '*plan.Project'
-		"validate_password_strength and validate_password.length",                            // unsupported
-		"validate_password_strength and validate_password.number_count",                      // unsupported
-		"validate_password_strength and validate_password.mixed_case_count",                  // unsupported
-		"validate_password_strength and validate_password.special_char_count",                // unsupported
-		"preserve enums through alter statements",                                            // enum types unsupported
-		"coalesce with system types",                                                         // unsupported
-		"multi enum return types",                                                            // enum types unsupported
-		"enum cast to int and string",                                                        // enum types unsupported
-		"select * from vt where v = cast('def' as char(6));",                                 // incorrect result
-		"select * from vt where v < cast('def' as char(6));",                                 // incorrect result
-		"select * from vt where v >= cast('def' as char(6));",                                // incorrect result
-		"histogram bucket merging error for implementor buckets",                             // unsupported "with recursive" syntax
-		"varchar primary key",                                                                // literal values longer than the key length returns incorrect results for some queries
+		"preserve now()",          // harness error
+		"binary type primary key", // ERROR: blob/text column 'b' used in key specification without a key length
+		"varbinary primary key",   // ERROR: blob/text column 'b' used in key specification without a key length
+		"insert into t1 (a, b) values ('1234567890', '12345')",                // different error message
+		"insert into t2 (a, b) values ('1234567890', '12345')",                // different error message
+		"invalid utf8 encoding strings",                                       // need to investigate why some strings aren't giving errors, might be a harness error
+		"mismatched collation using hash in tuples",                           // ERROR: plan is not resolved because of node '*plan.Project'
+		"validate_password_strength and validate_password.length",             // unsupported
+		"validate_password_strength and validate_password.number_count",       // unsupported
+		"validate_password_strength and validate_password.mixed_case_count",   // unsupported
+		"validate_password_strength and validate_password.special_char_count", // unsupported
+		"preserve enums through alter statements",                             // enum types unsupported
+		"coalesce with system types",                                          // unsupported
+		"multi enum return types",                                             // enum types unsupported
+		"enum cast to int and string",                                         // enum types unsupported
+		"select * from vt where v = cast('def' as char(6));",                  // incorrect result
+		"select * from vt where v < cast('def' as char(6));",                  // incorrect result
+		"select * from vt where v >= cast('def' as char(6));",                 // incorrect result
+		"histogram bucket merging error for implementor buckets",              // unsupported "with recursive" syntax
+		"varchar primary key",                                                 // literal values longer than the key length returns incorrect results for some queries
 	})
 	defer h.Close()
 	enginetest.TestScripts(t, h)
