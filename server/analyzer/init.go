@@ -46,6 +46,7 @@ const (
 	ruleId_OptimizeFunctions                                             // optimizeFunctions
 	ruleId_ValidateColumnDefaults                                        // validateColumnDefaults
 	ruleId_ValidateCreateTable                                           // validateCreateTable
+	ruleId_ValidateCreateSchema                                          // validateCreateSchema
 	ruleId_ResolveAlterColumn                                            // resolveAlterColumn
 	ruleId_ValidateCreateFunction
 )
@@ -62,6 +63,7 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
 		analyzer.Rule{Id: ruleId_AssignTriggers, Apply: AssignTriggers},
 		analyzer.Rule{Id: ruleId_ValidateCreateFunction, Apply: ValidateCreateFunction},
+		analyzer.Rule{Id: ruleId_ValidateCreateSchema, Apply: ValidateCreateSchema},
 	)
 
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{

@@ -396,7 +396,35 @@ query_server_for_user_and_pass() {
     shift
     shift
     shift
-    
+
     nativevar PGPASSWORD "$pass" /w
     psql -U "$user" -h localhost -p $PORT "$@" $db
+}
+
+# Test for https://github.com/dolthub/doltgresql/issues/1863
+@test 'doltgres: connection to non-existent database fails' {
+    start_sql_server
+
+    # Connecting to the default postgres database should work
+    run query_server -c "SELECT 1"
+    [ "$status" -eq 0 ]
+
+    # Connecting to a non-existent database should fail
+    nativevar PGPASSWORD "password" /w
+    run psql -U postgres -h localhost -p $PORT -c "SELECT 1" nonexistent_db
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "does not exist" ]] || false
+}
+
+@test 'doltgres: CREATE SCHEMA works on valid database' {
+    start_sql_server
+
+    # CREATE SCHEMA should work on a valid database
+    run query_server -c "CREATE SCHEMA test_schema_bats"
+    [ "$status" -eq 0 ]
+
+    # Verify schema was created
+    run query_server -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'test_schema_bats'"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "test_schema_bats" ]] || false
 }
