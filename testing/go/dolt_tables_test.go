@@ -1910,7 +1910,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, // TODO: ERROR: at or near "status": syntax error
 					Query: `DESCRIBE dolt.status`,
 					Expected: []sql.Row{
 						{"table_name", "text", "NO", "PRI", nil, ""},
