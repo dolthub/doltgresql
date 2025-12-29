@@ -453,6 +453,11 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		return endOfMessages, err
 	}
 
+	// empty query special case
+	if query.AST == nil {
+		return true, h.send(&pgproto3.EmptyQueryResponse{})
+	}
+
 	return true, h.query(query)
 }
 
