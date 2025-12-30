@@ -78,8 +78,8 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Bit type",
-		Skip: true, // no pgx support: unknown type with oid: 1560
+		Name:  "Bit type",
+		Focus: true, // no pgx support: unknown type with oid: 1560
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (1, B'11011010'), (2, B'00101011');",
