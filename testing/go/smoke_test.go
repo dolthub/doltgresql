@@ -823,3 +823,25 @@ func TestSmokeTests(t *testing.T) {
 		},
 	})
 }
+
+func TestEmptyQuery(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			// TODO: we want to be able to assert that the empty query returns a specific postgres backend message,
+			//  EmptyQueryResponse. The pg library automatically converts this response to an empty-string CommandTag,
+			//  which we can't tell apart from other empty CommandTag responses. We do assert that the command tag is empty,
+			//  but it would nice to be able to assert a particular message type.
+			Name: "Empty query test",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       ";",
+					ExpectedTag: EmptyCommandTag,
+				},
+				{
+					Query:       " ",
+					ExpectedTag: EmptyCommandTag,
+				},
+			},
+		},
+	})
+}
