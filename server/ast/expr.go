@@ -476,7 +476,9 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.DArray:
 		return nil, errors.Errorf("the statement is not yet supported")
 	case *tree.DBitArray:
-		return nil, errors.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewUnsafeLiteral(node, pgtypes.Bit),
+		}, nil
 	case *tree.DBool:
 		return vitess.InjectedExpr{
 			Expression: pgexprs.NewRawLiteralBool(bool(*node)),
