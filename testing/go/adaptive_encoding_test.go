@@ -33,6 +33,18 @@ func makeTestBytes(size int, firstbyte byte) []byte {
 	return bytes
 }
 
+func makeTestVarbit(size int) []byte {
+	bytes := make([]byte, size)
+	for i := 0; i < size; i++ {
+		if i%2 == 0 {
+			bytes[i] = '1'
+		} else {
+			bytes[i] = '0'
+		}
+	}
+	return bytes
+}
+
 // A 4000 byte file starting with 0x01 and then consisting of all zeros.
 // This is larger than default target tuple size for outlining adaptive types.
 // We expect a tuple to always store this value out-of-band
@@ -51,17 +63,17 @@ var tinyString = string(makeTestBytes(10, 3))
 // A 4000 byte file starting with ascii byte 1 and then consisting of all zeros.
 // This is larger than default target tuple size for outlining adaptive types.
 // We expect a tuple to always store this value out-of-band
-var fullSizeVarbit = string(makeTestBytes(4000, '1'))
+var fullSizeVarbit = string(makeTestVarbit(4000))
 
 // A 2000 byte file starting with ascii byte 1 and then consisting of all zeros.
 // This is over half of the default target tuple size for outlining adaptive types.
 // We expect a tuple to be able to store this value inline once, but not twice.
-var halfSizeVarbit = string(makeTestBytes(2000, '1'))
+var halfSizeVarbit = string(makeTestVarbit(2000))
 
 // A 10 byte file starting with ascii byte 1 and then consisting of 10 zero bytes.
 // This is file is smaller than an address hash.
 // We expect a tuple to never store this value out-of-band.
-var tinyVarbit = string(makeTestBytes(10, '1'))
+var tinyVarbit = string(makeTestVarbit(10))
 
 func TestAdaptiveEncodingText(t *testing.T) {
 	fullSizeOutOfLineRepr := fullSizeString
@@ -244,15 +256,15 @@ func TestAdaptiveEncodingVarbit(t *testing.T) {
 			SetUpScript: setup.SetupScript{
 				fmt.Sprintf(`create table blobt2 (i char(2) primary key, b1 %s, b2 %s);`, columnType, columnType),
 				`insert into blobt2 values
-    ('FF', LOAD_FILE('testdata/fullSize'), LOAD_FILE('testdata/fullSize')),
-    ('HF', LOAD_FILE('testdata/halfSize'), LOAD_FILE('testdata/fullSize')),
-    ('TF', LOAD_FILE('testdata/tinyFile'), LOAD_FILE('testdata/fullSize')),
-	('FH', LOAD_FILE('testdata/fullSize'), LOAD_FILE('testdata/halfSize')),
-	('HH', LOAD_FILE('testdata/halfSize'), LOAD_FILE('testdata/halfSize')),
-	('TH', LOAD_FILE('testdata/tinyFile'), LOAD_FILE('testdata/halfSize')),
-    ('FT', LOAD_FILE('testdata/fullSize'), LOAD_FILE('testdata/tinyFile')),
-    ('HT', LOAD_FILE('testdata/halfSize'), LOAD_FILE('testdata/tinyFile')),
-    ('TT', LOAD_FILE('testdata/tinyFile'), LOAD_FILE('testdata/tinyFile'))`,
+    ('FF', LOAD_FILE('testdata/fullSizeVarbit'), LOAD_FILE('testdata/fullSizeVarbit')),
+    ('HF', LOAD_FILE('testdata/halfSizeVarbit'), LOAD_FILE('testdata/fullSizeVarbit')),
+    ('TF', LOAD_FILE('testdata/tinyFileVarbit'), LOAD_FILE('testdata/fullSizeVarbit')),
+	('FH', LOAD_FILE('testdata/fullSizeVarbit'), LOAD_FILE('testdata/halfSizeVarbit')),
+	('HH', LOAD_FILE('testdata/halfSizeVarbit'), LOAD_FILE('testdata/halfSizeVarbit')),
+	('TH', LOAD_FILE('testdata/tinyFileVarbit'), LOAD_FILE('testdata/halfSizeVarbit')),
+    ('FT', LOAD_FILE('testdata/fullSizeVarbit'), LOAD_FILE('testdata/tinyFileVarbit')),
+    ('HT', LOAD_FILE('testdata/halfSizeVarbit'), LOAD_FILE('testdata/tinyFileVarbit')),
+    ('TT', LOAD_FILE('testdata/tinyFileVarbit'), LOAD_FILE('testdata/tinyFileVarbit'))`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -310,7 +322,7 @@ func TestAdaptiveEncodingVarbit(t *testing.T) {
 					// And adaptive values are always outlined starting from the left.
 					// This means that in a table with two adaptive columns where both columns were previously stored out-of line,
 					// Decreasing the size of the second column may allow both columns to be stored inline.
-					Query: "UPDATE blobt2 SET b2 = LOAD_FILE('testdata/tinyFile') WHERE i = 'HH'",
+					Query: "UPDATE blobt2 SET b2 = LOAD_FILE('testdata/tinyFileVarbit') WHERE i = 'HH'",
 				},
 				{
 					Query:    "select i, b1, b2 from blobt2 where i = 'HH'",
