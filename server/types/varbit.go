@@ -16,7 +16,11 @@ package types
 
 import (
 	"github.com/dolthub/doltgresql/core/id"
+	"gopkg.in/src-d/go-errors.v1"
 )
+
+// ErrVarBitLengthExceeded is returned when a varbit value exceeds the defined length.
+var ErrVarBitLengthExceeded = errors.NewKind(`bit string too long for type bit varying(%d)`)
 
 // VarBit is a varying-length bit string.
 var VarBit = &DoltgresType{
@@ -33,7 +37,7 @@ var VarBit = &DoltgresType{
 	Elem:          id.NullType,
 	Array:         toInternal("_varbit"),
 	InputFunc:     toFuncID("varbit_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("varbit_out", toInternal("bit")),
+	OutputFunc:    toFuncID("varbit_out", toInternal("varbit")),
 	ReceiveFunc:   toFuncID("varbit_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
 	SendFunc:      toFuncID("varbit_send", toInternal("varbit")),
 	ModInFunc:     toFuncID("varbittypmodin", toInternal("varbit")),
@@ -54,8 +58,8 @@ var VarBit = &DoltgresType{
 	CompareFunc:   toFuncID("bttextcmp", toInternal("text"), toInternal("text")),
 }
 
-// NewBitType returns a Bit type with type modifier set
-// representing the number of bits in the string.
+// NewVarBitType returns a VarBit type with type modifier set
+// representing the max number of bits in the string.
 func NewVarBitType(width int32) (*DoltgresType, error) {
 	typmod, err := GetTypModFromCharLength("bit", width)
 	if err != nil {

@@ -79,8 +79,7 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name:  "Bit type",
-		Focus: true,
+		Name: "Bit type",
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8), v2 BIT(3));",
 			"INSERT INTO t_bit VALUES (1, B'11011010', '101'), (2, B'00101011', '000');",
@@ -303,8 +302,8 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "Bit varying type",
-		Skip: true,
+		Name:  "Bit varying type",
+		Focus: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING(16));",
 			"INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",
@@ -313,8 +312,8 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_bit_varying ORDER BY id;",
 				Expected: []sql.Row{
-					{1, []byte{0xDA, 0xAA}},
-					{2, []byte{0x2B, 0xA5}},
+					{1, pgtype.Bits{Bytes: []uint8{0xda, 0xaa}, Len: 16, Valid: true}},
+					{2, pgtype.Bits{Bytes: []uint8{0x2b, 0x55}, Len: 16, Valid: true}},
 				},
 			},
 		},

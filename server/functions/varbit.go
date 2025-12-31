@@ -16,9 +16,8 @@ package functions
 
 import (
 	"fmt"
-	"strings"
 
-	"github.com/cockroachdb/errors"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -42,37 +41,23 @@ var varbitin = framework.Function3{
 	Return:     pgtypes.VarBit,
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, _, val3 any) (any, error) {
 		input := val1.(string)
 		typmod := val3.(int32)
-		
-		// Parse bit string - remove leading 'B' or 'b' prefix if present
-		bitStr := strings.TrimSpace(input)
-		if len(bitStr) > 0 && (bitStr[0] == 'B' || bitStr[0] == 'b') {
-			bitStr = bitStr[1:]
-			// Remove quotes if present
-			if len(bitStr) > 0 && (bitStr[0] == '\'' || bitStr[0] == '"') {
-				if len(bitStr) > 1 && bitStr[len(bitStr)-1] == bitStr[0] {
-					bitStr = bitStr[1 : len(bitStr)-1]
-				}
-			}
+
+		bitStr, err := tree.ParseDBitArray(input)
+		if err != nil {
+			return nil, err
 		}
-		
-		// Validate that all characters are '0' or '1'
-		for _, r := range bitStr {
-			if r != '0' && r != '1' {
-				return nil, pgtypes.ErrInvalidSyntaxForType.New("varbit", input)
-			}
-		}
-		
+
 		// Check length against typmod (varbit allows up to typmod length)
 		if typmod != -1 {
 			maxLength := pgtypes.GetCharLengthFromTypmod(typmod)
-			if int32(len(bitStr)) > maxLength {
-				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("bit string length %d exceeds maximum length %d for type varbit(%d)", len(bitStr), maxLength, maxLength))
+			if int32(bitStr.BitLen()) > maxLength {
+				return nil, pgtypes.ErrVarBitLengthExceeded.New(maxLength)
 			}
 		}
-		
+
 		return bitStr, nil
 	},
 }
@@ -84,17 +69,8 @@ var varbitout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarBit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		bitStr := val.(string)
-		typ := t[0]
-		tm := typ.GetAttTypMod()
-		if tm != -1 {
-			maxLength := pgtypes.GetCharLengthFromTypmod(tm)
-			// Truncate if needed (shouldn't happen normally, but handle it)
-			if int32(len(bitStr)) > maxLength {
-				bitStr = bitStr[:maxLength]
-			}
-		}
-		return bitStr, nil
+		bitStr := val.(*tree.DBitArray)
+		return tree.AsStringWithFlags(bitStr, tree.FmtPgwireText), nil
 	},
 }
 
@@ -110,7 +86,7 @@ var varbitrecv = framework.Function3{
 			return nil, nil
 		}
 		reader := utils.NewReader(data)
-		return reader.String(), nil
+		return tree.ParseDBitArray(reader.String())
 	},
 }
 
@@ -121,9 +97,9 @@ var varbitsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarBit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		bitStr := val.(string)
-		writer := utils.NewWriter(uint64(len(bitStr) + 4))
-		writer.String(bitStr)
+		bitStr := val.(*tree.DBitArray)
+		writer := utils.NewWriter(uint64(bitStr.BitLen() + 4))
+		writer.String(tree.AsStringWithFlags(bitStr, tree.FmtPgwireText))
 		return writer.Data(), nil
 	},
 }
@@ -135,7 +111,7 @@ var varbittypmodin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return getTypModFromStringArr("bit", val.([]any))
+		return getTypModFromStringArr("bit varying", val.([]any))
 	},
 }
 
