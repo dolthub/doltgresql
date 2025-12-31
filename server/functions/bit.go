@@ -66,8 +66,8 @@ var bitout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		bitStr := val.(tree.DBitArray)
-		return bitStr.String(), nil
+		bitStr := val.(*tree.DBitArray)
+		return tree.AsStringWithFlags(bitStr, tree.FmtPgwireText), nil
 	},
 }
 
@@ -94,8 +94,11 @@ var bitsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		bitStr := val.(tree.DBitArray)
-		return bitStr.String(), nil
+		bitStr := val.(*tree.DBitArray)
+		str := tree.AsStringWithFlags(bitStr, tree.FmtPgwireText)
+		wr := utils.NewWriter(uint64(4 + len(str)))
+		wr.String(str)
+		return wr.Data(), nil
 	},
 }
 
