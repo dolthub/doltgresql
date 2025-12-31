@@ -82,24 +82,37 @@ var typesTests = []ScriptTest{
 		Name:  "Bit type",
 		Focus: true,
 		SetUpScript: []string{
-			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8));",
-			"INSERT INTO t_bit VALUES (1, B'11011010'), (2, B'00101011');",
+			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8), v2 BIT(3));",
+			"INSERT INTO t_bit VALUES (1, B'11011010', '101'), (2, B'00101011', '000');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_bit ORDER BY id;",
 				Expected: []sql.Row{
-					{1, pgtype.Bits{Bytes: []uint8{0xda}, Len: 8, Valid: true}},
-					{2, pgtype.Bits{Bytes: []uint8{0x2b}, Len: 8, Valid: true}},
+					// TODO: the pg library is interpreting the bit string `101` as `a0` (right-padded with zeroes) instead of `05`, not sure if that's correct or not
+					{1, pgtype.Bits{Bytes: []uint8{0xda}, Len: 8, Valid: true}, pgtype.Bits{Bytes: []uint8{0xa0}, Len: 3, Valid: true}},
+					{2, pgtype.Bits{Bytes: []uint8{0x2b}, Len: 8, Valid: true}, pgtype.Bits{Bytes: []uint8{0x0}, Len: 3, Valid: true}},
 				},
 			},
 			{
-				Query:       "INSERT INTO t_bit VALUES (3, B'101');",
+				Query:       "INSERT INTO t_bit VALUES (3, B'101', '111');",
 				ExpectedErr: "bit string length 3 does not match type bit(8)",
 			},
 			{
-				Query:       "INSERT INTO t_bit VALUES (3, B'1001000110');",
+				Query:       "INSERT INTO t_bit VALUES (3, B'1001000110', '111');",
 				ExpectedErr: "bit string length 10 does not match type bit(8)",
+			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, B'10010001', '11100100');",
+				ExpectedErr: "bit string length 8 does not match type bit(3)",
+			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, B'10012345', '111');",
+				ExpectedErr: "not a valid binary digit",
+			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, '10012345', '111');",
+				ExpectedErr: "not a valid binary digit",
 			},
 		},
 	},
