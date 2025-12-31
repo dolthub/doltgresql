@@ -61,6 +61,6 @@ func NewBitType(width int32) (*DoltgresType, error) {
 	if err != nil {
 		return nil, err
 	}
-	newType := *VarBit.WithAttTypMod(typmod)
+	newType := *Bit.WithAttTypMod(typmod)
 	return &newType, nil
 }
