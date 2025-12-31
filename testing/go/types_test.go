@@ -80,7 +80,7 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name:  "Bit type",
-		Focus: true, // no pgx support: unknown type with oid: 1560
+		Focus: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (1, B'11011010'), (2, B'00101011');",
@@ -93,11 +93,19 @@ var typesTests = []ScriptTest{
 					{2, pgtype.Bits{Bytes: []uint8{0x2b}, Len: 8, Valid: true}},
 				},
 			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, B'101');",
+				ExpectedErr: "bit string length 3 does not match type bit(8)",
+			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, B'1001000110');",
+				ExpectedErr: "bit string length 10 does not match type bit(8)",
+			},
 		},
 	},
 	{
 		Name: "Bit key",
-		Skip: true, // no pgx support: unknown type with oid: 1560
+		Skip: true, // no comparator in serialization layer
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id BIT(8) primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (B'11011010', B'11011010'), (B'00101011', B'00101011');",
@@ -3009,8 +3017,8 @@ var typesTests = []ScriptTest{
 			"create table t_uuid2 (id int primary key, v1 uuid, v2 uuid);",
 			"create index on t_uuid2(v1, v2);",
 			"insert into t_uuid2 values " +
-					"(1, 'f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), " +
-					"(2, 'dcf783c8-49c2-44b4-8b90-34ad8c52ea1e', 'f99802e8-0018-4913-806c-bcad5d246d46');",
+				"(1, 'f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), " +
+				"(2, 'dcf783c8-49c2-44b4-8b90-34ad8c52ea1e', 'f99802e8-0018-4913-806c-bcad5d246d46');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{

@@ -52,7 +52,7 @@ var bitin = framework.Function3{
 
 		expectedLength := pgtypes.GetCharLengthFromTypmod(typmod)
 		if array.BitLen() != uint(expectedLength) {
-			return nil, pgtypes.ErrInvalidSyntaxForType.New("bit", input)
+			return nil, pgtypes.ErrWrongLengthBit.New(len(input), expectedLength)
 		}
 
 		return array, nil

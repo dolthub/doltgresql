@@ -174,11 +174,25 @@ func GetAssignmentCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresT
 	}
 	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
 	// parameters). If the "to" type is a string type, then we do not use the identity, and use the I/O conversion below.
-	if fromType.ID == toType.ID && fromType.TypCategory != pgtypes.TypeCategory_StringTypes {
+	if fromType.ID == toType.ID && fromType.TypCategory != pgtypes.TypeCategory_StringTypes && fromType.TypCategory != pgtypes.TypeCategory_BitStringTypes {
 		return IdentityCast
 	}
+
 	// All types have a built-in assignment cast to string types: https://www.postgresql.org/docs/15/sql-createcast.html
+	// This is also where length checks occur for types like char(n), varchar(n), bit(n), etc., which is not great
+	// TODO: move length checks to their own analyzer step
 	if toType.TypCategory == pgtypes.TypeCategory_StringTypes {
+		return func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+			if val == nil {
+				return nil, nil
+			}
+			str, err := fromType.IoOutput(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
+		}
+	} else if toType.TypCategory == pgtypes.TypeCategory_BitStringTypes {
 		return func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			if val == nil {
 				return nil, nil
@@ -209,8 +223,8 @@ func GetImplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 
 // addTypeCast registers the given type cast.
 func addTypeCast(mutex *sync.RWMutex,
-	castMap map[id.Type]map[id.Type]pgtypes.TypeCastFunction,
-	castArray map[id.Type][]*pgtypes.DoltgresType, cast TypeCast) error {
+		castMap map[id.Type]map[id.Type]pgtypes.TypeCastFunction,
+		castArray map[id.Type][]*pgtypes.DoltgresType, cast TypeCast) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -240,8 +254,8 @@ func getPotentialCasts(mutex *sync.RWMutex, castArray map[id.Type][]*pgtypes.Dol
 // getCast returns the type cast function that will cast the "from" type to the "to" type. Returns nil if such a cast is
 // not valid.
 func getCast(mutex *sync.RWMutex,
-	castMap map[id.Type]map[id.Type]pgtypes.TypeCastFunction,
-	fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType, outerFunc getCastFunction) pgtypes.TypeCastFunction {
+		castMap map[id.Type]map[id.Type]pgtypes.TypeCastFunction,
+		fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType, outerFunc getCastFunction) pgtypes.TypeCastFunction {
 	mutex.RLock()
 	defer mutex.RUnlock()
 

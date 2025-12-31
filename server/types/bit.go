@@ -16,7 +16,11 @@ package types
 
 import (
 	"github.com/dolthub/doltgresql/core/id"
+	"gopkg.in/src-d/go-errors.v1"
 )
+
+// ErrWrongLengthBit is returned when a value with the incorrect length is inserted into a Bit column.
+var ErrWrongLengthBit = errors.NewKind(`bit string length %d does not match type bit(%d)`)
 
 // Bit is a fixed-length bit string.
 var Bit = &DoltgresType{
