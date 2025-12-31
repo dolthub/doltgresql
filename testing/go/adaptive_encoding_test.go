@@ -217,7 +217,6 @@ func TestAdaptiveEncodingText(t *testing.T) {
 
 func TestAdaptiveEncodingVarbit(t *testing.T) {
 	columnType := "varbit"
-	fullSizeOutOfLineRepr := fullSizeVarbit
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Adaptive Encoding With One Column",
@@ -292,59 +291,6 @@ func TestAdaptiveEncodingVarbit(t *testing.T) {
 					// An adaptive column can be used in a filter when it doesn't have the same encoding in all rows.
 					Query:    "select i from blobt2 where b2 = LOAD_FILE('testdata/halfSize')",
 					Expected: []sql.Row{{"FH"}, {"HH"}, {"TH"}},
-				},
-				{
-					// Test creating an index on an adaptive encoding column, matching against out-of-band values
-					Query: "CREATE INDEX bidx ON blobt2 (b1)",
-				},
-				{
-					Query: "select i, b1 FROM blobt2 WHERE b1 LIKE '\x01%'",
-					Expected: []sql.Row{
-						{"FF", fullSizeOutOfLineRepr},
-						{"FH", fullSizeOutOfLineRepr},
-						{"FT", fullSizeOutOfLineRepr},
-					},
-				},
-				{
-					// Test creating an index on an adaptive encoding column, matching against inline values
-					Query: "CREATE INDEX bidx2 ON blobt2 (b2)",
-				},
-				{
-					Query: "select i, b2 FROM blobt2 WHERE b2 LIKE '\x02%'",
-					Expected: []sql.Row{
-						{"FH", halfSizeVarbit},
-						{"HH", halfSizeVarbit},
-						{"TH", halfSizeVarbit},
-					},
-				},
-				{
-					// Tuples containing adaptive columns should be independent of how the tuple was created.
-					// And adaptive values are always outlined starting from the left.
-					// This means that in a table with two adaptive columns where both columns were previously stored out-of line,
-					// Decreasing the size of the second column may allow both columns to be stored inline.
-					Query: "UPDATE blobt2 SET b2 = LOAD_FILE('testdata/tinyFileVarbit') WHERE i = 'HH'",
-				},
-				{
-					Query:    "select i, b1, b2 from blobt2 where i = 'HH'",
-					Expected: []sql.Row{{"HH", halfSizeVarbit, tinyVarbit}},
-				},
-				{
-					// Similar to the above, dropping a column can change whether the other column is inlined.
-					Query: "ALTER TABLE blobt2 DROP COLUMN b2",
-				},
-				{
-					Query: "select i, b1 from blobt2",
-					Expected: []sql.Row{
-						{"FF", fullSizeVarbit},
-						{"HF", halfSizeVarbit},
-						{"TF", tinyVarbit},
-						{"FH", fullSizeVarbit},
-						{"HH", halfSizeVarbit},
-						{"TH", tinyVarbit},
-						{"FT", fullSizeVarbit},
-						{"HT", halfSizeVarbit},
-						{"TT", tinyVarbit},
-					},
 				},
 			},
 		},

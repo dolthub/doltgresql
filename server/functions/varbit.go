@@ -69,8 +69,20 @@ var varbitout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarBit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		bitStr := val.(*tree.DBitArray)
-		return tree.AsStringWithFlags(bitStr, tree.FmtPgwireText), nil
+		var bitArray *tree.DBitArray
+		bitStr, ok, err := sql.Unwrap[string](ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			bitArray, err = tree.ParseDBitArray(bitStr)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			bitArray = val.(*tree.DBitArray)
+		}
+		return tree.AsStringWithFlags(bitArray, tree.FmtPgwireText), nil
 	},
 }
 
