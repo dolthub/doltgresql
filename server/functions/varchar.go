@@ -64,7 +64,13 @@ var varcharout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		v := val.(string)
+		v, ok, err := sql.Unwrap[string](ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf(`"varcharout" requires a string argument, got %T`, val)
+		}
 		typ := t[0]
 		tm := typ.GetAttTypMod()
 		if tm != -1 {

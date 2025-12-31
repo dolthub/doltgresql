@@ -156,10 +156,11 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 				} else if width == 0 {
 					// TODO: need to differentiate between definitions 'varchar' (valid) and 'varchar(0)' (invalid)
 					resolvedType = pgtypes.VarChar
-				}
-				resolvedType, err = pgtypes.NewVarCharType(int32(width))
-				if err != nil {
-					return nil, nil, err
+				} else {
+					resolvedType, err = pgtypes.NewVarCharType(int32(width))
+					if err != nil {
+						return nil, nil, err
+					}
 				}
 			case oid.T_xid:
 				resolvedType = pgtypes.Xid
@@ -170,11 +171,11 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 				} else if width == 0 {
 					// TODO: need to differentiate between definitions 'bit' (valid) and 'bit(0)' (invalid)
 					resolvedType = pgtypes.Bit
-				}
-
-				resolvedType, err = pgtypes.NewBitType(int32(width))
-				if err != nil {
-					return nil, nil, err
+				} else {
+					resolvedType, err = pgtypes.NewBitType(int32(width))
+					if err != nil {
+						return nil, nil, err
+					}
 				}
 			case oid.T_varbit:
 				width := uint32(columnType.Width())
@@ -183,11 +184,11 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 				} else if width == 0 {
 					// TODO: need to differentiate between definitions 'varbit' (valid) and 'varbit(0)' (invalid)
 					resolvedType = pgtypes.VarBit
-				}
-
-				resolvedType, err = pgtypes.NewVarBitType(int32(width))
-				if err != nil {
-					return nil, nil, err
+				} else {
+					resolvedType, err = pgtypes.NewVarBitType(int32(width))
+					if err != nil {
+						return nil, nil, err
+					}
 				}
 			default:
 				return nil, nil, errors.Errorf("unknown type with oid: %d", uint32(columnType.Oid()))

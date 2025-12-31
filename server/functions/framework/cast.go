@@ -223,8 +223,8 @@ func GetImplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 
 // addTypeCast registers the given type cast.
 func addTypeCast(mutex *sync.RWMutex,
-		castMap map[id.Type]map[id.Type]pgtypes.TypeCastFunction,
-		castArray map[id.Type][]*pgtypes.DoltgresType, cast TypeCast) error {
+	castMap map[id.Type]map[id.Type]pgtypes.TypeCastFunction,
+	castArray map[id.Type][]*pgtypes.DoltgresType, cast TypeCast) error {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -254,8 +254,8 @@ func getPotentialCasts(mutex *sync.RWMutex, castArray map[id.Type][]*pgtypes.Dol
 // getCast returns the type cast function that will cast the "from" type to the "to" type. Returns nil if such a cast is
 // not valid.
 func getCast(mutex *sync.RWMutex,
-		castMap map[id.Type]map[id.Type]pgtypes.TypeCastFunction,
-		fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType, outerFunc getCastFunction) pgtypes.TypeCastFunction {
+	castMap map[id.Type]map[id.Type]pgtypes.TypeCastFunction,
+	fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType, outerFunc getCastFunction) pgtypes.TypeCastFunction {
 	mutex.RLock()
 	defer mutex.RUnlock()
 

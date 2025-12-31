@@ -316,6 +316,36 @@ var typesTests = []ScriptTest{
 					{2, pgtype.Bits{Bytes: []uint8{0x2b, 0x55}, Len: 16, Valid: true}},
 				},
 			},
+			{
+				Query:       "INSERT INTO t_bit_varying VALUES (3, B'101010101010101010');",
+				ExpectedErr: "bit string too long for type bit varying(16)",
+			},
+		},
+	},
+	{
+		Name:  "Bit varying type, unbounded",
+		Focus: true,
+		SetUpScript: []string{
+			"CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING);",
+			"INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_bit_varying ORDER BY id;",
+				Expected: []sql.Row{
+					{1, pgtype.Bits{Bytes: []uint8{0xda, 0xaa}, Len: 16, Valid: true}},
+					{2, pgtype.Bits{Bytes: []uint8{0x2b, 0x55}, Len: 16, Valid: true}},
+				},
+			},
+			{
+				Query: "INSERT INTO t_bit_varying VALUES (3, B'101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010');",
+			},
+			{
+				Query: "SELECT * FROM t_bit_varying WHERE id = 3 order by 1;",
+				Expected: []sql.Row{
+					{3, pgtype.Bits{Bytes: []uint8{0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xa0}, Len: 108, Valid: true}},
+				},
+			},
 		},
 	},
 	{
