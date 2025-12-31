@@ -302,8 +302,7 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name:  "Bit varying type",
-		Focus: true,
+		Name: "Bit varying type",
 		SetUpScript: []string{
 			"CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING(16));",
 			"INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",
@@ -323,8 +322,7 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name:  "Bit varying type, unbounded",
-		Focus: true,
+		Name: "Bit varying type, unbounded",
 		SetUpScript: []string{
 			"CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING);",
 			"INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",

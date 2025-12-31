@@ -45,6 +45,7 @@ var varbitin = framework.Function3{
 		input := val1.(string)
 		typmod := val3.(int32)
 
+		// validation and normalization
 		bitStr, err := tree.ParseDBitArray(input)
 		if err != nil {
 			return nil, err
@@ -58,7 +59,7 @@ var varbitin = framework.Function3{
 			}
 		}
 
-		return bitStr, nil
+		return tree.AsStringWithFlags(bitStr, tree.FmtPgwireText), nil
 	},
 }
 
@@ -69,20 +70,14 @@ var varbitout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarBit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		var bitArray *tree.DBitArray
 		bitStr, ok, err := sql.Unwrap[string](ctx, val)
 		if err != nil {
 			return nil, err
 		}
-		if ok {
-			bitArray, err = tree.ParseDBitArray(bitStr)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			bitArray = val.(*tree.DBitArray)
+		if !ok {
+			return nil, fmt.Errorf("varbit_out function returned false")
 		}
-		return tree.AsStringWithFlags(bitArray, tree.FmtPgwireText), nil
+		return bitStr, nil
 	},
 }
 
@@ -98,7 +93,7 @@ var varbitrecv = framework.Function3{
 			return nil, nil
 		}
 		reader := utils.NewReader(data)
-		return tree.ParseDBitArray(reader.String())
+		return reader.String(), nil
 	},
 }
 
@@ -109,9 +104,9 @@ var varbitsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarBit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		bitStr := val.(*tree.DBitArray)
-		writer := utils.NewWriter(uint64(bitStr.BitLen() + 4))
-		writer.String(tree.AsStringWithFlags(bitStr, tree.FmtPgwireText))
+		bitStr := val.(string)
+		writer := utils.NewWriter(uint64(len(bitStr) + 4))
+		writer.String(bitStr)
 		return writer.Data(), nil
 	},
 }

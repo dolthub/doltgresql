@@ -45,6 +45,7 @@ var bitin = framework.Function3{
 		input := val1.(string)
 		typmod := val3.(int32)
 
+		// validation and normalization
 		array, err := tree.ParseDBitArray(input)
 		if err != nil {
 			return nil, err
@@ -55,7 +56,7 @@ var bitin = framework.Function3{
 			return nil, pgtypes.ErrWrongLengthBit.New(len(input), expectedLength)
 		}
 
-		return array, nil
+		return tree.AsStringWithFlags(array, tree.FmtPgwireText), nil
 	},
 }
 
@@ -66,8 +67,8 @@ var bitout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		bitStr := val.(*tree.DBitArray)
-		return tree.AsStringWithFlags(bitStr, tree.FmtPgwireText), nil
+		bitStr := val.(string)
+		return bitStr, nil
 	},
 }
 
@@ -83,7 +84,7 @@ var bitrecv = framework.Function3{
 			return nil, nil
 		}
 		reader := utils.NewReader(data)
-		return tree.ParseDBitArray(reader.String())
+		return reader.String(), nil
 	},
 }
 
@@ -94,8 +95,7 @@ var bitsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		bitStr := val.(*tree.DBitArray)
-		str := tree.AsStringWithFlags(bitStr, tree.FmtPgwireText)
+		str := val.(string)
 		wr := utils.NewWriter(uint64(4 + len(str)))
 		wr.String(str)
 		return wr.Data(), nil
