@@ -72,6 +72,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, timestamptz_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, timetz_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, uuid_eq)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, varbit_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, xideqint4)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, xideq)
 }
@@ -521,6 +522,21 @@ var text_eq = framework.Function2{
 // record_eq_callable is the callable logic for the record_eq function.
 func record_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	return compare.CompareRecords(ctx, framework.Operator_BinaryEqual, val1, val2)
+}
+
+// varbit_eq represents the PostgreSQL function of the same name, taking the same parameters.
+var varbit_eq = framework.Function2{
+	Name:       "varbit_eq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.VarBit, pgtypes.VarBit},
+	Strict:     true,
+	Callable:   varbit_eq_callable,
+}
+
+// varbit_eq_callable is the callable logic for the varbit_eq function.
+func varbit_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	res, err := pgtypes.VarBit.Compare(ctx, val1, val2)
+	return res == 0, err
 }
 
 // record_eq represents the PostgreSQL function of the same name, taking the same parameters.
