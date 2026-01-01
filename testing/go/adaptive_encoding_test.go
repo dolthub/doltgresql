@@ -253,12 +253,12 @@ func TestAdaptiveEncodingVarbit(t *testing.T) {
 				},
 				{
 					// An inlined adaptive column can be used in a filter.
-					Query:    "select i from blobt where b = LOAD_FILE('testdata/fullSizeVarbit')",
+					Query:    "select i from blobt where b = LOAD_FILE('testdata/fullSizeVarbit')::varbit",
 					Expected: []sql.Row{{"F"}},
 				},
 				{
 					// An out-of-line adaptive column can be used in a filter.
-					Query:    "select i from blobt where b = LOAD_FILE('testdata/halfSizeVarbit')",
+					Query:    "select i from blobt where b = LOAD_FILE('testdata/halfSizeVarbit')::varbit",
 					Expected: []sql.Row{{"H"}},
 				},
 			},
@@ -297,12 +297,12 @@ func TestAdaptiveEncodingVarbit(t *testing.T) {
 				},
 				{
 					// An adaptive column can be used in a filter when it doesn't have the same encoding in all rows.
-					Query:    "select i from blobt2 where b1 = LOAD_FILE('testdata/halfSize')",
+					Query:    "select i from blobt2 where b1 = LOAD_FILE('testdata/halfSizeVarbit')::varbit",
 					Expected: []sql.Row{{"HF"}, {"HH"}, {"HT"}},
 				},
 				{
 					// An adaptive column can be used in a filter when it doesn't have the same encoding in all rows.
-					Query:    "select i from blobt2 where b2 = LOAD_FILE('testdata/halfSize')",
+					Query:    "select i from blobt2 where b2 = LOAD_FILE('testdata/halfSizeVarbit')::varbit",
 					Expected: []sql.Row{{"FH"}, {"HH"}, {"TH"}},
 				},
 			},
