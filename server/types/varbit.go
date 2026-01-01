@@ -15,8 +15,9 @@
 package types
 
 import (
-	"github.com/dolthub/doltgresql/core/id"
 	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // ErrVarBitLengthExceeded is returned when a varbit value exceeds the defined length.

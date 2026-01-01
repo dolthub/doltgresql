@@ -15,8 +15,9 @@
 package types
 
 import (
-	"github.com/dolthub/doltgresql/core/id"
 	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // ErrWrongLengthBit is returned when a value with the incorrect length is inserted into a Bit column.
