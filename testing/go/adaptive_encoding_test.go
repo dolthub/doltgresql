@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/dolthub/go-mysql-server/sql"
 )
@@ -33,16 +34,28 @@ func makeTestBytes(size int, firstbyte byte) []byte {
 	return bytes
 }
 
-func makeTestVarbit(size int) []byte {
-	bytes := make([]byte, size)
-	for i := 0; i < size; i++ {
-		if i%2 == 0 {
-			bytes[i] = '1'
-		} else {
-			bytes[i] = '0'
-		}
+func makeTestVarbit(sizeInBits int) pgtype.Bits {
+	numBytes := sizeInBits / 8
+	leftoverBits := sizeInBits % 8
+	bytes := make([]byte, numBytes)
+	for i := 0; i < numBytes; i++ {
+		bytes[i] = 0xaa
 	}
-	return bytes
+
+	// this is a little annoying, but if we have leftover bits, we need to pad out the remaining bits in the last byte with 0s
+	endingByte := byte(0)
+	for i := 0; i < leftoverBits/2; i++ {
+		endingByte |= 0b10 << (6 - i*2)
+	}
+	if leftoverBits > 0 {
+		bytes = append(bytes, endingByte)
+	}
+
+	return pgtype.Bits{
+		Bytes: bytes,
+		Len:   int32(sizeInBits),
+		Valid: true,
+	}
 }
 
 // A 4000 byte file starting with 0x01 and then consisting of all zeros.
@@ -63,17 +76,17 @@ var tinyString = string(makeTestBytes(10, 3))
 // A 4000 byte file starting with ascii byte 1 and then consisting of all zeros.
 // This is larger than default target tuple size for outlining adaptive types.
 // We expect a tuple to always store this value out-of-band
-var fullSizeVarbit = string(makeTestVarbit(4000))
+var fullSizeVarbit = makeTestVarbit(4000)
 
 // A 2000 byte file starting with ascii byte 1 and then consisting of all zeros.
 // This is over half of the default target tuple size for outlining adaptive types.
 // We expect a tuple to be able to store this value inline once, but not twice.
-var halfSizeVarbit = string(makeTestVarbit(2000))
+var halfSizeVarbit = makeTestVarbit(2000)
 
 // A 10 byte file starting with ascii byte 1 and then consisting of 10 zero bytes.
 // This is file is smaller than an address hash.
 // We expect a tuple to never store this value out-of-band.
-var tinyVarbit = string(makeTestVarbit(10))
+var tinyVarbit = makeTestVarbit(10)
 
 func TestAdaptiveEncodingText(t *testing.T) {
 	fullSizeOutOfLineRepr := fullSizeString
@@ -269,16 +282,16 @@ func TestAdaptiveEncodingVarbit(t *testing.T) {
 				{
 					// When a tuple with multiple adaptive columns is too large, columns are moved out-of-band from left to right.
 					// However, strings smaller than the address size (20 bytes) are never stored out-of-band.
-					Query: "select i, b1, b2 from blobt2",
+					Query: "select i, b1, b2 from blobt2 order by 1",
 					Expected: []sql.Row{
 						{"FF", fullSizeVarbit, fullSizeVarbit},
-						{"HF", halfSizeVarbit, fullSizeVarbit},
-						{"TF", tinyVarbit, fullSizeVarbit},
 						{"FH", fullSizeVarbit, halfSizeVarbit},
-						{"HH", halfSizeVarbit, halfSizeVarbit},
-						{"TH", tinyVarbit, halfSizeVarbit},
 						{"FT", fullSizeVarbit, tinyVarbit},
+						{"HF", halfSizeVarbit, fullSizeVarbit},
+						{"HH", halfSizeVarbit, halfSizeVarbit},
 						{"HT", halfSizeVarbit, tinyVarbit},
+						{"TF", tinyVarbit, fullSizeVarbit},
+						{"TH", tinyVarbit, halfSizeVarbit},
 						{"TT", tinyVarbit, tinyVarbit},
 					},
 				},
