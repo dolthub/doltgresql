@@ -27,5 +27,17 @@ func nodeDropSchema(ctx *Context, node *tree.DropSchema) (vitess.Statement, erro
 		return nil, nil
 	}
 
-	return NotYetSupportedError("DROP SCHEMA is not yet supported")
+	if len(node.Names) > 1 {
+		return NotYetSupportedError("DROP SCHEMA with multiple schema names")
+	}
+
+	schemaName := node.Names[0]
+
+	return &vitess.DBDDL{
+		Action:           vitess.DropStr,
+		SchemaOrDatabase: "schema",
+		DBName:           schemaName,
+		CharsetCollate:   nil,
+		IfExists:         node.IfExists,
+	}, nil
 }

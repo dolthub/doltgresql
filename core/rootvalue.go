@@ -17,6 +17,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"slices"
 	"sort"
 	"strconv"
@@ -80,6 +81,35 @@ func (root *RootValue) CreateDatabaseSchema(ctx context.Context, dbSchema schema
 	})
 
 	r, err := root.st.SetSchemas(ctx, existingSchemas)
+	if err != nil {
+		return nil, err
+	}
+
+	return root.withStorage(r), nil
+}
+
+// DropDatabaseSchema implements the interface doltdb.RootValue.
+func (root *RootValue) DropDatabaseSchema(ctx context.Context, dbSchema schema.DatabaseSchema) (doltdb.RootValue, error) {
+	schemas, err := root.st.GetSchemas(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	found := false
+	for i, s := range schemas {
+		if strings.EqualFold(s.Name, dbSchema.Name) {
+			found = true
+			// remove this element in the slice
+			schemas = append(schemas[:i], schemas[i+1:]...)
+			break
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("No schema with the name %s exists", dbSchema.Name)
+	}
+
+	r, err := root.st.SetSchemas(ctx, schemas)
 	if err != nil {
 		return nil, err
 	}
@@ -579,10 +609,10 @@ func (root *RootValue) PutTable(ctx context.Context, tName doltdb.TableName, tab
 
 // RemoveTables implements the interface doltdb.RootValue.
 func (root *RootValue) RemoveTables(
-	ctx context.Context,
-	skipFKHandling bool,
-	allowDroppingFKReferenced bool,
-	originalTables ...doltdb.TableName,
+		ctx context.Context,
+		skipFKHandling bool,
+		allowDroppingFKReferenced bool,
+		originalTables ...doltdb.TableName,
 ) (doltdb.RootValue, error) {
 	if len(originalTables) == 0 {
 		return root, nil
