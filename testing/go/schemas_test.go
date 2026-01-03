@@ -869,11 +869,40 @@ var SchemaTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name:  "drop schema",
+		Focus: true,
+		SetUpScript: []string{
+			"CREATE SCHEMA dropme",
+			"CREATE schema hasTables",
+			"CREATE TABLE hasTables.t1 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "Show schemas",
+				Expected: []sql.Row{
+					{"dolt"},
+					{"dropme"},
+					{"hasTables"},
+					{"pg_catalog"},
+					{"public"},
+					{"information_schema"},
+				},
+			},
+			{
+				Query:    "DROP SCHEMA dropme;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:       "DROP SCHEMA dropme;",
+				ExpectedErr: "schema dropme does not exist",
+			},
+		},
+	},
 	// More tests:
 	// * alter table statements, when they work better
 	// * AS OF (when supported)
 	// * revision qualifiers
-	// * drop schema
 	// * more statement types
 	// * INSERT INTO schema1 SELECT FROM schema2
 	// * Subqueries accessing different schemas in the same SELECT
