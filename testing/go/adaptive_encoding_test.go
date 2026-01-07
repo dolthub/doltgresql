@@ -236,10 +236,10 @@ func TestAdaptiveEncodingVarbit(t *testing.T) {
 			SetUpScript: setup.SetupScript{
 				fmt.Sprintf(`create table blobt (i char(1) primary key, b %s);`, columnType),
 				fmt.Sprintf(`create table blobt2 (i char(2) primary key, b1 %s, b2 %s);`, columnType, columnType),
-				`insert into blobt values
-    ('F', LOAD_FILE('testdata/fullSizeVarbit')),
-    ('H', LOAD_FILE('testdata/halfSizeVarbit')),
-    ('T', LOAD_FILE('testdata/tinyFileVarbit'))`,
+				fmt.Sprintf(`insert into blobt values
+    ('F', LOAD_FILE('testdata/fullSizeVarbit')::%s),
+    ('H', LOAD_FILE('testdata/halfSizeVarbit')::%s),
+    ('T', LOAD_FILE('testdata/tinyFileVarbit')::%s)`, columnType, columnType, columnType),
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -267,16 +267,18 @@ func TestAdaptiveEncodingVarbit(t *testing.T) {
 			Name: "Adaptive Encoding With Two Columns",
 			SetUpScript: setup.SetupScript{
 				fmt.Sprintf(`create table blobt2 (i char(2) primary key, b1 %s, b2 %s);`, columnType, columnType),
-				`insert into blobt2 values
-    ('FF', LOAD_FILE('testdata/fullSizeVarbit'), LOAD_FILE('testdata/fullSizeVarbit')),
-    ('HF', LOAD_FILE('testdata/halfSizeVarbit'), LOAD_FILE('testdata/fullSizeVarbit')),
-    ('TF', LOAD_FILE('testdata/tinyFileVarbit'), LOAD_FILE('testdata/fullSizeVarbit')),
-	('FH', LOAD_FILE('testdata/fullSizeVarbit'), LOAD_FILE('testdata/halfSizeVarbit')),
-	('HH', LOAD_FILE('testdata/halfSizeVarbit'), LOAD_FILE('testdata/halfSizeVarbit')),
-	('TH', LOAD_FILE('testdata/tinyFileVarbit'), LOAD_FILE('testdata/halfSizeVarbit')),
-    ('FT', LOAD_FILE('testdata/fullSizeVarbit'), LOAD_FILE('testdata/tinyFileVarbit')),
-    ('HT', LOAD_FILE('testdata/halfSizeVarbit'), LOAD_FILE('testdata/tinyFileVarbit')),
-    ('TT', LOAD_FILE('testdata/tinyFileVarbit'), LOAD_FILE('testdata/tinyFileVarbit'))`,
+				fmt.Sprintf(`insert into blobt2 values
+    ('FF', LOAD_FILE('testdata/fullSizeVarbit')::%s, LOAD_FILE('testdata/fullSizeVarbit')::%s),
+    ('HF', LOAD_FILE('testdata/halfSizeVarbit')::%s, LOAD_FILE('testdata/fullSizeVarbit')::%s),
+    ('TF', LOAD_FILE('testdata/tinyFileVarbit')::%s, LOAD_FILE('testdata/fullSizeVarbit')::%s),
+	('FH', LOAD_FILE('testdata/fullSizeVarbit')::%s, LOAD_FILE('testdata/halfSizeVarbit')::%s),
+	('HH', LOAD_FILE('testdata/halfSizeVarbit')::%s, LOAD_FILE('testdata/halfSizeVarbit')::%s),
+	('TH', LOAD_FILE('testdata/tinyFileVarbit')::%s, LOAD_FILE('testdata/halfSizeVarbit')::%s),
+    ('FT', LOAD_FILE('testdata/fullSizeVarbit')::%s, LOAD_FILE('testdata/tinyFileVarbit')::%s),
+    ('HT', LOAD_FILE('testdata/halfSizeVarbit')::%s, LOAD_FILE('testdata/tinyFileVarbit')::%s),
+    ('TT', LOAD_FILE('testdata/tinyFileVarbit')::%s, LOAD_FILE('testdata/tinyFileVarbit')::%s)`, columnType, columnType,
+					columnType, columnType, columnType, columnType, columnType, columnType, columnType, columnType,
+					columnType, columnType, columnType, columnType, columnType, columnType, columnType, columnType),
 			},
 			Assertions: []ScriptTestAssertion{
 				{
