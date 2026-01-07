@@ -918,6 +918,26 @@ var SchemaTests = []ScriptTest{
 				Skip:  true, // not implemented yet
 				Query: "drop schema hasTables cascade;",
 			},
+			{
+				Query: "create schema hastype;",
+			},
+			{
+				Query: "create type hastype.mytype as enum('a', 'b', 'c');",
+			},
+			{
+				Query:       "DROP SCHEMA hastype;",
+				ExpectedErr: "cannot drop schema hastype because other objects depend on it",
+			},
+			{
+				Query: "create schema hassequence;",
+			},
+			{
+				Query: "create sequence hassequence.myseq start 1 increment 1;",
+			},
+			{
+				Query:       "DROP SCHEMA hassequence;",
+				ExpectedErr: "cannot drop schema hassequence because other objects depend on it",
+			},
 		},
 	},
 	// More tests:
