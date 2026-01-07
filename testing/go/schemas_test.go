@@ -870,8 +870,7 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
-		Name:  "drop schema",
-		Focus: true,
+		Name: "drop schema",
 		SetUpScript: []string{
 			"CREATE SCHEMA dropme",
 			`CREATE schema "hasTables"`,
