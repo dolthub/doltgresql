@@ -104,13 +104,13 @@ func TestAuthQuick(t *testing.T) {
 				"CREATE SCHEMA newsch;",
 			},
 		},
-		{ // This isn't supported yet, but it is supposed to fail since tester is not an owner
+		{
 			Queries: []string{
 				"GRANT CREATE ON DATABASE postgres TO tester;",
 				"CREATE SCHEMA newsch;",
 				"DROP SCHEMA newsch;",
 			},
-			ExpectedErr: "not yet supported",
+			ExpectedErr: "permission denied for schema",
 		},
 		{
 			Queries: []string{

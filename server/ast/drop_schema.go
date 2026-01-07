@@ -15,6 +15,7 @@
 package ast
 
 import (
+	"github.com/dolthub/doltgresql/server/auth"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -43,5 +44,10 @@ func nodeDropSchema(ctx *Context, node *tree.DropSchema) (vitess.Statement, erro
 		DBName:           schemaName,
 		CharsetCollate:   nil,
 		IfExists:         node.IfExists,
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_DELETE,
+			TargetType:  auth.AuthTargetType_SchemaIdentifiers,
+			TargetNames: []string{"", schemaName},
+		},
 	}, nil
 }
