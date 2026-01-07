@@ -28,7 +28,11 @@ func nodeDropSchema(ctx *Context, node *tree.DropSchema) (vitess.Statement, erro
 	}
 
 	if len(node.Names) > 1 {
-		return NotYetSupportedError("DROP SCHEMA with multiple schema names")
+		return NotYetSupportedError("DROP SCHEMA with multiple schema names is not yet supported.")
+	}
+
+	if node.DropBehavior == tree.DropCascade {
+		return NotYetSupportedError("DROP SCHEMA with CASCADE behavior is not yet supported.")
 	}
 
 	schemaName := node.Names[0]

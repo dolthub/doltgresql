@@ -874,7 +874,7 @@ var SchemaTests = []ScriptTest{
 		Focus: true,
 		SetUpScript: []string{
 			"CREATE SCHEMA dropme",
-			"CREATE schema hasTables",
+			`CREATE schema "hasTables"`,
 			"CREATE TABLE hasTables.t1 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 		},
 		Assertions: []ScriptTestAssertion{
@@ -894,8 +894,29 @@ var SchemaTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				Query: "Show schemas",
+				Expected: []sql.Row{
+					{"dolt"},
+					{"hasTables"},
+					{"pg_catalog"},
+					{"public"},
+					{"information_schema"},
+				},
+			},
+			{
 				Query:       "DROP SCHEMA dropme;",
-				ExpectedErr: "schema dropme does not exist",
+				ExpectedErr: "database schema not found",
+			},
+			{
+				Query: "drop schema if exists dropme;",
+			},
+			{
+				Query:       "DROP SCHEMA hasTables;",
+				ExpectedErr: "cannot drop schema hastables because other objects depend on it",
+			},
+			{
+				Skip:  true, // not implemented yet
+				Query: "drop schema hasTables cascade;",
 			},
 		},
 	},
