@@ -15,8 +15,9 @@
 package ast
 
 import (
-	"github.com/dolthub/doltgresql/server/auth"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/server/auth"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
