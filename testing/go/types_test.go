@@ -399,6 +399,44 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		// https://github.com/dolthub/doltgresql/issues/2145
+		Name: "bpchar type",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "create table bptest1 (pk int primary key, c1 bpchar, c2 bpchar(12));",
+				Expected: nil,
+			},
+			{
+				Query:    "insert into bptest1 values (1, '1', '1');",
+				Expected: nil,
+			},
+			{
+				Query: "select * from bptest1;",
+				Expected: []sql.Row{
+					{1, "1", "1           "},
+				},
+			},
+			{
+				Query: "SELECT '!'::bpchar;",
+				Expected: []sql.Row{
+					{"!"},
+				},
+			},
+			{
+				Query: "SELECT '!'::bpchar(1);",
+				Expected: []sql.Row{
+					{"!"},
+				},
+			},
+			{
+				Query: "SELECT '!'::bpchar(2);",
+				Expected: []sql.Row{
+					{"! "},
+				},
+			},
+		},
+	},
+	{
 		Name: "Character type",
 		SetUpScript: []string{
 			"CREATE TABLE t_character (id INTEGER primary key, v1 CHARACTER(5));",

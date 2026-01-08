@@ -865,7 +865,7 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullBool{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Int8, Nullable: true})
-		case uint32(oid.T_text), uint32(oid.T_varchar), uint32(oid.T_name), uint32(oid.T__text):
+		case uint32(oid.T_text), uint32(oid.T_varchar), uint32(oid.T_name), uint32(oid.T__text), uint32(oid.T_bpchar):
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongText, Nullable: true})
