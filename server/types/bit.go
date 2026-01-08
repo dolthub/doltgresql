@@ -56,7 +56,7 @@ var Bit = &DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("bttextcmp", toInternal("text"), toInternal("text")),
+	CompareFunc:   toFuncID("bitcmp", toInternal("bit"), toInternal("bit")),
 }
 
 // NewBitType returns a Bit type with type modifier set

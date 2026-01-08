@@ -56,7 +56,7 @@ var VarBit = &DoltgresType{
 	Acl:           nil,
 	Checks:        nil,
 	attTypMod:     -1,
-	CompareFunc:   toFuncID("bttextcmp", toInternal("text"), toInternal("text")),
+	CompareFunc:   toFuncID("varbitcmp", toInternal("varbit"), toInternal("varbit")),
 }
 
 // NewVarBitType returns a VarBit type with type modifier set

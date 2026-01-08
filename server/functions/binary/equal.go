@@ -33,6 +33,7 @@ import (
 
 // initBinaryEqual registers the functions to the catalog.
 func initBinaryEqual() {
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, biteq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, booleq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, bpchareq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, byteaeq)
@@ -72,7 +73,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, timestamptz_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, timetz_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, uuid_eq)
-	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, varbit_eq)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, varbiteq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, xideqint4)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, xideq)
 }
@@ -524,18 +525,33 @@ func record_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, 
 	return compare.CompareRecords(ctx, framework.Operator_BinaryEqual, val1, val2)
 }
 
-// varbit_eq represents the PostgreSQL function of the same name, taking the same parameters.
-var varbit_eq = framework.Function2{
-	Name:       "varbit_eq",
+// varbiteq represents the PostgreSQL function of the same name, taking the same parameters.
+var varbiteq = framework.Function2{
+	Name:       "varbiteq",
 	Return:     pgtypes.Bool,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.VarBit, pgtypes.VarBit},
 	Strict:     true,
 	Callable:   varbit_eq_callable,
 }
 
-// varbit_eq_callable is the callable logic for the varbit_eq function.
+// biteq represents the PostgreSQL function of the same name, taking the same parameters.
+var biteq = framework.Function2{
+	Name:       "biteq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Bit, pgtypes.Bit},
+	Strict:     true,
+	Callable:   bit_eq_callable,
+}
+
+// varbit_eq_callable is the callable logic for the varbiteq function.
 func varbit_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.VarBit.Compare(ctx, val1, val2)
+	return res == 0, err
+}
+
+// bit_eq_callable is the callable logic for the varbiteq function.
+func bit_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	res, err := pgtypes.Bit.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 

@@ -477,7 +477,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		return nil, errors.Errorf("the statement is not yet supported")
 	case *tree.DBitArray:
 		// We convert bitarray to string representation for engine representation purposes so that we don't have to
-		// represent another fundamental type golang type. This means our representation in memory is more verbose.
+		// represent another fundamental golang type. This means our representation in memory is more verbose.
 		bitStr := tree.AsStringWithFlags(node, tree.FmtPgwireText)
 		return vitess.InjectedExpr{
 			Expression: pgexprs.NewUnsafeLiteral(bitStr, pgtypes.Bit),
