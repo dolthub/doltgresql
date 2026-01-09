@@ -17,6 +17,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"slices"
 	"sort"
 	"strconv"
@@ -80,6 +81,62 @@ func (root *RootValue) CreateDatabaseSchema(ctx context.Context, dbSchema schema
 	})
 
 	r, err := root.st.SetSchemas(ctx, existingSchemas)
+	if err != nil {
+		return nil, err
+	}
+
+	return root.withStorage(r), nil
+}
+
+// DropDatabaseSchema implements the interface doltdb.RootValue.
+func (root *RootValue) DropDatabaseSchema(ctx context.Context, dbSchema schema.DatabaseSchema) (doltdb.RootValue, error) {
+	schemas, err := root.st.GetSchemas(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	found := false
+	schemaName := dbSchema.Name
+	for i, s := range schemas {
+		if strings.EqualFold(s.Name, dbSchema.Name) {
+			found = true
+			schemaName = s.Name
+			// remove this element in the slice
+			schemas = append(schemas[:i], schemas[i+1:]...)
+			break
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("No schema with the name %s exists", dbSchema.Name)
+	}
+
+	// Check for dangling objects in the schema and reject the drop if there are any
+	danglingObjects := false
+	root.IterRootObjects(ctx, func(name doltdb.TableName, table doltdb.RootObject) (stop bool, err error) {
+		if strings.EqualFold(name.Schema, dbSchema.Name) {
+			danglingObjects = true
+		}
+		return false, nil
+	})
+
+	// check the tables specifically in addition to root objects. This is just an extra paranoid step to avoid
+	// removing a schema that still has tables.
+	tableMap, err := root.getTableMap(ctx, schemaName)
+	if err != nil {
+		return nil, err
+	}
+
+	tableMap.Iter(ctx, func(name string, addr hash.Hash) (bool, error) {
+		danglingObjects = true
+		return true, nil
+	})
+
+	if danglingObjects {
+		return nil, fmt.Errorf("cannot drop schema %s because other objects depend on it", dbSchema.Name)
+	}
+
+	r, err := root.st.SetSchemas(ctx, schemas)
 	if err != nil {
 		return nil, err
 	}

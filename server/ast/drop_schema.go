@@ -17,6 +17,8 @@ package ast
 import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/server/auth"
+
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
@@ -27,5 +29,26 @@ func nodeDropSchema(ctx *Context, node *tree.DropSchema) (vitess.Statement, erro
 		return nil, nil
 	}
 
-	return NotYetSupportedError("DROP SCHEMA is not yet supported")
+	if len(node.Names) > 1 {
+		return NotYetSupportedError("DROP SCHEMA with multiple schema names is not yet supported.")
+	}
+
+	if node.DropBehavior == tree.DropCascade {
+		return NotYetSupportedError("DROP SCHEMA with CASCADE behavior is not yet supported.")
+	}
+
+	schemaName := node.Names[0]
+
+	return &vitess.DBDDL{
+		Action:           vitess.DropStr,
+		SchemaOrDatabase: "schema",
+		DBName:           schemaName,
+		CharsetCollate:   nil,
+		IfExists:         node.IfExists,
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_DELETE,
+			TargetType:  auth.AuthTargetType_SchemaIdentifiers,
+			TargetNames: []string{"", schemaName},
+		},
+	}, nil
 }
