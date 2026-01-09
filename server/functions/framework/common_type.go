@@ -55,16 +55,22 @@ func FindCommonType(types []*pgtypes.DoltgresType) (*pgtypes.DoltgresType, error
 		if typ.ID == pgtypes.Unknown.ID {
 			continue
 		} else if GetImplicitCast(typ, candidateType) != nil {
+			// typ can convert to candidateType, so candidateType is at least as general
 			continue
 		} else if GetImplicitCast(candidateType, typ) == nil {
 			return nil, errors.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
-		} else if !preferredTypeFound {
+		} else {
+			// candidateType can convert to typ, but not vice versa, so typ is more general
+			// Per PostgreSQL docs: "If the resolution type can be implicitly converted to the
+			// other type but not vice-versa, select the other type as the new resolution type."
+			candidateType = typ
 			if candidateType.IsPreferred {
-				candidateType = typ
+				// "Then, if the new resolution type is preferred, stop considering further inputs."
 				preferredTypeFound = true
 			}
-		} else {
-			return nil, errors.Errorf("found another preferred candidate type")
+		}
+		if preferredTypeFound {
+			break
 		}
 	}
 	return candidateType, nil
