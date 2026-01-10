@@ -21,6 +21,7 @@ import (
 
 // Init initializes all casts in this package.
 func Init() {
+	initBit()
 	initBool()
 	initChar()
 	initDate()
@@ -44,6 +45,7 @@ func Init() {
 	initTimestamp()
 	initTimestampTZ()
 	initTimeTZ()
+	initVarBit()
 	initVarChar()
 
 	// This is a hack to get around import cycles. The types package needs these references for type conversions in

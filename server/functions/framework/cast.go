@@ -130,11 +130,9 @@ func GetExplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 	} else if tcf = getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromType, toType, GetExplicitCast); tcf != nil {
 		return tcf
 	}
-	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
-	// parameters). If one of the types are a string type, then we do not use the identity, and use the I/O conversions
-	// below.
-	if fromType.ID == toType.ID && toType.TypCategory != pgtypes.TypeCategory_StringTypes && fromType.TypCategory != pgtypes.TypeCategory_StringTypes {
-		return IdentityCast
+	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
+	if cast := getSizingOrIdentityCast(fromType, toType, true); cast != nil {
+		return cast
 	}
 	// All types have a built-in explicit cast from string types: https://www.postgresql.org/docs/15/sql-createcast.html
 	if fromType.TypCategory == pgtypes.TypeCategory_StringTypes {
@@ -172,10 +170,9 @@ func GetAssignmentCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresT
 	} else if tcf = getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromType, toType, GetAssignmentCast); tcf != nil {
 		return tcf
 	}
-	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
-	// parameters). If the "to" type is a string type, then we do not use the identity, and use the I/O conversion below.
-	if fromType.ID == toType.ID && fromType.TypCategory != pgtypes.TypeCategory_StringTypes {
-		return IdentityCast
+	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
+	if cast := getSizingOrIdentityCast(fromType, toType, false); cast != nil {
+		return cast
 	}
 	// All types have a built-in assignment cast to string types: https://www.postgresql.org/docs/15/sql-createcast.html
 	if toType.TypCategory == pgtypes.TypeCategory_StringTypes {
@@ -199,10 +196,9 @@ func GetImplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 	if tcf := getCast(implicitTypeCastMutex, implicitTypeCastsMap, fromType, toType, GetImplicitCast); tcf != nil {
 		return tcf
 	}
-	// We check for the identity after checking the maps, as the identity may be overridden (such as for types that have
-	// parameters).
-	if fromType.ID == toType.ID {
-		return IdentityCast
+	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
+	if cast := getSizingOrIdentityCast(fromType, toType, false); cast != nil {
+		return cast
 	}
 	return nil
 }
@@ -280,6 +276,40 @@ func getCast(mutex *sync.RWMutex,
 
 	}
 	return nil
+}
+
+// getSizingOrIdentityCast returns an identity cast if the two types are exactly the same, and a sizing cast if they
+// only differ in their atttypmod values. Returns nil if no functions are matched. This mirrors the behavior as described in:
+// https://www.postgresql.org/docs/15/typeconv-query.html
+func getSizingOrIdentityCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType, isExplicitCast bool) pgtypes.TypeCastFunction {
+	// If we receive different types, then we can return immediately
+	if fromType.ID != toType.ID {
+		return nil
+	}
+	// If we have different atttypmod values, then we need to do a sizing cast only if one exists
+	if fromType.GetAttTypMod() != toType.GetAttTypMod() {
+		// TODO: We don't have any sizing cast functions implemented, so for now we'll approximate using output to input.
+		//  We can use the query below to find all implemented sizing cast functions. It's also detailed in the link above.
+		//  Lastly, not all sizing functions accept a boolean, but for those that do, we need to see whether true is
+		//  used for explicit casts, or whether true is used for implicit casts.
+		//      SELECT
+		//        format_type(c.castsource, NULL) AS source,
+		//        format_type(c.casttarget, NULL) AS target,
+		//        p.oid::regprocedure AS func
+		//      FROM pg_cast c JOIN pg_proc p ON p.oid = c.castfunc WHERE c.castsource = c.casttarget ORDER BY 1,2;
+		return func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+			if val == nil {
+				return nil, nil
+			}
+			str, err := fromType.IoOutput(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
+		}
+	}
+	// If there is no sizing cast, then we simply use the identity cast
+	return IdentityCast
 }
 
 // IdentityCast returns the input value.
