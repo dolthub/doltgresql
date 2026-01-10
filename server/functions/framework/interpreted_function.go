@@ -38,7 +38,6 @@ type InterpretedFunction struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
-	SRF                bool
 	Statements         []plpgsql.InterpreterOperation
 }
 
@@ -87,7 +86,12 @@ func (iFunc InterpretedFunction) IsStrict() bool {
 
 // IsSRF implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) IsSRF() bool {
-	return iFunc.SRF
+	switch iFunc.ReturnType.TypCategory {
+	case pgtypes.TypeCategory_CompositeTypes:
+		return true
+	default:
+		return false
+	}
 }
 
 // NonDeterministic implements the interface FunctionInterface.
@@ -107,6 +111,7 @@ func (iFunc InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgs
 	if err != nil {
 		return nil, err
 	}
+
 	return sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
 		sch, rowIter, _, err := stack.Runner().QueryWithBindings(subCtx, stmt, nil, nil, nil)
 		if err != nil {
@@ -164,13 +169,15 @@ func (iFunc InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgs
 }
 
 // QueryMultiReturn handles queries that may return multiple values over multiple rows.
-func (iFunc InterpretedFunction) QueryMultiReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, bindings []string) (rows []sql.Row, err error) {
+func (iFunc InterpretedFunction) QueryMultiReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, bindings []string) (schema sql.Schema, rows []sql.Row, err error) {
 	stmt, _, err = iFunc.ApplyBindings(ctx, stack, stmt, bindings, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return sql.RunInterpreted(ctx, func(subCtx *sql.Context) ([]sql.Row, error) {
-		_, rowIter, _, err := stack.Runner().QueryWithBindings(subCtx, stmt, nil, nil, nil)
+
+	rows, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (rows []sql.Row, err error) {
+		var rowIter sql.RowIter
+		schema, rowIter, _, err = stack.Runner().QueryWithBindings(subCtx, stmt, nil, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -179,9 +186,10 @@ func (iFunc InterpretedFunction) QueryMultiReturn(ctx *sql.Context, stack plpgsq
 		//  fine.
 		return sql.RowIterToRows(subCtx, rowIter)
 	})
+	return schema, rows, err
 }
 
-// ApplyBindings applies the given bindings to the statement. If `varFound` is false, then the error will be state that
+// ApplyBindings applies the given bindings to the statement. If `varFound` is false, then the error will state that
 // the variable was not found (which means the error may be ignored if you're only concerned with finding a variable).
 // If `varFound` is true, then the error is related to formatting the variable. `enforceType` adds casting and quotes to
 // ensure that the value is correctly represented in the string.
