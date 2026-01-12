@@ -38,3 +38,37 @@ SQL
 		[[ "$output" =~ '5,{t}' ]] || false
 		[[ "$output" =~ '6,{f}' ]] || false
 }
+
+@test 'types: VALUES clause mixed int and decimal' {
+    # Integer first, then decimal - should resolve to numeric
+    run query_server -t -c "SELECT * FROM (VALUES(1),(2.01),(3)) v(n);"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1" ]] || false
+    [[ "$output" =~ "2.01" ]] || false
+    [[ "$output" =~ "3" ]] || false
+}
+
+@test 'types: VALUES clause decimal first then int' {
+    # Decimal first, then integers - should resolve to numeric
+    run query_server -t -c "SELECT * FROM (VALUES(1.01),(2),(3)) v(n);"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1.01" ]] || false
+    [[ "$output" =~ "2" ]] || false
+    [[ "$output" =~ "3" ]] || false
+}
+
+@test 'types: VALUES clause SUM with mixed types' {
+    # SUM should work directly now that VALUES has correct type
+    run query_server -t -c "SELECT SUM(n) FROM (VALUES(1),(2.01),(3)) v(n);"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "6.01" ]] || false
+}
+
+@test 'types: VALUES clause multiple columns mixed types' {
+    run query_server -t -c "SELECT * FROM (VALUES(1, 'a'), (2.5, 'b')) v(num, str);"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "1" ]] || false
+    [[ "$output" =~ "a" ]] || false
+    [[ "$output" =~ "2.5" ]] || false
+    [[ "$output" =~ "b" ]] || false
+}

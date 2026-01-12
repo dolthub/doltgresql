@@ -97,9 +97,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	baseCastToType := checkForDomainType(c.castToType)
 	castFunction := framework.GetExplicitCast(fromType, baseCastToType)
 	if castFunction == nil {
-		if fromType.ID == pgtypes.Unknown.ID {
-			castFunction = framework.UnknownLiteralCast
-		} else if fromType.IsRecordType() && c.castToType.IsCompositeType() { // TODO: should this only be in explicit, or assignment and implicit too?
+		if fromType.IsRecordType() && c.castToType.IsCompositeType() { // TODO: should this only be in explicit, or assignment and implicit too?
 			// Casting to a record type will always work for any composite type.
 			// TODO: is the above statement true for all cases?
 			// When casting to a composite type, then we must match the arity and have valid casts for every position.

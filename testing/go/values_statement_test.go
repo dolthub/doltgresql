@@ -53,4 +53,47 @@ var ValuesStatementTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name:        "VALUES with mixed int and decimal - issue 1648",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// Integer first, then decimal - should resolve to numeric
+				Query: `SELECT * FROM (VALUES(1),(2.01),(3)) v(n);`,
+				Expected: []sql.Row{
+					{Numeric("1")},
+					{Numeric("2.01")},
+					{Numeric("3")},
+				},
+			},
+			{
+				// Decimal first, then integers - should resolve to numeric
+				Query: `SELECT * FROM (VALUES(1.01),(2),(3)) v(n);`,
+				Expected: []sql.Row{
+					{Numeric("1.01")},
+					{Numeric("2")},
+					{Numeric("3")},
+				},
+			},
+			{
+				// SUM should work directly now that VALUES has correct type
+				// Note: SUM returns float64 (double precision) for numeric input
+				Query:    `SELECT SUM(n) FROM (VALUES(1),(2.01),(3)) v(n);`,
+				Expected: []sql.Row{{6.01}},
+			},
+		},
+	},
+	{
+		Name:        "VALUES with multiple columns mixed types",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (VALUES(1, 'a'), (2.5, 'b')) v(num, str);`,
+				Expected: []sql.Row{
+					{Numeric("1"), "a"},
+					{Numeric("2.5"), "b"},
+				},
+			},
+		},
+	},
 }
