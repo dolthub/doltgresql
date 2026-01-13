@@ -411,6 +411,120 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "RETURNS SETOF",
+			SetUpScript: []string{
+				`CREATE TYPE user_summary AS (
+					user_id   integer,
+					username  text,
+					is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func2() RETURNS SETOF user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 1, 'username', true;
+						RETURN QUERY SELECT 2, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)"},
+						{"(2,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)", "(1,username,t)"},
+						{"(2,another,f)", "(2,another,f)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS SETOF with no results",
+			SetUpScript: []string{
+				`CREATE TABLE user_summary (user_id integer, username text, is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func2() RETURNS SETOF user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT * from user_summary;
+						RETURN QUERY SELECT * from user_summary;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT func2();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT func2(), func2();",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "RETURNS SETOF with param",
+			SetUpScript: []string{
+				`CREATE TYPE user_summary AS (
+					user_id   integer,
+					username  text,
+					is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func3(user_id integer) RETURNS SETOF user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT user_id, 'username', true;
+						RETURN QUERY SELECT user_id, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func3(111);",
+					Expected: []sql.Row{
+						{"(111,username,t)"},
+						{"(111,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func3(111), func3(222);",
+					Expected: []sql.Row{
+						{"(111,username,t)", "(222,username,t)"},
+						{"(111,another,f)", "(222,another,f)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS SETOF with composite param",
+			SetUpScript: []string{
+				`CREATE TYPE user_summary AS (
+					user_id   integer,
+					username  text,
+					is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func3(u user_summary) RETURNS SETOF user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT u.user_id, u.username, u.is_active;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func3((222,'passedin',false)::user_summary);",
+					Expected: []sql.Row{
+						{"(222,passedin,f)"},
+					},
+				},
+			},
+		},
+		{
 			Name: "RAISE",
 			SetUpScript: []string{
 				`CREATE FUNCTION interpreted_raise1(input TEXT) RETURNS TEXT AS $$

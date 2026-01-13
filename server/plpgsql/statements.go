@@ -298,6 +298,33 @@ type Record struct {
 	Fields []string
 }
 
+// ReturnQuery represents a RETURN QUERY statement.
+type ReturnQuery struct {
+	Query string
+}
+
+var _ Statement = ReturnQuery{}
+
+// OperationSize implements the interface Statement.
+func (r ReturnQuery) OperationSize() int32 {
+	return 1
+}
+
+// AppendOperations implements the interface Statement.
+func (r ReturnQuery) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+	query, referencedVariables, err := substituteVariableReferences(r.Query, stack)
+	if err != nil {
+		return err
+	}
+
+	*ops = append(*ops, InterpreterOperation{
+		OpCode:        OpCode_ReturnQuery,
+		PrimaryData:   query,
+		SecondaryData: referencedVariables,
+	})
+	return nil
+}
+
 // Return represents a RETURN statement.
 type Return struct {
 	Expression string
