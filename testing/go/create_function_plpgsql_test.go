@@ -468,6 +468,40 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "RETURNS SETOF with type from other schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA sch1;`,
+				`CREATE TYPE sch1.user_summary AS (
+					user_id   integer,
+					username  text,
+					is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func2() RETURNS SETOF sch1.user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 1, 'username', true;
+						RETURN QUERY SELECT 2, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)"},
+						{"(2,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)", "(1,username,t)"},
+						{"(2,another,f)", "(2,another,f)"},
+					},
+				},
+			},
+		},
+		{
 			Name: "RETURNS SETOF with param",
 			SetUpScript: []string{
 				`CREATE TYPE user_summary AS (
@@ -475,6 +509,127 @@ $$ LANGUAGE plpgsql;`},
 					username  text,
 					is_active boolean);`,
 				`CREATE OR REPLACE FUNCTION func3(user_id integer) RETURNS SETOF user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT user_id, 'username', true;
+						RETURN QUERY SELECT user_id, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func3(111);",
+					Expected: []sql.Row{
+						{"(111,username,t)"},
+						{"(111,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func3(111), func3(222);",
+					Expected: []sql.Row{
+						{"(111,username,t)", "(222,username,t)"},
+						{"(111,another,f)", "(222,another,f)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE",
+			SetUpScript: []string{
+				`CREATE FUNCTION func2() RETURNS TABLE(user_id integer, username  text, is_active boolean)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 1, 'username', true;
+						RETURN QUERY SELECT 2, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)"},
+						{"(2,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)", "(1,username,t)"},
+						{"(2,another,f)", "(2,another,f)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE with single field",
+			SetUpScript: []string{
+				`CREATE FUNCTION func2() RETURNS TABLE(username text)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 'username1';
+						RETURN QUERY SELECT 'username2';
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(username1)"},
+						{"(username2)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(username1)", "(username1)"},
+						{"(username2)", "(username2)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE with types from other schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA sch1;`,
+				`CREATE TYPE sch1.mytype AS (
+					user_id   integer,
+					username  text);`,
+				`CREATE FUNCTION func2() RETURNS TABLE(foo sch1.mytype)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 1, 'username1';
+						RETURN QUERY SELECT 2, 'username2';
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(1,username1)"},
+						{"(2,username2)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(1,username1)", "(1,username1)"},
+						{"(2,username2)", "(2,username2)"},
+					},
+				},
+			},
+		},
+
+		{
+			Name: "RETURNS TABLE with param",
+			SetUpScript: []string{
+				`CREATE OR REPLACE FUNCTION func3(user_id integer) RETURNS TABLE(user_id integer, username  text, is_active boolean)
 					LANGUAGE plpgsql
 					AS $$
 					BEGIN

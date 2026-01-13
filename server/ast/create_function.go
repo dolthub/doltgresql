@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/doltgresql/core/id"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
@@ -39,7 +40,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	// Grab the general information that we'll need to create the function
 	tableName := node.Name.ToTableName()
 	retType := pgtypes.Void
-	if len(node.RetType) == 1 { // Return types may specify "trigger", but this doesn't apply elsewhere
+	if !node.ReturnsTable { // Return types may specify "trigger", but this doesn't apply elsewhere
 		switch typ := node.RetType[0].Type.(type) {
 		case *types.T:
 			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.Name()))
@@ -53,14 +54,12 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 				}
 			}
 		default:
-			sqlString := strings.ToLower(typ.SQLString())
-			if sqlString == "trigger" {
-				retType = pgtypes.Trigger
-			} else {
-				retType = pgtypes.NewUnresolvedDoltgresType("", sqlString)
-			}
+			return nil, fmt.Errorf("unsupported ResolvableTypeReference type: %T", typ)
 		}
+	} else {
+		retType = createAnonymousCompositeType(node.RetType)
 	}
+
 	paramNames := make([]string, len(node.Args))
 	paramTypes := make([]*pgtypes.DoltgresType, len(node.Args))
 	for i, arg := range node.Args {
@@ -135,9 +134,34 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			parsedBody,
 			sqlDef,
 			sqlDefParsed,
-			node.SetOf,
+			node.ReturnsSetOf,
 		),
 	}, nil
+}
+
+func createAnonymousCompositeType(returnTypes []tree.SimpleColumnDef) *pgtypes.DoltgresType {
+	attrs := make([]pgtypes.CompositeAttribute, len(returnTypes))
+	for i, fieldType := range returnTypes {
+		attrs[i] = pgtypes.NewCompositeAttribute(nil, id.Null, fieldType.Name.String(),
+			id.NewType("", fieldType.Type.SQLString()), int16(i), "")
+	}
+
+	typeIdString := "table("
+	for i, attr := range attrs {
+		if i > 0 {
+			typeIdString += ","
+		}
+		typeIdString += attr.Name
+		typeIdString += ":"
+		typeIdString += attr.TypeID.TypeName()
+	}
+	typeIdString += ")"
+
+	// NOTE: there is no schema needed, since these types are anonymous and can't be directly referenced
+	typeId := id.NewType("", typeIdString)
+
+	// NOTE: The available ctx is an ast.Context, not a sql.Context instance, so we can't use it here
+	return pgtypes.NewCompositeType(nil, id.Null, id.NullType, typeId, attrs)
 }
 
 // handleLanguageSQL handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE.

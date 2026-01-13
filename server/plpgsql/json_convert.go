@@ -49,7 +49,10 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 				block.Records = make([]Record, datumNumber+1)
 				copy(block.Records, oldRecords)
 			}
-			block.Records[datumNumber].Name = v.Record.RefName
+
+			if v.Record.DatumNumber > 0 {
+				block.Records[datumNumber].Name = v.Record.RefName
+			}
 		case v.RecordField != nil:
 			recordParentNumber := v.RecordField.RecordParentNumber + offset
 			if int(recordParentNumber) >= len(block.Records) {
