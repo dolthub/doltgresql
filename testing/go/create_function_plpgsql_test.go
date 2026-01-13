@@ -625,7 +625,6 @@ $$ LANGUAGE plpgsql;`},
 				},
 			},
 		},
-
 		{
 			Name: "RETURNS TABLE with param",
 			SetUpScript: []string{

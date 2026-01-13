@@ -19,9 +19,9 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/core/id"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
@@ -39,8 +39,10 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}
 	// Grab the general information that we'll need to create the function
 	tableName := node.Name.ToTableName()
-	retType := pgtypes.Void
-	if !node.ReturnsTable { // Return types may specify "trigger", but this doesn't apply elsewhere
+	var retType *pgtypes.DoltgresType
+	if len(node.RetType) == 0 {
+		retType = pgtypes.Void
+	} else if !node.ReturnsTable { // Return types may specify "trigger", but this doesn't apply elsewhere
 		switch typ := node.RetType[0].Type.(type) {
 		case *types.T:
 			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.Name()))
@@ -139,9 +141,12 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}, nil
 }
 
-func createAnonymousCompositeType(returnTypes []tree.SimpleColumnDef) *pgtypes.DoltgresType {
-	attrs := make([]pgtypes.CompositeAttribute, len(returnTypes))
-	for i, fieldType := range returnTypes {
+// createAnonymousCompositeType creates a new DoltgresType for the anonymous composite return
+// type for a function, as represented by the |fieldTypes| that were specified in the function
+// definition.
+func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.DoltgresType {
+	attrs := make([]pgtypes.CompositeAttribute, len(fieldTypes))
+	for i, fieldType := range fieldTypes {
 		attrs[i] = pgtypes.NewCompositeAttribute(nil, id.Null, fieldType.Name.String(),
 			id.NewType("", fieldType.Type.SQLString()), int16(i), "")
 	}
