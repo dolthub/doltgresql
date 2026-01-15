@@ -276,6 +276,18 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 	}); err != nil {
 		return err
 	}
+	if err := h.send(&pgproto3.ParameterStatus{
+		Name:  "standard_conforming_strings",
+		Value: "on",
+	}); err != nil {
+		return err
+	}
+	if err := h.send(&pgproto3.ParameterStatus{
+		Name:  "in_hot_standby",
+		Value: "off",
+	}); err != nil {
+		return err
+	}
 	return h.send(&pgproto3.BackendKeyData{
 		ProcessID: processID,
 		SecretKey: 0, // TODO: this should represent an ID that can uniquely identify this connection, so that CancelRequest will work
@@ -435,7 +447,7 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		return true, err
 	}
 
-	query, err := h.convertQuery(message.String)
+	queries, err := h.convertQuery(message.String)
 	if err != nil {
 		if printErrorStackTraces {
 			fmt.Printf("Error parsing query: %+v\n", err)
@@ -447,18 +459,32 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 	delete(h.preparedStatements, "")
 	delete(h.portals, "")
 
-	// Certain statement types get handled directly by the handler instead of being passed to the engine
-	handled, endOfMessages, err = h.handleQueryOutsideEngine(query)
-	if handled {
-		return endOfMessages, err
+	if len(queries) == 1 {
+		// empty query special case
+		if queries[0].AST == nil {
+			return true, h.send(&pgproto3.EmptyQueryResponse{})
+		}
+		handled, endOfMessages, err = h.handleQueryOutsideEngine(queries[0])
+		if handled {
+			return endOfMessages, err
+		}
+		return true, h.query(queries[0])
 	}
 
-	// empty query special case
-	if query.AST == nil {
-		return true, h.send(&pgproto3.EmptyQueryResponse{})
+	for _, query := range queries {
+		handled, _, err = h.handleQueryOutsideEngine(query)
+		if err != nil {
+			return true, err
+		}
+		if handled {
+			continue
+		}
+		err = h.query(query)
+		if err != nil {
+			return true, err
+		}
 	}
-
-	return true, h.query(query)
+	return true, nil
 }
 
 // handleQueryOutsideEngine handles any queries that should be handled by the handler directly, rather than being
@@ -498,13 +524,17 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 	h.waitForSync = true
 
 	// TODO: "Named prepared statements must be explicitly closed before they can be redefined by another Parse message, but this is not required for the unnamed statement"
-	query, err := h.convertQuery(message.Query)
+	queries, err := h.convertQuery(message.Query)
 	if err != nil {
 		if printErrorStackTraces {
 			fmt.Printf("Error parsing query: %+v\n", err)
 		}
 		return err
 	}
+	if len(queries) != 1 {
+		return errors.Errorf("cannot insert multiple commands into a prepared statement")
+	}
+	query := queries[0]
 
 	if query.AST == nil {
 		// special case: empty query
@@ -1085,33 +1115,36 @@ func (h *ConnectionHandler) sendError(err error) {
 }
 
 // convertQuery takes the given Postgres query, and converts it as an ast.ConvertedQuery that will work with the handler.
-func (h *ConnectionHandler) convertQuery(query string) (ConvertedQuery, error) {
+// If the query string contains multiple queries, then multiple ConvertedQuery will be returned.
+func (h *ConnectionHandler) convertQuery(query string) ([]ConvertedQuery, error) {
 	s, err := parser.Parse(query)
 	if err != nil {
-		return ConvertedQuery{}, err
-	}
-	if len(s) > 1 {
-		return ConvertedQuery{}, errors.Errorf("only a single statement at a time is currently supported")
+		return nil, err
 	}
 	if len(s) == 0 {
-		return ConvertedQuery{String: query}, nil
+		return []ConvertedQuery{{String: query}}, nil
 	}
-	vitessAST, err := ast.Convert(s[0])
-	stmtTag := s[0].AST.StatementTag()
-	if err != nil {
-		return ConvertedQuery{}, err
+	converted := make([]ConvertedQuery, len(s))
+	for i := range s {
+		vitessAST, err := ast.Convert(s[i])
+		stmtTag := s[i].AST.StatementTag()
+		if err != nil {
+			return nil, err
+		}
+		if vitessAST == nil {
+			converted[i] = ConvertedQuery{
+				String:       s[i].AST.String(),
+				StatementTag: stmtTag,
+			}
+		} else {
+			converted[i] = ConvertedQuery{
+				String:       query,
+				AST:          vitessAST,
+				StatementTag: stmtTag,
+			}
+		}
 	}
-	if vitessAST == nil {
-		return ConvertedQuery{
-			String:       s[0].AST.String(),
-			StatementTag: stmtTag,
-		}, nil
-	}
-	return ConvertedQuery{
-		String:       query,
-		AST:          vitessAST,
-		StatementTag: stmtTag,
-	}, nil
+	return converted, nil
 }
 
 // discardAll handles the DISCARD ALL command
