@@ -988,6 +988,97 @@ func TestForeignKeys(t *testing.T) {
 					},
 				},
 			},
+			{
+				Name:  "merging",
+				Focus: true,
+				SetUpScript: []string{
+					`CREATE TABLE "evaluation_job_config" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"project_id" varchar(256) NOT NULL,
+	"job_filters" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "evaluation_job_config_tenant_id_project_id_id_pk" PRIMARY KEY("tenant_id","project_id","id")
+);`,
+					`CREATE TABLE "evaluation_job_config_evaluator_relations" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"project_id" varchar(256) NOT NULL,
+	"evaluation_job_config_id" text NOT NULL,
+	"evaluator_id" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "eval_job_cfg_evaluator_rel_pk" PRIMARY KEY("tenant_id","project_id","id")
+);`,
+					`CREATE TABLE "agent" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"project_id" varchar(256) NOT NULL,
+	"name" varchar(256) NOT NULL,
+	"description" text,
+	"default_sub_agent_id" varchar(256),
+	"context_config_id" varchar(256),
+	"models" jsonb,
+	"status_updates" jsonb,
+	"prompt" text,
+	"stop_when" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "agent_tenant_id_project_id_id_pk" PRIMARY KEY("tenant_id","project_id","id")
+);`,
+					`ALTER TABLE "evaluation_job_config" ADD CONSTRAINT "evaluation_job_config_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "public"."projects"("tenant_id","id") ON DELETE cascade ON UPDATE no action;`,
+					`ALTER TABLE "evaluation_job_config_evaluator_relations" ADD CONSTRAINT "eval_job_cfg_evaluator_rel_job_cfg_fk" FOREIGN KEY ("tenant_id","project_id","evaluation_job_config_id") REFERENCES "public"."evaluation_job_config"("tenant_id","project_id","id") ON DELETE cascade ON UPDATE no action;`,
+					`INSERT INTO evaluation_job_config VALUES ('tenant1', 'jobconfig1', 'project1', '{"filter": "all"}', now(), now());`,
+					`INSERT INTO evaluation_job_config_evaluator_relations VALUES ('tenant1', 'rel1', 'project1', 'jobconfig1', 'evaluator1', now(), now());`,
+					`INSERT INTO agent VALUES ('tenant1', 'agent1', 'project1', 'Agent One', 'First agent', null, null, '{"model": "gpt-4"}', null, null, now(), now());`,
+					`SELECT DOLT_COMMIT('-am', 'initial tables')`,
+					`SELECT DOLT_BRANCH('feature')`,
+					`CREATE TABLE "triggers" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"project_id" varchar(256) NOT NULL,
+	"agent_id" varchar(256) NOT NULL,
+	"name" varchar(256) NOT NULL,
+	"description" text,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"input_schema" jsonb,
+	"output_transform" jsonb,
+	"message_template" text NOT NULL,
+	"authentication" jsonb,
+	"signing_secret" text,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "triggers_tenant_id_project_id_agent_id_id_pk" PRIMARY KEY("tenant_id","project_id","agent_id","id")
+);`,
+					`ALTER TABLE "triggers" ADD CONSTRAINT "triggers_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "public"."agent"("tenant_id","project_id","id") ON DELETE cascade ON UPDATE no action;`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `ALTER TABLE ONLY public.hn_stories
+				ADD CONSTRAINT hn_stories_website_url_fkey FOREIGN KEY (website_url) REFERENCES public.websites(url) ON UPDATE SET DEFAULT;`,
+						Expected: []sql.Row{},
+					},
+					{
+						Query: "UPDATE public.websites SET url = 'http://fake.com' WHERE title = 'foo1';",
+					},
+					{
+						Query:    "SELECT * FROM public.hn_stories where title = 'test1';",
+						Expected: []sql.Row{{"test1", nil}},
+					},
+					{
+						Query:    "ALTER TABLE hn_stories ALTER COLUMN website_url SET DEFAULT (title);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query: "UPDATE public.websites SET url = 'http://doltdb.com' WHERE title = 'foo2';",
+					},
+					{
+						Query:    "SELECT * FROM public.hn_stories where title = 'test2';",
+						Expected: []sql.Row{{"test2", "test2"}},
+					},
+				},
+			},
 		},
 	)
 }
