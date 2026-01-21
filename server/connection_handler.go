@@ -996,6 +996,10 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32, isExecute bool) func(ctx *sql.Context, res *Result) error {
 	// IsIUD returns whether the query is either an INSERT, UPDATE, or DELETE query.
 	isIUD := query.StatementTag == "INSERT" || query.StatementTag == "UPDATE" || query.StatementTag == "DELETE"
+
+	// The RowDescription message should only be sent once, before any DataRow messages,
+	// otherwise some clients will not properly handle results.
+	hasSentRowDescription := false
 	return func(ctx *sql.Context, res *Result) error {
 		sess := dsess.DSessFromSess(ctx.Session)
 		for _, notice := range sess.Notices() {
@@ -1012,7 +1016,8 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 
 		if returnsRow(query) {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
-			if !isExecute {
+			if !isExecute && !hasSentRowDescription {
+				hasSentRowDescription = true
 				if err := h.send(&pgproto3.RowDescription{
 					Fields: res.Fields,
 				}); err != nil {
