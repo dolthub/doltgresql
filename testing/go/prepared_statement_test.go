@@ -1341,6 +1341,7 @@ var pgCatalogTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				// https://github.com/dolthub/doltgresql/issues/2217
 				Skip: true,
 				Query: `SELECT c.oid,d.description,pg_catalog.pg_get_expr(c.relpartbound, c.oid) as partition_expr,  pg_catalog.pg_get_partkeydef(c.oid) as partition_key 
 FROM pg_catalog.pg_class c
@@ -1350,6 +1351,7 @@ WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c') and c.oid not in (sel
 				Expected: []sql.Row{{1712283605, nil, nil, ""}},
 			},
 			{
+				// https://github.com/dolthub/doltgresql/issues/2217
 				Skip:  true,
 				Query: `SELECT d.description from pg_catalog.pg_description d WHERE d.classoid='pg_class'::regclass`,
 				// TODO: add expected values
