@@ -1334,15 +1334,14 @@ var pgCatalogTests = []ScriptTest{
 		},
 	},
 	{
-		Name: "pg_class",
+		Name:  "pg_class",
+		Focus: true,
 		SetUpScript: []string{
 			`CREATE SCHEMA testschema;`,
 			`CREATE TABLE testschema.testtable (id int primary key, v1 text)`,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				// https://github.com/dolthub/doltgresql/issues/2217
-				Skip: true,
 				Query: `SELECT c.oid,d.description,pg_catalog.pg_get_expr(c.relpartbound, c.oid) as partition_expr,  pg_catalog.pg_get_partkeydef(c.oid) as partition_key 
 FROM pg_catalog.pg_class c
 LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_class'::regclass
@@ -1351,8 +1350,6 @@ WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c') and c.oid not in (sel
 				Expected: []sql.Row{{1712283605, nil, nil, ""}},
 			},
 			{
-				// https://github.com/dolthub/doltgresql/issues/2217
-				Skip:  true,
 				Query: `SELECT d.description from pg_catalog.pg_description d WHERE d.classoid='pg_class'::regclass`,
 				// TODO: add expected values
 			},
