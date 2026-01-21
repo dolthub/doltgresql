@@ -15,9 +15,11 @@
 package _go
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestForeignKeys(t *testing.T) {
@@ -989,8 +991,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name:  "merging",
-				Focus: true,
+				Name: "merging",
 				SetUpScript: []string{
 					`CREATE TABLE "evaluation_job_config" (
 	"tenant_id" varchar(256) NOT NULL,
@@ -1027,12 +1028,24 @@ func TestForeignKeys(t *testing.T) {
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "agent_tenant_id_project_id_id_pk" PRIMARY KEY("tenant_id","project_id","id")
 );`,
+					`CREATE TABLE "projects" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"name" varchar(256) NOT NULL,
+	"description" text,
+	"models" jsonb,
+	"stop_when" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "projects_tenant_id_id_pk" PRIMARY KEY("tenant_id","id")
+);`,
 					`ALTER TABLE "evaluation_job_config" ADD CONSTRAINT "evaluation_job_config_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "public"."projects"("tenant_id","id") ON DELETE cascade ON UPDATE no action;`,
 					`ALTER TABLE "evaluation_job_config_evaluator_relations" ADD CONSTRAINT "eval_job_cfg_evaluator_rel_job_cfg_fk" FOREIGN KEY ("tenant_id","project_id","evaluation_job_config_id") REFERENCES "public"."evaluation_job_config"("tenant_id","project_id","id") ON DELETE cascade ON UPDATE no action;`,
+					`INSERT INTO projects VALUES ('tenant1', 'project1', 'Project One', 'First project', '{"model": "gpt-4"}', '{"condition": "complete"}', now(), now());`,
 					`INSERT INTO evaluation_job_config VALUES ('tenant1', 'jobconfig1', 'project1', '{"filter": "all"}', now(), now());`,
 					`INSERT INTO evaluation_job_config_evaluator_relations VALUES ('tenant1', 'rel1', 'project1', 'jobconfig1', 'evaluator1', now(), now());`,
-					`INSERT INTO agent VALUES ('tenant1', 'agent1', 'project1', 'Agent One', 'First agent', null, null, '{"model": "gpt-4"}', null, null, now(), now());`,
-					`SELECT DOLT_COMMIT('-am', 'initial tables')`,
+					`INSERT INTO agent VALUES ('tenant1', 'agent1', 'project1', 'Agent One', 'First agent', null, null, '{"model": "gpt-4"}', '{}', 'You are an agent.', '{}', now(), now());`,
+					`SELECT DOLT_COMMIT('-Am', 'initial tables')`,
 					`SELECT DOLT_BRANCH('feature')`,
 					`CREATE TABLE "triggers" (
 	"tenant_id" varchar(256) NOT NULL,
@@ -1052,30 +1065,65 @@ func TestForeignKeys(t *testing.T) {
 	CONSTRAINT "triggers_tenant_id_project_id_agent_id_id_pk" PRIMARY KEY("tenant_id","project_id","agent_id","id")
 );`,
 					`ALTER TABLE "triggers" ADD CONSTRAINT "triggers_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "public"."agent"("tenant_id","project_id","id") ON DELETE cascade ON UPDATE no action;`,
+					`select DOLT_COMMIT('-Am', 'add triggers table')`,
 				},
 				Assertions: []ScriptTestAssertion{
 					{
-						Query: `ALTER TABLE ONLY public.hn_stories
-				ADD CONSTRAINT hn_stories_website_url_fkey FOREIGN KEY (website_url) REFERENCES public.websites(url) ON UPDATE SET DEFAULT;`,
-						Expected: []sql.Row{},
+						Query:            "select dolt_checkout('feature')",
+						SkipResultsCheck: true,
 					},
 					{
-						Query: "UPDATE public.websites SET url = 'http://fake.com' WHERE title = 'foo1';",
+						Query: "insert into agent VALUES ('tenant1', 'agent2', 'project1', 'Agent Two', 'Second agent', null, null, '{\"model\": \"gpt-4\"}', '{}', 'You are another agent.', '{}', now(), now());",
 					},
 					{
-						Query:    "SELECT * FROM public.hn_stories where title = 'test1';",
-						Expected: []sql.Row{{"test1", nil}},
+						Query:            "select dolt_commit('-Am', 'add second agent')",
+						SkipResultsCheck: true,
 					},
 					{
-						Query:    "ALTER TABLE hn_stories ALTER COLUMN website_url SET DEFAULT (title);",
-						Expected: []sql.Row{},
+						Query:            "select dolt_merge('main')",
+						SkipResultsCheck: true,
+					},
+				},
+			},
+			{
+				Name: "merge with constraint violations",
+				SetUpScript: []string{
+					"CREATE TABLE parent (a INT PRIMARY KEY, b INT UNIQUE);",
+					"CREATE TABLE child (c INT PRIMARY KEY, d INT);",
+					"alter table child add constraint fk foreign key (d) references parent(b);",
+					"INSERT INTO parent VALUES (1, 1), (2, 2), (3, 3);",
+					"INSERT INTO child VALUES (1, 1), (2, 2);",
+					"SELECT DOLT_COMMIT('-Am', 'initial commit')",
+					"SELECT DOLT_BRANCH('feature')",
+					"insert into child VALUES (3, 3);",
+					"SELECT DOLT_COMMIT('-Am', 'new child')",
+					"select dolt_checkout('feature')",
+					"delete from parent where b = 3;",
+					"SELECT DOLT_COMMIT('-Am', 'delete from parent')",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:       "select dolt_merge('main')",
+						ExpectedErr: "constraint violations",
 					},
 					{
-						Query: "UPDATE public.websites SET url = 'http://doltdb.com' WHERE title = 'foo2';",
+						Query: "set dolt_force_transaction_commit = 1;",
 					},
 					{
-						Query:    "SELECT * FROM public.hn_stories where title = 'test2';",
-						Expected: []sql.Row{{"test2", "test2"}},
+						Query:            "select dolt_merge('main')",
+						SkipResultsCheck: true,
+					},
+					{
+						Query: "select * from dolt_constraint_violations order by 1",
+						Expected: []sql.Row{
+							{"child", pgtype.Numeric{Int: big.NewInt(1), Valid: true}},
+						},
+					},
+					{
+						Query: "select violation_type, c, d, violation_info from dolt_constraint_violations_child order by 1",
+						Expected: []sql.Row{
+							{"foreign key", 3, 3, "{\"Columns\":[\"d\"],\"ForeignKey\":\"fk\",\"Index\":\"fk\",\"OnDelete\":\"RESTRICT\",\"OnUpdate\":\"RESTRICT\",\"ReferencedColumns\":[\"b\"],\"ReferencedIndex\":\"b\",\"ReferencedTable\":\"parent\",\"Table\":\"child\"}"},
+						},
 					},
 				},
 			},
