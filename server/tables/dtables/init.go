@@ -26,7 +26,6 @@ import (
 // Init handles initialization of all Postgres-specific and Doltgres-specific Dolt system tables.
 func Init() {
 	adapters.DoltTableAdapterRegistry.AddAdapter(doltdb.StatusTableName, DoltgresDoltStatusTableAdapter{}, DoltgresDoltStatusTableName)
-	adapters.DoltTableAdapterRegistry.AddAdapter(doltdb.StatusIgnoredTableName, DoltgresDoltStatusIgnoredTableAdapter{}, DoltgresDoltStatusIgnoredTableName)
 
 	// Table names
 	doltdb.GetBranchesTableName = getBranchesTableName
