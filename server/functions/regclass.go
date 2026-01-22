@@ -19,9 +19,9 @@ import (
 	"strconv"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/settings"
