@@ -15,11 +15,10 @@
 package functions
 
 import (
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -38,7 +37,7 @@ var pg_table_is_visible_oid = framework.Function1{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		oidVal := val.(id.Id)
-		paths, err := resolve.SearchPath(ctx)
+		paths, err := core.SearchPath(ctx)
 		if err != nil {
 			return false, err
 		}

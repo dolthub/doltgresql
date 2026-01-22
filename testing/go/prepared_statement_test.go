@@ -1341,8 +1341,29 @@ var pgCatalogTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				// https://github.com/dolthub/doltgresql/issues/2217
-				Skip: true,
+				Query:    "select distinct relnamespace from pg_catalog.pg_class c INNER JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname=$1;",
+				BindVars: []any{"testschema"},
+				Expected: []sql.Row{{2638679668}},
+			},
+			// TODO: when this test is run in isolation without the query above, the below query returns no rows. This is
+			//  because the process of converting an OID to its internal ID can only proceed in one direction: from internal
+			//  to OID. When the above query runs, it causes the internal ID for the testschema namespace to be cached,
+			//  allowing the reverse lookup to succeed in subsequent queries. For OIDs that have not yet been cached in this
+			//  manner, lookups by their OID will fail. This doesn't impact all queries since many of them get an index
+			//  lookup on OID, which has the side effect of converting everything to numeric IDs anyway. But for queries
+			//  that use a normal comparison function for an OID literal value, the conversion to an internal ID of the
+			//  appropriate type (e.g. id.Namespace) cannot happen in the |oidin| function in some cases because the internal
+			//  to OID mapping hasn't yet been established for that schema element, so the comparison fails, yielding
+			//  incorrect results.
+			//  To fix this, we need to correctly seed the internal ID cache with all schema elements in the database.
+			{
+				Query: `SELECT c.oid,pg_catalog.pg_get_expr(c.relpartbound, c.oid) as partition_expr,  pg_catalog.pg_get_partkeydef(c.oid) as partition_key 
+FROM pg_catalog.pg_class c
+WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c') and c.oid not in (select oid from pg_catalog.pg_class where left(relname, 5) = 'dolt_');`,
+				BindVars: []any{2638679668},
+				Expected: []sql.Row{{1712283605, nil, ""}},
+			},
+			{
 				Query: `SELECT c.oid,d.description,pg_catalog.pg_get_expr(c.relpartbound, c.oid) as partition_expr,  pg_catalog.pg_get_partkeydef(c.oid) as partition_key 
 FROM pg_catalog.pg_class c
 LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_class'::regclass
@@ -1351,10 +1372,8 @@ WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c') and c.oid not in (sel
 				Expected: []sql.Row{{1712283605, nil, nil, ""}},
 			},
 			{
-				// https://github.com/dolthub/doltgresql/issues/2217
-				Skip:  true,
 				Query: `SELECT d.description from pg_catalog.pg_description d WHERE d.classoid='pg_class'::regclass`,
-				// TODO: add expected values
+				// TODO: add expected values (pg_description not yet implemented)
 			},
 			{
 				Query:    `select c.oid,pg_catalog.pg_total_relation_size(c.oid) as total_rel_size,pg_catalog.pg_relation_size(c.oid) as rel_size FROM pg_class c WHERE c.relnamespace=$1 and c.oid not in (select oid from pg_catalog.pg_class where left(relname, 5) = 'dolt_');`,

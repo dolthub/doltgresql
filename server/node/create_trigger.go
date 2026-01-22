@@ -16,7 +16,6 @@ package node
 
 import (
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -180,11 +179,10 @@ func loadFunction(ctx *sql.Context, funcCollection *functions.Collection, funcID
 			return functions.Function{}, err
 		}
 	} else {
-		searchPaths, err := resolve.SearchPath(ctx)
+		searchPaths, err := core.SearchPath(ctx)
 		if err != nil {
 			return functions.Function{}, err
 		}
-		searchPaths = append(searchPaths, "pg_catalog") // This isn't included in the search path but functions use it
 		for _, searchPath := range searchPaths {
 			function, err = funcCollection.GetFunction(ctx, id.NewFunction(searchPath, funcID.FunctionName()))
 			if err != nil {

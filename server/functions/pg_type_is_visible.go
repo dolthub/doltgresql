@@ -15,8 +15,9 @@
 package functions
 
 import (
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -48,7 +49,7 @@ var pg_type_is_visible = framework.Function1{
 		schemaName := oidVal.Segment(0)
 
 		// Get the current search path
-		searchPath, err := resolve.SearchPath(ctx)
+		searchPath, err := core.SearchPath(ctx)
 		if err != nil {
 			return false, err
 		}
