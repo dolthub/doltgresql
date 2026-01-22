@@ -1378,5 +1378,26 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
+		{ // https://github.com/dolthub/doltgresql/issues/2206
+			Name: "Index attributes",
+			Skip: true, // We were getting a syntax error previously, which is fixed, however we don't yet support expression index attributes
+			SetUpScript: []string{
+				`CREATE TABLE IF NOT EXISTS items (id SERIAL PRIMARY KEY, title VARCHAR(100) NOT NULL, metadata JSON, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE UNIQUE INDEX IF NOT EXISTS idx_items_title_lower ON items(lower(title));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO items (title, metadata, updated_at) VALUES ('ABC', '{}', '2026-10-10 01:02:03');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO items (title, metadata, updated_at) VALUES ('abc', '{}', '2026-11-12 03:04:05');",
+					ExpectedErr: "duplicate key value violates unique constraint",
+				},
+			},
+		},
 	})
 }
