@@ -1066,12 +1066,9 @@ func TestForeignKeys(t *testing.T) {
 );`,
 					`ALTER TABLE "triggers" ADD CONSTRAINT "triggers_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "public"."agent"("tenant_id","project_id","id") ON DELETE cascade ON UPDATE no action;`,
 					`select DOLT_COMMIT('-Am', 'add triggers table')`,
+					`select dolt_checkout('feature')`,
 				},
 				Assertions: []ScriptTestAssertion{
-					{
-						Query:            "select dolt_checkout('feature')",
-						SkipResultsCheck: true,
-					},
 					{
 						Query: "insert into agent VALUES ('tenant1', 'agent2', 'project1', 'Agent Two', 'Second agent', null, null, '{\"model\": \"gpt-4\"}', '{}', 'You are another agent.', '{}', now(), now());",
 					},
@@ -1080,8 +1077,8 @@ func TestForeignKeys(t *testing.T) {
 						SkipResultsCheck: true,
 					},
 					{
-						Query:            "select dolt_merge('main')",
-						SkipResultsCheck: true,
+						Query:    "select strpos(dolt_merge('main')::text, 'merge successful') > 1;",
+						Expected: []sql.Row{{"t"}},
 					},
 				},
 			},
