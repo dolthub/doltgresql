@@ -15,9 +15,11 @@
 package _go
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestForeignKeys(t *testing.T) {
@@ -985,6 +987,140 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query:    "SELECT * FROM public.hn_stories where title = 'test2';",
 						Expected: []sql.Row{{"test2", "test2"}},
+					},
+				},
+			},
+			{
+				Name: "merging",
+				SetUpScript: []string{
+					`CREATE TABLE "evaluation_job_config" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"project_id" varchar(256) NOT NULL,
+	"job_filters" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "evaluation_job_config_tenant_id_project_id_id_pk" PRIMARY KEY("tenant_id","project_id","id")
+);`,
+					`CREATE TABLE "evaluation_job_config_evaluator_relations" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"project_id" varchar(256) NOT NULL,
+	"evaluation_job_config_id" text NOT NULL,
+	"evaluator_id" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "eval_job_cfg_evaluator_rel_pk" PRIMARY KEY("tenant_id","project_id","id")
+);`,
+					`CREATE TABLE "agent" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"project_id" varchar(256) NOT NULL,
+	"name" varchar(256) NOT NULL,
+	"description" text,
+	"default_sub_agent_id" varchar(256),
+	"context_config_id" varchar(256),
+	"models" jsonb,
+	"status_updates" jsonb,
+	"prompt" text,
+	"stop_when" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "agent_tenant_id_project_id_id_pk" PRIMARY KEY("tenant_id","project_id","id")
+);`,
+					`CREATE TABLE "projects" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"name" varchar(256) NOT NULL,
+	"description" text,
+	"models" jsonb,
+	"stop_when" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "projects_tenant_id_id_pk" PRIMARY KEY("tenant_id","id")
+);`,
+					`ALTER TABLE "evaluation_job_config" ADD CONSTRAINT "evaluation_job_config_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "public"."projects"("tenant_id","id") ON DELETE cascade ON UPDATE no action;`,
+					`ALTER TABLE "evaluation_job_config_evaluator_relations" ADD CONSTRAINT "eval_job_cfg_evaluator_rel_job_cfg_fk" FOREIGN KEY ("tenant_id","project_id","evaluation_job_config_id") REFERENCES "public"."evaluation_job_config"("tenant_id","project_id","id") ON DELETE cascade ON UPDATE no action;`,
+					`INSERT INTO projects VALUES ('tenant1', 'project1', 'Project One', 'First project', '{"model": "gpt-4"}', '{"condition": "complete"}', now(), now());`,
+					`INSERT INTO evaluation_job_config VALUES ('tenant1', 'jobconfig1', 'project1', '{"filter": "all"}', now(), now());`,
+					`INSERT INTO evaluation_job_config_evaluator_relations VALUES ('tenant1', 'rel1', 'project1', 'jobconfig1', 'evaluator1', now(), now());`,
+					`INSERT INTO agent VALUES ('tenant1', 'agent1', 'project1', 'Agent One', 'First agent', null, null, '{"model": "gpt-4"}', '{}', 'You are an agent.', '{}', now(), now());`,
+					`SELECT DOLT_COMMIT('-Am', 'initial tables')`,
+					`SELECT DOLT_BRANCH('feature')`,
+					`CREATE TABLE "triggers" (
+	"tenant_id" varchar(256) NOT NULL,
+	"id" varchar(256) NOT NULL,
+	"project_id" varchar(256) NOT NULL,
+	"agent_id" varchar(256) NOT NULL,
+	"name" varchar(256) NOT NULL,
+	"description" text,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"input_schema" jsonb,
+	"output_transform" jsonb,
+	"message_template" text NOT NULL,
+	"authentication" jsonb,
+	"signing_secret" text,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "triggers_tenant_id_project_id_agent_id_id_pk" PRIMARY KEY("tenant_id","project_id","agent_id","id")
+);`,
+					`ALTER TABLE "triggers" ADD CONSTRAINT "triggers_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "public"."agent"("tenant_id","project_id","id") ON DELETE cascade ON UPDATE no action;`,
+					`select DOLT_COMMIT('-Am', 'add triggers table')`,
+					`select dolt_checkout('feature')`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "insert into agent VALUES ('tenant1', 'agent2', 'project1', 'Agent Two', 'Second agent', null, null, '{\"model\": \"gpt-4\"}', '{}', 'You are another agent.', '{}', now(), now());",
+					},
+					{
+						Query:            "select dolt_commit('-Am', 'add second agent')",
+						SkipResultsCheck: true,
+					},
+					{
+						Query:    "select strpos(dolt_merge('main')::text, 'merge successful') > 1;",
+						Expected: []sql.Row{{"t"}},
+					},
+				},
+			},
+			{
+				Name: "merge with constraint violations",
+				SetUpScript: []string{
+					"CREATE TABLE parent (a INT PRIMARY KEY, b INT UNIQUE);",
+					"CREATE TABLE child (c INT PRIMARY KEY, d INT);",
+					"alter table child add constraint fk foreign key (d) references parent(b);",
+					"INSERT INTO parent VALUES (1, 1), (2, 2), (3, 3);",
+					"INSERT INTO child VALUES (1, 1), (2, 2);",
+					"SELECT DOLT_COMMIT('-Am', 'initial commit')",
+					"SELECT DOLT_BRANCH('feature')",
+					"insert into child VALUES (3, 3);",
+					"SELECT DOLT_COMMIT('-Am', 'new child')",
+					"select dolt_checkout('feature')",
+					"delete from parent where b = 3;",
+					"SELECT DOLT_COMMIT('-Am', 'delete from parent')",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:       "select dolt_merge('main')",
+						ExpectedErr: "constraint violations",
+					},
+					{
+						Query: "set dolt_force_transaction_commit = 1;",
+					},
+					{
+						Query:            "select dolt_merge('main')",
+						SkipResultsCheck: true,
+					},
+					{
+						Query: "select * from dolt_constraint_violations order by 1",
+						Expected: []sql.Row{
+							{"child", pgtype.Numeric{Int: big.NewInt(1), Valid: true}},
+						},
+					},
+					{
+						Query: "select violation_type, c, d, violation_info from dolt_constraint_violations_child order by 1",
+						Expected: []sql.Row{
+							{"foreign key", 3, 3, "{\"Columns\":[\"d\"],\"ForeignKey\":\"fk\",\"Index\":\"fk\",\"OnDelete\":\"RESTRICT\",\"OnUpdate\":\"RESTRICT\",\"ReferencedColumns\":[\"b\"],\"ReferencedIndex\":\"b\",\"ReferencedTable\":\"parent\",\"Table\":\"child\"}"},
+						},
 					},
 				},
 			},
