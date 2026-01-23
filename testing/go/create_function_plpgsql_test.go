@@ -1108,5 +1108,119 @@ $$;`,
 				},
 			},
 		},
+		{
+			Name: "AlexTransit_venderctl import dump",
+			SetUpScript: []string{
+				`CREATE TYPE public.tax_job_state AS ENUM (
+    'sched',
+    'busy',
+    'final',
+    'help'
+);`,
+				`CREATE TABLE public.catalog (
+    vmid integer NOT NULL,
+    code text NOT NULL,
+    name text NOT NULL
+);`,
+				`CREATE SEQUENCE public.tax_job_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;`,
+				`CREATE TABLE public.tax_job (
+    id bigint NOT NULL,
+    state public.tax_job_state NOT NULL,
+    created timestamp with time zone NOT NULL,
+    modified timestamp with time zone NOT NULL,
+    scheduled timestamp with time zone,
+    worker text,
+    processor text,
+    ext_id text,
+    data jsonb,
+    gross integer,
+    notes text[],
+    ops jsonb
+);`,
+				`CREATE TABLE public.trans (
+    vmid integer NOT NULL,
+    vmtime timestamp with time zone,
+    received timestamp with time zone NOT NULL,
+    menu_code text NOT NULL,
+    options integer[],
+    price integer NOT NULL,
+    method integer NOT NULL,
+    tax_job_id bigint,
+    executer bigint,
+    exeputer_type integer,
+    executer_str text
+);`,
+				`ALTER TABLE ONLY public.tax_job ALTER COLUMN id SET DEFAULT nextval('public.tax_job_id_seq'::regclass);`,
+				`INSERT INTO public.trans VALUES (1, '2023-04-05 06:07:08', '2023-05-06 07:08:09', 'test', ARRAY[5,7], 44, 1, NULL, 1, 1, '');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION public.tax_job_trans(t public.trans) RETURNS public.tax_job
+    LANGUAGE plpgsql
+    AS '
+    # print_strict_params ON
+DECLARE
+    tjd jsonb;
+    ops jsonb;
+    tj tax_job;
+    name text;
+BEGIN
+    -- lock trans row
+    PERFORM
+        1
+    FROM
+        trans
+    WHERE (vmid, vmtime) = (t.vmid,
+        t.vmtime)
+LIMIT 1
+FOR UPDATE;
+    -- if trans already has tax_job assigned, just return it
+    IF t.tax_job_id IS NOT NULL THEN
+        SELECT
+            * INTO STRICT tj
+        FROM
+            tax_job
+        WHERE
+            id = t.tax_job_id;
+        RETURN tj;
+    END IF;
+    -- op code to human friendly name via catalog
+    SELECT
+        catalog.name INTO name
+    FROM
+        catalog
+    WHERE (vmid, code) = (t.vmid,
+        t.menu_code);
+    IF NOT found THEN
+        name := ''#'' || t.menu_code;
+    END IF;
+    ops := jsonb_build_array (jsonb_build_object(''vmid'', t.vmid, ''time'', t.vmtime, ''name'', name, ''code'', t.menu_code, ''amount'', 1, ''price'', t.price, ''method'', t.method));
+    INSERT INTO tax_job (state, created, modified, scheduled, processor, ops, gross)
+        VALUES (''sched'', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ''ru2019'', ops, t.price)
+    RETURNING
+        * INTO STRICT tj;
+    UPDATE
+        trans
+    SET
+        tax_job_id = tj.id
+    WHERE (vmid, vmtime) = (t.vmid,
+        t.vmtime);
+    RETURN tj;
+END;
+';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public.tax_job_trans(trans.*) FROM public.trans;`,
+					Skip:     true, // TODO: implement table.* syntax
+					Expected: []sql.Row{{`(1,sched,"2026-01-23 14:06:32.794817+00","2026-01-23 14:06:32.794817+00","2026-01-23 14:06:32.794817+00",,ru2019,,,44,,"[{""code"": ""test"", ""name"": ""#test"", ""time"": ""2023-04-05T06:07:08+00:00"", ""vmid"": 1, ""price"": 44, ""amount"": 1, ""method"": 1}]")`}},
+				},
+			},
+		},
 	})
 }

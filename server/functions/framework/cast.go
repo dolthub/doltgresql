@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -134,6 +135,9 @@ func GetExplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 	if cast := getSizingOrIdentityCast(fromType, toType, true); cast != nil {
 		return cast
 	}
+	if recordCast := getRecordCast(fromType, toType, GetExplicitCast); recordCast != nil {
+		return recordCast
+	}
 	// All types have a built-in explicit cast from string types: https://www.postgresql.org/docs/15/sql-createcast.html
 	if fromType.TypCategory == pgtypes.TypeCategory_StringTypes {
 		return func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
@@ -159,6 +163,10 @@ func GetExplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 			return targetType.IoInput(ctx, str)
 		}
 	}
+	// It is always valid to convert from the `unknown` type
+	if fromType.ID == pgtypes.Unknown.ID {
+		return UnknownLiteralCast
+	}
 	return nil
 }
 
@@ -174,6 +182,10 @@ func GetAssignmentCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresT
 	if cast := getSizingOrIdentityCast(fromType, toType, false); cast != nil {
 		return cast
 	}
+	// We then check for a record to composite cast
+	if recordCast := getRecordCast(fromType, toType, GetAssignmentCast); recordCast != nil {
+		return recordCast
+	}
 	// All types have a built-in assignment cast to string types: https://www.postgresql.org/docs/15/sql-createcast.html
 	if toType.TypCategory == pgtypes.TypeCategory_StringTypes {
 		return func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
@@ -187,6 +199,10 @@ func GetAssignmentCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresT
 			return targetType.IoInput(ctx, str)
 		}
 	}
+	// It is always valid to convert from the `unknown` type
+	if fromType.ID == pgtypes.Unknown.ID {
+		return UnknownLiteralCast
+	}
 	return nil
 }
 
@@ -199,6 +215,14 @@ func GetImplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
 	if cast := getSizingOrIdentityCast(fromType, toType, false); cast != nil {
 		return cast
+	}
+	// We then check for a record to composite cast
+	if recordCast := getRecordCast(fromType, toType, GetImplicitCast); recordCast != nil {
+		return recordCast
+	}
+	// It is always valid to convert from the `unknown` type
+	if fromType.ID == pgtypes.Unknown.ID {
+		return UnknownLiteralCast
 	}
 	return nil
 }
@@ -310,6 +334,59 @@ func getSizingOrIdentityCast(fromType *pgtypes.DoltgresType, toType *pgtypes.Dol
 	}
 	// If there is no sizing cast, then we simply use the identity cast
 	return IdentityCast
+}
+
+// getRecordCast handles casting from a record type to a composite type (if applicable). Returns nil if not applicable.
+func getRecordCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType, passthrough func(*pgtypes.DoltgresType, *pgtypes.DoltgresType) pgtypes.TypeCastFunction) pgtypes.TypeCastFunction {
+	// TODO: does casting to a record type always work for any composite type?
+	//   https://www.postgresql.org/docs/15/sql-expressions.html#SQL-SYNTAX-ROW-CONSTRUCTORS seems to suggest so
+	//   Also not sure if we should use the passthrough, or if we always default to implicit, assignment, or explicit
+	if fromType.IsRecordType() && toType.IsCompositeType() {
+		// When casting to a composite type, then we must match the arity and have valid casts for every position.
+		if toType.IsRecordType() {
+			return IdentityCast
+		} else {
+			return func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+				vals, ok := val.([]pgtypes.RecordValue)
+				if !ok {
+					return nil, errors.New("casting input error from record type")
+				}
+				if len(targetType.CompositeAttrs) != len(vals) {
+					// TODO: these should go in DETAIL depending on the size
+					//   Input has too few columns.
+					//   Input has too many columns.
+					return nil, errors.Newf("cannot cast type %s to %s", fromType.Name(), targetType.Name())
+				}
+				typeCollection, err := core.GetTypesCollectionFromContext(ctx)
+				if err != nil {
+					return nil, err
+				}
+				outputVals := make([]pgtypes.RecordValue, len(vals))
+				for i := range vals {
+					valType, ok := vals[i].Type.(*pgtypes.DoltgresType)
+					if !ok {
+						return nil, errors.New("cannot cast record containing GMS type")
+					}
+					outputType, err := typeCollection.GetType(ctx, targetType.CompositeAttrs[i].TypeID)
+					if err != nil {
+						return nil, err
+					}
+					outputVals[i].Type = outputType
+					positionCast := passthrough(valType, outputType)
+					if positionCast == nil {
+						// TODO: this should be the DETAIL, with the actual error being "cannot cast type <FROM_TYPE> to <TO_TYPE>"
+						return nil, errors.Newf("Cannot cast type %s to %s in column %d", valType.Name(), outputType.Name(), i+1)
+					}
+					outputVals[i].Value, err = positionCast(ctx, vals[i].Value, outputType)
+					if err != nil {
+						return nil, err
+					}
+				}
+				return outputVals, nil
+			}
+		}
+	}
+	return nil
 }
 
 // IdentityCast returns the input value.

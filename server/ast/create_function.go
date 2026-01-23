@@ -39,10 +39,19 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	// Grab the general information that we'll need to create the function
 	tableName := node.Name.ToTableName()
 	retType := pgtypes.Void
-	if len(node.RetType) == 1 {
+	if len(node.RetType) == 1 { // Return types may specify "trigger", but this doesn't apply elsewhere
 		switch typ := node.RetType[0].Type.(type) {
 		case *types.T:
 			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.Name()))
+		case *tree.UnresolvedObjectName:
+			if typ.NumParts == 1 && typ.SQLString() == "trigger" {
+				retType = pgtypes.Trigger
+			} else {
+				_, retType, err = nodeResolvableTypeReference(ctx, typ)
+				if err != nil {
+					return nil, err
+				}
+			}
 		default:
 			sqlString := strings.ToLower(typ.SQLString())
 			if sqlString == "trigger" {
@@ -59,6 +68,11 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		switch argType := arg.Type.(type) {
 		case *types.T:
 			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.Name()))
+		case *tree.UnresolvedObjectName:
+			_, paramTypes[i], err = nodeResolvableTypeReference(ctx, argType)
+			if err != nil {
+				return nil, err
+			}
 		default:
 			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.SQLString()))
 		}
