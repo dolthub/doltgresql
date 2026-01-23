@@ -9460,6 +9460,10 @@ index_elem:
   {
     $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4.unresolvedObjectName().UnquotedString(), OpClass: $5.opClass(), Direction: $6.dir(), NullsOrder: $7.nullsOrder()}
   }
+| func_expr opt_collate opt_opclass opt_asc_desc opt_nulls_order
+  {
+    $$.val = tree.IndexElem{Expr: $1.expr(), Collation: $2.unresolvedObjectName().UnquotedString(), OpClass: $3.opClass(), Direction: $4.dir(), NullsOrder: $5.nullsOrder()}
+  }
 
 opt_opclass:
   /* EMPTY */
