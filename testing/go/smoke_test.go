@@ -24,6 +24,509 @@ func TestSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Simple statements",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE SCHEMA "drizzle";`,
+				`CREATE SEQUENCE drizzle."__drizzle_migrations_id_seq" AS int4;`,
+				`CREATE TABLE "__drizzle_migrations" (
+  "id" integer NOT NULL DEFAULT (nextval('drizzle.__drizzle_migrations_id_seq')),
+  "hash" text NOT NULL,
+  "created_at" bigint,
+  PRIMARY KEY ("id")
+);`,
+				`INSERT INTO "__drizzle_migrations" ("hash","created_at") VALUES ('d3445cf0eaeb405a6b4b9c8386188aece144d40ba89b9616175ca0f69229cc51',1767821157311);`,
+				`CREATE TABLE "projects" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "models" jsonb,
+  "stop_when" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","id")
+);`,
+				`CREATE TABLE "agent" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "default_sub_agent_id" varchar(256),
+  "context_config_id" varchar(256),
+  "models" jsonb,
+  "status_updates" jsonb,
+  "prompt" text,
+  "stop_when" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "agent_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "artifact_components" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "props" jsonb,
+  "render" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "artifact_components_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "context_configs" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "headers_schema" jsonb,
+  "context_variables" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","id"),
+  CONSTRAINT "context_configs_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "agent" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "credential_references" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "type" varchar(256) NOT NULL,
+  "credential_store_id" varchar(256) NOT NULL,
+  "retrieval_params" jsonb,
+  "tool_id" varchar(256),
+  "user_id" varchar(256),
+  "created_by" varchar(256),
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "credential_references_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE UNIQUE INDEX "credential_references_id_unique" ON "credential_references" ("id");`,
+				`CREATE UNIQUE INDEX "credential_references_tool_user_unique" ON "credential_references" ("tool_id", "user_id");`,
+				`CREATE TABLE "data_components" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "props" jsonb,
+  "render" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "data_components_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "dataset" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "dataset_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "dataset_item" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "dataset_id" text NOT NULL,
+  "input" jsonb NOT NULL,
+  "expected_output" jsonb,
+  "simulation_agent" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "dataset_item_dataset_fk" FOREIGN KEY ("tenant_id","project_id","dataset_id") REFERENCES "dataset" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "dataset_run_config" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "dataset_id" text NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "dataset_run_config_dataset_fk" FOREIGN KEY ("tenant_id","project_id","dataset_id") REFERENCES "dataset" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "dataset_run_config_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "dataset_run_config_agent_relations" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "dataset_run_config_id" text NOT NULL,
+  "agent_id" text NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "dataset_run_config_agent_relations_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "agent" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "dataset_run_config_agent_relations_dataset_run_config_fk" FOREIGN KEY ("tenant_id","project_id","dataset_run_config_id") REFERENCES "dataset_run_config" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "evaluation_job_config" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "job_filters" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "evaluation_job_config_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "evaluator" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "prompt" text NOT NULL,
+  "schema" jsonb NOT NULL,
+  "model" jsonb NOT NULL,
+  "pass_criteria" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "evaluator_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "evaluation_job_config_evaluator_relations" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "evaluation_job_config_id" text NOT NULL,
+  "evaluator_id" text NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "eval_job_cfg_evaluator_rel_evaluator_fk" FOREIGN KEY ("tenant_id","project_id","evaluator_id") REFERENCES "evaluator" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "eval_job_cfg_evaluator_rel_job_cfg_fk" FOREIGN KEY ("tenant_id","project_id","evaluation_job_config_id") REFERENCES "evaluation_job_config" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "evaluation_run_config" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "is_active" boolean NOT NULL DEFAULT 'true',
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "evaluation_run_config_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "evaluation_suite_config" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "filters" jsonb,
+  "sample_rate" double precision,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "evaluation_suite_config_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "evaluation_run_config_evaluation_suite_config_relations" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "evaluation_run_config_id" text NOT NULL,
+  "evaluation_suite_config_id" text NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "eval_run_cfg_eval_suite_rel_run_cfg_fk" FOREIGN KEY ("tenant_id","project_id","evaluation_run_config_id") REFERENCES "evaluation_run_config" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "eval_run_cfg_eval_suite_rel_suite_cfg_fk" FOREIGN KEY ("tenant_id","project_id","evaluation_suite_config_id") REFERENCES "evaluation_suite_config" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "evaluation_suite_config_evaluator_relations" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "evaluation_suite_config_id" text NOT NULL,
+  "evaluator_id" text NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "eval_suite_cfg_evaluator_rel_evaluator_fk" FOREIGN KEY ("tenant_id","project_id","evaluator_id") REFERENCES "evaluator" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "eval_suite_cfg_evaluator_rel_suite_cfg_fk" FOREIGN KEY ("tenant_id","project_id","evaluation_suite_config_id") REFERENCES "evaluation_suite_config" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "external_agents" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "base_url" text NOT NULL,
+  "credential_reference_id" varchar(256),
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "external_agents_credential_reference_fk" FOREIGN KEY ("credential_reference_id") REFERENCES "credential_references" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
+  CONSTRAINT "external_agents_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "functions" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "input_schema" jsonb,
+  "execute_code" text NOT NULL,
+  "dependencies" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "functions_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "function_tools" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "function_id" varchar(256) NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","id"),
+  CONSTRAINT "function_tools_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "agent" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "function_tools_function_fk" FOREIGN KEY ("tenant_id","project_id","function_id") REFERENCES "functions" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "sub_agents" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "prompt" text,
+  "conversation_history_config" jsonb DEFAULT '{"mode":"full","limit":50,"maxOutputTokens":4000,"includeInternal":false,"messageTypes":["chat","tool-result"]}'::JSONB,
+  "models" jsonb,
+  "stop_when" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","id"),
+  CONSTRAINT "sub_agents_agents_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "agent" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "tools" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "config" jsonb NOT NULL,
+  "credential_reference_id" varchar(256),
+  "credential_scope" varchar(50) NOT NULL DEFAULT 'project',
+  "headers" jsonb,
+  "image_url" text,
+  "capabilities" jsonb,
+  "last_error" text,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "tools_credential_reference_fk" FOREIGN KEY ("credential_reference_id") REFERENCES "credential_references" ("id") ON DELETE SET NULL ON UPDATE NO ACTION,
+  CONSTRAINT "tools_project_fk" FOREIGN KEY ("tenant_id","project_id") REFERENCES "projects" ("tenant_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "sub_agent_artifact_components" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "sub_agent_id" varchar(256) NOT NULL,
+  "artifact_component_id" varchar(256) NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","sub_agent_id","id"),
+  CONSTRAINT "sub_agent_artifact_components_artifact_component_fk" FOREIGN KEY ("tenant_id","project_id","artifact_component_id") REFERENCES "artifact_components" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "sub_agent_artifact_components_sub_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id","sub_agent_id") REFERENCES "sub_agents" ("tenant_id","project_id","agent_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "sub_agent_data_components" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "sub_agent_id" varchar(256) NOT NULL,
+  "data_component_id" varchar(256) NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","id"),
+  CONSTRAINT "sub_agent_data_components_data_component_fk" FOREIGN KEY ("tenant_id","project_id","data_component_id") REFERENCES "data_components" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "sub_agent_data_components_sub_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id","sub_agent_id") REFERENCES "sub_agents" ("tenant_id","project_id","agent_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "sub_agent_external_agent_relations" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "sub_agent_id" varchar(256) NOT NULL,
+  "external_agent_id" varchar(256) NOT NULL,
+  "headers" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","id"),
+  CONSTRAINT "sub_agent_external_agent_relations_external_agent_fk" FOREIGN KEY ("tenant_id","project_id","external_agent_id") REFERENCES "external_agents" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "sub_agent_external_agent_relations_sub_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id","sub_agent_id") REFERENCES "sub_agents" ("tenant_id","project_id","agent_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "sub_agent_function_tool_relations" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "sub_agent_id" varchar(256) NOT NULL,
+  "function_tool_id" varchar(256) NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","id"),
+  CONSTRAINT "sub_agent_function_tool_relations_function_tool_fk" FOREIGN KEY ("tenant_id","project_id","agent_id","function_tool_id") REFERENCES "function_tools" ("tenant_id","project_id","agent_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "sub_agent_function_tool_relations_sub_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id","sub_agent_id") REFERENCES "sub_agents" ("tenant_id","project_id","agent_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "sub_agent_relations" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "source_sub_agent_id" varchar(256) NOT NULL,
+  "target_sub_agent_id" varchar(256),
+  "relation_type" varchar(256),
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","id"),
+  CONSTRAINT "sub_agent_relations_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "agent" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "sub_agent_team_agent_relations" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "sub_agent_id" varchar(256) NOT NULL,
+  "target_agent_id" varchar(256) NOT NULL,
+  "headers" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","id"),
+  CONSTRAINT "sub_agent_team_agent_relations_sub_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id","sub_agent_id") REFERENCES "sub_agents" ("tenant_id","project_id","agent_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "sub_agent_team_agent_relations_target_agent_fk" FOREIGN KEY ("tenant_id","project_id","target_agent_id") REFERENCES "agent" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`CREATE TABLE "sub_agent_tool_relations" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "sub_agent_id" varchar(256) NOT NULL,
+  "tool_id" varchar(256) NOT NULL,
+  "selected_tools" jsonb,
+  "headers" jsonb,
+  "tool_policies" jsonb,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","id"),
+  CONSTRAINT "sub_agent_tool_relations_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id","sub_agent_id") REFERENCES "sub_agents" ("tenant_id","project_id","agent_id","id") ON DELETE CASCADE ON UPDATE NO ACTION,
+  CONSTRAINT "sub_agent_tool_relations_tool_fk" FOREIGN KEY ("tenant_id","project_id","tool_id") REFERENCES "tools" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`SELECT DOLT_COMMIT('-Am', 'Applied database migrations');`,
+				`SELECT DOLT_BRANCH('default_my-weather-project_main');`,
+				`INSERT INTO "__drizzle_migrations" ("hash","created_at") VALUES ('634b9140001f10d551fe0d81ca19050f3cc8af8da1ab6c9b6e93d99f33e5fc84',1768766675586);`,
+				`CREATE TABLE "triggers" (
+  "tenant_id" varchar(256) NOT NULL,
+  "id" varchar(256) NOT NULL,
+  "project_id" varchar(256) NOT NULL,
+  "agent_id" varchar(256) NOT NULL,
+  "name" varchar(256) NOT NULL,
+  "description" text,
+  "enabled" boolean NOT NULL DEFAULT 'true',
+  "input_schema" jsonb,
+  "output_transform" jsonb,
+  "message_template" text NOT NULL,
+  "authentication" jsonb,
+  "signing_secret" text,
+  "created_at" timestamp NOT NULL DEFAULT (now()),
+  "updated_at" timestamp NOT NULL DEFAULT (now()),
+  PRIMARY KEY ("tenant_id","project_id","agent_id","id"),
+  CONSTRAINT "triggers_agent_fk" FOREIGN KEY ("tenant_id","project_id","agent_id") REFERENCES "agent" ("tenant_id","project_id","id") ON DELETE CASCADE ON UPDATE NO ACTION
+);`,
+				`SELECT DOLT_COMMIT('-Am', 'Applied database migrations');`,
+				`SELECT DOLT_CHECKOUT('default_my-weather-project_main');`,
+				`INSERT INTO "projects" ("tenant_id","id","name","description","models","stop_when","created_at","updated_at") VALUES ('default','my-weather-project','Weather Project','Project containing sample agent framework using ','{"base": {"model": "openai/gpt-4o-mini"}}',NULL,'2026-01-22 16:19:32.74','2026-01-22 16:19:32.74');`,
+				`INSERT INTO "agent" ("tenant_id","id","project_id","name","description","default_sub_agent_id","context_config_id","models","status_updates","prompt","stop_when","created_at","updated_at") VALUES ('default','weather-agent','my-weather-project','Weather agent',NULL,'weather-assistant',NULL,NULL,NULL,NULL,NULL,'2026-01-22 16:19:32.782','2026-01-22 16:19:32.862');`,
+				`INSERT INTO "data_components" ("tenant_id","id","project_id","name","description","props","render","created_at","updated_at") VALUES ('default','weather-forecast','my-weather-project','WeatherForecast','A hourly forecast for the weather at a given location','{"type": "object", "required": ["forecast"], "properties": {"forecast": {"type": "array", "items": {"type": "object", "required": ["time", "temperature", "code"], "properties": {"code": {"type": "number", "description": "Weather code at given time"}, "time": {"type": "string", "description": "The time of current item E.g. 12PM, 1PM"}, "temperature": {"type": "number", "description": "The temperature at given time in Farenheit"}}, "additionalProperties": false}, "description": "The hourly forecast for the weather at a given location"}}, "additionalProperties": false}',NULL,'2026-01-22 16:19:32.773665','2026-01-22 16:19:32.773665');`,
+				`INSERT INTO "sub_agents" ("tenant_id","id","project_id","agent_id","name","description","prompt","conversation_history_config","models","stop_when","created_at","updated_at") VALUES ('default','geocoder-agent','my-weather-project','weather-agent','Geocoder agent','Specialized agent for converting addresses and location names into geographic coordinates. This agent handles all location-related queries and provides accurate latitude/longitude data for weather lookups.','You are a geocoding specialist that converts addresses, place names, and location descriptions
+ into precise geographic coordinates. You help users find the exact location they''re asking about
+ and provide the coordinates needed for weather forecasting.
+
+ When users provide:
+ - Street addresses
+ - City names
+ - Landmarks
+ - Postal codes
+ - General location descriptions
+
+ You should use your geocoding tools to find the most accurate coordinates and provide clear
+ information about the location found.','{"mode": "full", "limit": 50, "messageTypes": ["chat", "tool-result"], "includeInternal": false, "maxOutputTokens": 4000}',NULL,NULL,'2026-01-22 16:19:32.848333','2026-01-22 16:19:32.848333');`,
+				`INSERT INTO "sub_agents" ("tenant_id","id","project_id","agent_id","name","description","prompt","conversation_history_config","models","stop_when","created_at","updated_at") VALUES ('default','weather-assistant','my-weather-project','weather-agent','Weather assistant','Main weather assistant that coordinates between geocoding and forecasting services to provide comprehensive weather information. This assistant handles user queries and delegates tasks to specialized sub-agents as needed.','You are a helpful weather assistant that provides comprehensive weather information
+ for any location worldwide. You coordinate with specialized agents to:
+
+ 1. Convert location names/addresses to coordinates (via geocoder)
+ 2. Retrieve detailed weather forecasts (via weather forecaster)
+ 3. Present weather information in a clear, user-friendly format
+
+ When users ask about weather:
+ - If they provide a location name or address, delegate to the geocoder first
+ - Once you have coordinates, delegate to the weather forecaster
+ - Present the final weather information in an organized, easy-to-understand format
+ - Include relevant details like temperature, conditions, precipitation, wind, etc.
+ - Provide helpful context and recommendations when appropriate
+
+ You have access to weather forecast data components that can enhance your responses
+ with structured weather information.','{"mode": "full", "limit": 50, "messageTypes": ["chat", "tool-result"], "includeInternal": false, "maxOutputTokens": 4000}',NULL,NULL,'2026-01-22 16:19:32.851804','2026-01-22 16:19:32.851804');`,
+				`INSERT INTO "sub_agents" ("tenant_id","id","project_id","agent_id","name","description","prompt","conversation_history_config","models","stop_when","created_at","updated_at") VALUES ('default','weather-forecaster','my-weather-project','weather-agent','Weather forecaster','Specialized agent for retrieving detailed weather forecasts and current conditions. This agent focuses on providing accurate, up-to-date weather information using geographic coordinates.','You are a weather forecasting specialist that provides detailed weather information
+ including current conditions, forecasts, and weather-related insights.
+
+ You work with precise geographic coordinates to deliver:
+ - Current weather conditions
+ - Short-term and long-term forecasts
+ - Temperature, humidity, wind, and precipitation data
+ - Weather alerts and advisories
+ - Seasonal and climate information
+
+ Always provide clear, actionable weather information that helps users plan their activities.','{"mode": "full", "limit": 50, "messageTypes": ["chat", "tool-result"], "includeInternal": false, "maxOutputTokens": 4000}',NULL,NULL,'2026-01-22 16:19:32.844618','2026-01-22 16:19:32.844618');`,
+				`INSERT INTO "tools" ("tenant_id","id","project_id","name","description","config","credential_reference_id","credential_scope","headers","image_url","capabilities","last_error","created_at","updated_at") VALUES ('default','fUI2riwrBVJ6MepT8rjx0','my-weather-project','Forecast weather',NULL,'{"mcp": {"server": {"url": "https://weather-mcp-hazel.vercel.app/mcp"}}, "type": "mcp"}',NULL,'project',NULL,NULL,NULL,NULL,'2026-01-22 16:19:32.748','2026-01-22 16:19:32.748');`,
+				`INSERT INTO "tools" ("tenant_id","id","project_id","name","description","config","credential_reference_id","credential_scope","headers","image_url","capabilities","last_error","created_at","updated_at") VALUES ('default','fdxgfv9HL7SXlfynPx8hf','my-weather-project','Geocode address',NULL,'{"mcp": {"server": {"url": "https://weather-mcp-hazel.vercel.app/mcp"}}, "type": "mcp"}',NULL,'project',NULL,NULL,NULL,NULL,'2026-01-22 16:19:32.75','2026-01-22 16:19:32.75');`,
+				`INSERT INTO "sub_agent_relations" ("tenant_id","id","project_id","agent_id","source_sub_agent_id","target_sub_agent_id","relation_type","created_at","updated_at") VALUES ('default','0y59hwkkyzml4dq4t1sx8','my-weather-project','weather-agent','weather-assistant','weather-forecaster','delegate','2026-01-22 16:19:32.92219','2026-01-22 16:19:32.92219');`,
+				`INSERT INTO "sub_agent_relations" ("tenant_id","id","project_id","agent_id","source_sub_agent_id","target_sub_agent_id","relation_type","created_at","updated_at") VALUES ('default','7ye45uc4j5442ihgqwn6d','my-weather-project','weather-agent','weather-assistant','geocoder-agent','delegate','2026-01-22 16:19:32.925527','2026-01-22 16:19:32.925527');`,
+				`INSERT INTO "sub_agent_data_components" ("tenant_id","id","project_id","agent_id","sub_agent_id","data_component_id","created_at") VALUES ('default','689yd78rj16p9880bndfo','my-weather-project','weather-agent','weather-assistant','weather-forecast','2026-01-22 16:19:32.907332');`,
+				`INSERT INTO "sub_agent_tool_relations" ("tenant_id","id","project_id","agent_id","sub_agent_id","tool_id","selected_tools","headers","tool_policies","created_at","updated_at") VALUES ('default','4kws0lm8bqi1mkzwbvmz4','my-weather-project','weather-agent','weather-forecaster','fUI2riwrBVJ6MepT8rjx0',NULL,NULL,NULL,'2026-01-22 16:19:32.888','2026-01-22 16:19:32.888');`,
+				`INSERT INTO "sub_agent_tool_relations" ("tenant_id","id","project_id","agent_id","sub_agent_id","tool_id","selected_tools","headers","tool_policies","created_at","updated_at") VALUES ('default','ttz1a9tnso0sxim79iphr','my-weather-project','weather-agent','geocoder-agent','fdxgfv9HL7SXlfynPx8hf',NULL,NULL,NULL,'2026-01-22 16:19:32.889','2026-01-22 16:19:32.889');`,
+				`SELECT DOLT_COMMIT('-Am', '//Update /manage/tenants/default/project-full/my-weather-project via API');`,
+				`UPDATE "tools" SET "updated_at"='2026-01-22 16:19:50.912' WHERE "tenant_id"='default' AND "id"='fUI2riwrBVJ6MepT8rjx0' AND "project_id"='my-weather-project';`,
+				`UPDATE "tools" SET "updated_at"='2026-01-22 16:19:50.967' WHERE "tenant_id"='default' AND "id"='fdxgfv9HL7SXlfynPx8hf' AND "project_id"='my-weather-project';`,
+				`SELECT DOLT_COMMIT('-Am', 'GET /manage/tenants/default/projects/my-weather-project/tools via API');`,
+				`INSERT INTO "evaluator" ("tenant_id","id","project_id","name","description","prompt","schema","model","pass_criteria","created_at","updated_at") VALUES ('default','ubqho5lsm6h7bd3ra8loz','my-weather-project','test','test','test','{"type": "object", "required": ["test"], "properties": {"test": {"type": "string", "description": "test"}}, "additionalProperties": false}','{"model": "anthropic/claude-opus-4-5"}',NULL,'2026-01-22 16:20:07.188','2026-01-22 16:20:07.188');`,
+				`SELECT DOLT_COMMIT('-Am', 'Create /manage/tenants/default/projects/my-weather-project/evals/evaluators via API');`,
+				`UPDATE "tools" SET "updated_at"='2026-01-22 16:20:11.438' WHERE "tenant_id"='default' AND "id"='fUI2riwrBVJ6MepT8rjx0' AND "project_id"='my-weather-project';`,
+				`UPDATE "tools" SET "updated_at"='2026-01-22 16:20:11.448' WHERE "tenant_id"='default' AND "id"='fdxgfv9HL7SXlfynPx8hf' AND "project_id"='my-weather-project';`,
+				`SELECT DOLT_COMMIT('-Am', 'GET /manage/tenants/default/projects/my-weather-project/tools via API');`,
+				`UPDATE "tools" SET "updated_at"='2026-01-22 16:20:17.821' WHERE "tenant_id"='default' AND "id"='fUI2riwrBVJ6MepT8rjx0' AND "project_id"='my-weather-project';`,
+				`UPDATE "tools" SET "updated_at"='2026-01-22 16:20:18.082' WHERE "tenant_id"='default' AND "id"='fdxgfv9HL7SXlfynPx8hf' AND "project_id"='my-weather-project';`,
+				`SELECT DOLT_COMMIT('-Am', 'GET /manage/tenants/default/projects/my-weather-project/tools via API');`,
+				`INSERT INTO "evaluation_job_config" ("tenant_id","id","project_id","job_filters","created_at","updated_at") VALUES ('default','tj06kzjt8ltlyixgfzeao','my-weather-project','{"dateRange": {"endDate": "2026-01-23T04:59:59.999Z", "startDate": "2026-01-21T05:00:00.000Z"}}','2026-01-22 16:20:55.774','2026-01-22 16:20:55.774');`,
+				`INSERT INTO "evaluation_job_config_evaluator_relations" ("tenant_id","id","project_id","evaluation_job_config_id","evaluator_id","created_at","updated_at") VALUES ('default','5qk0w692h5ij1sxtohdua','my-weather-project','tj06kzjt8ltlyixgfzeao','ubqho5lsm6h7bd3ra8loz','2026-01-22 16:20:55.781','2026-01-22 16:20:55.781');`,
+				`SELECT DOLT_COMMIT('-Am', 'Create /manage/tenants/default/projects/my-weather-project/evals/evaluation-job-configs via API');`,
+				`INSERT INTO "evaluation_suite_config" ("tenant_id","id","project_id","filters","sample_rate","created_at","updated_at") VALUES ('default','j5gvgluqzwzhjhycrsnpf','my-weather-project','{"agentIds": ["weather-agent"]}',NULL,'2026-01-22 16:21:19.974','2026-01-22 16:21:19.974');`,
+				`INSERT INTO "evaluation_suite_config_evaluator_relations" ("tenant_id","id","project_id","evaluation_suite_config_id","evaluator_id","created_at","updated_at") VALUES ('default','tz51dzynx71gits265e9d','my-weather-project','j5gvgluqzwzhjhycrsnpf','ubqho5lsm6h7bd3ra8loz','2026-01-22 16:21:19.982','2026-01-22 16:21:19.982');`,
+				`SELECT DOLT_COMMIT('-Am', 'Create /manage/tenants/default/projects/my-weather-project/evals/evaluation-suite-configs via API');`,
+				`INSERT INTO "evaluation_run_config" ("tenant_id","id","project_id","name","description","is_active","created_at","updated_at") VALUES ('default','74pgwrprmea2o7e6avbh7','my-weather-project','test','test',true,'2026-01-22 16:21:20.104','2026-01-22 16:21:20.104');`,
+				`INSERT INTO "evaluation_run_config_evaluation_suite_config_relations" ("tenant_id","id","project_id","evaluation_run_config_id","evaluation_suite_config_id","created_at","updated_at") VALUES ('default','plb31qfzw9803g6hbjhef','my-weather-project','74pgwrprmea2o7e6avbh7','j5gvgluqzwzhjhycrsnpf','2026-01-22 16:21:20.111','2026-01-22 16:21:20.111');`,
+				`SELECT DOLT_COMMIT('-Am', 'Create /manage/tenants/default/projects/my-weather-project/evals/evaluation-run-configs via API');`,
+				`UPDATE "tools" SET "updated_at"='2026-01-22 16:21:23.521' WHERE "tenant_id"='default' AND "id"='fUI2riwrBVJ6MepT8rjx0' AND "project_id"='my-weather-project';`,
+				`UPDATE "tools" SET "updated_at"='2026-01-22 16:21:23.771' WHERE "tenant_id"='default' AND "id"='fdxgfv9HL7SXlfynPx8hf' AND "project_id"='my-weather-project';`,
+				`SELECT DOLT_COMMIT('-Am', 'GET /manage/tenants/default/projects/my-weather-project/tools via API');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select dolt_merge('main');",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "Simple statements",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},

@@ -9,7 +9,7 @@ require (
 	github.com/dolthub/dolt/go v0.40.5-0.20260122084121-6b5d5373d1ec
 	github.com/dolthub/eventsapi_schema v0.0.0-20250915094920-eadfd39051ca
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20260121234050-2f0507726303
+	github.com/dolthub/go-mysql-server v0.20.1-0.20260122230403-2a3380188573
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20260121194826-a5ce52b608e4
@@ -210,3 +210,5 @@ require (
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/dolthub/dolt/go => ../dolt/go
