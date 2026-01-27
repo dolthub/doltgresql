@@ -32,6 +32,13 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// anonymousCompositePrefix is the prefix for anonymous composite type names. These types are not stored on
+// disk, but instead are created dynamically as needed.
+const anonymousCompositePrefix = "table("
+
+// anonymousCompositeSuffix is the suffix for anonymous composite type names.
+const anonymousCompositeSuffix = ")"
+
 // TypeCollection is a collection of all types (both built-in and user defined).
 type TypeCollection struct {
 	accessedMap   map[id.Type]*pgtypes.DoltgresType
@@ -165,6 +172,11 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 		return nil, err
 	}
 	if h.IsEmpty() {
+		// If this is an anonymous composite type, create it dynamically
+		if isAnonymousCompositeType(name) {
+			return createAnonymousCompositeType(ctx, name)
+		}
+
 		// If it's not a built-in type or created type, then check if it's a composite table row type
 		sqlCtx, ok := ctx.(*sql.Context)
 		if !ok {
@@ -187,6 +199,34 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 	pgt := t.(*pgtypes.DoltgresType)
 	pgs.accessedMap[pgt.ID] = pgt
 	return pgt, nil
+}
+
+// isAnonymousCompositeType return true if |returnType| represents an anonymous composite return type
+// for a function (i.e. the function was declared as "RETURNS TABLE(...)").
+func isAnonymousCompositeType(returnType id.Type) bool {
+	typeName := returnType.TypeName()
+	return strings.HasPrefix(typeName, anonymousCompositePrefix) &&
+		strings.HasSuffix(typeName, anonymousCompositeSuffix)
+}
+
+// createAnonymousCompositeType creates a new DoltgresType for the anonymous composite return type for a function,
+// as represented by |returnType|.
+func createAnonymousCompositeType(ctx context.Context, returnType id.Type) (*pgtypes.DoltgresType, error) {
+	typeName := returnType.TypeName()
+	attributeTypes := typeName[len(anonymousCompositePrefix) : len(typeName)-len(anonymousCompositeSuffix)]
+	attributeTypesSlice := strings.Split(attributeTypes, ",")
+
+	attrs := make([]pgtypes.CompositeAttribute, len(attributeTypesSlice))
+	for i, attributeNameAndType := range attributeTypesSlice {
+		split := strings.Split(attributeNameAndType, ":")
+		if len(split) != 2 {
+			return nil, fmt.Errorf("unexpected anonymous composite type attribute syntax: %s", attributeNameAndType)
+		}
+
+		typeId := id.NewType("", split[1])
+		attrs[i] = pgtypes.NewCompositeAttribute(nil, id.Null, split[0], typeId, int16(i), "")
+	}
+	return pgtypes.NewCompositeType(ctx, id.Null, id.NullType, returnType, attrs), nil
 }
 
 // HasType checks if a type exists with given schema and type name.

@@ -15,8 +15,6 @@
 package framework
 
 import (
-	"strings"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -24,9 +22,6 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
-
-const anonymousCompositePrefix = "table("
-const anonymousCompositeSuffix = ")"
 
 // FunctionProvider is the special sql.FunctionProvider for Doltgres that allows us to handle functions that
 // are created by users.
@@ -71,16 +66,9 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 
 	overloadTree := NewOverloads()
 	for _, overload := range overloads {
-		var returnType *pgtypes.DoltgresType
-		if isAnonymousCompositeType(overload.ReturnType) {
-			// If this is an anonymous composite type, then we can't load it
-			// from typesCollection, so we create it dynamically when needed.
-			returnType = createAnonymousCompositeType(ctx, overload.ReturnType)
-		} else {
-			returnType, err = typesCollection.GetType(ctx, overload.ReturnType)
-			if err != nil || returnType == nil {
-				return nil, false
-			}
+		returnType, err := typesCollection.GetType(ctx, overload.ReturnType)
+		if err != nil || returnType == nil {
+			return nil, false
 		}
 
 		paramTypes := make([]*pgtypes.DoltgresType, len(overload.ParameterTypes))
@@ -138,35 +126,4 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 			return NewCompiledFunction(name, params, overloadTree, false), nil
 		},
 	}, true
-}
-
-// isAnonymousCompositeType return true if |returnType| represents an anonymous composite return type
-// for a function (i.e. the function was declared as "RETURNS TABLE(...)").
-func isAnonymousCompositeType(returnType id.Type) bool {
-	typeName := returnType.TypeName()
-	return strings.HasPrefix(typeName, anonymousCompositePrefix) &&
-		strings.HasSuffix(typeName, anonymousCompositeSuffix)
-}
-
-// createAnonymousCompositeType creates a new DoltgresType for the anonymous composite return type for a function,
-// as represented by |returnType|.
-func createAnonymousCompositeType(ctx *sql.Context, returnType id.Type) *pgtypes.DoltgresType {
-	typeName := returnType.TypeName()
-	attributeTypes := typeName[len(anonymousCompositePrefix) : len(typeName)-len(anonymousCompositeSuffix)]
-	attributeTypesSlice := strings.Split(attributeTypes, ",")
-
-	attrs := make([]pgtypes.CompositeAttribute, len(attributeTypesSlice))
-	for i, attributeNameAndType := range attributeTypesSlice {
-		split := strings.Split(attributeNameAndType, ":")
-		if len(split) != 2 {
-			// TODO: We could return an error here, but the only place this function is
-			//       called (FunctionProvider.Function) would require updating the
-			//       sql.FunctionProvider interface in GMS, too.
-			panic("unexpected anonymous composite type attribute syntax: " + attributeNameAndType)
-		}
-
-		typeId := id.NewType("", split[1])
-		attrs[i] = pgtypes.NewCompositeAttribute(nil, id.Null, split[0], typeId, int16(i), "")
-	}
-	return pgtypes.NewCompositeType(ctx, id.Null, id.NullType, returnType, attrs)
 }

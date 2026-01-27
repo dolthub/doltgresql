@@ -15,6 +15,7 @@
 package ast
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -165,8 +166,7 @@ func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.Do
 	// NOTE: there is no schema needed, since these types are anonymous and can't be directly referenced
 	typeId := id.NewType("", typeIdString)
 
-	// NOTE: The available ctx is an ast.Context, not a sql.Context instance, so we can't use it here
-	return pgtypes.NewCompositeType(nil, id.Null, id.NullType, typeId, attrs)
+	return pgtypes.NewCompositeType(context.Background(), id.Null, id.NullType, typeId, attrs)
 }
 
 // handleLanguageSQL handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE.
