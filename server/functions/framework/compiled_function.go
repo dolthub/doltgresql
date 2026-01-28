@@ -582,12 +582,8 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 				polymorphicTargets = append(polymorphicTargets, argTypes[i])
 			} else {
 				if overloadCasts[i] = GetImplicitCast(argTypes[i], paramType); overloadCasts[i] == nil {
-					if argTypes[i].ID == pgtypes.Unknown.ID {
-						overloadCasts[i] = UnknownLiteralCast
-					} else {
-						isConvertible = false
-						break
-					}
+					isConvertible = false
+					break
 				}
 			}
 		}

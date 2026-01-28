@@ -82,11 +82,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		// We always cast the element, as there may be parameter restrictions in place
 		castFunc := framework.GetImplicitCast(doltgresType, resultTyp)
 		if castFunc == nil {
-			if doltgresType.ID == pgtypes.Unknown.ID {
-				castFunc = framework.UnknownLiteralCast
-			} else {
-				return nil, errors.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
-			}
+			return nil, errors.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
 		}
 
 		values[i], err = castFunc(ctx, val, resultTyp)
@@ -175,7 +171,7 @@ func (array *Array) getTargetType(children ...sql.Expression) (*pgtypes.Doltgres
 			childrenTypes = append(childrenTypes, childType)
 		}
 	}
-	targetType, err := framework.FindCommonType(childrenTypes)
+	targetType, _, err := framework.FindCommonType(childrenTypes)
 	if err != nil {
 		return nil, errors.Errorf("ARRAY %s", err.Error())
 	}
