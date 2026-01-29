@@ -71,11 +71,11 @@ for tuple in $OS_ARCH_TUPLES; do
   mkdir -p "$o/licenses"
   cp -r ./licenses "$o/licenses"
   cp LICENSE "$o/licenses"
-  echo Building "$o/$bin"
-  obin="$bin"
+  bin="doltgres"
   if [ "$os" = windows ]; then
-      obin="$bin.exe"
+      bin="$bin.exe"
   fi
+  echo Building "$o/bin/$bin"
   CGO_ENABLED=1 \
       GOOS="$os" \
       GOARCH="$arch" \
@@ -85,7 +85,7 @@ for tuple in $OS_ARCH_TUPLES; do
       CGO_LDFLAGS="${platform_cgo_ldflags[${tuple}]}" \
       go build -buildvcs=false -trimpath \
       -ldflags="${platform_go_ldflags[${tuple}]}" \
-      -tags icu_static -o "$o/bin/$obin" \
+      -tags icu_static -o "$o/bin/$bin" \
       ./cmd/doltgres
   if [ "$os" = windows ]; then
     (cd out && 7z a "doltgresql-$os-$arch.zip" "doltgresql-$os-$arch" && 7z a "doltgresql-$os-$arch.7z" "doltgresql-$os-$arch")
