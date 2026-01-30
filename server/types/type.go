@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -93,6 +94,7 @@ var _ sql.ExtendedType = &DoltgresType{}
 var _ sql.NullType = &DoltgresType{}
 var _ sql.StringType = &DoltgresType{}
 var _ sql.NumberType = &DoltgresType{}
+var _ val.TupleTypeHandler = &DoltgresType{}
 
 // NewUnresolvedDoltgresType returns DoltgresType that is not resolved.
 // The type will have the schema and name defined with given values, with IsUnresolved == true.
@@ -1008,6 +1010,32 @@ func (t *DoltgresType) DeserializeValue(ctx context.Context, val []byte) (any, e
 	} else {
 		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val)
 	}
+}
+
+// SerializationCompatible implements the val.TupleTypeHandler interface.
+func (t *DoltgresType) SerializationCompatible(other val.TupleTypeHandler) bool {
+	ot, ok := other.(*DoltgresType)
+	return ok && t.Equals(ot)
+}
+
+// ConvertSerialized implements the val.TupleTypeHandler interface.
+func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTypeHandler, val []byte) ([]byte, error) {
+	ot, ok := other.(*DoltgresType)
+	if !ok {
+		return nil, errors.Errorf("expected DoltgresType, got %T", other)
+	}
+
+	value, err := ot.DeserializeValue(ctx, val)
+	if err != nil {
+		return nil, err
+	}
+
+	toValue, _, err := t.ConvertToType(nil, ot, value)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.SerializeValue(ctx, toValue)
 }
 
 // TypeCastFunction is a function that takes a value of a particular kind of type, and returns it as another kind of type.

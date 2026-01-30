@@ -23,7 +23,7 @@ import (
 func TestSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "Simple statements",
+			Name:  "Simple statements",
 			Focus: true,
 			SetUpScript: []string{
 				`CREATE SCHEMA "drizzle";`,
@@ -517,6 +517,41 @@ func TestSmokeTests(t *testing.T) {
 				`UPDATE "tools" SET "updated_at"='2026-01-22 16:21:23.521' WHERE "tenant_id"='default' AND "id"='fUI2riwrBVJ6MepT8rjx0' AND "project_id"='my-weather-project';`,
 				`UPDATE "tools" SET "updated_at"='2026-01-22 16:21:23.771' WHERE "tenant_id"='default' AND "id"='fdxgfv9HL7SXlfynPx8hf' AND "project_id"='my-weather-project';`,
 				`SELECT DOLT_COMMIT('-Am', 'GET /manage/tenants/default/projects/my-weather-project/tools via API');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select dolt_merge('main');",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name:  "Panicking Test",
+			Focus: true,
+			SetUpScript: []string{
+				`CREATE TABLE table1 (
+            table1_col1 VARCHAR(256),
+            table1_col2 VARCHAR(256),
+            table1_col3 VARCHAR(256),
+            PRIMARY KEY (table1_col1, table1_col3, table1_col2)
+        );`,
+				`CREATE TABLE table2 (
+            table2_col1 VARCHAR(256),
+            table2_col2 VARCHAR(256),
+            table2_col3 VARCHAR(256),
+            table2_col4 TEXT,
+            PRIMARY KEY (table2_col1, table2_col3, table2_col2),
+            CONSTRAINT table2_fk FOREIGN KEY (table2_col1, table2_col3, table2_col4) REFERENCES table1 (table1_col1, table1_col3, table1_col2) ON DELETE CASCADE ON UPDATE NO ACTION
+        );`,
+				`SELECT DOLT_COMMIT('-Am', '1');`,
+				`SELECT DOLT_BRANCH('other_branch');`,
+				`CREATE TABLE table3 (table3_col1 VARCHAR(256));`,
+				`SELECT DOLT_COMMIT('-Am', '2');`,
+				`SELECT DOLT_CHECKOUT('other_branch');`,
+				`INSERT INTO table1 (table1_col1, table1_col2, table1_col3) VALUES ('abc','def','ghi');`,
+				`SELECT DOLT_COMMIT('-Am', '3');`,
+				`INSERT INTO table2 (table2_col1, table2_col2, table2_col3, table2_col4) VALUES ('abc','jkl','ghi','def');`,
+				`SELECT DOLT_COMMIT('-Am', '4');`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
