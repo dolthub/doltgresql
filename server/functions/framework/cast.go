@@ -372,14 +372,16 @@ func getRecordCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType,
 						return nil, err
 					}
 					outputVals[i].Type = outputType
-					positionCast := passthrough(valType, outputType)
-					if positionCast == nil {
-						// TODO: this should be the DETAIL, with the actual error being "cannot cast type <FROM_TYPE> to <TO_TYPE>"
-						return nil, errors.Newf("Cannot cast type %s to %s in column %d", valType.Name(), outputType.Name(), i+1)
-					}
-					outputVals[i].Value, err = positionCast(ctx, vals[i].Value, outputType)
-					if err != nil {
-						return nil, err
+					if vals[i].Value != nil {
+						positionCast := passthrough(valType, outputType)
+						if positionCast == nil {
+							// TODO: this should be the DETAIL, with the actual error being "cannot cast type <FROM_TYPE> to <TO_TYPE>"
+							return nil, errors.Newf("Cannot cast type %s to %s in column %d", valType.Name(), outputType.Name(), i+1)
+						}
+						outputVals[i].Value, err = positionCast(ctx, vals[i].Value, outputType)
+						if err != nil {
+							return nil, err
+						}
 					}
 				}
 				return outputVals, nil

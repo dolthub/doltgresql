@@ -106,6 +106,7 @@ func Init() {
 	initDegrees()
 	initDiv()
 	initDoltProcedures()
+	initDoltRecordTrim()
 	initExp()
 	initExtract()
 	initFactorial()

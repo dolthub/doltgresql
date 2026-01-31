@@ -229,5 +229,105 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #2197 Part 2",
+			SetUpScript: []string{
+				`CREATE TABLE t1a (a INT4, b VARCHAR(3));`,
+				`CREATE TABLE t1b (a INT4 NOT NULL, b VARCHAR(3) NOT NULL);`,
+				`CREATE TABLE t2 (id SERIAL, t1a t1a, t1b t1b);`,
+				`INSERT INTO t2 (t1a) VALUES (ROW(1, 'abc'));`,
+				`INSERT INTO t2 (t1b) VALUES (ROW(1, 'abc'));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(1,abc)", nil},
+						{2, nil, "(1,abc)"},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1a ADD COLUMN c VARCHAR(10);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE t1b ADD COLUMN c VARCHAR(10) NOT NULL;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2 ORDER BY id;`,
+					Expected: []sql.Row{
+						{1, "(1,abc,)", nil},
+						{2, nil, "(1,abc,)"},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1a DROP COLUMN b;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE t1b DROP COLUMN b;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2 ORDER BY id;`,
+					Expected: []sql.Row{
+						{1, "(1,)", nil},
+						{2, nil, "(1,)"},
+					},
+				},
+				{
+					Query:    `INSERT INTO t1a VALUES (2, 'def');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t1b VALUES (3, 'xyzzy');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t2 (t1a) SELECT ROW(a,c)::t1a FROM t1a;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t2 (t1b) SELECT ROW(a,c)::t1b FROM t1b;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2 ORDER BY id;`,
+					Expected: []sql.Row{
+						{1, "(1,)", nil},
+						{2, nil, "(1,)"},
+						{3, "(2,def)", nil},
+						{4, nil, "(3,xyzzy)"},
+					},
+				},
+				{
+					Query: `SELECT ((t1a).@1), ((t1b).@2) FROM t2 ORDER BY id;`,
+					Skip:  true, // TODO: for some reason, this notation is panicking when used in this context
+					Expected: []sql.Row{
+						{1, nil},
+						{nil, nil},
+						{2, nil},
+						{nil, "xyzzy"},
+					},
+				},
+				{
+					Query:       `SELECT (id).a FROM t2;`,
+					ExpectedErr: "column notation .a applied to type",
+				},
+				{
+					Query:       `SELECT (t1a).g FROM t2;`,
+					ExpectedErr: `column "g" not found in data type`,
+				},
+				{
+					Query:       `SELECT (t1a).@0 FROM t2;`,
+					ExpectedErr: "out of bounds",
+				},
+				{
+					Query:       `SELECT (t1a).@3 FROM t2;`,
+					ExpectedErr: "out of bounds",
+				},
+			},
+		},
 	})
 }
