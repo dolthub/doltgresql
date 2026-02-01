@@ -1553,6 +1553,36 @@ func TestArrayFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "multi-argument unnest",
+			Assertions: []ScriptTestAssertion{
+				{
+					// Basic multi-argument UNNEST with equal-length arrays
+					Query:    `SELECT * FROM UNNEST(ARRAY['a','b','c'], ARRAY[1,2,3])`,
+					Expected: []sql.Row{{"a", int64(1)}, {"b", int64(2)}, {"c", int64(3)}},
+				},
+				{
+					// Multi-argument UNNEST with unequal-length arrays (shorter padded with NULL)
+					Query:    `SELECT * FROM UNNEST(ARRAY['a','b'], ARRAY[1,2,3])`,
+					Expected: []sql.Row{{"a", int64(1)}, {"b", int64(2)}, {nil, int64(3)}},
+				},
+				{
+					// Multi-argument UNNEST with empty array
+					Query:    `SELECT * FROM UNNEST(ARRAY['a','b'], ARRAY[]::int[])`,
+					Expected: []sql.Row{{"a", nil}, {"b", nil}},
+				},
+				{
+					// Multi-argument UNNEST with three arrays (booleans come as "t"/"f" strings from PostgreSQL wire protocol)
+					Query:    `SELECT * FROM UNNEST(ARRAY[1,2], ARRAY['x','y'], ARRAY[true,false])`,
+					Expected: []sql.Row{{int64(1), "x", "t"}, {int64(2), "y", "f"}},
+				},
+				{
+					// Multi-argument UNNEST with alias
+					Query:    `SELECT u.* FROM UNNEST(ARRAY['a','b'], ARRAY[1,2]) AS u`,
+					Expected: []sql.Row{{"a", int64(1)}, {"b", int64(2)}},
+				},
+			},
+		},
+		{
 			Name:        "array_to_string",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
