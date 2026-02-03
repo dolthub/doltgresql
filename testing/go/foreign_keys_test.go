@@ -1661,8 +1661,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name:  "Merge foreign keys across types, varchar -> text",
-				Focus: true,
+				Name: "Merge foreign keys across types, varchar -> text",
 				SetUpScript: []string{
 					`CREATE TABLE table1 (
             table1_col1 VARCHAR(256),
@@ -1692,6 +1691,77 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query:    "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
 						Expected: []sql.Row{{"t"}},
+					},
+				},
+			},
+			{
+				Name:  "Merge foreign keys across types, varchar -> text, violation",
+				Focus: true,
+				SetUpScript: []string{
+					`CREATE TABLE parent (a TEXT PRIMARY KEY);`,
+					`CREATE TABLE child (b INT PRIMARY KEY, c varchar(255), CONSTRAINT fk FOREIGN KEY (c) REFERENCES parent(a) ON DELETE CASCADE ON UPDATE NO ACTION);`,
+					`INSERT INTO parent (a) VALUES ('abc'), ('def');`,
+					`INSERT INTO child (b, c) VALUES (1, 'abc'), (2, 'def');`,
+					`SELECT DOLT_COMMIT('-Am', '1');`,
+					`SELECT DOLT_BRANCH('other_branch');`,
+					`DELETE FROM child WHERE b=1;`,
+					`DELETE FROM parent WHERE a='abc';`,
+					`SELECT DOLT_COMMIT('-Am', '2');`,
+					`SELECT DOLT_CHECKOUT('other_branch');`,
+					`INSERT INTO child (b, c) VALUES (3, 'abc');`,
+					`SELECT DOLT_COMMIT('-Am', '3');`,
+					`set dolt_force_transaction_commit=1;`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
+						Expected: []sql.Row{{"f"}},
+					},
+					{
+						Query:    "select violation_type, b, c from dolt_constraint_violations_child;",
+						Expected: []sql.Row{{"foreign key", 3, "abc"}},
+					},
+				},
+			},
+			{
+				Name: "Merge foreign keys across types, varchar -> text multi-column, violation",
+				SetUpScript: []string{
+					`CREATE TABLE table1 (
+            table1_col1 VARCHAR(256),
+            table1_col2 text,
+            table1_col3 text,
+            PRIMARY KEY (table1_col1, table1_col3, table1_col2)
+        );`,
+					`CREATE TABLE table2 (
+            table2_col1 VARCHAR(256),
+            table2_col2 VARCHAR(256),
+            table2_col3 VARCHAR(256),
+            table2_col4 VARCHAR(256),
+            PRIMARY KEY (table2_col1, table2_col3, table2_col2),
+            CONSTRAINT table2_fk FOREIGN KEY (table2_col1, table2_col3, table2_col4) REFERENCES table1 (table1_col1, table1_col3, table1_col2) ON DELETE CASCADE ON UPDATE NO ACTION
+        );`,
+					`INSERT INTO table1 (table1_col1, table1_col2, table1_col3) VALUES ('abc','def','ghi');`,
+					`INSERT INTO table2 (table2_col1, table2_col2, table2_col3, table2_col4) VALUES ('abc','jkl','ghi','def');`,
+					`SELECT DOLT_COMMIT('-Am', '1');`,
+					`SELECT DOLT_BRANCH('other_branch');`,
+					`INSERT INTO table2 (table2_col1, table2_col2, table2_col3, table2_col4) VALUES ('abc','xyz','ghi','def');`,
+					`SELECT DOLT_COMMIT('-Am', '2');`,
+					`CREATE TABLE table3 (table3_col1 VARCHAR(256));`,
+					`SELECT DOLT_COMMIT('-Am', '3');`,
+					`SELECT DOLT_CHECKOUT('other_branch');`,
+					`delete from table2 where table2_col2='jkl';`,
+					`delete from table1 where table1_col2='def';`,
+					`SELECT DOLT_COMMIT('-Am', '4');`,
+					`set dolt_force_transaction_commit=1;`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
+						Expected: []sql.Row{{"f"}},
+					},
+					{
+						Query:    "select * from dolt_constraint_violations_table2;",
+						Expected: []sql.Row{{}},
 					},
 				},
 			},
