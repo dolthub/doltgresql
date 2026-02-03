@@ -1695,8 +1695,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name:  "Merge foreign keys across types, varchar -> text, violation",
-				Focus: true,
+				Name: "Merge foreign keys across types, varchar -> text, violation",
 				SetUpScript: []string{
 					`CREATE TABLE parent (a TEXT PRIMARY KEY);`,
 					`CREATE TABLE child (b INT PRIMARY KEY, c varchar(255), CONSTRAINT fk FOREIGN KEY (c) REFERENCES parent(a) ON DELETE CASCADE ON UPDATE NO ACTION);`,
@@ -1724,7 +1723,51 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name: "Merge foreign keys across types, varchar -> text multi-column, violation",
+				Name:  "Merge foreign keys across types, varchar -> text 2 column key, violation",
+				Focus: true,
+				SetUpScript: []string{
+					`CREATE TABLE parent (
+            a VARCHAR(256),
+            b text,
+            c VARCHAR(256),
+            PRIMARY KEY (b, a)
+        );`,
+					`CREATE INDEX idx_parent_on_a_b ON parent (a, b);`,
+					`CREATE TABLE child (
+            d VARCHAR(256),
+            e VARCHAR(256),
+            f varchar(256),
+            PRIMARY KEY (e, d),
+            CONSTRAINT child_fk FOREIGN KEY (d, f) REFERENCES parent (a, b) ON DELETE CASCADE ON UPDATE NO ACTION
+        );`,
+					`INSERT INTO parent VALUES ('abc','def', 'xyz');`,
+					`INSERT INTO child VALUES ('abc','123','def');`,
+					`SELECT DOLT_COMMIT('-Am', '1');`,
+					`SELECT DOLT_BRANCH('other_branch');`,
+					`INSERT INTO child VALUES ('abc','www','def');`,
+					`SELECT DOLT_COMMIT('-Am', '2');`,
+					`CREATE TABLE table3 (table3_col1 VARCHAR(256));`,
+					`SELECT DOLT_COMMIT('-Am', '3');`,
+					`SELECT DOLT_CHECKOUT('other_branch');`,
+					`delete from child where e='def';`,
+					`delete from parent where a='abc';`,
+					`SELECT DOLT_COMMIT('-Am', '4');`,
+					`set dolt_force_transaction_commit=1;`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
+						Expected: []sql.Row{{"f"}},
+					},
+					{
+						Query:    "select * from dolt_constraint_violations_child;",
+						Expected: []sql.Row{{}},
+					},
+				},
+			},
+			{
+				Name:  "Merge foreign keys across types, varchar -> text 3 column key, violation",
+				Focus: true,
 				SetUpScript: []string{
 					`CREATE TABLE table1 (
             table1_col1 VARCHAR(256),
