@@ -128,7 +128,24 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 				}
 			}
 		}
-		// For single functions or other cases, use the original ValuesStatement approach
+
+		// For explicit ROWS FROM with multiple functions, use RowsFromExpr
+		// This handles: ROWS FROM(generate_series(1,3), generate_series(10,12))
+		if len(node.Items) > 1 {
+			selectExprs := make(vitess.SelectExprs, len(node.Items))
+			for i, item := range node.Items {
+				expr, err := nodeExpr(ctx, item)
+				if err != nil {
+					return nil, err
+				}
+				selectExprs[i] = &vitess.AliasedExpr{Expr: expr}
+			}
+			return &vitess.RowsFromExpr{
+				Exprs: selectExprs,
+			}, nil
+		}
+
+		// For single functions, use the original ValuesStatement approach
 		// which works with the existing table function infrastructure
 		exprs, err := nodeExprs(ctx, node.Items)
 		if err != nil {

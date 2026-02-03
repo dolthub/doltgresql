@@ -73,11 +73,10 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (vitess.Tab
 			}
 		}
 
-		// For single functions or non-multi-arg-UNNEST cases, use the existing
-		// subquery-based approach that works with the table function infrastructure.
-		// Only WITH ORDINALITY requires the new RowsFromExpr approach.
-		if node.Ordinality {
-			// Use RowsFromExpr for WITH ORDINALITY support
+		// Use RowsFromExpr for:
+		// 1. Multiple functions: ROWS FROM(func1(), func2()) AS alias
+		// 2. WITH ORDINALITY: ROWS FROM(func()) WITH ORDINALITY
+		if len(rowsFrom.Items) > 1 || node.Ordinality {
 			selectExprs := make(vitess.SelectExprs, len(rowsFrom.Items))
 			for i, item := range rowsFrom.Items {
 				expr, err := nodeExpr(ctx, item)
@@ -103,7 +102,7 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (vitess.Tab
 			}, nil
 		}
 
-		// For non-ordinality cases, fall through to use the existing
+		// For single function without ordinality, fall through to use the existing
 		// table function infrastructure via nodeTableExpr
 		tableExpr, err := nodeTableExpr(ctx, rowsFrom)
 		if err != nil {

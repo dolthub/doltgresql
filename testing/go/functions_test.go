@@ -1583,6 +1583,61 @@ func TestArrayFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "ROWS FROM with generate_series",
+			Assertions: []ScriptTestAssertion{
+				{
+					// Basic ROWS FROM with two generate_series calls
+					Query:    `SELECT * FROM ROWS FROM(generate_series(1,3), generate_series(10,12))`,
+					Expected: []sql.Row{{int64(1), int64(10)}, {int64(2), int64(11)}, {int64(3), int64(12)}},
+				},
+				{
+					// ROWS FROM with unequal-length series (shorter padded with NULL)
+					Query:    `SELECT * FROM ROWS FROM(generate_series(1,2), generate_series(10,13))`,
+					Expected: []sql.Row{{int64(1), int64(10)}, {int64(2), int64(11)}, {nil, int64(12)}, {nil, int64(13)}},
+				},
+				{
+					// ROWS FROM with table alias
+					Query:    `SELECT r.* FROM ROWS FROM(generate_series(1,2), generate_series(10,11)) AS r`,
+					Expected: []sql.Row{{int64(1), int64(10)}, {int64(2), int64(11)}},
+				},
+				{
+					// ROWS FROM with three functions
+					Query:    `SELECT * FROM ROWS FROM(generate_series(1,2), generate_series(10,11), generate_series(100,101))`,
+					Expected: []sql.Row{{int64(1), int64(10), int64(100)}, {int64(2), int64(11), int64(101)}},
+				},
+			},
+		},
+		{
+			Name: "ROWS FROM with unnest",
+			Assertions: []ScriptTestAssertion{
+				{
+					// ROWS FROM with explicit unnest calls
+					Query:    `SELECT * FROM ROWS FROM(unnest(ARRAY['a','b']), unnest(ARRAY[1,2]))`,
+					Expected: []sql.Row{{"a", int64(1)}, {"b", int64(2)}},
+				},
+				{
+					// ROWS FROM with unequal-length unnest
+					Query:    `SELECT * FROM ROWS FROM(unnest(ARRAY['a','b','c']), unnest(ARRAY[1,2]))`,
+					Expected: []sql.Row{{"a", int64(1)}, {"b", int64(2)}, {"c", nil}},
+				},
+			},
+		},
+		{
+			Name: "ROWS FROM mixed functions",
+			Assertions: []ScriptTestAssertion{
+				{
+					// Mix generate_series and unnest
+					Query:    `SELECT * FROM ROWS FROM(generate_series(1,3), unnest(ARRAY['x','y','z']))`,
+					Expected: []sql.Row{{int64(1), "x"}, {int64(2), "y"}, {int64(3), "z"}},
+				},
+				{
+					// Mix with unequal lengths
+					Query:    `SELECT * FROM ROWS FROM(generate_series(1,2), unnest(ARRAY['x','y','z']))`,
+					Expected: []sql.Row{{int64(1), "x"}, {int64(2), "y"}, {nil, "z"}},
+				},
+			},
+		},
+		{
 			Name:        "array_to_string",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
