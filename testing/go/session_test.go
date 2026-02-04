@@ -69,3 +69,36 @@ func TestDiscard(t *testing.T) {
 		},
 	})
 }
+
+func TestRollback(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Test rollback transaction",
+			SetUpScript: []string{
+				`BEGIN`,
+				`CREATE temporary TABLE test (a INT)`,
+				`insert into test values (1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select * from test",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "ROLLBACK",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "select * from test",
+					ExpectedErr: "table not found",
+					Skip:        true, // temp table should be dropped after ROLLBACK
+				},
+				{
+					Query:    "create temp table test (b int)",
+					Expected: []sql.Row{},
+					Skip:     true, // temp table should be dropped after ROLLBACK
+				},
+			},
+		},
+	})
+}
