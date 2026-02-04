@@ -1887,7 +1887,46 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name:  "Merge foreign keys across types, varchar -> text 2 column key, child primary index, violation",
+				Name: "Merge foreign keys across types, varchar -> text 2 column key, child primary index, violation",
+				SetUpScript: []string{
+					`CREATE TABLE parent (
+            a VARCHAR(256),
+            b text,
+            c VARCHAR(256),
+            PRIMARY KEY (b, a)
+        );`,
+					`CREATE TABLE child (
+            d VARCHAR(256),
+            e VARCHAR(256),
+            f varchar(256),
+            PRIMARY KEY (e, d)
+        );`,
+					`INSERT INTO parent VALUES ('abc','def', 'xyz');`,
+					`INSERT INTO child VALUES ('abc','123', 'def');`,
+					`SELECT DOLT_COMMIT('-Am', '1');`,
+					`SELECT DOLT_BRANCH('other_branch');`,
+					`ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (f, d) REFERENCES parent (b, a);`,
+					`SELECT DOLT_COMMIT('-Am', '2');`,
+					`CREATE TABLE table3 (table3_col1 VARCHAR(256));`,
+					`SELECT DOLT_COMMIT('-Am', '3');`,
+					`SELECT DOLT_CHECKOUT('other_branch');`,
+					`INSERT INTO child VALUES ('abc','def','xxx');`,
+					`SELECT DOLT_COMMIT('-Am', '4');`,
+					`set dolt_force_transaction_commit=1;`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
+						Expected: []sql.Row{{"f"}},
+					},
+					{
+						Query:    "select violation_type, d, e, f from dolt_constraint_violations_child;",
+						Expected: []sql.Row{{"foreign key", "abc", "def", "xxx"}},
+					},
+				},
+			},
+			{
+				Name:  "Merge foreign keys across types, varchar -> text 2 column key, child primary index, no violation",
 				Focus: true,
 				SetUpScript: []string{
 					`CREATE TABLE parent (
@@ -1903,7 +1942,7 @@ func TestForeignKeys(t *testing.T) {
             PRIMARY KEY (e, d)
         );`,
 					`INSERT INTO parent VALUES ('abc','def', 'xyz');`,
-					`INSERT INTO child VALUES ('abc','def','123');`,
+					`INSERT INTO child VALUES ('abc','123', 'def');`,
 					`SELECT DOLT_COMMIT('-Am', '1');`,
 					`SELECT DOLT_BRANCH('other_branch');`,
 					`ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (f, d) REFERENCES parent (b, a);`,
@@ -1911,7 +1950,8 @@ func TestForeignKeys(t *testing.T) {
 					`CREATE TABLE table3 (table3_col1 VARCHAR(256));`,
 					`SELECT DOLT_COMMIT('-Am', '3');`,
 					`SELECT DOLT_CHECKOUT('other_branch');`,
-					`INSERT INTO child VALUES ('abc','def','xxx');`,
+					`INSERT INTO parent VALUES ('qqq','def', 'xyz');`,
+					`INSERT INTO child VALUES ('qqq','123', 'def');`,
 					`SELECT DOLT_COMMIT('-Am', '4');`,
 				},
 				Assertions: []ScriptTestAssertion{

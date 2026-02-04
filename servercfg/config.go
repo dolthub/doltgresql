@@ -18,18 +18,18 @@ import (
 	"github.com/cockroachdb/errors"
 	doltservercfg "github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/doltgresql/server/hook"
 	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/yaml.v2"
 
 	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/expression"
-	"github.com/dolthub/doltgresql/server/hook"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
 var ConfigHelp = "Supported fields in the config.yaml file, and their default values, " +
-	"are as follows:\n\n" + DefaultServerConfig().String()
+		"are as follows:\n\n" + DefaultServerConfig().String()
 
 // DoltgresConfig is the configuration file for Doltgres.
 type DoltgresConfig struct {
