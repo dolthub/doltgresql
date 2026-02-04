@@ -72,3 +72,8 @@ teardown() {
     cd $BATS_TEST_DIRNAME/python
     python3 psycopg2_test.py $USER $PORT
 }
+
+@test "python postgres: sqlalcchemy client" {
+    cd $BATS_TEST_DIRNAME/python
+    python3 sqlalchemy-test.py $USER $PORT
+}
