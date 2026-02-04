@@ -32,63 +32,6 @@ type ImplicitCast struct {
 
 var _ sql.Expression = (*ImplicitCast)(nil)
 
-// UnknownCoercion wraps an expression with unknown type to coerce it to a target type.
-// Unlike ImplicitCast, this doesn't perform any actual conversion - it just changes the
-// reported type since unknown type literals can coerce to any type in PostgreSQL.
-type UnknownCoercion struct {
-	expr   sql.Expression
-	toType *pgtypes.DoltgresType
-}
-
-var _ sql.Expression = (*UnknownCoercion)(nil)
-
-// NewUnknownCoercion returns a new *UnknownCoercion expression.
-func NewUnknownCoercion(expr sql.Expression, toType *pgtypes.DoltgresType) *UnknownCoercion {
-	return &UnknownCoercion{
-		expr:   expr,
-		toType: toType,
-	}
-}
-
-// Children implements the sql.Expression interface.
-func (uc *UnknownCoercion) Children() []sql.Expression {
-	return []sql.Expression{uc.expr}
-}
-
-// Eval implements the sql.Expression interface.
-func (uc *UnknownCoercion) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	// Just pass through - unknown type values can coerce to any type
-	return uc.expr.Eval(ctx, row)
-}
-
-// IsNullable implements the sql.Expression interface.
-func (uc *UnknownCoercion) IsNullable() bool {
-	return uc.expr.IsNullable()
-}
-
-// Resolved implements the sql.Expression interface.
-func (uc *UnknownCoercion) Resolved() bool {
-	return uc.expr.Resolved()
-}
-
-// String implements the sql.Expression interface.
-func (uc *UnknownCoercion) String() string {
-	return uc.expr.String()
-}
-
-// Type implements the sql.Expression interface.
-func (uc *UnknownCoercion) Type() sql.Type {
-	return uc.toType
-}
-
-// WithChildren implements the sql.Expression interface.
-func (uc *UnknownCoercion) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	if len(children) != 1 {
-		return nil, sql.ErrInvalidChildrenNumber.New(uc, len(children), 1)
-	}
-	return NewUnknownCoercion(children[0], uc.toType), nil
-}
-
 // NewImplicitCast returns a new *ImplicitCast expression.
 func NewImplicitCast(expr sql.Expression, fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType) *ImplicitCast {
 	toType = checkForDomainType(toType)
