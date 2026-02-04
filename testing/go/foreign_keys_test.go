@@ -1805,8 +1805,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name:  "Merge foreign keys across types, varchar -> text 2 column key, parent primary index, violation",
-				Focus: true,
+				Name: "Merge foreign keys across types, varchar -> text 2 column key, parent primary index, violation",
 				SetUpScript: []string{
 					`CREATE TABLE parent (
             a VARCHAR(256),
@@ -1847,8 +1846,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name:  "Merge foreign keys across types, varchar -> text 2 column key, parent primary index, no violation",
-				Focus: true,
+				Name: "Merge foreign keys across types, varchar -> text 2 column key, parent primary index, no violation",
 				SetUpScript: []string{
 					`CREATE TABLE parent (
             a VARCHAR(256),
@@ -1926,8 +1924,7 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
-				Name:  "Merge foreign keys across types, varchar -> text 2 column key, child primary index, no violation",
-				Focus: true,
+				Name: "Merge foreign keys across types, varchar -> text 2 column key, child secondary index, violation",
 				SetUpScript: []string{
 					`CREATE TABLE parent (
             a VARCHAR(256),
@@ -1939,29 +1936,30 @@ func TestForeignKeys(t *testing.T) {
             d VARCHAR(256),
             e VARCHAR(256),
             f varchar(256),
+            g VARCHAR(256),
             PRIMARY KEY (e, d)
         );`,
 					`INSERT INTO parent VALUES ('abc','def', 'xyz');`,
-					`INSERT INTO child VALUES ('abc','123', 'def');`,
+					`INSERT INTO child VALUES ('abc','123', 'abc', 'def');`,
 					`SELECT DOLT_COMMIT('-Am', '1');`,
 					`SELECT DOLT_BRANCH('other_branch');`,
-					`ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (f, d) REFERENCES parent (b, a);`,
+					`ALTER TABLE child ADD CONSTRAINT child_fk FOREIGN KEY (g, f) REFERENCES parent (b, a);`,
 					`SELECT DOLT_COMMIT('-Am', '2');`,
 					`CREATE TABLE table3 (table3_col1 VARCHAR(256));`,
 					`SELECT DOLT_COMMIT('-Am', '3');`,
 					`SELECT DOLT_CHECKOUT('other_branch');`,
-					`INSERT INTO parent VALUES ('qqq','def', 'xyz');`,
-					`INSERT INTO child VALUES ('qqq','123', 'def');`,
+					`INSERT INTO child VALUES ('xyz','123', 'def', 'abc');`,
 					`SELECT DOLT_COMMIT('-Am', '4');`,
+					`set dolt_force_transaction_commit=1;`,
 				},
 				Assertions: []ScriptTestAssertion{
 					{
 						Query:    "select strpos(dolt_merge('main')::text, 'merge successful') > 0;",
-						Expected: []sql.Row{{"t"}},
+						Expected: []sql.Row{{"f"}},
 					},
 					{
-						Query:    "select violation_type, d, e, f from dolt_constraint_violations_child;",
-						Expected: []sql.Row{},
+						Query:    "select violation_type, d, e, f, g from dolt_constraint_violations_child;",
+						Expected: []sql.Row{{"foreign key", "xyz", "123", "def", "abc"}},
 					},
 				},
 			},
