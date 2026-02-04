@@ -15,12 +15,14 @@
 package ast
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
@@ -38,20 +40,29 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}
 	// Grab the general information that we'll need to create the function
 	tableName := node.Name.ToTableName()
-	retType := pgtypes.Void
-	if len(node.RetType) == 1 {
+	var retType *pgtypes.DoltgresType
+	if len(node.RetType) == 0 {
+		retType = pgtypes.Void
+	} else if !node.ReturnsTable { // Return types may specify "trigger", but this doesn't apply elsewhere
 		switch typ := node.RetType[0].Type.(type) {
 		case *types.T:
 			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.Name()))
-		default:
-			sqlString := strings.ToLower(typ.SQLString())
-			if sqlString == "trigger" {
+		case *tree.UnresolvedObjectName:
+			if typ.NumParts == 1 && typ.SQLString() == "trigger" {
 				retType = pgtypes.Trigger
 			} else {
-				retType = pgtypes.NewUnresolvedDoltgresType("", sqlString)
+				_, retType, err = nodeResolvableTypeReference(ctx, typ)
+				if err != nil {
+					return nil, err
+				}
 			}
+		default:
+			return nil, fmt.Errorf("unsupported ResolvableTypeReference type: %T", typ)
 		}
+	} else {
+		retType = createAnonymousCompositeType(node.RetType)
 	}
+
 	paramNames := make([]string, len(node.Args))
 	paramTypes := make([]*pgtypes.DoltgresType, len(node.Args))
 	for i, arg := range node.Args {
@@ -59,6 +70,11 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		switch argType := arg.Type.(type) {
 		case *types.T:
 			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.Name()))
+		case *tree.UnresolvedObjectName:
+			_, paramTypes[i], err = nodeResolvableTypeReference(ctx, argType)
+			if err != nil {
+				return nil, err
+			}
 		default:
 			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.SQLString()))
 		}
@@ -121,9 +137,36 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			parsedBody,
 			sqlDef,
 			sqlDefParsed,
-			node.SetOf,
+			node.ReturnsSetOf,
 		),
 	}, nil
+}
+
+// createAnonymousCompositeType creates a new DoltgresType for the anonymous composite return
+// type for a function, as represented by the |fieldTypes| that were specified in the function
+// definition.
+func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.DoltgresType {
+	attrs := make([]pgtypes.CompositeAttribute, len(fieldTypes))
+	for i, fieldType := range fieldTypes {
+		attrs[i] = pgtypes.NewCompositeAttribute(nil, id.Null, fieldType.Name.String(),
+			id.NewType("", fieldType.Type.SQLString()), int16(i), "")
+	}
+
+	typeIdString := "table("
+	for i, attr := range attrs {
+		if i > 0 {
+			typeIdString += ","
+		}
+		typeIdString += attr.Name
+		typeIdString += ":"
+		typeIdString += attr.TypeID.TypeName()
+	}
+	typeIdString += ")"
+
+	// NOTE: there is no schema needed, since these types are anonymous and can't be directly referenced
+	typeId := id.NewType("", typeIdString)
+
+	return pgtypes.NewCompositeType(context.Background(), id.Null, id.NullType, typeId, attrs)
 }
 
 // handleLanguageSQL handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE.

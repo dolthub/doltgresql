@@ -17,9 +17,8 @@ package framework
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/core/extensions"
-
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -71,6 +70,7 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 		if err != nil || returnType == nil {
 			return nil, false
 		}
+
 		paramTypes := make([]*pgtypes.DoltgresType, len(overload.ParameterTypes))
 		for i, paramType := range overload.ParameterTypes {
 			paramTypes[i], err = typesCollection.GetType(ctx, paramType)

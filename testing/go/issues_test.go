@@ -196,5 +196,38 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #2197 Part 1",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (a INT, b VARCHAR(3));`,
+				`CREATE TABLE t2(id SERIAL, t1 t1);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO t2(t1) VALUES (ROW(1, 'abc'));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM t2;`,
+					Expected: []sql.Row{{1, "(1,abc)"}},
+				},
+				{
+					Query:       `INSERT INTO t2(t1) VALUES (ROW('a', 'def'));`,
+					ExpectedErr: "invalid input syntax for type",
+				},
+				{
+					Query:       `INSERT INTO t2(t1) VALUES (ROW(true, 'def'));`,
+					ExpectedErr: "Cannot cast type",
+				},
+				{
+					Query:       `INSERT INTO t2(t1) VALUES (ROW(2, 'def', 'ghi'));`,
+					ExpectedErr: "cannot cast type",
+				},
+				{
+					Query:       `INSERT INTO t2(t1) VALUES (ROW(2));`,
+					ExpectedErr: "cannot cast type",
+				},
+			},
+		},
 	})
 }

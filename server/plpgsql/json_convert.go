@@ -27,22 +27,39 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 		TriggerOld: jsonBlock.OldVariableNumber,
 		Label:      jsonBlock.Action.StmtBlock.Label,
 	}
+	lowestRecordNumber := int32(2147483647)
+	// We do a first loop to determine the offset for the first record
+	for _, v := range jsonBlock.Datums {
+		switch {
+		case v.Record != nil:
+			if v.Record.DatumNumber < lowestRecordNumber {
+				lowestRecordNumber = v.Record.DatumNumber
+			}
+		}
+	}
+	offset := int32(0) - lowestRecordNumber
+	// Then we do a second loop that actually adds all of the datums to the block
 	for _, v := range jsonBlock.Datums {
 		switch {
 		case v.Record != nil:
 			// TODO: support normal record types
-			if int(v.Record.DatumNumber) > len(block.Records) {
+			datumNumber := v.Record.DatumNumber + offset
+			if int(datumNumber) >= len(block.Records) {
 				oldRecords := block.Records
-				block.Records = make([]Record, v.Record.DatumNumber)
+				block.Records = make([]Record, datumNumber+1)
 				copy(block.Records, oldRecords)
 			}
-			block.Records[v.Record.DatumNumber-1].Name = v.Record.RefName
+
+			if v.Record.DatumNumber > 0 {
+				block.Records[datumNumber].Name = v.Record.RefName
+			}
 		case v.RecordField != nil:
-			if int(v.RecordField.RecordParentNumber) > len(block.Records) {
+			recordParentNumber := v.RecordField.RecordParentNumber + offset
+			if int(recordParentNumber) >= len(block.Records) {
 				return Block{}, errors.New("invalid record parent number")
 			}
-			block.Records[v.RecordField.RecordParentNumber-1].Fields = append(
-				block.Records[v.RecordField.RecordParentNumber-1].Fields, v.RecordField.FieldName)
+			block.Records[recordParentNumber].Fields = append(
+				block.Records[recordParentNumber].Fields, v.RecordField.FieldName)
 		case v.Row != nil:
 			if len(v.Row.Fields) != 1 {
 				return Block{}, errors.New("record types are not yet supported")

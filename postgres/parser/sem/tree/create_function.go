@@ -25,12 +25,13 @@ var _ Statement = &CreateFunction{}
 
 // CreateFunction represents a CREATE FUNCTION statement.
 type CreateFunction struct {
-	Name    *UnresolvedObjectName
-	Replace bool
-	Args    RoutineArgs
-	SetOf   bool
-	RetType []SimpleColumnDef
-	Options []RoutineOption
+	Name         *UnresolvedObjectName
+	Replace      bool
+	Args         RoutineArgs
+	ReturnsSetOf bool
+	ReturnsTable bool
+	RetType      []SimpleColumnDef
+	Options      []RoutineOption
 }
 
 // Format implements the NodeFormatter interface.
@@ -47,9 +48,9 @@ func (node *CreateFunction) Format(ctx *FmtCtx) {
 		ctx.WriteString(" )")
 	}
 	if node.RetType != nil {
-		if len(node.RetType) == 1 && node.RetType[0].Name == "" {
+		if !node.ReturnsTable {
 			ctx.WriteString("RETURNS ")
-			if node.SetOf {
+			if node.ReturnsSetOf {
 				ctx.WriteString("SETOF ")
 			}
 			ctx.WriteString(node.RetType[0].Type.SQLString())
