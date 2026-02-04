@@ -80,6 +80,9 @@ var regtypein = framework.Function1{
 		if typeName == "char" && schema == "" {
 			return id.NewType("pg_catalog", "bpchar").AsId(), nil
 		}
+		if typeName == "int" {
+			typeName = "int4"
+		}
 		if internalID, ok := pgtypes.NameToInternalID[typeName]; ok && (internalID.SchemaName() == schema || schema == "") {
 			return internalID.AsId(), nil
 		}

@@ -16,13 +16,10 @@ package pgcatalog
 
 import (
 	"fmt"
+	"github.com/dolthub/go-mysql-server/sql"
 	"io"
 	"math"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
-	"github.com/dolthub/go-mysql-server/sql"
-
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
@@ -155,27 +152,27 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	}
 
 	if includeSystemTables {
-		_, root, err := core.GetRootFromContext(ctx)
-		if err != nil {
-			return err
-		}
-
-		systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
-		if err != nil {
-			return err
-		}
-
-		for _, tblName := range systemTables {
-			class := &pgClass{
-				oid:       id.NewTable(tblName.Schema, tblName.Name).AsId(),
-				name:      tblName.Name,
-				schemaOid: id.NewNamespace(tblName.Schema).AsId(),
-				kind:      "r",
-			}
-			nameIdx.Add(class)
-			oidIdx.Add(class)
-			classes = append(classes, class)
-		}
+		//_, root, err := core.GetRootFromContext(ctx)
+		//if err != nil {
+		//	return err
+		//}
+		//
+		//systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
+		//if err != nil {
+		//	return err
+		//}
+		//
+		//for _, tblName := range systemTables {
+		//	class := &pgClass{
+		//		oid:       id.NewTable(tblName.Schema, tblName.Name).AsId(),
+		//		name:      tblName.Name,
+		//		schemaOid: id.NewNamespace(tblName.Schema).AsId(),
+		//		kind:      "r",
+		//	}
+		//	nameIdx.Add(class)
+		//	oidIdx.Add(class)
+		//	classes = append(classes, class)
+		//}
 	}
 
 	pgCatalogCache.pgClasses = &pgClassCache{

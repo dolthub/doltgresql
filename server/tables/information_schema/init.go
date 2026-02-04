@@ -15,6 +15,7 @@
 package information_schema
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/information_schema"
 )
 
@@ -25,4 +26,13 @@ func Init() {
 	information_schema.NewSchemataTable = newSchemataTable
 	information_schema.NewTablesTable = newTablesTable
 	information_schema.NewViewsTable = newViewsTable
+
+	// Postgres-specific tables/views to be added to information_schema database
+	information_schema.NewInformationSchemaTablesToAdd = map[string]sql.Table{
+		ConstraintColumnUsageViewName: &information_schema.InformationSchemaTable{
+			TableName:   ConstraintColumnUsageViewName,
+			TableSchema: constraintColumnUsageSchema,
+			Reader:      constraintColumnUsageRowIter,
+		},
+	}
 }
