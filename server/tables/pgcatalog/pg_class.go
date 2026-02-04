@@ -16,9 +16,10 @@ package pgcatalog
 
 import (
 	"fmt"
-	"github.com/dolthub/go-mysql-server/sql"
 	"io"
 	"math"
+
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions"
