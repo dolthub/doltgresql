@@ -67,7 +67,7 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 			// GetField indices are 1-based in GMS planbuilder, so subtract 1 for schema access
 			schemaIdx := gf.Index() - 1
 			if schemaIdx < 0 || schemaIdx >= len(newSch) {
-				return nil, transform.NewTree, errors.Newf("GetField `%s` on table `%s` uses invalid index `%d`",
+				return nil, transform.NewTree, errors.Errorf("VALUES: GetField `%s` on table `%s` uses invalid index `%d`",
 					gf.Name(), gf.Table(), gf.Index())
 			}
 
@@ -118,7 +118,7 @@ func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	numCols := len(values.ExpressionTuples[0])
 	for i := 1; i < len(values.ExpressionTuples); i++ {
 		if len(values.ExpressionTuples[i]) != numCols {
-			return nil, transform.NewTree, errors.New("VALUES lists must all be the same length")
+			return nil, transform.NewTree, errors.New("VALUES: VALUES lists must all be the same length")
 		}
 	}
 	if numCols == 0 {
@@ -136,7 +136,7 @@ func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 			} else if pgType, ok := exprType.(*pgtypes.DoltgresType); ok {
 				columnTypes[colIdx][rowIdx] = pgType
 			} else {
-				return n, transform.NewTree, errors.New("VALUES cannot use GMS types")
+				return nil, transform.NewTree, errors.New("VALUES: VALUES cannot use GMS types")
 			}
 		}
 	}
