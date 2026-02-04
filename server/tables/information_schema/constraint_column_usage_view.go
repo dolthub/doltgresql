@@ -28,8 +28,8 @@ const ConstraintColumnUsageViewName = "constraint_column_usage"
 func newConstraintColumnUsageView() *information_schema.InformationSchemaTable {
 	return &information_schema.InformationSchemaTable{
 		TableName:   ConstraintColumnUsageViewName,
-		TableSchema: viewsSchema,
-		Reader:      viewsRowIter,
+		TableSchema: constraintColumnUsageSchema,
+		Reader:      constraintColumnUsageRowIter,
 	}
 }
 
