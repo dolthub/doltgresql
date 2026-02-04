@@ -161,6 +161,10 @@ func GetExplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 			return targetType.IoInput(ctx, str)
 		}
 	}
+	// It is always valid to convert from the `unknown` type
+	if fromType.ID == pgtypes.Unknown.ID {
+		return UnknownLiteralCast
+	}
 	return nil
 }
 
@@ -190,6 +194,10 @@ func GetAssignmentCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresT
 			return targetType.IoInput(ctx, str)
 		}
 	}
+	// It is always valid to convert from the `unknown` type
+	if fromType.ID == pgtypes.Unknown.ID {
+		return UnknownLiteralCast
+	}
 	return nil
 }
 
@@ -203,6 +211,10 @@ func GetImplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 	// parameters).
 	if fromType.ID == toType.ID {
 		return IdentityCast
+	}
+	// It is always valid to convert from the `unknown` type
+	if fromType.ID == pgtypes.Unknown.ID {
+		return UnknownLiteralCast
 	}
 	return nil
 }

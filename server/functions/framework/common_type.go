@@ -20,11 +20,12 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// FindCommonType returns the common type that given types can convert to.
+// FindCommonType returns the common type that given types can convert to. Returns false if no implicit casts are needed
+// to resolve the given types as the returned common type.
 // https://www.postgresql.org/docs/15/typeconv-union-case.html
-func FindCommonType(types []*pgtypes.DoltgresType) (*pgtypes.DoltgresType, error) {
-	var candidateType = pgtypes.Unknown
-	var fail = false
+func FindCommonType(types []*pgtypes.DoltgresType) (_ *pgtypes.DoltgresType, requiresCasts bool, err error) {
+	candidateType := pgtypes.Unknown
+	differentTypes := false
 	for _, typ := range types {
 		if typ.ID == candidateType.ID {
 			continue
@@ -32,46 +33,49 @@ func FindCommonType(types []*pgtypes.DoltgresType) (*pgtypes.DoltgresType, error
 			candidateType = typ
 		} else {
 			candidateType = pgtypes.Unknown
-			fail = true
+			differentTypes = true
 		}
 	}
-	if !fail {
+	if !differentTypes {
 		if candidateType.ID == pgtypes.Unknown.ID {
-			return pgtypes.Text, nil
+			// We require implicit casts from `unknown` to `text`
+			return pgtypes.Text, true, nil
 		}
-		return candidateType, nil
+		return candidateType, false, nil
 	}
+	// We have different types if we've made it this far, so we're guaranteed to require implicit casts
+	requiresCasts = true
 	for _, typ := range types {
 		if candidateType.ID == pgtypes.Unknown.ID {
 			candidateType = typ
 		}
 		if typ.ID != pgtypes.Unknown.ID && candidateType.TypCategory != typ.TypCategory {
-			return nil, errors.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
+			return nil, false, errors.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
 		}
 	}
-
-	var preferredTypeFound = false
+	// Attempt to find the most general type (or the preferred type in the type category)
 	for _, typ := range types {
-		if typ.ID == pgtypes.Unknown.ID {
+		if typ.ID == pgtypes.Unknown.ID || typ.ID == candidateType.ID {
 			continue
 		} else if GetImplicitCast(typ, candidateType) != nil {
-			// typ can convert to candidateType, so candidateType is at least as general
+			// typ can convert to the candidate type, so the candidate type is at least as general
 			continue
-		} else if GetImplicitCast(candidateType, typ) == nil {
-			return nil, errors.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
-		} else {
-			// candidateType can convert to typ, but not vice versa, so typ is more general
-			// Per PostgreSQL docs: "If the resolution type can be implicitly converted to the
-			// other type but not vice-versa, select the other type as the new resolution type."
+		} else if GetImplicitCast(candidateType, typ) != nil {
+			// the candidate type can convert to typ, but not vice versa, so typ is likely more general
 			candidateType = typ
 			if candidateType.IsPreferred {
-				// "Then, if the new resolution type is preferred, stop considering further inputs."
-				preferredTypeFound = true
+				// We stop considering more types once we've found a preferred type
+				break
 			}
 		}
-		if preferredTypeFound {
-			break
+	}
+	// Verify that all types have an implicit conversion to the candidate type
+	for _, typ := range types {
+		if typ.ID == pgtypes.Unknown.ID || typ.ID == candidateType.ID {
+			continue
+		} else if GetImplicitCast(typ, candidateType) == nil {
+			return nil, false, errors.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
 		}
 	}
-	return candidateType, nil
+	return candidateType, requiresCasts, nil
 }

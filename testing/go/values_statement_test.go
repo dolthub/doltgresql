@@ -96,4 +96,216 @@ var ValuesStatementTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name:        "VALUES with GROUP BY",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// GROUP BY on mixed type VALUES - tests that GetField types are updated correctly
+				Query: `SELECT n, COUNT(*) FROM (VALUES(1),(2.5),(1),(3.5),(2.5)) v(n) GROUP BY n ORDER BY n;`,
+				Expected: []sql.Row{
+					{Numeric("1"), int64(2)},
+					{Numeric("2.5"), int64(2)},
+					{Numeric("3.5"), int64(1)},
+				},
+			},
+			{
+				// SUM with GROUP BY
+				Query: `SELECT category, SUM(amount) FROM (VALUES('a', 1),('b', 2.5),('a', 3),('b', 4.5)) v(category, amount) GROUP BY category ORDER BY category;`,
+				Expected: []sql.Row{
+					{"a", 4.0},
+					{"b", 7.0},
+				},
+			},
+		},
+	},
+	{
+		Name:        "VALUES with DISTINCT",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// DISTINCT on mixed type VALUES
+				Query: `SELECT DISTINCT n FROM (VALUES(1),(2.5),(1),(2.5),(3)) v(n) ORDER BY n;`,
+				Expected: []sql.Row{
+					{Numeric("1")},
+					{Numeric("2.5")},
+					{Numeric("3")},
+				},
+			},
+		},
+	},
+	{
+		Name:        "VALUES with LIMIT and OFFSET",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// LIMIT on mixed type VALUES
+				Query: `SELECT * FROM (VALUES(1),(2.5),(3),(4.5),(5)) v(n) LIMIT 3;`,
+				Expected: []sql.Row{
+					{Numeric("1")},
+					{Numeric("2.5")},
+					{Numeric("3")},
+				},
+			},
+			{
+				// LIMIT with OFFSET
+				Query: `SELECT * FROM (VALUES(1),(2.5),(3),(4.5),(5)) v(n) LIMIT 2 OFFSET 2;`,
+				Expected: []sql.Row{
+					{Numeric("3")},
+					{Numeric("4.5")},
+				},
+			},
+		},
+	},
+	{
+		Name:        "VALUES with ORDER BY",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// ORDER BY on mixed type VALUES - ascending
+				Query: `SELECT * FROM (VALUES(3),(1.5),(2),(4.5)) v(n) ORDER BY n;`,
+				Expected: []sql.Row{
+					{Numeric("1.5")},
+					{Numeric("2")},
+					{Numeric("3")},
+					{Numeric("4.5")},
+				},
+			},
+			{
+				// ORDER BY descending
+				Query: `SELECT * FROM (VALUES(3),(1.5),(2),(4.5)) v(n) ORDER BY n DESC;`,
+				Expected: []sql.Row{
+					{Numeric("4.5")},
+					{Numeric("3")},
+					{Numeric("2")},
+					{Numeric("1.5")},
+				},
+			},
+		},
+	},
+	{
+		Name:        "VALUES in subquery",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// VALUES as subquery in FROM clause
+				Query: `SELECT * FROM (SELECT n * 2 AS doubled FROM (VALUES(1),(2.5),(3)) v(n)) sub;`,
+				Expected: []sql.Row{
+					{Numeric("2")},
+					{Numeric("5.0")},
+					{Numeric("6")},
+				},
+			},
+			{
+				// VALUES with LIMIT inside subquery
+				Query: `SELECT * FROM (SELECT * FROM (VALUES(1),(2.5),(3),(4.5)) v(n) LIMIT 2) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1")},
+					{Numeric("2.5")},
+				},
+			},
+			{
+				// VALUES with ORDER BY inside subquery
+				Query: `SELECT * FROM (SELECT * FROM (VALUES(3),(1.5),(2)) v(n) ORDER BY n) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1.5")},
+					{Numeric("2")},
+					{Numeric("3")},
+				},
+			},
+		},
+	},
+	{
+		Name:        "VALUES with WHERE clause (Filter node)",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// Filter on mixed type VALUES
+				Query: `SELECT * FROM (VALUES(1),(2.5),(3),(4.5),(5)) v(n) WHERE n > 2;`,
+				Expected: []sql.Row{
+					{Numeric("2.5")},
+					{Numeric("3")},
+					{Numeric("4.5")},
+					{Numeric("5")},
+				},
+			},
+			{
+				// Filter with multiple conditions
+				Query: `SELECT * FROM (VALUES(1),(2.5),(3),(4.5),(5)) v(n) WHERE n > 1 AND n < 4.5;`,
+				Expected: []sql.Row{
+					{Numeric("2.5")},
+					{Numeric("3")},
+				},
+			},
+		},
+	},
+	{
+		Name:        "VALUES with aggregate functions",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// AVG on mixed types
+				Query:    `SELECT AVG(n) FROM (VALUES(1),(2),(3),(4)) v(n);`,
+				Expected: []sql.Row{{2.5}},
+			},
+			{
+				// MIN/MAX on mixed types
+				Query: `SELECT MIN(n), MAX(n) FROM (VALUES(1),(2.5),(3),(0.5)) v(n);`,
+				Expected: []sql.Row{
+					{Numeric("0.5"), Numeric("3")},
+				},
+			},
+		},
+	},
+	{
+		Name:        "VALUES combined operations",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// GROUP BY + ORDER BY + LIMIT
+				Query: `SELECT n, COUNT(*) as cnt FROM (VALUES(1),(2.5),(1),(2.5),(3),(1)) v(n) GROUP BY n ORDER BY cnt DESC LIMIT 2;`,
+				Expected: []sql.Row{
+					{Numeric("1"), int64(3)},
+					{Numeric("2.5"), int64(2)},
+				},
+			},
+			{
+				// DISTINCT + ORDER BY + LIMIT
+				Query: `SELECT DISTINCT n FROM (VALUES(1),(2.5),(1),(3),(2.5),(4)) v(n) ORDER BY n DESC LIMIT 3;`,
+				Expected: []sql.Row{
+					{Numeric("4")},
+					{Numeric("3")},
+					{Numeric("2.5")},
+				},
+			},
+			{
+				// WHERE + ORDER BY + LIMIT
+				Query: `SELECT * FROM (VALUES(1),(2.5),(3),(4.5),(5)) v(n) WHERE n > 1 ORDER BY n DESC LIMIT 2;`,
+				Expected: []sql.Row{
+					{Numeric("5")},
+					{Numeric("4.5")},
+				},
+			},
+		},
+	},
+	{
+		Name:        "VALUES with single row (no type unification needed)",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				// Single row should pass through unchanged
+				Query: `SELECT * FROM (VALUES(42)) v(n);`,
+				Expected: []sql.Row{
+					{int32(42)},
+				},
+			},
+			{
+				// Single row with decimal
+				Query: `SELECT * FROM (VALUES(3.14)) v(n);`,
+				Expected: []sql.Row{
+					{Numeric("3.14")},
+				},
+			},
+		},
+	},
 }
