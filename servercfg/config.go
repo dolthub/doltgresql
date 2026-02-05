@@ -49,6 +49,13 @@ func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 			DropTable: sql.DropTable{
 				PreSQLExecution: hook.BeforeTableDeletion,
 			},
+			TableAddColumn: sql.TableAddColumn{
+				PreSQLExecution:  hook.BeforeTableAddColumn,
+				PostSQLExecution: hook.AfterTableAddColumn,
+			},
+			TableDropColumn: sql.TableDropColumn{
+				PostSQLExecution: hook.AfterTableDropColumn,
+			},
 		},
 		SchemaFormatter:                 pgsql.NewPostgresSchemaFormatter(),
 		CostedIndexScanExpressionFilter: &analyzer.LogicTreeWalker{},

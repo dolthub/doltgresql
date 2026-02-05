@@ -94,11 +94,16 @@ var _ sql.NullType = &DoltgresType{}
 var _ sql.StringType = &DoltgresType{}
 var _ sql.NumberType = &DoltgresType{}
 
-// NewUnresolvedDoltgresType returns DoltgresType that is not resolved.
+// NewUnresolvedDoltgresType returns a DoltgresType that is not resolved.
 // The type will have the schema and name defined with given values, with IsUnresolved == true.
 func NewUnresolvedDoltgresType(sch, name string) *DoltgresType {
+	return NewUnresolvedDoltgresTypeFromID(id.NewType(sch, name))
+}
+
+// NewUnresolvedDoltgresTypeFromID returns a DoltgresType that is not resolved.
+func NewUnresolvedDoltgresTypeFromID(idType id.Type) *DoltgresType {
 	return &DoltgresType{
-		ID:           id.NewType(sch, name),
+		ID:           idType,
 		IsUnresolved: true,
 	}
 }
@@ -286,12 +291,42 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		return cmp.Compare(ab.OID(), v2.(id.Oid).OID()), nil
 	case []any:
 		if !t.IsArrayType() {
-			return 0, errors.Errorf("array value received in Compare for non array type")
+			return 0, errors.New("array value received in Compare for non array type")
 		}
 		bb := v2.([]any)
 		minLength := utils.Min(len(ab), len(bb))
 		for i := 0; i < minLength; i++ {
 			res, err := t.ArrayBaseType().Compare(ctx, ab[i], bb[i])
+			if err != nil {
+				return 0, err
+			}
+			if res != 0 {
+				return res, nil
+			}
+		}
+		if len(ab) == len(bb) {
+			return 0, nil
+		} else if len(ab) < len(bb) {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
+	case []RecordValue:
+		if !t.IsCompositeType() {
+			return 0, errors.New("record value received in Compare for non composite type")
+		}
+		bb := v2.([]RecordValue)
+		minLength := utils.Min(len(ab), len(bb))
+		for i := 0; i < minLength; i++ {
+			dgType, isDgType1 := ab[i].Type.(*DoltgresType)
+			otherDgType, isDgType2 := bb[i].Type.(*DoltgresType)
+			if !isDgType1 || !isDgType2 {
+				return 0, errors.New("record values in Compare must use a Doltgres type")
+			}
+			if dgType.ID != otherDgType.ID {
+				return 0, errors.New("record values in Compare must use the same type as the same index")
+			}
+			res, err := dgType.Compare(ctx, ab[i].Value, bb[i].Value)
 			if err != nil {
 				return 0, err
 			}
