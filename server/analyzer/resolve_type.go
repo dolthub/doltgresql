@@ -15,6 +15,7 @@
 package analyzer
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -24,7 +25,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/server/expression"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -118,26 +119,38 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 
 // ResolveTypeForExprs replaces types.ResolvableType to appropriate pgtypes.DoltgresType.
 func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	return pgtransform.NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
-		var same = transform.SameTree
-		switch e := expr.(type) {
-		case *expression.ExplicitCast:
-			if rt, ok := e.Type().(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
+	return pgtransform.NodeExprsWithOpaque(node, func(e sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		switch expr := e.(type) {
+		case *pgexprs.ColumnAccess:
+			exprType, _ := expr.Type().(*pgtypes.DoltgresType)
+			if exprType == nil {
+				return nil, transform.NewTree, errors.New("column access is missing its child expression")
+			} else if exprType.IsResolvedType() {
+				// The type has already been resolved
+				return expr, transform.SameTree, nil
+			}
+			newType, err := resolveType(ctx, exprType)
+			if err != nil {
+				return nil, transform.NewTree, err
+			}
+			return expr.WithType(newType), transform.NewTree, nil
+		case *pgexprs.ExplicitCast:
+			if rt, ok := expr.Type().(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
 				dt, err := resolveType(ctx, rt)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
-				same = transform.NewTree
 				if !dt.IsDefined {
 					return nil, transform.NewTree, pgtypes.ErrTypeIsOnlyAShell.New(dt.Name())
 				} else {
-					expr = e.WithCastToType(dt)
+					return expr.WithCastToType(dt), transform.NewTree, nil
 				}
+			} else {
+				return expr, transform.SameTree, nil
 			}
-			return expr, same, nil
 		default:
 			// TODO: add expressions that use unresolved types like domain
-			return e, transform.SameTree, nil
+			return expr, transform.SameTree, nil
 		}
 	})
 }
