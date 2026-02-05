@@ -300,7 +300,18 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		logrus.Warnf("collate is not yet supported, ignoring")
 		return nodeExpr(ctx, node.Expr)
 	case *tree.ColumnAccessExpr:
-		return nil, errors.Errorf("(E).x is not yet supported")
+		colAccess, err := pgexprs.NewColumnAccess(node.ColName, node.ColIndex)
+		if err != nil {
+			return nil, err
+		}
+		expr, err := nodeExpr(ctx, node.Expr)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{
+			Expression: colAccess,
+			Children:   vitess.Exprs{expr},
+		}, nil
 	case *tree.ColumnItem:
 		var tableName vitess.TableName
 		if node.TableName != nil {
