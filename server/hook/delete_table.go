@@ -30,7 +30,7 @@ import (
 
 // BeforeTableDeletion performs all validation necessary to ensure that table deletion does not leave the database in an
 // invalid state.
-func BeforeTableDeletion(ctx *sql.Context, runner sql.StatementRunner, nodeInterface sql.Node) (sql.Node, error) {
+func BeforeTableDeletion(ctx *sql.Context, _ sql.StatementRunner, nodeInterface sql.Node) (sql.Node, error) {
 	n, ok := nodeInterface.(*plan.DropTable)
 	if !ok {
 		return nil, errors.Newf("DROP TABLE pre-hook expected `*plan.DropTable` but received `%T`", nodeInterface)
