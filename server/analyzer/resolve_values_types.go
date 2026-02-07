@@ -151,8 +151,12 @@ func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		// If we require any casts, then we'll add casting to all expressions in the list
 		if requiresCasts {
 			if len(newTuples) == 0 {
+				// Deep copy to avoid mutating the original expression tuples.
 				newTuples = make([][]sql.Expression, len(values.ExpressionTuples))
-				copy(newTuples, values.ExpressionTuples)
+				for i, row := range values.ExpressionTuples {
+					newTuples[i] = make([]sql.Expression, len(row))
+					copy(newTuples[i], row)
+				}
 			}
 			for rowIdx := 0; rowIdx < len(newTuples); rowIdx++ {
 				newTuples[rowIdx][colIdx] = pgexprs.NewImplicitCast(
