@@ -24,5 +24,13 @@ teardown() {
   npx drizzle-kit push
 
   # we can check if 'components table was created'
-  query_server -c "SELECT * FROM components" -t
+  query_server -c "SELECT * FROM users" -t
+  run query_server -c "SELECT * FROM users" -t
+  [ "$status" -eq 0 ]
+
+  npx tsx src/index.ts
+  query_server -c "SELECT * FROM users" -t
+  run query_server -c "SELECT age FROM users" -t
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "31" ]] || false
 }

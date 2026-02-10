@@ -1,11 +1,9 @@
-import {  jsonb,  pgTable,  text } from 'drizzle-orm/pg-core';
+import {  jsonb,  integer, pgTable, varchar } from 'drizzle-orm/pg-core';
 
-export const components = pgTable(
-    'components',
-    {
-        id: text('id').notNull(),
-        name: text('name'),
-        description: text('description'),
-        render: jsonb('render'),
-    }
-);
+export const usersTable = pgTable("users", {
+    id: integer().primaryKey(),
+    name: varchar({ length: 255 }).notNull(),
+    age: integer().notNull(),
+    email: varchar({ length: 255 }).notNull().unique(),
+    render: jsonb('render'),
+});
