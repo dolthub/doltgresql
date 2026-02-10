@@ -20,3 +20,7 @@ jobs:
           token: ${{ secrets.REPO_ACCESS_TOKEN }}
           event-type: sql-correctness
           client-payload: '{"version": "${{ github.sha }}", "mode": "nightly", "actor": "${{ github.actor }}", "template_script": "./.github/scripts/sql-correctness/get-doltgres-correctness-job-json.sh"}'
+      - uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          event-type: test-doltgres-orm-integrations

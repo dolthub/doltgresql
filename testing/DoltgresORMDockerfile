@@ -1,0 +1,60 @@
+FROM --platform=${BUILDPLATFORM} ubuntu:22.04
+
+# install ORM tools and dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update -y && \
+    apt install -y \
+    curl \
+    gnupg \
+    software-properties-common && \
+    curl -sL https://deb.nodesource.com/setup_22.x | bash - && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+RUN apt update -y && \
+    apt install -y \
+    nodejs \
+    python3.9 \
+    python3-pip \
+    git \
+    bats \
+    postgresql-server-dev-15 && \
+    update-ca-certificates -f
+
+# install go
+WORKDIR /root
+ENV GO_VERSION=1.25.0
+ENV GOPATH=/go
+ENV PATH=$PATH:$GOPATH/bin
+ENV PATH=$PATH:$GOPATH/bin:/usr/local/go/bin
+RUN curl -O "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz" && \
+    sha256sum "go${GO_VERSION}.linux-amd64.tar.gz" && \
+    tar -xvf "go${GO_VERSION}.linux-amd64.tar.gz" -C /usr/local && \
+    chown -R root:root /usr/local/go && \
+    mkdir -p $HOME/go/{bin,src} && \
+    go version
+
+# install doltgres from source
+WORKDIR /root/building
+COPY go.mod doltgresql/
+
+# download dependencies first to persist Go dependencies download cache for doltgres despite other edits
+WORKDIR doltgresql
+RUN go mod download
+
+# exclude clients directory to persist build-cache for doltgres when only editing ORM code
+COPY --exclude=testing/doltgres-orm-tests/ . .
+
+# Build the parser
+WORKDIR /root/building/doltgresql/postgres/parser
+RUN bash ./build.sh
+
+# Build the doltgres binary, which we will need for bats, and put it on PATH
+WORKDIR /root/building/doltgresql/cmd/doltgres
+RUN go build -o /usr/local/bin/doltgres .
+
+COPY ./testing/doltgres-orm-tests /doltgres-orm-tests
+COPY ./testing/doltgres-orm-tests/doltgres-orm-tests-entrypoint.sh /doltgres-orm-tests/entrypoint.sh
+
+WORKDIR /doltgres-orm-tests
+ENTRYPOINT ["/doltgres-orm-tests/entrypoint.sh"]
