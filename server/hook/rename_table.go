@@ -38,7 +38,8 @@ func AfterTableRename(ctx *sql.Context, runner sql.StatementRunner, nodeInterfac
 	// Grab the table being altered (so we know the schema)
 	sqlTable, ok := n.TableExists(ctx, n.NewNames[0])
 	if !ok {
-		return errors.New("RENAME TABLE post-hook did not receive a new table name")
+		// Views do not manifest as tables, so we'll return here if this isn't a table
+		return nil
 	}
 	doltTable := core.SQLTableToDoltTable(sqlTable)
 	if doltTable == nil {

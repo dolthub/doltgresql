@@ -964,5 +964,34 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ALTER TABLE RENAME on view",
+			SetUpScript: []string{
+				`CREATE TABLE tenk1 (
+	unique1		int4,
+	unique2		int4,
+	two			int4,
+	four		int4,
+	ten			int4,
+	twenty		int4,
+	hundred		int4,
+	thousand	int4,
+	twothousand	int4,
+	fivethous	int4,
+	tenthous	int4,
+	odd			int4,
+	even		int4,
+	stringu1	name,
+	stringu2	name,
+	string4		name);`,
+				`CREATE VIEW attmp_view (unique1) AS SELECT unique1 FROM tenk1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ALTER TABLE attmp_view RENAME TO attmp_view_new;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
