@@ -21,10 +21,11 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/yaml.v2"
 
+	"github.com/dolthub/doltgresql/server/hook"
+
 	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/expression"
-	"github.com/dolthub/doltgresql/server/hook"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
@@ -48,6 +49,13 @@ func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 		Hooks: sql.ExecutionHooks{
 			DropTable: sql.DropTable{
 				PreSQLExecution: hook.BeforeTableDeletion,
+			},
+			TableAddColumn: sql.TableAddColumn{
+				PreSQLExecution:  hook.BeforeTableAddColumn,
+				PostSQLExecution: hook.AfterTableAddColumn,
+			},
+			TableDropColumn: sql.TableDropColumn{
+				PostSQLExecution: hook.AfterTableDropColumn,
 			},
 		},
 		SchemaFormatter:                 pgsql.NewPostgresSchemaFormatter(),

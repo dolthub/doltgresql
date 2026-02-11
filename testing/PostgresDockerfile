@@ -15,6 +15,7 @@ RUN apt update -y && \
     apt install -y \
     python3.8 \
     python3-pip \
+    python3-psycopg2 \
     curl \
     wget \
     pkg-config \
@@ -76,6 +77,9 @@ COPY ./testing/postgres-client-tests/ruby/Gemfile /postgres-client-tests/ruby/
 COPY ./testing/postgres-client-tests/ruby/Gemfile.lock /postgres-client-tests/ruby/
 WORKDIR /postgres-client-tests/ruby
 RUN gem install bundler -v 2.1.4 && bundle install
+
+# install sqlalchemy
+RUN pip3 install --no-cache-dir sqlalchemy==2.0.46
 
 # install doltgres from source
 WORKDIR /root/building

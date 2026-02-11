@@ -199,7 +199,7 @@ func GetSqlTableFromContext(ctx *sql.Context, databaseName string, tableName dol
 	var searchPath []string
 	if len(tableName.Schema) == 0 {
 		// If a schema was not provided, then we'll use the search path
-		searchPath, err = resolve.SearchPath(ctx)
+		searchPath, err = SearchPath(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -226,6 +226,30 @@ func GetSqlTableFromContext(ctx *sql.Context, databaseName string, tableName dol
 		return tbl, nil
 	}
 	return nil, nil
+}
+
+// SearchPath returns the effective schema search path for the current session
+func SearchPath(ctx *sql.Context) ([]string, error) {
+	path, err := resolve.SearchPath(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// pg_catalog is *always* implicitly part of the search path as the first element, unless it's specifically
+	// included later. This allows users to override built-in names with user-defined names, but they have to
+	// opt in to that behavior.
+	hasPgCatalog := false
+	for _, schema := range path {
+		if schema == "pg_catalog" {
+			hasPgCatalog = true
+			break
+		}
+	}
+
+	if !hasPgCatalog {
+		path = append([]string{"pg_catalog"}, path...)
+	}
+	return path, nil
 }
 
 // GetExtensionsCollectionFromContext returns the extensions collection from the given context. Will always return a

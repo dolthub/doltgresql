@@ -53,5 +53,5 @@ func NotYetSupportedError(errorMsg string) (vitess.Statement, error) {
 		return NewNoOp(errorMsg), nil
 	}
 
-	return nil, errors.New(errorMsg)
+	return nil, errors.Errorf(errorMsg + " Please file an issue at https://github.com/dolthub/doltgresql/issues")
 }

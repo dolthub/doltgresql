@@ -717,7 +717,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> BOOLEAN BOTH BOX2D BUFFER_USAGE_LIMIT BUNDLE BY BYPASSRLS
 
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
-%token <str> CHANGEFEED CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
+%token <str> CHANGEFEED BPCHAR CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
 %token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMBINEFUNC COMMENT COMMENTS
 %token <str> BLOCK_COMMENT HINT
 %token <str> COMMIT COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
@@ -4313,11 +4313,11 @@ create_function_stmt:
   }
 | CREATE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS SETOF typename create_function_option_list
   {
-    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), SetOf: true, RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $7.typeReference()}}, Options: $8.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), ReturnsSetOf: true, RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $7.typeReference()}}, Options: $8.routineOptions()}
   }
 | CREATE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS TABLE '(' opt_returns_table_col_def_list ')' create_function_option_list
   {
-    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), RetType: $8.simpleColumnDefs(), Options: $10.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $3.unresolvedObjectName(), Args: $4.routineArgs(), ReturnsTable: true, RetType: $8.simpleColumnDefs(), Options: $10.routineOptions()}
   }
 | CREATE OR REPLACE FUNCTION routine_name opt_routine_arg_with_default_list create_function_option_list
   {
@@ -4329,11 +4329,11 @@ create_function_stmt:
   }
 | CREATE OR REPLACE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS SETOF typename create_function_option_list
   {
-    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), SetOf: true, RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $9.typeReference()}}, Options: $10.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), ReturnsSetOf: true, RetType: []tree.SimpleColumnDef{tree.SimpleColumnDef{Type: $9.typeReference()}}, Options: $10.routineOptions()}
   }
 | CREATE OR REPLACE FUNCTION routine_name opt_routine_arg_with_default_list RETURNS TABLE '(' opt_returns_table_col_def_list ')' create_function_option_list
   {
-    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), RetType: $10.simpleColumnDefs(), Options: $12.routineOptions()}
+    $$.val = &tree.CreateFunction{Name: $5.unresolvedObjectName(), Replace: true, Args: $6.routineArgs(), ReturnsTable: true, RetType: $10.simpleColumnDefs(), Options: $12.routineOptions()}
   }
 
 opt_returns_table_col_def_list:
@@ -9460,6 +9460,10 @@ index_elem:
   {
     $$.val = tree.IndexElem{Expr: $2.expr(), Collation: $4.unresolvedObjectName().UnquotedString(), OpClass: $5.opClass(), Direction: $6.dir(), NullsOrder: $7.nullsOrder()}
   }
+| func_expr opt_collate opt_opclass opt_asc_desc opt_nulls_order
+  {
+    $$.val = tree.IndexElem{Expr: $1.expr(), Collation: $2.unresolvedObjectName().UnquotedString(), OpClass: $3.opClass(), Direction: $4.dir(), NullsOrder: $5.nullsOrder()}
+  }
 
 opt_opclass:
   /* EMPTY */
@@ -12047,6 +12051,11 @@ character_base:
   {
     $$.val = types.String
   }
+| BPCHAR
+  {
+    $$.val = types.MakeChar(0)
+  }
+
 
 char_aliases:
   CHAR
@@ -13064,7 +13073,7 @@ d_expr:
 | '(' a_expr ')' '.' '@' ICONST
   {
     idx, err := $6.numVal().AsInt32()
-    if err != nil || idx <= 0 { return setErr(sqllex, err) }
+    if err != nil { return setErr(sqllex, err) }
     $$.val = &tree.ColumnAccessExpr{Expr: $2.expr(), ByIndex: true, ColIndex: int(idx-1)}
   }
 | '(' a_expr ')'
@@ -15115,6 +15124,7 @@ col_name_keyword:
 | BIT
 | BOOLEAN
 | BOX2D
+| BPCHAR
 | CHAR
 | CHARACTER
 | CHARACTERISTICS

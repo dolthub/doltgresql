@@ -15,7 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -160,8 +159,17 @@ PostJoinRewrite:
 			}
 		}
 	}
+	distinct := node.Distinct
+	var distinctOn vitess.Exprs
 	if len(node.DistinctOn) > 0 {
-		return nil, errors.Errorf("DISTINCT ON is not yet supported")
+		distinct = true
+		distinctOn = make(vitess.Exprs, len(node.DistinctOn))
+		for i, expr := range node.DistinctOn {
+			distinctOn[i], err = nodeExpr(ctx, expr)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	where, err := nodeWhere(ctx, node.Where)
 	if err != nil {
@@ -180,7 +188,10 @@ PostJoinRewrite:
 		return nil, err
 	}
 	return &vitess.Select{
-		QueryOpts:   vitess.QueryOpts{Distinct: node.Distinct},
+		QueryOpts: vitess.QueryOpts{
+			Distinct:   distinct,
+			DistinctOn: distinctOn,
+		},
 		SelectExprs: selectExprs,
 		From:        from,
 		Where:       where,

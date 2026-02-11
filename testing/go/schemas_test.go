@@ -869,11 +869,80 @@ var SchemaTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "drop schema",
+		SetUpScript: []string{
+			"CREATE SCHEMA dropme",
+			`CREATE schema "hasTables"`,
+			"CREATE TABLE hasTables.t1 (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "Show schemas",
+				Expected: []sql.Row{
+					{"dolt"},
+					{"dropme"},
+					{"hasTables"},
+					{"pg_catalog"},
+					{"public"},
+					{"information_schema"},
+				},
+			},
+			{
+				Query:    "DROP SCHEMA dropme;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query: "Show schemas",
+				Expected: []sql.Row{
+					{"dolt"},
+					{"hasTables"},
+					{"pg_catalog"},
+					{"public"},
+					{"information_schema"},
+				},
+			},
+			{
+				Query:       "DROP SCHEMA dropme;",
+				ExpectedErr: "database schema not found",
+			},
+			{
+				Query: "drop schema if exists dropme;",
+			},
+			{
+				Query:       "DROP SCHEMA hasTables;",
+				ExpectedErr: "cannot drop schema hastables because other objects depend on it",
+			},
+			{
+				Skip:  true, // not implemented yet
+				Query: "drop schema hasTables cascade;",
+			},
+			{
+				Query: "create schema hastype;",
+			},
+			{
+				Query: "create type hastype.mytype as enum('a', 'b', 'c');",
+			},
+			{
+				Query:       "DROP SCHEMA hastype;",
+				ExpectedErr: "cannot drop schema hastype because other objects depend on it",
+			},
+			{
+				Query: "create schema hassequence;",
+			},
+			{
+				Query: "create sequence hassequence.myseq start 1 increment 1;",
+			},
+			{
+				Query:       "DROP SCHEMA hassequence;",
+				ExpectedErr: "cannot drop schema hassequence because other objects depend on it",
+			},
+		},
+	},
 	// More tests:
 	// * alter table statements, when they work better
 	// * AS OF (when supported)
 	// * revision qualifiers
-	// * drop schema
 	// * more statement types
 	// * INSERT INTO schema1 SELECT FROM schema2
 	// * Subqueries accessing different schemas in the same SELECT

@@ -781,6 +781,12 @@ func TestFunctionsOID(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT to_regtype(('int'::regtype)::text);`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
 					Query: `SELECT to_regtype((('integer'::regtype)::oid)::text);`,
 					Expected: []sql.Row{
 						{nil},
@@ -1390,6 +1396,11 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 				{
 					Query:            `SELECT pg_get_serial_sequence('public.t1', 'id');`,
+					ExpectedColNames: []string{"pg_get_serial_sequence"},
+					Expected:         []sql.Row{{"public.t1_id_seq"}},
+				},
+				{
+					Query:            `SELECT pg_get_serial_sequence('"public"."t1"', 'id');`,
 					ExpectedColNames: []string{"pg_get_serial_sequence"},
 					Expected:         []sql.Row{{"public.t1_id_seq"}},
 				},

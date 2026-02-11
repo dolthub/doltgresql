@@ -411,6 +411,274 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "RETURNS SETOF",
+			SetUpScript: []string{
+				`CREATE TYPE user_summary AS (
+					user_id   integer,
+					username  text,
+					is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func2() RETURNS SETOF user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 1, 'username', true;
+						RETURN QUERY SELECT 2, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)"},
+						{"(2,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)", "(1,username,t)"},
+						{"(2,another,f)", "(2,another,f)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS SETOF with no results",
+			SetUpScript: []string{
+				`CREATE TABLE user_summary (user_id integer, username text, is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func2() RETURNS SETOF user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT * from user_summary;
+						RETURN QUERY SELECT * from user_summary;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT func2();",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT func2(), func2();",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "RETURNS SETOF with type from other schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA sch1;`,
+				`CREATE TYPE sch1.user_summary AS (
+					user_id   integer,
+					username  text,
+					is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func2() RETURNS SETOF sch1.user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 1, 'username', true;
+						RETURN QUERY SELECT 2, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)"},
+						{"(2,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)", "(1,username,t)"},
+						{"(2,another,f)", "(2,another,f)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS SETOF with param",
+			SetUpScript: []string{
+				`CREATE TYPE user_summary AS (
+					user_id   integer,
+					username  text,
+					is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func3(user_id integer) RETURNS SETOF user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT user_id, 'username', true;
+						RETURN QUERY SELECT user_id, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func3(111);",
+					Expected: []sql.Row{
+						{"(111,username,t)"},
+						{"(111,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func3(111), func3(222);",
+					Expected: []sql.Row{
+						{"(111,username,t)", "(222,username,t)"},
+						{"(111,another,f)", "(222,another,f)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE",
+			SetUpScript: []string{
+				`CREATE FUNCTION func2() RETURNS TABLE(user_id integer, username  text, is_active boolean)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 1, 'username', true;
+						RETURN QUERY SELECT 2, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)"},
+						{"(2,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(1,username,t)", "(1,username,t)"},
+						{"(2,another,f)", "(2,another,f)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE with single field",
+			SetUpScript: []string{
+				`CREATE FUNCTION func2() RETURNS TABLE(username text)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 'username1';
+						RETURN QUERY SELECT 'username2';
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(username1)"},
+						{"(username2)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(username1)", "(username1)"},
+						{"(username2)", "(username2)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE with types from other schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA sch1;`,
+				`CREATE TYPE sch1.mytype AS (
+					user_id   integer,
+					username  text);`,
+				`CREATE FUNCTION func2() RETURNS TABLE(foo sch1.mytype)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 1, 'username1';
+						RETURN QUERY SELECT 2, 'username2';
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2();",
+					Expected: []sql.Row{
+						{"(1,username1)"},
+						{"(2,username2)"},
+					},
+				},
+				{
+					Query: "SELECT func2(), func2();",
+					Expected: []sql.Row{
+						{"(1,username1)", "(1,username1)"},
+						{"(2,username2)", "(2,username2)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE with param",
+			SetUpScript: []string{
+				`CREATE OR REPLACE FUNCTION func3(user_id integer) RETURNS TABLE(user_id integer, username  text, is_active boolean)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT user_id, 'username', true;
+						RETURN QUERY SELECT user_id, 'another', false;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func3(111);",
+					Expected: []sql.Row{
+						{"(111,username,t)"},
+						{"(111,another,f)"},
+					},
+				},
+				{
+					Query: "SELECT func3(111), func3(222);",
+					Expected: []sql.Row{
+						{"(111,username,t)", "(222,username,t)"},
+						{"(111,another,f)", "(222,another,f)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "RETURNS SETOF with composite param",
+			SetUpScript: []string{
+				`CREATE TYPE user_summary AS (
+					user_id   integer,
+					username  text,
+					is_active boolean);`,
+				`CREATE OR REPLACE FUNCTION func3(u user_summary) RETURNS SETOF user_summary
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT u.user_id, u.username, u.is_active;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func3((222,'passedin',false)::user_summary);",
+					Expected: []sql.Row{
+						{"(222,passedin,f)"},
+					},
+				},
+			},
+		},
+		{
 			Name: "RAISE",
 			SetUpScript: []string{
 				`CREATE FUNCTION interpreted_raise1(input TEXT) RETURNS TEXT AS $$
@@ -991,6 +1259,120 @@ $$;`,
 						{1, "(0,hello)"},
 						{2, "(10,world)"},
 					},
+				},
+			},
+		},
+		{
+			Name: "AlexTransit_venderctl import dump",
+			SetUpScript: []string{
+				`CREATE TYPE public.tax_job_state AS ENUM (
+    'sched',
+    'busy',
+    'final',
+    'help'
+);`,
+				`CREATE TABLE public.catalog (
+    vmid integer NOT NULL,
+    code text NOT NULL,
+    name text NOT NULL
+);`,
+				`CREATE SEQUENCE public.tax_job_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;`,
+				`CREATE TABLE public.tax_job (
+    id bigint NOT NULL,
+    state public.tax_job_state NOT NULL,
+    created timestamp with time zone NOT NULL,
+    modified timestamp with time zone NOT NULL,
+    scheduled timestamp with time zone,
+    worker text,
+    processor text,
+    ext_id text,
+    data jsonb,
+    gross integer,
+    notes text[],
+    ops jsonb
+);`,
+				`CREATE TABLE public.trans (
+    vmid integer NOT NULL,
+    vmtime timestamp with time zone,
+    received timestamp with time zone NOT NULL,
+    menu_code text NOT NULL,
+    options integer[],
+    price integer NOT NULL,
+    method integer NOT NULL,
+    tax_job_id bigint,
+    executer bigint,
+    exeputer_type integer,
+    executer_str text
+);`,
+				`ALTER TABLE ONLY public.tax_job ALTER COLUMN id SET DEFAULT nextval('public.tax_job_id_seq'::regclass);`,
+				`INSERT INTO public.trans VALUES (1, '2023-04-05 06:07:08', '2023-05-06 07:08:09', 'test', ARRAY[5,7], 44, 1, NULL, 1, 1, '');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION public.tax_job_trans(t public.trans) RETURNS public.tax_job
+    LANGUAGE plpgsql
+    AS '
+    # print_strict_params ON
+DECLARE
+    tjd jsonb;
+    ops jsonb;
+    tj tax_job;
+    name text;
+BEGIN
+    -- lock trans row
+    PERFORM
+        1
+    FROM
+        trans
+    WHERE (vmid, vmtime) = (t.vmid,
+        t.vmtime)
+LIMIT 1
+FOR UPDATE;
+    -- if trans already has tax_job assigned, just return it
+    IF t.tax_job_id IS NOT NULL THEN
+        SELECT
+            * INTO STRICT tj
+        FROM
+            tax_job
+        WHERE
+            id = t.tax_job_id;
+        RETURN tj;
+    END IF;
+    -- op code to human friendly name via catalog
+    SELECT
+        catalog.name INTO name
+    FROM
+        catalog
+    WHERE (vmid, code) = (t.vmid,
+        t.menu_code);
+    IF NOT found THEN
+        name := ''#'' || t.menu_code;
+    END IF;
+    ops := jsonb_build_array (jsonb_build_object(''vmid'', t.vmid, ''time'', t.vmtime, ''name'', name, ''code'', t.menu_code, ''amount'', 1, ''price'', t.price, ''method'', t.method));
+    INSERT INTO tax_job (state, created, modified, scheduled, processor, ops, gross)
+        VALUES (''sched'', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ''ru2019'', ops, t.price)
+    RETURNING
+        * INTO STRICT tj;
+    UPDATE
+        trans
+    SET
+        tax_job_id = tj.id
+    WHERE (vmid, vmtime) = (t.vmid,
+        t.vmtime);
+    RETURN tj;
+END;
+';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public.tax_job_trans(trans.*) FROM public.trans;`,
+					Skip:     true, // TODO: implement table.* syntax
+					Expected: []sql.Row{{`(1,sched,"2026-01-23 14:06:32.794817+00","2026-01-23 14:06:32.794817+00","2026-01-23 14:06:32.794817+00",,ru2019,,,44,,"[{""code"": ""test"", ""name"": ""#test"", ""time"": ""2023-04-05T06:07:08+00:00"", ""vmid"": 1, ""price"": 44, ""amount"": 1, ""method"": 1}]")`}},
 				},
 			},
 		},

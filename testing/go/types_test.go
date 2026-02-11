@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestTypes(t *testing.T) {
@@ -79,24 +80,42 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bit type",
-		Skip: true, // no pgx support: unknown type with oid: 1560
 		SetUpScript: []string{
-			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8));",
-			"INSERT INTO t_bit VALUES (1, B'11011010'), (2, B'00101011');",
+			"CREATE TABLE t_bit (id INTEGER primary key, v1 BIT(8), v2 BIT(3));",
+			"INSERT INTO t_bit VALUES (1, B'11011010', '101'), (2, B'00101011', '000');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_bit ORDER BY id;",
 				Expected: []sql.Row{
-					{1, []byte{0xDA}},
-					{2, []byte{0x2B}},
+					{1, pgtype.Bits{Bytes: []uint8{0xda}, Len: 8, Valid: true}, pgtype.Bits{Bytes: []uint8{0xa0}, Len: 3, Valid: true}},
+					{2, pgtype.Bits{Bytes: []uint8{0x2b}, Len: 8, Valid: true}, pgtype.Bits{Bytes: []uint8{0x0}, Len: 3, Valid: true}},
 				},
+			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, B'101', '111');",
+				ExpectedErr: "bit string length 3 does not match type bit(8)",
+			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, B'1001000110', '111');",
+				ExpectedErr: "bit string length 10 does not match type bit(8)",
+			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, B'10010001', '11100100');",
+				ExpectedErr: "bit string length 8 does not match type bit(3)",
+			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, B'10012345', '111');",
+				ExpectedErr: "not a valid binary digit",
+			},
+			{
+				Query:       "INSERT INTO t_bit VALUES (3, '10012345', '111');",
+				ExpectedErr: "not a valid binary digit",
 			},
 		},
 	},
 	{
 		Name: "Bit key",
-		Skip: true, // no pgx support: unknown type with oid: 1560
 		SetUpScript: []string{
 			"CREATE TABLE t_bit (id BIT(8) primary key, v1 BIT(8));",
 			"INSERT INTO t_bit VALUES (B'11011010', B'11011010'), (B'00101011', B'00101011');",
@@ -105,7 +124,7 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_bit WHERE id = B'11011010' ORDER BY id;",
 				Expected: []sql.Row{
-					{[]byte{0xDA}, []byte{0xDA}},
+					{pgtype.Bits{Bytes: []uint8{0xda}, Len: 8, Valid: true}, pgtype.Bits{Bytes: []uint8{0xda}, Len: 8, Valid: true}},
 				},
 			},
 		},
@@ -282,7 +301,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bit varying type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING(16));",
 			"INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",
@@ -291,8 +309,37 @@ var typesTests = []ScriptTest{
 			{
 				Query: "SELECT * FROM t_bit_varying ORDER BY id;",
 				Expected: []sql.Row{
-					{1, []byte{0xDA, 0xAA}},
-					{2, []byte{0x2B, 0xA5}},
+					{1, pgtype.Bits{Bytes: []uint8{0xda, 0xaa}, Len: 16, Valid: true}},
+					{2, pgtype.Bits{Bytes: []uint8{0x2b, 0x55}, Len: 16, Valid: true}},
+				},
+			},
+			{
+				Query:       "INSERT INTO t_bit_varying VALUES (3, B'101010101010101010');",
+				ExpectedErr: "bit string too long for type bit varying(16)",
+			},
+		},
+	},
+	{
+		Name: "Bit varying type, unbounded",
+		SetUpScript: []string{
+			"CREATE TABLE t_bit_varying (id INTEGER primary key, v1 BIT VARYING);",
+			"INSERT INTO t_bit_varying VALUES (1, B'1101101010101010'), (2, B'0010101101010101');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_bit_varying ORDER BY id;",
+				Expected: []sql.Row{
+					{1, pgtype.Bits{Bytes: []uint8{0xda, 0xaa}, Len: 16, Valid: true}},
+					{2, pgtype.Bits{Bytes: []uint8{0x2b, 0x55}, Len: 16, Valid: true}},
+				},
+			},
+			{
+				Query: "INSERT INTO t_bit_varying VALUES (3, B'101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010');",
+			},
+			{
+				Query: "SELECT * FROM t_bit_varying WHERE id = 3 order by 1;",
+				Expected: []sql.Row{
+					{3, pgtype.Bits{Bytes: []uint8{0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xa0}, Len: 108, Valid: true}},
 				},
 			},
 		},
@@ -345,6 +392,44 @@ var typesTests = []ScriptTest{
 				Query: "SELECT * FROM t_bytea WHERE ID = E'\\\\xCAFEBABE' ORDER BY id;",
 				Expected: []sql.Row{
 					{[]byte{0xCA, 0xFE, 0xBA, 0xBE}, []byte{0xDE, 0xAD, 0xBE, 0xEF}},
+				},
+			},
+		},
+	},
+	{
+		// https://github.com/dolthub/doltgresql/issues/2145
+		Name: "bpchar type",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "create table bptest1 (pk int primary key, c1 bpchar, c2 bpchar(12));",
+				Expected: nil,
+			},
+			{
+				Query:    "insert into bptest1 values (1, '1', '1');",
+				Expected: nil,
+			},
+			{
+				Query: "select * from bptest1;",
+				Expected: []sql.Row{
+					{1, "1", "1           "},
+				},
+			},
+			{
+				Query: "SELECT '!'::bpchar;",
+				Expected: []sql.Row{
+					{"!"},
+				},
+			},
+			{
+				Query: "SELECT '!'::bpchar(1);",
+				Expected: []sql.Row{
+					{"!"},
+				},
+			},
+			{
+				Query: "SELECT '!'::bpchar(2);",
+				Expected: []sql.Row{
+					{"! "},
 				},
 			},
 		},

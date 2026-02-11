@@ -300,7 +300,18 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		logrus.Warnf("collate is not yet supported, ignoring")
 		return nodeExpr(ctx, node.Expr)
 	case *tree.ColumnAccessExpr:
-		return nil, errors.Errorf("(E).x is not yet supported")
+		colAccess, err := pgexprs.NewColumnAccess(node.ColName, node.ColIndex)
+		if err != nil {
+			return nil, err
+		}
+		expr, err := nodeExpr(ctx, node.Expr)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedExpr{
+			Expression: colAccess,
+			Children:   vitess.Exprs{expr},
+		}, nil
 	case *tree.ColumnItem:
 		var tableName vitess.TableName
 		if node.TableName != nil {
@@ -476,7 +487,12 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.DArray:
 		return nil, errors.Errorf("the statement is not yet supported")
 	case *tree.DBitArray:
-		return nil, errors.Errorf("the statement is not yet supported")
+		// We convert bitarray to string representation for engine representation purposes so that we don't have to
+		// represent another fundamental golang type. This means our representation in memory is more verbose.
+		bitStr := tree.AsStringWithFlags(node, tree.FmtPgwireText)
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewUnsafeLiteral(bitStr, pgtypes.Bit),
+		}, nil
 	case *tree.DBool:
 		return vitess.InjectedExpr{
 			Expression: pgexprs.NewRawLiteralBool(bool(*node)),

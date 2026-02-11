@@ -18,16 +18,16 @@ import "testing"
 
 func TestDropSchema(t *testing.T) {
 	tests := []QueryParses{
-		Parses("DROP SCHEMA name"),
-		Parses("DROP SCHEMA IF EXISTS name"),
+		Converts("DROP SCHEMA name"),
+		Converts("DROP SCHEMA IF EXISTS name"),
 		Parses("DROP SCHEMA name , name"),
 		Parses("DROP SCHEMA IF EXISTS name , name"),
 		Parses("DROP SCHEMA name CASCADE"),
 		Parses("DROP SCHEMA IF EXISTS name CASCADE"),
 		Parses("DROP SCHEMA name , name CASCADE"),
 		Parses("DROP SCHEMA IF EXISTS name , name CASCADE"),
-		Parses("DROP SCHEMA name RESTRICT"),
-		Parses("DROP SCHEMA IF EXISTS name RESTRICT"),
+		Converts("DROP SCHEMA name RESTRICT"),
+		Converts("DROP SCHEMA IF EXISTS name RESTRICT"),
 		Parses("DROP SCHEMA name , name RESTRICT"),
 		Parses("DROP SCHEMA IF EXISTS name , name RESTRICT"),
 	}

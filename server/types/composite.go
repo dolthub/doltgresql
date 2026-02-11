@@ -15,13 +15,15 @@
 package types
 
 import (
+	"context"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // NewCompositeType creates new instance of composite DoltgresType.
-func NewCompositeType(ctx *sql.Context, relID id.Id, arrayID, typeID id.Type, attrs []CompositeAttribute) *DoltgresType {
+func NewCompositeType(_ context.Context, relID id.Id, arrayID, typeID id.Type, attrs []CompositeAttribute) *DoltgresType {
 	return &DoltgresType{
 		ID:             typeID,
 		TypLength:      -1,

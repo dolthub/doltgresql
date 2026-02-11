@@ -31,8 +31,9 @@ func nodeDropDatabase(ctx *Context, node *tree.DropDatabase) (*vitess.DBDDL, err
 		return nil, errors.Errorf("WITH ( FORCE ) is not yet supported")
 	}
 	return &vitess.DBDDL{
-		Action:   vitess.DropStr,
-		DBName:   string(node.Name),
-		IfExists: node.IfExists,
+		Action:           vitess.DropStr,
+		SchemaOrDatabase: "database",
+		DBName:           string(node.Name),
+		IfExists:         node.IfExists,
 	}, nil
 }

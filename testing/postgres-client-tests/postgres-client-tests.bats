@@ -45,7 +45,6 @@ teardown() {
     node $BATS_TEST_DIRNAME/node/workbench.js $USER $PORT $DOLTGRES_VERSION $BATS_TEST_DIRNAME/node/testdata
 }
 
-
 @test "perl DBI:Pg client" {
     perl $BATS_TEST_DIRNAME/perl/postgres-test.pl $USER $PORT
 }
@@ -67,4 +66,14 @@ teardown() {
 @test "c postgres: libpq connector" {
     (cd $BATS_TEST_DIRNAME/c; make clean; make)
     $BATS_TEST_DIRNAME/c/postgres-c-connector-test $USER $PORT
+}
+
+@test "python postgres: psycopg2 client" {
+    cd $BATS_TEST_DIRNAME/python
+    python3 psycopg2_test.py $USER $PORT
+}
+
+@test "python postgres: sqlalcchemy client" {
+    cd $BATS_TEST_DIRNAME/python
+    python3 sqlalchemy-test.py $USER $PORT
 }

@@ -19,9 +19,9 @@ import (
 	"strconv"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/settings"
@@ -65,7 +65,7 @@ var regclassin = framework.Function1{
 		switch len(sections) {
 		case 1:
 			database = ctx.GetCurrentDatabase()
-			searchSchemas, err = resolve.SearchPath(ctx)
+			searchSchemas, err = core.SearchPath(ctx)
 			if err != nil {
 				return id.Null, err
 			}
@@ -79,7 +79,7 @@ var regclassin = framework.Function1{
 			searchSchemas = []string{sections[2]}
 			relationName = sections[4]
 		default:
-			return id.Null, errors.Errorf("regclass failed validation")
+			return id.Null, errors.Errorf("unexpected input for regclass: %s", input)
 		}
 
 		// Iterate over all of the items to find which relation matches.

@@ -129,6 +129,9 @@ type ScriptTestAssertion struct {
 	CopyFromStdInFile string
 }
 
+// EmptyCommandTag is special command tag placeholder to check for the empty string
+const EmptyCommandTag = "EMPTY_COMMAND_TAG"
+
 // Connection contains the default and current connections.
 type Connection struct {
 	Default  *pgx.Conn
@@ -249,10 +252,14 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 					require.NoError(t, err)
 				}
 			} else if assertion.ExpectedTag != "" {
-				// check for command tag
 				commandTag, err := conn.Exec(ctx, assertion.Query)
 				require.NoError(t, err)
-				assert.Equal(t, assertion.ExpectedTag, commandTag.String())
+				tag := assertion.ExpectedTag
+				if tag == EmptyCommandTag {
+					tag = ""
+				}
+
+				assert.Equal(t, tag, commandTag.String())
 			} else {
 				rows, err := conn.Query(ctx, assertion.Query, assertion.BindVars...)
 				require.NoError(t, err)

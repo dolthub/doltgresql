@@ -158,12 +158,38 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference)
 					resolvedType = pgtypes.VarChar
 				} else {
 					resolvedType, err = pgtypes.NewVarCharType(int32(width))
-				}
-				if err != nil {
-					return nil, nil, err
+					if err != nil {
+						return nil, nil, err
+					}
 				}
 			case oid.T_xid:
 				resolvedType = pgtypes.Xid
+			case oid.T_bit:
+				width := uint32(columnType.Width())
+				if width > pgtypes.StringMaxLength {
+					return nil, nil, errors.Errorf("length for type bit cannot exceed %d", pgtypes.StringMaxLength)
+				} else if width == 0 {
+					// TODO: need to differentiate between definitions 'bit' (valid) and 'bit(0)' (invalid)
+					resolvedType = pgtypes.Bit
+				} else {
+					resolvedType, err = pgtypes.NewBitType(int32(width))
+					if err != nil {
+						return nil, nil, err
+					}
+				}
+			case oid.T_varbit:
+				width := uint32(columnType.Width())
+				if width > pgtypes.StringMaxLength {
+					return nil, nil, errors.Errorf("length for type varbit cannot exceed %d", pgtypes.StringMaxLength)
+				} else if width == 0 {
+					// TODO: need to differentiate between definitions 'varbit' (valid) and 'varbit(0)' (invalid)
+					resolvedType = pgtypes.VarBit
+				} else {
+					resolvedType, err = pgtypes.NewVarBitType(int32(width))
+					if err != nil {
+						return nil, nil, err
+					}
+				}
 			default:
 				return nil, nil, errors.Errorf("unknown type with oid: %d", uint32(columnType.Oid()))
 			}
