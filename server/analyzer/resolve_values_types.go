@@ -15,6 +15,8 @@
 package analyzer
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
@@ -33,9 +35,9 @@ import (
 // by examining all rows, following PostgreSQL's type resolution rules.
 // This ensures VALUES(1),(2.01),(3) correctly infers numeric type, not integer.
 func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	// Track which VDTs we transform so we can update GetField nodes
+	// Walk the tree and wrap mixed-type VALUES columns with ImplicitCast.
+	// We record which VDTs changed so we can fix up GetField types afterward.
 	transformedVDTs := make(map[sql.TableId]sql.Schema)
-	// First we transform VDTs and record their new schemas
 	node, same, err := transform.NodeWithOpaque(node, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		newNode, same, err := transformValuesNode(n)
 		if err != nil {
@@ -52,7 +54,10 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 		return nil, transform.SameTree, err
 	}
 
-	// Next we update all GetField expressions that refer to a transformed VDT
+	// Now, fix GetField types that reference a transformed VDT. For example,
+	// after wrapping VALUES(1),(2.5) with ImplicitCast to numeric, any
+	// GetField reading column "n" from that VDT still says int4 and needs
+	// to be updated to numeric.
 	if len(transformedVDTs) > 0 {
 		node, _, err = pgtransform.NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			gf, ok := expr.(*expression.GetField)
@@ -64,11 +69,19 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 				return expr, transform.SameTree, nil
 			}
 
-			// GetField indices are 1-based in GMS planbuilder, so subtract 1 for schema access
-			schemaIdx := gf.Index() - 1
-			if schemaIdx < 0 || schemaIdx >= len(newSch) {
-				return nil, transform.NewTree, errors.Errorf("VALUES: GetField `%s` on table `%s` uses invalid index `%d`",
-					gf.Name(), gf.Table(), gf.Index())
+			// We match by column name because GetField indices are global
+			// across all tables in a JOIN (e.g., a.n=0, b.id=1, b.label=2).
+			// We can't convert a global index to a per-table position without
+			// knowing the table's starting offset, which we don't have here.
+			schemaIdx := -1
+			for i, col := range newSch {
+				if col.Name == gf.Name() {
+					schemaIdx = i
+					break
+				}
+			}
+			if schemaIdx < 0 {
+				return expr, transform.SameTree, nil
 			}
 
 			newType := newSch[schemaIdx].Type
@@ -76,17 +89,54 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 				return expr, transform.SameTree, nil
 			}
 
-			// Create a new expression with the updated type
-			newGf := expression.NewGetFieldWithTable(
-				gf.Index(),
-				int(gf.TableId()),
-				newType,
-				gf.Database(),
-				gf.Table(),
-				gf.Name(),
-				gf.IsNullable(),
-			)
-			return newGf, transform.NewTree, nil
+			return getFieldWithType(gf, newType), transform.NewTree, nil
+		})
+		if err != nil {
+			return nil, transform.SameTree, err
+		}
+
+		// The pass above only fixed GetFields that read directly from a VDT
+		// (matched by tableId). But changing a VDT column's type can have a
+		// ripple effect: if that column feeds into an aggregate like MIN or
+		// MAX, the aggregate's return type changes too. Parent nodes that
+		// read the aggregate result still have the old type. For example:
+		//
+		//   SELECT MIN(n) FROM (VALUES(1),(2.5)) v(n)
+		//
+		//   Project [GetField("min(v.n)", tableId=GroupBy, type=int4)]
+		//     └── GroupBy [MIN(GetField("n", tableId=VDT, type=numeric))]
+		//           └── VDT [n: int4 → numeric]
+		//
+		// The pass above fixed "n" inside MIN because its tableId=VDT.
+		// MIN now returns numeric, so GroupBy produces numeric. But the
+		// Project's GetField still says int4 because its tableId=GroupBy,
+		// which wasn't in transformedVDTs. At runtime this causes a panic
+		// because the actual value is decimal.Decimal but the type says int32.
+		//
+		// This pass catches those: for each GetField, check if its type
+		// disagrees with what the child node actually produces.
+		node, _, err = pgtransform.NodeExprsWithNodeWithOpaque(node, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+			gf, ok := expr.(*expression.GetField)
+			if !ok {
+				return expr, transform.SameTree, nil
+			}
+			// Skip VDT GetFields — the first pass already handled these
+			if _, isVDT := transformedVDTs[gf.TableId()]; isVDT {
+				return expr, transform.SameTree, nil
+			}
+			// Collect the schema that this node's children produce
+			var childSchema sql.Schema
+			for _, child := range n.Children() {
+				childSchema = append(childSchema, child.Schema()...)
+			}
+			// Find the matching column by name and update if the type changed
+			gfNameLower := strings.ToLower(gf.Name())
+			for _, col := range childSchema {
+				if strings.ToLower(col.Name) == gfNameLower && gf.Type() != col.Type {
+					return getFieldWithType(gf, col.Type), transform.NewTree, nil
+				}
+			}
+			return expr, transform.SameTree, nil
 		})
 		if err != nil {
 			return nil, transform.SameTree, err
@@ -94,6 +144,19 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 	}
 
 	return node, same, nil
+}
+
+// getFieldWithType returns a copy of the GetField with a new type.
+func getFieldWithType(gf *expression.GetField, newType sql.Type) *expression.GetField {
+	return expression.NewGetFieldWithTable(
+		gf.Index(),
+		int(gf.TableId()),
+		newType,
+		gf.Database(),
+		gf.Table(),
+		gf.Name(),
+		gf.IsNullable(),
+	)
 }
 
 // transformValuesNode transforms a plan.Values or plan.ValueDerivedTable node to use common types
@@ -170,7 +233,7 @@ func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	}
 
 	// Flatten the new tuples into a single expression slice for WithExpressions
-	var flatExprs []sql.Expression
+	flatExprs := make([]sql.Expression, 0, len(newTuples)*len(newTuples[0]))
 	for _, row := range newTuples {
 		flatExprs = append(flatExprs, row...)
 	}

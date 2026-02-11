@@ -77,19 +77,18 @@ var ValuesStatementTests = []ScriptTest{
 			},
 			{
 				// SUM should work directly now that VALUES has correct type
-				// Note: SUM returns float64 (double precision) for numeric input
 				Query:    `SELECT SUM(n) FROM (VALUES(1),(2.01),(3)) v(n);`,
-				Expected: []sql.Row{{6.01}},
+				Expected: []sql.Row{{Numeric("6.01")}},
 			},
 			{
 				// Exact repro from issue #1648: integer first, explicit cast to numeric
 				Query:    `SELECT SUM(n::numeric) FROM (VALUES(1),(2.01),(3)) v(n);`,
-				Expected: []sql.Row{{6.01}},
+				Expected: []sql.Row{{Numeric("6.01")}},
 			},
 			{
 				// Exact repro from issue #1648: decimal first, explicit cast to numeric
 				Query:    `SELECT SUM(n::numeric) FROM (VALUES(1.01),(2),(3)) v(n);`,
-				Expected: []sql.Row{{6.01}},
+				Expected: []sql.Row{{Numeric("6.01")}},
 			},
 		},
 	},
@@ -123,8 +122,8 @@ var ValuesStatementTests = []ScriptTest{
 				// SUM with GROUP BY
 				Query: `SELECT category, SUM(amount) FROM (VALUES('a', 1),('b', 2.5),('a', 3),('b', 4.5)) v(category, amount) GROUP BY category ORDER BY category;`,
 				Expected: []sql.Row{
-					{"a", 4.0},
-					{"b", 7.0},
+					{"a", Numeric("4")},
+					{"b", Numeric("7.0")},
 				},
 			},
 		},
@@ -266,9 +265,6 @@ var ValuesStatementTests = []ScriptTest{
 			},
 			{
 				// MIN/MAX on mixed types
-				// TODO: ImplicitCast type/value mismatch causes panic; reported type is numeric but
-				// underlying Go value is int32 for integer literals. See Hydrocharged's review comment.
-				Skip:  true,
 				Query: `SELECT MIN(n), MAX(n) FROM (VALUES(1),(2.5),(3),(0.5)) v(n);`,
 				Expected: []sql.Row{
 					{Numeric("0.5"), Numeric("3")},
@@ -504,7 +500,7 @@ var ValuesStatementTests = []ScriptTest{
 			{
 				// SUM over CTE
 				Query:    `WITH nums AS (SELECT * FROM (VALUES(1),(2.5),(3)) v(n)) SELECT SUM(n) FROM nums;`,
-				Expected: []sql.Row{{6.5}},
+				Expected: []sql.Row{{Numeric("6.5")}},
 			},
 		},
 	},
@@ -513,8 +509,6 @@ var ValuesStatementTests = []ScriptTest{
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
 			{
-				// TODO: GetField indices are global across joined tables but treated as per-table
-				Skip:  true,
 				Query: `SELECT a.n, b.label FROM (VALUES(1),(2),(3)) a(n) JOIN (VALUES(1, 'one'),(2, 'two'),(3, 'three')) b(id, label) ON a.n = b.id;`,
 				Expected: []sql.Row{
 					{int32(1), "one"},
@@ -523,8 +517,7 @@ var ValuesStatementTests = []ScriptTest{
 				},
 			},
 			{
-				// TODO: same GetField index issue as above
-				Skip:  true,
+				// Mixed types in one of the joined VALUES
 				Query: `SELECT a.n, b.label FROM (VALUES(1),(2.5),(3)) a(n) JOIN (VALUES(1, 'one'),(3, 'three')) b(id, label) ON a.n = b.id;`,
 				Expected: []sql.Row{
 					{Numeric("1"), "one"},
