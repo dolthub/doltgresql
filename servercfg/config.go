@@ -47,12 +47,21 @@ func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 			Parser:             pgsql.NewPostgresParser(),
 		},
 		Hooks: sql.ExecutionHooks{
+			RenameTable: sql.RenameTable{
+				PostSQLExecution: hook.AfterTableRename,
+			},
 			DropTable: sql.DropTable{
 				PreSQLExecution: hook.BeforeTableDeletion,
 			},
 			TableAddColumn: sql.TableAddColumn{
 				PreSQLExecution:  hook.BeforeTableAddColumn,
 				PostSQLExecution: hook.AfterTableAddColumn,
+			},
+			TableRenameColumn: sql.TableRenameColumn{
+				PostSQLExecution: hook.AfterTableRenameColumn,
+			},
+			TableModifyColumn: sql.TableModifyColumn{
+				PreSQLExecution: hook.BeforeTableModifyColumn,
 			},
 			TableDropColumn: sql.TableDropColumn{
 				PostSQLExecution: hook.AfterTableDropColumn,

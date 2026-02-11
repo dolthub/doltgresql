@@ -697,5 +697,301 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ALTER TABLE RENAME with table types",
+			SetUpScript: []string{
+				`CREATE TABLE t1a (a INT4, b VARCHAR(3));`,
+				`CREATE TABLE t1b (a VARCHAR(3), b INT4);`,
+				`CREATE TABLE t2 (id INT4, t1a t1a, t1b t1b);`,
+				`INSERT INTO t2 VALUES (1, ROW(1, 'abc'), ROW('abc', 1));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(1,abc)", "(abc,1)"},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1a RENAME TO t1x;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t2 VALUES (2, ROW(2, 'def'), ROW('def', 2));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(1,abc)", "(abc,1)"},
+						{2, "(2,def)", "(def,2)"},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1x RENAME TO t1y;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t2 VALUES (3, ROW(4, 'ghi'), ROW('kjl', 5));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(1,abc)", "(abc,1)"},
+						{2, "(2,def)", "(def,2)"},
+						{3, "(4,ghi)", "(kjl,5)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE RENAME COLUMN with table types",
+			SetUpScript: []string{
+				`CREATE TABLE t1a (a INT4, b VARCHAR(3));`,
+				`CREATE TABLE t1b (a VARCHAR(3), b INT4);`,
+				`CREATE TABLE t2 (id INT4, t1a t1a, t1b t1b);`,
+				`INSERT INTO t2 VALUES (1, ROW(2, 'abc'), ROW('def', 3));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1a RENAME COLUMN a TO x;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT (t1a).a FROM t2;`,
+					ExpectedErr: "not found",
+				},
+				{
+					Query: `SELECT (t1a).x, (t1a).@1 FROM t2;`,
+					Expected: []sql.Row{
+						{2, 2},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1b RENAME COLUMN b TO bb;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE t1b RENAME COLUMN a TO aa;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+					},
+				},
+				{
+					Query:    `INSERT INTO t2 VALUES (4, ROW(5, 'ghi'), ROW('jkl', 6));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT (t1b).aa, (t1b).@1, (t1b).bb, (t1b).@2 FROM t2;`,
+					Expected: []sql.Row{
+						{"def", "def", 3, 3},
+						{"jkl", "jkl", 6, 6},
+					},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE SET DEFAULT with table types",
+			SetUpScript: []string{
+				`CREATE TABLE t1a (a INT4, b VARCHAR(3));`,
+				`CREATE TABLE t1b (a VARCHAR(3), b INT4);`,
+				`CREATE TABLE t2 (id INT4, t1a t1a, t1b t1b);`,
+				`INSERT INTO t2 VALUES (1, ROW(2, 'abc'), ROW('def', 3));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1a ALTER COLUMN a SET DEFAULT 55;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE t1b ALTER COLUMN b SET DEFAULT 77, ALTER COLUMN a SET DEFAULT 'hi';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t2 VALUES (4, ROW(5, 'ghi'), ROW('kjl', 6));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+						{4, "(5,ghi)", "(kjl,6)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE DROP DEFAULT with table types",
+			SetUpScript: []string{
+				`CREATE TABLE t1a (a INT4 DEFAULT 55, b VARCHAR(3) DEFAULT 'hi');`,
+				`CREATE TABLE t1b (a VARCHAR(5) DEFAULT 'hello', b INT4 DEFAULT 77);`,
+				`CREATE TABLE t2 (id INT4, t1a t1a, t1b t1b);`,
+				`INSERT INTO t2 VALUES (1, ROW(2, 'abc'), ROW('def', 3));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1a ALTER COLUMN a DROP DEFAULT;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE t1a ALTER COLUMN b DROP DEFAULT, ALTER COLUMN a DROP DEFAULT;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t2 VALUES (4, ROW(5, 'ghi'), ROW('kjl', 6));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+						{4, "(5,ghi)", "(kjl,6)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE SET DATA TYPE with table types",
+			SetUpScript: []string{
+				`CREATE TABLE t1a (a INT4, b VARCHAR(3));`,
+				`CREATE TABLE t1b (a VARCHAR(3), b INT4);`,
+				`CREATE TABLE t2 (id INT4, t1a t1a, t1b t1b);`,
+				`INSERT INTO t2 VALUES (1, ROW(2, 'abc'), ROW('def', 3));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+					},
+				},
+				{ // Different data type
+					Query:       `ALTER TABLE t1a ALTER COLUMN a SET DATA TYPE INT8;`,
+					ExpectedErr: `cannot alter table "t1a" because column "t2.t1a" uses its row type`,
+				},
+				{ // Same data type, still restricted
+					Query:       `ALTER TABLE t1a ALTER COLUMN a SET DATA TYPE INT4;`,
+					Skip:        true, // TODO: we can't just analyze ModifyColumn for changes, we need to know the original statement
+					ExpectedErr: `cannot alter table "t1a" because column "t2.t1a" uses its row type`,
+				},
+				{
+					Query:    `ALTER TABLE t2 DROP COLUMN t1a;`,
+					Expected: []sql.Row{},
+				},
+				{ // Dependency removed
+					Query:    `ALTER TABLE t1a ALTER COLUMN a SET DATA TYPE INT8, ALTER COLUMN b SET DATA TYPE TEXT;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(def,3)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE SET/DROP NOT NULL with table types",
+			SetUpScript: []string{
+				`CREATE TABLE t1a (a INT4, b VARCHAR(3));`,
+				`CREATE TABLE t1b (a VARCHAR(3), b INT4);`,
+				`CREATE TABLE t2 (id INT4, t1a t1a, t1b t1b);`,
+				`INSERT INTO t2 VALUES (1, ROW(2, 'abc'), ROW('def', 3));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1a ALTER COLUMN a SET NOT NULL;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE t1b ALTER COLUMN b SET NOT NULL, ALTER COLUMN a SET NOT NULL;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO t1a VALUES (NULL, 'hi');`,
+					ExpectedErr: "non-nullable",
+				},
+				{ // The original table's NOT NULL doesn't affect columns that use the table's type
+					Query:    `INSERT INTO t2 VALUES (4, ROW(NULL, 'ghi'), ROW(NULL, 6));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+						{4, "(,ghi)", "(,6)"},
+					},
+				},
+				{
+					Query:    `ALTER TABLE t1b ALTER COLUMN b DROP NOT NULL, ALTER COLUMN a DROP NOT NULL;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT * FROM t2;`,
+					Expected: []sql.Row{
+						{1, "(2,abc)", "(def,3)"},
+						{4, "(,ghi)", "(,6)"},
+					},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE RENAME on view",
+			SetUpScript: []string{
+				`CREATE TABLE tenk1 (
+	unique1		int4,
+	unique2		int4,
+	two			int4,
+	four		int4,
+	ten			int4,
+	twenty		int4,
+	hundred		int4,
+	thousand	int4,
+	twothousand	int4,
+	fivethous	int4,
+	tenthous	int4,
+	odd			int4,
+	even		int4,
+	stringu1	name,
+	stringu2	name,
+	string4		name);`,
+				`CREATE VIEW attmp_view (unique1) AS SELECT unique1 FROM tenk1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ALTER TABLE attmp_view RENAME TO attmp_view_new;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
