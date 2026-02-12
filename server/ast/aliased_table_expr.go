@@ -35,7 +35,6 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (vitess.Tab
 	if rowsFrom, ok := node.Expr.(*tree.RowsFromExpr); ok {
 		// Handle multi-argument UNNEST specially: UNNEST(arr1, arr2, ...)
 		// is syntactic sugar for ROWS FROM(unnest(arr1), unnest(arr2), ...)
-		// We need to detect this case and expand it to use RowsFromExpr.
 		if len(rowsFrom.Items) == 1 {
 			if funcExpr, ok := rowsFrom.Items[0].(*tree.FuncExpr); ok {
 				funcName := funcExpr.Func.String()
@@ -63,7 +62,7 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (vitess.Tab
 						}
 					}
 
-					return &vitess.RowsFromExpr{
+					return &vitess.TableFuncExpr{
 						Exprs:          selectExprs,
 						WithOrdinality: node.Ordinality,
 						Alias:          vitess.NewTableIdent(string(node.As.Alias)),
@@ -73,7 +72,7 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (vitess.Tab
 			}
 		}
 
-		// Use RowsFromExpr for:
+		// Use TableFuncExpr (nameless) for:
 		// 1. Multiple functions: ROWS FROM(func1(), func2()) AS alias
 		// 2. WITH ORDINALITY: ROWS FROM(func()) WITH ORDINALITY
 		if len(rowsFrom.Items) > 1 || node.Ordinality {
@@ -94,7 +93,7 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (vitess.Tab
 				}
 			}
 
-			return &vitess.RowsFromExpr{
+			return &vitess.TableFuncExpr{
 				Exprs:          selectExprs,
 				WithOrdinality: node.Ordinality,
 				Alias:          vitess.NewTableIdent(string(node.As.Alias)),

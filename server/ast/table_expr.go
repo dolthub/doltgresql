@@ -103,7 +103,6 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 	case *tree.RowsFromExpr:
 		// Handle multi-argument UNNEST specially: UNNEST(arr1, arr2, ...)
 		// is syntactic sugar for ROWS FROM(unnest(arr1), unnest(arr2), ...)
-		// We need to detect this case and expand it to use RowsFromExpr.
 		if len(node.Items) == 1 {
 			if funcExpr, ok := node.Items[0].(*tree.FuncExpr); ok {
 				funcName := funcExpr.Func.String()
@@ -122,14 +121,14 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 							},
 						}
 					}
-					return &vitess.RowsFromExpr{
+					return &vitess.TableFuncExpr{
 						Exprs: selectExprs,
 					}, nil
 				}
 			}
 		}
 
-		// For explicit ROWS FROM with multiple functions, use RowsFromExpr
+		// For explicit ROWS FROM with multiple functions, use TableFuncExpr (nameless)
 		// This handles: ROWS FROM(generate_series(1,3), generate_series(10,12))
 		if len(node.Items) > 1 {
 			selectExprs := make(vitess.SelectExprs, len(node.Items))
@@ -140,7 +139,7 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 				}
 				selectExprs[i] = &vitess.AliasedExpr{Expr: expr}
 			}
-			return &vitess.RowsFromExpr{
+			return &vitess.TableFuncExpr{
 				Exprs: selectExprs,
 			}, nil
 		}

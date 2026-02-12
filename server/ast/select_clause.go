@@ -179,7 +179,7 @@ PostJoinRewrite:
 				if alias.IsEmpty() {
 					alias = vitess.NewTableIdent("unnest")
 				}
-				from[i] = &vitess.RowsFromExpr{
+				from[i] = &vitess.TableFuncExpr{
 					Exprs: selectExprs,
 					Alias: alias,
 				}
