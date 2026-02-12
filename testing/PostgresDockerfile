@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ubuntu:22.04
+FROM --platform=${BUILDPLATFORM} ubuntu:22.04
 
 # install python, java, bats, git ruby, perl, cpan
 ENV DEBIAN_FRONTEND=noninteractive
@@ -7,7 +7,7 @@ RUN apt update -y && \
     curl \
     gnupg \
     software-properties-common && \
-    curl -sL https://deb.nodesource.com/setup_20.x | bash - && \
+    curl -sL https://deb.nodesource.com/setup_22.x | bash - && \
     add-apt-repository ppa:deadsnakes/ppa -y && \
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && \
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
@@ -44,8 +44,8 @@ RUN apt update -y && \
 
 # install go
 WORKDIR /root
-ENV GO_VERSION=1.23.3
-ENV GOPATH=$HOME/go
+ENV GO_VERSION=1.25.0
+ENV GOPATH=/go
 ENV PATH=$PATH:$GOPATH/bin
 ENV PATH=$PATH:$GOPATH/bin:/usr/local/go/bin
 RUN curl -O "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz" && \
@@ -56,7 +56,7 @@ RUN curl -O "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz" && \
     go version
 
 # Setup JAVA_HOME -- useful for docker commandline
-ENV JAVA_HOME /usr/lib/jvm/java-17-openjdk-amd64/
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64/
 
 # install java postgres JDBC driver
 RUN mkdir -p /postgres-client-tests/java
