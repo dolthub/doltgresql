@@ -25,7 +25,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb/durable"
 	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
@@ -549,11 +548,13 @@ func (root *RootValue) IterTables(ctx context.Context, cb func(name doltdb.Table
 		}
 
 		err = tm.Iter(ctx, func(name string, addr hash.Hash) (bool, error) {
-			nt, err := durable.TableFromAddr(ctx, root.VRW(), root.ns, addr)
+			tbl, exists, err := doltdb.GetTable(ctx, root, addr)
+			if !exists {
+				return false, errors.Errorf("cannot find table %s from addr", name)
+			}
 			if err != nil {
 				return true, err
 			}
-			tbl := doltdb.NewTableFromDurable(nt)
 
 			sch, err := tbl.GetSchema(ctx)
 			if err != nil {
