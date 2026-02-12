@@ -97,5 +97,6 @@ teardown() {
   run query_server -c "SELECT * FROM users" -t
   [ "$status" -eq 0 ]
 
+  # this inserts and updates row and check its updated result
   npx tsx src/index.ts
 }

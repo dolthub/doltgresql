@@ -37,6 +37,17 @@ async function main() {
         })
         .where(eq(usersTable.email, user.email));
     console.log('User info updated!')
+
+    // Verify the update
+    const result = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.age, 31));
+    console.log('Retrieved updated record:', result);
+
+    // Clean up
+    await db.delete(usersTable).where(eq(usersTable.email, user.email));
+    console.log('User deleted!')
 }
 
 main();
