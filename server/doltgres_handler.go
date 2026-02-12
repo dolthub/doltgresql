@@ -34,6 +34,7 @@ import (
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/mysql"
@@ -45,6 +46,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -158,14 +160,33 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 		return nil, nil, err
 	}
 
-	analyzed, err := h.e.PrepareParsedQuery(sqlCtx, query, query, parsed)
+	node, err := h.e.PrepareParsedQuery(sqlCtx, query, query, parsed)
 	if err != nil {
 		if printErrorStackTraces {
 			fmt.Printf("unable to prepare query: %+v\n", err)
 		}
 		logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
-		err := sql.CastSQLError(err)
-		return nil, nil, err
+		return nil, nil, sql.CastSQLError(err)
+	}
+	analyzed := node
+	// We do not analyze expressions with bind variables, since that step comes later and analysis will return invalid results
+	hasBindVars := false
+	pgtransform.InspectNodeExprs(node, func(expr sql.Expression) bool {
+		if _, ok := expr.(*expression.BindVar); ok {
+			hasBindVars = true
+			return true
+		}
+		return false
+	})
+	if !hasBindVars {
+		analyzed, err = h.e.Analyzer.Analyze(sqlCtx, node, nil, nil)
+		if err != nil {
+			if printErrorStackTraces {
+				fmt.Printf("unable to prepare query: %+v\n", err)
+			}
+			logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
+			return nil, nil, sql.CastSQLError(err)
+		}
 	}
 
 	var fields []pgproto3.FieldDescription

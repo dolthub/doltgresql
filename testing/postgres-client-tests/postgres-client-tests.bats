@@ -100,3 +100,8 @@ teardown() {
   # this inserts and updates row and check its updated result
   npx tsx src/index.ts
 }
+
+@test "rust sqlx" {
+    cd $BATS_TEST_DIRNAME/rust
+    cargo run -- $USER $PORT
+}

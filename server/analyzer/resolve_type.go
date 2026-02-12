@@ -97,6 +97,21 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 					same = transform.NewTree
 					col.Type = dt
 				}
+				resolvedDefault, err := resolveDefaultColumnType(ctx, col.Default)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				resolvedGenerated, err := resolveDefaultColumnType(ctx, col.Generated)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				resolvedOnUpdate, err := resolveDefaultColumnType(ctx, col.OnUpdate)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				if resolvedDefault || resolvedGenerated || resolvedOnUpdate {
+					same = transform.NewTree
+				}
 			}
 			return node, same, nil
 		case *plan.ModifyColumn:
@@ -186,4 +201,20 @@ func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.Doltgres
 		return nil, pgtypes.ErrTypeDoesNotExist.New(typ.Name())
 	}
 	return resolvedTyp, nil
+}
+
+// resolveDefaultColumnType resolves the OutType of a *sql.ColumnDefaultValue if it's not nil (and not already resolved).
+func resolveDefaultColumnType(ctx *sql.Context, defaultVal *sql.ColumnDefaultValue) (bool, error) {
+	if defaultVal == nil {
+		return false, nil
+	}
+	if rt, ok := defaultVal.OutType.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
+		dt, err := resolveType(ctx, rt)
+		if err != nil {
+			return false, err
+		}
+		defaultVal.OutType = dt
+		return true, nil
+	}
+	return false, nil
 }

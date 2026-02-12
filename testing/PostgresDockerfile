@@ -42,6 +42,13 @@ RUN apt update -y && \
     postgresql-server-dev-15 && \
     update-ca-certificates -f
 
+# install rust (cargo)
+ENV RUSTUP_HOME=/root/.rustup \
+    CARGO_HOME=/root/.cargo
+ENV PATH="${CARGO_HOME}/bin:${PATH}"
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal && \
+    rustc --version && cargo --version
+
 # install go
 WORKDIR /root
 ENV GO_VERSION=1.25.0
