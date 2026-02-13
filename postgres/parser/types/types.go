@@ -1256,7 +1256,7 @@ var familyNames = map[Family]string{
 	BytesFamily:          "bytes",
 	CollatedStringFamily: "collatedstring",
 	DateFamily:           "date",
-	DecimalFamily:        "decimal",
+	DecimalFamily:        "numeric",
 	EnumFamily:           "enum",
 	FloatFamily:          "float",
 	GeographyFamily:      "geography",
