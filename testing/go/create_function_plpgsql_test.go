@@ -1380,6 +1380,8 @@ END;
 			Name: "resolve type with empty search path",
 			SetUpScript: []string{
 				"set search_path to ''",
+				`CREATE TABLE public.ambienttempdetail (tempdetailid integer NOT NULL, panelprojectid integer, threshold_value numeric(10,2), readingintervalinmin integer);`,
+				`insert into public.ambienttempdetail values (1, 101, 25.5, 15);`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1406,6 +1408,14 @@ BEGIN
 END;
 $$;`,
 					Expected: []sql.Row{},
+				},
+				{
+					Query: "set search_path to 'public'",
+				},
+				{
+					Skip:     true,
+					Query:    "SELECT public.ambienttempdetail_insertupdate(101, 25.5, 15);",
+					Expected: []sql.Row{{101}},
 				},
 			},
 		},
