@@ -300,7 +300,9 @@ func convertRowsToRecords(schema sql.Schema, rows []sql.Row) [][]pgtypes.RecordV
 			t := schema[i].Type
 			doltgresType, ok := t.(*pgtypes.DoltgresType)
 			if !ok {
-				panic("expected Doltgres type")
+				// non-Doltgres types are still used in analysis, but we only support disk serialization
+				// for Doltgres types, so we must convert the GMS type to the nearest Doltgres type here.
+				doltgresType = pgtypes.FromGmsType(t)
 			}
 
 			record[i] = pgtypes.RecordValue{
