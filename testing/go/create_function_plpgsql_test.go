@@ -1376,5 +1376,48 @@ END;
 				},
 			},
 		},
+		{
+			Name: "resolve type with empty search path",
+			SetUpScript: []string{
+				"set search_path to ''",
+				`CREATE TABLE public.ambienttempdetail (tempdetailid integer NOT NULL, panelprojectid integer, threshold_value numeric(10,2), readingintervalinmin integer);`,
+				`insert into public.ambienttempdetail values (1, 101, 25.5, 15);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION public.ambienttempdetail_insertupdate(p_panel_project_id integer, p_threshold_value numeric, p_reading_interval_in_min integer) RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_rtn_value INTEGER;
+BEGIN
+    IF NOT EXISTS (SELECT * FROM AmbientTempDetail WHERE PanelProjectId = p_panel_project_id) THEN
+        INSERT INTO AmbientTempDetail (PanelProjectId, Threshold_Value, ReadingIntervalInMin)
+        VALUES (p_panel_project_id, p_threshold_value, p_reading_interval_in_min)
+        RETURNING TempDetailId INTO v_rtn_value;
+    ELSE
+        UPDATE AmbientTempDetail
+        SET PanelProjectId = p_panel_project_id,
+            Threshold_Value = p_threshold_value,
+            ReadingIntervalInMin = p_reading_interval_in_min
+        WHERE PanelProjectId = p_panel_project_id;
+        v_rtn_value := p_panel_project_id;
+    END IF;
+    
+    RETURN v_rtn_value;
+END;
+$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "set search_path to 'public'",
+				},
+				{
+					Skip:     true,
+					Query:    "SELECT public.ambienttempdetail_insertupdate(101, 25.5, 15);",
+					Expected: []sql.Row{{101}},
+				},
+			},
+		},
 	})
 }
