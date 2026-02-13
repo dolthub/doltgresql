@@ -297,15 +297,9 @@ func convertRowsToRecords(schema sql.Schema, rows []sql.Row) [][]pgtypes.RecordV
 	for _, row := range rows {
 		record := make([]pgtypes.RecordValue, len(row))
 		for i, field := range row {
-			t := schema[i].Type
-			doltgresType, ok := t.(*pgtypes.DoltgresType)
-			if !ok {
-				panic("expected Doltgres type")
-			}
-
 			record[i] = pgtypes.RecordValue{
 				Value: field,
-				Type:  doltgresType,
+				Type:  schema[i].Type,
 			}
 		}
 		records = append(records, record)

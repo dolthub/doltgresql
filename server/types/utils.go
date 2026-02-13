@@ -173,20 +173,25 @@ func RecordToString(ctx *sql.Context, fields []RecordValue) (any, error) {
 			continue
 		}
 
-		doltgresType, ok := value.Type.(*DoltgresType)
-		if !ok {
-			return nil, fmt.Errorf(`expected *DoltgresType but found: %T`, value.Type)
+		switch t := value.Type.(type) {
+		case *DoltgresType:
+			str, err := t.IoOutput(ctx, value.Value)
+			if err != nil {
+				return "", err
+			}
+			if t.ID == Bool.ID {
+				str = string(str[0])
+			}
+			sb.WriteString(quoteString(str))
+		case sql.Type:
+			val, err := t.SQL(ctx, []byte{}, value.Value)
+			if err != nil {
+				return nil, err
+			}
+			sb.WriteString(quoteString(val.ToString()))
+		default:
+			return nil, fmt.Errorf("unable to convert record to string; unsupported type: %T", t)
 		}
-
-		str, err := doltgresType.IoOutput(ctx, value.Value)
-		if err != nil {
-			return "", err
-		}
-		if doltgresType.ID == Bool.ID {
-			str = string(str[0])
-		}
-
-		sb.WriteString(quoteString(str))
 	}
 	sb.WriteRune(')')
 
