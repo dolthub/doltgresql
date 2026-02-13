@@ -122,8 +122,11 @@ type ScriptTestAssertion struct {
 	// This is checked only if no Expected is defined
 	ExpectedTag string
 
-	// ExpectedColNames is used to check the column names returned from the server.
+	// ExpectedColNames are used to check the column names returned from the server.
 	ExpectedColNames []string
+
+	// ExpectedColTypes are used to check the column types returned from the server.
+	ExpectedColTypes []id.Type
 
 	// CopyFromSTDIN is used to test the COPY FROM STDIN command.
 	CopyFromStdInFile string
@@ -271,6 +274,17 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 					if assert.Len(t, fields, len(assertion.ExpectedColNames), "expected length of columns") {
 						for i, col := range assertion.ExpectedColNames {
 							assert.Equal(t, col, fields[i].Name)
+						}
+					}
+				}
+				if assertion.ExpectedColTypes != nil {
+					fields := rows.FieldDescriptions()
+					if assert.Len(t, fields, len(assertion.ExpectedColTypes),
+						"columns returned and types expected are not the same length") {
+						for i, colId := range assertion.ExpectedColTypes {
+							assert.Equal(t, id.Cache().ToOID(colId.AsId()), fields[i].DataTypeOID,
+								`"%s" expected type "%s" but received "%s"`, fields[i].Name,
+								colId.TypeName(), id.Type(id.Cache().ToInternal(fields[i].DataTypeOID)).TypeName())
 						}
 					}
 				}

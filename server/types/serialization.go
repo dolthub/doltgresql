@@ -36,6 +36,9 @@ func init() {
 // by DoltgreSQL.
 func SerializeType(extendedType sql.ExtendedType) ([]byte, error) {
 	if doltgresType, ok := extendedType.(*DoltgresType); ok {
+		if doltgresType.IsUnresolved {
+			return nil, errors.Errorf(`attempted to serialize the unresolved type: %s`, doltgresType.Name())
+		}
 		return doltgresType.Serialize(), nil
 	}
 	return nil, errors.Errorf("unknown type to serialize")
