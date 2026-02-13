@@ -288,6 +288,18 @@ func (h *DoltgresHandler) InitSessionParameterDefault(ctx context.Context, c *my
 // convertBindParameters handles the conversion from bind parameters to variable values.
 func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32, formatCodes []int16, values [][]byte) (map[string]sqlparser.Expr, error) {
 	bindings := make(map[string]sqlparser.Expr, len(values))
+	// It's valid to send just one format code that should be used by all values, so we extend the slice in that case
+	if len(formatCodes) > 0 && len(formatCodes) < len(values) {
+		if len(formatCodes) > 1 {
+			return nil, errors.Errorf(`format codes have length "%d" but values have length "%d"`, len(formatCodes), len(values))
+		}
+		formatCode := formatCodes[0]
+		formatCodes = make([]int16, len(values))
+		formatCodes[0] = formatCode
+		for i := 1; i < len(values); i++ {
+			formatCodes[i] = formatCode
+		}
+	}
 	for i := range values {
 		formatCode := int16(0)
 		if formatCodes != nil {
@@ -542,7 +554,8 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, isPrepared bool) 
 			typmod = doltgresType.GetAttTypMod() // pg_attribute.atttypmod
 			if isPrepared {
 				switch doltgresType.ID {
-				case pgtypes.Bytea.ID, pgtypes.Int16.ID, pgtypes.Int32.ID, pgtypes.Int64.ID, pgtypes.Uuid.ID:
+				case pgtypes.Bytea.ID, pgtypes.Date.ID, pgtypes.Int16.ID, pgtypes.Int32.ID, pgtypes.Int64.ID,
+					pgtypes.Timestamp.ID, pgtypes.TimestampTZ.ID, pgtypes.Uuid.ID:
 					formatCode = 1
 				}
 			}
@@ -803,6 +816,22 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, isExecute bool) ([]
 					case pgtypes.Int16.ID:
 						buf := make([]byte, 2)
 						binary.BigEndian.PutUint16(buf, uint16(v.(int16)))
+						o[i] = buf
+						continue
+					case pgtypes.Timestamp.ID, pgtypes.TimestampTZ.ID:
+						postgresEpoch := time.UnixMilli(946684800000).UTC() // Jan 1, 2000 @ Midnight
+						deltaInMicroseconds := v.(time.Time).UTC().UnixMicro() - postgresEpoch.UnixMicro()
+						buf := make([]byte, 8)
+						binary.BigEndian.PutUint64(buf, uint64(deltaInMicroseconds))
+						o[i] = buf
+						continue
+					case pgtypes.Date.ID:
+						postgresEpoch := time.UnixMilli(946684800000).UTC() // Jan 1, 2000 @ Midnight
+						deltaInMilliseconds := v.(time.Time).UTC().UnixMilli() - postgresEpoch.UnixMilli()
+						buf := make([]byte, 4)
+						const millisecondsPerDay = 86400000
+						days := deltaInMilliseconds / millisecondsPerDay
+						binary.BigEndian.PutUint32(buf, uint32(days))
 						o[i] = buf
 						continue
 					case pgtypes.Uuid.ID:

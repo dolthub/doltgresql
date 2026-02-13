@@ -103,5 +103,5 @@ teardown() {
 
 @test "rust sqlx" {
     cd $BATS_TEST_DIRNAME/rust
-    cargo run -- $USER $PORT
+    RUSTFLAGS=-Awarnings cargo run -- $USER $PORT
 }

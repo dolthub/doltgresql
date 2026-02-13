@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"time"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -37,6 +39,8 @@ var to_date_text_text = framework.Function2{
 		format := val2.(string)
 
 		// Parse the date using PostgreSQL format patterns
-		return getDateTimeFromFormat(ctx, input, format)
+		t, err := getDateTimeFromFormat(ctx, input, format)
+		// We return a version of the time but with the timezone completely stripped since they do not use timezones
+		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), err
 	},
 }

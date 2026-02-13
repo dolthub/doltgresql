@@ -42,11 +42,7 @@ var make_timestamp = framework.Function6{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [7]*pgtypes.DoltgresType, val1, val2, val3, val4, val5, val6 any) (any, error) {
-		loc, err := GetServerLocation(ctx)
-		if err != nil {
-			return time.Time{}, err
-		}
-		return getTimestampInServerLocation(val1.(int32), val2.(int32), val3.(int32), val4.(int32), val5.(int32), val6.(float64), loc)
+		return getTimestampInServerLocation(val1.(int32), val2.(int32), val3.(int32), val4.(int32), val5.(int32), val6.(float64), time.UTC)
 	},
 }
 
