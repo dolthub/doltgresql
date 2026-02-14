@@ -54,7 +54,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with mixed int and decimal - issue 1648",
+		Name:        "VALUES with mixed int and decimal",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
 			{

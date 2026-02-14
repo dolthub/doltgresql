@@ -224,10 +224,6 @@ func GetImplicitCast(fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresTyp
 	if fromType.ID == pgtypes.Unknown.ID {
 		return UnknownLiteralCast
 	}
-	// It is always valid to convert from the `unknown` type
-	if fromType.ID == pgtypes.Unknown.ID {
-		return UnknownLiteralCast
-	}
 	return nil
 }
 
