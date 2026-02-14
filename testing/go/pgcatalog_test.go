@@ -6038,7 +6038,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{3390577184, "violation_type", 1043, 2, "t", "f", "f"},
 						{3390577184, "pk", 23, 3, "t", "f", "f"},
 						{3390577184, "v1", 23, 4, "f", "f", "f"},
-						{3390577184, "violation_info", 114, 5, "f", "f", "f"},
+						{3390577184, "violation_info", 114, 5, "t", "f", "f"},
 						{3418072419, "table_name", 25, 1, "t", "f", "f"},
 						{3418072419, "staged", 16, 2, "t", "f", "f"},
 						{3418072419, "status", 25, 3, "t", "f", "f"},
