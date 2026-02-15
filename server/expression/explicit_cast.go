@@ -96,8 +96,11 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	baseCastToType := checkForDomainType(c.castToType)
 	castFunction := framework.GetExplicitCast(fromType, baseCastToType)
 	if castFunction == nil {
-		return nil, errors.Errorf("EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
-			fromType.String(), c.castToType.String(), c.sqlChild.String())
+		return nil, errors.Errorf(
+			"EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
+			fromType.String(), c.castToType.String(), c.sqlChild.String(),
+		)
+
 	}
 	castResult, err := castFunction(ctx, val, c.castToType)
 	if err != nil {
