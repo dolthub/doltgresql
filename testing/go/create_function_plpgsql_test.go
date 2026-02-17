@@ -1413,7 +1413,6 @@ $$;`,
 					Query: "set search_path to 'public'",
 				},
 				{
-					Skip:     true,
 					Query:    "SELECT public.ambienttempdetail_insertupdate(101, 25.5, 15);",
 					Expected: []sql.Row{{101}},
 				},
