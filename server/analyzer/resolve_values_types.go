@@ -24,10 +24,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
-	pgtransform "github.com/dolthub/doltgresql/server/transform"
-
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
