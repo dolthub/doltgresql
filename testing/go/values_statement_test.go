@@ -26,8 +26,7 @@ func TestValuesStatement(t *testing.T) {
 
 var ValuesStatementTests = []ScriptTest{
 	{
-		Name:        "basic values statements",
-		SetUpScript: []string{},
+		Name: "basic values statements",
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: `SELECT * FROM (VALUES (1), (2), (3)) sqa;`,
@@ -54,8 +53,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with mixed int and decimal",
-		SetUpScript: []string{},
+		Name: "VALUES with mixed int and decimal",
 		Assertions: []ScriptTestAssertion{
 			{
 				// Integer first, then decimal - should resolve to numeric
@@ -93,8 +91,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with multiple columns mixed types",
-		SetUpScript: []string{},
+		Name: "VALUES with multiple columns mixed types",
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: `SELECT * FROM (VALUES(1, 'a'), (2.5, 'b')) v(num, str);`,
@@ -106,8 +103,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with GROUP BY",
-		SetUpScript: []string{},
+		Name: "VALUES with GROUP BY",
 		Assertions: []ScriptTestAssertion{
 			{
 				// GROUP BY on mixed type VALUES - tests that GetField types are updated correctly
@@ -129,8 +125,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with DISTINCT",
-		SetUpScript: []string{},
+		Name: "VALUES with DISTINCT",
 		Assertions: []ScriptTestAssertion{
 			{
 				// DISTINCT on mixed type VALUES
@@ -144,8 +139,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with LIMIT and OFFSET",
-		SetUpScript: []string{},
+		Name: "VALUES with LIMIT and OFFSET",
 		Assertions: []ScriptTestAssertion{
 			{
 				// LIMIT on mixed type VALUES
@@ -167,8 +161,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with ORDER BY",
-		SetUpScript: []string{},
+		Name: "VALUES with ORDER BY",
 		Assertions: []ScriptTestAssertion{
 			{
 				// ORDER BY on mixed type VALUES - ascending
@@ -193,8 +186,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES in subquery",
-		SetUpScript: []string{},
+		Name: "VALUES in subquery",
 		Assertions: []ScriptTestAssertion{
 			{
 				// VALUES as subquery in FROM clause
@@ -231,8 +223,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with WHERE clause (Filter node)",
-		SetUpScript: []string{},
+		Name: "VALUES with WHERE clause (Filter node)",
 		Assertions: []ScriptTestAssertion{
 			{
 				// Filter on mixed type VALUES
@@ -255,8 +246,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with aggregate functions",
-		SetUpScript: []string{},
+		Name: "VALUES with aggregate functions",
 		Assertions: []ScriptTestAssertion{
 			{
 				// AVG on mixed types
@@ -273,8 +263,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES combined operations",
-		SetUpScript: []string{},
+		Name: "VALUES combined operations",
 		Assertions: []ScriptTestAssertion{
 			{
 				// GROUP BY + ORDER BY + LIMIT
@@ -304,8 +293,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with single row (no type unification needed)",
-		SetUpScript: []string{},
+		Name: "VALUES with single row (no type unification needed)",
 		Assertions: []ScriptTestAssertion{
 			{
 				// Single row should pass through unchanged
@@ -324,8 +312,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with NULL values",
-		SetUpScript: []string{},
+		Name: "VALUES with NULL values",
 		Assertions: []ScriptTestAssertion{
 			{
 				// NULL mixed with integers - should resolve to integer, NULL stays NULL
@@ -365,8 +352,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES type mismatch errors",
-		SetUpScript: []string{},
+		Name: "VALUES type mismatch errors",
 		Assertions: []ScriptTestAssertion{
 			{
 				// Integer and unknown('text'): FindCommonType resolves to int4 (the non-unknown type),
@@ -383,8 +369,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with all unknown types (string literals)",
-		SetUpScript: []string{},
+		Name: "VALUES with all unknown types (string literals)",
 		Assertions: []ScriptTestAssertion{
 			{
 				// All string literals should resolve to text
@@ -406,8 +391,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with array types",
-		SetUpScript: []string{},
+		Name: "VALUES with array types",
 		Assertions: []ScriptTestAssertion{
 			{
 				// Integer arrays: doltgresql returns arrays in text format over the wire
@@ -428,8 +412,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with all same type multi-row (no casts needed)",
-		SetUpScript: []string{},
+		Name: "VALUES with all same type multi-row (no casts needed)",
 		Assertions: []ScriptTestAssertion{
 			{
 				// All integers
@@ -461,8 +444,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with multi-column partial cast",
-		SetUpScript: []string{},
+		Name: "VALUES with multi-column partial cast",
 		Assertions: []ScriptTestAssertion{
 			{
 				// Only first column needs cast
@@ -485,8 +467,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES in CTE (WITH clause)",
-		SetUpScript: []string{},
+		Name: "VALUES in CTE (WITH clause)",
 		Assertions: []ScriptTestAssertion{
 			{
 				// Mixed types via CTE
@@ -505,8 +486,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with JOIN",
-		SetUpScript: []string{},
+		Name: "VALUES with JOIN",
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: `SELECT a.n, b.label FROM (VALUES(1),(2),(3)) a(n) JOIN (VALUES(1, 'one'),(2, 'two'),(3, 'three')) b(id, label) ON a.n = b.id;`,
@@ -527,8 +507,7 @@ var ValuesStatementTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "VALUES with same-type booleans",
-		SetUpScript: []string{},
+		Name: "VALUES with same-type booleans",
 		Assertions: []ScriptTestAssertion{
 			{
 				// All booleans, returned as "t"/"f" over the wire
@@ -545,6 +524,49 @@ var ValuesStatementTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"t"},
 					{"t"},
+				},
+			},
+		},
+	},
+	{
+		Name: "VALUES with case-sensitive quoted column names",
+		Assertions: []ScriptTestAssertion{
+			{
+				// Column names w/ quotes preserve case; unquoted are lowercased by the parser
+				Query: `SELECT "ColA", "colb" FROM (VALUES(1, 2),(3.5, 4.5)) v("ColA", "colb");`,
+				Expected: []sql.Row{
+					{Numeric("1"), Numeric("2")},
+					{Numeric("3.5"), Numeric("4.5")},
+				},
+			},
+			{
+				// Mixed case: one quoted (preserved), one unquoted (lowered)
+				Query: `SELECT "MixedCase", plain FROM (VALUES(1, 'a'),(2.5, 'b')) v("MixedCase", plain);`,
+				Expected: []sql.Row{
+					{Numeric("1"), "a"},
+					{Numeric("2.5"), "b"},
+				},
+			},
+			{
+				// SUM with quoted column name
+				Query:    `SELECT SUM("Val") FROM (VALUES(1),(2.5),(3)) v("Val");`,
+				Expected: []sql.Row{{Numeric("6.5")}},
+			},
+		},
+	},
+	{
+		Name: "VALUES with case-differing quoted columns and aggregates",
+		Assertions: []ScriptTestAssertion{
+			{
+				// Two columns whose quoted names differ only by case.
+				// Column "Val" has mixed types (int4, numeric) -> unifies to numeric.
+				// Column "val" has same types (int4, int4) -> stays int4.
+				// SUM("Val") should return numeric, SUM("val") should return int8.
+				// This catches false matches if the second pass uses case-insensitive
+				// matching: both SUM(v.Val) and SUM(v.val) would collide after lowering.
+				Query: `SELECT SUM("Val"), SUM("val") FROM (VALUES(1, 10),(2.5, 20)) v("Val", "val");`,
+				Expected: []sql.Row{
+					{Numeric("3.5"), int64(30)},
 				},
 			},
 		},

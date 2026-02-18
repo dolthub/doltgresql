@@ -88,7 +88,10 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 				return expr, transform.SameTree, nil
 			}
 
-			return getFieldWithType(gf, newType), transform.NewTree, nil
+			return expression.NewGetFieldWithTable(
+				gf.Index(), int(gf.TableId()), newType,
+				gf.Database(), gf.Table(), gf.Name(), gf.IsNullable(),
+			), transform.NewTree, nil
 		})
 		if err != nil {
 			return nil, transform.SameTree, err
@@ -128,11 +131,17 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 			for _, child := range n.Children() {
 				childSchema = append(childSchema, child.Schema()...)
 			}
-			// Find the matching column by name and update if the type changed
-			gfNameLower := strings.ToLower(gf.Name())
+			// Find the matching column by name and update if the type changed.
+			// Use case-insensitive matching here because internally generated
+			// names (e.g., aggregate results like "sum(v.n)") may differ in
+			// casing between the GetField and the child schema.
+			gfName := strings.ToLower(gf.Name())
 			for _, col := range childSchema {
-				if strings.ToLower(col.Name) == gfNameLower && gf.Type() != col.Type {
-					return getFieldWithType(gf, col.Type), transform.NewTree, nil
+				if strings.ToLower(col.Name) == gfName && gf.Type() != col.Type {
+					return expression.NewGetFieldWithTable(
+						gf.Index(), int(gf.TableId()), col.Type,
+						gf.Database(), gf.Table(), gf.Name(), gf.IsNullable(),
+					), transform.NewTree, nil
 				}
 			}
 			return expr, transform.SameTree, nil
@@ -143,19 +152,6 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 	}
 
 	return node, same, nil
-}
-
-// getFieldWithType returns a copy of the GetField with a new type.
-func getFieldWithType(gf *expression.GetField, newType sql.Type) *expression.GetField {
-	return expression.NewGetFieldWithTable(
-		gf.Index(),
-		int(gf.TableId()),
-		newType,
-		gf.Database(),
-		gf.Table(),
-		gf.Name(),
-		gf.IsNullable(),
-	)
 }
 
 // transformValuesNode transforms a plan.Values or plan.ValueDerivedTable node to use common types
@@ -180,7 +176,7 @@ func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	numCols := len(values.ExpressionTuples[0])
 	for i := 1; i < len(values.ExpressionTuples); i++ {
 		if len(values.ExpressionTuples[i]) != numCols {
-			return nil, transform.NewTree, errors.New("VALUES: VALUES lists must all be the same length")
+			return nil, transform.NewTree, errors.Errorf("VALUES: row %d has %d columns, expected %d", i+1, len(values.ExpressionTuples[i]), numCols)
 		}
 	}
 	if numCols == 0 {
@@ -198,7 +194,7 @@ func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 			} else if pgType, ok := exprType.(*pgtypes.DoltgresType); ok {
 				columnTypes[colIdx][rowIdx] = pgType
 			} else {
-				return nil, transform.NewTree, errors.New("VALUES: VALUES cannot use GMS types")
+				return nil, transform.NewTree, errors.Errorf("VALUES: non-Doltgres type found in row %d, column %d: %s", rowIdx, colIdx, exprType.String())
 			}
 		}
 	}
