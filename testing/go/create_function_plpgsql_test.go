@@ -655,6 +655,56 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "RETURNS TABLE with join query",
+			SetUpScript: []string{
+				`CREATE TABLE customers (
+					id INT PRIMARY KEY,
+					name TEXT
+				);`,
+				`CREATE TABLE orders (
+					id SERIAL PRIMARY KEY,
+					customer_id INT,
+					amount INT
+				);`,
+				`INSERT INTO customers VALUES (1, 'John'), (2, 'Jane');`,
+				`INSERT INTO orders VALUES (1, 1, 100), (2, 2, 10);`,
+				`CREATE OR REPLACE FUNCTION func2(n INT) RETURNS TABLE (c_id INT, c_name TEXT, c_total_spent INT) 
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY
+						SELECT c.id,
+							   c.name,
+							   SUM(o.amount) AS total_spent
+						FROM customers c
+						JOIN orders o ON o.customer_id = c.id
+						GROUP BY c.id, c.name
+						HAVING SUM(o.amount) >= n
+						;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2(1);",
+					Expected: []sql.Row{
+						{"(1,John,100)"},
+						{"(2,Jane,10)"},
+					},
+				},
+				{
+					Query: "SELECT func2(11);",
+					Expected: []sql.Row{
+						{"(1,John,100)"},
+					},
+				},
+				{
+					Query:    "SELECT func2(111);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: "RETURNS SETOF with composite param",
 			SetUpScript: []string{
 				`CREATE TYPE user_summary AS (
