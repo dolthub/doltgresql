@@ -450,3 +450,21 @@ func TestCreateTableInherit(t *testing.T) {
 		},
 	})
 }
+
+func TestCreateTemporaryTable(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Create temporary table with serial column",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE TEMP TABLE temp (id serial primary key)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TEMP TABLE temp2 (id serial)",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
