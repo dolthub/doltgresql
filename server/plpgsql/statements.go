@@ -165,6 +165,31 @@ func (stmt ExecuteSQL) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 	return nil
 }
 
+// DynamicExecute represents a dynamic SQL statement's execution.
+type DynamicExecute struct {
+	Query  string
+	Params []string
+	Target string
+}
+
+var _ Statement = DynamicExecute{}
+
+// OperationSize implements the interface Statement.
+func (DynamicExecute) OperationSize() int32 {
+	return 1
+}
+
+// AppendOperations implements the interface Statement.
+func (stmt DynamicExecute) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+	*ops = append(*ops, InterpreterOperation{
+		OpCode:        OpCode_Execute,
+		PrimaryData:   stmt.Query,
+		SecondaryData: stmt.Params,
+		Target:        stmt.Target,
+	})
+	return nil
+}
+
 // Goto jumps to the counter at the given offset.
 type Goto struct {
 	Offset         int32
@@ -400,6 +425,9 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 			} else {
 				newExpression += substring + " "
 			}
+		} else if _, ok := triggerSpecialVariables[substring]; ok {
+			referencedVars = append(referencedVars, substring)
+			newExpression += fmt.Sprintf("$%d ", len(referencedVars))
 		} else {
 			newExpression += substring + " "
 		}

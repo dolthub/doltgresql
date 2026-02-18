@@ -66,13 +66,19 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunne
 }
 
 // TriggerCall runs the contained trigger operations on the given runner.
-func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunner, sch sql.Schema, oldRow sql.Row, newRow sql.Row) (any, error) {
+func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunner, sch sql.Schema, oldRow sql.Row, newRow sql.Row, trigVars map[string]any) (any, error) {
 	// Set up the initial state of the function
 	stack := NewInterpreterStack(runner)
 	// Add the special variables
-	// TODO: there are way more than just NEW and OLD -> https://www.postgresql.org/docs/15/plpgsql-trigger.html
 	stack.NewRecord("OLD", sch, oldRow)
 	stack.NewRecord("NEW", sch, newRow)
+	for varName, val := range trigVars {
+		varType, ok := triggerSpecialVariables[varName]
+		if !ok {
+			return nil, fmt.Errorf("unknown variable %s for trigger", varName)
+		}
+		stack.NewVariableWithValue(varName, varType, val)
+	}
 	return call(ctx, iFunc, stack)
 }
 
@@ -387,4 +393,22 @@ func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
 		message = strings.Join(parts, "%")
 	}
 	return message, nil
+}
+
+// triggerSpecialVariables are the list of special variables for triggers.
+// https://www.postgresql.org/docs/15/plpgsql-trigger.html
+// TODO: NEW and OLD variables are handled separately using `InterpreterStack.NewRecord` function.
+var triggerSpecialVariables = map[string]*pgtypes.DoltgresType{
+	//"NEW":
+	//"OLD":
+	"TG_NAME":         pgtypes.Name,
+	"TG_WHEN":         pgtypes.Text,
+	"TG_LEVEL":        pgtypes.Text,
+	"TG_OP":           pgtypes.Text,
+	"TG_RELID":        pgtypes.Oid,
+	"TG_RELNAME":      pgtypes.Name,
+	"TG_TABLE_NAME":   pgtypes.Name,
+	"TG_TABLE_SCHEMA": pgtypes.Name,
+	"TG_NARGS":        pgtypes.Int32,
+	"TG_ARGV[]":       pgtypes.TextArray,
 }

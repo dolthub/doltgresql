@@ -89,6 +89,8 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 		return stmt.Assignment.Convert()
 	case stmt.Case != nil:
 		return stmt.Case.Convert()
+	case stmt.DynExec != nil:
+		return stmt.DynExec.Convert()
 	case stmt.ExecSQL != nil:
 		return stmt.ExecSQL.Convert()
 	case stmt.Exit != nil:
