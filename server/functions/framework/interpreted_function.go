@@ -138,6 +138,10 @@ func (iFunc InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgs
 		}
 		fromType, ok := sch[0].Type.(*pgtypes.DoltgresType)
 		if !ok {
+			// TODO: We ensure we have a DoltgresType, but we should also convert the value to
+			//       ensure it's in the correct form for the DoltgresType. This logic lives in
+			//       pgexpressions.GMSCast, but need to be extracted to avoid a dependency cycle
+			//       so it can be used here and from server.plpgsql.
 			fromType, err = pgtypes.FromGmsTypeToDoltgresType(sch[0].Type)
 			if err != nil {
 				return nil, err

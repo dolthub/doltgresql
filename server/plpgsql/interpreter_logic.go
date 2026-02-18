@@ -273,7 +273,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if err != nil {
 				return nil, err
 			}
-			stack.BufferReturnQueryResults(convertRowsToRecords(schema, rows))
+			records, err := convertRowsToRecords(schema, rows)
+			if err != nil {
+				return nil, err
+			}
+			stack.BufferReturnQueryResults(records)
 
 		case OpCode_ScopeBegin:
 			stack.PushScope()
@@ -292,7 +296,7 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 
 // convertRowsToRecords iterates overs |rows| and converts each field in each row
 // into a RecordValue. |schema| is specified for type information.
-func convertRowsToRecords(schema sql.Schema, rows []sql.Row) [][]pgtypes.RecordValue {
+func convertRowsToRecords(schema sql.Schema, rows []sql.Row) ([][]pgtypes.RecordValue, error) {
 	records := make([][]pgtypes.RecordValue, 0, len(rows))
 	for _, row := range rows {
 		record := make([]pgtypes.RecordValue, len(row))
@@ -302,7 +306,16 @@ func convertRowsToRecords(schema sql.Schema, rows []sql.Row) [][]pgtypes.RecordV
 			if !ok {
 				// non-Doltgres types are still used in analysis, but we only support disk serialization
 				// for Doltgres types, so we must convert the GMS type to the nearest Doltgres type here.
-				doltgresType = pgtypes.FromGmsType(t)
+				// TODO: this conversion isn't fully accurate. expression.GMSCast has additional logic in
+				//       its Eval() method to handle types more exactly and also handles converting the
+				//       value to ensure it is well formed for the returned DoltgresType. We can't
+				//       currently use GMSCast directly here though, because of a dependency cycle, so
+				//       that conversion logic needs to be extracted into a package both places can import.
+				var err error
+				doltgresType, err = pgtypes.FromGmsTypeToDoltgresType(t)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			record[i] = pgtypes.RecordValue{
@@ -313,7 +326,7 @@ func convertRowsToRecords(schema sql.Schema, rows []sql.Row) [][]pgtypes.RecordV
 		records = append(records, record)
 	}
 
-	return records
+	return records, nil
 }
 
 // applyNoticeOptions adds the specified |options| to the |noticeResponse|.
