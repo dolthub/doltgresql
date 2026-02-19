@@ -54,6 +54,13 @@ func GetRelationType(ctx *sql.Context, schema string, relation string) (Relation
 	if !ok {
 		return RelationType_DoesNotExist, errors.Errorf("GetRelationType cannot find the database")
 	}
+
+	// Verify relation against temporary tables created this session
+	dbName := ctx.GetCurrentDatabase()
+	if _, ok := session.GetTemporaryTable(ctx, dbName, relation); ok {
+		return RelationType_Table, nil
+	}
+
 	return GetRelationTypeFromRoot(ctx, schema, relation, state.WorkingRoot().(*RootValue))
 }
 
@@ -68,6 +75,7 @@ func GetRelationTypeFromRoot(ctx *sql.Context, schema string, relation string, r
 	if ok {
 		return RelationType_Table, nil
 	}
+
 	// Check sequences next
 	collection, err := sequences.LoadSequences(ctx, root)
 	if err != nil {
