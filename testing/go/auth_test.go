@@ -437,6 +437,43 @@ func TestAuthTests(t *testing.T) {
 			},
 		},
 		{
+			Skip: true,
+			Name: `GRANT ON PROCEDURE`,
+			SetUpScript: []string{
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE TABLE test (v1 TEXT);`,
+				`CREATE PROCEDURE interpreted_example(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('1' || input); END; $$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CALL interpreted_example('12');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `GRANT ALL ON PROCEDURE public.interpreted_example(input TEXT) TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CALL interpreted_example('12');",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{
+						{"712"},
+					},
+				},
+			},
+		},
+		{
 			Name: `INSERT, UPDATE, DELETE Privileges`,
 			SetUpScript: []string{
 				`CREATE TABLE test (pk INT4 PRIMARY KEY);`,

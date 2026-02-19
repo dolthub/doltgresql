@@ -5621,13 +5621,13 @@ routine_with_args_list:
   }
 
 routine_with_args:
-  name
+  routine_name
   {
-    $$.val = tree.Routine{Name: tree.Name($1), Args: nil}
+    $$.val = tree.Routine{Name: $1.unresolvedObjectName(), Args: nil}
   }
-| name '(' opt_routine_args ')'
+| routine_name '(' opt_routine_args ')'
   {
-    $$.val = tree.Routine{Name: tree.Name($1), Args: $3.routineArgs()}
+    $$.val = tree.Routine{Name: $1.unresolvedObjectName(), Args: $3.routineArgs()}
   }
 
 opt_with_grant_option:

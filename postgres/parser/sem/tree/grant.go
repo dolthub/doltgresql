@@ -116,7 +116,7 @@ type TargetList struct {
 
 // Routine used for { FUNCTION | PROCEDURE | ROUTINE }
 type Routine struct {
-	Name Name
+	Name *UnresolvedObjectName
 	Args RoutineArgs
 }
 
@@ -163,7 +163,7 @@ func (tl *TargetList) Format(ctx *FmtCtx) {
 				if i != 0 {
 					ctx.WriteString(", ")
 				}
-				ctx.FormatNode(&r.Name)
+				ctx.FormatNode(r.Name)
 				if len(r.Args) != 0 {
 					ctx.WriteString(" ( ")
 					ctx.FormatNode(r.Args)

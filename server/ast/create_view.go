@@ -81,7 +81,7 @@ func nodeCreateView(ctx *Context, node *tree.CreateView) (*vitess.DDL, error) {
 	if err != nil {
 		return nil, err
 	}
-	selectStmt, err := nodeSelectStatement(ctx, node.AsSource.Select)
+	selectStmt, err := nodeSelect(ctx, node.AsSource)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func nodeCreateView(ctx *Context, node *tree.CreateView) (*vitess.DDL, error) {
 			Security:    sqlSecurity,
 			CheckOption: vCheckOpt,
 		},
-		SubStatementStr: node.AsSource.Select.String(),
+		SubStatementStr: node.AsSource.String(),
 	}
 	return stmt, nil
 }
