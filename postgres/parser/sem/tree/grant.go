@@ -97,7 +97,7 @@ type TargetList struct {
 
 	Tables           TablePatterns
 	TableColumnNames NameList
-	Sequences        NameList
+	Sequences        []*UnresolvedObjectName
 	Databases        NameList
 	LargeObjects     []Expr
 	Routines         []Routine
@@ -143,7 +143,12 @@ func (tl *TargetList) Format(ctx *FmtCtx) {
 			}
 		} else {
 			ctx.WriteString("SEQUENCE ")
-			ctx.FormatNode(&tl.Sequences)
+			for i, typ := range tl.Types {
+				if i != 0 {
+					ctx.WriteString(", ")
+				}
+				ctx.FormatNode(typ)
+			}
 		}
 	case privilege.Database:
 		ctx.WriteString("DATABASE ")

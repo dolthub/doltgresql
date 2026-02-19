@@ -1156,7 +1156,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name aggregate_name
 %type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name  opt_collate
 %type <*tree.UnresolvedObjectName> db_object_name_no_keywords simple_db_object_name_no_keywords complex_db_object_name_no_keywords
-%type <[]*tree.UnresolvedObjectName> type_name_list
+%type <[]*tree.UnresolvedObjectName> type_name_list sequence_name_list
 %type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name partition_name
 %type <[]string> schema_name_list role_spec_list opt_role_list opt_owned_by_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
@@ -5533,9 +5533,9 @@ targets:
 
 // these can be extended to more detailed rules
 other_targets:
-  SEQUENCE name_list
+  SEQUENCE sequence_name_list
   {
-    $$.val = tree.TargetList{TargetType: privilege.Sequence, Sequences: $2.nameList()}
+    $$.val = tree.TargetList{TargetType: privilege.Sequence, Sequences: $2.unresolvedObjectNames()}
   }
 | DATABASE name_list
   {
@@ -14209,6 +14209,16 @@ name_list:
 | name_list ',' name
   {
     $$.val = append($1.nameList(), tree.Name($3))
+  }
+
+sequence_name_list:
+  sequence_name
+  {
+    $$.val = []*tree.UnresolvedObjectName{$1.unresolvedObjectName()}
+  }
+| sequence_name_list ',' sequence_name
+  {
+    $$.val = append($1.unresolvedObjectNames(), $3.unresolvedObjectName())
   }
   
 // Constants

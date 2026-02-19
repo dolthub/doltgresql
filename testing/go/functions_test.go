@@ -3415,10 +3415,15 @@ func TestStringFunction(t *testing.T) {
 					ExpectedErr: "string_agg requires two arguments",
 				},
 				{
-					Skip:  true, // TODO: seperator is expected to be StrVal, which is incorrect
 					Query: `SELECT STRING_AGG(concat(v1::text, v2), ' * '::text) FROM test;`,
 					Expected: []sql.Row{
 						{"1a * 2b * 3c * 4d * 5e"},
+					},
+				},
+				{
+					Query: `SELECT STRING_AGG(concat(v1::text, v2), 8::text) FROM test;`,
+					Expected: []sql.Row{
+						{"1a82b83c84d85e"},
 					},
 				},
 			},
