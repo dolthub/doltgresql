@@ -40,7 +40,7 @@ func nodeCreateType(ctx *Context, node *tree.CreateType) (vitess.Statement, erro
 	case tree.Composite:
 		typs := make([]pgnodes.CompositeAsType, len(node.Composite.Types))
 		for i, t := range node.Composite.Types {
-			_, dataType, err := nodeResolvableTypeReference(ctx, t.Type)
+			_, dataType, err := nodeResolvableTypeReference(ctx, t.Type, false)
 			if err != nil {
 				return nil, err
 			}

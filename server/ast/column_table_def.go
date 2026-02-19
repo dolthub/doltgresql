@@ -37,7 +37,7 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		len(node.UniqueConstraintName) > 0 {
 		return nil, errors.Errorf("non-foreign key column constraint names are not yet supported")
 	}
-	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.Type)
+	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.Type, false)
 	if err != nil {
 		return nil, err
 	}
