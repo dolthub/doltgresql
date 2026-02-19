@@ -83,6 +83,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "bartr_agency.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER edm WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "bclynch/edmflare",
 			SQLFilename: "bclynch_edmflare.sql",
 		},

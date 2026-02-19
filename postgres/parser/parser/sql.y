@@ -2339,15 +2339,15 @@ row_level_security:
   {
     $$.val = &tree.AlterTableRowLevelSecurity{Type: tree.RowLevelSecurityDisable}
   }
-| ENABLE
+| ENABLE ROW LEVEL SECURITY
   {
     $$.val = &tree.AlterTableRowLevelSecurity{Type: tree.RowLevelSecurityEnable}
   }
-| FORCE
+| FORCE ROW LEVEL SECURITY
   {
     $$.val = &tree.AlterTableRowLevelSecurity{Type: tree.RowLevelSecurityForce}
   }
-| NO FORCE
+| NO FORCE ROW LEVEL SECURITY
   {
     $$.val = &tree.AlterTableRowLevelSecurity{Type: tree.RowLevelSecurityNoForce}
   }
