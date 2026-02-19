@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/core/triggers"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
@@ -97,6 +98,19 @@ func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder
 			}
 		}
 	}
+
+	tgOp := ""
+	switch te.Source.(type) {
+	case *plan.InsertInto:
+		tgOp = "INSERT"
+	case *plan.Update:
+		tgOp = "UPDATE"
+	case *plan.DeleteFrom:
+		tgOp = "DELETE"
+	case *plan.Truncate:
+		tgOp = "TRUNCATE"
+	}
+
 	return &triggerExecutionIter{
 		functions: trigFuncs,
 		whens:     whens,
@@ -105,6 +119,7 @@ func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder
 		runner:    te.Runner.Runner,
 		sch:       te.Sch,
 		source:    sourceIter,
+		tgOp:      tgOp,
 	}, nil
 }
 
@@ -171,6 +186,7 @@ type triggerExecutionIter struct {
 	runner    sql.StatementRunner
 	sch       sql.Schema
 	source    sql.RowIter
+	tgOp      string
 }
 
 var _ sql.RowIter = (*triggerExecutionIter)(nil)
@@ -195,9 +211,16 @@ func (t *triggerExecutionIter) Next(ctx *sql.Context) (sql.Row, error) {
 	case TriggerExecutionRowHandling_New:
 		newRow = nextRow
 	}
+
+	// TODO: handle other special variables
+	triggerVars := make(map[string]any)
+	if t.tgOp != "" {
+		triggerVars["TG_OP"] = t.tgOp
+	}
+
 	for funcIdx, function := range t.functions {
 		if t.whens[funcIdx].ID.IsValid() {
-			whenValue, err := plpgsql.TriggerCall(ctx, t.whens[funcIdx], t.runner, t.sch, oldRow, newRow)
+			whenValue, err := plpgsql.TriggerCall(ctx, t.whens[funcIdx], t.runner, t.sch, oldRow, newRow, triggerVars)
 			if err != nil {
 				if strings.Contains(err.Error(), "no valid cast for return value") {
 					// TODO: this error should technically be caught during parsing, but interpreted functions don't
@@ -214,7 +237,8 @@ func (t *triggerExecutionIter) Next(ctx *sql.Context) (sql.Row, error) {
 				continue
 			}
 		}
-		returnedValue, err := plpgsql.TriggerCall(ctx, function, t.runner, t.sch, oldRow, newRow)
+
+		returnedValue, err := plpgsql.TriggerCall(ctx, function, t.runner, t.sch, oldRow, newRow, triggerVars)
 		if err != nil {
 			return nil, err
 		}

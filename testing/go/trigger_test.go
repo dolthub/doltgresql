@@ -670,5 +670,55 @@ END; $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "trigger to call procedure that updates another table using dynamic execute",
+			SetUpScript: []string{
+				`create table public."Collections"(
+				 id uuid PRIMARY KEY NOT NULL,
+				 name text not null,
+				 username varchar(28) not null,
+				 total_tracks integer DEFAULT 0);`,
+				`INSERT INTO public."Collections" (id, name, username, total_tracks) VALUES ('550e8400-e29b-41d4-a716-446655440000', 'My Custom Playlist', 'user_alpha', 10);`,
+				`create table public."CollectionItems"(
+			collection_id uuid not null,
+			track_id integer not null);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE OR REPLACE FUNCTION update_collections()
+  RETURNS trigger AS $$
+  DECLARE
+    BEGIN
+    IF TG_OP = 'INSERT' THEN
+      EXECUTE 'update public."Collections" set total_tracks=total_tracks+1 where id = $1;'
+      USING NEW.collection_id;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN 
+      EXECUTE 'update public."Collections" set total_tracks=total_tracks-1 where id = $1;'
+      USING OLD.collection_id;
+    END IF;
+    
+    RETURN NEW;
+    END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `CREATE TRIGGER update_collection
+				AFTER INSERT OR DELETE ON public."CollectionItems"
+				FOR EACH ROW EXECUTE PROCEDURE update_collections();`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO public."CollectionItems" (collection_id, track_id) VALUES ('550e8400-e29b-41d4-a716-446655440000', 101);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT total_tracks FROM public."Collections"`,
+					Expected: []sql.Row{{11}},
+				},
+			},
+		},
 	})
 }

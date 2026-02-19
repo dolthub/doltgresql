@@ -57,10 +57,16 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "AlexTransit_venderctl.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER testuser WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "AliiAhmadi/PostScan",
 			SQLFilename: "AliiAhmadi_PostScan.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER freecodecamp WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "amittannagit/World-Cup-database-project-files",
 			Skip:        true, // Database creation uses unsupported params then attempts to connect, hangs indefinitely
 			SQLFilename: "amittannagit_World-Cup-database-project-files.sql",

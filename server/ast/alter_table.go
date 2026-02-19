@@ -324,7 +324,7 @@ func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColum
 		return nil, errors.Errorf("ALTER TABLE with USING is not supported yet")
 	}
 
-	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType)
+	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType, false)
 	if err != nil {
 		return nil, err
 	}
