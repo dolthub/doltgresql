@@ -18,7 +18,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/lib/pq/oid"
 
