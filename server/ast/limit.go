@@ -26,7 +26,7 @@ import (
 
 // nodeLimit handles *tree.Limit nodes.
 func nodeLimit(ctx *Context, node *tree.Limit) (*vitess.Limit, error) {
-	if node == nil || (node.Count == nil && node.Offset == nil) {
+	if node == nil || ((node.Count == nil || node.Count == tree.NullLiteral{}) && (node.Offset == nil || node.Offset == tree.NullLiteral{})) {
 		return nil, nil
 	}
 	var count vitess.Expr
