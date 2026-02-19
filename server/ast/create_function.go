@@ -85,19 +85,17 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			for i, op := range parsedBody {
 				switch op.OpCode {
 				case plpgsql.OpCode_Declare:
-					declareTyp, err := parser.ParseType(op.PrimaryData)
-					if err != nil {
-						return nil, err
+					// ParseType uses casting to parse the given type, but
+					// some special types cannot be cast. Eg: `user_defined_table_type%ROWTYPE`
+					if declareTyp, err := parser.ParseType(op.PrimaryData); err == nil {
+						if _, dt, err := nodeResolvableTypeReference(ctx, declareTyp, false); err == nil && dt != nil {
+							dtName := dt.Name()
+							if dt.Schema() != "" {
+								dtName = fmt.Sprintf("%s.%s", dt.Schema(), dtName)
+							}
+							parsedBody[i].PrimaryData = dtName
+						}
 					}
-					_, dt, err := nodeResolvableTypeReference(ctx, declareTyp, false)
-					if err != nil {
-						return nil, err
-					}
-					dtName := dt.Name()
-					if dt.Schema() != "" {
-						dtName = fmt.Sprintf("%s.%s", dt.Schema(), dtName)
-					}
-					parsedBody[i].PrimaryData = dtName
 				}
 			}
 		case "sql":

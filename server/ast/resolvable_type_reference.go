@@ -192,7 +192,7 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 					}
 				}
 			default:
-				return nil, nil, errors.Errorf("unknown type with oid: %d", uint32(columnType.Oid()))
+				doltgresType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(columnType.Name()))
 			}
 		}
 	default:
