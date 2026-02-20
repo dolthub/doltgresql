@@ -190,6 +190,120 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Drop unique constraint added via ALTER TABLE",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int PRIMARY KEY, c1 int, c2 int);",
+				"INSERT INTO t1 VALUES (1, 10, 20);",
+				"ALTER TABLE t1 ADD CONSTRAINT uniq_c1c2 UNIQUE (c1, c2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO t1 VALUES (2, 10, 20);",
+					ExpectedErr: "unique",
+				},
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT uniq_c1c2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t1 VALUES (2, 10, 20);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t1 ORDER BY pk;",
+					Expected: []sql.Row{{1, 10, 20}, {2, 10, 20}},
+				},
+			},
+		},
+		{
+			Name: "Drop unique constraint defined inline in CREATE TABLE",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int PRIMARY KEY, c1 int, c2 int, CONSTRAINT uniq_inline UNIQUE (c1, c2));",
+				"INSERT INTO t1 VALUES (1, 10, 20);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO t1 VALUES (2, 10, 20);",
+					ExpectedErr: "unique",
+				},
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT uniq_inline;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t1 VALUES (2, 10, 20);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "Drop unique constraint with IF EXISTS",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int PRIMARY KEY, c1 int);",
+				"ALTER TABLE t1 ADD CONSTRAINT uniq_c1 UNIQUE (c1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT uniq_c1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "ALTER TABLE t1 DROP CONSTRAINT uniq_c1;",
+					ExpectedErr: "does not exist",
+				},
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT IF EXISTS uniq_c1;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "Drop unique constraint on single column",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int PRIMARY KEY, email varchar(256), CONSTRAINT uniq_email UNIQUE (email));",
+				"INSERT INTO t1 VALUES (1, 'a@b.com');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO t1 VALUES (2, 'a@b.com');",
+					ExpectedErr: "unique",
+				},
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT uniq_email;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t1 VALUES (2, 'a@b.com');",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "Drop and re-add unique constraint with different columns",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk int PRIMARY KEY, c1 int, c2 int, c3 int);",
+				"ALTER TABLE t1 ADD CONSTRAINT uniq1 UNIQUE (c1, c2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t1 DROP CONSTRAINT uniq1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE t1 ADD CONSTRAINT uniq1 UNIQUE (c1, c2, c3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t1 VALUES (1, 10, 20, 30);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t1 VALUES (2, 10, 20, 30);",
+					ExpectedErr: "unique",
+				},
+			},
+		},
+		{
 			Name: "Add Primary Key",
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a INT, b INT);",

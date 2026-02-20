@@ -36,6 +36,7 @@ const (
 	ruleId_AssignTriggers                                                // assignTriggers
 	ruleId_AssignUpdateCasts                                             // assignUpdateCasts
 	ruleId_ConvertDropPrimaryKeyConstraint                               // convertDropPrimaryKeyConstraint
+	ruleId_ConvertDropUniqueConstraint                                   // convertDropUniqueConstraint
 	ruleId_GenerateForeignKeyName                                        // generateForeignKeyName
 	ruleId_ReplaceIndexedTables                                          // replaceIndexedTables
 	ruleId_ReplaceNode                                                   // replaceNode
@@ -68,7 +69,8 @@ func Init() {
 
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
 		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
-		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint}},
+		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint},
+		{Id: ruleId_ConvertDropUniqueConstraint, Apply: convertDropUniqueConstraint}},
 		analyzer.OnceBeforeDefault...)
 
 	// We remove several validation rules and substitute our own
