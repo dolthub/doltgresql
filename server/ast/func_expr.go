@@ -75,11 +75,18 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 		if len(node.Exprs) != 2 {
 			return nil, errors.Errorf("string_agg requires two arguments")
 		}
-		sep, ok := node.Exprs[1].(*tree.StrVal)
-		if !ok {
-			return nil, errors.Errorf("string_agg requires a string separator")
+
+		sepString := ""
+		if sep, ok := node.Exprs[1].(*tree.StrVal); ok {
+			sepString = strings.Trim(sep.String(), "'")
+		} else {
+			// TODO: need to support this function in doltgres
+			c, is := node.Exprs[1].(*tree.CastExpr)
+			if !is && c.Type.SQLString() != "TEXT" {
+				return nil, errors.Errorf("string_agg requires a string separator")
+			}
+			sepString = strings.Trim(c.Expr.String(), "'")
 		}
-		sepString := strings.Trim(sep.String(), "'")
 
 		var orderBy vitess.OrderBy
 		if len(node.OrderBy) > 0 {

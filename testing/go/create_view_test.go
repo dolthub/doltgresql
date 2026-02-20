@@ -248,4 +248,16 @@ var createViewStmts = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "create view with CTE",
+		SetUpScript: []string{
+			"CREATE TABLE public.t1 (id integer NOT NULL);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `create view public.v1 as with table1 as (select * from t1) select id from table1;`,
+				Expected: []sql.Row{},
+			},
+		},
+	},
 }

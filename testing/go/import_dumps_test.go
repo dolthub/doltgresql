@@ -76,6 +76,11 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "Ansh-Rathod_Musive-backend-2.0.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER app_admin WITH SUPERUSER PASSWORD 'password';",
+				"CREATE USER analytics_viewer WITH SUPERUSER PASSWORD 'password';",
+				"CREATE USER content_manager WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "artygg/Data-Processing-Goida",
 			SQLFilename: "artygg_Data-Processing-Goida.sql",
 		},
@@ -84,6 +89,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "bartr_agency.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER edm WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "bclynch/edmflare",
 			SQLFilename: "bclynch_edmflare.sql",
 		},
