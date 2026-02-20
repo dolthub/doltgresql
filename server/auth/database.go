@@ -43,6 +43,7 @@ type Database struct {
 	schemaPrivileges   *SchemaPrivileges
 	tablePrivileges    *TablePrivileges
 	roleMembership     *RoleMembership
+	defaultPrivileges  *DefaultPrivileges
 }
 
 // ClearDatabase clears the internal database, leaving only the default users. This is primarily for use by tests.
@@ -53,6 +54,7 @@ func ClearDatabase() {
 	clear(globalDatabase.schemaPrivileges.Data)
 	clear(globalDatabase.tablePrivileges.Data)
 	clear(globalDatabase.roleMembership.Data)
+	clear(globalDatabase.defaultPrivileges.Data)
 	dbInitDefault()
 }
 
@@ -137,6 +139,7 @@ func dbInit(dEnv *env.DoltEnv, cfg Config) {
 		schemaPrivileges:   NewSchemaPrivileges(),
 		tablePrivileges:    NewTablePrivileges(),
 		roleMembership:     NewRoleMembership(),
+		defaultPrivileges:  NewDefaultPrivileges(),
 	}
 	globalLock = &sync.RWMutex{}
 	if dEnv != nil {

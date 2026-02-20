@@ -15,12 +15,64 @@
 package ast
 
 import (
+	"github.com/cockroachdb/errors"
+
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/privilege"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeAlterDefaultPrivileges handles *tree.AlterDefaultPrivileges nodes.
 func nodeAlterDefaultPrivileges(ctx *Context, node *tree.AlterDefaultPrivileges) (vitess.Statement, error) {
-	return NotYetSupportedError("ALTER DEFAULT PRIVILEGES statement is not yet supported")
+	if node == nil {
+		return nil, nil
+	}
+
+	// Map the parser's object type to the auth package's PrivilegeObject.
+	objectType, err := defaultPrivilegeObjectType(node.Target.TargetType)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert the privilege list.
+	privileges, err := convertPrivilegeKinds(objectType, node.Privileges)
+	if err != nil {
+		return nil, err
+	}
+
+	return vitess.InjectedStatement{
+		Statement: &pgnodes.AlterDefaultPrivileges{
+			ForRoles:        node.TargetRoles,
+			Schemas:         node.Target.InSchema,
+			ObjectType:      objectType,
+			Grantees:        node.Grantees,
+			Privileges:      privileges,
+			WithGrantOption: node.GrantOption,
+			IsGrant:         node.Grant,
+			Cascade:         node.DropBehavior == tree.DropCascade,
+		},
+		Children: nil,
+	}, nil
+}
+
+// defaultPrivilegeObjectType maps the parser's privilege.ObjectType to the auth.PrivilegeObject
+// used in default privilege storage.
+func defaultPrivilegeObjectType(ot privilege.ObjectType) (auth.PrivilegeObject, error) {
+	switch ot {
+	case privilege.Table:
+		return auth.PrivilegeObject_TABLE, nil
+	case privilege.Sequence:
+		return auth.PrivilegeObject_SEQUENCE, nil
+	case privilege.Function, privilege.Procedure, privilege.Routine:
+		return auth.PrivilegeObject_FUNCTION, nil
+	case privilege.Type:
+		return auth.PrivilegeObject_TYPE, nil
+	case privilege.Schema:
+		return auth.PrivilegeObject_SCHEMA, nil
+	default:
+		return 0, errors.Errorf("unsupported object type for ALTER DEFAULT PRIVILEGES: %s", ot)
+	}
 }
