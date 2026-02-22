@@ -558,14 +558,10 @@ var ValuesStatementTests = []ScriptTest{
 		Name: "VALUES with case-differing quoted columns and aggregates",
 		Assertions: []ScriptTestAssertion{
 			{
-				// TODO: resolve GMS case asymmetry issues.
-				// Builder.buildAggregateFunc() in planbuilder/aggregates.go
-				// lowercases entire aggregate names, so SUM("Val") and
-				// SUM("val") both become "sum(v.val)" in the GetField. The
-				// second pass in ResolveValuesTypes must use strings.ToLower
-				// to match against GroupBy.Schema() which keeps original
-				// casing. This causes a false match when two columns differ
-				// only by case. See resolve_values_types.go for details.
+				// TODO: GMS is case-insensitive for identifiers, but
+				// Postgres requires case-sensitivity for quoted identifiers.
+				// Columns "Val" and "val" both become "val" after
+				// strings.ToLower, so their aggregates match the wrong column.
 				Skip:  true,
 				Query: `SELECT SUM("Val"), SUM("val") FROM (VALUES(1, 10),(2.5, 20)) v("Val", "val");`,
 				Expected: []sql.Row{

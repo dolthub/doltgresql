@@ -131,31 +131,10 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 			for _, child := range n.Children() {
 				childSchema = append(childSchema, child.Schema()...)
 			}
-			// TODO: resolve GMS case asymmetry issues.
-			// GMS has a casing asymmetry for aggregate names that forces
-			// case-insensitive matching here. GMS's Builder.buildAggregateFunc()
-			// in planbuilder/aggregates.go lowercases the entire aggregate
-			// name producing "sum(v.n)", but GroupBy.Schema() in
-			// plan/group_by.go keeps original casing from e.String()
-			// producing "SUM(v.n)". Without strings.ToLower, the match
-			// fails silently and aggregate type propagation breaks, causing
-			// runtime panics (interface conversion: interface {} is
-			// decimal.Decimal, not int32).
-			//
-			// We can't use non-name matching because sql.Column has no
-			// ColumnId field, so there is nothing on the child schema side
-			// to match against GetField.Id(). Name is the only shared
-			// identifier.
-			//
-			// This causes a known false-match when two quoted column names
-			// differ only by case (e.g., "Val" vs "val"), since the
-			// planbuilder has already lowered both to the same GetField
-			// name. GMS originated as a MySQL engine where identifiers are
-			// case-insensitive, but Postgres requires case-sensitivity for
-			// quoted identifiers. A proper fix requires structured
-			// case-sensitivity discrimination in GMS, either by adding
-			// ColumnId to sql.Column or by fixing the casing asymmetry in
-			// Builder.buildAggregateFunc() and GroupBy.Schema().
+			// TODO: GMS is case-insensitive for identifiers, so aggregate
+			// GetField names and child schema names may differ in casing.
+			// We use strings.ToLower to handle this, but Postgres requires
+			// case-sensitivity for quoted identifiers, which this breaks.
 			gfName := strings.ToLower(gf.Name())
 			for _, col := range childSchema {
 				if strings.ToLower(col.Name) == gfName && gf.Type() != col.Type {
