@@ -45,6 +45,10 @@ func (db *Database) serialize() []byte {
 	db.schemaPrivileges.serialize(writer)
 	// Write the table privileges
 	db.tablePrivileges.serialize(writer)
+	// Write the sequence privileges
+	db.sequencePrivileges.serialize(writer)
+	// Write the routine privileges
+	db.routinePrivileges.serialize(writer)
 	// Write the role chain
 	db.roleMembership.serialize(writer)
 	return writer.Data()
@@ -65,7 +69,7 @@ func (db *Database) deserialize(data []byte) error {
 	}
 }
 
-// deserialize creates a Database from a byte slice. Expects a reader that has already read the version.
+// deserializeV0 creates a Database from a byte slice. Expects a reader that has already read the version.
 func (db *Database) deserializeV0(reader *utils.Reader) error {
 	// Read the roles
 	clear(db.rolesByName)
@@ -85,5 +89,17 @@ func (db *Database) deserializeV0(reader *utils.Reader) error {
 	db.tablePrivileges.deserialize(0, reader)
 	// Read the role chain
 	db.roleMembership.deserialize(0, reader)
+	if db.routinePrivileges == nil {
+		db.routinePrivileges = NewRoutinePrivileges()
+	} else {
+		// Read the routine privileges
+		db.routinePrivileges.deserialize(0, reader)
+	}
+	if db.sequencePrivileges == nil {
+		db.sequencePrivileges = NewSequencePrivileges()
+	} else {
+		// Read the routine privileges
+		db.sequencePrivileges.deserialize(0, reader)
+	}
 	return nil
 }

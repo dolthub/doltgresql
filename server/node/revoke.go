@@ -31,6 +31,8 @@ type Revoke struct {
 	RevokeTable    *RevokeTable
 	RevokeSchema   *RevokeSchema
 	RevokeDatabase *RevokeDatabase
+	RevokeSequence *RevokeSequence
+	RevokeRoutine  *RevokeRoutine
 	RevokeRole     *RevokeRole
 	FromRoles      []string
 	GrantedBy      string
@@ -54,6 +56,18 @@ type RevokeSchema struct {
 type RevokeDatabase struct {
 	Privileges []auth.Privilege
 	Databases  []string
+}
+
+// RevokeSequence specifically handles the REVOKE ... ON SEQUENCE statement.
+type RevokeSequence struct {
+	Privileges []auth.Privilege
+	Sequences  []auth.SequencePrivilegeKey
+}
+
+// RevokeRoutine specifically handles the REVOKE ... ON FUNCTION/PROCEDURE/ROUTINE statement.
+type RevokeRoutine struct {
+	Privileges []auth.Privilege
+	Routines   []auth.RoutinePrivilegeKey
 }
 
 // RevokeRole specifically handles the REVOKE <roles> FROM <roles> statement.
@@ -98,6 +112,14 @@ func (r *Revoke) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
 			}
 		case r.RevokeDatabase != nil:
 			if err = r.revokeDatabase(ctx); err != nil {
+				return
+			}
+		case r.RevokeSequence != nil:
+			if err = r.revokeSequence(ctx); err != nil {
+				return
+			}
+		case r.RevokeRoutine != nil:
+			if err = r.revokeRoutine(ctx); err != nil {
 				return
 			}
 		case r.RevokeRole != nil:
@@ -259,6 +281,80 @@ func (r *Revoke) revokeDatabase(ctx *sql.Context) error {
 				auth.RemoveDatabasePrivilege(auth.DatabasePrivilegeKey{
 					Role: role.ID(),
 					Name: databases,
+				}, auth.GrantedPrivilege{
+					Privilege: privilege,
+					GrantedBy: grantedByID,
+				}, r.GrantOptionFor)
+			}
+		}
+	}
+	return nil
+}
+
+// revokeSequence handles *RevokeSequence from within RowIter.
+func (r *Revoke) revokeSequence(ctx *sql.Context) error {
+	roles, userRole, grantedByID, err := r.common(ctx)
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		for _, seq := range r.RevokeSequence.Sequences {
+			schemaName, err := core.GetSchemaName(ctx, nil, seq.Schema)
+			if err != nil {
+				return err
+			}
+			key := auth.SequencePrivilegeKey{
+				Role:   userRole.ID(),
+				Schema: schemaName,
+				Name:   seq.Name,
+			}
+			for _, privilege := range r.RevokeSequence.Privileges {
+				if id := auth.HasSequencePrivilegeGrantOption(key, privilege); !id.IsValid() {
+					// TODO: grab the actual error message
+					return errors.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
+				}
+				auth.RemoveSequencePrivilege(auth.SequencePrivilegeKey{
+					Role:   role.ID(),
+					Schema: schemaName,
+					Name:   seq.Name,
+				}, auth.GrantedPrivilege{
+					Privilege: privilege,
+					GrantedBy: grantedByID,
+				}, r.GrantOptionFor)
+			}
+		}
+	}
+	return nil
+}
+
+// revokeRoutine handles *RevokeRoutine from within RowIter.
+func (r *Revoke) revokeRoutine(ctx *sql.Context) error {
+	roles, userRole, grantedByID, err := r.common(ctx)
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		for _, routine := range r.RevokeRoutine.Routines {
+			schemaName, err := core.GetSchemaName(ctx, nil, routine.Schema)
+			if err != nil {
+				return err
+			}
+			key := auth.RoutinePrivilegeKey{
+				Role:     userRole.ID(),
+				Schema:   schemaName,
+				Name:     routine.Name,
+				ArgTypes: routine.ArgTypes,
+			}
+			for _, privilege := range r.RevokeRoutine.Privileges {
+				if id := auth.HasRoutinePrivilegeGrantOption(key, privilege); !id.IsValid() {
+					// TODO: grab the actual error message
+					return errors.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)
+				}
+				auth.RemoveRoutinePrivilege(auth.RoutinePrivilegeKey{
+					Role:     role.ID(),
+					Schema:   schemaName,
+					Name:     routine.Name,
+					ArgTypes: routine.ArgTypes,
 				}, auth.GrantedPrivilege{
 					Privilege: privilege,
 					GrantedBy: grantedByID,

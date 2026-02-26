@@ -21,6 +21,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
@@ -92,5 +93,10 @@ func nodeAlterSequence(ctx *Context, node *tree.AlterSequence) (vitess.Statement
 			ownedBy,
 			warnings...),
 		Children: nil,
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_UPDATE,
+			TargetType:  auth.AuthTargetType_SequenceIdentifiers,
+			TargetNames: []string{name.SchemaQualifier.String(), name.Name.String()},
+		},
 	}, nil
 }
