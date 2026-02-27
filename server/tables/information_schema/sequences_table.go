@@ -15,11 +15,13 @@
 package information_schema
 
 import (
-	"github.com/dolthub/doltgresql/server/functions"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"strconv"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/information_schema"
-	"strconv"
+
+	"github.com/dolthub/doltgresql/server/functions"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 const SequencesTableName = "sequences"
