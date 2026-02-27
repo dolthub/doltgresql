@@ -655,6 +655,56 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "RETURNS TABLE with join query",
+			SetUpScript: []string{
+				`CREATE TABLE customers (
+					id INT PRIMARY KEY,
+					name TEXT
+				);`,
+				`CREATE TABLE orders (
+					id SERIAL PRIMARY KEY,
+					customer_id INT,
+					amount INT
+				);`,
+				`INSERT INTO customers VALUES (1, 'John'), (2, 'Jane');`,
+				`INSERT INTO orders VALUES (1, 1, 100), (2, 2, 10);`,
+				`CREATE OR REPLACE FUNCTION func2(n INT) RETURNS TABLE (c_id INT, c_name TEXT, c_total_spent INT) 
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY
+						SELECT c.id,
+							   c.name,
+							   SUM(o.amount) AS total_spent
+						FROM customers c
+						JOIN orders o ON o.customer_id = c.id
+						GROUP BY c.id, c.name
+						HAVING SUM(o.amount) >= n
+						;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func2(1);",
+					Expected: []sql.Row{
+						{"(1,John,100)"},
+						{"(2,Jane,10)"},
+					},
+				},
+				{
+					Query: "SELECT func2(11);",
+					Expected: []sql.Row{
+						{"(1,John,100)"},
+					},
+				},
+				{
+					Query:    "SELECT func2(111);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: "RETURNS SETOF with composite param",
 			SetUpScript: []string{
 				`CREATE TYPE user_summary AS (
@@ -1373,6 +1423,48 @@ END;
 					Query:    `SELECT public.tax_job_trans(trans.*) FROM public.trans;`,
 					Skip:     true, // TODO: implement table.* syntax
 					Expected: []sql.Row{{`(1,sched,"2026-01-23 14:06:32.794817+00","2026-01-23 14:06:32.794817+00","2026-01-23 14:06:32.794817+00",,ru2019,,,44,,"[{""code"": ""test"", ""name"": ""#test"", ""time"": ""2023-04-05T06:07:08+00:00"", ""vmid"": 1, ""price"": 44, ""amount"": 1, ""method"": 1}]")`}},
+				},
+			},
+		},
+		{
+			Name: "resolve type with empty search path",
+			SetUpScript: []string{
+				"set search_path to ''",
+				`CREATE TABLE public.ambienttempdetail (tempdetailid integer NOT NULL, panelprojectid integer, threshold_value numeric(10,2), readingintervalinmin integer);`,
+				`insert into public.ambienttempdetail values (1, 101, 25.5, 15);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION public.ambienttempdetail_insertupdate(p_panel_project_id integer, p_threshold_value numeric, p_reading_interval_in_min integer) RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_rtn_value INTEGER;
+BEGIN
+    IF NOT EXISTS (SELECT * FROM AmbientTempDetail WHERE PanelProjectId = p_panel_project_id) THEN
+        INSERT INTO AmbientTempDetail (PanelProjectId, Threshold_Value, ReadingIntervalInMin)
+        VALUES (p_panel_project_id, p_threshold_value, p_reading_interval_in_min)
+        RETURNING TempDetailId INTO v_rtn_value;
+    ELSE
+        UPDATE AmbientTempDetail
+        SET PanelProjectId = p_panel_project_id,
+            Threshold_Value = p_threshold_value,
+            ReadingIntervalInMin = p_reading_interval_in_min
+        WHERE PanelProjectId = p_panel_project_id;
+        v_rtn_value := p_panel_project_id;
+    END IF;
+    
+    RETURN v_rtn_value;
+END;
+$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "set search_path to 'public'",
+				},
+				{
+					Query:    "SELECT public.ambienttempdetail_insertupdate(101, 25.5, 15);",
+					Expected: []sql.Row{{101}},
 				},
 			},
 		},

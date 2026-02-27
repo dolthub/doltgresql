@@ -142,6 +142,12 @@ StartupLoop:
 				return err
 			}
 			break StartupLoop
+		case *pgproto3.GSSEncRequest:
+			// we don't support GSSAPI
+			_, err = clientConn.Write([]byte("N"))
+			if err != nil {
+				return err
+			}
 		default:
 			t.Fatalf("unexpected startup message: %v", startupMessage)
 		}

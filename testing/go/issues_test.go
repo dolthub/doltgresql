@@ -18,6 +18,9 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/id"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 func TestIssues(t *testing.T) {
@@ -363,6 +366,44 @@ limit 1`,
 						{3, "(102,)", nil},
 						{4, nil, "(103,xyzzy)"},
 					},
+				},
+			},
+		},
+		{
+			Name: "Issue #2299",
+			SetUpScript: []string{
+				"CREATE TYPE team_role AS ENUM ('admin', 'editor', 'member');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), role team_role NOT NULL DEFAULT 'member');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO users (role) VALUES (DEFAULT);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT role FROM users;`,
+					Expected: []sql.Row{{"member"}},
+				},
+			},
+		},
+		{
+			Name: "Issue #2307",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT4);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_tables WHERE tablename = 'test');`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT NOT EXISTS(SELECT 1 FROM pg_catalog.pg_tables WHERE tablename = 'test');`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f"}},
 				},
 			},
 		},

@@ -52,7 +52,7 @@ create table public."Collections"(
   name text not null,
   username varchar(28) not null,
   total_tracks integer DEFAULT 0
-)
+);
 
 alter table public."Collections" add constraint user_id FOREIGN KEY(username)
 REFERENCES public."Users"(username) match full on update CASCADE on delete cascade;
@@ -75,12 +75,12 @@ CREATE OR REPLACE FUNCTION update_collections()
   DECLARE
     BEGIN
     IF TG_OP = 'INSERT' THEN
-      EXECUTE 'update public."Collections" set total_tracks=total_tracks+1 where id = $1;' 
+      EXECUTE 'update public."Collections" set total_tracks=total_tracks+1 where id = $1;'
       USING NEW.collection_id;
     END IF;
 
     IF TG_OP = 'DELETE' THEN 
-      EXECUTE 'update public."Collections" set total_tracks=total_tracks-1 where id = $1;' 
+      EXECUTE 'update public."Collections" set total_tracks=total_tracks-1 where id = $1;'
       USING OLD.collection_id;
     END IF;
     

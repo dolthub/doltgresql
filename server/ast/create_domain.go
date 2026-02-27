@@ -34,7 +34,7 @@ func nodeCreateDomain(ctx *Context, node *tree.CreateDomain) (vitess.Statement, 
 	if err != nil {
 		return nil, err
 	}
-	_, dataType, err := nodeResolvableTypeReference(ctx, node.DataType)
+	_, dataType, err := nodeResolvableTypeReference(ctx, node.DataType, false)
 	if err != nil {
 		return nil, err
 	}

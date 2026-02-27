@@ -25,7 +25,6 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	"github.com/dolthub/doltgresql/postgres/parser/types"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/doltgresql/server/plpgsql"
@@ -43,21 +42,11 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	var retType *pgtypes.DoltgresType
 	if len(node.RetType) == 0 {
 		retType = pgtypes.Void
-	} else if !node.ReturnsTable { // Return types may specify "trigger", but this doesn't apply elsewhere
-		switch typ := node.RetType[0].Type.(type) {
-		case *types.T:
-			retType = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(typ.Name()))
-		case *tree.UnresolvedObjectName:
-			if typ.NumParts == 1 && typ.SQLString() == "trigger" {
-				retType = pgtypes.Trigger
-			} else {
-				_, retType, err = nodeResolvableTypeReference(ctx, typ)
-				if err != nil {
-					return nil, err
-				}
-			}
-		default:
-			return nil, fmt.Errorf("unsupported ResolvableTypeReference type: %T", typ)
+	} else if !node.ReturnsTable {
+		// Return types may specify "trigger", but this doesn't apply elsewhere
+		_, retType, err = nodeResolvableTypeReference(ctx, node.RetType[0].Type, true)
+		if err != nil {
+			return nil, err
 		}
 	} else {
 		retType = createAnonymousCompositeType(node.RetType)
@@ -67,16 +56,9 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	paramTypes := make([]*pgtypes.DoltgresType, len(node.Args))
 	for i, arg := range node.Args {
 		paramNames[i] = arg.Name.String()
-		switch argType := arg.Type.(type) {
-		case *types.T:
-			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.Name()))
-		case *tree.UnresolvedObjectName:
-			_, paramTypes[i], err = nodeResolvableTypeReference(ctx, argType)
-			if err != nil {
-				return nil, err
-			}
-		default:
-			paramTypes[i] = pgtypes.NewUnresolvedDoltgresType("", strings.ToLower(argType.SQLString()))
+		_, paramTypes[i], err = nodeResolvableTypeReference(ctx, arg.Type, false)
+		if err != nil {
+			return nil, err
 		}
 	}
 	var strict bool
@@ -98,6 +80,23 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			parsedBody, err = plpgsql.Parse(ctx.originalQuery)
 			if err != nil {
 				return nil, err
+			}
+			// parse types
+			for i, op := range parsedBody {
+				switch op.OpCode {
+				case plpgsql.OpCode_Declare:
+					// ParseType uses casting to parse the given type, but
+					// some special types cannot be cast. Eg: `user_defined_table_type%ROWTYPE`
+					if declareTyp, err := parser.ParseType(op.PrimaryData); err == nil {
+						if _, dt, err := nodeResolvableTypeReference(ctx, declareTyp, false); err == nil && dt != nil {
+							dtName := dt.Name()
+							if dt.Schema() != "" {
+								dtName = fmt.Sprintf("%s.%s", dt.Schema(), dtName)
+							}
+							parsedBody[i].PrimaryData = dtName
+						}
+					}
+				}
 			}
 		case "sql":
 			as, ok := options[tree.OptionAs1]

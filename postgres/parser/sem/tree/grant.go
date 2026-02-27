@@ -97,7 +97,7 @@ type TargetList struct {
 
 	Tables           TablePatterns
 	TableColumnNames NameList
-	Sequences        NameList
+	Sequences        []*UnresolvedObjectName
 	Databases        NameList
 	LargeObjects     []Expr
 	Routines         []Routine
@@ -116,7 +116,7 @@ type TargetList struct {
 
 // Routine used for { FUNCTION | PROCEDURE | ROUTINE }
 type Routine struct {
-	Name Name
+	Name *UnresolvedObjectName
 	Args RoutineArgs
 }
 
@@ -143,7 +143,12 @@ func (tl *TargetList) Format(ctx *FmtCtx) {
 			}
 		} else {
 			ctx.WriteString("SEQUENCE ")
-			ctx.FormatNode(&tl.Sequences)
+			for i, typ := range tl.Types {
+				if i != 0 {
+					ctx.WriteString(", ")
+				}
+				ctx.FormatNode(typ)
+			}
 		}
 	case privilege.Database:
 		ctx.WriteString("DATABASE ")
@@ -163,7 +168,7 @@ func (tl *TargetList) Format(ctx *FmtCtx) {
 				if i != 0 {
 					ctx.WriteString(", ")
 				}
-				ctx.FormatNode(&r.Name)
+				ctx.FormatNode(r.Name)
 				if len(r.Args) != 0 {
 					ctx.WriteString(" ( ")
 					ctx.FormatNode(r.Args)

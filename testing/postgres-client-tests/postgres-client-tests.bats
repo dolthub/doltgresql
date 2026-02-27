@@ -77,3 +77,31 @@ teardown() {
     cd $BATS_TEST_DIRNAME/python
     python3 sqlalchemy-test.py $USER $PORT
 }
+
+@test "Drizzle ORM smoke test" {
+  # the schema should be empty
+  query_server -c "DROP TABLE IF EXISTS test_table" -t
+
+  cd $BATS_TEST_DIRNAME/drizzle
+
+  # Construct the string and append it to the .env file
+  touch .env
+  echo "DATABASE_URL=postgres://$USER:password@localhost:$PORT/postgres" >> .env
+
+  npm i drizzle-orm pg dotenv
+  npm i -D drizzle-kit tsx @types/pg
+  npx drizzle-kit push
+
+  # we can check if 'components table was created'
+  query_server -c "SELECT * FROM users" -t
+  run query_server -c "SELECT * FROM users" -t
+  [ "$status" -eq 0 ]
+
+  # this inserts and updates row and check its updated result
+  npx tsx src/index.ts
+}
+
+@test "rust sqlx" {
+    cd $BATS_TEST_DIRNAME/rust
+    RUSTFLAGS=-Awarnings cargo run -- $USER $PORT
+}

@@ -89,7 +89,8 @@ func parseRelationName(ctx *sql.Context, name string) (schema string, relation s
 		return "", "", errors.Errorf(`cannot parse relation: %s`, name)
 	}
 
-	// Trim any quotes from the relation name
+	// Trim any quotes from the schema and the relation name
+	schema = strings.Trim(schema, `"`)
 	relation = strings.Trim(relation, `"`)
 
 	return schema, relation, nil

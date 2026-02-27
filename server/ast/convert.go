@@ -31,6 +31,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeAlterAggregate(ctx, stmt)
 	case *tree.AlterDatabase:
 		return nodeAlterDatabase(ctx, stmt)
+	case *tree.AlterDefaultPrivileges:
+		return nodeAlterDefaultPrivileges(ctx, stmt)
 	case *tree.AlterFunction:
 		return nodeAlterFunction(ctx, stmt)
 	case *tree.AlterIndex:

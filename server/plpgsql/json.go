@@ -132,6 +132,15 @@ type plpgSQL_stmt_case struct {
 	Else     []statement `json:"else_stmts"`
 }
 
+// plpgSQL_stmt_dynexecute exists to match the expected JSON format.
+type plpgSQL_stmt_dynexecute struct {
+	LineNumber int32     `json:"lineno"`
+	Into       bool      `json:"into"`
+	Query      expr      `json:"query"`
+	Target     datum     `json:"target"`
+	Params     []sqlstmt `json:"params"`
+}
+
 // plpgSQL_case_when exists to match the expected JSON format.
 type plpgSQL_case_when struct {
 	LineNumber int32       `json:"lineno"`
@@ -239,6 +248,7 @@ type sqlstmt struct {
 type statement struct {
 	Assignment  *plpgSQL_stmt_assign       `json:"PLpgSQL_stmt_assign"`
 	Case        *plpgSQL_stmt_case         `json:"PLpgSQL_stmt_case"`
+	DynExec     *plpgSQL_stmt_dynexecute   `json:"PLpgSQL_stmt_dynexecute"`
 	ExecSQL     *plpgSQL_stmt_execsql      `json:"PLpgSQL_stmt_execsql"`
 	Exit        *plpgSQL_stmt_exit         `json:"PLpgSQL_stmt_exit"`
 	If          *plpgSQL_stmt_if           `json:"PLpgSQL_stmt_if"`
@@ -356,6 +366,34 @@ func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
 	}
 
 	return block, nil
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_dynexecute) Convert() (DynamicExecute, error) {
+	var params []string
+	for _, param := range stmt.Params {
+		params = append(params, param.Expr.Query)
+	}
+	var target string
+	if stmt.Into {
+		switch {
+		case stmt.Target.Row != nil:
+			if len(stmt.Target.Row.Fields) != 1 {
+				return DynamicExecute{}, errors.New("record types are not yet supported")
+			}
+			target = stmt.Target.Row.Fields[0].Name
+		case stmt.Target.Variable != nil:
+			target = stmt.Target.Variable.RefName
+		default:
+			return DynamicExecute{}, errors.Errorf("unhandled datum type: %T", stmt.Target)
+		}
+	}
+	query := strings.TrimSuffix(strings.TrimPrefix(stmt.Query.Expression.Query, "'"), "'")
+	return DynamicExecute{
+		Query:  query,
+		Params: params,
+		Target: target,
+	}, nil
 }
 
 // Convert converts the JSON statement into its output form.

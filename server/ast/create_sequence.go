@@ -67,7 +67,7 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 			if !dataType.IsEmptyType() {
 				return nil, errors.Errorf("conflicting or redundant options")
 			}
-			_, dataType, err = nodeResolvableTypeReference(ctx, option.AsType)
+			_, dataType, err = nodeResolvableTypeReference(ctx, option.AsType, false)
 			if err != nil {
 				return nil, err
 			}

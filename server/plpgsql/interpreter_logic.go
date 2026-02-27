@@ -66,13 +66,19 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunne
 }
 
 // TriggerCall runs the contained trigger operations on the given runner.
-func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunner, sch sql.Schema, oldRow sql.Row, newRow sql.Row) (any, error) {
+func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunner, sch sql.Schema, oldRow sql.Row, newRow sql.Row, trigVars map[string]any) (any, error) {
 	// Set up the initial state of the function
 	stack := NewInterpreterStack(runner)
 	// Add the special variables
-	// TODO: there are way more than just NEW and OLD -> https://www.postgresql.org/docs/15/plpgsql-trigger.html
 	stack.NewRecord("OLD", sch, oldRow)
 	stack.NewRecord("NEW", sch, newRow)
+	for varName, val := range trigVars {
+		varType, ok := triggerSpecialVariables[varName]
+		if !ok {
+			return nil, fmt.Errorf("unknown variable %s for trigger", varName)
+		}
+		stack.NewVariableWithValue(varName, varType, val)
+	}
 	return call(ctx, iFunc, stack)
 }
 
@@ -273,7 +279,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if err != nil {
 				return nil, err
 			}
-			stack.BufferReturnQueryResults(convertRowsToRecords(schema, rows))
+			records, err := convertRowsToRecords(schema, rows)
+			if err != nil {
+				return nil, err
+			}
+			stack.BufferReturnQueryResults(records)
 
 		case OpCode_ScopeBegin:
 			stack.PushScope()
@@ -292,7 +302,7 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 
 // convertRowsToRecords iterates overs |rows| and converts each field in each row
 // into a RecordValue. |schema| is specified for type information.
-func convertRowsToRecords(schema sql.Schema, rows []sql.Row) [][]pgtypes.RecordValue {
+func convertRowsToRecords(schema sql.Schema, rows []sql.Row) ([][]pgtypes.RecordValue, error) {
 	records := make([][]pgtypes.RecordValue, 0, len(rows))
 	for _, row := range rows {
 		record := make([]pgtypes.RecordValue, len(row))
@@ -300,7 +310,18 @@ func convertRowsToRecords(schema sql.Schema, rows []sql.Row) [][]pgtypes.RecordV
 			t := schema[i].Type
 			doltgresType, ok := t.(*pgtypes.DoltgresType)
 			if !ok {
-				panic("expected Doltgres type")
+				// non-Doltgres types are still used in analysis, but we only support disk serialization
+				// for Doltgres types, so we must convert the GMS type to the nearest Doltgres type here.
+				// TODO: this conversion isn't fully accurate. expression.GMSCast has additional logic in
+				//       its Eval() method to handle types more exactly and also handles converting the
+				//       value to ensure it is well formed for the returned DoltgresType. We can't
+				//       currently use GMSCast directly here though, because of a dependency cycle, so
+				//       that conversion logic needs to be extracted into a package both places can import.
+				var err error
+				doltgresType, err = pgtypes.FromGmsTypeToDoltgresType(t)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			record[i] = pgtypes.RecordValue{
@@ -311,7 +332,7 @@ func convertRowsToRecords(schema sql.Schema, rows []sql.Row) [][]pgtypes.RecordV
 		records = append(records, record)
 	}
 
-	return records
+	return records, nil
 }
 
 // applyNoticeOptions adds the specified |options| to the |noticeResponse|.
@@ -387,4 +408,22 @@ func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
 		message = strings.Join(parts, "%")
 	}
 	return message, nil
+}
+
+// triggerSpecialVariables are the list of special variables for triggers.
+// https://www.postgresql.org/docs/15/plpgsql-trigger.html
+// TODO: NEW and OLD variables are handled separately using `InterpreterStack.NewRecord` function.
+var triggerSpecialVariables = map[string]*pgtypes.DoltgresType{
+	//"NEW":
+	//"OLD":
+	"TG_NAME":         pgtypes.Name,
+	"TG_WHEN":         pgtypes.Text,
+	"TG_LEVEL":        pgtypes.Text,
+	"TG_OP":           pgtypes.Text,
+	"TG_RELID":        pgtypes.Oid,
+	"TG_RELNAME":      pgtypes.Name,
+	"TG_TABLE_NAME":   pgtypes.Name,
+	"TG_TABLE_SCHEMA": pgtypes.Name,
+	"TG_NARGS":        pgtypes.Int32,
+	"TG_ARGV[]":       pgtypes.TextArray,
 }

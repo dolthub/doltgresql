@@ -42,6 +42,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	dserver "github.com/dolthub/doltgresql/server"
@@ -122,8 +123,11 @@ type ScriptTestAssertion struct {
 	// This is checked only if no Expected is defined
 	ExpectedTag string
 
-	// ExpectedColNames is used to check the column names returned from the server.
+	// ExpectedColNames are used to check the column names returned from the server.
 	ExpectedColNames []string
+
+	// ExpectedColTypes are used to check the column types returned from the server.
+	ExpectedColTypes []id.Type
 
 	// CopyFromSTDIN is used to test the COPY FROM STDIN command.
 	CopyFromStdInFile string
@@ -271,6 +275,17 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 					if assert.Len(t, fields, len(assertion.ExpectedColNames), "expected length of columns") {
 						for i, col := range assertion.ExpectedColNames {
 							assert.Equal(t, col, fields[i].Name)
+						}
+					}
+				}
+				if assertion.ExpectedColTypes != nil {
+					fields := rows.FieldDescriptions()
+					if assert.Len(t, fields, len(assertion.ExpectedColTypes),
+						"columns returned and types expected are not the same length") {
+						for i, colId := range assertion.ExpectedColTypes {
+							assert.Equal(t, id.Cache().ToOID(colId.AsId()), fields[i].DataTypeOID,
+								`"%s" expected type "%s" but received "%s"`, fields[i].Name,
+								colId.TypeName(), id.Type(id.Cache().ToInternal(fields[i].DataTypeOID)).TypeName())
 						}
 					}
 				}
@@ -575,6 +590,20 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 						panic(err)
 					}
 					newRow[i] = ret
+				} else if dt.ID == types.Date.ID {
+					newRow[i] = row[i]
+					if row[i] != nil {
+						if t, _, err := tree.ParseDTimestampTZ(nil, row[i].(string), tree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
+							newRow[i] = functions.FormatDateTimeWithBC(t.Time.UTC(), "2006-01-02", dt.ID == types.TimestampTZ.ID)
+						}
+					}
+				} else if dt.ID == types.Timestamp.ID || dt.ID == types.TimestampTZ.ID {
+					newRow[i] = row[i]
+					if row[i] != nil {
+						if t, _, err := tree.ParseDTimestampTZ(nil, row[i].(string), tree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
+							newRow[i] = functions.FormatDateTimeWithBC(t.Time.UTC(), "2006-01-02 15:04:05.999999", dt.ID == types.TimestampTZ.ID)
+						}
+					}
 				} else {
 					newRow[i] = NormalizeIntsAndFloats(row[i])
 				}
@@ -649,7 +678,7 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return val
-	case types.Interval.ID, types.Uuid.ID, types.Date.ID, types.Time.ID, types.Timestamp.ID:
+	case types.Interval.ID, types.Time.ID, types.Uuid.ID:
 		// These values need to be normalized into the appropriate types
 		// before being converted to string type using the Doltgres
 		// IoOutput method.
@@ -661,12 +690,16 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return tVal
-	case types.TimestampTZ.ID:
+	case types.Date.ID:
 		if v == nil {
 			return nil
 		}
-		// timestamptz returns a value in server timezone
-		return functions.FormatDateTimeWithBC(v.(time.Time), "2006-01-02 15:04:05.999999", true)
+		return functions.FormatDateTimeWithBC(v.(time.Time), "2006-01-02", false)
+	case types.Timestamp.ID, types.TimestampTZ.ID:
+		if v == nil {
+			return nil
+		}
+		return functions.FormatDateTimeWithBC(v.(time.Time).UTC(), "2006-01-02 15:04:05.999999", dt.ID == types.TimestampTZ.ID)
 	}
 
 	switch val := v.(type) {

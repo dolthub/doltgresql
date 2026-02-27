@@ -110,7 +110,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		unresolvedChildren := make([]vitess.Expr, len(node.Exprs))
 		var coercedType *pgtypes.DoltgresType
 		if node.HasResolvedType() {
-			_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ResolvedType())
+			_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ResolvedType(), false)
 			if err != nil {
 				return nil, err
 			}
@@ -259,7 +259,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			return nil, errors.Errorf("unknown cast syntax")
 		}
 
-		convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.Type)
+		convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.Type, false)
 		if err != nil {
 			return nil, err
 		}
@@ -593,7 +593,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		defVal := &vitess.Default{ColName: ""}
 		return defVal, nil
 	case tree.DomainColumn:
-		_, dataType, err := nodeResolvableTypeReference(ctx, node.Typ)
+		_, dataType, err := nodeResolvableTypeReference(ctx, node.Typ, false)
 		if err != nil {
 			return nil, err
 		}

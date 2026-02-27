@@ -57,10 +57,16 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "AlexTransit_venderctl.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER testuser WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "AliiAhmadi/PostScan",
 			SQLFilename: "AliiAhmadi_PostScan.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER freecodecamp WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "amittannagit/World-Cup-database-project-files",
 			Skip:        true, // Database creation uses unsupported params then attempts to connect, hangs indefinitely
 			SQLFilename: "amittannagit_World-Cup-database-project-files.sql",
@@ -70,6 +76,11 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "Ansh-Rathod_Musive-backend-2.0.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER app_admin WITH SUPERUSER PASSWORD 'password';",
+				"CREATE USER analytics_viewer WITH SUPERUSER PASSWORD 'password';",
+				"CREATE USER content_manager WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "artygg/Data-Processing-Goida",
 			SQLFilename: "artygg_Data-Processing-Goida.sql",
 		},
@@ -78,6 +89,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "bartr_agency.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER edm WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "bclynch/edmflare",
 			SQLFilename: "bclynch_edmflare.sql",
 		},

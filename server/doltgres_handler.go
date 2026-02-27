@@ -34,6 +34,7 @@ import (
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/mysql"
@@ -45,6 +46,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -158,14 +160,33 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 		return nil, nil, err
 	}
 
-	analyzed, err := h.e.PrepareParsedQuery(sqlCtx, query, query, parsed)
+	node, err := h.e.PrepareParsedQuery(sqlCtx, query, query, parsed)
 	if err != nil {
 		if printErrorStackTraces {
 			fmt.Printf("unable to prepare query: %+v\n", err)
 		}
 		logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
-		err := sql.CastSQLError(err)
-		return nil, nil, err
+		return nil, nil, sql.CastSQLError(err)
+	}
+	analyzed := node
+	// We do not analyze expressions with bind variables, since that step comes later and analysis will return invalid results
+	hasBindVars := false
+	pgtransform.InspectNodeExprs(node, func(expr sql.Expression) bool {
+		if _, ok := expr.(*expression.BindVar); ok {
+			hasBindVars = true
+			return true
+		}
+		return false
+	})
+	if !hasBindVars {
+		analyzed, err = h.e.Analyzer.Analyze(sqlCtx, node, nil, nil)
+		if err != nil {
+			if printErrorStackTraces {
+				fmt.Printf("unable to prepare query: %+v\n", err)
+			}
+			logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
+			return nil, nil, sql.CastSQLError(err)
+		}
 	}
 
 	var fields []pgproto3.FieldDescription
@@ -267,6 +288,18 @@ func (h *DoltgresHandler) InitSessionParameterDefault(ctx context.Context, c *my
 // convertBindParameters handles the conversion from bind parameters to variable values.
 func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32, formatCodes []int16, values [][]byte) (map[string]sqlparser.Expr, error) {
 	bindings := make(map[string]sqlparser.Expr, len(values))
+	// It's valid to send just one format code that should be used by all values, so we extend the slice in that case
+	if len(formatCodes) > 0 && len(formatCodes) < len(values) {
+		if len(formatCodes) > 1 {
+			return nil, errors.Errorf(`format codes have length "%d" but values have length "%d"`, len(formatCodes), len(values))
+		}
+		formatCode := formatCodes[0]
+		formatCodes = make([]int16, len(values))
+		formatCodes[0] = formatCode
+		for i := 1; i < len(values); i++ {
+			formatCodes[i] = formatCode
+		}
+	}
 	for i := range values {
 		formatCode := int16(0)
 		if formatCodes != nil {
@@ -521,7 +554,8 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, isPrepared bool) 
 			typmod = doltgresType.GetAttTypMod() // pg_attribute.atttypmod
 			if isPrepared {
 				switch doltgresType.ID {
-				case pgtypes.Bytea.ID, pgtypes.Int16.ID, pgtypes.Int32.ID, pgtypes.Int64.ID, pgtypes.Uuid.ID:
+				case pgtypes.Bytea.ID, pgtypes.Date.ID, pgtypes.Int16.ID, pgtypes.Int32.ID, pgtypes.Int64.ID,
+					pgtypes.Timestamp.ID, pgtypes.TimestampTZ.ID, pgtypes.Uuid.ID:
 					formatCode = 1
 				}
 			}
@@ -782,6 +816,22 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, isExecute bool) ([]
 					case pgtypes.Int16.ID:
 						buf := make([]byte, 2)
 						binary.BigEndian.PutUint16(buf, uint16(v.(int16)))
+						o[i] = buf
+						continue
+					case pgtypes.Timestamp.ID, pgtypes.TimestampTZ.ID:
+						postgresEpoch := time.UnixMilli(946684800000).UTC() // Jan 1, 2000 @ Midnight
+						deltaInMicroseconds := v.(time.Time).UTC().UnixMicro() - postgresEpoch.UnixMicro()
+						buf := make([]byte, 8)
+						binary.BigEndian.PutUint64(buf, uint64(deltaInMicroseconds))
+						o[i] = buf
+						continue
+					case pgtypes.Date.ID:
+						postgresEpoch := time.UnixMilli(946684800000).UTC() // Jan 1, 2000 @ Midnight
+						deltaInMilliseconds := v.(time.Time).UTC().UnixMilli() - postgresEpoch.UnixMilli()
+						buf := make([]byte, 4)
+						const millisecondsPerDay = 86400000
+						days := deltaInMilliseconds / millisecondsPerDay
+						binary.BigEndian.PutUint32(buf, uint32(days))
 						o[i] = buf
 						continue
 					case pgtypes.Uuid.ID:
