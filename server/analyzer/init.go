@@ -15,6 +15,7 @@
 package analyzer
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/memo"
@@ -22,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 
 	pgexpression "github.com/dolthub/doltgresql/server/expression"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // IDs are basically arbitrary, we just need to ensure that they do not conflict with existing IDs
@@ -115,6 +117,13 @@ func initEngine() {
 	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
 
 	planbuilder.IsAggregateFunc = IsAggregateFunc
+
+	planbuilder.BuildMultiExprTableFunc = func(
+		exprs []sql.Expression, alias string,
+		withOrdinality bool, columnAliases []string,
+	) (sql.Node, error) {
+		return pgnodes.NewRowsFrom(exprs, alias, withOrdinality, columnAliases), nil
+	}
 
 	expression.DefaultExpressionFactory = pgexpression.PostgresExpressionFactory{}
 

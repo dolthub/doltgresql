@@ -15,6 +15,8 @@
 package ast
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -24,13 +26,115 @@ import (
 )
 
 // nodeAliasedTableExpr handles *tree.AliasedTableExpr nodes.
-func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.AliasedTableExpr, error) {
-	if node.Ordinality {
-		return nil, errors.Errorf("ordinality is not yet supported")
-	}
+func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (vitess.TableExpr, error) {
 	if node.IndexFlags != nil {
 		return nil, errors.Errorf("index flags are not yet supported")
 	}
+
+	// Handle RowsFromExpr specially - it can have WITH ORDINALITY and column aliases
+	if rowsFrom, ok := node.Expr.(*tree.RowsFromExpr); ok {
+		// Handle multi-argument UNNEST specially: UNNEST(arr1, arr2, ...)
+		// is syntactic sugar for ROWS FROM(unnest(arr1), unnest(arr2), ...)
+		if len(rowsFrom.Items) == 1 {
+			if funcExpr, ok := rowsFrom.Items[0].(*tree.FuncExpr); ok {
+				funcName := funcExpr.Func.String()
+				if strings.EqualFold(funcName, "unnest") && len(funcExpr.Exprs) > 1 {
+					// Expand multi-arg UNNEST into separate unnest calls
+					selectExprs := make(vitess.SelectExprs, len(funcExpr.Exprs))
+					for i, arg := range funcExpr.Exprs {
+						argExpr, err := nodeExpr(ctx, arg)
+						if err != nil {
+							return nil, err
+						}
+						selectExprs[i] = &vitess.AliasedExpr{
+							Expr: &vitess.FuncExpr{
+								Name:  vitess.NewColIdent("unnest"),
+								Exprs: vitess.SelectExprs{&vitess.AliasedExpr{Expr: argExpr}},
+							},
+						}
+					}
+
+					var columns vitess.Columns
+					if len(node.As.Cols) > 0 {
+						columns = make(vitess.Columns, len(node.As.Cols))
+						for i := range node.As.Cols {
+							columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
+						}
+					}
+
+					return &vitess.TableFuncExpr{
+						Exprs:          selectExprs,
+						WithOrdinality: node.Ordinality,
+						Alias:          vitess.NewTableIdent(string(node.As.Alias)),
+						Columns:        columns,
+					}, nil
+				}
+			}
+		}
+
+		// Use TableFuncExpr (nameless) for:
+		// 1. Multiple functions: ROWS FROM(func1(), func2()) AS alias
+		// 2. WITH ORDINALITY: ROWS FROM(func()) WITH ORDINALITY
+		if len(rowsFrom.Items) > 1 || node.Ordinality {
+			selectExprs := make(vitess.SelectExprs, len(rowsFrom.Items))
+			for i, item := range rowsFrom.Items {
+				expr, err := nodeExpr(ctx, item)
+				if err != nil {
+					return nil, err
+				}
+				selectExprs[i] = &vitess.AliasedExpr{Expr: expr}
+			}
+
+			var columns vitess.Columns
+			if len(node.As.Cols) > 0 {
+				columns = make(vitess.Columns, len(node.As.Cols))
+				for i := range node.As.Cols {
+					columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
+				}
+			}
+
+			return &vitess.TableFuncExpr{
+				Exprs:          selectExprs,
+				WithOrdinality: node.Ordinality,
+				Alias:          vitess.NewTableIdent(string(node.As.Alias)),
+				Columns:        columns,
+			}, nil
+		}
+
+		// For single function without ordinality, fall through to use the existing
+		// table function infrastructure via nodeTableExpr
+		tableExpr, err := nodeTableExpr(ctx, rowsFrom)
+		if err != nil {
+			return nil, err
+		}
+
+		// Wrap in a subquery as the original code did
+		subquery := &vitess.Subquery{
+			Select: &vitess.Select{
+				From: vitess.TableExprs{tableExpr},
+			},
+		}
+
+		if len(node.As.Cols) > 0 {
+			columns := make([]vitess.ColIdent, len(node.As.Cols))
+			for i := range node.As.Cols {
+				columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
+			}
+			subquery.Columns = columns
+		}
+
+		return &vitess.AliasedTableExpr{
+			Expr:    subquery,
+			As:      vitess.NewTableIdent(string(node.As.Alias)),
+			Lateral: node.Lateral,
+		}, nil
+	}
+
+	// For non-RowsFromExpr expressions, ordinality is not yet supported
+	if node.Ordinality {
+		return nil, errors.Errorf("ordinality is only supported for ROWS FROM expressions")
+	}
+
 	var aliasExpr vitess.SimpleTableExpr
 	var authInfo vitess.AuthInformation
 
@@ -90,27 +194,6 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 
 		subquery := &vitess.Subquery{
 			Select: selectStmt,
-		}
-
-		if len(node.As.Cols) > 0 {
-			columns := make([]vitess.ColIdent, len(node.As.Cols))
-			for i := range node.As.Cols {
-				columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
-			}
-			subquery.Columns = columns
-		}
-		aliasExpr = subquery
-	case *tree.RowsFromExpr:
-		tableExpr, err := nodeTableExpr(ctx, expr)
-		if err != nil {
-			return nil, err
-		}
-
-		// TODO: this should be represented as a table function more directly
-		subquery := &vitess.Subquery{
-			Select: &vitess.Select{
-				From: vitess.TableExprs{tableExpr},
-			},
 		}
 
 		if len(node.As.Cols) > 0 {
