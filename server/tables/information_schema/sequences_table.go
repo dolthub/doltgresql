@@ -50,7 +50,7 @@ var sequencesSchema = sql.Schema{
 }
 
 // sequencesRowIter implements the sql.RowIter for the information_schema.Sequences table.
-func sequencesRowIter(ctx *sql.Context, catalog sql.Catalog) (sql.RowIter, error) {
+func sequencesRowIter(ctx *sql.Context, _ sql.Catalog) (sql.RowIter, error) {
 	var rows []sql.Row
 
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
@@ -62,9 +62,9 @@ func sequencesRowIter(ctx *sql.Context, catalog sql.Catalog) (sql.RowIter, error
 				precision, radix, scale = getColumnPrecisionAndScale(sequenceType)
 			}
 
-			cycle_option := "NO"
+			cycleOption := "NO"
 			if sequence.Item.Cycle {
-				cycle_option = "YES"
+				cycleOption = "YES"
 			}
 
 			rows = append(rows, sql.Row{
@@ -79,7 +79,7 @@ func sequencesRowIter(ctx *sql.Context, catalog sql.Catalog) (sql.RowIter, error
 				strconv.FormatInt(sequence.Item.Minimum, 10),   //minimum_value
 				strconv.FormatInt(sequence.Item.Maximum, 10),   //maximum_value
 				strconv.FormatInt(sequence.Item.Increment, 10), //increment
-				cycle_option, //cycle_option
+				cycleOption, //cycle_option
 			})
 			return true, nil
 		},
