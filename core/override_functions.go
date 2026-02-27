@@ -33,8 +33,6 @@ import (
 
 // emptyRootValue is Doltgres' implementation of doltdb.EmptyRootValue.
 func emptyRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore) (doltdb.RootValue, error) {
-	types.AssertFormat_DOLT(vrw.Format())
-
 	builder := flatbuffers.NewBuilder(80)
 
 	emptyam, err := prolly.NewEmptyAddressMap(ns)
@@ -57,8 +55,6 @@ func emptyRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.Node
 
 // newRootValue is Doltgres' implementation of doltdb.NewRootValue.
 func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, v types.Value) (doltdb.RootValue, error) {
-	types.AssertFormat_DOLT(vrw.Format())
-
 	var st storage.RootStorage
 
 	srv, err := serial.TryGetRootAsRootValue([]byte(v.(types.SerialMessage)), doltserial.MessagePrefixSz)
