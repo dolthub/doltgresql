@@ -266,7 +266,7 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 func (h *ConnectionHandler) sendClientStartupMessages() error {
 	if err := h.send(&pgproto3.ParameterStatus{
 		Name:  "server_version",
-		Value: "15.0",
+		Value: "15.5",
 	}); err != nil {
 		return err
 	}

@@ -841,6 +841,16 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, isExecute bool) ([]
 						}
 						o[i] = buf
 						continue
+					case pgtypes.Bool.ID:
+						// We currently don't support a strict boolean type in GMS, so postgres booleans are represented by an INT16.
+						buf := make([]byte, 2)
+						if v.(bool) {
+							binary.BigEndian.PutUint16(buf, 1)
+						} else {
+							binary.BigEndian.PutUint16(buf, 0)
+						}
+						o[i] = buf
+						continue
 					}
 				}
 			}
