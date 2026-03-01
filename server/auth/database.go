@@ -42,6 +42,8 @@ type Database struct {
 	databasePrivileges *DatabasePrivileges
 	schemaPrivileges   *SchemaPrivileges
 	tablePrivileges    *TablePrivileges
+	sequencePrivileges *SequencePrivileges
+	routinePrivileges  *RoutinePrivileges
 	roleMembership     *RoleMembership
 }
 
@@ -52,6 +54,8 @@ func ClearDatabase() {
 	clear(globalDatabase.databasePrivileges.Data)
 	clear(globalDatabase.schemaPrivileges.Data)
 	clear(globalDatabase.tablePrivileges.Data)
+	clear(globalDatabase.sequencePrivileges.Data)
+	clear(globalDatabase.routinePrivileges.Data)
 	clear(globalDatabase.roleMembership.Data)
 	dbInitDefault()
 }
@@ -136,6 +140,8 @@ func dbInit(dEnv *env.DoltEnv, cfg Config) {
 		databasePrivileges: NewDatabasePrivileges(),
 		schemaPrivileges:   NewSchemaPrivileges(),
 		tablePrivileges:    NewTablePrivileges(),
+		sequencePrivileges: NewSequencePrivileges(),
+		routinePrivileges:  NewRoutinePrivileges(),
 		roleMembership:     NewRoleMembership(),
 	}
 	globalLock = &sync.RWMutex{}

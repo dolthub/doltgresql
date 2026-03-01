@@ -16,8 +16,9 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+
+	"github.com/dolthub/doltgresql/server/auth"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
@@ -43,6 +44,10 @@ func nodeCall(ctx *Context, node *tree.Call) (vitess.Statement, error) {
 	if len(node.Procedure.OrderBy) > 0 {
 		return nil, errors.Errorf("procedure ORDER BY is not yet supported")
 	}
+
+	ctx.Auth().PushAuthType(auth.AuthType_EXECUTE)
+	defer ctx.Auth().PopAuthType()
+
 	var qualifier vitess.TableIdent
 	var name vitess.ColIdent
 	switch funcRef := node.Procedure.Func.FunctionReference.(type) {
@@ -66,5 +71,12 @@ func nodeCall(ctx *Context, node *tree.Call) (vitess.Statement, error) {
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCall(qualifier.String(), name.String(), exprs),
 		Children:  exprs,
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_EXECUTE,
+			TargetType:  auth.AuthTargetType_FunctionIdentifiers,
+			TargetNames: []string{qualifier.String(), name.String()},
+			// TODO: need to get argument types separated by comma ( check routineArgTypesKey function )
+			Extra: "",
+		},
 	}, nil
 }

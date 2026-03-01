@@ -21,6 +21,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 )
 
@@ -132,5 +133,10 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 		Distinct:  distinct,
 		Exprs:     exprs,
 		Over:      (*vitess.Over)(windowDef),
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_EXECUTE,
+			TargetType:  auth.AuthTargetType_FunctionIdentifiers,
+			TargetNames: []string{qualifier.String(), name.String()},
+		},
 	}, nil
 }

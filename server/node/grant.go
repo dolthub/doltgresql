@@ -31,6 +31,8 @@ type Grant struct {
 	GrantTable      *GrantTable
 	GrantSchema     *GrantSchema
 	GrantDatabase   *GrantDatabase
+	GrantSequence   *GrantSequence
+	GrantRoutine    *GrantRoutine
 	GrantRole       *GrantRole
 	ToRoles         []string
 	WithGrantOption bool // This is "WITH ADMIN OPTION" for GrantRole only
@@ -53,6 +55,18 @@ type GrantSchema struct {
 type GrantDatabase struct {
 	Privileges []auth.Privilege
 	Databases  []string
+}
+
+// GrantSequence specifically handles the GRANT ... ON SEQUENCE statement.
+type GrantSequence struct {
+	Privileges []auth.Privilege
+	Sequences  []auth.SequencePrivilegeKey
+}
+
+// GrantRoutine specifically handles the GRANT ... ON FUNCTION/PROCEDURE/ROUTINE statement.
+type GrantRoutine struct {
+	Privileges []auth.Privilege
+	Routines   []auth.RoutinePrivilegeKey
 }
 
 // GrantRole specifically handles the GRANT <roles> TO <roles> statement.
@@ -93,6 +107,14 @@ func (g *Grant) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			}
 		case g.GrantDatabase != nil:
 			if err = g.grantDatabase(ctx); err != nil {
+				return
+			}
+		case g.GrantSequence != nil:
+			if err = g.grantSequence(ctx); err != nil {
+				return
+			}
+		case g.GrantRoutine != nil:
+			if err = g.grantRoutine(ctx); err != nil {
 				return
 			}
 		case g.GrantRole != nil:
@@ -255,6 +277,82 @@ func (g *Grant) grantDatabase(ctx *sql.Context) error {
 				auth.AddDatabasePrivilege(auth.DatabasePrivilegeKey{
 					Role: role.ID(),
 					Name: database,
+				}, auth.GrantedPrivilege{
+					Privilege: privilege,
+					GrantedBy: grantedBy,
+				}, g.WithGrantOption)
+			}
+		}
+	}
+	return nil
+}
+
+// grantSequence handles *GrantSequence from within RowIter.
+func (g *Grant) grantSequence(ctx *sql.Context) error {
+	roles, userRole, err := g.common(ctx)
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		for _, seq := range g.GrantSequence.Sequences {
+			schemaName, err := core.GetSchemaName(ctx, nil, seq.Schema)
+			if err != nil {
+				return err
+			}
+			key := auth.SequencePrivilegeKey{
+				Role:   userRole.ID(),
+				Schema: schemaName,
+				Name:   seq.Name,
+			}
+			for _, privilege := range g.GrantSequence.Privileges {
+				grantedBy := auth.HasSequencePrivilegeGrantOption(key, privilege)
+				if !grantedBy.IsValid() {
+					// TODO: grab the actual error message
+					return errors.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
+				}
+				auth.AddSequencePrivilege(auth.SequencePrivilegeKey{
+					Role:   role.ID(),
+					Schema: schemaName,
+					Name:   seq.Name,
+				}, auth.GrantedPrivilege{
+					Privilege: privilege,
+					GrantedBy: grantedBy,
+				}, g.WithGrantOption)
+			}
+		}
+	}
+	return nil
+}
+
+// grantRoutine handles *GrantRoutine from within RowIter.
+func (g *Grant) grantRoutine(ctx *sql.Context) error {
+	roles, userRole, err := g.common(ctx)
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		for _, routine := range g.GrantRoutine.Routines {
+			schemaName, err := core.GetSchemaName(ctx, nil, routine.Schema)
+			if err != nil {
+				return err
+			}
+			key := auth.RoutinePrivilegeKey{
+				Role:     userRole.ID(),
+				Schema:   schemaName,
+				Name:     routine.Name,
+				ArgTypes: routine.ArgTypes,
+			}
+			for _, privilege := range g.GrantRoutine.Privileges {
+				grantedBy := auth.HasRoutinePrivilegeGrantOption(key, privilege)
+				if !grantedBy.IsValid() {
+					// TODO: grab the actual error message
+					return errors.Errorf(`role "%s" does not have permission to grant this privilege`, userRole.Name)
+				}
+				auth.AddRoutinePrivilege(auth.RoutinePrivilegeKey{
+					Role:     role.ID(),
+					Schema:   schemaName,
+					Name:     routine.Name,
+					ArgTypes: routine.ArgTypes,
 				}, auth.GrantedPrivilege{
 					Privilege: privilege,
 					GrantedBy: grantedBy,

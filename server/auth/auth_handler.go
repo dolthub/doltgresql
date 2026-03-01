@@ -23,6 +23,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 )
 
 // AuthorizationQueryState contains any cached state for a query.
@@ -106,6 +107,8 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		privileges = []Privilege{Privilege_DELETE}
 	case AuthType_DROPTABLE:
 		privileges = []Privilege{Privilege_DROP}
+	case AuthType_EXECUTE:
+		privileges = []Privilege{Privilege_EXECUTE}
 	case AuthType_INSERT:
 		privileges = []Privilege{Privilege_INSERT}
 	case AuthType_SELECT:
@@ -192,6 +195,75 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			for _, privilege := range privileges {
 				if !HasTablePrivilege(roleTableKey, privilege) && !HasTablePrivilege(publicTableKey, privilege) {
 					return errors.Errorf("permission denied for table %s", auth.TargetNames[i+2])
+				}
+			}
+		}
+	case AuthTargetType_FunctionIdentifiers:
+		if len(auth.TargetNames)%2 != 0 {
+			return errors.Errorf("function identifiers has an unsupported count: %d", len(auth.TargetNames))
+		}
+		for i := 0; i < len(auth.TargetNames); i += 2 {
+			// TODO: handle database
+			if auth.TargetNames[i] == "" {
+				// if the schema name is not provided then it's either pg_catalog schema or current schema on search path
+				_, ok := framework.Catalog[strings.ToLower(auth.TargetNames[i+1])]
+				if ok {
+					// TODO: for now we don't check privilege for pg_catalog tables as it's granted for PUBLIC by default
+					//  need to fix when we support 'REVOKE privileges FROM PUBLIC'
+					return nil
+				}
+			}
+			schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[i])
+			if err != nil {
+				// If this fails, then there's an issue with the search path.
+				// This will error later in the process, so we'll pass auth for now.
+				return nil
+			}
+			roleRoutineKey := RoutinePrivilegeKey{
+				Role:   state.role.ID(),
+				Schema: schemaName,
+				Name:   auth.TargetNames[i+1],
+				//ArgTypes: auth.Extra.(string),
+			}
+			publicRoutineKey := RoutinePrivilegeKey{
+				Role:   state.public.ID(),
+				Schema: schemaName,
+				Name:   auth.TargetNames[i+1],
+				//ArgTypes: auth.Extra.(string),
+			}
+			for _, privilege := range privileges {
+				if !HasRoutinePrivilege(roleRoutineKey, privilege) && !HasRoutinePrivilege(publicRoutineKey, privilege) {
+					return errors.Errorf("permission denied for function %s", auth.TargetNames[i+1])
+				}
+			}
+		}
+	case AuthTargetType_SequenceIdentifiers:
+		if len(auth.TargetNames)%2 != 0 {
+			return errors.Errorf("function identifiers has an unsupported count: %d", len(auth.TargetNames))
+		}
+		for i := 0; i < len(auth.TargetNames); i += 2 {
+			// TODO: handle database
+			schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[i])
+			if err != nil {
+				// If this fails, then there's an issue with the search path.
+				// This will error later in the process, so we'll pass auth for now.
+				return nil
+			}
+			roleSequenceKey := SequencePrivilegeKey{
+				Role:   state.role.ID(),
+				Schema: schemaName,
+				Name:   auth.TargetNames[i+1],
+				//ArgTypes: auth.Extra.(string),
+			}
+			publicSequenceKey := SequencePrivilegeKey{
+				Role:   state.public.ID(),
+				Schema: schemaName,
+				Name:   auth.TargetNames[i+1],
+				//ArgTypes: auth.Extra.(string),
+			}
+			for _, privilege := range privileges {
+				if !HasSequencePrivilege(roleSequenceKey, privilege) && !HasSequencePrivilege(publicSequenceKey, privilege) {
+					return errors.Errorf("permission denied for sequence %s", auth.TargetNames[i+1])
 				}
 			}
 		}

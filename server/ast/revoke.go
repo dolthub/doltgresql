@@ -34,6 +34,8 @@ func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 	var revokeTable *pgnodes.RevokeTable
 	var revokeSchema *pgnodes.RevokeSchema
 	var revokeDatabase *pgnodes.RevokeDatabase
+	var revokeSequence *pgnodes.RevokeSequence
+	var revokeRoutine *pgnodes.RevokeRoutine
 	switch node.Targets.TargetType {
 	case privilege.Table:
 		tables := make([]doltdb.TableName, len(node.Targets.Tables)+len(node.Targets.InSchema))
@@ -92,6 +94,53 @@ func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 			Privileges: privileges,
 			Databases:  node.Targets.Databases.ToStrings(),
 		}
+	case privilege.Sequence:
+		sequences := make([]auth.SequencePrivilegeKey, 0, len(node.Targets.Sequences)+len(node.Targets.InSchema))
+		for _, seq := range node.Targets.Sequences {
+			sequences = append(sequences, auth.SequencePrivilegeKey{
+				Schema: sequenceSchema(seq),
+				Name:   seq.Parts[0],
+			})
+		}
+		for _, schema := range node.Targets.InSchema {
+			sequences = append(sequences, auth.SequencePrivilegeKey{
+				Schema: schema,
+				Name:   "",
+			})
+		}
+		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_SEQUENCE, node.Privileges)
+		if err != nil {
+			return nil, err
+		}
+		revokeSequence = &pgnodes.RevokeSequence{
+			Privileges: privileges,
+			Sequences:  sequences,
+		}
+	case privilege.Function, privilege.Procedure, privilege.Routine:
+		routines := make([]auth.RoutinePrivilegeKey, 0, len(node.Targets.Routines)+len(node.Targets.InSchema))
+		for _, r := range node.Targets.Routines {
+			routines = append(routines, auth.RoutinePrivilegeKey{
+				Schema: routineSchema(r.Name),
+				Name:   r.Name.Parts[0],
+				// TODO: there can be 2 routines with the same name but different argument types
+				//  need a fix for getting argument types from parsing CALL statement
+				//ArgTypes: routineArgTypesKey(r.Args),
+			})
+		}
+		for _, schema := range node.Targets.InSchema {
+			routines = append(routines, auth.RoutinePrivilegeKey{
+				Schema: schema,
+				Name:   "",
+			})
+		}
+		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_FUNCTION, node.Privileges)
+		if err != nil {
+			return nil, err
+		}
+		revokeRoutine = &pgnodes.RevokeRoutine{
+			Privileges: privileges,
+			Routines:   routines,
+		}
 	default:
 		return nil, errors.Errorf("this form of REVOKE is not yet supported")
 	}
@@ -100,6 +149,8 @@ func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 			RevokeTable:    revokeTable,
 			RevokeSchema:   revokeSchema,
 			RevokeDatabase: revokeDatabase,
+			RevokeSequence: revokeSequence,
+			RevokeRoutine:  revokeRoutine,
 			RevokeRole:     nil,
 			FromRoles:      node.Grantees,
 			GrantedBy:      node.GrantedBy,

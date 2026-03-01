@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -200,5 +201,10 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 			OwnerColumn: ownerColumnName,
 		}),
 		Children: nil,
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_CREATE,
+			TargetType:  auth.AuthTargetType_SequenceIdentifiers,
+			TargetNames: []string{name.SchemaQualifier.String(), name.Name.String()},
+		},
 	}, nil
 }
