@@ -53,9 +53,8 @@ var varbitin = framework.Function3{
 
 		// Check length against typmod (varbit allows up to typmod length)
 		if typmod != -1 {
-			maxLength := pgtypes.GetCharLengthFromTypmod(typmod)
-			if int32(bitStr.BitLen()) > maxLength {
-				return nil, pgtypes.ErrVarBitLengthExceeded.New(maxLength)
+			if int32(bitStr.BitLen()) > typmod {
+				return nil, pgtypes.ErrVarBitLengthExceeded.New(typmod)
 			}
 		}
 
@@ -118,7 +117,12 @@ var varbittypmodin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return getTypModFromStringArr("bit varying", val.([]any))
+		typmod, err := getTypModFromStringArr("bit varying", val.([]any))
+		if err != nil {
+			return nil, err
+		}
+		// getTypModFromStringArr always adds 4, so we remove 4 here since it doesn't apply to varbit types
+		return typmod - 4, nil
 	},
 }
 
@@ -130,10 +134,9 @@ var varbittypmodout = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		typmod := val.(int32)
-		if typmod < 5 {
+		if typmod < 1 {
 			return "", nil
 		}
-		maxLength := pgtypes.GetCharLengthFromTypmod(typmod)
-		return fmt.Sprintf("(%v)", maxLength), nil
+		return fmt.Sprintf("(%v)", typmod), nil
 	},
 }

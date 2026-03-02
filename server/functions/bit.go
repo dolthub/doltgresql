@@ -51,9 +51,8 @@ var bitin = framework.Function3{
 			return nil, err
 		}
 
-		expectedLength := pgtypes.GetCharLengthFromTypmod(typmod)
-		if array.BitLen() != uint(expectedLength) {
-			return nil, pgtypes.ErrWrongLengthBit.New(len(input), expectedLength)
+		if array.BitLen() != uint(typmod) {
+			return nil, pgtypes.ErrWrongLengthBit.New(len(input), typmod)
 		}
 
 		return tree.AsStringWithFlags(array, tree.FmtPgwireText), nil
@@ -109,7 +108,12 @@ var bittypmodin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return getTypModFromStringArr("bit", val.([]any))
+		typmod, err := getTypModFromStringArr("bit", val.([]any))
+		if err != nil {
+			return nil, err
+		}
+		// getTypModFromStringArr always adds 4, so we remove 4 here since it doesn't apply to bit types
+		return typmod - 4, nil
 	},
 }
 
@@ -121,10 +125,9 @@ var bittypmodout = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		typmod := val.(int32)
-		if typmod < 5 {
+		if typmod < 1 {
 			return "", nil
 		}
-		bitLength := pgtypes.GetCharLengthFromTypmod(typmod)
-		return fmt.Sprintf("(%v)", bitLength), nil
+		return fmt.Sprintf("(%v)", typmod), nil
 	},
 }

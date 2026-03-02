@@ -39,7 +39,7 @@ func varBitImplicit() {
 			if err != nil {
 				return nil, err
 			}
-			expectedLength := pgtypes.GetCharLengthFromTypmod(targetType.GetAttTypMod())
+			expectedLength := targetType.GetAttTypMod()
 			if array.BitLen() != uint(expectedLength) {
 				return nil, pgtypes.ErrWrongLengthBit.New(len(input), expectedLength)
 			}
@@ -57,9 +57,8 @@ func varBitImplicit() {
 			}
 			atttypmod := targetType.GetAttTypMod()
 			if atttypmod != -1 {
-				maxLength := pgtypes.GetCharLengthFromTypmod(atttypmod)
-				if int32(array.BitLen()) > maxLength {
-					return nil, pgtypes.ErrVarBitLengthExceeded.New(maxLength)
+				if int32(array.BitLen()) > atttypmod {
+					return nil, pgtypes.ErrVarBitLengthExceeded.New(atttypmod)
 				}
 			}
 			return tree.AsStringWithFlags(array, tree.FmtPgwireText), nil

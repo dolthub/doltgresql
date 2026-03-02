@@ -30,7 +30,7 @@ const tests = [
         {
           name: "pk",
           tableID: 0, // TODO: need to be filled? Got 16859 from Postgres
-          columnID: 0, // TODO: need to be filled? Got 1 from Postgres
+          columnID: 1,
           dataTypeID: 23,
           dataTypeSize: 4,
           dataTypeModifier: -1,
@@ -39,7 +39,7 @@ const tests = [
         {
           name: "value",
           tableID: 0, // TODO: need to be filled? Got 16859 from Postgres
-          columnID: 0, // TODO: need to be filled? Got 2 from Postgres
+          columnID: 2,
           dataTypeID: 23,
           dataTypeSize: 4,
           dataTypeModifier: -1,
@@ -69,7 +69,7 @@ const tests = [
         {
           name: "pk",
           tableID: 0,
-          columnID: 0,
+          columnID: 1,
           dataTypeID: 23,
           dataTypeSize: 4,
           dataTypeModifier: -1,
@@ -78,7 +78,7 @@ const tests = [
         {
           name: "value",
           tableID: 0,
-          columnID: 0,
+          columnID: 2,
           dataTypeID: 23,
           dataTypeSize: 4,
           dataTypeModifier: -1,
