@@ -50,13 +50,22 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-var printErrorStackTraces = false
+var (
+	printErrorStackTraces = false
+	ForceTextWireFormat   = false
+)
 
-const PrintErrorStackTracesEnvKey = "DOLTGRES_PRINT_ERROR_STACK_TRACES"
+const (
+	PrintErrorStackTracesEnvKey = "DOLTGRES_PRINT_ERROR_STACK_TRACES"
+	ForceTextWireFormatEnvKey   = "DOLTGRES_FORCE_TEXT_WIRE_FORMAT"
+)
 
 func init() {
 	if _, ok := os.LookupEnv(PrintErrorStackTracesEnvKey); ok {
 		printErrorStackTraces = true
+	}
+	if _, ok := os.LookupEnv(ForceTextWireFormatEnvKey); ok {
+		ForceTextWireFormat = true
 	}
 }
 
@@ -98,7 +107,7 @@ type DoltgresHandler struct {
 var _ Handler = &DoltgresHandler{}
 
 // ComBind implements the Handler interface.
-func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars BindVariables) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
+func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars BindVariables, formatCodes []int16) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return nil, nil, err
@@ -124,12 +133,12 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 		}
 		return nil, nil, err
 	}
-
-	return queryPlan, schemaToFieldDescriptions(sqlCtx, queryPlan.Schema(), true), nil
+	fields, err := schemaToFieldDescriptions(sqlCtx, queryPlan.Schema(), formatCodes)
+	return queryPlan, fields, err
 }
 
 // ComExecuteBound implements the Handler interface.
-func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, callback func(*sql.Context, *Result) error) error {
+func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, formatCodes []int16, callback func(*sql.Context, *Result) error) error {
 	analyzedPlan, ok := boundQuery.(sql.Node)
 	if !ok {
 		return errors.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
@@ -141,7 +150,7 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 		h.sel.QueryStarted()
 	}
 
-	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback, true)
+	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback, formatCodes)
 	if err != nil {
 		err = sql.CastSQLError(err)
 	}
@@ -200,7 +209,10 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			},
 		}
 	} else {
-		fields = schemaToFieldDescriptions(sqlCtx, analyzed.Schema(), true)
+		fields, err = schemaToFieldDescriptions(sqlCtx, analyzed.Schema(), nil)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	return analyzed, fields, nil
 }
@@ -213,7 +225,7 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 		h.sel.QueryStarted()
 	}
 
-	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback, false)
+	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback, nil)
 	if err != nil {
 		err = sql.CastSQLError(err)
 	}
@@ -413,7 +425,7 @@ func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte,
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
-func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error, isExecute bool) error {
+func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error, formatCodes []int16) error {
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return err
@@ -460,17 +472,32 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	// zero/single return schema use spooling shortcut
 	if types.IsOkResultSchema(schema) {
 		r, err = resultForOkIter(sqlCtx, rowIter)
+		if err != nil {
+			return err
+		}
 	} else if schema == nil {
 		r, err = resultForEmptyIter(sqlCtx, rowIter)
+		if err != nil {
+			return err
+		}
 	} else if analyzer.FlagIsSet(qFlags, sql.QFlagMax1Row) {
-		resultFields := schemaToFieldDescriptions(sqlCtx, schema, isExecute)
-		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields, isExecute)
+		resultFields, err := schemaToFieldDescriptions(sqlCtx, schema, formatCodes)
+		if err != nil {
+			return err
+		}
+		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields, formatCodes)
+		if err != nil {
+			return err
+		}
 	} else {
-		resultFields := schemaToFieldDescriptions(sqlCtx, schema, isExecute)
-		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields, isExecute)
-	}
-	if err != nil {
-		return err
+		resultFields, err := schemaToFieldDescriptions(sqlCtx, schema, formatCodes)
+		if err != nil {
+			return err
+		}
+		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields, formatCodes)
+		if err != nil {
+			return err
+		}
 	}
 
 	sqlCtx.GetLogger().Debugf("Query finished in %d ms", time.Since(start).Milliseconds())
@@ -532,17 +559,40 @@ func nodeReturnsOkResultSchema(node sql.Node) bool {
 	return types.IsOkResultSchema(node.Schema())
 }
 
-func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, isPrepared bool) []pgproto3.FieldDescription {
+// extendFormatCodes ensures that the given format codes match the expected field length by extending the short-form
+// variant (or returning the full-form as-is).
+func extendFormatCodes(fieldLength int, formatCodes []int16) ([]int16, error) {
+	if !ForceTextWireFormat && len(formatCodes) > 0 {
+		// It's valid to send just one format code that should be used by all values, so we extend the slice in that case
+		if len(formatCodes) < fieldLength {
+			if len(formatCodes) > 1 {
+				return nil, errors.Errorf(`format codes have length "%d" but fields have length "%d"`, len(formatCodes), fieldLength)
+			}
+			newFormatCodes := make([]int16, fieldLength)
+			for i := range newFormatCodes {
+				newFormatCodes[i] = formatCodes[0]
+			}
+			return newFormatCodes, nil
+		} else {
+			return formatCodes, nil
+		}
+	} else {
+		// This defaults to zero, which means all format codes represent the "text" option
+		return make([]int16, fieldLength), nil
+	}
+}
+
+func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, formatCodes []int16) ([]pgproto3.FieldDescription, error) {
+	var err error
+	formatCodes, err = extendFormatCodes(len(s), formatCodes)
+	if err != nil {
+		return nil, err
+	}
+
 	fields := make([]pgproto3.FieldDescription, len(s))
 	for i, c := range s {
 		var oid uint32
 		var typmod = int32(-1)
-
-		// "Format" field: The format code being used for the field.
-		// Currently, will be zero (text) or one (binary).
-		// In a RowDescription returned from the statement variant of Describe,
-		// the format code is not yet known and will always be zero.
-		var formatCode = int16(0)
 
 		var err error
 		if doltgresType, ok := c.Type.(*pgtypes.DoltgresType); ok {
@@ -552,15 +602,8 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, isPrepared bool) 
 				oid = id.Cache().ToOID(doltgresType.ID.AsId())
 			}
 			typmod = doltgresType.GetAttTypMod() // pg_attribute.atttypmod
-			if isPrepared {
-				switch doltgresType.ID {
-				case pgtypes.Bytea.ID, pgtypes.Date.ID, pgtypes.Int16.ID, pgtypes.Int32.ID, pgtypes.Int64.ID,
-					pgtypes.Timestamp.ID, pgtypes.TimestampTZ.ID, pgtypes.Uuid.ID:
-					formatCode = 1
-				}
-			}
 		} else {
-			oid, err = VitessTypeToObjectID(c.Type.Type())
+			oid, err = VitessTypeToObjectID(c.Type)
 			if err != nil {
 				panic(err)
 			}
@@ -569,15 +612,15 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, isPrepared bool) 
 		fields[i] = pgproto3.FieldDescription{
 			Name:                 []byte(c.Name),
 			TableOID:             uint32(0),
-			TableAttributeNumber: uint16(0),
+			TableAttributeNumber: uint16(i + 1), // TODO: this should be based on the actual table field index, not the return schema
 			DataTypeOID:          oid,
 			DataTypeSize:         int16(c.Type.MaxTextResponseByteLength(ctx)),
 			TypeModifier:         typmod,
-			Format:               formatCode,
+			Format:               formatCodes[i],
 		}
 	}
 
-	return fields
+	return fields, nil
 }
 
 // resultForOkIter reads a maximum of one result row from a result iterator.
@@ -617,7 +660,7 @@ func resultForEmptyIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 }
 
 // resultForMax1RowIter ensures that an empty iterator returns at most one row
-func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, resultFields []pgproto3.FieldDescription, isExecute bool) (*Result, error) {
+func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, resultFields []pgproto3.FieldDescription, formatCodes []int16) (*Result, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForMax1RowIter").End()
 	row, err := iter.Next(ctx)
 	if err == io.EOF {
@@ -633,7 +676,7 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 		return nil, err
 	}
 
-	outputRow, err := rowToBytes(ctx, schema, row, isExecute)
+	outputRow, err := rowToBytes(ctx, schema, row, formatCodes)
 	if err != nil {
 		return nil, err
 	}
@@ -645,7 +688,7 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 
 // resultForDefaultIter reads batches of rows from the iterator
 // and writes results into the callback function.
-func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription, isExecute bool) (*Result, bool, error) {
+func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription, formatCodes []int16) (*Result, bool, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForDefaultIter").End()
 
 	var r *Result
@@ -738,7 +781,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 					continue
 				}
 
-				outputRow, err := rowToBytes(ctx, schema, row, isExecute)
+				outputRow, err := rowToBytes(ctx, schema, row, formatCodes)
 				if err != nil {
 					return err
 				}
@@ -780,7 +823,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	return r, processedAtLeastOneBatch, nil
 }
 
-func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, isExecute bool) ([][]byte, error) {
+func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16) ([][]byte, error) {
 	if len(row) == 0 {
 		return nil, nil
 	}
@@ -788,63 +831,36 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, isExecute bool) ([]
 		// should not happen
 		return nil, errors.Errorf("received empty schema")
 	}
+	formatCodes, err := extendFormatCodes(len(row), formatCodes)
+	if err != nil {
+		return nil, err
+	}
 	o := make([][]byte, len(row))
 	for i, v := range row {
 		if v == nil {
 			o[i] = nil
-		} else {
-			if isExecute {
-				switch d := s[i].Type.(type) {
-				case *pgtypes.DoltgresType:
-					switch d.ID {
-					// This is the list of types to use binary mode for when receiving them
-					// through a prepared statement.  If a type appears in this list, it
-					// must also be implemented in binaryDecode in encode.go.
-					case pgtypes.Bytea.ID:
-						o[i] = v.([]byte)
-						continue
-					case pgtypes.Int64.ID:
-						buf := make([]byte, 8)
-						binary.BigEndian.PutUint64(buf, uint64(v.(int64)))
-						o[i] = buf
-						continue
-					case pgtypes.Int32.ID:
-						buf := make([]byte, 4)
-						binary.BigEndian.PutUint32(buf, uint32(v.(int32)))
-						o[i] = buf
-						continue
-					case pgtypes.Int16.ID:
-						buf := make([]byte, 2)
-						binary.BigEndian.PutUint16(buf, uint16(v.(int16)))
-						o[i] = buf
-						continue
-					case pgtypes.Timestamp.ID, pgtypes.TimestampTZ.ID:
-						postgresEpoch := time.UnixMilli(946684800000).UTC() // Jan 1, 2000 @ Midnight
-						deltaInMicroseconds := v.(time.Time).UTC().UnixMicro() - postgresEpoch.UnixMicro()
-						buf := make([]byte, 8)
-						binary.BigEndian.PutUint64(buf, uint64(deltaInMicroseconds))
-						o[i] = buf
-						continue
-					case pgtypes.Date.ID:
-						postgresEpoch := time.UnixMilli(946684800000).UTC() // Jan 1, 2000 @ Midnight
-						deltaInMilliseconds := v.(time.Time).UTC().UnixMilli() - postgresEpoch.UnixMilli()
-						buf := make([]byte, 4)
-						const millisecondsPerDay = 86400000
-						days := deltaInMilliseconds / millisecondsPerDay
-						binary.BigEndian.PutUint32(buf, uint32(days))
-						o[i] = buf
-						continue
-					case pgtypes.Uuid.ID:
-						buf, err := v.(uuid.UUID).MarshalBinary()
-						if err != nil {
-							return nil, err
-						}
-						o[i] = buf
-						continue
-					}
+		} else if formatCodes[i] == 1 {
+			switch d := s[i].Type.(type) {
+			case *pgtypes.DoltgresType:
+				writer := NewWireWriter()
+				if err = writeBinaryWireData(ctx, d, writer, v); err != nil {
+					return nil, err
 				}
+				o[i] = writer.BufferData()
+			default:
+				cast := pgexprs.NewGMSCast(expression.NewLiteral(v, d))
+				v, err = cast.Eval(ctx, nil)
+				if err != nil {
+					return nil, err
+				}
+				writer := NewWireWriter()
+				if err = writeBinaryWireData(ctx, cast.DoltgresType(), writer, v); err != nil {
+					return nil, err
+				}
+				o[i] = writer.BufferData()
 			}
-			val, err := s[i].Type.SQL(ctx, []byte{}, v)
+		} else {
+			val, err := s[i].Type.SQL(ctx, []byte{}, v) // We use []byte{} as there's a distinction between nil and empty
 			if err != nil {
 				return nil, err
 			}

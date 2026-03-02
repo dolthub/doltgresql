@@ -926,11 +926,11 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
-					Expected: []sql.Row{{`{0,1,"conflicts found"}`}},
+					Expected: []sql.Row{{`{"",0,1,"conflicts found"}`}},
 				},
 				{
 					Query:    "SELECT * FROM dolt_conflicts;",
-					Expected: []sql.Row{{"t_simple", 1}},
+					Expected: []sql.Row{{"t_simple", Numeric("1")}},
 				},
 				{
 					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--ours', '.');",
@@ -956,11 +956,11 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
-					Expected: []sql.Row{{`{0,1,"conflicts found"}`}},
+					Expected: []sql.Row{{`{"",0,1,"conflicts found"}`}},
 				},
 				{
 					Query:    "SELECT * FROM dolt_conflicts;",
-					Expected: []sql.Row{{"t_simple", 1}},
+					Expected: []sql.Row{{"t_simple", Numeric("1")}},
 				},
 				{
 					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--theirs', '.');",
@@ -986,11 +986,11 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
-					Expected: []sql.Row{{`{0,1,"conflicts found"}`}},
+					Expected: []sql.Row{{`{"",0,1,"conflicts found"}`}},
 				},
 				{
 					Query:    "SELECT * FROM dolt_conflicts;",
-					Expected: []sql.Row{{"t_simple", 1}},
+					Expected: []sql.Row{{"t_simple", Numeric("1")}},
 				},
 				{
 					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--ours', 't_simple');",
@@ -1017,11 +1017,11 @@ func TestDoltConflictsResolve(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_MERGE('other', '--no-ff');",
-					Expected: []sql.Row{{`{0,1,"conflicts found"}`}},
+					Expected: []sql.Row{{`{"",0,1,"conflicts found"}`}},
 				},
 				{
 					Query:    "SELECT * FROM dolt_conflicts;",
-					Expected: []sql.Row{{"t_simple", 1}},
+					Expected: []sql.Row{{"t_simple", Numeric("1")}},
 				},
 				{
 					Query:    "SELECT DOLT_CONFLICTS_RESOLVE('--theirs', 't_simple');",
@@ -2800,7 +2800,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CHECKOUT('t1');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{`{0,""}`}},
 				},
 				{
 					Query:    "SELECT * FROM dolt.status;",
@@ -2830,13 +2830,13 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING')",
 					Expected: []sql.Row{
-						{"", "public.t1", "added", 1, 1},
+						{"", "public.t1", "added", "t", "t"},
 					},
 				},
 				{
 					Query: "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 't1')",
 					Expected: []sql.Row{
-						{"", "public.t1", "added", 1, 1},
+						{"", "public.t1", "added", "t", "t"},
 					},
 				},
 				{
@@ -2939,20 +2939,20 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING')",
 					Expected: []sql.Row{
-						{"", "public.t1", "added", 1, 1},
-						{"", "testschema.t2", "added", 1, 1},
+						{"", "public.t1", "added", "t", "t"},
+						{"", "testschema.t2", "added", "t", "t"},
 					},
 				},
 				{
 					Query: "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 't1')",
 					Expected: []sql.Row{
-						{"", "public.t1", "added", 1, 1},
+						{"", "public.t1", "added", "t", "t"},
 					},
 				},
 				{
 					Query: "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 't2')",
 					Expected: []sql.Row{
-						{"", "testschema.t2", "added", 1, 1},
+						{"", "testschema.t2", "added", "t", "t"},
 					},
 				},
 				{

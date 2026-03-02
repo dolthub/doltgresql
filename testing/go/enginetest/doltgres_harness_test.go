@@ -99,6 +99,7 @@ func (d *DoltgresHarness) NewHarness(t *testing.T) denginetest.DoltEnginetestHar
 
 // newDoltgresServerHarness creates a new harness for testing Dolt, using an in-memory filesystem and an in-memory blob store.
 func newDoltgresServerHarness(t *testing.T) denginetest.DoltEnginetestHarness {
+	server.ForceTextWireFormat = true // All of our hacks fail when using the binary wire format
 	dh := &DoltgresHarness{
 		t:              t,
 		skippedQueries: defaultSkippedQueries,
@@ -496,11 +497,9 @@ func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpe
 				switch v := val.(type) {
 				case string:
 					// Quoting here is wrong in several ways, but we need to match the current output
-					if len(v) > 0 {
-						sb.WriteString("\"")
-						sb.WriteString(v)
-						sb.WriteString("\"")
-					}
+					sb.WriteString("\"")
+					sb.WriteString(v)
+					sb.WriteString("\"")
 				case int64, uint64:
 					sb.WriteString(fmt.Sprintf("%d", v))
 				case float64:
