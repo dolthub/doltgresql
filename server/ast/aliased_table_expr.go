@@ -71,7 +71,7 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 			innerSelect = parentSelect.Select
 		}
 		if inSelect, ok := innerSelect.(*vitess.Select); ok {
-			if len(inSelect.From) == 1 {
+			if isTrivialSelectStar(inSelect) {
 				if aliasedTblExpr, ok := inSelect.From[0].(*vitess.AliasedTableExpr); ok {
 					if valuesStmt, ok := aliasedTblExpr.Expr.(*vitess.ValuesStatement); ok {
 						if len(node.As.Cols) > 0 {
@@ -145,4 +145,32 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 		Lateral: node.Lateral,
 		Auth:    authInfo,
 	}, nil
+}
+
+// isTrivialSelectStar returns true when the Select is just "SELECT * FROM <single table>"
+// with no other clauses that would alter semantics (no WHERE, ORDER BY, LIMIT, GROUP BY,
+// HAVING, DISTINCT, or WITH).
+func isTrivialSelectStar(s *vitess.Select) bool {
+	return len(s.From) == 1 &&
+		!s.QueryOpts.Distinct &&
+		s.With == nil &&
+		s.Limit == nil &&
+		len(s.OrderBy) == 0 &&
+		s.Where == nil &&
+		len(s.GroupBy) == 0 &&
+		s.Having == nil &&
+		isSelectStarOnly(s.SelectExprs)
+}
+
+// isSelectStarOnly returns true when the SelectExprs list is exactly one
+// unqualified star expression (i.e. "SELECT *" with no table qualifier).
+func isSelectStarOnly(exprs vitess.SelectExprs) bool {
+	if len(exprs) != 1 {
+		return false
+	}
+	starExpr, ok := exprs[0].(*vitess.StarExpr)
+	if !ok {
+		return false
+	}
+	return starExpr.TableName.IsEmpty()
 }

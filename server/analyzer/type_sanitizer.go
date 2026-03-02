@@ -61,12 +61,18 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			}
 			return expr, transform.SameTree, nil
 		case *expression.Literal:
-			// We want to leave limit literals alone, as they are expected to be GMS types when they appear in certain
-			// parts of the query (subqueries in particular)
-			// TODO: fix the limit validation analysis to handle doltgres types
-			if _, isLimit := n.(*plan.Limit); !isLimit {
-				return typeSanitizerLiterals(ctx, expr)
+			// We want to leave limit and offset literals as GMS types. GMS's
+			// validateOffsetAndLimit uses IsInteger, which only recognizes its
+			// own type singletons. If we convert these to Doltgres types the
+			// validation rejects them with "invalid type: bigint".
+			// TODO: fix the limit and offset validation analysis to handle doltgres types
+			if _, isLimit := n.(*plan.Limit); isLimit {
+				break
 			}
+			if _, isOffset := n.(*plan.Offset); isOffset {
+				break
+			}
+			return typeSanitizerLiterals(ctx, expr)
 		case *expression.Not, *expression.And, *expression.Or, *expression.Like:
 			return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 		case sql.FunctionExpression:
