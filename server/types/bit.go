@@ -62,10 +62,11 @@ var Bit = &DoltgresType{
 // NewBitType returns a Bit type with type modifier set
 // representing the number of bits in the string.
 func NewBitType(width int32) (*DoltgresType, error) {
-	typmod, err := GetTypModFromCharLength("bit", width)
-	if err != nil {
-		return nil, err
+	if width < 1 {
+		return nil, ErrLengthMustBeAtLeast1.New("bit")
+	} else if width > StringMaxLength {
+		return nil, ErrLengthCannotExceed.New("bit")
 	}
-	newType := *Bit.WithAttTypMod(typmod)
+	newType := *Bit.WithAttTypMod(width)
 	return &newType, nil
 }

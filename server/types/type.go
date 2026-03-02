@@ -715,12 +715,7 @@ func (t *DoltgresType) MaxSerializedWidth() sql.ExtendedTypeSerializedWidth {
 // MaxTextResponseByteLength implements the types.ExtendedType interface.
 func (t *DoltgresType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	if t.ID == VarChar.ID {
-		l := t.Length()
-		if l == StringUnbounded {
-			return math.MaxUint32
-		} else {
-			return uint32(l * 4)
-		}
+		return math.MaxUint32
 	} else if t.TypLength == -1 {
 		return math.MaxUint32
 	} else {

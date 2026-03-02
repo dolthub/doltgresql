@@ -998,7 +998,7 @@ func TestSequences(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING')",
 					Expected: []sql.Row{
-						{"", "public.test", "added", 1, 1},
+						{"", "public.test", "added", "t", "t"},
 					},
 				},
 				{
