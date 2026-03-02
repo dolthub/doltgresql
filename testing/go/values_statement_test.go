@@ -189,9 +189,6 @@ var ValuesStatementTests = []ScriptTest{
 		Name: "VALUES in subquery",
 		Assertions: []ScriptTestAssertion{
 			{
-				// VALUES as subquery in FROM clause
-				// TODO: pre-existing bug: arithmetic in subquery over VALUES is not applied (returns original values)
-				Skip:  true,
 				Query: `SELECT * FROM (SELECT n * 2 AS doubled FROM (VALUES(1),(2.5),(3)) v(n)) sub;`,
 				Expected: []sql.Row{
 					{Numeric("2")},
@@ -200,9 +197,6 @@ var ValuesStatementTests = []ScriptTest{
 				},
 			},
 			{
-				// VALUES with LIMIT inside subquery
-				// TODO: pre-existing bug: LIMIT inside subquery over VALUES is ignored (returns all rows)
-				Skip:  true,
 				Query: `SELECT * FROM (SELECT * FROM (VALUES(1),(2.5),(3),(4.5)) v(n) LIMIT 2) sub;`,
 				Expected: []sql.Row{
 					{Numeric("1")},
@@ -210,9 +204,6 @@ var ValuesStatementTests = []ScriptTest{
 				},
 			},
 			{
-				// VALUES with ORDER BY inside subquery
-				// TODO: pre-existing bug - ORDER BY inside subquery over VALUES is ignored
-				Skip:  true,
 				Query: `SELECT * FROM (SELECT * FROM (VALUES(3),(1.5),(2)) v(n) ORDER BY n) sub;`,
 				Expected: []sql.Row{
 					{Numeric("1.5")},
@@ -566,6 +557,286 @@ var ValuesStatementTests = []ScriptTest{
 				Query: `SELECT SUM("Val"), SUM("val") FROM (VALUES(1, 10),(2.5, 20)) v("Val", "val");`,
 				Expected: []sql.Row{
 					{Numeric("3.5"), int64(30)},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves projections",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT n * 2 AS doubled FROM (VALUES (1), (2), (3)) v(n)) sub;`,
+				Expected: []sql.Row{
+					{2},
+					{4},
+					{6},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT n * 2 AS doubled FROM (VALUES (1), (2.5), (3)) v(n)) sub;`,
+				Expected: []sql.Row{
+					{Numeric("2")},
+					{Numeric("5.0")},
+					{Numeric("6")},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves LIMIT",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (1), (2), (3), (4)) v(n) LIMIT 2) sub;`,
+				Expected: []sql.Row{
+					{1},
+					{2},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (1), (2.5), (3), (4.5)) v(n) LIMIT 2) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1")},
+					{Numeric("2.5")},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves ORDER BY",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (3), (1), (2)) v(n) ORDER BY n) sub;`,
+				Expected: []sql.Row{
+					{1},
+					{2},
+					{3},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (3), (1.5), (2)) v(n) ORDER BY n) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1.5")},
+					{Numeric("2")},
+					{Numeric("3")},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves DISTINCT",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT DISTINCT * FROM (VALUES (1), (1), (2), (2), (3)) v(n)) sub;`,
+				Expected: []sql.Row{
+					{1},
+					{2},
+					{3},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT DISTINCT * FROM (VALUES (1), (1), (2.5), (2.5), (3)) v(n)) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1")},
+					{Numeric("2.5")},
+					{Numeric("3")},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves WHERE",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (1), (2), (3), (4), (5)) v(n) WHERE n > 3) sub;`,
+				Expected: []sql.Row{
+					{4},
+					{5},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (1), (2.5), (3), (4.5), (5)) v(n) WHERE n > 3) sub;`,
+				Expected: []sql.Row{
+					{Numeric("4.5")},
+					{Numeric("5")},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves OFFSET",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (10), (20), (30)) v(n) OFFSET 1) sub;`,
+				Expected: []sql.Row{
+					{20},
+					{30},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (10), (20), (30), (40), (50)) v(n) LIMIT 2 OFFSET 1) sub;`,
+				Expected: []sql.Row{
+					{20},
+					{30},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (10), (20.5), (30)) v(n) OFFSET 1) sub;`,
+				Expected: []sql.Row{
+					{Numeric("20.5")},
+					{Numeric("30")},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (10), (20.5), (30), (40.5), (50)) v(n) LIMIT 2 OFFSET 1) sub;`,
+				Expected: []sql.Row{
+					{Numeric("20.5")},
+					{Numeric("30")},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves ORDER BY with LIMIT",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (5), (3), (1), (4), (2)) v(n) ORDER BY n LIMIT 3) sub;`,
+				Expected: []sql.Row{
+					{1},
+					{2},
+					{3},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (5), (3.5), (1), (4), (2.5)) v(n) ORDER BY n LIMIT 3) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1")},
+					{Numeric("2.5")},
+					{Numeric("3.5")},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves GROUP BY with aggregate",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT n, count(*) AS cnt FROM (VALUES (1), (1), (2), (2), (2), (3)) v(n) GROUP BY n ORDER BY n) sub;`,
+				Expected: []sql.Row{
+					{1, int64(2)},
+					{2, int64(3)},
+					{3, int64(1)},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT n, count(*) AS cnt FROM (VALUES (1), (1), (2.5), (2.5), (2.5), (3)) v(n) GROUP BY n ORDER BY n) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1"), int64(2)},
+					{Numeric("2.5"), int64(3)},
+					{Numeric("3"), int64(1)},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves HAVING",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT n, count(*) AS cnt FROM (VALUES (1), (1), (2), (2), (2), (3)) v(n) GROUP BY n HAVING count(*) > 1 ORDER BY n) sub;`,
+				Expected: []sql.Row{
+					{1, int64(2)},
+					{2, int64(3)},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT n, count(*) AS cnt FROM (VALUES (1), (1), (2.5), (2.5), (2.5), (3)) v(n) GROUP BY n HAVING count(*) > 1 ORDER BY n) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1"), int64(2)},
+					{Numeric("2.5"), int64(3)},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves column aliasing",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT n AS val, n * 10 AS tenfold FROM (VALUES (1), (2), (3)) v(n)) sub;`,
+				Expected: []sql.Row{
+					{1, 10},
+					{2, 20},
+					{3, 30},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT n AS val, n * 10 AS tenfold FROM (VALUES (1), (2.5), (3)) v(n)) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1"), Numeric("10")},
+					{Numeric("2.5"), Numeric("25.0")},
+					{Numeric("3"), Numeric("30")},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery preserves column subset selection",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT a FROM (VALUES (1, 10), (2, 20), (3, 30)) v(a, b)) sub;`,
+				Expected: []sql.Row{
+					{1},
+					{2},
+					{3},
+				},
+			},
+		},
+	},
+	{
+		Name: "values subquery trivial SELECT * still unwraps correctly",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT * FROM (VALUES (1), (2), (3)) v(n)) sub;`,
+				Expected: []sql.Row{
+					{1},
+					{2},
+					{3},
+				},
+			},
+		},
+	},
+	{
+		Name: "values inside subquery with multiple combined clauses",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT * FROM (SELECT DISTINCT n FROM (VALUES (3), (1), (1), (2), (2), (3)) v(n) ORDER BY n LIMIT 2) sub;`,
+				Expected: []sql.Row{
+					{1},
+					{2},
+				},
+			},
+			{
+				Query: `SELECT * FROM (SELECT DISTINCT n FROM (VALUES (3), (1.5), (1.5), (2), (2), (3)) v(n) ORDER BY n LIMIT 2) sub;`,
+				Expected: []sql.Row{
+					{Numeric("1.5")},
+					{Numeric("2")},
+				},
+			},
+		},
+	},
+	{
+		Name: "values in JOIN preserves inner subquery semantics",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT a.n, b.m FROM (VALUES (1), (2)) a(n) JOIN (SELECT m * 10 AS m FROM (VALUES (1), (2)) v(m)) b ON a.n = b.m / 10;`,
+				Expected: []sql.Row{
+					{1, 10},
+					{2, 20},
+				},
+			},
+			{
+				Query: `SELECT a.n, b.m FROM (VALUES (1), (2.5)) a(n) JOIN (SELECT m * 10 AS m FROM (VALUES (1), (2.5)) v(m)) b ON a.n = b.m / 10;`,
+				Expected: []sql.Row{
+					{Numeric("1"), Numeric("10")},
+					{Numeric("2.5"), Numeric("25.0")},
 				},
 			},
 		},
