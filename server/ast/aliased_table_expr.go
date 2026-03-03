@@ -151,24 +151,20 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 // with no other clauses that would alter semantics (no WHERE, ORDER BY, LIMIT, GROUP BY,
 // HAVING, DISTINCT, or WITH).
 func isTrivialSelectStar(s *vitess.Select) bool {
-	return len(s.From) == 1 &&
-		!s.QueryOpts.Distinct &&
-		s.With == nil &&
-		s.Limit == nil &&
-		len(s.OrderBy) == 0 &&
-		s.Where == nil &&
-		len(s.GroupBy) == 0 &&
-		s.Having == nil &&
-		isSelectStarOnly(s.SelectExprs)
-}
-
-// isSelectStarOnly returns true when the SelectExprs list is exactly one
-// unqualified star expression (i.e. "SELECT *" with no table qualifier).
-func isSelectStarOnly(exprs vitess.SelectExprs) bool {
-	if len(exprs) != 1 {
+	if len(s.From) != 1 ||
+		s.QueryOpts.Distinct ||
+		s.With != nil ||
+		s.Limit != nil ||
+		len(s.OrderBy) != 0 ||
+		s.Where != nil ||
+		len(s.GroupBy) != 0 ||
+		s.Having != nil {
 		return false
 	}
-	starExpr, ok := exprs[0].(*vitess.StarExpr)
+	if len(s.SelectExprs) != 1 {
+		return false
+	}
+	starExpr, ok := s.SelectExprs[0].(*vitess.StarExpr)
 	if !ok {
 		return false
 	}
