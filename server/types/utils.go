@@ -193,9 +193,8 @@ func RecordToString(ctx *sql.Context, fields []RecordValue) (any, error) {
 	return sb.String(), nil
 }
 
-// VectorToString is used for array_out function. |trimBool| parameter allows replacing
-// boolean result of "true" to "t" if the function is `Type.SQL()`.
-func VectorToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool bool) (string, error) {
+// VectorToString is used for *vectorout functions, to serialize vector values for wire transfer.
+func VectorToString(ctx *sql.Context, arr []any, baseType *DoltgresType) (string, error) {
 	sb := strings.Builder{}
 	for i, v := range arr {
 		if i > 0 {
@@ -205,9 +204,6 @@ func VectorToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBoo
 			str, err := baseType.IoOutput(ctx, v)
 			if err != nil {
 				return "", err
-			}
-			if baseType.ID == Bool.ID && trimBool {
-				str = string(str[0])
 			}
 			sb.WriteString(quoteString(str))
 		} else {
