@@ -61,6 +61,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, nameeqtext)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, numeric_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, oideq)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, oidvectoreq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, texteqname)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, text_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, record_eq)
@@ -469,25 +470,30 @@ var numeric_eq = framework.Function2{
 	Callable:   numeric_eq_callable,
 }
 
-// oideq_callable is the callable logic for the oideq function.
-// This method doesn't use DotlgresType.Compare because it's on the critical path for many tooling queries that
-// examine the pg_catalog tables.
-func oideq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	if val1 == nil || val2 == nil {
-		return false, nil
-	}
-
-	val1id, val2id := val1.(id.Id), val2.(id.Id)
-	return val1id == val2id, nil
-}
-
 // oideq represents the PostgreSQL function of the same name, taking the same parameters.
 var oideq = framework.Function2{
 	Name:       "oideq",
 	Return:     pgtypes.Bool,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
-	Callable:   oideq_callable,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		// This method doesn't use DotlgresType.Compare because it's on the critical path for many tooling queries that
+		// examine the pg_catalog tables.
+		val1id, val2id := val1.(id.Id), val2.(id.Id)
+		return val1id == val2id, nil
+	},
+}
+
+// oidvectoreq represents the PostgreSQL function of the same name, taking the same parameters.
+var oidvectoreq = framework.Function2{
+	Name:       "oidvectoreq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oidvector, pgtypes.Oidvector},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.Oidvector.Compare(ctx, val1.([]any), val2.([]any))
+		return res == 0, err
+	},
 }
 
 // texteqname_callable is the callable logic for the texteqname function.

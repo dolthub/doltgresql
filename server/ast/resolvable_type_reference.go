@@ -109,6 +109,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 				doltgresType = pgtypes.Float64
 			case oid.T_int2:
 				doltgresType = pgtypes.Int16
+			case oid.T_int2vector:
+				doltgresType = pgtypes.Int16vector
 			case oid.T_int4:
 				doltgresType = pgtypes.Int32
 			case oid.T_int8:
@@ -132,6 +134,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 				}
 			case oid.T_oid:
 				doltgresType = pgtypes.Oid
+			case oid.T_oidvector:
+				doltgresType = pgtypes.Oidvector
 			case oid.T_regclass:
 				doltgresType = pgtypes.Regclass
 			case oid.T_regproc:

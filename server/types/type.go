@@ -293,6 +293,9 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		return cmp.Compare(ab.OID(), v2.(id.Oid).OID()), nil
 	case []any:
 		if !t.IsArrayType() {
+			if t == Oidvector {
+				return Oidvector.Compare(ctx, ab, v2.([]any))
+			}
 			return 0, errors.New("array value received in Compare for non array type")
 		}
 		bb := v2.([]any)
@@ -558,7 +561,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 
 // IsArrayType returns true if the type is of 'array' category
 func (t *DoltgresType) IsArrayType() bool {
-	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType) ||
+	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType && t.Array == id.NullType) ||
 		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 

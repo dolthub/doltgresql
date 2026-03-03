@@ -193,6 +193,30 @@ func RecordToString(ctx *sql.Context, fields []RecordValue) (any, error) {
 	return sb.String(), nil
 }
 
+// VectorToString is used for array_out function. |trimBool| parameter allows replacing
+// boolean result of "true" to "t" if the function is `Type.SQL()`.
+func VectorToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool bool) (string, error) {
+	sb := strings.Builder{}
+	for i, v := range arr {
+		if i > 0 {
+			sb.WriteString(" ")
+		}
+		if v != nil {
+			str, err := baseType.IoOutput(ctx, v)
+			if err != nil {
+				return "", err
+			}
+			if baseType.ID == Bool.ID && trimBool {
+				str = string(str[0])
+			}
+			sb.WriteString(quoteString(str))
+		} else {
+			sb.WriteString("NULL")
+		}
+	}
+	return sb.String(), nil
+}
+
 // quoteString determines if |s| needs to be quoted, by looking for special characters like ' ' or ',',
 // and if so, quotes the string and returns it. If quoting is not needed, then |s| is returned as is.
 func quoteString(s string) string {
