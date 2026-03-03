@@ -169,7 +169,7 @@ var array_recv = framework.Function3{
 		baseType := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
 		typmod := val3.(int32)
 		baseType = baseType.WithAttTypMod(typmod)
-		return deserializeArray(ctx, data, pgtypes.Oid)
+		return deserializeArray(ctx, data, baseType)
 	},
 }
 
