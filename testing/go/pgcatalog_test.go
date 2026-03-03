@@ -1515,9 +1515,9 @@ func TestPgIndex(t *testing.T) {
 						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
 						"ORDER BY 1;",
 					Expected: []sql.Row{
-						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "0", nil, nil},
-						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "0", nil, nil},
-						{3185790121, 1784425749, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1,2}", "{}", "{}", "0", nil, nil},
+						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1}", "{}", "{}", "{0}", nil, nil},
+						{1322775662, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "{2}", "{}", "{}", "{0}", nil, nil},
+						{3185790121, 1784425749, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "{1,2}", "{}", "{}", "{0}", nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -1547,6 +1547,10 @@ func TestPgIndex(t *testing.T) {
 						{1322775662, 3120782595, "v1", "testing"},
 						{3185790121, 1784425749, "testing2_pkey", "testing2"},
 					},
+				},
+				{
+					Query:    "SELECT unnest(indoption) FROM pg_index LIMIT 1;",
+					Expected: []sql.Row{{0}},
 				},
 			},
 		},
@@ -5666,7 +5670,7 @@ FROM pg_catalog.pg_index
 WHERE pg_catalog.pg_index.indrelid IN (select oid from pg_class where relname='t2')
   AND NOT pg_catalog.pg_index.indisprimary ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 					Expected: []sql.Row{
-						{1496157034, "b", "f", "f", "0", nil, "btree", nil, 0, "f", "{b}", "{f}"},
+						{1496157034, "b", "f", "f", "{0}", nil, "btree", nil, 0, "f", "{b}", "{f}"},
 					},
 				},
 			},
