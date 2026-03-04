@@ -477,7 +477,7 @@ var oideq = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		// This method doesn't use DotlgresType.Compare because it's on the critical path for many tooling queries that
+		// This method doesn't use DoltgresType.Compare because it's on the critical path for many tooling queries that
 		// examine the pg_catalog tables.
 		val1id, val2id := val1.(id.Id), val2.(id.Id)
 		return val1id == val2id, nil

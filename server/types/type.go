@@ -194,6 +194,12 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 			return 0, err
 		}
 		return int(i.(int32)), nil
+	} else if t == Oidvector {
+		i, err := globalFunctionRegistry.GetFunction(t.CompareFunc).(QuickFunction).CallVariadic(nil, v1, v2)
+		if err != nil {
+			return 0, err
+		}
+		return int(i.(int32)), nil
 	}
 
 	switch ab := v1.(type) {
@@ -293,9 +299,6 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		return cmp.Compare(ab.OID(), v2.(id.Oid).OID()), nil
 	case []any:
 		if !t.IsArrayType() {
-			if t == Oidvector {
-				return Oidvector.Compare(ctx, ab, v2.([]any))
-			}
 			return 0, errors.New("array value received in Compare for non array type")
 		}
 		bb := v2.([]any)

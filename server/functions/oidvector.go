@@ -48,7 +48,7 @@ var oidvectorin = framework.Function1{
 			if err != nil {
 				return nil, err
 			}
-			values[i] = innerValue.(int16)
+			values[i] = innerValue
 		}
 		return values, nil
 	},
@@ -100,33 +100,27 @@ var btoidvectorcmp = framework.Function2{
 		rightOidvector := val2.([]any)
 		llen := len(leftOidvector)
 		rlen := len(rightOidvector)
+		minLen := min(llen, rlen)
 
-		// 1. Determine common length
-		minLen := llen
-		if rlen < llen {
-			minLen = rlen
-		}
-
-		// 2. Compare elements
 		for i := 0; i < minLen; i++ {
 			lOid := id.Cache().ToOID(leftOidvector[i].(id.Id))
 			rOid := id.Cache().ToOID(rightOidvector[i].(id.Id))
 
 			if lOid < rOid {
-				return -1, nil
+				return int32(-1), nil
 			}
 			if lOid > rOid {
-				return 1, nil
+				return int32(1), nil
 			}
 		}
 
-		// 3. Compare lengths if all elements matched
+		// Compare lengths if all elements matched
 		if llen < rlen {
-			return -1, nil
+			return int32(-1), nil
 		} else if llen > rlen {
-			return 1, nil
+			return int32(1), nil
 		}
 
-		return 0, nil
+		return int32(0), nil
 	},
 }

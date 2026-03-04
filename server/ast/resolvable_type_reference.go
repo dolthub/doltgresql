@@ -55,17 +55,24 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 	case *types.T:
 		columnTypeName = columnType.SQLStandardName()
 		if columnType.Family() == types.ArrayFamily {
-			_, baseResolvedType, err := nodeResolvableTypeReference(ctx, columnType.ArrayContents(), mayBeTrigger)
-			if err != nil {
-				return nil, nil, err
-			}
-			if baseResolvedType.IsResolvedType() {
-				// currently the built-in types will be resolved, so it can retrieve its array type
-				doltgresType = baseResolvedType.ToArrayType()
-			} else {
-				// TODO: handle array type of non-built-in types
-				baseResolvedType.TypCategory = pgtypes.TypeCategory_ArrayTypes
-				doltgresType = baseResolvedType
+			switch columnType.Oid() {
+			case oid.T_int2vector:
+				doltgresType = pgtypes.Int16vector
+			case oid.T_oidvector:
+				doltgresType = pgtypes.Oidvector
+			default:
+				_, baseResolvedType, err := nodeResolvableTypeReference(ctx, columnType.ArrayContents(), mayBeTrigger)
+				if err != nil {
+					return nil, nil, err
+				}
+				if baseResolvedType.IsResolvedType() {
+					// currently the built-in types will be resolved, so it can retrieve its array type
+					doltgresType = baseResolvedType.ToArrayType()
+				} else {
+					// TODO: handle array type of non-built-in types
+					baseResolvedType.TypCategory = pgtypes.TypeCategory_ArrayTypes
+					doltgresType = baseResolvedType
+				}
 			}
 		} else if columnType.Family() == types.GeometryFamily {
 			return nil, nil, errors.Errorf("geometry types are not yet supported")
@@ -109,8 +116,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 				doltgresType = pgtypes.Float64
 			case oid.T_int2:
 				doltgresType = pgtypes.Int16
-			case oid.T_int2vector:
-				doltgresType = pgtypes.Int16vector
+			//case oid.T_int2vector:
+			//	doltgresType = pgtypes.Int16vector
 			case oid.T_int4:
 				doltgresType = pgtypes.Int32
 			case oid.T_int8:
