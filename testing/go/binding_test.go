@@ -15,9 +15,10 @@
 package _go
 
 import (
-	"github.com/jackc/pgx/v5/pgtype"
 	"strconv"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/stretchr/testify/require"
 )
