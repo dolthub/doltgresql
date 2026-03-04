@@ -26,6 +26,7 @@ import (
 	"regexp"
 	"runtime/trace"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -412,6 +413,22 @@ func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte,
 			}
 			s := u.String()
 			bindVarString = &s
+		}
+	case typ == pgtype.TextArrayOID && isBinaryFormat:
+		if value != nil {
+			m := pgtype.NewMap()
+			var textArray []string
+			scanPlan := m.PlanScan(pgtype.TextArrayOID, pgtype.BinaryFormatCode, &textArray)
+			err = scanPlan.Scan(value, &textArray)
+			if err != nil {
+				return nil, err
+			}
+			quotedArray := make([]string, len(textArray))
+			for i, v := range textArray {
+				quotedArray[i] = `"` + strings.ReplaceAll(v, `"`, `\"`) + `"`
+			}
+			formattedArray := "{" + strings.Join(quotedArray, ",") + "}"
+			bindVarString = &formattedArray
 		}
 	default:
 		// For text format or types that can handle binary-to-string conversion
