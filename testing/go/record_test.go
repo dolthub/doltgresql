@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
 func TestRecords(t *testing.T) {
@@ -60,7 +59,7 @@ func TestRecords(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "select row(1, 1)::record;",
-					Expected: []sql.Row{{"(1,1)"}},
+					Expected: []sql.Row{{[]any{1, 1}}},
 				},
 			},
 		},
@@ -98,19 +97,19 @@ func TestRecords(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT ROW(1, 2, 3) as myRow;",
-					Expected: []sql.Row{{"(1,2,3)"}},
+					Expected: []sql.Row{{[]any{1, 2, 3}}},
 				},
 				{
 					Query:    "SELECT (4, 5, 6) as myRow;",
-					Expected: []sql.Row{{"(4,5,6)"}},
+					Expected: []sql.Row{{[]any{4, 5, 6}}},
 				},
 				{
 					Query:    "SELECT (NULL, 'foo', NULL) as myRow;",
-					Expected: []sql.Row{{"(,foo,)"}},
+					Expected: []sql.Row{{[]any{nil, "foo", nil}}},
 				},
 				{
 					Query:    "SELECT (NULL, (1 > 0), 'baz') as myRow;",
-					Expected: []sql.Row{{"(,t,baz)"}},
+					Expected: []sql.Row{{[]any{nil, true, "baz"}}},
 				},
 			},
 		},
@@ -210,8 +209,6 @@ func TestRecords(t *testing.T) {
 			},
 		},
 		{
-			// TODO: Additional work is needed to support inserting records into tables
-			Skip: true,
 			Name: "ROW() use inserting and selecting composite rows",
 			SetUpScript: []string{
 				"CREATE TYPE user_info AS (id INT, name TEXT, email TEXT);",
@@ -219,16 +216,14 @@ func TestRecords(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: ERROR: ASSIGNMENT_CAST: target is of type user_info but expression is of type record
 					Query:    "INSERT INTO accounts VALUES (ROW(1, 'alice', 'a@example.com'));",
-					Expected: []sql.Row{{types.NewOkResult(1)}},
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    "SELECT info FROM accounts;",
 					Expected: []sql.Row{{"(1,alice,a@example.com)"}},
 				},
 				{
-					// TODO: ERROR: (E).x is not yet supported (SQLSTATE XX000)
 					Query:    "SELECT (a.info).name FROM accounts a;",
 					Expected: []sql.Row{{"alice"}},
 				},
@@ -258,7 +253,7 @@ func TestRecords(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT ROW(1, 'a')::record;",
-					Expected: []sql.Row{{"(1,a)"}},
+					Expected: []sql.Row{{[]any{1, "a"}}},
 				},
 				{
 					Query:       "SELECT ROW(1, 2) = ROW(1, 'two');",
@@ -347,7 +342,7 @@ func TestRecords(t *testing.T) {
 				},
 				{
 					Query:    "SELECT ROW(id, name), COUNT(*) FROM users GROUP BY ROW(id, name);",
-					Expected: []sql.Row{{"(1,John)", 1}, {"(2,Joe)", 1}},
+					Expected: []sql.Row{{[]any{1, "John"}, 1}, {[]any{2, "Joe"}, 1}},
 				},
 			},
 		},
@@ -356,7 +351,7 @@ func TestRecords(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT ROW(ROW(1, 'x'), true);",
-					Expected: []sql.Row{{`("(1,x)",t)`}},
+					Expected: []sql.Row{{[]any{[]any{1, "x"}, true}}},
 				},
 			},
 		},

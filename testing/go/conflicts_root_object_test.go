@@ -93,13 +93,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -195,13 +195,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -301,13 +301,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -407,13 +407,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -513,13 +513,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -605,13 +605,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -681,13 +681,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -759,13 +759,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -837,13 +837,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -915,13 +915,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -991,13 +991,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 1},
+						{"public.interpreted_example(text)", Numeric("1")},
 					},
 				},
 				{
@@ -1069,13 +1069,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 2},
+						{"public.interpreted_example(text)", Numeric("2")},
 					},
 				},
 				{
@@ -1154,13 +1154,13 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{0,1,"conflicts found"}`},
+						{`{"",0,1,"conflicts found"}`},
 					},
 				},
 				{
 					Query: `SELECT * FROM dolt_conflicts;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", 2},
+						{"public.interpreted_example(text)", Numeric("2")},
 					},
 				},
 				{
