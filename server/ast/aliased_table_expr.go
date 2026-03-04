@@ -158,10 +158,8 @@ func isTrivialSelectStar(s *vitess.Select) bool {
 		len(s.OrderBy) != 0 ||
 		s.Where != nil ||
 		len(s.GroupBy) != 0 ||
-		s.Having != nil {
-		return false
-	}
-	if len(s.SelectExprs) != 1 {
+		s.Having != nil ||
+		len(s.SelectExprs) != 1 {
 		return false
 	}
 	starExpr, ok := s.SelectExprs[0].(*vitess.StarExpr)
