@@ -34,6 +34,7 @@ require (
 	github.com/sirupsen/logrus v1.8.3
 	github.com/stretchr/testify v1.11.1
 	github.com/twpayne/go-geom v1.3.6
+	github.com/xdg-go/scram v1.2.0
 	github.com/xdg-go/stringprep v1.0.4
 	golang.org/x/crypto v0.47.0
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
@@ -184,6 +185,7 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/twpayne/go-kml v1.5.2-0.20200728095708-9f2fd4dfcbfe // indirect
 	github.com/vbauerster/mpb/v8 v8.0.2 // indirect
+	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xitongsys/parquet-go v1.6.1 // indirect
 	github.com/xitongsys/parquet-go-source v0.0.0-20211010230925-397910c5e371 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect

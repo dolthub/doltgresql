@@ -62,10 +62,11 @@ var VarBit = &DoltgresType{
 // NewVarBitType returns a VarBit type with type modifier set
 // representing the max number of bits in the string.
 func NewVarBitType(width int32) (*DoltgresType, error) {
-	typmod, err := GetTypModFromCharLength("bit", width)
-	if err != nil {
-		return nil, err
+	if width < 1 {
+		return nil, ErrLengthMustBeAtLeast1.New("varbit")
+	} else if width > StringMaxLength {
+		return nil, ErrLengthCannotExceed.New("varbit")
 	}
-	newType := *VarBit.WithAttTypMod(typmod)
+	newType := *VarBit.WithAttTypMod(width)
 	return &newType, nil
 }

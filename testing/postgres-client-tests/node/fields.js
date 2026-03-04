@@ -2,7 +2,7 @@ export const countFields = [
   {
     name: "count",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -14,7 +14,7 @@ export const doltAddFields = [
   {
     name: "dolt_add",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 1009,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -26,7 +26,7 @@ export const doltResetFields = [
   {
     name: "dolt_reset",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 1009,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -38,7 +38,7 @@ export const doltBranchFields = [
   {
     name: "dolt_branch",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 1009,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -50,7 +50,7 @@ export const doltCheckoutFields = [
   {
     name: "dolt_checkout",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 1009,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -62,7 +62,7 @@ export const doltCleanFields = [
   {
     name: "dolt_clean",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 1009,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -74,7 +74,7 @@ export const doltCommitFields = [
   {
     name: "dolt_commit",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 1009,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -86,7 +86,7 @@ export const doltSchemasFields = [
   {
     name: "type",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 1043,
     dataTypeSize: 256,
     dataTypeModifier: -1,
@@ -95,7 +95,7 @@ export const doltSchemasFields = [
   {
     name: "name",
     tableID: 0,
-    columnID: 0,
+    columnID: 2,
     dataTypeID: 1043,
     dataTypeSize: 256,
     dataTypeModifier: -1,
@@ -104,7 +104,7 @@ export const doltSchemasFields = [
   {
     name: "fragment",
     tableID: 0,
-    columnID: 0,
+    columnID: 3,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -113,7 +113,7 @@ export const doltSchemasFields = [
   {
     name: "extra",
     tableID: 0,
-    columnID: 0,
+    columnID: 4,
     dataTypeID: 114,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -122,7 +122,7 @@ export const doltSchemasFields = [
   {
     name: "sql_mode",
     tableID: 0,
-    columnID: 0,
+    columnID: 5,
     dataTypeID: 1043,
     dataTypeSize: 1024,
     dataTypeModifier: -1,
@@ -134,7 +134,7 @@ export const doltDocsFields = [
   {
     name: "doc_name",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -143,7 +143,7 @@ export const doltDocsFields = [
   {
     name: "doc_text",
     tableID: 0,
-    columnID: 0,
+    columnID: 2,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -155,7 +155,7 @@ export const doltStatusFields = [
   {
     name: "table_name",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -164,7 +164,7 @@ export const doltStatusFields = [
   {
     name: "staged",
     tableID: 0,
-    columnID: 0,
+    columnID: 2,
     dataTypeID: 16,
     dataTypeSize: 1,
     dataTypeModifier: -1,
@@ -173,7 +173,7 @@ export const doltStatusFields = [
   {
     name: "status",
     tableID: 0,
-    columnID: 0,
+    columnID: 3,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -185,7 +185,7 @@ export const doltTagFields = [
   {
     name: "dolt_tag",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 1009,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -197,7 +197,7 @@ export const doltTagsFields = [
   {
     name: "tag_name",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 25,
     dataTypeSize: -4,
     dataTypeModifier: -1,
@@ -206,7 +206,7 @@ export const doltTagsFields = [
   {
     name: "tag_hash",
     tableID: 0,
-    columnID: 0,
+    columnID: 2,
     dataTypeID: 25,
     dataTypeSize: -4,
     dataTypeModifier: -1,
@@ -215,7 +215,7 @@ export const doltTagsFields = [
   {
     name: "tagger",
     tableID: 0,
-    columnID: 0,
+    columnID: 3,
     dataTypeID: 25,
     dataTypeSize: -4,
     dataTypeModifier: -1,
@@ -224,7 +224,7 @@ export const doltTagsFields = [
   {
     name: "email",
     tableID: 0,
-    columnID: 0,
+    columnID: 4,
     dataTypeID: 25,
     dataTypeSize: -4,
     dataTypeModifier: -1,
@@ -233,7 +233,7 @@ export const doltTagsFields = [
   {
     name: "date",
     tableID: 0,
-    columnID: 0,
+    columnID: 5,
     dataTypeID: 1114,
     dataTypeSize: 26,
     dataTypeModifier: -1,
@@ -242,7 +242,7 @@ export const doltTagsFields = [
   {
     name: "message",
     tableID: 0,
-    columnID: 0,
+    columnID: 6,
     dataTypeID: 25,
     dataTypeSize: -4,
     dataTypeModifier: -1,
@@ -254,7 +254,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "CONSTRAINT_CATALOG",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -263,7 +263,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "CONSTRAINT_SCHEMA",
     tableID: 0,
-    columnID: 0,
+    columnID: 2,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -272,7 +272,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "CONSTRAINT_NAME",
     tableID: 0,
-    columnID: 0,
+    columnID: 3,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -281,7 +281,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "TABLE_CATALOG",
     tableID: 0,
-    columnID: 0,
+    columnID: 4,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -290,7 +290,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "TABLE_SCHEMA",
     tableID: 0,
-    columnID: 0,
+    columnID: 5,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -299,7 +299,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "TABLE_NAME",
     tableID: 0,
-    columnID: 0,
+    columnID: 6,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -308,7 +308,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "COLUMN_NAME",
     tableID: 0,
-    columnID: 0,
+    columnID: 7,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -317,7 +317,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "ORDINAL_POSITION",
     tableID: 0,
-    columnID: 0,
+    columnID: 8,
     dataTypeID: 26,
     dataTypeSize: 10,
     dataTypeModifier: -1,
@@ -326,7 +326,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "POSITION_IN_UNIQUE_CONSTRAINT",
     tableID: 0,
-    columnID: 0,
+    columnID: 9,
     dataTypeID: 26,
     dataTypeSize: 10,
     dataTypeModifier: -1,
@@ -335,7 +335,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "REFERENCED_TABLE_SCHEMA",
     tableID: 0,
-    columnID: 0,
+    columnID: 10,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -344,7 +344,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "REFERENCED_TABLE_NAME",
     tableID: 0,
-    columnID: 0,
+    columnID: 11,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -353,7 +353,7 @@ export const infoSchemaKeyColumnUsageFields = [
   {
     name: "REFERENCED_COLUMN_NAME",
     tableID: 0,
-    columnID: 0,
+    columnID: 12,
     dataTypeID: 1043,
     dataTypeSize: 192,
     dataTypeModifier: -1,
@@ -364,7 +364,7 @@ export const infoSchemaKeyColumnUsageFields = [
 export const schemaNameField = {
   name: "schema_name",
   tableID: 0,
-  columnID: 0,
+  columnID: 1,
   dataTypeID: 1043,
   dataTypeSize: 256,
   dataTypeModifier: 68,
@@ -375,7 +375,7 @@ export const pgTablesFields = [
   {
     name: "schemaname",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 19,
     dataTypeSize: 64,
     dataTypeModifier: -1,
@@ -384,7 +384,7 @@ export const pgTablesFields = [
   {
     name: "tablename",
     tableID: 0,
-    columnID: 0,
+    columnID: 2,
     dataTypeID: 19,
     dataTypeSize: 64,
     dataTypeModifier: -1,
@@ -396,7 +396,7 @@ export const doltDiffStatFields = [
   {
     name: "table_name",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -405,7 +405,7 @@ export const doltDiffStatFields = [
   {
     name: "rows_unmodified",
     tableID: 0,
-    columnID: 0,
+    columnID: 2,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -414,7 +414,7 @@ export const doltDiffStatFields = [
   {
     name: "rows_added",
     tableID: 0,
-    columnID: 0,
+    columnID: 3,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -423,7 +423,7 @@ export const doltDiffStatFields = [
   {
     name: "rows_deleted",
     tableID: 0,
-    columnID: 0,
+    columnID: 4,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -432,7 +432,7 @@ export const doltDiffStatFields = [
   {
     name: "rows_modified",
     tableID: 0,
-    columnID: 0,
+    columnID: 5,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -441,7 +441,7 @@ export const doltDiffStatFields = [
   {
     name: "cells_added",
     tableID: 0,
-    columnID: 0,
+    columnID: 6,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -450,7 +450,7 @@ export const doltDiffStatFields = [
   {
     name: "cells_deleted",
     tableID: 0,
-    columnID: 0,
+    columnID: 7,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -459,7 +459,7 @@ export const doltDiffStatFields = [
   {
     name: "cells_modified",
     tableID: 0,
-    columnID: 0,
+    columnID: 8,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -468,7 +468,7 @@ export const doltDiffStatFields = [
   {
     name: "old_row_count",
     tableID: 0,
-    columnID: 0,
+    columnID: 9,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -477,7 +477,7 @@ export const doltDiffStatFields = [
   {
     name: "new_row_count",
     tableID: 0,
-    columnID: 0,
+    columnID: 10,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -486,7 +486,7 @@ export const doltDiffStatFields = [
   {
     name: "old_cell_count",
     tableID: 0,
-    columnID: 0,
+    columnID: 11,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -495,7 +495,7 @@ export const doltDiffStatFields = [
   {
     name: "new_cell_count",
     tableID: 0,
-    columnID: 0,
+    columnID: 12,
     dataTypeID: 20,
     dataTypeSize: 20,
     dataTypeModifier: -1,
@@ -507,7 +507,7 @@ export const doltDiffSummaryFields = [
   {
     name: "from_table_name",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -516,7 +516,7 @@ export const doltDiffSummaryFields = [
   {
     name: "to_table_name",
     tableID: 0,
-    columnID: 0,
+    columnID: 2,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -525,7 +525,7 @@ export const doltDiffSummaryFields = [
   {
     name: "diff_type",
     tableID: 0,
-    columnID: 0,
+    columnID: 3,
     dataTypeID: 25,
     dataTypeSize: -4,
     dataTypeModifier: -1,
@@ -534,7 +534,7 @@ export const doltDiffSummaryFields = [
   {
     name: "data_change",
     tableID: 0,
-    columnID: 0,
+    columnID: 4,
     dataTypeID: 21,
     dataTypeSize: 4,
     dataTypeModifier: -1,
@@ -543,7 +543,7 @@ export const doltDiffSummaryFields = [
   {
     name: "schema_change",
     tableID: 0,
-    columnID: 0,
+    columnID: 5,
     dataTypeID: 21,
     dataTypeSize: 4,
     dataTypeModifier: -1,
@@ -555,7 +555,7 @@ export const doltSchemaDiffFields = [
   {
     name: "from_table_name",
     tableID: 0,
-    columnID: 0,
+    columnID: 1,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -564,7 +564,7 @@ export const doltSchemaDiffFields = [
   {
     name: "to_table_name",
     tableID: 0,
-    columnID: 0,
+    columnID: 2,
     dataTypeID: 25,
     dataTypeSize: -1,
     dataTypeModifier: -1,
@@ -573,7 +573,7 @@ export const doltSchemaDiffFields = [
   {
     name: "from_create_statement",
     tableID: 0,
-    columnID: 0,
+    columnID: 3,
     dataTypeID: 25,
     dataTypeSize: -4,
     dataTypeModifier: -1,
@@ -582,7 +582,7 @@ export const doltSchemaDiffFields = [
   {
     name: "to_create_statement",
     tableID: 0,
-    columnID: 0,
+    columnID: 4,
     dataTypeID: 25,
     dataTypeSize: -4,
     dataTypeModifier: -1,

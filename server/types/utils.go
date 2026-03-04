@@ -76,14 +76,12 @@ func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 			return Bool, nil
 		}
 		return Int32, nil
-	case query.Type_INT16, query.Type_INT24, query.Type_INT32:
+	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
 		return Int32, nil
-	case query.Type_INT64:
+	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
 		return Int64, nil
-	case query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32, query.Type_UINT64:
-		return Int64, nil
-	case query.Type_YEAR:
-		return Int16, nil
+	case query.Type_UINT64:
+		return Numeric, nil
 	case query.Type_FLOAT32:
 		return Float32, nil
 	case query.Type_FLOAT64:
@@ -100,14 +98,10 @@ func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 		return Text, nil
 	case query.Type_JSON:
 		return Json, nil
-	case query.Type_ENUM:
-		return Int16, nil
-	case query.Type_SET:
-		return Int64, nil
-	case query.Type_NULL_TYPE, query.Type_GEOMETRY:
+	case query.Type_NULL_TYPE, query.Type_EXPRESSION, query.Type_GEOMETRY:
 		return Unknown, nil
 	default:
-		return nil, cerrors.Errorf("encountered a GMS type that cannot be handled")
+		return nil, cerrors.Errorf("encountered a GMS type that cannot be handled: %d", int32(typ.Type()))
 	}
 }
 
@@ -129,6 +123,12 @@ func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 	if t.IsArrayType() {
 		baseType := t.ArrayBaseType()
 		return ArrToString(ctx, val.([]any), baseType, true)
+	} else if t.ID == Bool.ID {
+		if val.(bool) {
+			return "t", nil
+		} else {
+			return "f", nil
+		}
 	}
 	return t.IoOutput(ctx, val)
 }
@@ -203,7 +203,7 @@ func quoteString(s string) string {
 			shouldQuote = true
 		}
 	}
-	if shouldQuote || strings.EqualFold(s, "NULL") {
+	if shouldQuote || strings.EqualFold(s, "NULL") || len(s) == 0 {
 		return fmt.Sprintf(`"%s"`, strings.ReplaceAll(s, `"`, `\"`))
 	} else {
 		return s

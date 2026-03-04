@@ -831,7 +831,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestAssertAsSuper("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
 				authTestAssertAsSuper("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsSuper("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_merge('conflict');", []sql.Row{{"{0,1,\"conflicts found\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_merge('conflict');", []sql.Row{{`{"",0,1,"conflicts found"}`}}, ""),
 
 				authTestAssertAsSuper("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
 
@@ -940,7 +940,7 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestAssertAsBasic("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
 				authTestAssertAsBasic("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsBasic("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				authTestAssertAsBasic("select dolt_merge('conflict');", []sql.Row{{"{0,1,\"conflicts found\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_merge('conflict');", []sql.Row{{`{"",0,1,"conflicts found"}`}}, ""),
 
 				authTestAssertAsBasic("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
 

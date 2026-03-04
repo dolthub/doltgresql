@@ -634,7 +634,8 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 			varTypes:    preparedData.BindVarTypes,
 			formatCodes: message.ParameterFormatCodes,
 			parameters:  message.Parameters,
-		})
+		},
+		message.ResultFormatCodes)
 	if err != nil {
 		return err
 	}
@@ -644,10 +645,15 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 		return errors.Errorf("expected a sql.Node, got %T", analyzedPlan)
 	}
 
+	resultFormatCodes, err := extendFormatCodes(len(fields), message.ResultFormatCodes)
+	if err != nil {
+		return err
+	}
 	h.portals[message.DestinationPortal] = PortalData{
-		Query:     preparedData.Query,
-		Fields:    fields,
-		BoundPlan: boundPlan,
+		Query:       preparedData.Query,
+		Fields:      fields,
+		BoundPlan:   boundPlan,
+		FormatCodes: resultFormatCodes,
 	}
 	return h.send(&pgproto3.BindComplete{})
 }
@@ -679,7 +685,7 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 	rowsAffected := int32(0)
 
 	callback := h.spoolRowsCallback(query, &rowsAffected, true)
-	err = h.doltgresHandler.ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, callback)
+	err = h.doltgresHandler.ComExecuteBound(context.Background(), h.mysqlConn, query.String, portalData.BoundPlan, portalData.FormatCodes, callback)
 	if err != nil {
 		return err
 	}
@@ -839,7 +845,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 	}
 
 	callback := func(_ *sql.Context, _ *Result) error { return nil }
-	err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY FROM", copyState.insertNode, callback)
+	err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY FROM", copyState.insertNode, nil, callback)
 	if err != nil {
 		return false, false, err
 	}

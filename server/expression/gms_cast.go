@@ -16,7 +16,6 @@ package expression
 
 import (
 	"encoding/json"
-	"math"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -99,16 +98,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		fallthrough
 		// In Postgres, Int32 is generally the smallest value returned. But we convert int8 and int16 to this type during
 		// schema conversion, which means we must do so here as well to avoid runtime panics.
-	case query.Type_INT16:
-		newVal, _, err := types.Int16.Convert(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := newVal.(int16); !ok {
-			return nil, errors.Errorf("GMSCast expected type `int32`, got `%T`", val)
-		}
-		return newVal, nil
-	case query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
+	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
 		newVal, _, err := types.Int32.Convert(ctx, val)
 		if err != nil {
 			return nil, err
@@ -127,29 +117,42 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 		return newVal, nil
 	case query.Type_UINT64:
-		// Postgres doesn't have a Uint64 type, so we return an int64 with an error if the value is too high
-		if val, ok := val.(uint64); ok {
-			if val > math.MaxInt64 {
-				return nil, errors.Errorf("uint64 value out of range: %v", val)
-			}
-			return int64(val), nil
+		// Postgres doesn't have a "public" Uint64 type, so we return a Numeric value
+		newVal, _, err := types.InternalDecimalType.Convert(ctx, val)
+		if err != nil {
+			return nil, err
 		}
-		return nil, errors.Errorf("GMSCast expected type `uint64`, got `%T`", val)
+		if _, ok := newVal.(decimal.Decimal); !ok {
+			return nil, errors.Errorf("GMSCast expected type `decimal.Decimal`, got `%T`", val)
+		}
+		return newVal, nil
 	case query.Type_FLOAT32:
-		if val, ok := val.(float32); ok {
-			return val, nil
+		newVal, _, err := types.Float32.Convert(ctx, val)
+		if err != nil {
+			return nil, err
 		}
-		return nil, errors.Errorf("GMSCast expected type `float32`, got `%T`", val)
+		if _, ok := newVal.(float32); !ok {
+			return nil, errors.Errorf("GMSCast expected type `float32`, got `%T`", val)
+		}
+		return newVal, nil
 	case query.Type_FLOAT64:
-		if val, ok := val.(float64); ok {
-			return val, nil
+		newVal, _, err := types.Float64.Convert(ctx, val)
+		if err != nil {
+			return nil, err
 		}
-		return nil, errors.Errorf("GMSCast expected type `float64`, got `%T`", val)
+		if _, ok := newVal.(float64); !ok {
+			return nil, errors.Errorf("GMSCast expected type `float64`, got `%T`", val)
+		}
+		return newVal, nil
 	case query.Type_DECIMAL:
-		if val, ok := val.(decimal.Decimal); ok {
-			return val, nil
+		newVal, _, err := types.InternalDecimalType.Convert(ctx, val)
+		if err != nil {
+			return nil, err
 		}
-		return nil, errors.Errorf("GMSCast expected type `Decimal`, got `%T`", val)
+		if _, ok := newVal.(decimal.Decimal); !ok {
+			return nil, errors.Errorf("GMSCast expected type `decimal.Decimal`, got `%T`", val)
+		}
+		return newVal, nil
 	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 		if val, ok := val.(time.Time); ok {
 			return val, nil
