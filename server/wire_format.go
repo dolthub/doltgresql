@@ -321,8 +321,6 @@ func writeBinaryWireData(ctx *sql.Context, t *pgtypes.DoltgresType, writer *Wire
 	case pgtypes.Oid.ID:
 		writer.WriteUint32(id.Cache().ToOID(v.(id.Id)))
 		return nil
-	//case pgtypes.Oidvector.ID:
-
 	case pgtypes.Regclass.ID:
 		writer.WriteUint32(id.Cache().ToOID(v.(id.Id)))
 		return nil

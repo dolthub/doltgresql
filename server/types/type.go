@@ -118,7 +118,7 @@ func (t *DoltgresType) AnalyzeFuncName() string {
 // ArrayBaseType returns a base type of given array type.
 // If this type is not an array type, it returns itself.
 func (t *DoltgresType) ArrayBaseType() *DoltgresType {
-	if t.Elem == id.NullType {
+	if !t.IsArrayType() {
 		return t
 	}
 
@@ -195,7 +195,7 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		}
 		return int(i.(int32)), nil
 	} else if t == Oidvector {
-		i, err := globalFunctionRegistry.GetFunction(t.CompareFunc).(QuickFunction).CallVariadic(nil, v1, v2)
+		i, err := globalFunctionRegistry.GetFunction(t.CompareFunc).CallVariadic(nil, v1, v2)
 		if err != nil {
 			return 0, err
 		}
@@ -573,7 +573,8 @@ func (t *DoltgresType) IsArrayType() bool {
 // IsArrayCategory returns true if the type is of 'array' category.
 // It can be either array types or vector types.
 func (t *DoltgresType) IsArrayCategory() bool {
-	return t.TypCategory == TypeCategory_ArrayTypes
+	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType) ||
+		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a

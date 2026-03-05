@@ -2015,6 +2015,21 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Oidvector array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_oidvector (id INTEGER primary key, v1 oidvector[]);",
+			`INSERT INTO t_oidvector VALUES (1, '{"1234 5678 9012", "556 778 223"}');`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_oidvector ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{\"1234 5678 9012\",\"556 778 223\"}"},
+				},
+			},
+		},
+	},
+	{
 		Name: "Oid type, explicit casts",
 		SetUpScript: []string{
 			"CREATE TABLE t_oid (id INTEGER primary key, coid OID);",
@@ -2624,6 +2639,31 @@ var typesTests = []ScriptTest{
 			{
 				Query:    `SELECT unnest(v1) FROM t_int2vector ORDER BY id;`,
 				Expected: []sql.Row{{1}, {2}, {3}, {6}, {7}, {8}, {9}},
+			},
+		},
+	},
+	{
+		Name: "Int2vector array type",
+		SetUpScript: []string{
+			"CREATE TABLE t_int2vector (id INTEGER primary key, v1 int2vector[]);",
+			`INSERT INTO t_int2vector VALUES (1, '{"1 2", "3 4"}');`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM t_int2vector ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "{\"1 2\",\"3 4\"}"},
+				},
+			},
+			{
+				Skip:     true,
+				Query:    `SELECT unnest(v1) FROM t_int2vector ORDER BY id;`,
+				Expected: []sql.Row{{"1 2"}, {"3 4"}},
+			},
+			{
+				Skip:     true,
+				Query:    `SELECT unnest(unnest(v1)) FROM t_int2vector ORDER BY id;`,
+				Expected: []sql.Row{{1}, {2}, {3}, {4}},
 			},
 		},
 	},
