@@ -190,12 +190,12 @@ var pgIndexSchema = sql.Schema{
 	{Name: "indisready", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgIndexName},
 	{Name: "indislive", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgIndexName},
 	{Name: "indisreplident", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgIndexName},
-	{Name: "indkey", Type: pgtypes.Int16Array, Default: nil, Nullable: false, Source: PgIndexName},     // TODO: type int2vector
-	{Name: "indcollation", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgIndexName}, // TODO: type oidvector
-	{Name: "indclass", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgIndexName},     // TODO: type oidvector
-	{Name: "indoption", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgIndexName},        // TODO: type int2vector. Declared as the serialized form so it can be read by clients expecting text, but this is a hacky temp solution
-	{Name: "indexprs", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName},          // TODO: type pg_node_tree, collation C
-	{Name: "indpred", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName},           // TODO: type pg_node_tree, collation C
+	{Name: "indkey", Type: pgtypes.Int16vector, Default: nil, Nullable: false, Source: PgIndexName},
+	{Name: "indcollation", Type: pgtypes.Oidvector, Default: nil, Nullable: false, Source: PgIndexName},
+	{Name: "indclass", Type: pgtypes.Oidvector, Default: nil, Nullable: false, Source: PgIndexName},
+	{Name: "indoption", Type: pgtypes.Int16vector, Default: nil, Nullable: false, Source: PgIndexName},
+	{Name: "indexprs", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName}, // TODO: type pg_node_tree, collation C
+	{Name: "indpred", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgIndexName},  // TODO: type pg_node_tree, collation C
 }
 
 func extractColName(expr string) string {
@@ -275,7 +275,7 @@ func pgIndexToRow(index *pgIndex) sql.Row {
 		index.indkey,           // indkey
 		[]any{},                // indcollation
 		[]any{},                // indclass
-		"0",                    // indoption
+		[]any{int16(0)},        // indoption
 		nil,                    // indexprs
 		nil,                    // indpred
 	}

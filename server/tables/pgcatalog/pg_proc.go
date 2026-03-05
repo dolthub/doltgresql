@@ -76,7 +76,7 @@ var pgProcSchema = sql.Schema{
 	{Name: "pronargs", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgProcName},
 	{Name: "pronargdefaults", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgProcName},
 	{Name: "prorettype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgProcName},
-	{Name: "proargtypes", Type: pgtypes.OidArray, Default: nil, Nullable: false, Source: PgProcName}, // TODO: type oidvector
+	{Name: "proargtypes", Type: pgtypes.Oidvector, Default: nil, Nullable: false, Source: PgProcName},
 	{Name: "proallargtypes", Type: pgtypes.OidArray, Default: nil, Nullable: true, Source: PgProcName},
 	{Name: "proargmodes", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgProcName}, // TODO: type char[]
 	{Name: "proargnames", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgProcName}, // TODO: collation C

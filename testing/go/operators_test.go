@@ -1128,6 +1128,22 @@ func TestOperators(t *testing.T) {
 					Query:    `select '27:01:24'::interval < '1 day 03:00:24.5'::interval;`,
 					Expected: []sql.Row{{"f"}},
 				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector < '1234 5678 9012'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '1234 5678 9012'::oidvector < '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector < '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '1234 5677'::oidvector < '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
 			},
 		},
 		{
@@ -1435,6 +1451,22 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `select '23:22:24'::interval > '1 day 03:00:00'::interval;`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector > '1234 5678 9012'::oidvector;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '1234 5678 9012'::oidvector > '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector > '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '1234 5679'::oidvector > '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},
@@ -1888,6 +1920,22 @@ func TestOperators(t *testing.T) {
 					Query:    `select '2 days 27:00:24.5'::interval <= '1 day 03:00:24.5'::interval;`,
 					Expected: []sql.Row{{"f"}},
 				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector <= '1234 5678 9012'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '1234 5678 9012'::oidvector <= '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector <= '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '1234 5677'::oidvector <= '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
 			},
 		},
 		{
@@ -2340,6 +2388,22 @@ func TestOperators(t *testing.T) {
 					Query:    `select '27:00:24'::interval >= '1 day 03:00:24.5'::interval;`,
 					Expected: []sql.Row{{"f"}},
 				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector >= '1234 5678 9012'::oidvector;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '1234 5678 9012'::oidvector >= '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector >= '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '1234 5679'::oidvector >= '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
 			},
 		},
 		{
@@ -2648,6 +2712,14 @@ func TestOperators(t *testing.T) {
 					Query:    `select '1 day'::interval = '1 day 03:00:24'::interval;`,
 					Expected: []sql.Row{{"f"}},
 				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector = '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '1234 5677'::oidvector = '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"f"}},
+				},
 			},
 		},
 		{
@@ -2951,6 +3023,14 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `select '27:00:24'::interval <> '1 day 03:00:24'::interval;`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '1234 5678'::oidvector <> '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '1234 5677'::oidvector <> '1234 5678'::oidvector;`,
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},

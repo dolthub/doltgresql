@@ -193,6 +193,26 @@ func RecordToString(ctx *sql.Context, fields []RecordValue) (any, error) {
 	return sb.String(), nil
 }
 
+// VectorToString is used for *vectorout functions, to serialize vector values for wire transfer.
+func VectorToString(ctx *sql.Context, arr []any, baseType *DoltgresType) (string, error) {
+	sb := strings.Builder{}
+	for i, v := range arr {
+		if i > 0 {
+			sb.WriteString(" ")
+		}
+		if v != nil {
+			str, err := baseType.IoOutput(ctx, v)
+			if err != nil {
+				return "", err
+			}
+			sb.WriteString(quoteString(str))
+		} else {
+			sb.WriteString("NULL")
+		}
+	}
+	return sb.String(), nil
+}
+
 // quoteString determines if |s| needs to be quoted, by looking for special characters like ' ' or ',',
 // and if so, quotes the string and returns it. If quoting is not needed, then |s| is returned as is.
 func quoteString(s string) string {
