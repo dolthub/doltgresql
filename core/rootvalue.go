@@ -630,10 +630,10 @@ func (root *RootValue) PutTable(ctx context.Context, tName doltdb.TableName, tab
 
 // RemoveTables implements the interface doltdb.RootValue.
 func (root *RootValue) RemoveTables(
-		ctx context.Context,
-		skipFKHandling bool,
-		allowDroppingFKReferenced bool,
-		originalTables ...doltdb.TableName,
+	ctx context.Context,
+	skipFKHandling bool,
+	allowDroppingFKReferenced bool,
+	originalTables ...doltdb.TableName,
 ) (doltdb.RootValue, error) {
 	if len(originalTables) == 0 {
 		return root, nil
