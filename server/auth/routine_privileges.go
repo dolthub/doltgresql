@@ -191,7 +191,7 @@ func (rp *RoutinePrivileges) serialize(writer *utils.Writer) {
 func (rp *RoutinePrivileges) deserialize(version uint32, reader *utils.Reader) {
 	rp.Data = make(map[RoutinePrivilegeKey]RoutinePrivilegeValue)
 	switch version {
-	case 2:
+	case 0:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {
