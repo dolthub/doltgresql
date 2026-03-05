@@ -40,13 +40,6 @@ import (
 	"github.com/dolthub/doltgresql/core/triggers"
 )
 
-const (
-	ddbRootStructName = "dolt_db_root"
-	tablesKey         = "tables"
-	foreignKeyKey     = "foreign_key"
-	featureVersKey    = "feature_ver"
-)
-
 // DoltgresFeatureVersion is Doltgres' feature version. We use Dolt's feature version added to our own.
 var DoltgresFeatureVersion = doltdb.DoltFeatureVersion + 0
 
@@ -637,10 +630,10 @@ func (root *RootValue) PutTable(ctx context.Context, tName doltdb.TableName, tab
 
 // RemoveTables implements the interface doltdb.RootValue.
 func (root *RootValue) RemoveTables(
-	ctx context.Context,
-	skipFKHandling bool,
-	allowDroppingFKReferenced bool,
-	originalTables ...doltdb.TableName,
+		ctx context.Context,
+		skipFKHandling bool,
+		allowDroppingFKReferenced bool,
+		originalTables ...doltdb.TableName,
 ) (doltdb.RootValue, error) {
 	if len(originalTables) == 0 {
 		return root, nil
