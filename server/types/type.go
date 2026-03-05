@@ -118,7 +118,7 @@ func (t *DoltgresType) AnalyzeFuncName() string {
 // ArrayBaseType returns a base type of given array type.
 // If this type is not an array type, it returns itself.
 func (t *DoltgresType) ArrayBaseType() *DoltgresType {
-	if !t.IsArrayType() {
+	if t.Elem == id.NullType {
 		return t
 	}
 
@@ -562,10 +562,18 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	return os, err
 }
 
-// IsArrayType returns true if the type is of 'array' category
+// IsArrayType returns true if the type is of 'array' type.
+// It can be array category with empty its array attribute NULL and element attribute NOT NULL.
+// Or it can be pseudo category with name 'anyarray'.
 func (t *DoltgresType) IsArrayType() bool {
 	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType && t.Array == id.NullType) ||
 		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
+}
+
+// IsArrayCategory returns true if the type is of 'array' category.
+// It can be either array types or vector types.
+func (t *DoltgresType) IsArrayCategory() bool {
+	return t.TypCategory == TypeCategory_ArrayTypes
 }
 
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a

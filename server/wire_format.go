@@ -67,7 +67,7 @@ func writeBinaryWireData(ctx *sql.Context, t *pgtypes.DoltgresType, writer *Wire
 		}
 	}
 	// We handle array types separately, since they all follow the same core writing scheme
-	if t.IsArrayType() {
+	if t.IsArrayCategory() {
 		vals := v.([]any)
 		// Check for nulls first
 		hasNull := false
@@ -100,7 +100,11 @@ func writeBinaryWireData(ctx *sql.Context, t *pgtypes.DoltgresType, writer *Wire
 		writer.WriteUint32(id.Cache().ToOID(t.ArrayBaseType().ID.AsId())) // Element OID
 		for i := int32(0); i < dimensions; i++ {
 			writer.WriteInt32(int32(len(vals))) // Elements in this dimension
-			writer.WriteInt32(1)                // Lower bound, or what index number we start at (seems to always be 1?)
+			if t.IsArrayType() {
+				writer.WriteInt32(1) // Lower bound, or what index number we start at (seems to always be 1?)
+			} else {
+				writer.WriteInt32(0)
+			}
 			for _, val := range vals {
 				if val == nil {
 					writer.WriteInt32(-1)
@@ -317,6 +321,8 @@ func writeBinaryWireData(ctx *sql.Context, t *pgtypes.DoltgresType, writer *Wire
 	case pgtypes.Oid.ID:
 		writer.WriteUint32(id.Cache().ToOID(v.(id.Id)))
 		return nil
+	//case pgtypes.Oidvector.ID:
+
 	case pgtypes.Regclass.ID:
 		writer.WriteUint32(id.Cache().ToOID(v.(id.Id)))
 		return nil
