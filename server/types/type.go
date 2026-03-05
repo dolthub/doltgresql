@@ -139,6 +139,25 @@ func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 	return &newElem
 }
 
+// BaseType returns a base type of given array or vector type.
+// If this type does not have base type, it returns itself.
+func (t *DoltgresType) BaseType() *DoltgresType {
+	if t.Elem == id.NullType {
+		return t
+	}
+
+	var elem *DoltgresType
+	var ok bool
+
+	elem, ok = IDToBuiltInDoltgresType[t.Elem]
+	if !ok {
+		panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
+	}
+
+	newElem := *elem.WithAttTypMod(t.attTypMod)
+	return &newElem
+}
+
 // CharacterSet implements the sql.StringType interface.
 func (t *DoltgresType) CharacterSet() sql.CharacterSetID {
 	switch t.ID.TypeName() {
@@ -573,8 +592,7 @@ func (t *DoltgresType) IsArrayType() bool {
 // IsArrayCategory returns true if the type is of 'array' category.
 // It can be either array types or vector types.
 func (t *DoltgresType) IsArrayCategory() bool {
-	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType) ||
-		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
+	return t.TypCategory == TypeCategory_ArrayTypes
 }
 
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a

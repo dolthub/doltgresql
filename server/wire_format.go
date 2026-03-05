@@ -97,7 +97,7 @@ func writeBinaryWireData(ctx *sql.Context, t *pgtypes.DoltgresType, writer *Wire
 		} else {
 			writer.WriteInt32(0)
 		}
-		writer.WriteUint32(id.Cache().ToOID(t.ArrayBaseType().ID.AsId())) // Element OID
+		writer.WriteUint32(id.Cache().ToOID(t.BaseType().ID.AsId())) // Element OID
 		for i := int32(0); i < dimensions; i++ {
 			writer.WriteInt32(int32(len(vals))) // Elements in this dimension
 			if t.IsArrayType() {
@@ -110,7 +110,7 @@ func writeBinaryWireData(ctx *sql.Context, t *pgtypes.DoltgresType, writer *Wire
 					writer.WriteInt32(-1)
 				} else {
 					valWriter := NewWireWriter()
-					if err := writeBinaryWireData(ctx, t.ArrayBaseType(), valWriter, val); err != nil {
+					if err := writeBinaryWireData(ctx, t.BaseType(), valWriter, val); err != nil {
 						return err
 					}
 					valBytes := valWriter.BufferData()
