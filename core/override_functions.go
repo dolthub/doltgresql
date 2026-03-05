@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/errors"
 	doltserial "github.com/dolthub/dolt/go/gen/fb/serial"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
@@ -34,53 +33,30 @@ import (
 
 // emptyRootValue is Doltgres' implementation of doltdb.EmptyRootValue.
 func emptyRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore) (doltdb.RootValue, error) {
-	if vrw.Format().UsesFlatbuffers() {
-		builder := flatbuffers.NewBuilder(80)
+	builder := flatbuffers.NewBuilder(80)
 
-		emptyam, err := prolly.NewEmptyAddressMap(ns)
-		if err != nil {
-			return nil, err
-		}
-		ambytes := []byte(tree.ValueFromNode(emptyam.Node()).(types.SerialMessage))
-		tablesoff := builder.CreateByteVector(ambytes)
-
-		var empty hash.Hash
-		fkoff := builder.CreateByteVector(empty[:])
-		serial.RootValueStart(builder)
-		serial.RootValueAddFeatureVersion(builder, int64(DoltgresFeatureVersion))
-		serial.RootValueAddCollation(builder, serial.Collationutf8mb4_0900_bin)
-		serial.RootValueAddTables(builder, tablesoff)
-		serial.RootValueAddForeignKeyAddr(builder, fkoff)
-		bs := doltserial.FinishMessage(builder, serial.RootValueEnd(builder), []byte(doltserial.DoltgresRootValueFileID))
-		return newRootValue(ctx, vrw, ns, types.SerialMessage(bs))
-	}
-
-	empty, err := types.NewMap(ctx, vrw)
+	emptyam, err := prolly.NewEmptyAddressMap(ns)
 	if err != nil {
 		return nil, err
 	}
+	ambytes := []byte(tree.ValueFromNode(emptyam.Node()).(types.SerialMessage))
+	tablesoff := builder.CreateByteVector(ambytes)
 
-	sd := types.StructData{
-		tablesKey:      empty,
-		foreignKeyKey:  empty,
-		featureVersKey: types.Int(DoltgresFeatureVersion),
-	}
-
-	st, err := types.NewStruct(vrw.Format(), ddbRootStructName, sd)
-	if err != nil {
-		return nil, err
-	}
-
-	return newRootValue(ctx, vrw, ns, st)
+	var empty hash.Hash
+	fkoff := builder.CreateByteVector(empty[:])
+	serial.RootValueStart(builder)
+	serial.RootValueAddFeatureVersion(builder, int64(DoltgresFeatureVersion))
+	serial.RootValueAddCollation(builder, serial.Collationutf8mb4_0900_bin)
+	serial.RootValueAddTables(builder, tablesoff)
+	serial.RootValueAddForeignKeyAddr(builder, fkoff)
+	bs := doltserial.FinishMessage(builder, serial.RootValueEnd(builder), []byte(doltserial.DoltgresRootValueFileID))
+	return newRootValue(ctx, vrw, ns, types.SerialMessage(bs))
 }
 
 // newRootValue is Doltgres' implementation of doltdb.NewRootValue.
 func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeStore, v types.Value) (doltdb.RootValue, error) {
 	var st storage.RootStorage
 
-	if !vrw.Format().UsesFlatbuffers() {
-		return nil, errors.Errorf("unsupported vrw")
-	}
 	srv, err := serial.TryGetRootAsRootValue([]byte(v.(types.SerialMessage)), doltserial.MessagePrefixSz)
 	if err != nil {
 		return nil, err

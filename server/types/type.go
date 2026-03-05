@@ -139,6 +139,25 @@ func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 	return &newElem
 }
 
+// BaseType returns a base type of given array or vector type.
+// If this type does not have base type, it returns itself.
+func (t *DoltgresType) BaseType() *DoltgresType {
+	if t.Elem == id.NullType {
+		return t
+	}
+
+	var elem *DoltgresType
+	var ok bool
+
+	elem, ok = IDToBuiltInDoltgresType[t.Elem]
+	if !ok {
+		panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
+	}
+
+	newElem := *elem.WithAttTypMod(t.attTypMod)
+	return &newElem
+}
+
 // CharacterSet implements the sql.StringType interface.
 func (t *DoltgresType) CharacterSet() sql.CharacterSetID {
 	switch t.ID.TypeName() {
@@ -190,6 +209,12 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		resTypes := qf.ResolvedTypes()
 		newFunc := qf.WithResolvedTypes([]*DoltgresType{t, t, resTypes[len(resTypes)-1]})
 		i, err := newFunc.(QuickFunction).CallVariadic(nil, v1, v2)
+		if err != nil {
+			return 0, err
+		}
+		return int(i.(int32)), nil
+	} else if t == Oidvector {
+		i, err := globalFunctionRegistry.GetFunction(t.CompareFunc).CallVariadic(nil, v1, v2)
 		if err != nil {
 			return 0, err
 		}
@@ -556,10 +581,18 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	return os, err
 }
 
-// IsArrayType returns true if the type is of 'array' category
+// IsArrayType returns true if the type is of 'array' type.
+// It can be array category with empty its array attribute NULL and element attribute NOT NULL.
+// Or it can be pseudo category with name 'anyarray'.
 func (t *DoltgresType) IsArrayType() bool {
-	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType) ||
+	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType && t.Array == id.NullType) ||
 		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
+}
+
+// IsArrayCategory returns true if the type is of 'array' category.
+// It can be either array types or vector types.
+func (t *DoltgresType) IsArrayCategory() bool {
+	return t.TypCategory == TypeCategory_ArrayTypes
 }
 
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a
@@ -715,12 +748,7 @@ func (t *DoltgresType) MaxSerializedWidth() sql.ExtendedTypeSerializedWidth {
 // MaxTextResponseByteLength implements the types.ExtendedType interface.
 func (t *DoltgresType) MaxTextResponseByteLength(ctx *sql.Context) uint32 {
 	if t.ID == VarChar.ID {
-		l := t.Length()
-		if l == StringUnbounded {
-			return math.MaxUint32
-		} else {
-			return uint32(l * 4)
-		}
+		return math.MaxUint32
 	} else if t.TypLength == -1 {
 		return math.MaxUint32
 	} else {

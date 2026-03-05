@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,6 +44,28 @@ func TestBindingWithOidZero(t *testing.T) {
 	sql := "INSERT INTO my_table (id, name) VALUES ($1, $2);"
 
 	// Execute a query with the zero OID and assert that we don't get an error
+	resultReader := conn.PgConn().ExecParams(ctx, sql, args, paramOIDs, paramFormats, nil)
+	result := resultReader.Read()
+	require.NoError(t, result.Err)
+}
+
+func TestBindingWithTextArray(t *testing.T) {
+	ctx, connection, controller := CreateServer(t, "postgres")
+	defer controller.Stop()
+	conn := connection.Default
+
+	m := pgtype.NewMap()
+	textArray := []string{"foo", "bar"}
+
+	plan := m.PlanEncode(pgtype.TextArrayOID, pgtype.BinaryFormatCode, textArray)
+	encodedArr, err := plan.Encode(textArray, nil)
+	require.NoError(t, err)
+
+	args := [][]byte{encodedArr}
+	paramOIDs := []uint32{1009}
+	paramFormats := []int16{1}
+	sql := "SELECT $1::text[]"
+
 	resultReader := conn.PgConn().ExecParams(ctx, sql, args, paramOIDs, paramFormats, nil)
 	result := resultReader.Read()
 	require.NoError(t, result.Err)

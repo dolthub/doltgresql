@@ -92,11 +92,12 @@ func GetTypmodFromNumericPrecisionAndScale(precision, scale int32) (int32, error
 	if scale < -1000 || scale > 1000 {
 		return 0, errors.Errorf("NUMERIC scale 20000 must be between -1000 and 1000")
 	}
-	return (precision << 16) | scale, nil
+	return ((precision << 16) | scale) + 4, nil
 }
 
 // GetPrecisionAndScaleFromTypmod takes Numeric type modifier and returns precision and scale values.
 func GetPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
+	typmod -= 4
 	scale := typmod & 0xFFFF
 	precision := (typmod >> 16) & 0xFFFF
 	return precision, scale

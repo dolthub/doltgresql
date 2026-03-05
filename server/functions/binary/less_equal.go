@@ -61,6 +61,7 @@ func initBinaryLessOrEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, nameletext)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, numeric_le)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, oidle)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, oidvectorle)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, textlename)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, text_le)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, time_le)
@@ -396,6 +397,18 @@ var oidle = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res := cmp.Compare(id.Cache().ToOID(val1.(id.Id)), id.Cache().ToOID(val2.(id.Id)))
 		return res <= 0, nil
+	},
+}
+
+// oidvectorle represents the PostgreSQL function of the same name, taking the same parameters.
+var oidvectorle = framework.Function2{
+	Name:       "oidvectorle",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oidvector, pgtypes.Oidvector},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.Oidvector.Compare(ctx, val1.([]any), val2.([]any))
+		return res <= 0, err
 	},
 }
 

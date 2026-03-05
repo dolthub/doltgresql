@@ -477,3 +477,44 @@ func TestInfoSchemaViews(t *testing.T) {
 		},
 	})
 }
+
+func TestInfoSchemaSequences(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "information_schema.sequences",
+			SetUpScript: []string{
+				"create sequence standard as smallint;",
+				"create schema test_schema",
+				"create table test_schema.test_table (id serial);",
+				"create sequence big increment by 3 start with 10 minvalue 1 cycle;",
+				"create sequence negative increment by -1",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "select * from information_schema.sequences where sequence_name = 'standard';",
+					Expected: []sql.Row{
+						{"postgres", "public", "standard", "smallint", 16, 2, 0, "1", "1", "32767", "1", "NO"},
+					},
+				},
+				{
+					Query: "select sequence_schema,sequence_name,data_type,numeric_precision from information_schema.sequences where sequence_name = 'test_table_id_seq';",
+					Expected: []sql.Row{
+						{"test_schema", "test_table_id_seq", "integer", 32},
+					},
+				},
+				{
+					Query: "select sequence_name,data_type,numeric_precision,minimum_value,increment,cycle_option from information_schema.sequences where sequence_name = 'big';",
+					Expected: []sql.Row{
+						{"big", "bigint", 64, "1", "3", "YES"},
+					},
+				},
+				{
+					Query: "select sequence_name, increment from information_schema.sequences where sequence_name = 'negative';",
+					Expected: []sql.Row{
+						{"negative", "-1"},
+					},
+				},
+			},
+		},
+	})
+}
