@@ -437,218 +437,6 @@ func TestAuthTests(t *testing.T) {
 			},
 		},
 		{
-			Name: `privileges ON PROCEDURE`,
-			SetUpScript: []string{
-				authTestCreateSuperUser,
-				`CREATE USER user1 PASSWORD 'a';`,
-				`CREATE TABLE test (v1 TEXT);`,
-				`CREATE PROCEDURE public.interpreted_example_1(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('1' || input); END; $$ LANGUAGE plpgsql;`,
-				`CREATE PROCEDURE interpreted_example_3(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('3' || input); END; $$ LANGUAGE plpgsql;`,
-				`GRANT ALL PRIVILEGES ON test TO user1 WITH GRANT OPTION;`,
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:       "CALL interpreted_example_1('12');",
-					Username:    `user1`,
-					Password:    `a`,
-					ExpectedErr: `denied`,
-				},
-				{
-					Query:    `GRANT ALL ON PROCEDURE public.interpreted_example_1(input TEXT) TO user1;`,
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    "CALL interpreted_example_1('22');",
-					Username: `user1`,
-					Password: `a`,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    "SELECT * FROM test;",
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{
-						{"122"},
-					},
-				},
-				{
-					Query:       "CALL interpreted_example_3('32');",
-					Username:    `user1`,
-					Password:    `a`,
-					ExpectedErr: `denied`,
-				},
-				{
-					Query:    "SELECT * FROM test;",
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{
-						{"122"},
-					},
-				},
-				{
-					Query:    `REVOKE ALL ON PROCEDURE public.interpreted_example_1(input TEXT) FROM user1;`,
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:       "CALL interpreted_example_1('42');",
-					Username:    `user1`,
-					Password:    `a`,
-					ExpectedErr: `denied`,
-				},
-				{
-					Query:    "SELECT * FROM test;",
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{
-						{"122"},
-					},
-				},
-			},
-		},
-		{
-			Name: `privileges ON FUNCTION`,
-			SetUpScript: []string{
-				authTestCreateSuperUser,
-				`CREATE USER user1 PASSWORD 'a';`,
-				"CREATE FUNCTION testfunc1() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql",
-				"CREATE FUNCTION testfunc2() RETURNS int AS $$ BEGIN RETURN 2; END; $$ LANGUAGE plpgsql",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:       "SELECT testfunc1();",
-					Username:    `user1`,
-					Password:    `a`,
-					ExpectedErr: `denied`,
-				},
-				{
-					Query:    `GRANT ALL ON FUNCTION public.testfunc1() TO user1;`,
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    "SELECT testfunc1();",
-					Username: `user1`,
-					Password: `a`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:       "SELECT testfunc2();",
-					Username:    `user1`,
-					Password:    `a`,
-					ExpectedErr: `denied`,
-				},
-				{
-					Query:    `REVOKE ALL ON FUNCTION testfunc1() FROM user1;`,
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:       "SELECT testfunc1();",
-					Username:    `user1`,
-					Password:    `a`,
-					ExpectedErr: `denied`,
-				},
-				{
-					// full privileges are granted for PUBLIC on system functions by default for now.
-					Query:    "SELECT UPPER('hello');",
-					Username: `user1`,
-					Password: `a`,
-					Expected: []sql.Row{{"HELLO"}},
-				},
-				{
-					// check dolt system functions work
-					Query:    "SELECT DOLT_CHECKOUT('main');",
-					Username: `user1`,
-					Password: `a`,
-					Expected: []sql.Row{{"{0,\"Already on branch 'main'\"}"}},
-				},
-			},
-		},
-		{
-			Skip: true,
-			Name: `CREATE privilege ON SEQUENCE`,
-			SetUpScript: []string{
-				authTestCreateSuperUser,
-				`CREATE USER user1 PASSWORD 'a';`,
-				`CREATE USER user2 PASSWORD 'b';`,
-				`CREATE SEQUENCE genre_id_seq_by_2 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;`,
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:       "CREATE SEQUENCE genre_id_seq_by_3 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;",
-					Username:    `user1`,
-					Password:    `a`,
-					ExpectedErr: `denied`,
-				},
-				{
-					Query:    `GRANT CREATE ON SEQUENCES TO user1;`,
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    "CREATE SEQUENCE genre_id_seq_by_3 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;",
-					Username: `user1`,
-					Password: `a`,
-					Expected: []sql.Row{},
-				},
-			},
-		},
-		{
-			Skip: true,
-			Name: `USAGE privilege ON SEQUENCE`,
-			SetUpScript: []string{
-				authTestCreateSuperUser,
-				`CREATE USER user1 PASSWORD 'a';`,
-				`CREATE USER user2 PASSWORD 'b';`,
-				`CREATE SEQUENCE genre_id_seq_by_2 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;`,
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:       "SELECT nextval('genre_id_seq_by_2');",
-					Username:    `user1`,
-					Password:    `a`,
-					ExpectedErr: `denied`,
-				},
-				{
-					Query:    `GRANT USAGE ON SEQUENCE public.genre_id_seq_by_2 TO user1;`,
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:    "SELECT nextval('genre_id_seq_by_2');",
-					Username: `user1`,
-					Password: `a`,
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    `GRANT SELECT ON SEQUENCE public.genre_id_seq_by_2 TO user2;`,
-					Username: authTestSuperUser,
-					Password: authTestSuperPass,
-					Expected: []sql.Row{},
-				},
-				{
-					Query:       "SELECT nextval('genre_id_seq_by_2');",
-					Username:    `user1`,
-					Password:    `a`,
-					ExpectedErr: `denied`,
-				},
-				{
-					Query:    "SELECT is_called FROM genre_id_seq_by_2;",
-					Username: `user1`,
-					Password: `a`,
-					Expected: []sql.Row{{true}},
-				},
-			},
-		},
-		{
 			Name: `INSERT, UPDATE, DELETE Privileges`,
 			SetUpScript: []string{
 				`CREATE TABLE test (pk INT4 PRIMARY KEY);`,
@@ -758,6 +546,273 @@ func TestAuthTests(t *testing.T) {
 					Username:    `user1`,
 					Password:    `a`,
 					ExpectedErr: `denied`,
+				},
+			},
+		},
+		{
+			Name: `CREATE privilege ON SEQUENCE and ROUTINE`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE USER user2 PASSWORD 'b';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE FUNCTION testfunc3() RETURNS int AS $$ BEGIN RETURN 3; END; $$ LANGUAGE plpgsql",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:       `CREATE PROCEDURE interpreted_example_3(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('3' || input); END; $$ LANGUAGE plpgsql;`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:       "CREATE SEQUENCE genre_id_seq_by_3 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `GRANT CREATE ON SCHEMA public TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE FUNCTION testfunc3() RETURNS int AS $$ BEGIN RETURN 3; END; $$ LANGUAGE plpgsql",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE PROCEDURE interpreted_example_3(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('3' || input); END; $$ LANGUAGE plpgsql;`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SEQUENCE genre_id_seq_by_3 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT nextval('genre_id_seq_by_3');",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `REVOKE USAGE ON SEQUENCE genre_id_seq_by_3 FROM user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					// user1 is the owner of the sequence, so the revoke is ignored.
+					Query:    "SELECT nextval('genre_id_seq_by_3');",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Skip:     true, // not supported yet
+					Query:    `ALTER SEQUENCE genre_id_seq_by_3 OWNER TO auth_test_user;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:        true, // depends on ALTER SEQUENCE ... OWNER TO
+					Query:       "SELECT nextval('genre_id_seq_by_3');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+			},
+		},
+		{
+			Name: `privileges ON FUNCTION`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER user1 PASSWORD 'a';`,
+				"CREATE FUNCTION testfunc1() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql",
+				"CREATE FUNCTION testfunc2() RETURNS int AS $$ BEGIN RETURN 2; END; $$ LANGUAGE plpgsql",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SELECT testfunc1();",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `GRANT ALL ON FUNCTION public.testfunc1() TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT testfunc1();",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:       "SELECT testfunc2();",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `REVOKE ALL ON FUNCTION testfunc1() FROM user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT testfunc1();",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					// full privileges are granted for PUBLIC on system functions by default for now.
+					Query:    "SELECT UPPER('hello');",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{"HELLO"}},
+				},
+				{
+					// check dolt system functions work
+					Query:    "SELECT DOLT_CHECKOUT('main');",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{"{0,\"Already on branch 'main'\"}"}},
+				},
+			},
+		},
+		{
+			Name: `privileges ON PROCEDURE`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE TABLE test (v1 TEXT);`,
+				`CREATE PROCEDURE public.interpreted_example_1(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('1' || input); END; $$ LANGUAGE plpgsql;`,
+				`CREATE PROCEDURE interpreted_example_3(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('3' || input); END; $$ LANGUAGE plpgsql;`,
+				`GRANT ALL PRIVILEGES ON test TO user1 WITH GRANT OPTION;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CALL interpreted_example_1('12');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `GRANT ALL ON PROCEDURE public.interpreted_example_1(input TEXT) TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CALL interpreted_example_1('22');",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{
+						{"122"},
+					},
+				},
+				{
+					Query:       "CALL interpreted_example_3('32');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{
+						{"122"},
+					},
+				},
+				{
+					Query:    `REVOKE ALL ON PROCEDURE public.interpreted_example_1(input TEXT) FROM user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CALL interpreted_example_1('42');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{
+						{"122"},
+					},
+				},
+			},
+		},
+		{
+			Skip: true,
+			Name: `SELECT/USAGE privileges ON SEQUENCE`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE USER user2 PASSWORD 'b';`,
+				`CREATE SEQUENCE genre_id_seq_by_2 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SELECT nextval('genre_id_seq_by_2');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `GRANT USAGE ON SEQUENCE public.genre_id_seq_by_2 TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT nextval('genre_id_seq_by_2');",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `GRANT SELECT ON SEQUENCE public.genre_id_seq_by_2 TO user2;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT nextval('genre_id_seq_by_2');",
+					Username:    `user2`,
+					Password:    `b`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    "SELECT is_called FROM genre_id_seq_by_2;",
+					Username: `user2`,
+					Password: `b`,
+					Expected: []sql.Row{{true}},
 				},
 			},
 		},

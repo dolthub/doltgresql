@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/doltgresql/server/auth"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/procedures"
@@ -112,5 +113,10 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 			sqlDef,
 			sqlDefParsed,
 		),
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_CREATE,
+			TargetType:  auth.AuthTargetType_SchemaIdentifiers,
+			TargetNames: []string{tableName.Catalog(), tableName.Schema()},
+		},
 	}, nil
 }

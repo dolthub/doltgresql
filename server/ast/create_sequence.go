@@ -203,8 +203,8 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 		Children: nil,
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_CREATE,
-			TargetType:  auth.AuthTargetType_SequenceIdentifiers,
-			TargetNames: []string{name.SchemaQualifier.String(), name.Name.String()},
+			TargetType:  auth.AuthTargetType_SchemaIdentifiers,
+			TargetNames: []string{name.DbQualifier.String(), name.SchemaQualifier.String()},
 		},
 	}, nil
 }
