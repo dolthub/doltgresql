@@ -2896,7 +2896,6 @@ func TestWireTypes(t *testing.T) {
 		},
 		{
 			Name: "TIMETZ returning binary format",
-			Skip: true, // TODO: CI uses a different time zone, need to homogenize them somehow for testing
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 TIMETZ, v2 TIMETZ);",
 				"INSERT INTO test VALUES ('0:0', '04:05:06.789'), ('09:27 PM', '12:12');",
@@ -2969,6 +2968,340 @@ func TestWireTypes(t *testing.T) {
 							Values: [][]byte{
 								{0, 0, 0, 17, 250, 171, 177, 0, 0, 0, 112, 128},
 								{0, 0, 0, 10, 57, 214, 4, 0, 0, 0, 112, 128},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "TIMESTAMP returning text format",
+			SetUpScript: []string{
+				"SET datestyle TO 'Postgres, MDY';",
+				"CREATE TABLE test (v1 TIMESTAMP, v2 TIMESTAMP);",
+				"INSERT INTO test VALUES ('2020-01-12 00:00:00', '2021-02-13 04:05:06.789'), ('2022-03-14 10:11:12', '2023-04-15 11:12:13');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test ORDER BY v1 NULLS FIRST;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          1114,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          1114,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`Sun Jan 12 00:00:00 2020`),
+								[]byte(`Sat Feb 13 04:05:06.789 2021`),
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`Mon Mar 14 10:11:12 2022`),
+								[]byte(`Sat Apr 15 11:12:13 2023`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "TIMESTAMP returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TIMESTAMP, v2 TIMESTAMP);",
+				"INSERT INTO test VALUES ('2020-01-12 00:00:00', '2021-02-13 04:05:06.789'), ('2022-03-14 10:11:12', '2023-04-15 11:12:13');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test ORDER BY v1 NULLS FIRST;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          1114,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          1114,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 2, 62, 228, 207, 3, 128, 0},
+								{0, 2, 94, 46, 160, 114, 138, 136},
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 2, 125, 41, 171, 38, 208, 0},
+								{0, 2, 156, 92, 204, 93, 29, 64},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "TIMESTAMPTZ returning text format",
+			SetUpScript: []string{
+				"SET datestyle TO 'Postgres, MDY';",
+				"CREATE TABLE test (v1 TIMESTAMPTZ, v2 TIMESTAMPTZ);",
+				"INSERT INTO test VALUES ('2020-01-12 00:00:00 PST', '2021-02-13 04:05:06.789 MST'), ('2022-03-14 10:11:12 CST', '2023-04-15 11:12:13 EST');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test ORDER BY v1 NULLS FIRST;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          1184,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          1184,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`Sun Jan 12 00:00:00 2020 PST`),
+								[]byte(`Sat Feb 13 03:05:06.789 2021 PST`),
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`Mon Mar 14 09:11:12 2022 PDT`),
+								[]byte(`Sat Apr 15 09:12:13 2023 PDT`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "TIMESTAMPTZ returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TIMESTAMPTZ, v2 TIMESTAMPTZ);",
+				"INSERT INTO test VALUES ('2020-01-12 00:00:00 PST', '2021-02-13 04:05:06.789 MST'), ('2022-03-14 10:11:12 CST', '2023-04-15 11:12:13 EST');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test ORDER BY v1 NULLS FIRST;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          1184,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          1184,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 2, 62, 235, 131, 160, 160, 0},
+								{0, 2, 94, 52, 126, 124, 6, 136},
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 2, 125, 46, 178, 156, 168, 0},
+								{0, 2, 156, 96, 253, 63, 81, 64},
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
