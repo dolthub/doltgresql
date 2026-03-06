@@ -92,15 +92,21 @@ exec_sql() {
   echo "running psql command found in: "
   echo $(which psql)
   
+  local pg_user pg_password
+  pg_user=$(get_env_var "USER")
+  pg_password=$(get_env_var "PASSWORD")
+  pg_user="${pg_user:-postgres}"
+  pg_password="${pg_password:-password}"
+
   while true; do
       if [ -n "$query" ]; then
           set +e
-          output=$(PGPASSWORD=password psql -h 127.0.0.1 -U postgres -c "$query" 2>&1)
+          output=$(PGPASSWORD="$pg_password" psql -h 127.0.0.1 -U "$pg_user" -c "$query" 2>&1)
           status=$?
           set -e
     else
       set +e # tmp disabled to initdb.d/ file err
-      output=$(PGPASSWORD=password psql -h 127.0.0.1 -U postgres < /dev/stdin 2>&1)
+      output=$(PGPASSWORD="$pg_password" psql -h 127.0.0.1 -U "$pg_user" < /dev/stdin 2>&1)
       status=$?
       set -e
     fi
