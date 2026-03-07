@@ -91,7 +91,7 @@ type CreateAggOption struct {
 	BoolVal bool
 	// StrVal is used for FinalFunc, CombineFunc, SerialFunc,
 	// DeserialFunc, MSFunc, MInvFunc and MFinalFunc
-	StrVal string
+	FuncName *UnresolvedObjectName
 	// FinalFuncModify is used for FinalFuncModify and MFinalFuncModify
 	FinalFuncModify FinalFuncModifyType
 	// TypeVal is used for MSType
@@ -109,7 +109,7 @@ func (node *CreateAggOption) Format(ctx *FmtCtx) {
 		ctx.FormatNode(node.IntVal)
 	case AggOptTypeFinalFunc:
 		ctx.WriteString("FINALFUNC = ")
-		ctx.WriteString(node.StrVal)
+		ctx.FormatNode(node.FuncName)
 	case AggOptTypeFinalFuncExtra:
 		if node.BoolVal {
 			ctx.WriteString("FINALFUNC_EXTRA = TRUE")
@@ -121,22 +121,22 @@ func (node *CreateAggOption) Format(ctx *FmtCtx) {
 		ctx.WriteString(string(node.FinalFuncModify))
 	case AggOptTypeCombineFunc:
 		ctx.WriteString("COMBINEFUNC = ")
-		ctx.WriteString(node.StrVal)
+		ctx.FormatNode(node.FuncName)
 	case AggOptTypeSerialFunc:
 		ctx.WriteString("SERIALFUNC = ")
-		ctx.WriteString(node.StrVal)
+		ctx.FormatNode(node.FuncName)
 	case AggOptTypeDeserialFunc:
 		ctx.WriteString("DESERIALFUNC = ")
-		ctx.WriteString(node.StrVal)
+		ctx.FormatNode(node.FuncName)
 	case AggOptTypeInitCond:
 		ctx.WriteString("INITCOND = ")
 		ctx.FormatNode(node.CondVal)
 	case AggOptTypeMSFunc:
 		ctx.WriteString("MSFUNC = ")
-		ctx.WriteString(node.StrVal)
+		ctx.FormatNode(node.FuncName)
 	case AggOptTypeMInvFunc:
 		ctx.WriteString("MINVFUNC = ")
-		ctx.WriteString(node.StrVal)
+		ctx.FormatNode(node.FuncName)
 	case AggOptTypeMSType:
 		ctx.WriteString("MSTYPE = ")
 		ctx.WriteString(node.TypeVal.SQLString())
@@ -145,7 +145,7 @@ func (node *CreateAggOption) Format(ctx *FmtCtx) {
 		ctx.FormatNode(node.IntVal)
 	case AggOptTypeMFinalFunc:
 		ctx.WriteString("MFINALFUNC = ")
-		ctx.WriteString(node.StrVal)
+		ctx.FormatNode(node.FuncName)
 	case AggOptTypeMFinalFuncExtra:
 		if node.BoolVal {
 			ctx.WriteString("MFINALFUNC_EXTRA = TRUE")

@@ -243,7 +243,7 @@ func (r *Revoke) revokeSchema(ctx *sql.Context) error {
 				Role:   userRole.ID(),
 				Schema: schema,
 			}
-			for _, privilege := range r.RevokeTable.Privileges {
+			for _, privilege := range r.RevokeSchema.Privileges {
 				if id := auth.HasSchemaPrivilegeGrantOption(key, privilege); !id.IsValid() {
 					// TODO: grab the actual error message
 					return errors.Errorf(`role "%s" does not have permission to revoke this privilege`, userRole.Name)

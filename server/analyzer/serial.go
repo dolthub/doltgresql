@@ -20,11 +20,13 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
@@ -63,14 +65,14 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		if col.Generated != nil {
 			seenNextVal := false
 			transform.InspectExpr(col.Generated, func(expr sql.Expression) bool {
-				switch expr := expr.(type) {
+				switch e := expr.(type) {
 				case *framework.CompiledFunction:
-					if strings.ToLower(expr.Name) == "nextval" {
+					if strings.ToLower(e.Name) == "nextval" {
 						seenNextVal = true
 					}
 				case *expression.Literal:
 					placeholderName := fmt.Sprintf("'%s'", ast.DoltCreateTablePlaceholderSequenceName)
-					if expr.String() == placeholderName {
+					if e.String() == placeholderName {
 						isGeneratedFromSequence = true
 					}
 				}
@@ -172,4 +174,26 @@ func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *
 		}
 	}
 	return sequenceName, nil
+}
+
+func tryToCatchSequenceToAuthCheck(ctx *sql.Context, ah sql.AuthorizationHandler, arg sql.Expression) error {
+	// there can be only one argument of string type.
+	seqName := arg.String()
+	// TODO: need a way to get the schema and sequence name properly
+	seqName = strings.Trim(seqName, "'")
+	schemaName := ""
+	names := strings.Split(seqName, ".")
+	if len(names) > 1 {
+		schemaName = names[0]
+		seqName = names[1]
+	}
+
+	if err := ah.HandleAuth(ctx, ah.NewQueryState(ctx), sqlparser.AuthInformation{
+		AuthType:    auth.AuthType_USAGE,
+		TargetType:  auth.AuthTargetType_SequenceIdentifiers,
+		TargetNames: []string{schemaName, seqName},
+	}); err != nil {
+		return err
+	}
+	return nil
 }

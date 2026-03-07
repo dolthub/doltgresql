@@ -635,6 +635,46 @@ func TestAuthTests(t *testing.T) {
 			},
 		},
 		{
+			Name: `GRANT/REVOKE USAGE ON SCHEMA`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE SEQUENCE genre_id_seq_by_3 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SELECT nextval('genre_id_seq_by_3');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `GRANT USAGE ON SCHEMA public TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT nextval('genre_id_seq_by_3');",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `REVOKE USAGE ON SCHEMA public FROM user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT nextval('genre_id_seq_by_3');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+			},
+		},
+		{
 			Name: `privileges ON FUNCTION`,
 			SetUpScript: []string{
 				authTestCreateSuperUser,
@@ -769,7 +809,6 @@ func TestAuthTests(t *testing.T) {
 			},
 		},
 		{
-			Skip: true,
 			Name: `SELECT/USAGE privileges ON SEQUENCE`,
 			SetUpScript: []string{
 				authTestCreateSuperUser,
@@ -809,6 +848,7 @@ func TestAuthTests(t *testing.T) {
 					ExpectedErr: `denied`,
 				},
 				{
+					Skip:     true, // TODO: support sequence metadata flag 'is_called'
 					Query:    "SELECT is_called FROM genre_id_seq_by_2;",
 					Username: `user2`,
 					Password: `b`,

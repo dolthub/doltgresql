@@ -96,6 +96,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 	globalLock.RLock()
 	defer globalLock.RUnlock()
 
+	checkSchemaForUsage := false
 	var privileges []Privilege
 	switch auth.AuthType {
 	case AuthType_IGNORE:
@@ -115,6 +116,9 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		privileges = []Privilege{Privilege_SELECT}
 	case AuthType_TRUNCATE:
 		privileges = []Privilege{Privilege_TRUNCATE}
+	case AuthType_USAGE:
+		checkSchemaForUsage = true
+		privileges = []Privilege{Privilege_USAGE}
 	case AuthType_UPDATE:
 		privileges = []Privilege{Privilege_UPDATE}
 	default:
@@ -158,18 +162,9 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 				// This will error later in the process, so we'll pass auth for now.
 				return nil
 			}
-			roleSchemaKey := SchemaPrivilegeKey{
-				Role:   state.role.ID(),
-				Schema: schemaName,
-			}
-			publicSchemaKey := SchemaPrivilegeKey{
-				Role:   state.public.ID(),
-				Schema: schemaName,
-			}
-			for _, privilege := range privileges {
-				if !HasSchemaPrivilege(roleSchemaKey, privilege) && !HasSchemaPrivilege(publicSchemaKey, privilege) {
-					return errors.Errorf("permission denied for schema %s", schemaName)
-				}
+			err = checkPrivilegeOnSchema(state, schemaName, privileges)
+			if err != nil {
+				return err
 			}
 		}
 	case AuthTargetType_TableIdentifiers:
@@ -249,21 +244,17 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 				// This will error later in the process, so we'll pass auth for now.
 				return nil
 			}
-			roleSequenceKey := SequencePrivilegeKey{
-				Role:   state.role.ID(),
-				Schema: schemaName,
-				Name:   auth.TargetNames[i+1],
-				//ArgTypes: auth.Extra.(string),
-			}
-			publicSequenceKey := SequencePrivilegeKey{
-				Role:   state.public.ID(),
-				Schema: schemaName,
-				Name:   auth.TargetNames[i+1],
-				//ArgTypes: auth.Extra.(string),
-			}
-			for _, privilege := range privileges {
-				if !HasSequencePrivilege(roleSequenceKey, privilege) && !HasSequencePrivilege(publicSequenceKey, privilege) {
-					return errors.Errorf("permission denied for sequence %s", auth.TargetNames[i+1])
+			seqName := auth.TargetNames[i+1]
+			err = checkPrivilegeOnSequence(state, schemaName, seqName, privileges)
+			if err != nil {
+				if checkSchemaForUsage {
+					// there can be schema USAGE privilege for the user/role.
+					err = checkPrivilegeOnSchema(state, schemaName, privileges)
+					if err != nil {
+						return err
+					}
+				} else {
+					return err
 				}
 			}
 		}
@@ -340,4 +331,42 @@ func (h *AuthorizationHandler) dbName(ctx *sql.Context, dbName string) string {
 	// Revision databases take the form "dbname/revision", so we must split the revision from the database name
 	splitDbName := strings.SplitN(dbName, "/", 2)
 	return splitDbName[0]
+}
+
+func checkPrivilegeOnSchema(state AuthorizationQueryState, schemaName string, privileges []Privilege) error {
+	roleSchemaKey := SchemaPrivilegeKey{
+		Role:   state.role.ID(),
+		Schema: schemaName,
+	}
+	publicSchemaKey := SchemaPrivilegeKey{
+		Role:   state.public.ID(),
+		Schema: schemaName,
+	}
+	for _, privilege := range privileges {
+		if !HasSchemaPrivilege(roleSchemaKey, privilege) && !HasSchemaPrivilege(publicSchemaKey, privilege) {
+			return errors.Errorf("permission denied for schema %s", schemaName)
+		}
+	}
+	return nil
+}
+
+func checkPrivilegeOnSequence(state AuthorizationQueryState, schemaName, seqName string, privileges []Privilege) error {
+	roleSequenceKey := SequencePrivilegeKey{
+		Role:   state.role.ID(),
+		Schema: schemaName,
+		Name:   seqName,
+		//ArgTypes: auth.Extra.(string),
+	}
+	publicSequenceKey := SequencePrivilegeKey{
+		Role:   state.public.ID(),
+		Schema: schemaName,
+		Name:   seqName,
+		//ArgTypes: auth.Extra.(string),
+	}
+	for _, privilege := range privileges {
+		if !HasSequencePrivilege(roleSequenceKey, privilege) && !HasSequencePrivilege(publicSequenceKey, privilege) {
+			return errors.Errorf("permission denied for sequence %s", seqName)
+		}
+	}
+	return nil
 }
