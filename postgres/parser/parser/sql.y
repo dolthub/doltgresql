@@ -4123,22 +4123,22 @@ create_agg_old_syntax_option_list:
 
 create_agg_old_syntax_option:
   create_agg_common_option
-| COMBINEFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeCombineFunc, StrVal: $3} }
-| SERIALFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeSerialFunc, StrVal: $3} }
-| DESERIALFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeDeserialFunc, StrVal: $3} }
-| MSFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSFunc, StrVal: $3} }
-| MINVFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMInvFunc, StrVal: $3} }
+| COMBINEFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeCombineFunc, FuncName: $3.unresolvedObjectName()} }
+| SERIALFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeSerialFunc, FuncName: $3.unresolvedObjectName()} }
+| DESERIALFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeDeserialFunc, FuncName: $3.unresolvedObjectName()} }
+| MSFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSFunc, FuncName: $3.unresolvedObjectName()} }
+| MINVFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMInvFunc, FuncName: $3.unresolvedObjectName()} }
 | MSTYPE '=' type_name
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSType, TypeVal: $3.typeReference()} }
 | MSSPACE '=' iconst64
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSSpace, IntVal: $3.expr()} }
-| MFINALFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFunc, StrVal: $3} }
+| MFINALFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFunc, FuncName: $3.unresolvedObjectName()} }
 | MFINALFUNC_EXTRA '=' TRUE
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFuncExtra, BoolVal: true} }
 | MFINALFUNC_EXTRA '=' FALSE
@@ -4157,8 +4157,8 @@ create_agg_old_syntax_option:
 create_agg_common_option:
   SSPACE '=' iconst64
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeSSpace, IntVal: $3.expr()} }
-| FINALFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFunc, StrVal: $3} }
+| FINALFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFunc, FuncName: $3.unresolvedObjectName()} }
 | FINALFUNC_EXTRA '=' TRUE
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFuncExtra, BoolVal: true} }
 | FINALFUNC_EXTRA '=' FALSE
