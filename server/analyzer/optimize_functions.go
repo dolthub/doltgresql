@@ -16,12 +16,13 @@ package analyzer
 
 import (
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/server/functions/framework"
-	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtransform "github.com/dolthub/doltgresql/server/transform"
 )
 
 // OptimizeFunctions replaces all functions that fit specific criteria with their optimized variants. Also handles

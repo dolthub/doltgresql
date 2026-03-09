@@ -20,7 +20,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -32,6 +31,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
