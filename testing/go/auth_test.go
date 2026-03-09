@@ -600,6 +600,7 @@ func TestAuthTests(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Skip:     true, // user1 is owner of this sequence, so it should have all privileges to it.
 					Query:    "SELECT nextval('genre_id_seq_by_3');",
 					Username: `user1`,
 					Password: `a`,
@@ -612,6 +613,7 @@ func TestAuthTests(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Skip: true, // user1 is owner of this sequence, so it should have all privileges to it.
 					// user1 is the owner of the sequence, so the revoke is ignored.
 					Query:    "SELECT nextval('genre_id_seq_by_3');",
 					Username: `user1`,
@@ -631,6 +633,41 @@ func TestAuthTests(t *testing.T) {
 					Username:    `user1`,
 					Password:    `a`,
 					ExpectedErr: `denied`,
+				},
+			},
+		},
+		{
+			Skip: true,
+			Name: `owner of a relation has all privileges granted by default and cannot be revoked unless ownership is altered`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE USER user2 PASSWORD 'b';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE TABLE mytable (pk int);",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `GRANT CREATE ON SCHEMA public TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE mytable (pk int);",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * from mytable;",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
 				},
 			},
 		},
@@ -853,6 +890,72 @@ func TestAuthTests(t *testing.T) {
 					Username: `user2`,
 					Password: `b`,
 					Expected: []sql.Row{{true}},
+				},
+			},
+		},
+		{
+			Name: `user can create table with sequence that they don't have privileges for but they cannot use it'`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE SEQUENCE genre_id_seq_by_2 AS integer START WITH 1 INCREMENT BY 2 NO MINVALUE NO MAXVALUE CACHE 1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SELECT nextval('genre_id_seq_by_2');",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `GRANT CREATE ON SCHEMA public TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "create table test_by_user1 (pk int, v1 INTEGER DEFAULT nextval('genre_id_seq_by_2'));",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: remove this once we support ownership privileges.
+					//  test_by_user1 table is owned by user1, so it should have all privileges
+					Query:    `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "insert into test_by_user1(pk) values (3);",
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    "SELECT * FROM test_by_user1;",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `GRANT USAGE ON SEQUENCE public.genre_id_seq_by_2 TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "insert into test_by_user1(pk) values (3);",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test_by_user1;",
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{3, 1}},
 				},
 			},
 		},

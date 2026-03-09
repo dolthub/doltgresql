@@ -94,6 +94,12 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			return nil, transform.NewTree, err
 		}
 
+		// TODO: need better way to detect sequence usage
+		err = authCheckSequence(ctx, a.Catalog.AuthHandler, schemaName, sequenceName)
+		if err != nil {
+			return nil, transform.SameTree, err
+		}
+
 		seqName := doltdb.TableName{Name: sequenceName, Schema: schemaName}.String()
 		nextVal, isDoltgresType, err := framework.GetFunction("nextval", pgexprs.NewTextLiteral(seqName))
 		if err != nil {
@@ -176,7 +182,9 @@ func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *
 	return sequenceName, nil
 }
 
-func tryToCatchSequenceToAuthCheck(ctx *sql.Context, ah sql.AuthorizationHandler, arg sql.Expression) error {
+// authCheckSequenceFromExpr checks authorization of sequence being used.
+// It parses schema and sequence names out of given expression.
+func authCheckSequenceFromExpr(ctx *sql.Context, ah sql.AuthorizationHandler, arg sql.Expression) error {
 	// there can be only one argument of string type.
 	seqName := arg.String()
 	// TODO: need a way to get the schema and sequence name properly
@@ -188,6 +196,12 @@ func tryToCatchSequenceToAuthCheck(ctx *sql.Context, ah sql.AuthorizationHandler
 		seqName = names[1]
 	}
 
+	return authCheckSequence(ctx, ah, schemaName, seqName)
+}
+
+// authCheckSequence checks authorization of sequence being used. We cannot check it during parsing because we cannot
+// detect sequence currently, so we try to catch any sequence being used and check authorization here.
+func authCheckSequence(ctx *sql.Context, ah sql.AuthorizationHandler, schemaName, seqName string) error {
 	if err := ah.HandleAuth(ctx, ah.NewQueryState(ctx), sqlparser.AuthInformation{
 		AuthType:    auth.AuthType_USAGE,
 		TargetType:  auth.AuthTargetType_SequenceIdentifiers,
