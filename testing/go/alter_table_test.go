@@ -993,5 +993,14 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ALTER TABLE IF EXISTS",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ALTER TABLE IF EXISTS t1a ALTER COLUMN a SET NOT NULL;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
