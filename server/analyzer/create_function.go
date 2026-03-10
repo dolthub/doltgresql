@@ -36,8 +36,16 @@ func ValidateCreateFunction(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, 
 		return n, transform.SameTree, nil
 	}
 
+	checkFunctionBodiesVar, err := ctx.GetSessionVariable(ctx, "check_function_bodies")
+	if err != nil {
+		return n, transform.SameTree, err
+	}
+	if checkFunctionBodiesVar.(int8) == 0 {
+		return n, transform.SameTree, nil
+	}
+
 	builder := planbuilder.New(ctx, a.Catalog, nil)
-	_, _, err := builder.BindOnly(ct.SqlDefParsed, ct.SqlDef, nil)
+	_, _, err = builder.BindOnly(ct.SqlDefParsed, ct.SqlDef, nil)
 	if err != nil {
 		return nil, transform.SameTree, err
 	}

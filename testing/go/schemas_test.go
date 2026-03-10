@@ -498,7 +498,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:       "insert into otherSchema.test values (3,3), (4,4)",
-				ExpectedErr: "database schema not found",
+				ExpectedErr: "table not found",
 			},
 			{
 				Query: "SELECT * FROM mySchema.test;",
@@ -509,7 +509,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:       "SELECT * FROM otherSchema.test;",
-				ExpectedErr: "database schema not found",
+				ExpectedErr: "table not found",
 			},
 		},
 	},

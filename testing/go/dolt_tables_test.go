@@ -385,7 +385,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM other.dolt_commit_diff_test`,
-					ExpectedErr: "database schema not found",
+					ExpectedErr: "table not found",
 				},
 				{
 					Query:       `SELECT * FROM public.dolt_commit_diff_none`,
@@ -663,7 +663,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM other.dolt_conflicts_test`,
-					ExpectedErr: "database schema not found",
+					ExpectedErr: "table not found",
 				},
 				{
 					Query:       `SELECT * FROM public.dolt_conflicts_none`,
@@ -879,7 +879,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM other.dolt_constraint_violations_test`,
-					ExpectedErr: "database schema not found",
+					ExpectedErr: "table not found",
 				},
 				{
 					Query:       `SELECT * FROM public.dolt_constraint_violations_none`,
@@ -1234,7 +1234,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM other.dolt_diff_test`,
-					ExpectedErr: "database schema not found",
+					ExpectedErr: "table not found",
 				},
 				{
 					Query:       `SELECT * FROM public.dolt_diff_none`,
@@ -1353,7 +1353,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM other.dolt_history_test`,
-					ExpectedErr: "database schema not found",
+					ExpectedErr: "table not found",
 				},
 				{
 					Query:       `SELECT * FROM public.dolt_history_none`,
@@ -1487,7 +1487,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT name FROM other.dolt_ignore`,
-					ExpectedErr: "database schema not found",
+					ExpectedErr: "table not found",
 				},
 				{
 					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
@@ -1800,7 +1800,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 		//		},
 		//		{
 		//			Query:       `SELECT name FROM other.dolt_statistics`,
-		//			ExpectedErr: "database schema not found",
+		//			ExpectedErr: "table not found",
 		//		},
 		//		{
 		//			Query:    `CREATE SCHEMA newschema`,
@@ -2099,7 +2099,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT name FROM other.dolt_procedures`,
-					ExpectedErr: "database schema not found",
+					ExpectedErr: "table not found",
 				},
 				// TODO: Add diff tests when create procedure works
 				{
@@ -2615,7 +2615,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT name FROM other.dolt_schemas`,
-					ExpectedErr: "database schema not found",
+					ExpectedErr: "table not found",
 				},
 				{
 					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
@@ -2811,7 +2811,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM other.dolt_workspace_test`,
-					ExpectedErr: "database schema not found",
+					ExpectedErr: "table not found",
 				},
 				{
 					Query:    `SELECT * FROM public.dolt_workspace_none`,
