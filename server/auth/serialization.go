@@ -33,7 +33,7 @@ func PersistChanges() error {
 func (db *Database) serialize() []byte {
 	writer := utils.NewWriter(16384)
 	// Write the version
-	writer.Uint32(0)
+	writer.Uint32(1)
 	// Write the roles
 	writer.Uint32(uint32(len(db.rolesByID)))
 	for _, role := range db.rolesByID {
@@ -64,6 +64,8 @@ func (db *Database) deserialize(data []byte) error {
 	switch version {
 	case 0:
 		return db.deserializeV0(reader)
+	case 1:
+		return db.deserializeV1(reader)
 	default:
 		return errors.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
 	}
@@ -89,17 +91,36 @@ func (db *Database) deserializeV0(reader *utils.Reader) error {
 	db.tablePrivileges.deserialize(0, reader)
 	// Read the role chain
 	db.roleMembership.deserialize(0, reader)
-	if db.routinePrivileges == nil {
-		db.routinePrivileges = NewRoutinePrivileges()
-	} else {
-		// Read the routine privileges
-		db.routinePrivileges.deserialize(0, reader)
+	// Read the routine privileges
+	db.routinePrivileges.deserialize(0, reader)
+	// Read the sequence privileges
+	db.sequencePrivileges.deserialize(0, reader)
+	return nil
+}
+
+// deserializeV1 creates a Database from a byte slice. Expects a reader that has already read the version.
+func (db *Database) deserializeV1(reader *utils.Reader) error {
+	// Read the roles
+	clear(db.rolesByName)
+	clear(db.rolesByID)
+	roleCount := reader.Uint32()
+	for i := uint32(0); i < roleCount; i++ {
+		r := Role{}
+		r.deserialize(1, reader)
+		db.rolesByName[r.Name] = r.id
+		db.rolesByID[r.id] = r
 	}
-	if db.sequencePrivileges == nil {
-		db.sequencePrivileges = NewSequencePrivileges()
-	} else {
-		// Read the routine privileges
-		db.sequencePrivileges.deserialize(0, reader)
-	}
+	// Read the database privileges
+	db.databasePrivileges.deserialize(1, reader)
+	// Read the schema privileges
+	db.schemaPrivileges.deserialize(1, reader)
+	// Read the table privileges
+	db.tablePrivileges.deserialize(1, reader)
+	// Read the role chain
+	db.roleMembership.deserialize(1, reader)
+	// Read the routine privileges
+	db.routinePrivileges.deserialize(1, reader)
+	// Read the sequence privileges
+	db.sequencePrivileges.deserialize(1, reader)
 	return nil
 }

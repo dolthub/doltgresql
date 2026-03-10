@@ -59,7 +59,7 @@ var setval_text_int64_boolean = framework.Function3{
 			return nil, err
 		}
 		// TODO: this should take a regclass as the parameter to determine the schema
-		schema, relation, err := parseRelationName(ctx, val1.(string))
+		schema, relation, err := ParseRelationName(ctx, val1.(string))
 		if err != nil {
 			return nil, err
 		}
@@ -67,9 +67,9 @@ var setval_text_int64_boolean = framework.Function3{
 	},
 }
 
-// parseRelationName parses the schema and relation name from a relation name string, including trimming any
+// ParseRelationName parses the schema and relation name from a relation name string, including trimming any
 // identifier quotes used in the name. For example, passing in 'public."MyTable"' would return 'public' and 'MyTable'.
-func parseRelationName(ctx *sql.Context, name string) (schema string, relation string, err error) {
+func ParseRelationName(ctx *sql.Context, name string) (schema string, relation string, err error) {
 	pathElems := strings.Split(name, ".")
 	switch len(pathElems) {
 	case 1:

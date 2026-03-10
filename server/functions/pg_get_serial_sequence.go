@@ -49,11 +49,11 @@ var pg_get_serial_sequence_text_text = framework.Function2{
 		var err error
 		schemaName := ""
 		if strings.Contains(tableName, ".") {
-			// TODO: parseRelationName() will return the first schema from the search_path if one is not included
+			// TODO: ParseRelationName() will return the first schema from the search_path if one is not included
 			//       in the relation name, but that doesn't mean it's the correct schema. It should be updated to
 			//       not return any schema name if one wasn't explicitly specified, then we should search for the
 			//       table on the search_path and find the first schema that contains a table with that name.
-			schemaName, tableName, err = parseRelationName(ctx, tableName)
+			schemaName, tableName, err = ParseRelationName(ctx, tableName)
 			if err != nil {
 				return nil, err
 			}

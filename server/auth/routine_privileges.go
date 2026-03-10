@@ -166,7 +166,7 @@ func RemoveRoutinePrivilege(key RoutinePrivilegeKey, privilege GrantedPrivilege,
 
 // serialize writes the RoutinePrivileges to the given writer.
 func (rp *RoutinePrivileges) serialize(writer *utils.Writer) {
-	// Version 0
+	// Version 1
 	// Write the total number of values
 	writer.Uint64(uint64(len(rp.Data)))
 	for _, value := range rp.Data {
@@ -192,6 +192,7 @@ func (rp *RoutinePrivileges) deserialize(version uint32, reader *utils.Reader) {
 	rp.Data = make(map[RoutinePrivilegeKey]RoutinePrivilegeValue)
 	switch version {
 	case 0:
+	case 1:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

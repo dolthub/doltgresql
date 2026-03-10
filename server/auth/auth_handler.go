@@ -179,18 +179,9 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 				// This will error later in the process, so we'll pass auth for now.
 				return nil
 			}
-			roleTableKey := TablePrivilegeKey{
-				Role:  state.role.ID(),
-				Table: doltdb.TableName{Name: auth.TargetNames[i+2], Schema: schemaName},
-			}
-			publicTableKey := TablePrivilegeKey{
-				Role:  state.public.ID(),
-				Table: doltdb.TableName{Name: auth.TargetNames[i+2], Schema: schemaName},
-			}
-			for _, privilege := range privileges {
-				if !HasTablePrivilege(roleTableKey, privilege) && !HasTablePrivilege(publicTableKey, privilege) {
-					return errors.Errorf("permission denied for table %s", auth.TargetNames[i+2])
-				}
+			err = checkPrivilegeOnTable(state, schemaName, auth.TargetNames[i+2], privileges)
+			if err != nil {
+				return err
 			}
 		}
 	case AuthTargetType_FunctionIdentifiers:
@@ -198,38 +189,9 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			return errors.Errorf("function identifiers has an unsupported count: %d", len(auth.TargetNames))
 		}
 		for i := 0; i < len(auth.TargetNames); i += 2 {
-			// TODO: handle database
-			if auth.TargetNames[i] == "" {
-				// if the schema name is not provided then it's either pg_catalog schema or current schema on search path
-				_, ok := framework.Catalog[strings.ToLower(auth.TargetNames[i+1])]
-				if ok {
-					// TODO: for now we don't check privilege for pg_catalog tables as it's granted for PUBLIC by default
-					//  need to fix when we support 'REVOKE privileges FROM PUBLIC'
-					return nil
-				}
-			}
-			schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[i])
+			err := checkPrivilegeOnRoutine(ctx, state, auth.TargetNames[i], auth.TargetNames[i+1], privileges)
 			if err != nil {
-				// If this fails, then there's an issue with the search path.
-				// This will error later in the process, so we'll pass auth for now.
-				return nil
-			}
-			roleRoutineKey := RoutinePrivilegeKey{
-				Role:   state.role.ID(),
-				Schema: schemaName,
-				Name:   auth.TargetNames[i+1],
-				//ArgTypes: auth.Extra.(string),
-			}
-			publicRoutineKey := RoutinePrivilegeKey{
-				Role:   state.public.ID(),
-				Schema: schemaName,
-				Name:   auth.TargetNames[i+1],
-				//ArgTypes: auth.Extra.(string),
-			}
-			for _, privilege := range privileges {
-				if !HasRoutinePrivilege(roleRoutineKey, privilege) && !HasRoutinePrivilege(publicRoutineKey, privilege) {
-					return errors.Errorf("permission denied for function %s", auth.TargetNames[i+1])
-				}
+				return err
 			}
 		}
 	case AuthTargetType_SequenceIdentifiers:
@@ -244,8 +206,7 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 				// This will error later in the process, so we'll pass auth for now.
 				return nil
 			}
-			seqName := auth.TargetNames[i+1]
-			err = checkPrivilegeOnSequence(state, schemaName, seqName, privileges)
+			err = checkPrivilegeOnSequence(state, schemaName, auth.TargetNames[i+1], privileges)
 			if err != nil {
 				if checkSchemaForUsage {
 					// there can be schema USAGE privilege for the user/role.
@@ -333,6 +294,7 @@ func (h *AuthorizationHandler) dbName(ctx *sql.Context, dbName string) string {
 	return splitDbName[0]
 }
 
+// checkPrivilegeOnSchema checks privileges for given schema.
 func checkPrivilegeOnSchema(state AuthorizationQueryState, schemaName string, privileges []Privilege) error {
 	roleSchemaKey := SchemaPrivilegeKey{
 		Role:   state.role.ID(),
@@ -350,22 +312,75 @@ func checkPrivilegeOnSchema(state AuthorizationQueryState, schemaName string, pr
 	return nil
 }
 
+// checkPrivilegeOnTable checks privileges for given table provided with schema name.
+func checkPrivilegeOnTable(state AuthorizationQueryState, schemaName, tableName string, privileges []Privilege) error {
+	roleTableKey := TablePrivilegeKey{
+		Role:  state.role.ID(),
+		Table: doltdb.TableName{Name: tableName, Schema: schemaName},
+	}
+	publicTableKey := TablePrivilegeKey{
+		Role:  state.public.ID(),
+		Table: doltdb.TableName{Name: tableName, Schema: schemaName},
+	}
+	for _, privilege := range privileges {
+		if !HasTablePrivilege(roleTableKey, privilege) && !HasTablePrivilege(publicTableKey, privilege) {
+			return errors.Errorf("permission denied for table %s", tableName)
+		}
+	}
+	return nil
+}
+
+// checkPrivilegeOnSequence checks privileges for given sequence provided with schema name.
 func checkPrivilegeOnSequence(state AuthorizationQueryState, schemaName, seqName string, privileges []Privilege) error {
 	roleSequenceKey := SequencePrivilegeKey{
 		Role:   state.role.ID(),
 		Schema: schemaName,
 		Name:   seqName,
-		//ArgTypes: auth.Extra.(string),
 	}
 	publicSequenceKey := SequencePrivilegeKey{
 		Role:   state.public.ID(),
 		Schema: schemaName,
 		Name:   seqName,
-		//ArgTypes: auth.Extra.(string),
 	}
 	for _, privilege := range privileges {
 		if !HasSequencePrivilege(roleSequenceKey, privilege) && !HasSequencePrivilege(publicSequenceKey, privilege) {
 			return errors.Errorf("permission denied for sequence %s", seqName)
+		}
+	}
+	return nil
+}
+
+// checkPrivilegeOnRoutine checks privileges for given function or procedure provided with schema name.
+func checkPrivilegeOnRoutine(ctx *sql.Context, state AuthorizationQueryState, schemaName, routineName string, privileges []Privilege) error {
+	// TODO: handle database
+	schName, err := core.GetSchemaName(ctx, nil, schemaName)
+	if err != nil {
+		// If this fails, then there's an issue with the search path.
+		// This will error later in the process, so we'll pass auth for now.
+		return nil
+	}
+	roleRoutineKey := RoutinePrivilegeKey{
+		Role:   state.role.ID(),
+		Schema: schName,
+		Name:   routineName,
+		//ArgTypes: auth.Extra.(string),
+	}
+	publicRoutineKey := RoutinePrivilegeKey{
+		Role:   state.public.ID(),
+		Schema: schName,
+		Name:   routineName,
+		//ArgTypes: auth.Extra.(string),
+	}
+	for _, privilege := range privileges {
+		if !HasRoutinePrivilege(roleRoutineKey, privilege) && !HasRoutinePrivilege(publicRoutineKey, privilege) {
+			// check if it's system function
+			_, ok := framework.Catalog[strings.ToLower(routineName)]
+			if ok && schemaName == "" {
+				// TODO: for now we don't check privilege for pg_catalog tables as it's granted for PUBLIC by default
+				//  need to fix it when we support 'REVOKE privileges FROM PUBLIC'
+				return nil
+			}
+			return errors.Errorf("permission denied for routine %s", routineName)
 		}
 	}
 	return nil

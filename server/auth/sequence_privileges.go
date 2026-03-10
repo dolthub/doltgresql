@@ -162,7 +162,7 @@ func RemoveSequencePrivilege(key SequencePrivilegeKey, privilege GrantedPrivileg
 
 // serialize writes the SequencePrivileges to the given writer.
 func (sp *SequencePrivileges) serialize(writer *utils.Writer) {
-	// Version 0
+	// Version 1
 	// Write the total number of values
 	writer.Uint64(uint64(len(sp.Data)))
 	for _, value := range sp.Data {
@@ -187,6 +187,7 @@ func (sp *SequencePrivileges) deserialize(version uint32, reader *utils.Reader) 
 	sp.Data = make(map[SequencePrivilegeKey]SequencePrivilegeValue)
 	switch version {
 	case 0:
+	case 1:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

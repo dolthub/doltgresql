@@ -33,6 +33,7 @@ import (
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -184,16 +185,11 @@ func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *
 
 // authCheckSequenceFromExpr checks authorization of sequence being used.
 // It parses schema and sequence names out of given expression.
+// There can be only one argument expression of string type.
 func authCheckSequenceFromExpr(ctx *sql.Context, ah sql.AuthorizationHandler, arg sql.Expression) error {
-	// there can be only one argument of string type.
-	seqName := arg.String()
-	// TODO: need a way to get the schema and sequence name properly
-	seqName = strings.Trim(seqName, "'")
-	schemaName := ""
-	names := strings.Split(seqName, ".")
-	if len(names) > 1 {
-		schemaName = names[0]
-		seqName = names[1]
+	schemaName, seqName, err := functions.ParseRelationName(ctx, strings.Trim(arg.String(), "'"))
+	if err != nil {
+		return err
 	}
 
 	return authCheckSequence(ctx, ah, schemaName, seqName)
