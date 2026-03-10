@@ -33,6 +33,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeAlterDatabase(ctx, stmt)
 	case *tree.AlterDefaultPrivileges:
 		return nodeAlterDefaultPrivileges(ctx, stmt)
+	case *tree.AlterDomain:
+		return nodeAlterDomain(ctx, stmt)
 	case *tree.AlterFunction:
 		return nodeAlterFunction(ctx, stmt)
 	case *tree.AlterIndex:
