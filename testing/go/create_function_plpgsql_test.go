@@ -1470,10 +1470,27 @@ $$;`,
 		},
 		{
 			Name: "create function on non-existent table that does not exist yet with 'check_function_bodies'",
-			SetUpScript: []string{
-				"SET check_function_bodies = false;",
-			},
 			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SHOW check_function_bodies;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: `CREATE FUNCTION public.film_in_stock(p_film_id integer, p_store_id integer, OUT p_film_count integer) RETURNS SETOF integer
+    LANGUAGE sql
+    AS $_$
+     SELECT inventory_id
+     FROM inventory
+     WHERE film_id = $1
+     AND store_id = $2
+     AND inventory_in_stock(inventory_id);
+$_$;`,
+					ExpectedErr: `table not found`,
+				},
+				{
+					Query:    "SET check_function_bodies = false;",
+					Expected: []sql.Row{},
+				},
 				{
 					Query: `CREATE FUNCTION public.film_in_stock(p_film_id integer, p_store_id integer, OUT p_film_count integer) RETURNS SETOF integer
     LANGUAGE sql
