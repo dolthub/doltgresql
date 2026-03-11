@@ -76,9 +76,9 @@ func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 			return Bool, nil
 		}
 		return Int32, nil
-	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
+	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR:
 		return Int32, nil
-	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
+	case query.Type_INT64, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
 		return Int64, nil
 	case query.Type_UINT64:
 		return Numeric, nil
@@ -94,7 +94,7 @@ func FromGmsTypeToDoltgresType(typ sql.Type) (*DoltgresType, error) {
 		return Text, nil
 	case query.Type_DATETIME, query.Type_TIMESTAMP:
 		return Timestamp, nil
-	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
+	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB, query.Type_SET, query.Type_ENUM:
 		return Text, nil
 	case query.Type_JSON:
 		return Json, nil

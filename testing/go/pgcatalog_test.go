@@ -5877,7 +5877,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{604995978, "target", 25, 4, "f", "f", "f"},
 						{604995978, "unmerged_tables", 25, 5, "f", "f", "f"},
 						{629684363, "name", 25, 1, "t", "f", "f"},
-						{629684363, "type", 23, 2, "t", "f", "f"},
+						{629684363, "type", 25, 2, "t", "f", "f"},
 						{629684363, "synopsis", 25, 3, "t", "f", "f"},
 						{629684363, "short_description", 25, 4, "t", "f", "f"},
 						{629684363, "long_description", 25, 5, "t", "f", "f"},

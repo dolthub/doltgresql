@@ -49,7 +49,8 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	for _, col := range insertInto.Destination.Schema() {
 		colType, ok := col.Type.(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in destination: %s", col.Type.String())
+			// Only non-Doltgres destination tables will have GMS types (such as system tables), so we don't error here
+			colType = pgtypes.FromGmsType(col.Type)
 		}
 		destinationNameToType[strings.ToLower(col.Name)] = colType
 	}

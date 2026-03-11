@@ -113,7 +113,8 @@ func assignUpdateFieldCasts(updateExprs []sql.Expression) ([]sql.Expression, err
 		}
 		toType, ok := setField.LeftChild.Type().(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, errors.Errorf("UPDATE: non-Doltgres type found in destination: %s", setField.LeftChild.String())
+			// Only non-Doltgres destination tables will have GMS types (such as system tables), so we don't error here
+			toType = pgtypes.FromGmsType(setField.LeftChild.Type())
 		}
 		// We only assign the existing expression if the types perfectly match (same parameters), otherwise we'll cast
 		if fromType.Equals(toType) {
