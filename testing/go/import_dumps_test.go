@@ -133,6 +133,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "Clar17y_Football-Events.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER risk WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "CollegeFootballRisk/Risk",
 			SQLFilename: "CollegeFootballRisk_Risk.sql",
 		},

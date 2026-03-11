@@ -23,7 +23,7 @@ type CreateAggregate struct {
 	Name        *UnresolvedObjectName
 	Replace     bool
 	Args        RoutineArgs
-	SFunc       string
+	SFunc       *UnresolvedObjectName
 	SType       ResolvableTypeReference
 	AggOptions  CreateAggOptions
 	OrderByArgs RoutineArgs
@@ -55,7 +55,7 @@ func (node *CreateAggregate) Format(ctx *FmtCtx) {
 		ctx.WriteString(" , ")
 	}
 	ctx.WriteString("SFUNC = ")
-	ctx.WriteString(node.SFunc)
+	ctx.FormatNode(node.SFunc)
 	ctx.WriteString(" , STYPE = ")
 	ctx.WriteString(node.BaseType.SQLString())
 	if node.AggOptions != nil {
