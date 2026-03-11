@@ -37,6 +37,11 @@ type datatype struct {
 	Type plpgSQL_type `json:"PLpgSQL_type"`
 }
 
+// default_val exists to match the expected JSON format.
+type default_val struct {
+	Var plpgSQL_expr `json:"PLpgSQL_expr"`
+}
+
 // datum exists to match the expected JSON format.
 type datum struct {
 	Record      *plpgSQL_rec      `json:"PLpgSQL_rec"`
@@ -164,6 +169,18 @@ type plpgSQL_stmt_exit struct {
 	LineNumber int32  `json:"lineno"`
 }
 
+// plpgSQL_stmt_fori exists to match the expected JSON format.
+type plpgSQL_stmt_fori struct {
+	Label      string      `json:"label"`
+	Var        datum       `json:"var"`
+	Lower      *expr       `json:"lower"`
+	Upper      *expr       `json:"upper"`
+	Step       *expr       `json:"step"`
+	Reverse    bool        `json:"reverse"`
+	Body       []statement `json:"body"`
+	LineNumber int32       `json:"lineno"`
+}
+
 // plpgSQL_stmt_if exists to match the expected JSON format.
 type plpgSQL_stmt_if struct {
 	Condition  cond        `json:"cond"`
@@ -233,9 +250,10 @@ type plpgSQL_type struct {
 
 // plpgSQL_var exists to match the expected JSON format.
 type plpgSQL_var struct {
-	RefName    string   `json:"refname"`
-	Type       datatype `json:"datatype"`
-	LineNumber int32    `json:"lineno"`
+	RefName    string      `json:"refname"`
+	Type       datatype    `json:"datatype"`
+	LineNumber int32       `json:"lineno"`
+	Default    default_val `json:"default_val"`
 }
 
 // sqlstmt exists to match the expected JSON format.
@@ -251,6 +269,7 @@ type statement struct {
 	DynExec     *plpgSQL_stmt_dynexecute   `json:"PLpgSQL_stmt_dynexecute"`
 	ExecSQL     *plpgSQL_stmt_execsql      `json:"PLpgSQL_stmt_execsql"`
 	Exit        *plpgSQL_stmt_exit         `json:"PLpgSQL_stmt_exit"`
+	ForILoop    *plpgSQL_stmt_fori         `json:"PLpgSQL_stmt_fori"`
 	If          *plpgSQL_stmt_if           `json:"PLpgSQL_stmt_if"`
 	Loop        *plpgSQL_stmt_loop         `json:"PLpgSQL_stmt_loop"`
 	Perform     *plpgSQL_stmt_perform      `json:"PLpgSQL_stmt_perform"`
@@ -450,6 +469,85 @@ func (stmt *plpgSQL_stmt_exit) Convert() Statement {
 			},
 		}
 	}
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
+	block.Label = stmt.Label
+	block.IsLoop = true
+
+	if stmt.Var.Variable == nil {
+		return Block{}, errors.New("for loop variable cannot be nil")
+	}
+	varName := stmt.Var.Variable.RefName
+
+	// Extract bound and step expressions
+	lowerExpr := "1"
+	if stmt.Lower != nil {
+		lowerExpr = stmt.Lower.Expression.Query
+	}
+	upperExpr := "1"
+	if stmt.Upper != nil {
+		upperExpr = stmt.Upper.Expression.Query
+	}
+	stepExpr := "1"
+	if stmt.Step != nil {
+		stepExpr = stmt.Step.Expression.Query
+	}
+
+	// Determine init value, loop condition, and increment expression based on direction.
+	// In the JSON, Lower is always the starting value and Upper is the ending bound.
+	var condition, incrExpr string
+	if stmt.Reverse {
+		condition = fmt.Sprintf("%s >= (%s)", varName, upperExpr)
+		incrExpr = fmt.Sprintf("%s - (%s)", varName, stepExpr)
+	} else {
+		condition = fmt.Sprintf("%s <= (%s)", varName, upperExpr)
+		incrExpr = fmt.Sprintf("%s + (%s)", varName, stepExpr)
+	}
+
+	// Convert the loop body.
+	convertedBody, err := jsonConvertStatements(stmt.Body)
+	if err != nil {
+		return Block{}, err
+	}
+	bodySize := OperationSizeForStatements(convertedBody)
+
+	// Build the loop body:
+	//   [0]           InitAssign: varName := lower
+	//   [1]           If(condition, GotoOffset:2) → jumps to [3] (first body stmt) when true
+	//   [2]           ExitGoto → offset=3+bodySize → jumps to ScopeEnd
+	//   [3..3+N-1]    body statements (N = bodySize)
+	//   [3+N]         IncrAssign: varName := varName +/- step
+	//   [3+N+1]       BackGoto → offset=-(3+bodySize) → jumps back to If at [1]
+	//
+	// Because no variables are declared in this block (the loop variable is already
+	// declared by the caller's DECLARE section), ScopeBegin is at M and the
+	// InitAssign is at M+1, so all offsets are consistent.
+	block.Body = []Statement{
+		Assignment{
+			VariableName: varName,
+			Expression:   lowerExpr,
+		},
+		If{
+			Condition:  condition,
+			GotoOffset: 2,
+		},
+		Goto{
+			Offset: 3 + bodySize,
+		},
+	}
+	block.Body = append(block.Body, convertedBody...)
+	block.Body = append(block.Body,
+		Assignment{
+			VariableName: varName,
+			Expression:   incrExpr,
+		},
+		Goto{
+			Offset: -(3 + bodySize),
+		},
+	)
+	return block, nil
 }
 
 // Convert converts the JSON statement into its output form.

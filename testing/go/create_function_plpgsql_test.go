@@ -1515,5 +1515,43 @@ $_$;`,
 				},
 			},
 		},
+		{
+			Name: "DECLARE variable with default value",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE OR REPLACE FUNCTION d() RETURNS TEXT[] AS $$ DECLARE chars TEXT[] := '{A,B,C,D,E,F,G,H}'; BEGIN RETURN chars; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT d();",
+					Expected: []sql.Row{{"{A,B,C,D,E,F,G,H}"}},
+				},
+			},
+		},
+		{
+			Name: "FOR LOOP statement",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE OR REPLACE FUNCTION code()
+RETURNS VARCHAR AS $$
+DECLARE
+chars TEXT[] := '{A,B,C,D,E,F,G,H}';
+  result TEXT := '';
+  i INTEGER;
+BEGIN
+FOR i IN 1..3 LOOP
+    result := result || chars[1+i];
+END LOOP;
+RETURN result;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT code();",
+					Expected: []sql.Row{{"BCD"}},
+				},
+			},
+		},
 	})
 }
