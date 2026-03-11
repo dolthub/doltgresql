@@ -46,6 +46,14 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		// Check if there is set returning function in the source node (e.g. SELECT * FROM unnest())
 		n, sameNode, err := transform.NodeExprsWithNode(projectNode.Child, func(in sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
+				// TODO: need better way to detect sequence usage
+				switch compiledFunction.FunctionName() {
+				case "nextval", "setval", "currval":
+					err := authCheckSequenceFromExpr(ctx, a.Catalog.AuthHandler, compiledFunction.Arguments[0])
+					if err != nil {
+						return nil, transform.SameTree, err
+					}
+				}
 				hasSRF = hasSRF || compiledFunction.IsSRF()
 				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
 					return quickFunction, transform.NewTree, nil
@@ -75,6 +83,14 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				hasSRFInProjection = hasSRFInProjection || compiledFunction.IsSRF()
 				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
 					return quickFunction, transform.NewTree, nil
+				}
+				// TODO: need better way to detect sequence usage
+				switch compiledFunction.FunctionName() {
+				case "nextval", "setval", "currval":
+					err = authCheckSequenceFromExpr(ctx, a.Catalog.AuthHandler, compiledFunction.Arguments[0])
+					if err != nil {
+						return nil, transform.SameTree, err
+					}
 				}
 			}
 			return expr, transform.SameTree, nil

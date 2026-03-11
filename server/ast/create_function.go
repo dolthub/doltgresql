@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	"github.com/dolthub/doltgresql/server/plpgsql"
@@ -138,6 +139,11 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			sqlDefParsed,
 			node.ReturnsSetOf,
 		),
+		Auth: vitess.AuthInformation{
+			AuthType:    auth.AuthType_CREATE,
+			TargetType:  auth.AuthTargetType_SchemaIdentifiers,
+			TargetNames: []string{tableName.Catalog(), tableName.Schema()},
+		},
 	}, nil
 }
 

@@ -4070,10 +4070,10 @@ create_aggregate_stmt:
 | create_aggregate_old_syntax_stmt
 
 create_aggregate_args_only_stmt:
-  CREATE AGGREGATE aggregate_name '(' opt_routine_args ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), SFunc: $10, SType: $14.typeReference(), AggOptions: $15.createAggOptions()} }
-| CREATE OR REPLACE AGGREGATE aggregate_name '(' opt_routine_args ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), SFunc: $12, SType: $16.typeReference(), AggOptions: $17.createAggOptions()} }
+  CREATE AGGREGATE aggregate_name '(' opt_routine_args ')' '(' SFUNC '=' routine_name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), SFunc: $10.unresolvedObjectName(), SType: $14.typeReference(), AggOptions: $15.createAggOptions()} }
+| CREATE OR REPLACE AGGREGATE aggregate_name '(' opt_routine_args ')' '(' SFUNC '=' routine_name ',' STYPE '=' type_name create_agg_args_only_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), SFunc: $12.unresolvedObjectName(), SType: $16.typeReference(), AggOptions: $17.createAggOptions()} }
 
 create_agg_args_only_option_list:
   /* EMPTY */
@@ -4088,10 +4088,10 @@ create_agg_args_only_option:
 | create_agg_parallel_option
 
 create_aggregate_order_by_args_stmt:
-  CREATE AGGREGATE aggregate_name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), OrderByArgs: $8.routineArgs(), SFunc: $13, SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
-| CREATE OR REPLACE AGGREGATE aggregate_name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), OrderByArgs: $10.routineArgs(), SFunc: $15, SType: $19.typeReference(), AggOptions: $20.createAggOptions()} }
+  CREATE AGGREGATE aggregate_name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' routine_name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $3.unresolvedObjectName(), Args: $5.routineArgs(), OrderByArgs: $8.routineArgs(), SFunc: $13.unresolvedObjectName(), SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
+| CREATE OR REPLACE AGGREGATE aggregate_name '(' opt_routine_args ORDER BY routine_arg_list ')' '(' SFUNC '=' routine_name ',' STYPE '=' type_name create_agg_order_by_args_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $5.unresolvedObjectName(), Replace: true, Args: $7.routineArgs(), OrderByArgs: $10.routineArgs(), SFunc: $15.unresolvedObjectName(), SType: $19.typeReference(), AggOptions: $20.createAggOptions()} }
 
 create_agg_order_by_args_option_list:
   /* EMPTY */
@@ -4108,10 +4108,10 @@ create_agg_order_by_args_option:
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeHypothetical} }
 
 create_aggregate_old_syntax_stmt:
-  CREATE AGGREGATE aggregate_name '(' BASETYPE '=' type_name ',' SFUNC '=' name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: $3.unresolvedObjectName(), BaseType: $7.typeReference(), SFunc: $11, SType: $15.typeReference(), AggOptions: $16.createAggOptions()} }
-| CREATE OR REPLACE AGGREGATE aggregate_name '(' BASETYPE '=' type_name ',' SFUNC '=' name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
-  { $$.val = &tree.CreateAggregate{Name: $5.unresolvedObjectName(), Replace: true, BaseType: $9.typeReference(), SFunc: $13, SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
+  CREATE AGGREGATE aggregate_name '(' BASETYPE '=' type_name ',' SFUNC '=' routine_name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $3.unresolvedObjectName(), BaseType: $7.typeReference(), SFunc: $11.unresolvedObjectName(), SType: $15.typeReference(), AggOptions: $16.createAggOptions()} }
+| CREATE OR REPLACE AGGREGATE aggregate_name '(' BASETYPE '=' type_name ',' SFUNC '=' routine_name ',' STYPE '=' type_name create_agg_old_syntax_option_list ')'
+  { $$.val = &tree.CreateAggregate{Name: $5.unresolvedObjectName(), Replace: true, BaseType: $9.typeReference(), SFunc: $13.unresolvedObjectName(), SType: $17.typeReference(), AggOptions: $18.createAggOptions()} }
 
 create_agg_old_syntax_option_list:
   /* EMPTY */
@@ -4123,22 +4123,22 @@ create_agg_old_syntax_option_list:
 
 create_agg_old_syntax_option:
   create_agg_common_option
-| COMBINEFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeCombineFunc, StrVal: $3} }
-| SERIALFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeSerialFunc, StrVal: $3} }
-| DESERIALFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeDeserialFunc, StrVal: $3} }
-| MSFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSFunc, StrVal: $3} }
-| MINVFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMInvFunc, StrVal: $3} }
+| COMBINEFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeCombineFunc, FuncName: $3.unresolvedObjectName()} }
+| SERIALFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeSerialFunc, FuncName: $3.unresolvedObjectName()} }
+| DESERIALFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeDeserialFunc, FuncName: $3.unresolvedObjectName()} }
+| MSFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSFunc, FuncName: $3.unresolvedObjectName()} }
+| MINVFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMInvFunc, FuncName: $3.unresolvedObjectName()} }
 | MSTYPE '=' type_name
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSType, TypeVal: $3.typeReference()} }
 | MSSPACE '=' iconst64
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMSSpace, IntVal: $3.expr()} }
-| MFINALFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFunc, StrVal: $3} }
+| MFINALFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFunc, FuncName: $3.unresolvedObjectName()} }
 | MFINALFUNC_EXTRA '=' TRUE
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeMFinalFuncExtra, BoolVal: true} }
 | MFINALFUNC_EXTRA '=' FALSE
@@ -4157,8 +4157,8 @@ create_agg_old_syntax_option:
 create_agg_common_option:
   SSPACE '=' iconst64
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeSSpace, IntVal: $3.expr()} }
-| FINALFUNC '=' name
-  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFunc, StrVal: $3} }
+| FINALFUNC '=' routine_name
+  { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFunc, FuncName: $3.unresolvedObjectName()} }
 | FINALFUNC_EXTRA '=' TRUE
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeFinalFuncExtra, BoolVal: true} }
 | FINALFUNC_EXTRA '=' FALSE

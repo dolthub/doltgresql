@@ -25,12 +25,15 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -63,14 +66,14 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		if col.Generated != nil {
 			seenNextVal := false
 			transform.InspectExpr(col.Generated, func(expr sql.Expression) bool {
-				switch expr := expr.(type) {
+				switch e := expr.(type) {
 				case *framework.CompiledFunction:
-					if strings.ToLower(expr.Name) == "nextval" {
+					if strings.ToLower(e.Name) == "nextval" {
 						seenNextVal = true
 					}
 				case *expression.Literal:
 					placeholderName := fmt.Sprintf("'%s'", ast.DoltCreateTablePlaceholderSequenceName)
-					if expr.String() == placeholderName {
+					if e.String() == placeholderName {
 						isGeneratedFromSequence = true
 					}
 				}
@@ -90,6 +93,12 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		sequenceName, err := generateSequenceName(ctx, createTable, col, schemaName)
 		if err != nil {
 			return nil, transform.NewTree, err
+		}
+
+		// TODO: need better way to detect sequence usage
+		err = authCheckSequence(ctx, a.Catalog.AuthHandler, schemaName, sequenceName)
+		if err != nil {
+			return nil, transform.SameTree, err
 		}
 
 		seqName := doltdb.TableName{Name: sequenceName, Schema: schemaName}.String()
@@ -172,4 +181,29 @@ func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *
 		}
 	}
 	return sequenceName, nil
+}
+
+// authCheckSequenceFromExpr checks authorization of sequence being used.
+// It parses schema and sequence names out of given expression.
+// There can be only one argument expression of string type.
+func authCheckSequenceFromExpr(ctx *sql.Context, ah sql.AuthorizationHandler, arg sql.Expression) error {
+	schemaName, seqName, err := functions.ParseRelationName(ctx, strings.Trim(arg.String(), "'"))
+	if err != nil {
+		return err
+	}
+
+	return authCheckSequence(ctx, ah, schemaName, seqName)
+}
+
+// authCheckSequence checks authorization of sequence being used. We cannot check it during parsing because we cannot
+// detect sequence currently, so we try to catch any sequence being used and check authorization here.
+func authCheckSequence(ctx *sql.Context, ah sql.AuthorizationHandler, schemaName, seqName string) error {
+	if err := ah.HandleAuth(ctx, ah.NewQueryState(ctx), sqlparser.AuthInformation{
+		AuthType:    auth.AuthType_USAGE,
+		TargetType:  auth.AuthTargetType_SequenceIdentifiers,
+		TargetNames: []string{schemaName, seqName},
+	}); err != nil {
+		return err
+	}
+	return nil
 }

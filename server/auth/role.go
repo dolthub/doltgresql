@@ -117,7 +117,7 @@ func (r *Role) serialize(writer *utils.Writer) {
 // deserialize reads the Role from the given reader.
 func (r *Role) deserialize(version uint32, reader *utils.Reader) {
 	switch version {
-	case 0:
+	case 0, 1:
 		r.Name = reader.String()
 		r.IsSuperUser = reader.Bool()
 		r.InheritPrivileges = reader.Bool()
