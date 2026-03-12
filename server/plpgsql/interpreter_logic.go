@@ -152,11 +152,24 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return nil, pgtypes.ErrTypeDoesNotExist.New(operation.PrimaryData)
 			}
 			if len(operation.SecondaryData) != 0 {
-				val, err := resolvedType.IoInput(ctx, strings.Trim(operation.SecondaryData[0], "'"))
-				if err != nil {
-					return nil, err
+				defVal := operation.SecondaryData[0]
+				// Default value can be a literal value or a reference to parameter
+				isParam := false
+				for _, param := range iFunc.GetParameterNames() {
+					if param == defVal {
+						isParam = true
+						break
+					}
 				}
-				stack.NewVariableWithValue(operation.Target, resolvedType, val)
+				if isParam {
+					stack.NewVariable(operation.Target, resolvedType)
+				} else {
+					val, err := resolvedType.IoInput(ctx, strings.Trim(operation.SecondaryData[0], "'"))
+					if err != nil {
+						return nil, err
+					}
+					stack.NewVariableWithValue(operation.Target, resolvedType, val)
+				}
 			} else {
 				stack.NewVariable(operation.Target, resolvedType)
 			}

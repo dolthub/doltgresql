@@ -1516,7 +1516,7 @@ $_$;`,
 			},
 		},
 		{
-			Name: "DECLARE variable with default value",
+			Name: "DECLARE variable with default value of literal value or parameter reference",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `CREATE OR REPLACE FUNCTION d() RETURNS TEXT[] AS $$ DECLARE chars TEXT[] := '{A,B,C,D,E,F,G,H}'; BEGIN RETURN chars; END; $$ LANGUAGE plpgsql;`,
@@ -1525,6 +1525,22 @@ $_$;`,
 				{
 					Query:    "SELECT d();",
 					Expected: []sql.Row{{"{A,B,C,D,E,F,G,H}"}},
+				},
+				{
+					Query: `CREATE OR REPLACE FUNCTION
+  mylt2 (x text, y text, e int) RETURNS boolean LANGUAGE plpgsql AS $$
+declare
+  xx text COLLATE "POSIX" := x;
+  yy text := y;
+  zz int := e;
+begin
+  return xx < yy;
+end
+$$;`,
+				},
+				{
+					Query:    "SELECT mylt2('a', 'B', 1) as f;",
+					Expected: []sql.Row{{"f"}},
 				},
 			},
 		},
