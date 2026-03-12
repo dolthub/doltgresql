@@ -245,8 +245,8 @@ github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 h1:I
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12/go.mod h1:rN7X8BHwkjPcfMQQ2QTAq/xM3leUSGLfb+1Js7Y6TVo=
 github.com/dolthub/dolt-mcp v0.3.4 h1:AyG5cw+fNWXDHXujtQnqUPZrpWtPg6FN6yYtjv1pP44=
 github.com/dolthub/dolt-mcp v0.3.4/go.mod h1:bCZ7KHvDYs+M0e+ySgmGiNvLhcwsN7bbf5YCyillLrk=
-github.com/dolthub/dolt/go v0.40.5-0.20260311222246-f5b9b4d64c84 h1:CB1VHxMwQ84NqopDqmg2QX0uLycHGbuIGr0yma0kox0=
-github.com/dolthub/dolt/go v0.40.5-0.20260311222246-f5b9b4d64c84/go.mod h1:eFIEENTsqYIBToDVBeXiQ2dDF8d5sGmaM8tOr0u9mFw=
+github.com/dolthub/dolt/go v0.40.5-0.20260312203747-264c3811e2a1 h1:fv7m9qiTvqBoV30r9McYkvWE4sftOz1XyfpZhIZ5EvE=
+github.com/dolthub/dolt/go v0.40.5-0.20260312203747-264c3811e2a1/go.mod h1:DN8SxWAl9T/xhlk5s3aRFjXk+YqN/SXPQigoM8yUC4c=
 github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69 h1:JShhbqMw26nKx3pqqu/cFxOpzBkN+4elVhzuUfgDw2k=
 github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69/go.mod h1:SSLraQS/jGLYFgff3vuZ+JbVUct6vyEeMzjLBqWqoyM=
 github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 h1:u3PMzfF8RkKd3lB9pZ2bfn0qEG+1Gms9599cr0REMww=
@@ -813,6 +813,8 @@ github.com/xitongsys/parquet-go-source v0.0.0-20200817004010-026bad9b25d0/go.mod
 github.com/xitongsys/parquet-go-source v0.0.0-20211010230925-397910c5e371 h1:RfGiOP/lWKBeNgpXmCeandYGV4pAnZsl42kX50p1UgE=
 github.com/xitongsys/parquet-go-source v0.0.0-20211010230925-397910c5e371/go.mod h1:qLb2Itmdcp7KPa5KZKvhE9U1q5bYSOmgeOckF/H2rQA=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
+github.com/xtaci/smux v1.5.56 h1:Eyv/dUULmkGZZNucLUisnkzJ/4UQ5YZTschhugFBM0U=
+github.com/xtaci/smux v1.5.56/go.mod h1:IGQ9QYrBphmb/4aTnLEcJby0TNr3NV+OslIOMrX825Q=
 github.com/yalp/jsonpath v0.0.0-20180802001716-5cc68e5049a0/go.mod h1:/LWChgwKmvncFJFHJ7Gvn9wZArjbV5/FppcK2fKk/tI=
 github.com/yosida95/uritemplate/v3 v3.0.2 h1:Ed3Oyj9yrmi9087+NczuL5BwkIc4wvTb5zIM+UJPGz4=
 github.com/yosida95/uritemplate/v3 v3.0.2/go.mod h1:ILOh0sOhIJR3+L/8afwt/kE++YT040gmv5BQTMR2HP4=

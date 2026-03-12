@@ -6,7 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20260311222246-f5b9b4d64c84
+	github.com/dolthub/dolt/go v0.40.5-0.20260312203747-264c3811e2a1
 	github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-mysql-server v0.20.1-0.20260311211816-cacba544a39e
@@ -187,6 +187,7 @@ require (
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xitongsys/parquet-go v1.6.1 // indirect
 	github.com/xitongsys/parquet-go-source v0.0.0-20211010230925-397910c5e371 // indirect
+	github.com/xtaci/smux v1.5.56 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
