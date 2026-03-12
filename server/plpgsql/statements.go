@@ -109,14 +109,20 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 		Target:      loop,
 	})
 	for _, variable := range stmt.Variables {
-		if !variable.IsParameter {
-			*ops = append(*ops, InterpreterOperation{
-				OpCode:      OpCode_Declare,
-				PrimaryData: variable.Type,
-				Target:      variable.Name,
-			})
+		op := InterpreterOperation{
+			OpCode:      OpCode_Declare,
+			PrimaryData: variable.Type,
+			Target:      variable.Name,
 		}
-		stack.NewVariableWithValue(variable.Name, nil, nil)
+		var val any
+		if variable.Default != "" {
+			op.SecondaryData = []string{variable.Default}
+			val = variable.Default
+		}
+		if !variable.IsParameter {
+			*ops = append(*ops, op)
+		}
+		stack.NewVariableWithValue(variable.Name, nil, val)
 	}
 	for _, record := range stmt.Records {
 		var fakeSch sql.Schema
@@ -384,6 +390,7 @@ type Variable struct {
 	Name        string
 	Type        string
 	IsParameter bool
+	Default     string
 }
 
 // OperationSizeForStatements returns the sum of OperationSize for every statement.

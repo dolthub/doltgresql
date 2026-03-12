@@ -134,7 +134,10 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				typeName = parts[1]
 				// Check the NonKeyword type names to see if we're looking at
 				// an alias of a type if we're in the pg_catalog schema.
-				if schemaName == "pg_catalog" {
+				// Skip array types (names starting with "_") since their internal
+				// lookup key uses the "_typename" form, not the "typename[]" form
+				// that TypeForNonKeywordTypeName returns.
+				if schemaName == "pg_catalog" && !strings.HasPrefix(typeName, "_") {
 					typ, ok, _ := types.TypeForNonKeywordTypeName(typeName)
 					if ok && typ != nil {
 						typeName = typ.Name()
@@ -148,7 +151,28 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if resolvedType == nil {
 				return nil, pgtypes.ErrTypeDoesNotExist.New(operation.PrimaryData)
 			}
-			stack.NewVariable(operation.Target, resolvedType)
+			if len(operation.SecondaryData) != 0 {
+				defVal := operation.SecondaryData[0]
+				// Default value can be a literal value or a reference to parameter
+				isParam := false
+				for _, param := range iFunc.GetParameterNames() {
+					if param == defVal {
+						isParam = true
+						break
+					}
+				}
+				if isParam {
+					stack.NewVariable(operation.Target, resolvedType)
+				} else {
+					val, err := resolvedType.IoInput(ctx, strings.Trim(operation.SecondaryData[0], "'"))
+					if err != nil {
+						return nil, err
+					}
+					stack.NewVariableWithValue(operation.Target, resolvedType, val)
+				}
+			} else {
+				stack.NewVariable(operation.Target, resolvedType)
+			}
 		case OpCode_DeleteInto:
 			// TODO: implement
 		case OpCode_Exception:

@@ -1515,5 +1515,59 @@ $_$;`,
 				},
 			},
 		},
+		{
+			Name: "DECLARE variable with default value of literal value or parameter reference",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE OR REPLACE FUNCTION d() RETURNS TEXT[] AS $$ DECLARE chars TEXT[] := '{A,B,C,D,E,F,G,H}'; BEGIN RETURN chars; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT d();",
+					Expected: []sql.Row{{"{A,B,C,D,E,F,G,H}"}},
+				},
+				{
+					Query: `CREATE OR REPLACE FUNCTION
+  mylt2 (x text, y text, e int) RETURNS boolean LANGUAGE plpgsql AS $$
+declare
+  xx text COLLATE "POSIX" := x;
+  yy text := y;
+  zz int := e;
+begin
+  return xx < yy;
+end
+$$;`,
+				},
+				{
+					Query:    "SELECT mylt2('a', 'B', 1) as f;",
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name: "FOR LOOP statement",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE OR REPLACE FUNCTION code()
+RETURNS VARCHAR AS $$
+DECLARE
+chars TEXT[] := '{A,B,C,D,E,F,G,H}';
+  result TEXT := '';
+  i INTEGER;
+BEGIN
+FOR i IN 1..3 LOOP
+    result := result || chars[1+i];
+END LOOP;
+RETURN result;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT code();",
+					Expected: []sql.Row{{"BCD"}},
+				},
+			},
+		},
 	})
 }

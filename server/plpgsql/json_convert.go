@@ -69,6 +69,7 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 				Name:        v.Variable.RefName,
 				Type:        strings.ToLower(v.Variable.Type.Type.Name),
 				IsParameter: v.Variable.LineNumber == 0,
+				Default:     v.Variable.Default.Var.Query,
 			})
 		default:
 			return Block{}, errors.Errorf("unhandled datum type: %T", v)
@@ -95,6 +96,8 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 		return stmt.ExecSQL.Convert()
 	case stmt.Exit != nil:
 		return stmt.Exit.Convert(), nil
+	case stmt.ForILoop != nil:
+		return stmt.ForILoop.Convert()
 	case stmt.If != nil:
 		return stmt.If.Convert()
 	case stmt.Loop != nil:
