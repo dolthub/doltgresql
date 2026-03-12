@@ -829,10 +829,6 @@ func (d *DoltgresQueryEngine) EngineEventScheduler() sql.EventScheduler {
 	return nil
 }
 
-func (d *DoltgresQueryEngine) EnginePreparedDataCache() *gms.PreparedDataCache {
-	panic("implement me")
-}
-
 func (d *DoltgresQueryEngine) QueryWithBindings(ctx *sql.Context, query string, parsed vitess.Statement, bindings map[string]vitess.Expr, qFlags *sql.QueryFlags) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	if len(bindings) > 0 {
 		return nil, nil, nil, errors.Errorf("bindings not supported")
