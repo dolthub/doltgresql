@@ -2812,8 +2812,8 @@ func TestWireTypes(t *testing.T) {
 			},
 		},
 		{
-			Skip: true, // TODO: it doesn't consider DST when deserializing timezone offset. Look into: https://cs.opensource.google/go/go/+/master:src/time/time.go;l=1564
 			Name: "TIMETZ returning text format",
+			Skip: true, // TODO: it doesn't consider DST when deserializing timezone offset. Look into: https://cs.opensource.google/go/go/+/master:src/time/time.go;l=1564
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 TIMETZ, v2 TIMETZ);",
 				"INSERT INTO test VALUES ('0:0 PST', '04:05:06.789 MST'), ('09:27 PM CST', '12:12 EST');",
@@ -2896,8 +2896,8 @@ func TestWireTypes(t *testing.T) {
 			},
 		},
 		{
-			Skip: true,
 			Name: "TIMETZ returning binary format",
+			Skip: true,
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 TIMETZ, v2 TIMETZ);",
 				"INSERT INTO test VALUES ('0:0', '04:05:06.789'), ('09:27 PM', '12:12');",

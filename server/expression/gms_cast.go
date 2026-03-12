@@ -98,7 +98,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		fallthrough
 		// In Postgres, Int32 is generally the smallest value returned. But we convert int8 and int16 to this type during
 		// schema conversion, which means we must do so here as well to avoid runtime panics.
-	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR, query.Type_ENUM:
+	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR:
 		newVal, _, err := types.Int32.Convert(ctx, val)
 		if err != nil {
 			return nil, err
@@ -107,7 +107,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return nil, errors.Errorf("GMSCast expected type `int32`, got `%T`", val)
 		}
 		return newVal, nil
-	case query.Type_INT64, query.Type_SET, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
+	case query.Type_INT64, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
 		newVal, _, err := types.Int64.Convert(ctx, val)
 		if err != nil {
 			return nil, err
@@ -163,7 +163,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return val.String(), nil
 		}
 		return nil, errors.Errorf("GMSCast expected type `Timespan`, got `%T`", val)
-	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB:
+	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB, query.Type_SET, query.Type_ENUM:
 		newVal, _, err := types.LongText.Convert(ctx, val)
 		if err != nil {
 			return nil, err

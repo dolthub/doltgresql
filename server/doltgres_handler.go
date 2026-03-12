@@ -46,6 +46,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
+	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -447,6 +448,7 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	if err != nil {
 		return err
 	}
+	sqlCtx.SetPrivilegeSet(auth.NewPrivilegeSetLayer(sqlCtx), 1)
 
 	start := time.Now()
 	var queryStrToLog string
