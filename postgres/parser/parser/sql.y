@@ -5060,7 +5060,7 @@ drop_trigger_stmt:
   }
 | DROP TRIGGER IF EXISTS trigger_name ON table_name opt_drop_behavior
   {
-    $$.val = &tree.DropTrigger{Name: tree.Name($5), OnTable: $7.unresolvedObjectName().ToTableName(), DropBehavior: $8.dropBehavior()}
+    $$.val = &tree.DropTrigger{Name: tree.Name($5), IfExists: true, OnTable: $7.unresolvedObjectName().ToTableName(), DropBehavior: $8.dropBehavior()}
   }
 
 // %Help: DROP INDEX - remove an index

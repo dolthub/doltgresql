@@ -720,5 +720,28 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "DROP TRIGGER",
+			SetUpScript: []string{
+				`CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);`,
+				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
+				BEGIN
+					NEW.v1 := NEW.v1 || '_' || NEW.pk::text;
+					RETURN NEW;
+				END;
+				$$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW EXECUTE FUNCTION trigger_func();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "DROP TRIGGER test_trigger ON test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP TRIGGER IF EXISTS test_trigger ON test;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
