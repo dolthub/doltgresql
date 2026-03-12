@@ -16,15 +16,14 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeDropTrigger handles *tree.DropTrigger nodes.
-func nodeDropTrigger(ctx *Context, node *tree.DropTrigger) (*vitess.DDL, error) {
-	// NOTE: specific table that the trigger is on cannot be specified
+func nodeDropTrigger(ctx *Context, node *tree.DropTrigger) (vitess.Statement, error) {
 	switch node.DropBehavior {
 	case tree.DropDefault:
 		// Default behavior, nothing to do
@@ -33,13 +32,13 @@ func nodeDropTrigger(ctx *Context, node *tree.DropTrigger) (*vitess.DDL, error) 
 	case tree.DropCascade:
 		return nil, errors.Errorf("CASCADE is not yet supported")
 	}
-	return &vitess.DDL{
-		Action: vitess.DropStr,
-		TriggerSpec: &vitess.TriggerSpec{
-			TrigName: vitess.TriggerName{
-				Name: vitess.NewColIdent(string(node.Name)),
-			},
-		},
-		IfExists: node.IfExists,
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewDropTrigger(
+			node.IfExists,
+			node.Name.String(),
+			node.OnTable.Schema(),
+			node.OnTable.Table(),
+			node.DropBehavior == tree.DropCascade),
+		Children: nil,
 	}, nil
 }

@@ -1002,5 +1002,30 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ALTER TABLE with schema defined that is not the current schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA grassroots;`,
+				`CREATE TYPE grassroots.user_role AS ENUM (
+					'ADMIN',
+					'USER'
+				);`,
+				`CREATE TABLE grassroots.users (
+					id uuid DEFAULT gen_random_uuid() NOT NULL,
+					email text NOT NULL,
+					password_hash text NOT NULL,
+					first_name text,
+					last_name text,
+					role grassroots.user_role DEFAULT 'USER'::grassroots.user_role NOT NULL
+				);`,
+			},
+
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ALTER TABLE ONLY grassroots.users ADD CONSTRAINT users_email_key UNIQUE (email);`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
