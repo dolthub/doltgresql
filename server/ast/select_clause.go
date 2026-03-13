@@ -15,8 +15,9 @@
 package ast
 
 import (
-	"github.com/dolthub/go-mysql-server/sql/expression"
+	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -155,6 +156,32 @@ PostJoinRewrite:
 							}
 						}
 					}
+				}
+			}
+		}
+		// Handle multi-argument UNNEST: UNNEST(arr1, arr2, ...) produces a table with one column per array,
+		// where corresponding elements are "zipped" together. PostgreSQL pads shorter arrays with NULLs.
+		// We transform: SELECT * FROM UNNEST(arr1, arr2)
+		// Into:         SELECT * FROM ROWS FROM(unnest(arr1), unnest(arr2)) AS unnest
+		// This uses the native ROWS FROM table function which properly zips SRFs together.
+		if tableFuncExpr, ok := from[i].(*vitess.TableFuncExpr); ok {
+			if strings.EqualFold(tableFuncExpr.Name, "unnest") && len(tableFuncExpr.Exprs) > 1 {
+				selectExprs := make(vitess.SelectExprs, 0, len(tableFuncExpr.Exprs))
+				for _, argExpr := range tableFuncExpr.Exprs {
+					selectExprs = append(selectExprs, &vitess.AliasedExpr{
+						Expr: &vitess.FuncExpr{
+							Name:  vitess.NewColIdent("unnest"),
+							Exprs: vitess.SelectExprs{argExpr},
+						},
+					})
+				}
+				alias := tableFuncExpr.Alias
+				if alias.IsEmpty() {
+					alias = vitess.NewTableIdent("unnest")
+				}
+				from[i] = &vitess.TableFuncExpr{
+					Exprs: selectExprs,
+					Alias: alias,
 				}
 			}
 		}
