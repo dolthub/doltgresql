@@ -89,7 +89,7 @@ func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 // assignUpdateCastsHandleSource handles the *plan.UpdateSource portion of AssignUpdateCasts.
 func assignUpdateCastsHandleSource(updateSource *plan.UpdateSource) (*plan.UpdateSource, error) {
 	updateExprs := updateSource.UpdateExprs
-	newUpdateExprs, err := assignUpdateFieldCasts(updateExprs)
+	newUpdateExprs, err := assignUpdateFieldCasts(updateExprs.AllExpressions())
 	if err != nil {
 		return nil, err
 	}
