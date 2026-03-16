@@ -72,11 +72,11 @@ func (c *DropTrigger) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 		return nil, err
 	}
 	triggerID := id.NewTrigger(schema, c.onTable, c.trigger)
+	hasTrigger := collection.HasTrigger(ctx, triggerID)
+	if !hasTrigger && c.ifExists {
+		return sql.RowsToRowIter(), nil
+	}
 	if err = collection.DropTrigger(ctx, triggerID); err != nil {
-		if c.ifExists {
-			// TODO: issue a notice
-			return sql.RowsToRowIter(), nil
-		}
 		return nil, err
 	}
 	return sql.RowsToRowIter(), nil
