@@ -15,45 +15,50 @@
 package types
 
 import (
+	"time"
+
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Time is the time without a time zone. Precision is unbounded.
 var Time = &DoltgresType{
-	ID:            toInternal("time"),
-	TypLength:     int16(8),
-	PassedByVal:   true,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_DateTimeTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_time"),
-	InputFunc:     toFuncID("time_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("time_out", toInternal("time")),
-	ReceiveFunc:   toFuncID("time_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-	SendFunc:      toFuncID("time_send", toInternal("time")),
-	ModInFunc:     toFuncID("timetypmodin", toInternal("_cstring")),
-	ModOutFunc:    toFuncID("timetypmodout", toInternal("int4")),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Double,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("time_cmp", toInternal("time"), toInternal("time")),
+	ID:                  toInternal("time"),
+	TypLength:           int16(8),
+	PassedByVal:         true,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_DateTimeTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_time"),
+	InputFunc:           toFuncID("time_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:          toFuncID("time_out", toInternal("time")),
+	ReceiveFunc:         toFuncID("time_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:            toFuncID("time_send", toInternal("time")),
+	ModInFunc:           toFuncID("timetypmodin", toInternal("_cstring")),
+	ModOutFunc:          toFuncID("timetypmodout", toInternal("int4")),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Double,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("time_cmp", toInternal("time"), toInternal("time")),
+	SerializationFunc:   serializeTypeTime,
+	DeserializationFunc: deserializeTypeTime,
 }
 
 // NewTimeType returns Time type with typmod set. // TODO: implement precision
@@ -82,4 +87,23 @@ func GetTypmodFromTimePrecision(precision int32) (int32, error) {
 // GetTimePrecisionFromTypMod takes Time type modifier and returns precision value.
 func GetTimePrecisionFromTypMod(typmod int32) int32 {
 	return typmod
+}
+
+// serializeTypeTime handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeTime(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	return val.(time.Time).MarshalBinary()
+}
+
+// deserializeTypeTime handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeTime(ctx *sql.Context, _ *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	t := time.Time{}
+	if err := t.UnmarshalBinary(data); err != nil {
+		return nil, err
+	}
+	return t, nil
 }

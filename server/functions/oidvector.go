@@ -83,9 +83,8 @@ var oidvectorsend = framework.Function1{
 	Return:     pgtypes.Bytea,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oidvector},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		vals := val.([]any)
-		return serializeArray(ctx, vals, pgtypes.Oid)
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
+		return array_send.Callable(ctx, t, val)
 	},
 }
 

@@ -17,6 +17,7 @@ package functions
 import (
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -87,10 +88,26 @@ var charsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.InternalChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if val == nil {
+				return nil, nil
+			}
+		}
 		str := val.(string)
-		writer := utils.NewWriter(uint64(len(str) + 4))
-		writer.String(str)
-		return writer.Data(), nil
+		writer := utils.NewWireWriter()
+		if len(str) == 1 {
+			writer.WriteUint8(str[0])
+		} else if len(str) == 0 {
+			writer.WriteUint8(0)
+		} else {
+			return nil, errors.New(`"char" found multiple characters during binary wire formatting`)
+		}
+		return writer.BufferData(), nil
 	},
 }
 

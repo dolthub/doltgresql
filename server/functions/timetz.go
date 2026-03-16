@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -23,6 +24,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initTimeTZ registers the functions to the catalog.
@@ -101,7 +103,27 @@ var timetz_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(time.Time).MarshalBinary()
+		// We have to isolate the UTC time from the timezone, so we subtract the timezone delta from the original time
+		tim := val.(time.Time)
+		timezone, _ := strconv.Atoi(tim.Format("-070000"))
+		isNegative := false
+		if timezone < 0 {
+			isNegative = true
+			timezone = -timezone
+		}
+		seconds := timezone % 100
+		minutes := (timezone / 100) % 100
+		hours := (timezone / 10000) % 100
+		totalSeconds := int32(seconds + (60 * minutes) + (3600 * hours))
+		if !isNegative {
+			totalSeconds = -totalSeconds // The sign is inverted when writing the integer
+		}
+		timeOffset := time.Duration(-totalSeconds) * time.Second // Adding a negative is the same as subtracting
+		tim = tim.UTC().Add(timeOffset)
+		writer := utils.NewWireWriter()
+		writer.WriteInt64(tim.UnixMicro())
+		writer.WriteInt32(totalSeconds)
+		return writer.BufferData(), nil
 	},
 }
 

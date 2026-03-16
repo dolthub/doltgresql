@@ -861,22 +861,20 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16
 		} else if formatCodes[i] == 1 {
 			switch d := s[i].Type.(type) {
 			case *pgtypes.DoltgresType:
-				writer := NewWireWriter()
-				if err = writeBinaryWireData(ctx, d, writer, v); err != nil {
+				o[i], err = d.CallSend(ctx, v)
+				if err != nil {
 					return nil, err
 				}
-				o[i] = writer.BufferData()
 			default:
 				cast := pgexprs.NewGMSCast(expression.NewLiteral(v, d))
 				v, err = cast.Eval(ctx, nil)
 				if err != nil {
 					return nil, err
 				}
-				writer := NewWireWriter()
-				if err = writeBinaryWireData(ctx, cast.DoltgresType(), writer, v); err != nil {
+				o[i], err = cast.DoltgresType().CallSend(ctx, v)
+				if err != nil {
 					return nil, err
 				}
-				o[i] = writer.BufferData()
 			}
 		} else {
 			val, err := s[i].Type.SQL(ctx, []byte{}, v) // We use []byte{} as there's a distinction between nil and empty

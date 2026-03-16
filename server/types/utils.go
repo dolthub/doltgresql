@@ -16,6 +16,7 @@ package types
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 
@@ -55,6 +56,14 @@ var ErrCannotDropSystemType = errors.NewKind(`cannot drop type %s because it is 
 
 // ErrCannotDropArrayType is returned when given type to drop is array type that is required for its base type.
 var ErrCannotDropArrayType = errors.NewKind(`cannot drop type %s because type %s requires it`)
+
+// TypeCollection is an interface from the core package, redeclared here to get around import cycles.
+type TypeCollection interface {
+	GetType(context.Context, id.Type) (*DoltgresType, error)
+}
+
+// GetTypesCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
+var GetTypesCollectionFromContext func(*sql.Context) (TypeCollection, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.

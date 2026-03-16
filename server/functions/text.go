@@ -15,8 +15,6 @@
 package functions
 
 import (
-	"fmt"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -79,16 +77,19 @@ var textsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		str, ok, err := sql.Unwrap[string](ctx, val)
-		if err != nil {
-			return nil, err
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if val == nil {
+				return nil, nil
+			}
 		}
-		if !ok {
-			return nil, fmt.Errorf(`"textsend" requires a string argument, got %T`, val)
-		}
-		writer := utils.NewWriter(uint64(len(str) + 4))
-		writer.String(str)
-		return writer.Data(), nil
+		writer := utils.NewWireWriter()
+		writer.WriteString(val.(string))
+		return writer.BufferData(), nil
 	},
 }
 

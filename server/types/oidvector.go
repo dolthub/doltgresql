@@ -15,41 +15,58 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Oidvector is the vector variant of Oid.
 var Oidvector = &DoltgresType{
-	ID:            toInternal("oidvector"),
-	TypLength:     int16(-1),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_ArrayTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("array_subscript_handler", toInternal("internal")),
-	Elem:          Oid.ID,
-	Array:         toInternal("_oidvector"),
-	InputFunc:     toFuncID("oidvectorin", toInternal("cstring")),
-	OutputFunc:    toFuncID("oidvectorout", toInternal("oidvector")),
-	ReceiveFunc:   toFuncID("oidvectorrecv", toInternal("internal")),
-	SendFunc:      toFuncID("oidvectorsend", toInternal("oidvector")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("btoidvectorcmp", toInternal("oidvector"), toInternal("oidvector")),
+	ID:                  toInternal("oidvector"),
+	TypLength:           int16(-1),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_ArrayTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("array_subscript_handler", toInternal("internal")),
+	Elem:                Oid.ID,
+	Array:               toInternal("_oidvector"),
+	InputFunc:           toFuncID("oidvectorin", toInternal("cstring")),
+	OutputFunc:          toFuncID("oidvectorout", toInternal("oidvector")),
+	ReceiveFunc:         toFuncID("oidvectorrecv", toInternal("internal")),
+	SendFunc:            toFuncID("oidvectorsend", toInternal("oidvector")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("btoidvectorcmp", toInternal("oidvector"), toInternal("oidvector")),
+	SerializationFunc:   serializeTypeOidvector,
+	DeserializationFunc: deserializeTypeOidvector,
+}
+
+// serializeTypeOidvector handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeOidvector(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	vals := val.([]any)
+	return serializeArray(ctx, vals, Oid)
+}
+
+// deserializeTypeOidvector handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeOidvector(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	return deserializeArray(ctx, data, Oid)
 }

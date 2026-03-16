@@ -15,42 +15,59 @@
 package types
 
 import (
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // AnyArray is a pseudo-type that can represent any type
 // that is an array type that may contain elements of any type.
 var AnyArray = &DoltgresType{
-	ID:            toInternal("anyarray"),
-	TypLength:     int16(-1),
-	PassedByVal:   false,
-	TypType:       TypeType_Pseudo,
-	TypCategory:   TypeCategory_PseudoTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         id.NullType,
-	InputFunc:     toFuncID("anyarray_in", toInternal("cstring")),
-	OutputFunc:    toFuncID("anyarray_out", toInternal("anyarray")),
-	ReceiveFunc:   toFuncID("anyarray_recv", toInternal("internal")),
-	SendFunc:      toFuncID("anyarray_send", toInternal("anyarray")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Double,
-	Storage:       TypeStorage_Extended,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("btarraycmp", toInternal("anyarray"), toInternal("anyarray")),
+	ID:                  toInternal("anyarray"),
+	TypLength:           int16(-1),
+	PassedByVal:         false,
+	TypType:             TypeType_Pseudo,
+	TypCategory:         TypeCategory_PseudoTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               id.NullType,
+	InputFunc:           toFuncID("anyarray_in", toInternal("cstring")),
+	OutputFunc:          toFuncID("anyarray_out", toInternal("anyarray")),
+	ReceiveFunc:         toFuncID("anyarray_recv", toInternal("internal")),
+	SendFunc:            toFuncID("anyarray_send", toInternal("anyarray")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Double,
+	Storage:             TypeStorage_Extended,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("btarraycmp", toInternal("anyarray"), toInternal("anyarray")),
+	SerializationFunc:   serializeTypeAnyArray,
+	DeserializationFunc: deserializeTypeAnyArray,
+}
+
+// serializeTypeAnyArray handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeAnyArray(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	return nil, errors.New("anyarray serialization is not yet implemented")
+}
+
+// deserializeTypeAnyArray handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeAnyArray(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	return nil, errors.New("anyarray serialization is not yet implemented")
 }

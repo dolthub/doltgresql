@@ -88,7 +88,15 @@ type DoltgresType struct {
 	IsSerial            bool    // used for serial types only (e.g.: smallserial)
 	IsUnresolved        bool    // used internally to know if a type has been resolved
 	BaseTypeForInternal id.Type // used for INTERNAL type only
+	SerializationFunc   internalSerializationFunc
+	DeserializationFunc internalDeserializationFunc
 }
+
+// internalSerializationFunc is the function definition for internal type serialization
+type internalSerializationFunc func(*sql.Context, *DoltgresType, any) ([]byte, error)
+
+// internalDeserializationFunc is the function definition for internal type deserialization
+type internalDeserializationFunc func(*sql.Context, *DoltgresType, []byte) (any, error)
 
 var _ sql.ExtendedType = &DoltgresType{}
 var _ sql.NullType = &DoltgresType{}
@@ -1036,20 +1044,11 @@ func (t *DoltgresType) SerializeValue(ctx context.Context, val any) ([]byte, err
 		return nil, nil
 	}
 	sqlCtx, _ := ctx.(*sql.Context) // There are cases where it's okay to serialize with a nil SQL context
-	var o any
-	var err error
-	if t.ModInFunc != 0 || t.IsArrayType() {
-		send := globalFunctionRegistry.GetFunction(t.SendFunc)
-		resolvedTypes := send.ResolvedTypes()
-		resolvedTypes[0] = t
-		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(sqlCtx, val)
-	} else {
-		o, err = globalFunctionRegistry.GetFunction(t.SendFunc).CallVariadic(sqlCtx, val)
+	if t.SerializationFunc != nil {
+		return t.SerializationFunc(sqlCtx, t, val)
 	}
-	if err != nil || o == nil {
-		return nil, err
-	}
-	return o.([]byte), nil
+	// If there's not a built-in serialization function, then we'll use the `send` function instead
+	return t.CallSend(sqlCtx, val)
 }
 
 // DeserializeValue implements the types.ExtendedType interface.
@@ -1058,27 +1057,54 @@ func (t *DoltgresType) DeserializeValue(ctx context.Context, val []byte) (any, e
 		return nil, nil
 	}
 	sqlCtx, _ := ctx.(*sql.Context) // There are cases where it's okay to deserialize with a nil SQL context
-	if t.TypType == TypeType_Domain {
-		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.BaseTypeID.AsId(), t.attTypMod)
-	} else if t.ModInFunc != 0 || t.IsArrayType() {
-		if t.Elem != id.NullType {
-			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.Elem.AsId(), t.attTypMod)
-		} else {
-			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.ID.AsId(), t.attTypMod)
-		}
-	} else if t.TypType == TypeType_Enum {
-		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.ID.AsId())
-	} else if t.IsCompositeType() {
-		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val, t.ID.AsId(), t.attTypMod)
-	} else {
-		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(sqlCtx, val)
+	if t.DeserializationFunc != nil {
+		return t.DeserializationFunc(sqlCtx, t, val)
 	}
+	// If there's not a built-in deserialization function, then we'll use the `receive` function instead
+	return t.CallReceive(sqlCtx, val)
 }
 
 // SerializationCompatible implements the val.TupleTypeHandler interface.
 func (t *DoltgresType) SerializationCompatible(other val.TupleTypeHandler) bool {
 	ot, ok := other.(*DoltgresType)
 	return ok && t.Equals(ot)
+}
+
+// CallSend is a way to call the `send` function for this type.
+func (t *DoltgresType) CallSend(ctx *sql.Context, val any) ([]byte, error) {
+	var o any
+	var err error
+	if t.ModInFunc != 0 || t.IsArrayType() {
+		send := globalFunctionRegistry.GetFunction(t.SendFunc)
+		resolvedTypes := send.ResolvedTypes()
+		resolvedTypes[0] = t
+		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(ctx, val)
+	} else {
+		o, err = globalFunctionRegistry.GetFunction(t.SendFunc).CallVariadic(ctx, val)
+	}
+	if err != nil || o == nil {
+		return nil, err
+	}
+	return o.([]byte), nil
+}
+
+// CallReceive is a way to call the `receive` function for this type.
+func (t *DoltgresType) CallReceive(ctx *sql.Context, val []byte) (any, error) {
+	if t.TypType == TypeType_Domain {
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(ctx, val, t.BaseTypeID.AsId(), t.attTypMod)
+	} else if t.ModInFunc != 0 || t.IsArrayType() {
+		if t.Elem != id.NullType {
+			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(ctx, val, t.Elem.AsId(), t.attTypMod)
+		} else {
+			return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(ctx, val, t.ID.AsId(), t.attTypMod)
+		}
+	} else if t.TypType == TypeType_Enum {
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(ctx, val, t.ID.AsId())
+	} else if t.IsCompositeType() {
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(ctx, val, t.ID.AsId(), t.attTypMod)
+	} else {
+		return globalFunctionRegistry.GetFunction(t.ReceiveFunc).CallVariadic(ctx, val)
+	}
 }
 
 // ConvertSerialized implements the val.TupleTypeHandler interface.

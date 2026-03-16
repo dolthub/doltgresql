@@ -15,42 +15,65 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Bool is the bool type.
 var Bool = &DoltgresType{
-	ID:            toInternal("bool"),
-	TypLength:     int16(1),
-	PassedByVal:   true,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_BooleanTypes,
-	IsPreferred:   true,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_bool"),
-	InputFunc:     toFuncID("boolin", toInternal("cstring")),
-	OutputFunc:    toFuncID("boolout", toInternal("bool")),
-	ReceiveFunc:   toFuncID("boolrecv", toInternal("internal")),
-	SendFunc:      toFuncID("boolsend", toInternal("bool")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Char,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("btboolcmp", toInternal("bool"), toInternal("bool")),
-	InternalName:  "boolean",
+	ID:                  toInternal("bool"),
+	TypLength:           int16(1),
+	PassedByVal:         true,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_BooleanTypes,
+	IsPreferred:         true,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_bool"),
+	InputFunc:           toFuncID("boolin", toInternal("cstring")),
+	OutputFunc:          toFuncID("boolout", toInternal("bool")),
+	ReceiveFunc:         toFuncID("boolrecv", toInternal("internal")),
+	SendFunc:            toFuncID("boolsend", toInternal("bool")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Char,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("btboolcmp", toInternal("bool"), toInternal("bool")),
+	InternalName:        "boolean",
+	SerializationFunc:   serializeTypeBool,
+	DeserializationFunc: deserializeTypeBool,
+}
+
+// serializeTypeBool handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeBool(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	if val.(bool) {
+		return []byte{1}, nil
+	} else {
+		return []byte{0}, nil
+	}
+}
+
+// deserializeTypeBool handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeBool(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return data[0] != 0, nil
 }

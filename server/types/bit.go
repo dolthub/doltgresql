@@ -15,7 +15,10 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
@@ -25,38 +28,40 @@ var ErrWrongLengthBit = errors.NewKind(`bit string length %d does not match type
 
 // Bit is a fixed-length bit string.
 var Bit = &DoltgresType{
-	ID:            toInternal("bit"),
-	TypLength:     int16(-1),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_BitStringTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_bit"),
-	InputFunc:     toFuncID("bit_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("bit_out", toInternal("bit")),
-	ReceiveFunc:   toFuncID("bit_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-	SendFunc:      toFuncID("bit_send", toInternal("bit")),
-	ModInFunc:     toFuncID("bittypmodin", toInternal("_cstring")),
-	ModOutFunc:    toFuncID("bittypmodout", toInternal("int4")),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Extended,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NewCollation("pg_catalog", "default"),
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("bitcmp", toInternal("bit"), toInternal("bit")),
+	ID:                  toInternal("bit"),
+	TypLength:           int16(-1),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_BitStringTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_bit"),
+	InputFunc:           toFuncID("bit_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:          toFuncID("bit_out", toInternal("bit")),
+	ReceiveFunc:         toFuncID("bit_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:            toFuncID("bit_send", toInternal("bit")),
+	ModInFunc:           toFuncID("bittypmodin", toInternal("_cstring")),
+	ModOutFunc:          toFuncID("bittypmodout", toInternal("int4")),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Extended,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NewCollation("pg_catalog", "default"),
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("bitcmp", toInternal("bit"), toInternal("bit")),
+	SerializationFunc:   serializeTypeBit,
+	DeserializationFunc: deserializeTypeBit,
 }
 
 // NewBitType returns a Bit type with type modifier set
@@ -69,4 +74,23 @@ func NewBitType(width int32) (*DoltgresType, error) {
 	}
 	newType := *Bit.WithAttTypMod(width)
 	return &newType, nil
+}
+
+// serializeTypeBit handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeBit(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	str := val.(string)
+	wr := utils.NewWriter(uint64(4 + len(str)))
+	wr.String(str)
+	return wr.Data(), nil
+}
+
+// deserializeTypeBit handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeBit(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	reader := utils.NewReader(data)
+	return reader.String(), nil
 }

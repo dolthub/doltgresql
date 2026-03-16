@@ -17,13 +17,14 @@ package functions
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/utils"
-
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initRecord registers the functions to the catalog.
@@ -122,26 +123,53 @@ var record_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Record},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		values, ok := val.([]pgtypes.RecordValue)
-		if !ok {
-			return nil, errors.Errorf("expected []RecordValue, but got %T", val)
-		}
-		writer := utils.NewWriter(uint64(16 * len(values)))
-		writer.Byte(0) // Version
-		writer.VariableUint(uint64(len(values)))
-		for _, value := range values {
-			dgtype, ok := value.Type.(*pgtypes.DoltgresType)
-			if !ok {
-				return nil, errors.Errorf("record_send only supports Doltgres types, but received `%T`", value.Type)
-			}
-			valBytes, err := dgtype.SerializeValue(ctx, value.Value)
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
 			if err != nil {
 				return nil, err
 			}
-			writer.Id(dgtype.ID.AsId())
-			writer.ByteSlice(valBytes)
+			if val == nil {
+				return nil, nil
+			}
 		}
-		return writer.Data(), nil
+		recordVals := val.([]pgtypes.RecordValue)
+		writer := utils.NewWireWriter()
+		writer.WriteInt32(int32(len(recordVals)))
+		for _, recordVal := range recordVals {
+			switch recordType := recordVal.Type.(type) {
+			case *pgtypes.DoltgresType:
+				writer.WriteUint32(id.Cache().ToOID(recordType.ID.AsId()))
+				if recordVal.Value != nil {
+					valBytes, err := recordType.CallSend(ctx, recordVal.Value)
+					if err != nil {
+						return nil, err
+					}
+					writer.WriteInt32(int32(len(valBytes)))
+					writer.WriteBytes(valBytes)
+				} else {
+					writer.WriteInt32(-1)
+				}
+			default:
+				cast := pgexprs.NewGMSCast(expression.NewLiteral(recordVal.Value, recordType))
+				writer.WriteUint32(id.Cache().ToOID(cast.DoltgresType().ID.AsId()))
+				if recordVal.Value != nil {
+					castVal, err := cast.Eval(ctx, nil)
+					if err != nil {
+						return nil, err
+					}
+					valBytes, err := cast.DoltgresType().CallSend(ctx, castVal)
+					if err != nil {
+						return nil, err
+					}
+					writer.WriteInt32(int32(len(valBytes)))
+					writer.WriteBytes(valBytes)
+				} else {
+					writer.WriteInt32(-1)
+				}
+			}
+		}
+		return writer.BufferData(), nil
 	},
 }
 

@@ -15,41 +15,60 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Json is the standard JSON type.
 var Json = &DoltgresType{
-	ID:            toInternal("json"),
-	TypLength:     int16(-1),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_UserDefinedTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_json"),
-	InputFunc:     toFuncID("json_in", toInternal("cstring")),
-	OutputFunc:    toFuncID("json_out", toInternal("json")),
-	ReceiveFunc:   toFuncID("json_recv", toInternal("internal")),
-	SendFunc:      toFuncID("json_send", toInternal("json")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Extended,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("-"),
+	ID:                  toInternal("json"),
+	TypLength:           int16(-1),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_UserDefinedTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_json"),
+	InputFunc:           toFuncID("json_in", toInternal("cstring")),
+	OutputFunc:          toFuncID("json_out", toInternal("json")),
+	ReceiveFunc:         toFuncID("json_recv", toInternal("internal")),
+	SendFunc:            toFuncID("json_send", toInternal("json")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Extended,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("-"),
+	SerializationFunc:   serializeTypeJson,
+	DeserializationFunc: deserializeTypeJson,
+}
+
+// serializeTypeJson handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeJson(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	return []byte(val.(string)), nil
+}
+
+// deserializeTypeJson handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeJson(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return string(data), nil
 }

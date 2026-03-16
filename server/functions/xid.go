@@ -23,6 +23,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initXid registers the functions to the catalog.
@@ -82,8 +83,8 @@ var xidsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Xid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		retVal := make([]byte, 4)
-		binary.BigEndian.PutUint32(retVal, val.(uint32))
-		return retVal, nil
+		writer := utils.NewWireWriter()
+		writer.WriteUint32(val.(uint32))
+		return writer.BufferData(), nil
 	},
 }

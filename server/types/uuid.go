@@ -15,41 +15,61 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 )
 
 // Uuid is the UUID type.
 var Uuid = &DoltgresType{
-	ID:            toInternal("uuid"),
-	TypLength:     int16(16),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_UserDefinedTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_uuid"),
-	InputFunc:     toFuncID("uuid_in", toInternal("cstring")),
-	OutputFunc:    toFuncID("uuid_out", toInternal("uuid")),
-	ReceiveFunc:   toFuncID("uuid_recv", toInternal("internal")),
-	SendFunc:      toFuncID("uuid_send", toInternal("uuid")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Char,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("uuid_cmp", toInternal("uuid"), toInternal("uuid")),
+	ID:                  toInternal("uuid"),
+	TypLength:           int16(16),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_UserDefinedTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_uuid"),
+	InputFunc:           toFuncID("uuid_in", toInternal("cstring")),
+	OutputFunc:          toFuncID("uuid_out", toInternal("uuid")),
+	ReceiveFunc:         toFuncID("uuid_recv", toInternal("internal")),
+	SendFunc:            toFuncID("uuid_send", toInternal("uuid")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Char,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("uuid_cmp", toInternal("uuid"), toInternal("uuid")),
+	SerializationFunc:   serializeTypeUuid,
+	DeserializationFunc: deserializeTypeUuid,
+}
+
+// serializeTypeUuid handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeUuid(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	return val.(uuid.UUID).GetBytes(), nil
+}
+
+// deserializeTypeUuid handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeUuid(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return uuid.FromBytes(data)
 }

@@ -15,40 +15,57 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Int16vector is the vector variant of Int16.
 var Int16vector = &DoltgresType{
-	ID:            toInternal("int2vector"),
-	TypLength:     int16(-1),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_ArrayTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("array_subscript_handler", toInternal("internal")),
-	Elem:          Int16.ID,
-	Array:         toInternal("_int2vector"),
-	InputFunc:     toFuncID("int2vectorin", toInternal("cstring")),
-	OutputFunc:    toFuncID("int2vectorout", toInternal("int2vector")),
-	ReceiveFunc:   toFuncID("int2vectorrecv", toInternal("internal")),
-	SendFunc:      toFuncID("int2vectorsend", toInternal("int2vector")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
+	ID:                  toInternal("int2vector"),
+	TypLength:           int16(-1),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_ArrayTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("array_subscript_handler", toInternal("internal")),
+	Elem:                Int16.ID,
+	Array:               toInternal("_int2vector"),
+	InputFunc:           toFuncID("int2vectorin", toInternal("cstring")),
+	OutputFunc:          toFuncID("int2vectorout", toInternal("int2vector")),
+	ReceiveFunc:         toFuncID("int2vectorrecv", toInternal("internal")),
+	SendFunc:            toFuncID("int2vectorsend", toInternal("int2vector")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	SerializationFunc:   serializeTypeInt16Vector,
+	DeserializationFunc: deserializeTypeInt16Vector,
+}
+
+// serializeTypeInt16Vector handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeInt16Vector(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	vals := val.([]any)
+	return serializeArray(ctx, vals, Int16)
+}
+
+// deserializeTypeInt16Vector handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeInt16Vector(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	return deserializeArray(ctx, data, Int16)
 }

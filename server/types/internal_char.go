@@ -15,7 +15,10 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // InternalCharLength will always be 1.
@@ -23,37 +26,58 @@ const InternalCharLength = 1
 
 // InternalChar is a single-byte internal type. In Postgres, it's displayed as `"char"`.
 var InternalChar = &DoltgresType{
-	ID:            toInternal("char"),
-	TypLength:     int16(InternalCharLength),
-	PassedByVal:   true,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_InternalUseTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_char"),
-	InputFunc:     toFuncID("charin", toInternal("cstring")),
-	OutputFunc:    toFuncID("charout", toInternal("char")),
-	ReceiveFunc:   toFuncID("charrecv", toInternal("internal")),
-	SendFunc:      toFuncID("charsend", toInternal("char")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Char,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("btcharcmp", toInternal("char"), toInternal("char")),
-	InternalName:  `"char"`,
+	ID:                  toInternal("char"),
+	TypLength:           int16(InternalCharLength),
+	PassedByVal:         true,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_InternalUseTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_char"),
+	InputFunc:           toFuncID("charin", toInternal("cstring")),
+	OutputFunc:          toFuncID("charout", toInternal("char")),
+	ReceiveFunc:         toFuncID("charrecv", toInternal("internal")),
+	SendFunc:            toFuncID("charsend", toInternal("char")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Char,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("btcharcmp", toInternal("char"), toInternal("char")),
+	InternalName:        `"char"`,
+	SerializationFunc:   serializeTypeInternalChar,
+	DeserializationFunc: deserializeTypeInternalChar,
+}
+
+// serializeTypeInternalChar handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeInternalChar(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	str := val.(string)
+	writer := utils.NewWriter(uint64(len(str) + 4))
+	writer.String(str)
+	return writer.Data(), nil
+}
+
+// deserializeTypeInternalChar handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeInternalChar(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	reader := utils.NewReader(data)
+	return reader.String(), nil
 }

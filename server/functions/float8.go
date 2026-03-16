@@ -24,6 +24,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initFloat8 registers the functions to the catalog.
@@ -91,17 +92,9 @@ var float8send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		f64 := val.(float64)
-		retVal := make([]byte, 8)
-		// Make the serialized form trivially comparable using bytes.Compare: https://stackoverflow.com/a/54557561
-		unsignedBits := math.Float64bits(f64)
-		if f64 >= 0 {
-			unsignedBits ^= 1 << 63
-		} else {
-			unsignedBits = ^unsignedBits
-		}
-		binary.BigEndian.PutUint64(retVal, unsignedBits)
-		return retVal, nil
+		writer := utils.NewWireWriter()
+		writer.WriteFloat64(val.(float64))
+		return writer.BufferData(), nil
 	},
 }
 

@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/utils"
@@ -73,9 +74,22 @@ var unknownsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Unknown},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		str := val.(string)
-		writer := utils.NewWriter(uint64(len(str) + 4))
-		writer.String(str)
-		return writer.Data(), nil
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if val == nil {
+				return nil, nil
+			}
+		}
+		str, ok := val.(string)
+		if !ok {
+			return nil, errors.Errorf(`non-string value encountered while converting "UNKNOWN" to binary wire format:\n%T`, val)
+		}
+		writer := utils.NewWireWriter()
+		writer.WriteString(str)
+		return writer.BufferData(), nil
 	},
 }

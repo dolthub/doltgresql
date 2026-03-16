@@ -93,15 +93,12 @@ var interval_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Interval},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		sortNanos, months, days, err := val.(duration.Duration).Encode()
-		if err != nil {
-			return nil, err
-		}
-		writer := utils.NewWriter(0)
-		writer.Int64(sortNanos)
-		writer.Int32(int32(months))
-		writer.Int32(int32(days))
-		return writer.Data(), nil
+		dur := val.(duration.Duration)
+		writer := utils.NewWireWriter()
+		writer.WriteInt64(dur.Nanos() / 1000)
+		writer.WriteInt32(int32(dur.Days))
+		writer.WriteInt32(int32(dur.Months))
+		return writer.BufferData(), nil
 	},
 }
 

@@ -110,11 +110,19 @@ var enum_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyEnum},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: should return the index instead of label?
-		str := val.(string)
-		writer := utils.NewWriter(uint64(len(str) + 4))
-		writer.String(str)
-		return writer.Data(), nil
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if val == nil {
+				return nil, nil
+			}
+		}
+		writer := utils.NewWireWriter()
+		writer.WriteString(val.(string))
+		return writer.BufferData(), nil
 	},
 }
 
