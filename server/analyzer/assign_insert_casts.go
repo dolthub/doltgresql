@@ -111,8 +111,8 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	}
 
 	// handle on conflict clause if present
-	if len(insertInto.OnDupExprs) > 0 {
-		newDupExprs, err := assignUpdateFieldCasts(insertInto.OnDupExprs)
+	if insertInto.OnDupExprs.HasUpdates() {
+		newDupExprs, err := assignUpdateFieldCasts(insertInto.OnDupExprs.AllExpressions())
 		if err != nil {
 			return nil, false, err
 		}
