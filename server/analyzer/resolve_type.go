@@ -47,13 +47,17 @@ func ResolveType(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *p
 
 // ResolveTypeForNodes replaces types.ResolvableType to appropriate pgtypes.DoltgresType.
 func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+	var db sql.Database
+	if dbnode, ok := node.(sql.Databaser); ok {
+		db = dbnode.Database()
+	}
 	return transform.Node(node, func(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		var same = transform.SameTree
 		switch n := node.(type) {
 		case *plan.AddColumn:
 			col := n.Column()
 			if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
-				dt, err := resolveType(ctx, rt)
+				dt, err := resolveType(ctx, db, rt)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
@@ -62,13 +66,13 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 			}
 			return node, same, nil
 		case *pgnodes.CreateFunction:
-			retType, err := resolveType(ctx, n.ReturnType)
+			retType, err := resolveType(ctx, db, n.ReturnType)
 			if err != nil {
 				return nil, transform.NewTree, err
 			}
 			paramTypes := make([]*pgtypes.DoltgresType, len(n.ParameterTypes))
 			for i := range n.ParameterTypes {
-				paramTypes[i], err = resolveType(ctx, n.ParameterTypes[i])
+				paramTypes[i], err = resolveType(ctx, db, n.ParameterTypes[i])
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
@@ -80,7 +84,7 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 			paramTypes := make([]*pgtypes.DoltgresType, len(n.ParameterTypes))
 			for i := range n.ParameterTypes {
 				var err error
-				paramTypes[i], err = resolveType(ctx, n.ParameterTypes[i])
+				paramTypes[i], err = resolveType(ctx, db, n.ParameterTypes[i])
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
@@ -90,22 +94,22 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 		case *plan.CreateTable:
 			for _, col := range n.TargetSchema() {
 				if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
-					dt, err := resolveType(ctx, rt)
+					dt, err := resolveType(ctx, db, rt)
 					if err != nil {
 						return nil, transform.NewTree, err
 					}
 					same = transform.NewTree
 					col.Type = dt
 				}
-				resolvedDefault, err := resolveDefaultColumnType(ctx, col.Default)
+				resolvedDefault, err := resolveDefaultColumnType(ctx, db, col.Default)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
-				resolvedGenerated, err := resolveDefaultColumnType(ctx, col.Generated)
+				resolvedGenerated, err := resolveDefaultColumnType(ctx, db, col.Generated)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
-				resolvedOnUpdate, err := resolveDefaultColumnType(ctx, col.OnUpdate)
+				resolvedOnUpdate, err := resolveDefaultColumnType(ctx, db, col.OnUpdate)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
@@ -117,7 +121,7 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 		case *plan.ModifyColumn:
 			col := n.NewColumn()
 			if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
-				dt, err := resolveType(ctx, rt)
+				dt, err := resolveType(ctx, db, rt)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
@@ -134,6 +138,10 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 
 // ResolveTypeForExprs replaces types.ResolvableType to appropriate pgtypes.DoltgresType.
 func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+	var db sql.Database
+	if dbnode, ok := node.(sql.Databaser); ok {
+		db = dbnode.Database()
+	}
 	return pgtransform.NodeExprsWithOpaque(node, func(e sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		switch expr := e.(type) {
 		case *pgexprs.ColumnAccess:
@@ -144,14 +152,14 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				// The type has already been resolved
 				return expr, transform.SameTree, nil
 			}
-			newType, err := resolveType(ctx, exprType)
+			newType, err := resolveType(ctx, db, exprType)
 			if err != nil {
 				return nil, transform.NewTree, err
 			}
 			return expr.WithType(newType), transform.NewTree, nil
 		case *pgexprs.ExplicitCast:
 			if rt, ok := expr.Type().(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
-				dt, err := resolveType(ctx, rt)
+				dt, err := resolveType(ctx, db, rt)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
@@ -171,7 +179,7 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 }
 
 // resolveType resolves any type that is unresolved yet. (e.g.: domain types, built-in types that schema specified, etc.)
-func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.DoltgresType, error) {
+func resolveType(ctx *sql.Context, db sql.Database, typ *pgtypes.DoltgresType) (*pgtypes.DoltgresType, error) {
 	if typ.IsResolvedType() {
 		return typ, nil
 	}
@@ -181,7 +189,7 @@ func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.Doltgres
 	}
 
 	// schema name can be empty
-	schema, _ := core.GetSchemaName(ctx, nil, typ.ID.SchemaName())
+	schema, _ := core.GetSchemaName(ctx, db, typ.ID.SchemaName())
 	resolvedTyp, _ := typs.GetType(ctx, id.NewType(schema, typ.ID.TypeName()))
 	if resolvedTyp == nil {
 		// If a blank schema is provided, then we'll also try the pg_catalog, since a type is most likely to be there
@@ -200,12 +208,12 @@ func resolveType(ctx *sql.Context, typ *pgtypes.DoltgresType) (*pgtypes.Doltgres
 }
 
 // resolveDefaultColumnType resolves the OutType of a *sql.ColumnDefaultValue if it's not nil (and not already resolved).
-func resolveDefaultColumnType(ctx *sql.Context, defaultVal *sql.ColumnDefaultValue) (bool, error) {
+func resolveDefaultColumnType(ctx *sql.Context, db sql.Database, defaultVal *sql.ColumnDefaultValue) (bool, error) {
 	if defaultVal == nil {
 		return false, nil
 	}
 	if rt, ok := defaultVal.OutType.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
-		dt, err := resolveType(ctx, rt)
+		dt, err := resolveType(ctx, db, rt)
 		if err != nil {
 			return false, err
 		}

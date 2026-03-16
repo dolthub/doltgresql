@@ -160,6 +160,10 @@ func nodeAlterTableCmds(
 			unsupportedWarnings = append(unsupportedWarnings, fmt.Sprintf("ALTER TABLE %s OWNER TO %s", tableName.String(), cmd.Owner))
 		case *tree.AlterTableComputed:
 			return nil, nil, errors.New("This command does not currently support multiple actions in one statement")
+		case *tree.AlterTableSetStatistics:
+			// is unsupported and ignored
+		case *tree.AlterTableRowLevelSecurity:
+			// is unsupported and ignored
 		default:
 			return nil, nil, errors.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
