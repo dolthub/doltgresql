@@ -61,5 +61,16 @@ func TestCreateDatabase(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "unique characters",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE DATABASE \"test-db\"",
+				},
+				{
+					Query: "USE \"test-db\"",
+				},
+			},
+		},
 	})
 }
