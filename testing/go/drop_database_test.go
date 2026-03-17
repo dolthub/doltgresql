@@ -1,4 +1,4 @@
-// Copyright 2025 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ package _go
 
 import "testing"
 
-func TestCreateDatabase(t *testing.T) {
+func TestDropDatabase(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "simple create database",
@@ -25,39 +25,18 @@ func TestCreateDatabase(t *testing.T) {
 					Query: "CREATE DATABASE testdb",
 				},
 				{
-					Query: "USE testdb",
+					Query: "DROP DATABASE testdb",
 				},
 			},
 		},
 		{
-			Name: "encoding",
+			Name: "with quotes",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "CREATE DATABASE testdb encoding=utf8",
+					Query: "CREATE DATABASE testdb",
 				},
 				{
-					Query: "USE testdb",
-				},
-				{
-					Query: "CREATE DATABASE testdb2 encoding=latin1",
-				},
-				{
-					Query: "USE testdb2",
-				},
-				{
-					Query: "CREATE DATABASE testdb3 encoding=notexist",
-					// Errors converted to warnings for now
-				},
-			},
-		},
-		{
-			Name: "multiple options",
-			Assertions: []ScriptTestAssertion{
-				{
-					Query: "CREATE DATABASE testdb OWNER=foo ENCODING=utf8",
-				},
-				{
-					Query: "USE testdb",
+					Query: "DROP DATABASE \"testdb\"",
 				},
 			},
 		},
@@ -69,6 +48,14 @@ func TestCreateDatabase(t *testing.T) {
 				},
 				{
 					Query: "USE \"test-db\"",
+				},
+			},
+		},
+		{
+			Name: "if exists",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "DROP DATABASE IF EXISTS invalid",
 				},
 			},
 		},
