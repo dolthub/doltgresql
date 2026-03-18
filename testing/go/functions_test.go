@@ -1011,7 +1011,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query:            `SELECT col_description(100, 1);`,
 					ExpectedColNames: []string{"col_description"},
 					Expected: []sql.Row{
-						{""},
+						{nil},
 					},
 				},
 				{
@@ -1044,14 +1044,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query:            `SELECT obj_description(1003);`,
 					ExpectedColNames: []string{"obj_description"},
 					Expected: []sql.Row{
-						{""},
+						{nil},
 					},
 				},
 				{
 					Query:            `SELECT obj_description(100, 'pg_class');`,
 					ExpectedColNames: []string{"obj_description"},
 					Expected: []sql.Row{
-						{""},
+						{nil},
 					},
 				},
 				{
@@ -1075,7 +1075,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Query:            `SELECT shobj_description(100, 'pg_class');`,
 					ExpectedColNames: []string{"shobj_description"},
 					Expected: []sql.Row{
-						{""},
+						{nil},
 					},
 				},
 				{
@@ -3946,6 +3946,27 @@ func TestSetReturningFunctions(t *testing.T) {
 							{2, "{4,5}", 2},
 							{nil, "{4,5}", 3},
 							{nil, "{4,5}", 4},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_subscripts on 0-indexed array types",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "SELECT generate_subscripts('1 2 3'::int2vector, 1);",
+						Expected: []sql.Row{
+							{0},
+							{1},
+							{2},
+						},
+					},
+					{
+						Query: "SELECT generate_subscripts('1 2 3'::oidvector, 1);",
+						Expected: []sql.Row{
+							{0},
+							{1},
+							{2},
 						},
 					},
 				},
