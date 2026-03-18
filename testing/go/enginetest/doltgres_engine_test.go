@@ -1239,17 +1239,18 @@ func TestDoltMerge(t *testing.T) {
 		"Merge errors if the primary key types have changed (even if the new type has the same NomsKind)", // alter table
 		"parent index is longer than child index",
 		"parallel column updates (repro issue #4547)",
-		"try to merge a nullable field into a non-null column",        // alter table
-		"merge fulltext with renamed table",                           // alter table
-		"merge when schemas are equal, but column tags are different", // alter table
-		"merge with float column default",                             // alter table
-		"merge with float 1.23 column default",                        // alter table
-		"merge with decimal 1.23 column default",                      // alter table
-		"merge with different types",                                  // alter table
-		"select * from dolt_status",                                   // table_name column includes schema name,
-		"dolt_merge() (3way) works with no auto increment overlap",    // sequencing doesn't work globally after merge, need to decide product behavior
-		"dolt_merge() (3way) with a gap in an auto increment key",     // sequencing doesn't work globally after merge, need to decide product behavior
-		"dolt_merge() with a gap in an auto increment key",            // unsupported insert statements (need to call next_val, not insert NULL)
+		"try to merge a nullable field into a non-null column",                                                           // alter table
+		"merge fulltext with renamed table",                                                                              // alter table
+		"merge when schemas are equal, but column tags are different",                                                    // alter table
+		"merge with float column default",                                                                                // alter table
+		"merge with float 1.23 column default",                                                                           // alter table
+		"merge with decimal 1.23 column default",                                                                         // alter table
+		"merge with different types",                                                                                     // alter table
+		"select * from dolt_status",                                                                                      // table_name column includes schema name,
+		"dolt_merge() (3way) works with no auto increment overlap",                                                       // sequencing doesn't work globally after merge, need to decide product behavior
+		"dolt_merge() (3way) with a gap in an auto increment key",                                                        // sequencing doesn't work globally after merge, need to decide product behavior
+		"dolt_merge() with a gap in an auto increment key",                                                               // unsupported insert statements (need to call next_val, not insert NULL)
+		"Merge does not panic when FK is dropped and re-added on one branch and child has composite PK with mixed types", // different foreign key syntax
 	})
 	denginetest.RunDoltMergeTests(t, h)
 }
