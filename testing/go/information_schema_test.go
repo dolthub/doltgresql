@@ -379,7 +379,7 @@ func TestInfoSchemaTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT "table_schema", "table_name", obj_description(('"' || "table_schema" || '"."' || "table_name" || '"')::regclass, 'pg_class') AS table_comment FROM "information_schema"."tables" WHERE ("table_schema" = 'test_schema' AND "table_name" = 'test_table2')`,
-					Expected: []sql.Row{{"test_schema", "test_table2", ""}},
+					Expected: []sql.Row{{"test_schema", "test_table2", nil}},
 				},
 				{
 					Query:    `CREATE VIEW test_view AS SELECT * FROM test_table2;`,
