@@ -30,7 +30,7 @@ ALTER SCHEMA auth OWNER TO supabase_admin;
 -- Name: public; Type: SCHEMA; Schema: -; Owner: pg_database_owner
 --
 
-CREATE SCHEMA public;
+CREATE SCHEMA IF NOT EXISTS public;
 
 
 ALTER SCHEMA public OWNER TO pg_database_owner;

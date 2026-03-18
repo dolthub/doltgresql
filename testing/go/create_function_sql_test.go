@@ -121,8 +121,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 			},
 		},
 		{
-			Name:        "function returning multiple rows",
-			SetUpScript: []string{},
+			Name: "function returning multiple rows",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `CREATE FUNCTION gen(a int) RETURNS SETOF INT LANGUAGE SQL AS $$ SELECT generate_series(1, a) $$ STABLE;`,
@@ -161,6 +160,69 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				{
 					Query:    `SELECT * from view_bathymetry_layer`,
 					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "function with update ... returning",
+			SetUpScript: []string{
+				`CREATE TYPE public.tax_job_state AS ENUM (
+    'sched',
+    'busy',
+    'final',
+    'help'
+);`,
+				`CREATE TABLE public.tax_job (
+    id bigint NOT NULL,
+    state public.tax_job_state NOT NULL,
+    created timestamp with time zone NOT NULL,
+    modified timestamp with time zone NOT NULL,
+    scheduled timestamp with time zone,
+    worker text,
+    processor text,
+    ext_id text,
+    data jsonb,
+    gross integer,
+    notes text[],
+    ops jsonb,
+    CONSTRAINT tax_job_check CHECK ((NOT ((state = 'sched'::public.tax_job_state) AND (scheduled IS NULL)))),
+    CONSTRAINT tax_job_check1 CHECK ((NOT ((state = 'busy'::public.tax_job_state) AND (worker IS NULL))))
+);`,
+				`INSERT INTO tax_job (id, state, created, modified, scheduled, worker, processor, ext_id, data) VALUES (1, 'sched', '2025-05-05 05:05:05', '2025-05-05 05:05:05', '2025-05-05 05:05:05', 'worker', 'processor', 'ext_id', NULL)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION public.tax_job_take(arg_worker text) RETURNS SETOF public.tax_job
+    LANGUAGE sql
+    AS '
+    UPDATE
+        tax_job
+    SET
+        state = ''busy'',
+        worker = arg_worker
+    WHERE
+        state = ''sched''
+        AND scheduled <= CURRENT_TIMESTAMP
+        AND id = (
+            SELECT
+                id
+            FROM
+                tax_job
+            WHERE
+                state = ''sched''
+                AND scheduled <= CURRENT_TIMESTAMP
+            ORDER BY
+                scheduled,
+                modified
+            LIMIT 1)
+    RETURNING
+        *;
+';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public.tax_job_take('worker')`,
+					Expected: []sql.Row{{`(1,busy,\"2025-05-05 05:05:05-07\",\"2025-05-05 05:05:05-07\",\"2025-05-05 05:05:05-07\",worker,processor,ext_id,,,,)`}},
 				},
 			},
 		},

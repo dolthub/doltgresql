@@ -339,6 +339,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "mraescudeiro_subclue.sql",
 		},
 		{
+			SetUpScript: []string{
+				`CREATE USER neondb_owner WITH SUPERUSER PASSWORD 'password';`,
+			},
 			Name:        "mvnp/start-dashboard-v3-backend",
 			SQLFilename: "mvnp_start-dashboard-v3-backend.sql",
 		},
@@ -398,6 +401,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "rmarquez123_titans.sql",
 		},
 		{
+			SetUpScript: []string{
+				`CREATE USER supabase_admin WITH SUPERUSER PASSWORD 'password';`,
+			},
 			Name:        "roboflow/scavenger-hunt",
 			SQLFilename: "roboflow_scavenger-hunt.sql",
 		},
@@ -444,6 +450,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "the-benchmarker_web-frameworks.sql",
 		},
 		{
+			SetUpScript: []string{
+				`CREATE USER testnet WITH SUPERUSER PASSWORD 'password';`,
+			},
 			Name:        "theophoric/prisma-near-indexer",
 			SQLFilename: "theophoric_prisma-near-indexer.sql",
 		},

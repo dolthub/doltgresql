@@ -125,17 +125,18 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			return nil, err
 		}
 
+		rows, err := sql.RowIterToRows(subCtx, rowIter)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) != 1 {
+			return nil, errors.New("expression returned multiple result sets")
+		}
+
 		if !f.SetOf {
 			// single row result
-			rows, err := sql.RowIterToRows(subCtx, rowIter)
-			if err != nil {
-				return nil, err
-			}
 			if len(sch) != 1 {
 				return nil, errors.New("expression does not result in a single value")
-			}
-			if len(rows) != 1 {
-				return nil, errors.New("expression returned multiple result sets")
 			}
 			if len(rows[0]) != 1 {
 				return nil, errors.New("expression returned multiple results")
@@ -143,7 +144,18 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			return rows[0][0], nil
 		}
 		// multiple row result
-		return rowIter, nil
+		if len(rows[0]) != len(sch) {
+			return nil, errors.New("expression returned multiple results")
+		}
+		// TODO: is it always record type?
+		var r = make([]pgtypes.RecordValue, len(sch))
+		for j, col := range sch {
+			r[j] = pgtypes.RecordValue{
+				Type:  col.Type.(*pgtypes.DoltgresType),
+				Value: rows[0][j],
+			}
+		}
+		return r, nil
 	})
 }
 
@@ -190,9 +202,13 @@ func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTyp
 		}
 		return nil
 	case *tree.Update:
-		if s.Returning != nil {
-			return errors.Errorf("UPDATE ... RETURNING statement in functions is not yet supported")
+		for i, e := range s.Exprs {
+			s.Exprs[i].Expr = ReplaceUnresolvedToFunctionColumn(params, e.Expr)
 		}
+		if s.Where != nil {
+			s.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, s.Where.Expr)
+		}
+		return nil
 	case *tree.Delete:
 		if s.Returning != nil {
 			return errors.Errorf("DELETE ... RETURNING statement in functions is not yet supported")
