@@ -159,21 +159,36 @@ type ParamTypAndValue struct {
 // It also replaces empty parameter name with binding variable name to match the name used in FunctionColumn.
 // This function should be used for FUNCTION with SQL language statements only.
 func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTypAndValue) error {
+	if len(params) == 0 {
+		return nil
+	}
 	// Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING
 	switch s := parsedAST.(type) {
 	case *tree.Select:
-		sc := s.Select.(*tree.SelectClause)
-		for i, e := range sc.Exprs {
-			sc.Exprs[i].Expr = ReplaceUnresolvedToFunctionColumn(params, e.Expr)
-		}
-		if sc.Where != nil {
-			sc.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, sc.Where.Expr)
+		switch t := s.Select.(type) {
+		case *tree.SelectClause:
+			sc := s.Select.(*tree.SelectClause)
+			for i, e := range sc.Exprs {
+				sc.Exprs[i].Expr = ReplaceUnresolvedToFunctionColumn(params, e.Expr)
+			}
+			if sc.Where != nil {
+				sc.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, sc.Where.Expr)
+			}
+		case *tree.ValuesClause:
+			for i, row := range t.Rows {
+				for j, e := range row {
+					row[j] = ReplaceUnresolvedToFunctionColumn(params, e)
+				}
+				t.Rows[i] = row
+			}
 		}
 		return nil
 	case *tree.Insert:
-		if s.Returning != nil {
-			return errors.Errorf("INSERT ... RETURNING statement in functions is not yet supported")
+		err := ReplaceFunctionColumn(s.Rows, params)
+		if err != nil {
+			return err
 		}
+		return nil
 	case *tree.Update:
 		if s.Returning != nil {
 			return errors.Errorf("UPDATE ... RETURNING statement in functions is not yet supported")
@@ -183,7 +198,7 @@ func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTyp
 			return errors.Errorf("DELETE ... RETURNING statement in functions is not yet supported")
 		}
 	}
-	return errors.Errorf("Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING")
+	return errors.Errorf("unsupported final statement defined in function")
 }
 
 // ReplaceUnresolvedToFunctionColumn replaces Placeholder and UnresolvedName expressions with FunctionColumn containing

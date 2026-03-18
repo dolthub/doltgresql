@@ -1545,7 +1545,7 @@ $$;`,
 			},
 		},
 		{
-			Name: "FOR LOOP statement",
+			Name: "FOR I LOOP statement",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `CREATE OR REPLACE FUNCTION code()
@@ -1566,6 +1566,53 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT code();",
 					Expected: []sql.Row{{"BCD"}},
+				},
+			},
+		},
+		{
+			Name: "FOR S LOOP statement",
+			SetUpScript: []string{
+				`CREATE TABLE decks (
+    id bigint NOT NULL,
+    name text DEFAULT NULL::character varying,
+    description text DEFAULT NULL::character varying,
+    owner integer,
+    last_update timestamp with time zone,
+    parent bigint,
+    crowdanki_uuid text,
+    human_hash character varying(255) DEFAULT NULL::character varying,
+    creator_ip character varying(255),
+    full_path text,
+    private boolean DEFAULT true,
+    stats_enabled boolean DEFAULT false,
+    retention real,
+    notes_with_stats_count integer DEFAULT 0,
+    restrict_notetypes boolean DEFAULT true,
+    restrict_subdecks boolean DEFAULT false
+);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION delete_deck_tree(p_id bigint) RETURNS void
+            LANGUAGE plpgsql
+            AS $$
+        DECLARE
+           r record;
+        BEGIN
+           DELETE FROM decks WHERE parent = p_id;
+        
+           FOR r IN SELECT id FROM decks WHERE parent = p_id LOOP
+              PERFORM delete_deck_tree(r.id);
+           END LOOP;
+        
+           DELETE FROM decks WHERE id = p_id;
+        END;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT delete_deck_tree(1);",
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},

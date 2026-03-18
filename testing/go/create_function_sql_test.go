@@ -134,5 +134,35 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "function with create or replace view",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION public.sp_build_view_bathymetry_layer() RETURNS void
+            LANGUAGE sql
+            AS $$
+        CREATE OR REPLACE VIEW public.view_bathymetry_layer AS 
+         SELECT 1;
+        $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public.sp_build_view_bathymetry_layer()`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * from view_bathymetry_layer`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT public.sp_build_view_bathymetry_layer()`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * from view_bathymetry_layer`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
 	})
 }

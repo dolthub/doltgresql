@@ -298,6 +298,23 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			}
 			return val, err
 
+		case OpCode_ForQueryInit:
+			schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			if err != nil {
+				return nil, err
+			}
+			stack.InitCursor(operation.Target, schema, rows)
+		case OpCode_ForQueryNext:
+			schema, row, ok := stack.AdvanceCursor(operation.PrimaryData)
+			if !ok {
+				stack.CloseCursor(operation.PrimaryData)
+				// Jump forward past the loop body and back-goto, same mechanism as OpCode_If.
+				counter = operation.Index - 1
+			} else {
+				if err := stack.UpdateRecord(operation.Target, schema, row); err != nil {
+					return nil, err
+				}
+			}
 		case OpCode_ReturnQuery:
 			schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {

@@ -188,6 +188,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "erlitx_sql_final.sql",
 		},
 		{
+			SetUpScript: []string{
+				`CREATE USER "shop-admin" WITH SUPERUSER PASSWORD 'password';`,
+			},
 			Name:        "ExposedCat/cashiers-in-shop",
 			SQLFilename: "ExposedCat_cashiers-in-shop.sql",
 		},
@@ -228,6 +231,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "HarukaMa_aleo-explorer.sql",
 		},
 		{
+			SetUpScript: []string{
+				`CREATE USER rustyz WITH SUPERUSER PASSWORD 'password';`,
+			},
 			Name:        "heydabop/rustyz",
 			SQLFilename: "heydabop_rustyz.sql",
 		},
@@ -273,6 +279,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "KangAbbad_laundry-app.sql",
 		},
 		{
+			SetUpScript: []string{
+				`CREATE USER "hospitease_admin" WITH SUPERUSER PASSWORD 'password';`,
+			},
 			Name:        "kapil23jani/hospitease_backend",
 			SQLFilename: "kapil23jani_hospitease_backend.sql",
 		},

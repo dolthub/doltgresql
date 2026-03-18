@@ -22,11 +22,11 @@ SET row_security = off;
 -- TOC entry 4 (class 2615 OID 24710)
 -- Name: ecommerce; Type: SCHEMA; Schema: -; Owner: ecommerce
 --
---
--- CREATE SCHEMA ecommerce;
---
---
--- ALTER SCHEMA ecommerce OWNER TO ecommerce;
+
+CREATE SCHEMA ecommerce;
+
+
+ALTER SCHEMA ecommerce OWNER TO ecommerce;
 
 SET default_tablespace = '';
 
