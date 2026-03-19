@@ -156,8 +156,8 @@ func TestInfoSchemaColumns(t *testing.T) {
 							WHERE "cls"."relname" = "columns"."table_name" AND "ns"."nspname" = "columns"."table_schema" 
 						) WHERE ("table_schema" = 'public' AND "table_name" = 'test_table');`,
 					Expected: []sql.Row{
-						{"id", "", "integer", "integer"},
-						{"col1", "", "character varying", "character varying"},
+						{"id", nil, "integer", "integer"},
+						{"col1", nil, "character varying", "character varying"},
 					},
 				},
 				{
@@ -263,7 +263,7 @@ func TestInfoSchemaColumns(t *testing.T) {
 				},
 				{
 					Query:    `select col_description(2957635223, ordinal_position) as comment from information_schema.columns limit 1;`,
-					Expected: []sql.Row{{""}},
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},
@@ -379,7 +379,7 @@ func TestInfoSchemaTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT "table_schema", "table_name", obj_description(('"' || "table_schema" || '"."' || "table_name" || '"')::regclass, 'pg_class') AS table_comment FROM "information_schema"."tables" WHERE ("table_schema" = 'test_schema' AND "table_name" = 'test_table2')`,
-					Expected: []sql.Row{{"test_schema", "test_table2", ""}},
+					Expected: []sql.Row{{"test_schema", "test_table2", nil}},
 				},
 				{
 					Query:    `CREATE VIEW test_view AS SELECT * FROM test_table2;`,

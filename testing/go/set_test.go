@@ -6471,15 +6471,15 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW server_version",
-				Expected: []sql.Row{{"16.1 (Homebrew)"}},
+				Expected: []sql.Row{{"15.17 (Homebrew)"}},
 			},
 			{
-				Query:       "SET server_version TO '16.1 (Homebrew)'",
+				Query:       "SET server_version TO '15.17 (Homebrew)'",
 				ExpectedErr: "is a read only variable",
 			},
 			{
 				Query:    "SELECT current_setting('server_version')",
-				Expected: []sql.Row{{"16.1 (Homebrew)"}},
+				Expected: []sql.Row{{"15.17 (Homebrew)"}},
 			},
 		},
 	},
@@ -6489,15 +6489,15 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW server_version_num",
-				Expected: []sql.Row{{int64(160001)}},
+				Expected: []sql.Row{{int64(150017)}},
 			},
 			{
-				Query:       "SET server_version_num TO '160001'",
+				Query:       "SET server_version_num TO '150017'",
 				ExpectedErr: "is a read only variable",
 			},
 			{
 				Query:    "SELECT current_setting('server_version_num')",
-				Expected: []sql.Row{{"160001"}},
+				Expected: []sql.Row{{"150017"}},
 			},
 		},
 	},

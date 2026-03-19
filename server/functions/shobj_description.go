@@ -37,6 +37,6 @@ var shobj_description = framework.Function2{
 		// TODO: When we support comments this should return the comment for a
 		// shared database object specified by its OID and the name of the
 		// containing system catalog.
-		return "", nil
+		return nil, nil
 	},
 }

@@ -36,6 +36,6 @@ var col_description = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: When we support comments this should return the comment for a table
 		// column, which is specified by the OID of its table and its column number
-		return "", nil
+		return nil, nil
 	},
 }
