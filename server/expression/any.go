@@ -202,7 +202,7 @@ func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}
 		if err != nil {
 			return nil, err
 		}
-		if result.(bool) {
+		if result == nil || result.(bool) {
 			return true, nil
 		}
 	}

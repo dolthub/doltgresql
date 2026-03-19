@@ -397,13 +397,14 @@ func TestCreateTable(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "insert into location values (1, 'Склад Москва', 'Внутренни');",
+					Query:    "insert into location values (1, 'Склад Москва', 'Внутренни'), (2, 'Склад Спб', null);",
 					Expected: []sql.Row{},
 				},
 				{
 					Query: "SELECT * FROM location;",
 					Expected: []sql.Row{
 						{1, "Склад Москва", "Внутренни"},
+						{2, "Склад Спб", nil},
 					},
 				},
 			},
