@@ -269,7 +269,7 @@ func (a *AnyExpr) String() string {
 	if a.leftExpr == nil || a.rightExpr == nil {
 		return fmt.Sprintf("? %s (?)", a.name)
 	}
-	return fmt.Sprintf("%s %s (%s)", a.leftExpr, a.name, a.rightExpr)
+	return fmt.Sprintf("%s = %s (%s)", a.leftExpr, a.name, a.rightExpr)
 }
 
 // DebugString implements the Expression interface.
