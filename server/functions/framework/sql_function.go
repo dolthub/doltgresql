@@ -85,7 +85,7 @@ func (sqlFunc SQLFunction) VariadicIndex() int {
 
 // IsSRF implements the interface FunctionInterface.
 func (sqlFunc SQLFunction) IsSRF() bool {
-	return false
+	return sqlFunc.SetOf
 }
 
 // enforceInterfaceInheritance implements the interface FunctionInterface.
@@ -125,18 +125,17 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			return nil, err
 		}
 
-		rows, err := sql.RowIterToRows(subCtx, rowIter)
-		if err != nil {
-			return nil, err
-		}
-		if len(rows) != 1 {
-			return nil, errors.New("expression returned multiple result sets")
-		}
-
 		if !f.SetOf {
+			rows, err := sql.RowIterToRows(subCtx, rowIter)
+			if err != nil {
+				return nil, err
+			}
 			// single row result
 			if len(sch) != 1 {
 				return nil, errors.New("expression does not result in a single value")
+			}
+			if len(rows) != 1 {
+				return nil, errors.New("expression returned multiple result sets")
 			}
 			if len(rows[0]) != 1 {
 				return nil, errors.New("expression returned multiple results")
@@ -144,18 +143,11 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			return rows[0][0], nil
 		}
 		// multiple row result
-		if len(rows[0]) != len(sch) {
-			return nil, errors.New("expression returned multiple results")
+		if f.ReturnType.TypCategory == pgtypes.TypeCategory_CompositeTypes {
+			// record type
+			return rowIterToRecord(ctx, rowIter, sch)
 		}
-		// TODO: is it always record type?
-		var r = make([]pgtypes.RecordValue, len(sch))
-		for j, col := range sch {
-			r[j] = pgtypes.RecordValue{
-				Type:  col.Type.(*pgtypes.DoltgresType),
-				Value: rows[0][j],
-			}
-		}
-		return r, nil
+		return rowIter, nil
 	})
 }
 
@@ -245,4 +237,27 @@ func ReplaceUnresolvedToFunctionColumn(paramMap map[string]*ParamTypAndValue, ex
 		return true, visitingExpr, nil
 	})
 	return e
+}
+
+// rowIterToRecord converts given rows with schema provided to rowIter containing array of pgtypes.RecordValue.
+func rowIterToRecord(ctx *sql.Context, rowIter sql.RowIter, sch sql.Schema) (sql.RowIter, error) {
+	rows, err := sql.RowIterToRows(ctx, rowIter)
+	if err != nil {
+		return nil, err
+	}
+	var newRows = make([]sql.Row, len(rows))
+	for i, row := range rows {
+		if len(row) != len(sch) {
+			return nil, errors.New("number of row values does not match number of schema columns")
+		}
+		var r = make([]pgtypes.RecordValue, len(sch))
+		for j, col := range sch {
+			r[j] = pgtypes.RecordValue{
+				Type:  col.Type.(*pgtypes.DoltgresType),
+				Value: row[j],
+			}
+		}
+		newRows[i] = sql.Row{r}
+	}
+	return sql.RowsToRowIter(newRows...), nil
 }
