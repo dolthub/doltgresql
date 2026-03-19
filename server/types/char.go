@@ -15,43 +15,48 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // BpChar is a char that has an unbounded length.
 var BpChar = &DoltgresType{
-	ID:            toInternal("bpchar"),
-	TypLength:     int16(-1),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_StringTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_bpchar"),
-	InputFunc:     toFuncID("bpcharin", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("bpcharout", toInternal("bpchar")),
-	ReceiveFunc:   toFuncID("bpcharrecv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-	SendFunc:      toFuncID("bpcharsend", toInternal("bpchar")),
-	ModInFunc:     toFuncID("bpchartypmodin", toInternal("_cstring")),
-	ModOutFunc:    toFuncID("bpchartypmodout", toInternal("int4")),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Extended,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NewCollation("pg_catalog", "default"),
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("bpcharcmp", toInternal("bpchar"), toInternal("bpchar")),
+	ID:                  toInternal("bpchar"),
+	TypLength:           int16(-1),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_StringTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_bpchar"),
+	InputFunc:           toFuncID("bpcharin", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:          toFuncID("bpcharout", toInternal("bpchar")),
+	ReceiveFunc:         toFuncID("bpcharrecv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:            toFuncID("bpcharsend", toInternal("bpchar")),
+	ModInFunc:           toFuncID("bpchartypmodin", toInternal("_cstring")),
+	ModOutFunc:          toFuncID("bpchartypmodout", toInternal("int4")),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Extended,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NewCollation("pg_catalog", "default"),
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("bpcharcmp", toInternal("bpchar"), toInternal("bpchar")),
+	SerializationFunc:   serializeTypeBpChar,
+	DeserializationFunc: deserializeTypeBpChar,
 }
 
 // NewCharType returns BpChar type with typmod set.
@@ -62,4 +67,20 @@ func NewCharType(length int32) (*DoltgresType, error) {
 	}
 	newType := *BpChar.WithAttTypMod(typmod)
 	return &newType, nil
+}
+
+// serializeTypeBpChar handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeBpChar(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	str := val.(string)
+	writer := utils.NewWriter(uint64(len(str) + 4))
+	writer.String(str)
+	return writer.Data(), nil
+}
+
+// deserializeTypeBpChar handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeBpChar(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	reader := utils.NewReader(data)
+	return reader.String(), nil
 }

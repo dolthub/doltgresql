@@ -99,14 +99,25 @@ var jsonb_send = framework.Function1{
 	Return:     pgtypes.Bytea,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		res, err := sql.UnwrapAny(ctx, val)
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if val == nil {
+				return nil, nil
+			}
+		}
+		textVal, err := t[0].SQL(ctx, nil, val)
 		if err != nil {
 			return nil, err
 		}
-		writer := utils.NewWriter(256)
-		pgtypes.JsonValueSerialize(writer, res.(pgtypes.JsonDocument).Value)
-		return writer.Data(), nil
+		writer := utils.NewWireWriter()
+		writer.WriteUint8(1)
+		writer.WriteBytes(textVal.ToBytes())
+		return writer.BufferData(), nil
 	},
 }
 

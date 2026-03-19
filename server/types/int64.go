@@ -15,42 +15,65 @@
 package types
 
 import (
+	"encoding/binary"
+
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Int64 is an int64.
 var Int64 = &DoltgresType{
-	ID:            toInternal("int8"),
-	TypLength:     int16(8),
-	PassedByVal:   true,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_NumericTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_int8"),
-	InputFunc:     toFuncID("int8in", toInternal("cstring")),
-	OutputFunc:    toFuncID("int8out", toInternal("int8")),
-	ReceiveFunc:   toFuncID("int8recv", toInternal("internal")),
-	SendFunc:      toFuncID("int8send", toInternal("int8")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Double,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("btint8cmp", toInternal("int8"), toInternal("int8")),
-	InternalName:  "bigint",
+	ID:                  toInternal("int8"),
+	TypLength:           int16(8),
+	PassedByVal:         true,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_NumericTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_int8"),
+	InputFunc:           toFuncID("int8in", toInternal("cstring")),
+	OutputFunc:          toFuncID("int8out", toInternal("int8")),
+	ReceiveFunc:         toFuncID("int8recv", toInternal("internal")),
+	SendFunc:            toFuncID("int8send", toInternal("int8")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Double,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("btint8cmp", toInternal("int8"), toInternal("int8")),
+	InternalName:        "bigint",
+	SerializationFunc:   serializeTypeInt64,
+	DeserializationFunc: deserializeTypeInt64,
+}
+
+// serializeTypeInt64 handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeInt64(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	retVal := make([]byte, 8)
+	binary.BigEndian.PutUint64(retVal, uint64(val.(int64))+(1<<63))
+	return retVal, nil
+}
+
+// deserializeTypeInt64 handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeInt64(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return int64(binary.BigEndian.Uint64(data) - (1 << 63)), nil
 }

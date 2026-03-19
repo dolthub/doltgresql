@@ -26,7 +26,7 @@ import (
 )
 
 // nodeCreateDatabase handles *tree.CreateDatabase nodes.
-func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL, error) {
+func nodeCreateDatabase(_ *Context, node *tree.CreateDatabase) (*vitess.DBDDL, error) {
 	var charsets []*vitess.CharsetAndCollate
 
 	if len(node.Template) > 0 {
@@ -103,7 +103,7 @@ func nodeCreateDatabase(ctx *Context, node *tree.CreateDatabase) (*vitess.DBDDL,
 	return &vitess.DBDDL{
 		Action:           vitess.CreateStr,
 		SchemaOrDatabase: "database",
-		DBName:           node.Name.String(),
+		DBName:           bareIdentifier(node.Name),
 		IfNotExists:      node.IfNotExists,
 		CharsetCollate:   charsets,
 	}, nil

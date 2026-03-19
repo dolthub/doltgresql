@@ -38,37 +38,56 @@ func NewDomainType(
 	arrayID, internalID id.Type,
 ) *DoltgresType {
 	return &DoltgresType{
-		ID:            internalID,
-		TypLength:     asType.TypLength,
-		PassedByVal:   asType.PassedByVal,
-		TypType:       TypeType_Domain,
-		TypCategory:   asType.TypCategory,
-		IsPreferred:   asType.IsPreferred,
-		IsDefined:     true,
-		Delimiter:     ",",
-		RelID:         id.Null,
-		SubscriptFunc: toFuncID("-"),
-		Elem:          id.NullType,
-		Array:         arrayID,
-		InputFunc:     toFuncID("domain_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-		OutputFunc:    asType.OutputFunc,
-		ReceiveFunc:   toFuncID("domain_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-		SendFunc:      asType.SendFunc,
-		ModInFunc:     asType.ModInFunc,
-		ModOutFunc:    asType.ModOutFunc,
-		AnalyzeFunc:   toFuncID("-"),
-		Align:         asType.Align,
-		Storage:       asType.Storage,
-		NotNull:       notNull,
-		BaseTypeID:    asType.ID,
-		TypMod:        -1,
-		NDims:         0,
-		TypCollation:  id.NullCollation,
-		DefaulBin:     "",
-		Default:       defaultExpr,
-		Acl:           nil,
-		Checks:        checks,
-		attTypMod:     -1,
-		CompareFunc:   asType.CompareFunc,
+		ID:                  internalID,
+		TypLength:           asType.TypLength,
+		PassedByVal:         asType.PassedByVal,
+		TypType:             TypeType_Domain,
+		TypCategory:         asType.TypCategory,
+		IsPreferred:         asType.IsPreferred,
+		IsDefined:           true,
+		Delimiter:           ",",
+		RelID:               id.Null,
+		SubscriptFunc:       toFuncID("-"),
+		Elem:                id.NullType,
+		Array:               arrayID,
+		InputFunc:           toFuncID("domain_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+		OutputFunc:          asType.OutputFunc,
+		ReceiveFunc:         toFuncID("domain_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+		SendFunc:            asType.SendFunc,
+		ModInFunc:           asType.ModInFunc,
+		ModOutFunc:          asType.ModOutFunc,
+		AnalyzeFunc:         toFuncID("-"),
+		Align:               asType.Align,
+		Storage:             asType.Storage,
+		NotNull:             notNull,
+		BaseTypeID:          asType.ID,
+		TypMod:              -1,
+		NDims:               0,
+		TypCollation:        id.NullCollation,
+		DefaulBin:           "",
+		Default:             defaultExpr,
+		Acl:                 nil,
+		Checks:              checks,
+		attTypMod:           -1,
+		CompareFunc:         asType.CompareFunc,
+		SerializationFunc:   nil,
+		DeserializationFunc: deserializeTypeDomain,
 	}
+}
+
+// deserializeTypeDomain handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeDomain(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	typeColl, err := GetTypesCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	baseType, err := typeColl.GetType(ctx, t.BaseTypeID)
+	if err != nil {
+		return nil, err
+	}
+	if baseType == nil {
+		return nil, ErrTypeDoesNotExist.New(t.BaseTypeID.TypeName())
+	}
+	return baseType.DeserializeValue(ctx, data)
 }

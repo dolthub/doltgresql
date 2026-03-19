@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initBool registers the functions to the catalog.
@@ -87,11 +88,9 @@ var boolsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bool},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		if val.(bool) {
-			return []byte{1}, nil
-		} else {
-			return []byte{0}, nil
-		}
+		writer := utils.NewWireWriter()
+		writer.WriteBool(val.(bool))
+		return writer.BufferData(), nil
 	},
 }
 

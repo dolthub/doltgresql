@@ -15,43 +15,49 @@
 package types
 
 import (
+	"time"
+
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Timestamp is the timestamp without a time zone. Precision is unbounded.
 var Timestamp = &DoltgresType{
-	ID:            toInternal("timestamp"),
-	TypLength:     int16(8),
-	PassedByVal:   true,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_DateTimeTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_timestamp"),
-	InputFunc:     toFuncID("timestamp_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("timestamp_out", toInternal("timestamp")),
-	ReceiveFunc:   toFuncID("timestamp_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-	SendFunc:      toFuncID("timestamp_send", toInternal("timestamp")),
-	ModInFunc:     toFuncID("timestamptypmodin", toInternal("_cstring")),
-	ModOutFunc:    toFuncID("timestamptypmodout", toInternal("int4")),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Double,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("timestamp_cmp", toInternal("timestamp"), toInternal("timestamp")),
+	ID:                  toInternal("timestamp"),
+	TypLength:           int16(8),
+	PassedByVal:         true,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_DateTimeTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_timestamp"),
+	InputFunc:           toFuncID("timestamp_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:          toFuncID("timestamp_out", toInternal("timestamp")),
+	ReceiveFunc:         toFuncID("timestamp_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:            toFuncID("timestamp_send", toInternal("timestamp")),
+	ModInFunc:           toFuncID("timestamptypmodin", toInternal("_cstring")),
+	ModOutFunc:          toFuncID("timestamptypmodout", toInternal("int4")),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Double,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("timestamp_cmp", toInternal("timestamp"), toInternal("timestamp")),
+	SerializationFunc:   serializeTypeTimestamp,
+	DeserializationFunc: deserializeTypeTimestamp,
 }
 
 // NewTimestampType returns Timestamp type with typmod set. // TODO: implement precision
@@ -62,4 +68,23 @@ func NewTimestampType(precision int32) (*DoltgresType, error) {
 	}
 	newType := *Timestamp.WithAttTypMod(typmod)
 	return &newType, nil
+}
+
+// serializeTypeTimestamp handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeTimestamp(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	return val.(time.Time).MarshalBinary()
+}
+
+// deserializeTypeTimestamp handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeTimestamp(ctx *sql.Context, _ *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	t := time.Time{}
+	if err := t.UnmarshalBinary(data); err != nil {
+		return nil, err
+	}
+	return t, nil
 }

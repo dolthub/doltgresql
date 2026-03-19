@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initTimestamp registers the functions to the catalog.
@@ -98,7 +99,11 @@ var timestamp_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Timestamp},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(time.Time).MarshalBinary()
+		postgresEpoch := time.UnixMilli(946684800000).UTC() // Jan 1, 2000 @ Midnight
+		deltaInMicroseconds := val.(time.Time).UTC().UnixMicro() - postgresEpoch.UnixMicro()
+		writer := utils.NewWireWriter()
+		writer.WriteInt64(deltaInMicroseconds)
+		return writer.BufferData(), nil
 	},
 }
 

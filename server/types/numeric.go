@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -40,38 +41,40 @@ var (
 
 // Numeric is a precise and unbounded decimal value.
 var Numeric = &DoltgresType{
-	ID:            toInternal("numeric"),
-	TypLength:     int16(-1),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_NumericTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_numeric"),
-	InputFunc:     toFuncID("numeric_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("numeric_out", toInternal("numeric")),
-	ReceiveFunc:   toFuncID("numeric_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-	SendFunc:      toFuncID("numeric_send", toInternal("numeric")),
-	ModInFunc:     toFuncID("numerictypmodin", toInternal("_cstring")),
-	ModOutFunc:    toFuncID("numerictypmodout", toInternal("int4")),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Main,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("numeric_cmp", toInternal("numeric"), toInternal("numeric")),
+	ID:                  toInternal("numeric"),
+	TypLength:           int16(-1),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_NumericTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_numeric"),
+	InputFunc:           toFuncID("numeric_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:          toFuncID("numeric_out", toInternal("numeric")),
+	ReceiveFunc:         toFuncID("numeric_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:            toFuncID("numeric_send", toInternal("numeric")),
+	ModInFunc:           toFuncID("numerictypmodin", toInternal("_cstring")),
+	ModOutFunc:          toFuncID("numerictypmodout", toInternal("int4")),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Main,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("numeric_cmp", toInternal("numeric"), toInternal("numeric")),
+	SerializationFunc:   serializeTypeNumeric,
+	DeserializationFunc: deserializeTypeNumeric,
 }
 
 // NewNumericTypeWithPrecisionAndScale returns Numeric type with typmod set.
@@ -117,4 +120,21 @@ func GetNumericValueWithTypmod(val decimal.Decimal, typmod int32) (decimal.Decim
 		return decimal.Decimal{}, errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
 	}
 	return decimal.NewFromString(str)
+}
+
+// serializeTypeNumeric handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeNumeric(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	return val.(decimal.Decimal).MarshalBinary()
+}
+
+// deserializeTypeNumeric handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeNumeric(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	retVal := decimal.NewFromInt(0)
+	err := retVal.UnmarshalBinary(data)
+	return retVal, err
 }

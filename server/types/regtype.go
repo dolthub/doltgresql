@@ -15,41 +15,60 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Regtype is the OID type for finding items in pg_type.
 var Regtype = &DoltgresType{
-	ID:            toInternal("regtype"),
-	TypLength:     int16(4),
-	PassedByVal:   true,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_NumericTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_regtype"),
-	InputFunc:     toFuncID("regtypein", toInternal("cstring")),
-	OutputFunc:    toFuncID("regtypeout", toInternal("regtype")),
-	ReceiveFunc:   toFuncID("regtyperecv", toInternal("internal")),
-	SendFunc:      toFuncID("regtypesend", toInternal("regtype")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("-"),
+	ID:                  toInternal("regtype"),
+	TypLength:           int16(4),
+	PassedByVal:         true,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_NumericTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_regtype"),
+	InputFunc:           toFuncID("regtypein", toInternal("cstring")),
+	OutputFunc:          toFuncID("regtypeout", toInternal("regtype")),
+	ReceiveFunc:         toFuncID("regtyperecv", toInternal("internal")),
+	SendFunc:            toFuncID("regtypesend", toInternal("regtype")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("-"),
+	SerializationFunc:   serializeTypeRegtype,
+	DeserializationFunc: deserializeTypeRegtype,
+}
+
+// serializeTypeRegtype handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeRegtype(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	return []byte(val.(id.Id)), nil
+}
+
+// deserializeTypeRegtype handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeRegtype(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return id.Id(data), nil
 }

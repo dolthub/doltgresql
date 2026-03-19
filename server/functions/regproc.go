@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initRegproc registers the functions to the catalog.
@@ -107,7 +108,9 @@ var regprocsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regproc},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(id.Id)), nil
+		writer := utils.NewWireWriter()
+		writer.WriteUint32(id.Cache().ToOID(val.(id.Id)))
+		return writer.BufferData(), nil
 	},
 }
 

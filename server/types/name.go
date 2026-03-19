@@ -15,7 +15,10 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // NameLength is the constant length of Name in Postgres 15. Represents (NAMEDATALEN-1)
@@ -23,36 +26,57 @@ const NameLength = 63
 
 // Name is a 63-byte internal type for object names.
 var Name = &DoltgresType{
-	ID:            toInternal("name"),
-	TypLength:     int16(64),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_StringTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("raw_array_subscript_handler", toInternal("internal")),
-	Elem:          toInternal("char"),
-	Array:         toInternal("_name"),
-	InputFunc:     toFuncID("namein", toInternal("cstring")),
-	OutputFunc:    toFuncID("nameout", toInternal("name")),
-	ReceiveFunc:   toFuncID("namerecv", toInternal("internal")),
-	SendFunc:      toFuncID("namesend", toInternal("name")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Char,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NewCollation("pg_catalog", "C"),
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("btnamecmp", toInternal("name"), toInternal("name")),
+	ID:                  toInternal("name"),
+	TypLength:           int16(64),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_StringTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("raw_array_subscript_handler", toInternal("internal")),
+	Elem:                toInternal("char"),
+	Array:               toInternal("_name"),
+	InputFunc:           toFuncID("namein", toInternal("cstring")),
+	OutputFunc:          toFuncID("nameout", toInternal("name")),
+	ReceiveFunc:         toFuncID("namerecv", toInternal("internal")),
+	SendFunc:            toFuncID("namesend", toInternal("name")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Char,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NewCollation("pg_catalog", "C"),
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("btnamecmp", toInternal("name"), toInternal("name")),
+	SerializationFunc:   serializeTypeName,
+	DeserializationFunc: deserializeTypeName,
+}
+
+// serializeTypeName handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeName(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	str := val.(string)
+	writer := utils.NewWriter(uint64(len(str) + 1))
+	writer.String(str)
+	return writer.Data(), nil
+}
+
+// deserializeTypeName handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeName(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	reader := utils.NewReader(data)
+	return reader.String(), nil
 }

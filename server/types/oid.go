@@ -15,41 +15,60 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Oid is a data type used for identifying internal objects. It is implemented as an unsigned 32-bit integer.
 var Oid = &DoltgresType{
-	ID:            toInternal("oid"),
-	TypLength:     int16(4),
-	PassedByVal:   true,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_NumericTypes,
-	IsPreferred:   true,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_oid"),
-	InputFunc:     toFuncID("oidin", toInternal("cstring")),
-	OutputFunc:    toFuncID("oidout", toInternal("oid")),
-	ReceiveFunc:   toFuncID("oidrecv", toInternal("internal")),
-	SendFunc:      toFuncID("oidsend", toInternal("oid")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("btoidcmp", toInternal("oid"), toInternal("oid")),
+	ID:                  toInternal("oid"),
+	TypLength:           int16(4),
+	PassedByVal:         true,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_NumericTypes,
+	IsPreferred:         true,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_oid"),
+	InputFunc:           toFuncID("oidin", toInternal("cstring")),
+	OutputFunc:          toFuncID("oidout", toInternal("oid")),
+	ReceiveFunc:         toFuncID("oidrecv", toInternal("internal")),
+	SendFunc:            toFuncID("oidsend", toInternal("oid")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("btoidcmp", toInternal("oid"), toInternal("oid")),
+	SerializationFunc:   serializeTypeOid,
+	DeserializationFunc: deserializeTypeOid,
+}
+
+// serializeTypeOid handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeOid(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	return []byte(val.(id.Id)), nil
+}
+
+// deserializeTypeOid handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeOid(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return id.Id(data), nil
 }

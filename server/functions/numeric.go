@@ -24,6 +24,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initNumeric registers the functions to the catalog.
@@ -98,8 +99,71 @@ var numeric_send = framework.Function1{
 	Return:     pgtypes.Bytea,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(decimal.Decimal).MarshalBinary()
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
+		dec := val.(decimal.Decimal)
+		writer := utils.NewWireWriter()
+		// Short-circuit if this is the zero value
+		if dec.IsZero() {
+			writer.WriteBytes([]byte{0, 0, 0, 0, 0, 0, 0, 0})
+			return writer.BufferData(), nil
+		}
+		// There's a way to do this more efficiently, but we can do that work once this becomes a performance issue.
+		// This is based on the terminology used in Postgres' `numeric.c` file
+		decStr := dec.String()
+		isNegative := false
+		if strings.HasPrefix(decStr, "-") {
+			isNegative = true
+			decStr = decStr[1:]
+		}
+		// Split the integer and fractional parts
+		var intPart string
+		var fractPart string
+		if idx := strings.Index(decStr, "."); idx != -1 {
+			intPart = decStr[:idx]
+			fractPart = decStr[idx+1:]
+		} else {
+			intPart = decStr
+		}
+		// Find the "dscale", which is the number of digits in the fractional part
+		typmod := t[0].GetAttTypMod()
+		var dscale int16
+		if typmod != -1 {
+			_, dscale32 := pgtypes.GetPrecisionAndScaleFromTypmod(typmod)
+			dscale = int16(dscale32)
+		} else {
+			dscale = int16(len(fractPart))
+		}
+		// Pad the integer and fractional parts so that we can take groups of 4 numbers
+		if intPart == "0" {
+			intPart = ""
+		} else if len(intPart)%4 != 0 {
+			intPart = strings.Repeat("0", 4-(len(intPart)%4)) + intPart
+		}
+		if len(fractPart)%4 != 0 {
+			fractPart = fractPart + strings.Repeat("0", 4-(len(fractPart)%4))
+		}
+		// Write the "ndigits" first, or the number of base-10000 digits
+		writer.WriteInt16(int16((len(intPart) / 4) + (len(fractPart) / 4)))
+		// Write the "weight", which is the number of base-10000 digits in the integer part subtracted by 1
+		writer.WriteInt16(int16((len(intPart) / 4) - 1))
+		// Write the "sign"
+		if isNegative {
+			writer.WriteInt16(16384)
+		} else {
+			writer.WriteInt16(0)
+		}
+		// Write the "dscale"
+		writer.WriteInt16(dscale)
+		// Write all of the digits
+		fullPart := intPart + fractPart
+		for i := 0; i < len(fullPart); i += 4 {
+			part, err := strconv.Atoi(fullPart[i : i+4])
+			if err != nil {
+				return nil, err
+			}
+			writer.WriteInt16(int16(part))
+		}
+		return writer.BufferData(), nil
 	},
 }
 

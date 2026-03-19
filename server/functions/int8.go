@@ -23,6 +23,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initInt8 registers the functions to the catalog.
@@ -88,9 +89,9 @@ var int8send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		retVal := make([]byte, 8)
-		binary.BigEndian.PutUint64(retVal, uint64(val.(int64))+(1<<63))
-		return retVal, nil
+		writer := utils.NewWireWriter()
+		writer.WriteInt64(val.(int64))
+		return writer.BufferData(), nil
 	},
 }
 

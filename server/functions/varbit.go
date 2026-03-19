@@ -16,7 +16,10 @@ package functions
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -103,10 +106,33 @@ var varbitsend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarBit},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		bitStr := val.(string)
-		writer := utils.NewWriter(uint64(len(bitStr) + 4))
-		writer.String(bitStr)
-		return writer.Data(), nil
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if val == nil {
+				return nil, nil
+			}
+		}
+		bitString := val.(string)
+		originalLength := int32(len(bitString))
+		// We process bits in chunks of 8, so we append zeroes until our string is evenly divisible by 8
+		if len(bitString)%8 != 0 {
+			bitString += strings.Repeat("0", 8-(len(bitString)%8))
+		}
+		writer := utils.NewWireWriter()
+		writer.Reserve(uint64(4 + (len(bitString) / 8)))
+		writer.WriteInt32(originalLength)
+		for bufIdx := 0; bufIdx < len(bitString); bufIdx += 8 {
+			parsedByte, err := strconv.ParseUint(bitString[bufIdx:bufIdx+8], 2, 8)
+			if err != nil {
+				return nil, errors.Errorf(`error encountered while converting "VARBIT" to binary wire format:\n%s`, err.Error())
+			}
+			writer.WriteUint8(byte(parsedByte))
+		}
+		return writer.BufferData(), nil
 	},
 }
 
