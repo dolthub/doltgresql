@@ -23,6 +23,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initJson registers the functions to the catalog.
@@ -83,7 +84,19 @@ var json_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Json},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return []byte(val.(string)), nil
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if val == nil {
+				return nil, nil
+			}
+		}
+		writer := utils.NewWireWriter()
+		writer.WriteString(val.(string))
+		return writer.BufferData(), nil
 	},
 }
 

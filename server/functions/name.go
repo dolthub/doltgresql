@@ -81,10 +81,19 @@ var namesend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Name},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		str := val.(string)
-		writer := utils.NewWriter(uint64(len(str) + 1))
-		writer.String(str)
-		return writer.Data(), nil
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if val == nil {
+				return nil, nil
+			}
+		}
+		writer := utils.NewWireWriter()
+		writer.WriteString(val.(string))
+		return writer.BufferData(), nil
 	},
 }
 

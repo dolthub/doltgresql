@@ -17,13 +17,14 @@ package core
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/types"
+	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/typecollection"
 	"github.com/dolthub/doltgresql/server/plpgsql"
-
-	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Init initializes this package.
@@ -38,4 +39,7 @@ func Init() {
 	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
 	typecollection.GetSqlTableFromContext = GetSqlTableFromContext
 	typecollection.GetSchemaName = GetSchemaName
+	pgtypes.GetTypesCollectionFromContext = func(ctx *sql.Context) (pgtypes.TypeCollection, error) {
+		return GetTypesCollectionFromContext(ctx)
+	}
 }

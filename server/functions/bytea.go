@@ -85,14 +85,19 @@ var byteasend = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bytea},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		res, err := sql.UnwrapAny(ctx, val)
-		if err != nil {
-			return nil, err
+		if wrapper, ok := val.(sql.AnyWrapper); ok {
+			var err error
+			val, err = wrapper.UnwrapAny(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if val == nil {
+				return nil, nil
+			}
 		}
-		str := res.([]byte)
-		writer := utils.NewWriter(uint64(len(str) + 4))
-		writer.ByteSlice(str)
-		return writer.Data(), nil
+		writer := utils.NewWireWriter()
+		writer.WriteBytes(val.([]byte))
+		return writer.BufferData(), nil
 	},
 }
 

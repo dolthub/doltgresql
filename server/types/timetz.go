@@ -15,43 +15,49 @@
 package types
 
 import (
+	"time"
+
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // TimeTZ is the time with a time zone. Precision is unbounded.
 var TimeTZ = &DoltgresType{
-	ID:            toInternal("timetz"),
-	TypLength:     int16(12),
-	PassedByVal:   true,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_DateTimeTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_timetz"),
-	InputFunc:     toFuncID("timetz_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("timetz_out", toInternal("timetz")),
-	ReceiveFunc:   toFuncID("timetz_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-	SendFunc:      toFuncID("timetz_send", toInternal("timetz")),
-	ModInFunc:     toFuncID("timetztypmodin", toInternal("_cstring")),
-	ModOutFunc:    toFuncID("timetztypmodout", toInternal("int4")),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Double,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("timetz_cmp", toInternal("timetz"), toInternal("timetz")),
+	ID:                  toInternal("timetz"),
+	TypLength:           int16(12),
+	PassedByVal:         true,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_DateTimeTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_timetz"),
+	InputFunc:           toFuncID("timetz_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:          toFuncID("timetz_out", toInternal("timetz")),
+	ReceiveFunc:         toFuncID("timetz_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:            toFuncID("timetz_send", toInternal("timetz")),
+	ModInFunc:           toFuncID("timetztypmodin", toInternal("_cstring")),
+	ModOutFunc:          toFuncID("timetztypmodout", toInternal("int4")),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Double,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("timetz_cmp", toInternal("timetz"), toInternal("timetz")),
+	SerializationFunc:   serializeTypeTimeTZ,
+	DeserializationFunc: deserializeTypeTimeTZ,
 }
 
 // NewTimeTZType returns TimeTZ type with typmod set. // TODO: implement precision
@@ -62,4 +68,23 @@ func NewTimeTZType(precision int32) (*DoltgresType, error) {
 	}
 	newType := *TimeTZ.WithAttTypMod(typmod)
 	return &newType, nil
+}
+
+// serializeTypeTimeTZ handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeTimeTZ(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	return val.(time.Time).MarshalBinary()
+}
+
+// deserializeTypeTimeTZ handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeTimeTZ(ctx *sql.Context, _ *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	t := time.Time{}
+	if err := t.UnmarshalBinary(data); err != nil {
+		return nil, err
+	}
+	return t, nil
 }

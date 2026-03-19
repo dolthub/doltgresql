@@ -15,7 +15,10 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
@@ -25,38 +28,40 @@ var ErrVarBitLengthExceeded = errors.NewKind(`bit string too long for type bit v
 
 // VarBit is a varying-length bit string.
 var VarBit = &DoltgresType{
-	ID:            toInternal("varbit"),
-	TypLength:     int16(-1),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_BitStringTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_varbit"),
-	InputFunc:     toFuncID("varbit_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("varbit_out", toInternal("varbit")),
-	ReceiveFunc:   toFuncID("varbit_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-	SendFunc:      toFuncID("varbit_send", toInternal("varbit")),
-	ModInFunc:     toFuncID("varbittypmodin", toInternal("_cstring")),
-	ModOutFunc:    toFuncID("varbittypmodout", toInternal("int4")),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Extended,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NewCollation("pg_catalog", "default"),
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("varbitcmp", toInternal("varbit"), toInternal("varbit")),
+	ID:                  toInternal("varbit"),
+	TypLength:           int16(-1),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_BitStringTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_varbit"),
+	InputFunc:           toFuncID("varbit_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:          toFuncID("varbit_out", toInternal("varbit")),
+	ReceiveFunc:         toFuncID("varbit_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:            toFuncID("varbit_send", toInternal("varbit")),
+	ModInFunc:           toFuncID("varbittypmodin", toInternal("_cstring")),
+	ModOutFunc:          toFuncID("varbittypmodout", toInternal("int4")),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Extended,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NewCollation("pg_catalog", "default"),
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("varbitcmp", toInternal("varbit"), toInternal("varbit")),
+	SerializationFunc:   serializeTypeVarbit,
+	DeserializationFunc: deserializeTypeVarbit,
 }
 
 // NewVarBitType returns a VarBit type with type modifier set
@@ -69,4 +74,23 @@ func NewVarBitType(width int32) (*DoltgresType, error) {
 	}
 	newType := *VarBit.WithAttTypMod(width)
 	return &newType, nil
+}
+
+// serializeTypeVarbit handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeVarbit(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	bitStr := val.(string)
+	writer := utils.NewWriter(uint64(len(bitStr) + 4))
+	writer.String(bitStr)
+	return writer.Data(), nil
+}
+
+// deserializeTypeVarbit handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeVarbit(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	reader := utils.NewReader(data)
+	return reader.String(), nil
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // initUuid registers the functions to the catalog.
@@ -77,7 +78,13 @@ var uuid_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Uuid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(uuid.UUID).GetBytes(), nil
+		buf, err := val.(uuid.UUID).MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		writer := utils.NewWireWriter()
+		writer.WriteBytes(buf)
+		return writer.BufferData(), nil
 	},
 }
 

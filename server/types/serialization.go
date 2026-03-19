@@ -72,8 +72,10 @@ func DeserializeType(serializedType []byte) (sql.ExtendedType, error) {
 	typ.Array = id.Type(reader.Id())
 	typ.InputFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
 	typ.OutputFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
-	typ.ReceiveFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
-	typ.SendFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
+	receiveFunc := id.Function(reader.Id())
+	typ.ReceiveFunc = globalFunctionRegistry.InternalToRegistryID(receiveFunc)
+	sendFunc := id.Function(reader.Id())
+	typ.SendFunc = globalFunctionRegistry.InternalToRegistryID(sendFunc)
 	typ.ModInFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
 	typ.ModOutFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
 	typ.AnalyzeFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
@@ -138,6 +140,13 @@ func DeserializeType(serializedType []byte) (sql.ExtendedType, error) {
 		return nil, errors.Errorf("extra data found while deserializing type %s", typ.Name())
 	}
 
+	// Grab the serialization and deserialization functions for the built-in types
+	if f, ok := idToInternalSerializationFunc[sendFunc]; ok {
+		typ.SerializationFunc = f
+	}
+	if f, ok := idToInternalDeserializationFunc[receiveFunc]; ok {
+		typ.DeserializationFunc = f
+	}
 	// Return the deserialized object
 	return typ, nil
 }

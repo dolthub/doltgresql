@@ -27,7 +27,13 @@ func TestSerializationConsistency(t *testing.T) {
 			serializedType := typ.Serialize()
 			dt, err := DeserializeType(serializedType)
 			require.NoError(t, err)
-			require.Equal(t, typ, dt.(*DoltgresType))
+			dgt := dt.(*DoltgresType)
+			// require.Equal: Function equality cannot be determined and will always fail.
+			typ.SerializationFunc = nil
+			typ.DeserializationFunc = nil
+			dgt.SerializationFunc = nil
+			dgt.DeserializationFunc = nil
+			require.Equal(t, typ, dgt)
 		})
 	}
 }

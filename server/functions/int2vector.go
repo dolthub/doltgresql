@@ -81,8 +81,7 @@ var int2vectorsend = framework.Function1{
 	Return:     pgtypes.Bytea,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int16vector},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		vals := val.([]any)
-		return serializeArray(ctx, vals, pgtypes.Int16)
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
+		return array_send.Callable(ctx, t, val)
 	},
 }

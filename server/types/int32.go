@@ -15,42 +15,65 @@
 package types
 
 import (
+	"encoding/binary"
+
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Int32 is an int32.
 var Int32 = &DoltgresType{
-	ID:            toInternal("int4"),
-	TypLength:     int16(4),
-	PassedByVal:   true,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_NumericTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_int4"),
-	InputFunc:     toFuncID("int4in", toInternal("cstring")),
-	OutputFunc:    toFuncID("int4out", toInternal("int4")),
-	ReceiveFunc:   toFuncID("int4recv", toInternal("internal")),
-	SendFunc:      toFuncID("int4send", toInternal("int4")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("btint4cmp", toInternal("int4"), toInternal("int4")),
-	InternalName:  "integer",
+	ID:                  toInternal("int4"),
+	TypLength:           int16(4),
+	PassedByVal:         true,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_NumericTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_int4"),
+	InputFunc:           toFuncID("int4in", toInternal("cstring")),
+	OutputFunc:          toFuncID("int4out", toInternal("int4")),
+	ReceiveFunc:         toFuncID("int4recv", toInternal("internal")),
+	SendFunc:            toFuncID("int4send", toInternal("int4")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("btint4cmp", toInternal("int4"), toInternal("int4")),
+	InternalName:        "integer",
+	SerializationFunc:   serializeTypeInt32,
+	DeserializationFunc: deserializeTypeInt32,
+}
+
+// serializeTypeInt32 handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeInt32(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	retVal := make([]byte, 4)
+	binary.BigEndian.PutUint32(retVal, uint32(val.(int32))+(1<<31))
+	return retVal, nil
+}
+
+// deserializeTypeInt32 handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeInt32(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return int32(binary.BigEndian.Uint32(data) - (1 << 31)), nil
 }

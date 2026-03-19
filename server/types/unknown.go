@@ -15,41 +15,62 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // Unknown represents an invalid or indeterminate type. This is primarily used internally.
 var Unknown = &DoltgresType{
-	ID:            toInternal("unknown"),
-	TypLength:     int16(-2),
-	PassedByVal:   false,
-	TypType:       TypeType_Pseudo,
-	TypCategory:   TypeCategory_UnknownTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         id.NullType,
-	InputFunc:     toFuncID("unknownin", toInternal("cstring")),
-	OutputFunc:    toFuncID("unknownout", toInternal("unknown")),
-	ReceiveFunc:   toFuncID("unknownrecv", toInternal("internal")),
-	SendFunc:      toFuncID("unknownsend", toInternal("unknown")),
-	ModInFunc:     toFuncID("-"),
-	ModOutFunc:    toFuncID("-"),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Char,
-	Storage:       TypeStorage_Plain,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NullCollation,
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("-"),
+	ID:                  toInternal("unknown"),
+	TypLength:           int16(-2),
+	PassedByVal:         false,
+	TypType:             TypeType_Pseudo,
+	TypCategory:         TypeCategory_UnknownTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               id.NullType,
+	InputFunc:           toFuncID("unknownin", toInternal("cstring")),
+	OutputFunc:          toFuncID("unknownout", toInternal("unknown")),
+	ReceiveFunc:         toFuncID("unknownrecv", toInternal("internal")),
+	SendFunc:            toFuncID("unknownsend", toInternal("unknown")),
+	ModInFunc:           toFuncID("-"),
+	ModOutFunc:          toFuncID("-"),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Char,
+	Storage:             TypeStorage_Plain,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NullCollation,
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("-"),
+	SerializationFunc:   serializeTypeUnknown,
+	DeserializationFunc: deserializeTypeUnknown,
+}
+
+// serializeTypeUnknown handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeUnknown(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	str := val.(string)
+	writer := utils.NewWriter(uint64(len(str) + 4))
+	writer.String(str)
+	return writer.Data(), nil
+}
+
+// deserializeTypeUnknown handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeUnknown(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	reader := utils.NewReader(data)
+	return reader.String(), nil
 }

@@ -15,7 +15,10 @@
 package types
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/src-d/go-errors.v1"
+
+	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
@@ -36,38 +39,40 @@ var ErrLengthCannotExceed = errors.NewKind(`length for type %s cannot exceed 104
 
 // VarChar is a varchar that has an unbounded length.
 var VarChar = &DoltgresType{
-	ID:            toInternal("varchar"),
-	TypLength:     int16(-1),
-	PassedByVal:   false,
-	TypType:       TypeType_Base,
-	TypCategory:   TypeCategory_StringTypes,
-	IsPreferred:   false,
-	IsDefined:     true,
-	Delimiter:     ",",
-	RelID:         id.Null,
-	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         toInternal("_varchar"),
-	InputFunc:     toFuncID("varcharin", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
-	OutputFunc:    toFuncID("varcharout", toInternal("varchar")),
-	ReceiveFunc:   toFuncID("varcharrecv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
-	SendFunc:      toFuncID("varcharsend", toInternal("varchar")),
-	ModInFunc:     toFuncID("varchartypmodin", toInternal("_cstring")),
-	ModOutFunc:    toFuncID("varchartypmodout", toInternal("int4")),
-	AnalyzeFunc:   toFuncID("-"),
-	Align:         TypeAlignment_Int,
-	Storage:       TypeStorage_Extended,
-	NotNull:       false,
-	BaseTypeID:    id.NullType,
-	TypMod:        -1,
-	NDims:         0,
-	TypCollation:  id.NewCollation("pg_catalog", "default"),
-	DefaulBin:     "",
-	Default:       "",
-	Acl:           nil,
-	Checks:        nil,
-	attTypMod:     -1,
-	CompareFunc:   toFuncID("bttextcmp", toInternal("text"), toInternal("text")), // TODO: temporarily added
+	ID:                  toInternal("varchar"),
+	TypLength:           int16(-1),
+	PassedByVal:         false,
+	TypType:             TypeType_Base,
+	TypCategory:         TypeCategory_StringTypes,
+	IsPreferred:         false,
+	IsDefined:           true,
+	Delimiter:           ",",
+	RelID:               id.Null,
+	SubscriptFunc:       toFuncID("-"),
+	Elem:                id.NullType,
+	Array:               toInternal("_varchar"),
+	InputFunc:           toFuncID("varcharin", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
+	OutputFunc:          toFuncID("varcharout", toInternal("varchar")),
+	ReceiveFunc:         toFuncID("varcharrecv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
+	SendFunc:            toFuncID("varcharsend", toInternal("varchar")),
+	ModInFunc:           toFuncID("varchartypmodin", toInternal("_cstring")),
+	ModOutFunc:          toFuncID("varchartypmodout", toInternal("int4")),
+	AnalyzeFunc:         toFuncID("-"),
+	Align:               TypeAlignment_Int,
+	Storage:             TypeStorage_Extended,
+	NotNull:             false,
+	BaseTypeID:          id.NullType,
+	TypMod:              -1,
+	NDims:               0,
+	TypCollation:        id.NewCollation("pg_catalog", "default"),
+	DefaulBin:           "",
+	Default:             "",
+	Acl:                 nil,
+	Checks:              nil,
+	attTypMod:           -1,
+	CompareFunc:         toFuncID("bttextcmp", toInternal("text"), toInternal("text")), // TODO: temporarily added
+	SerializationFunc:   serializeTypeVarChar,
+	DeserializationFunc: deserializeTypeVarChar,
 }
 
 // NewVarCharType returns VarChar type with type modifier set
@@ -103,4 +108,23 @@ func GetTypModFromCharLength(typName string, l int32) (int32, error) {
 // GetCharLengthFromTypmod takes character type modifier and returns length value.
 func GetCharLengthFromTypmod(typmod int32) int32 {
 	return typmod - 4
+}
+
+// serializeTypeVarChar handles serialization from the standard representation to our serialized representation that is
+// written in Dolt.
+func serializeTypeVarChar(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
+	str := val.(string)
+	writer := utils.NewWriter(uint64(len(str) + 4))
+	writer.String(str)
+	return writer.Data(), nil
+}
+
+// deserializeTypeVarChar handles deserialization from the Dolt serialized format to our standard representation used by
+// expressions and nodes.
+func deserializeTypeVarChar(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	reader := utils.NewReader(data)
+	return reader.String(), nil
 }
