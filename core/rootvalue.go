@@ -615,11 +615,6 @@ func (root *RootValue) PutRootObject(ctx context.Context, tName doltdb.TableName
 // PutTable implements the interface doltdb.RootValue.
 func (root *RootValue) PutTable(ctx context.Context, tName doltdb.TableName, table *doltdb.Table) (doltdb.RootValue, error) {
 	// TODO: modify owned sequences based on schema changes
-	err := doltdb.ValidateTagUniqueness(ctx, root, tName.Name, table)
-	if err != nil {
-		return nil, err
-	}
-
 	tableRef, err := doltdb.RefFromNomsTable(ctx, table)
 	if err != nil {
 		return nil, err
