@@ -6,7 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20260323165039-b7ddcead2de9
+	github.com/dolthub/dolt/go v0.40.5-0.20260324190202-2b565224aa60
 	github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-mysql-server v0.20.1-0.20260319021557-3b1ba29f1e79
@@ -21,6 +21,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/jackc/pglogrepl v0.0.0-20240307033717-828fbfe908e9
+	github.com/jackc/pgtype v1.14.0
 	github.com/jackc/pgx/v4 v4.18.2
 	github.com/jackc/pgx/v5 v5.6.1-0.20240826124046-97d20ccfadaa
 	github.com/lib/pq v1.10.9
@@ -141,7 +142,6 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgproto3/v2 v2.3.3 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgtype v1.14.0 // indirect
 	github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d // indirect
 	github.com/kch42/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
