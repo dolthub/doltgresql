@@ -118,17 +118,6 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				}
 			}
 			return node, same, nil
-		case *plan.ModifyColumn:
-			col := n.NewColumn()
-			if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
-				dt, err := resolveType(ctx, db, rt)
-				if err != nil {
-					return nil, transform.NewTree, err
-				}
-				same = transform.NewTree
-				col.Type = dt
-			}
-			return node, same, nil
 		case *pgnodes.DropFunction:
 			for _, r := range n.RoutinesWithArgs {
 				for j, arg := range r.Args {
@@ -155,6 +144,17 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 						r.Args[j].Type = dt
 					}
 				}
+			}
+			return node, same, nil
+		case *plan.ModifyColumn:
+			col := n.NewColumn()
+			if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
+				dt, err := resolveType(ctx, db, rt)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				col.Type = dt
 			}
 			return node, same, nil
 		default:
