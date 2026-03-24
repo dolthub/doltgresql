@@ -171,12 +171,11 @@ func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTyp
 	case *tree.Select:
 		switch t := s.Select.(type) {
 		case *tree.SelectClause:
-			sc := s.Select.(*tree.SelectClause)
-			for i, e := range sc.Exprs {
-				sc.Exprs[i].Expr = ReplaceUnresolvedToFunctionColumn(params, e.Expr)
+			for i, e := range t.Exprs {
+				t.Exprs[i].Expr = ReplaceUnresolvedToFunctionColumn(params, e.Expr)
 			}
-			if sc.Where != nil {
-				sc.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, sc.Where.Expr)
+			if t.Where != nil {
+				t.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, t.Where.Expr)
 			}
 		case *tree.ValuesClause:
 			for i, row := range t.Rows {

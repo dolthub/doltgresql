@@ -1575,21 +1575,9 @@ $$ LANGUAGE plpgsql;`,
 				`CREATE TABLE decks (
     id bigint NOT NULL,
     name text DEFAULT NULL::character varying,
-    description text DEFAULT NULL::character varying,
-    owner integer,
-    last_update timestamp with time zone,
-    parent bigint,
-    crowdanki_uuid text,
-    human_hash character varying(255) DEFAULT NULL::character varying,
-    creator_ip character varying(255),
-    full_path text,
-    private boolean DEFAULT true,
-    stats_enabled boolean DEFAULT false,
-    retention real,
-    notes_with_stats_count integer DEFAULT 0,
-    restrict_notetypes boolean DEFAULT true,
-    restrict_subdecks boolean DEFAULT false
+    parent bigint
 );`,
+				`INSERT INTO decks VALUES (1, 'name1', 2), (2, 'name2', 4), (5, 'name3', 1), (7, 'name4', 9);`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1611,8 +1599,24 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{},
 				},
 				{
+					Query: "SELECT * from decks;",
+					Expected: []sql.Row{
+						{1, "name1", 2},
+						{2, "name2", 4},
+						{5, "name3", 1},
+						{7, "name4", 9},
+					},
+				},
+				{
 					Query:    "SELECT delete_deck_tree(1);",
 					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query: "SELECT * from decks;",
+					Expected: []sql.Row{
+						{2, "name2", 4},
+						{7, "name4", 9},
+					},
 				},
 			},
 		},
