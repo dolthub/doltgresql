@@ -85,7 +85,7 @@ func (sqlFunc SQLFunction) VariadicIndex() int {
 
 // IsSRF implements the interface FunctionInterface.
 func (sqlFunc SQLFunction) IsSRF() bool {
-	return false
+	return sqlFunc.SetOf
 }
 
 // enforceInterfaceInheritance implements the interface FunctionInterface.
@@ -126,11 +126,11 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 		}
 
 		if !f.SetOf {
-			// single row result
 			rows, err := sql.RowIterToRows(subCtx, rowIter)
 			if err != nil {
 				return nil, err
 			}
+			// single row result
 			if len(sch) != 1 {
 				return nil, errors.New("expression does not result in a single value")
 			}
@@ -143,6 +143,10 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			return rows[0][0], nil
 		}
 		// multiple row result
+		if f.ReturnType.TypCategory == pgtypes.TypeCategory_CompositeTypes {
+			// record type
+			return rowIterToRecord(ctx, rowIter, sch)
+		}
 		return rowIter, nil
 	})
 }
@@ -159,31 +163,49 @@ type ParamTypAndValue struct {
 // It also replaces empty parameter name with binding variable name to match the name used in FunctionColumn.
 // This function should be used for FUNCTION with SQL language statements only.
 func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTypAndValue) error {
+	if len(params) == 0 {
+		return nil
+	}
 	// Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING
 	switch s := parsedAST.(type) {
 	case *tree.Select:
-		sc := s.Select.(*tree.SelectClause)
-		for i, e := range sc.Exprs {
-			sc.Exprs[i].Expr = ReplaceUnresolvedToFunctionColumn(params, e.Expr)
-		}
-		if sc.Where != nil {
-			sc.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, sc.Where.Expr)
+		switch t := s.Select.(type) {
+		case *tree.SelectClause:
+			for i, e := range t.Exprs {
+				t.Exprs[i].Expr = ReplaceUnresolvedToFunctionColumn(params, e.Expr)
+			}
+			if t.Where != nil {
+				t.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, t.Where.Expr)
+			}
+		case *tree.ValuesClause:
+			for i, row := range t.Rows {
+				for j, e := range row {
+					row[j] = ReplaceUnresolvedToFunctionColumn(params, e)
+				}
+				t.Rows[i] = row
+			}
 		}
 		return nil
 	case *tree.Insert:
-		if s.Returning != nil {
-			return errors.Errorf("INSERT ... RETURNING statement in functions is not yet supported")
+		err := ReplaceFunctionColumn(s.Rows, params)
+		if err != nil {
+			return err
 		}
+		return nil
 	case *tree.Update:
-		if s.Returning != nil {
-			return errors.Errorf("UPDATE ... RETURNING statement in functions is not yet supported")
+		for i, e := range s.Exprs {
+			s.Exprs[i].Expr = ReplaceUnresolvedToFunctionColumn(params, e.Expr)
 		}
+		if s.Where != nil {
+			s.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, s.Where.Expr)
+		}
+		return nil
 	case *tree.Delete:
 		if s.Returning != nil {
 			return errors.Errorf("DELETE ... RETURNING statement in functions is not yet supported")
 		}
 	}
-	return errors.Errorf("Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING")
+	return errors.Errorf("unsupported final statement defined in function")
 }
 
 // ReplaceUnresolvedToFunctionColumn replaces Placeholder and UnresolvedName expressions with FunctionColumn containing
@@ -214,4 +236,27 @@ func ReplaceUnresolvedToFunctionColumn(paramMap map[string]*ParamTypAndValue, ex
 		return true, visitingExpr, nil
 	})
 	return e
+}
+
+// rowIterToRecord converts given rows with schema provided to rowIter containing array of pgtypes.RecordValue.
+func rowIterToRecord(ctx *sql.Context, rowIter sql.RowIter, sch sql.Schema) (sql.RowIter, error) {
+	rows, err := sql.RowIterToRows(ctx, rowIter)
+	if err != nil {
+		return nil, err
+	}
+	var newRows = make([]sql.Row, len(rows))
+	for i, row := range rows {
+		if len(row) != len(sch) {
+			return nil, errors.New("number of row values does not match number of schema columns")
+		}
+		var r = make([]pgtypes.RecordValue, len(sch))
+		for j, col := range sch {
+			r[j] = pgtypes.RecordValue{
+				Type:  col.Type.(*pgtypes.DoltgresType),
+				Value: row[j],
+			}
+		}
+		newRows[i] = sql.Row{r}
+	}
+	return sql.RowsToRowIter(newRows...), nil
 }

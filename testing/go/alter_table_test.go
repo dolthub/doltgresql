@@ -1027,5 +1027,36 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "nullable is not checked during ALTER TABLE",
+			SetUpScript: []string{
+				`CREATE TABLE public.products (
+    product_id integer NOT NULL,
+    product_name character varying(100) NOT NULL,
+    category_id integer NOT NULL,
+    price numeric(10,2) NOT NULL,
+    description text
+);`,
+				`CREATE TABLE public.categories (
+    category_id integer NOT NULL,
+    category_name character varying(50) NOT NULL
+);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ALTER TABLE ONLY public.products ADD CONSTRAINT products_pkey PRIMARY KEY (product_id);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE ONLY public.categories ADD CONSTRAINT categories_pkey PRIMARY KEY (category_id);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true,
+					Query:    `ALTER TABLE ONLY public.products ADD CONSTRAINT fk_category_id FOREIGN KEY (category_id) REFERENCES public.categories(category_id) ON UPDATE SET NULL ON DELETE SET NULL;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }

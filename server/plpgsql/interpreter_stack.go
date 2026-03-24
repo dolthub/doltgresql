@@ -24,6 +24,13 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
+// cursorState holds the result set for a FOR record IN query LOOP cursor.
+type cursorState struct {
+	Schema sql.Schema
+	Rows   []sql.Row
+	Index  int
+}
+
 // interpreterVariable is a variable that lives on the stack. This will hold an actual value, but will not be directly
 // interacted with. InterpreterVariableReference are, instead, the avenue of interaction as a variable may be an
 // aggregate type (such as a record).
@@ -58,6 +65,8 @@ type InterpreterStack struct {
 
 	// returnQueryBuffer buffers results from RETURN QUERY statements
 	returnQueryBuffer [][]pgtypes.RecordValue
+	// cursors holds the active FOR record IN query LOOP result sets
+	cursors map[string]*cursorState
 }
 
 // NewInterpreterStack creates a new InterpreterStack.
@@ -68,8 +77,9 @@ func NewInterpreterStack(runner sql.StatementRunner) InterpreterStack {
 		variables: make(map[string]*interpreterVariable),
 	})
 	return InterpreterStack{
-		stack:  stack,
-		runner: runner,
+		stack:   stack,
+		runner:  runner,
+		cursors: make(map[string]*cursorState),
 	}
 }
 
@@ -249,4 +259,42 @@ func (is *InterpreterStack) BufferReturnQueryResults(results [][]pgtypes.RecordV
 // ReturnQueryResults returns the buffered results from a RETURN QUERY statement.
 func (is *InterpreterStack) ReturnQueryResults() [][]pgtypes.RecordValue {
 	return is.returnQueryBuffer
+}
+
+// InitCursor stores the result set for a FOR record IN query LOOP cursor.
+func (is *InterpreterStack) InitCursor(name string, schema sql.Schema, rows []sql.Row) {
+	is.cursors[name] = &cursorState{
+		Schema: schema,
+		Rows:   rows,
+		Index:  0,
+	}
+}
+
+// AdvanceCursor returns the next row for the named cursor and advances its index.
+// Returns (schema, row, true) if a row is available, or (nil, nil, false) when exhausted.
+func (is *InterpreterStack) AdvanceCursor(name string) (sql.Schema, sql.Row, bool) {
+	cs, ok := is.cursors[name]
+	if !ok || cs.Index >= len(cs.Rows) {
+		return nil, nil, false
+	}
+	row := cs.Rows[cs.Index]
+	cs.Index++
+	return cs.Schema, row, true
+}
+
+// CloseCursor removes the named cursor from the stack.
+func (is *InterpreterStack) CloseCursor(name string) {
+	delete(is.cursors, name)
+}
+
+// UpdateRecord finds the named variable and sets its schema and row value.
+func (is *InterpreterStack) UpdateRecord(name string, schema sql.Schema, val sql.Row) error {
+	for i := 0; i < is.stack.Len(); i++ {
+		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
+			iv.Record = schema
+			iv.Value = val
+			return nil
+		}
+	}
+	return fmt.Errorf("record variable `%s` could not be found", name)
 }

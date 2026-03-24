@@ -192,7 +192,7 @@ func (d *DropFunction) findFunctionBySignature(ctx *sql.Context, routineWithArgs
 	unresolvedObjectName := routineWithArgs.Name
 	routineName := unresolvedObjectName.Object()
 	// TODO: User defined functions need to search the entire search path for matches
-	schemaName, err := core.GetSchemaName(ctx, nil, "")
+	schemaName, err := core.GetSchemaName(ctx, nil, unresolvedObjectName.Schema())
 	if err != nil {
 		return functions.Function{}, err
 	}

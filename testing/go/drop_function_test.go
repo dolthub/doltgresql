@@ -255,5 +255,17 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "drop function with empty search_path",
+			SetUpScript: []string{
+				`SELECT pg_catalog.set_config('search_path', '', false);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `DROP FUNCTION IF EXISTS public.vmstate(s integer);`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }

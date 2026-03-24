@@ -385,6 +385,30 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "table with check constraint with ANY expression",
+			SetUpScript: []string{
+				`CREATE TABLE location (
+    id integer NOT NULL,
+    name character varying(100) NOT NULL,
+    type character varying(100),
+    CONSTRAINT location_type_check CHECK (((type)::text = ANY ((ARRAY['Внутренни'::character varying, 'Покупатель'::character varying, 'Поставщик'::character varying])::text[])))
+);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "insert into location values (1, 'Склад Москва', 'Внутренни'), (2, 'Склад Спб', null);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM location;",
+					Expected: []sql.Row{
+						{1, "Склад Москва", "Внутренни"},
+						{2, "Склад Спб", nil},
+					},
+				},
+			},
+		},
 	})
 }
 

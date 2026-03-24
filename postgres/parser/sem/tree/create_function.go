@@ -17,6 +17,8 @@ package tree
 import (
 	"strings"
 
+	"github.com/lib/pq"
+
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -320,5 +322,10 @@ func (f FunctionColumn) Format(ctx *FmtCtx) {
 		ctx.WriteString(f.Name)
 	}
 	// only used when generating query with parameters replaced with actual value
-	ctx.WriteString(f.StrVal)
+	switch f.Typ.TypCategory {
+	case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_DateTimeTypes, pgtypes.TypeCategory_StringTypes, pgtypes.TypeCategory_UserDefinedTypes:
+		ctx.WriteString(pq.QuoteLiteral(f.StrVal))
+	default:
+		ctx.WriteString(f.StrVal)
+	}
 }
