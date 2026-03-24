@@ -24,7 +24,7 @@ import (
 )
 
 // nodeDropProcedure handles *tree.DropProcedure nodes.
-func nodeDropProcedure(_ *Context, node *tree.DropProcedure) (vitess.Statement, error) {
+func nodeDropProcedure(ctx *Context, node *tree.DropProcedure) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -37,10 +37,33 @@ func nodeDropProcedure(_ *Context, node *tree.DropProcedure) (vitess.Statement, 
 		return nil, fmt.Errorf("no function name specified for DROP PROCEDURE")
 	}
 
+	procedures := make([]*pgnodes.RoutineWithArgs, len(node.Procedures))
+	for i, fn := range node.Procedures {
+		var args []pgnodes.RoutineArg
+		for _, a := range fn.Args {
+			if a.Mode != tree.RoutineArgModeOut {
+				_, dt, err := nodeResolvableTypeReference(ctx, a.Type, false)
+				if err != nil {
+					return nil, err
+				}
+				args = append(args, pgnodes.RoutineArg{
+					Name: a.Name.String(),
+					Type: dt,
+				})
+			}
+		}
+		objName := fn.Name.ToTableName()
+		procedures[i] = &pgnodes.RoutineWithArgs{
+			Args:        args,
+			SchemaName:  objName.Schema(),
+			RoutineName: objName.Object(),
+		}
+	}
+
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewDropProcedure(
 			node.IfExists,
-			node.Procedures,
+			procedures,
 			node.DropBehavior == tree.DropCascade),
 		Children: nil,
 	}, nil

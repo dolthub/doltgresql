@@ -267,5 +267,24 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "user defined type used as parameter",
+			SetUpScript: []string{
+				`CREATE TABLE public.trans (vmid integer NOT NULL);`,
+				`CREATE FUNCTION public.tax_job_trans(t public.trans) RETURNS public.trans
+    LANGUAGE plpgsql
+    AS '
+BEGIN
+    SELECT * FROM public.trans;
+END;
+';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `DROP FUNCTION IF EXISTS public.tax_job_trans(t public.trans);`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
