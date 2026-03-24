@@ -80,10 +80,16 @@ var oidrecv = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		return id.Id(data), nil
+		reader := utils.NewWireReader(data)
+		readValue := reader.ReadUint32()
+		cachedID := id.Cache().ToInternal(readValue)
+		if cachedID.IsValid() {
+			return cachedID, nil
+		}
+		return id.NewOID(readValue).AsId(), nil
 	},
 }
 

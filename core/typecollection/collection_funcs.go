@@ -168,9 +168,18 @@ func (*TypeCollection) Serializer() objinterface.RootObjectSerializer {
 
 // UpdateRoot implements the interface objinterface.Collection.
 func (pgs *TypeCollection) UpdateRoot(ctx context.Context, root objinterface.RootValue) (objinterface.RootValue, error) {
+	initialCount, initialCountErr := pgs.underlyingMap.Count()
 	m, err := pgs.Map(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if initialCountErr == nil && initialCount == 0 {
+		if currentCount, currentCountErr := m.Count(); currentCountErr == nil && currentCount == 0 {
+			// In this specific case, we can guarantee that we haven't updated anything, so we won't write to the root.
+			// This preserves that the collection is only written when there's a meaningful data change, otherwise
+			// writing an empty collection will change the hash of a root if it previously had no collection.
+			return root, nil
+		}
 	}
 	return storage.WriteProllyMap(ctx, root, m)
 }

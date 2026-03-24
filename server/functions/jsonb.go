@@ -82,14 +82,15 @@ var jsonb_recv = framework.Function1{
 	Return:     pgtypes.JsonB,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		reader := utils.NewReader(data)
-		jsonValue, err := pgtypes.JsonValueDeserialize(reader)
-		return pgtypes.JsonDocument{Value: jsonValue}, err
+		if len(data) <= 1 {
+			return "", nil
+		}
+		return t[1].IoInput(ctx, string(data[1:]))
 	},
 }
 

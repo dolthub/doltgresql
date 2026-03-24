@@ -16,6 +16,7 @@ package functions
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/utils"
 
@@ -73,16 +74,15 @@ var interval_recv = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
-		//oid := val2.(id.Id)
-		//typmod := val3.(int32) // precision
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		reader := utils.NewReader(data)
-		sortNanos := reader.Int64()
-		months := reader.Int32()
-		days := reader.Int32()
-		return duration.Decode(sortNanos, int64(months), int64(days))
+		var out pgtype.Interval
+		err := out.DecodeBinary(nil, data)
+		if err != nil {
+			return nil, err
+		}
+		return duration.MakeDuration(out.Microseconds*1000, int64(out.Days), int64(out.Months)), nil
 	},
 }
 
