@@ -21,6 +21,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -91,11 +92,24 @@ var varbitrecv = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		reader := utils.NewReader(data)
-		return reader.String(), nil
+		typmod := val3.(int32)
+		var out pgtype.Varbit
+		err := out.DecodeBinary(nil, data)
+		if err != nil {
+			return nil, err
+		}
+		var str string
+		for _, b := range out.Bytes {
+			str += fmt.Sprintf("%08b", b)
+		}
+		str = str[:out.Len]
+		if typmod != -1 {
+			str = str[:typmod]
+		}
+		return str, nil
 	},
 }
 

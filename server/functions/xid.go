@@ -15,7 +15,6 @@
 package functions
 
 import (
-	"encoding/binary"
 	"strconv"
 	"strings"
 
@@ -69,10 +68,11 @@ var xidrecv = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		return binary.BigEndian.Uint32(data), nil
+		reader := utils.NewWireReader(data)
+		return reader.ReadUint32(), nil
 	},
 }
 

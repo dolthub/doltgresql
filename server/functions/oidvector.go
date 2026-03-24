@@ -71,9 +71,9 @@ var oidvectorrecv = framework.Function1{
 	Return:     pgtypes.Oidvector,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
-		return deserializeArray(ctx, data, pgtypes.Oid)
+	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
+		tArr := [4]*pgtypes.DoltgresType{t[0], pgtypes.Oid, pgtypes.Int32, t[1]}
+		return array_recv.Callable(ctx, tArr, val, id.Cache().ToOID(t[1].ID.AsId()), -1)
 	},
 }
 

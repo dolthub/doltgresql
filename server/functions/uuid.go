@@ -18,6 +18,7 @@ import (
 	"bytes"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -64,10 +65,15 @@ var uuid_recv = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		return uuid.FromBytes(data)
+		var out pgtype.UUID
+		err := out.DecodeBinary(nil, data)
+		if err != nil {
+			return nil, err
+		}
+		return uuid.UUID(out.Bytes), nil
 	},
 }
 

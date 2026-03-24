@@ -69,12 +69,7 @@ var bytearecv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
-		if len(data) == 0 {
-			return nil, nil
-		}
-		reader := utils.NewReader(data)
-		return reader.ByteSlice(), nil
+		return val, nil
 	},
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 
 	"github.com/dolthub/doltgresql/core"
+
 	"github.com/dolthub/doltgresql/core/id"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -70,49 +71,46 @@ var record_recv = framework.Function3{
 	Return:     pgtypes.Record,
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		data, ok := val1.([]byte)
-		if !ok {
-			return nil, errors.Errorf("expected []byte, but got `%T`", val1)
-		}
-		typeColl, err := core.GetTypesCollectionFromContext(ctx)
+	Callable:   record_recv_callable,
+}
+
+// record_recv_callable is the function definition of record_recv.
+func record_recv_callable(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	data := val1.([]byte)
+	if data == nil {
+		return nil, nil
+	}
+	typeColl, err := core.GetTypesCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	reader := utils.NewWireReader(data)
+	count := reader.ReadInt32()
+	recordVals := make([]pgtypes.RecordValue, count)
+	for i := range recordVals {
+		typeID := id.Type(id.Cache().ToInternal(reader.ReadUint32()))
+		recordType, err := typeColl.GetType(ctx, typeID)
 		if err != nil {
 			return nil, err
 		}
-		reader := utils.NewReader(data)
-		version := reader.Byte()
-		switch version {
-		case 0:
-			valuesLen := reader.VariableUint()
-			values := make([]pgtypes.RecordValue, valuesLen)
-			for i := uint64(0); i < valuesLen; i++ {
-				typeId := id.Type(reader.Id())
-				valueData := reader.ByteSlice()
-				dgtype, err := typeColl.GetType(ctx, typeId)
-				if err != nil {
-					return nil, err
-				}
-				if dgtype == nil {
-					return nil, errors.Errorf("record_recv encountered type `%s.%s` which could not be found",
-						typeId.SchemaName(), typeId.TypeName())
-				}
-				value, err := dgtype.DeserializeValue(ctx, valueData)
-				if err != nil {
-					return nil, err
-				}
-				values[i] = pgtypes.RecordValue{
-					Value: value,
-					Type:  dgtype,
-				}
-			}
-			if reader.RemainingBytes() > 0 {
-				return nil, errors.New("record_recv encountered extra data during deserialization")
-			}
-			return values, nil
-		default:
-			return nil, errors.Errorf("version %d of record serialization is not supported, please upgrade the server", version)
+		if recordType == nil {
+			return nil, pgtypes.ErrTypeDoesNotExist.New(typeID.TypeName())
 		}
-	},
+		valLen := reader.ReadInt32()
+		var recordVal any
+		if valLen != -1 {
+			valBytes := reader.ReadBytes(uint32(valLen))
+			recordVal, err = recordType.CallReceive(ctx, valBytes)
+			if err != nil {
+				return nil, err
+			}
+		}
+		recordVals[i] = pgtypes.RecordValue{
+			Value: recordVal,
+			Type:  recordType,
+		}
+	}
+	return recordVals, nil
 }
 
 // record_send represents the PostgreSQL function of record type IO send. The output of this function is expected to

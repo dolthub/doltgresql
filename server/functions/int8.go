@@ -15,7 +15,6 @@
 package functions
 
 import (
-	"encoding/binary"
 	"strconv"
 	"strings"
 
@@ -75,10 +74,11 @@ var int8recv = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		return int64(binary.BigEndian.Uint64(data) - (1 << 63)), nil
+		reader := utils.NewWireReader(data)
+		return reader.ReadInt64(), nil
 	},
 }
 

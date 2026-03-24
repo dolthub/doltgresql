@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -75,14 +76,15 @@ var date_recv = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		t := time.Time{}
-		if err := t.UnmarshalBinary(data); err != nil {
+		var out pgtype.Date
+		err := out.DecodeBinary(nil, data)
+		if err != nil {
 			return nil, err
 		}
-		return t, nil
+		return out.Time, nil
 	},
 }
 

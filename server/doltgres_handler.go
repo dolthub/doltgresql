@@ -17,16 +17,12 @@ package server
 import (
 	"context"
 	"encoding/base64"
-	"encoding/binary"
-	"encoding/hex"
 	goerrors "errors"
 	"fmt"
 	"io"
 	"os"
 	"regexp"
 	"runtime/trace"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -44,8 +40,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/sirupsen/logrus"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
@@ -303,142 +299,39 @@ func (h *DoltgresHandler) InitSessionParameterDefault(ctx context.Context, c *my
 func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32, formatCodes []int16, values [][]byte) (map[string]sqlparser.Expr, error) {
 	bindings := make(map[string]sqlparser.Expr, len(values))
 	// It's valid to send just one format code that should be used by all values, so we extend the slice in that case
-	if len(formatCodes) > 0 && len(formatCodes) < len(values) {
-		if len(formatCodes) > 1 {
-			return nil, errors.Errorf(`format codes have length "%d" but values have length "%d"`, len(formatCodes), len(values))
-		}
-		formatCode := formatCodes[0]
-		formatCodes = make([]int16, len(values))
-		formatCodes[0] = formatCode
-		for i := 1; i < len(values); i++ {
-			formatCodes[i] = formatCode
-		}
+	formatCodes, err := extendFormatCodes(len(values), formatCodes)
+	if err != nil {
+		return nil, err
+	}
+	typeColl, err := core.GetTypesCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
 	}
 	for i := range values {
-		formatCode := int16(0)
-		if formatCodes != nil {
-			formatCode = formatCodes[i]
-		}
-		bindVarString, err := h.convertBindParameterToString(types[i], values[i], formatCode)
+		formatCode := formatCodes[i]
+		dgType, err := typeColl.GetType(ctx, id.Type(id.Cache().ToInternal(types[i])))
 		if err != nil {
 			return nil, err
 		}
-
-		pgTyp, ok := pgtypes.IDToBuiltInDoltgresType[id.Type(id.Cache().ToInternal(types[i]))]
-		if !ok {
-			return nil, errors.Errorf("unhandled oid type: %v", types[i])
-		}
-		if bindVarString == nil {
-			bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(nil, pgTyp)}
-		} else {
-			v, err := pgTyp.IoInput(ctx, *bindVarString)
-			if err != nil {
-				return nil, err
+		if values[i] != nil {
+			if formatCode == 0 {
+				v, err := dgType.IoInput(ctx, string(values[i]))
+				if err != nil {
+					return nil, err
+				}
+				bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, dgType)}
+			} else {
+				v, err := dgType.CallReceive(ctx, values[i])
+				if err != nil {
+					return nil, err
+				}
+				bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, dgType)}
 			}
-			bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(v, pgTyp)}
+		} else {
+			bindings[fmt.Sprintf("v%d", i+1)] = sqlparser.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(nil, dgType)}
 		}
 	}
 	return bindings, nil
-}
-
-// convertBindParameterToString converts a bind parameter to its string representation.
-// It handles both text and binary format parameters, with special handling for certain types
-// that cannot be directly scanned into strings when in binary format. |typ| is the PostgreSQL
-// type OID, |value| is the raw param value in bytes, and |formatCode| indicates text (0) or
-// binary (1) format.
-//
-// This function relies on the pgtype library to decode values, in text and binary formats,
-// however, a few types cannot be scanned directly into strings from the binary format by this
-// library, so there is special handling for them.
-func (h *DoltgresHandler) convertBindParameterToString(typ uint32, value []byte, formatCode int16) (bindVarString *string, err error) {
-	isBinaryFormat := formatCode == pgtype.BinaryFormatCode
-
-	switch {
-	case (typ == pgtype.TimestampOID || typ == pgtype.TimestamptzOID) && isBinaryFormat:
-		var t *time.Time
-		if err := h.pgTypeMap.Scan(typ, formatCode, value, &t); err != nil {
-			return nil, err
-		}
-		if t != nil {
-			format := t.Format("2006-01-02 15:04:05")
-			bindVarString = &format
-		}
-	case typ == pgtype.DateOID && isBinaryFormat:
-		var d *pgtype.Date
-		if err := h.pgTypeMap.Scan(typ, formatCode, value, &d); err != nil {
-			return nil, err
-		}
-		if d != nil {
-			format := d.Time.Format("2006-01-02")
-			bindVarString = &format
-		}
-	case typ == pgtype.BoolOID && isBinaryFormat:
-		var b *bool
-		if err := h.pgTypeMap.Scan(typ, formatCode, value, &b); err != nil {
-			return nil, err
-		}
-		if b != nil {
-			if *b {
-				var t = "true"
-				bindVarString = &t
-			} else {
-				var f = "false"
-				bindVarString = &f
-			}
-		}
-	case typ == pgtype.ByteaOID && isBinaryFormat:
-		if value != nil {
-			s := `\x` + hex.EncodeToString(value)
-			bindVarString = &s
-		}
-	case typ == pgtype.Int2OID && isBinaryFormat:
-		if value != nil {
-			formatInt := strconv.FormatInt(int64(binary.BigEndian.Uint16(value)), 10)
-			bindVarString = &formatInt
-		}
-	case typ == pgtype.Int4OID && isBinaryFormat:
-		if value != nil {
-			formatInt := strconv.FormatInt(int64(binary.BigEndian.Uint32(value)), 10)
-			bindVarString = &formatInt
-		}
-	case typ == pgtype.Int8OID && isBinaryFormat:
-		if value != nil {
-			formatInt := strconv.FormatInt(int64(binary.BigEndian.Uint64(value)), 10)
-			bindVarString = &formatInt
-		}
-	case typ == pgtype.UUIDOID && isBinaryFormat:
-		if value != nil {
-			u, err := uuid.FromBytes(value)
-			if err != nil {
-				return nil, err
-			}
-			s := u.String()
-			bindVarString = &s
-		}
-	case typ == pgtype.TextArrayOID && isBinaryFormat:
-		if value != nil {
-			m := pgtype.NewMap()
-			var textArray []string
-			scanPlan := m.PlanScan(pgtype.TextArrayOID, pgtype.BinaryFormatCode, &textArray)
-			err = scanPlan.Scan(value, &textArray)
-			if err != nil {
-				return nil, err
-			}
-			quotedArray := make([]string, len(textArray))
-			for i, v := range textArray {
-				quotedArray[i] = `"` + strings.ReplaceAll(v, `"`, `\"`) + `"`
-			}
-			formattedArray := "{" + strings.Join(quotedArray, ",") + "}"
-			bindVarString = &formattedArray
-		}
-	default:
-		// For text format or types that can handle binary-to-string conversion
-		if err := h.pgTypeMap.Scan(typ, formatCode, value, &bindVarString); err != nil {
-			return nil, err
-		}
-	}
-
-	return bindVarString, nil
 }
 
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
