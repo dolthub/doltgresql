@@ -24,7 +24,7 @@ import (
 )
 
 // nodeDropFunction handles *tree.DropFunction nodes.
-func nodeDropFunction(_ *Context, node *tree.DropFunction) (vitess.Statement, error) {
+func nodeDropFunction(ctx *Context, node *tree.DropFunction) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -37,10 +37,33 @@ func nodeDropFunction(_ *Context, node *tree.DropFunction) (vitess.Statement, er
 		return nil, fmt.Errorf("no function name specified for DROP FUNCTION")
 	}
 
+	functions := make([]*pgnodes.RoutineWithArgs, len(node.Functions))
+	for i, fn := range node.Functions {
+		var args []pgnodes.RoutineArg
+		for _, a := range fn.Args {
+			if a.Mode != tree.RoutineArgModeOut {
+				_, dt, err := nodeResolvableTypeReference(ctx, a.Type, false)
+				if err != nil {
+					return nil, err
+				}
+				args = append(args, pgnodes.RoutineArg{
+					Name: a.Name.String(),
+					Type: dt,
+				})
+			}
+		}
+		objName := fn.Name.ToTableName()
+		functions[i] = &pgnodes.RoutineWithArgs{
+			Args:        args,
+			SchemaName:  objName.Schema(),
+			RoutineName: objName.Object(),
+		}
+	}
+
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewDropFunction(
 			node.IfExists,
-			node.Functions,
+			functions,
 			node.DropBehavior == tree.DropCascade),
 		Children: nil,
 	}, nil

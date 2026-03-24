@@ -129,6 +129,34 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				col.Type = dt
 			}
 			return node, same, nil
+		case *pgnodes.DropFunction:
+			for _, r := range n.RoutinesWithArgs {
+				for j, arg := range r.Args {
+					if !arg.Type.IsResolvedType() {
+						dt, err := resolveType(ctx, db, arg.Type)
+						if err != nil {
+							return nil, transform.NewTree, err
+						}
+						same = transform.NewTree
+						r.Args[j].Type = dt
+					}
+				}
+			}
+			return node, same, nil
+		case *pgnodes.DropProcedure:
+			for _, r := range n.RoutinesWithArgs {
+				for j, arg := range r.Args {
+					if !arg.Type.IsResolvedType() {
+						dt, err := resolveType(ctx, db, arg.Type)
+						if err != nil {
+							return nil, transform.NewTree, err
+						}
+						same = transform.NewTree
+						r.Args[j].Type = dt
+					}
+				}
+			}
+			return node, same, nil
 		default:
 			// TODO: add nodes that use unresolved types like domain
 			return node, transform.SameTree, nil

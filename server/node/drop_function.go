@@ -15,40 +15,48 @@
 package node
 
 import (
-	"fmt"
-	"strings"
-
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	parsertypes "github.com/dolthub/doltgresql/postgres/parser/types"
-	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
+// RoutineWithArgs represent a function or a procedure with schema name, routine name and its arguments.
+type RoutineWithArgs struct {
+	SchemaName  string
+	RoutineName string
+	Args        []RoutineArg
+}
+
+// RoutineArg represents a routine parameter with parameter name and parameter type.
+type RoutineArg struct {
+	Mode tree.RoutineArgMode
+	Name string
+	Type *types.DoltgresType
+}
+
 // DropFunction implements DROP FUNCTION.
 type DropFunction struct {
-	routinesWithArgs []tree.RoutineWithArgs
-	ifExists         bool
-	cascade          bool
+	RoutinesWithArgs []*RoutineWithArgs
+	IfExists         bool
+	Cascade          bool
 }
 
 var _ sql.ExecSourceRel = (*DropFunction)(nil)
 var _ vitess.Injectable = (*DropFunction)(nil)
 
 // NewDropFunction returns a new *DropFunction.
-func NewDropFunction(ifExists bool, routinesWithArgs []tree.RoutineWithArgs, cascade bool) *DropFunction {
+func NewDropFunction(ifExists bool, routinesWithArgs []*RoutineWithArgs, cascade bool) *DropFunction {
 	return &DropFunction{
-		ifExists:         ifExists,
-		routinesWithArgs: routinesWithArgs,
-		cascade:          cascade,
+		IfExists:         ifExists,
+		RoutinesWithArgs: routinesWithArgs,
+		Cascade:          cascade,
 	}
 }
 
@@ -84,50 +92,13 @@ func (d *DropFunction) IsReadOnly() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (d *DropFunction) RowIter(ctx *sql.Context, r sql.Row) (iter sql.RowIter, err error) {
-	for _, routineWithArgs := range d.routinesWithArgs {
-		unresolvedObjectName := routineWithArgs.Name
-		dbName := unresolvedObjectName.Catalog()
-		routineName := unresolvedObjectName.Object()
+	funcColl, err := core.GetFunctionsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-		if dbName != "" && dbName != ctx.GetCurrentDatabase() {
-			return nil, fmt.Errorf("DROP FUNCTION is currently only supported for the current database")
-		}
-
-		var function functions.Function
-		if len(routineWithArgs.Args) == 0 {
-			function, err = d.findFunctionByName(ctx, routineName)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			function, err = d.findFunctionBySignature(ctx, routineWithArgs)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		if !function.ID.IsValid() {
-			if d.ifExists {
-				noticeResponse := &pgproto3.NoticeResponse{
-					Severity: "WARNING",
-					Message:  fmt.Sprintf("function %s() does not exist, skipping", routineName),
-				}
-				sess := dsess.DSessFromSess(ctx.Session)
-				sess.Notice(noticeResponse)
-				return sql.RowsToRowIter(), nil
-			} else {
-				return nil, framework.ErrFunctionDoesNotExist.New(formatRoutineName(routineWithArgs))
-			}
-		}
-
-		// TODO: Check to see if this function is used by anything before dropping
-
-		collection, err := core.GetFunctionsCollectionFromContext(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		err = collection.DropFunction(ctx, function.ID)
+	for _, routineWithArgs := range d.RoutinesWithArgs {
+		err = dropFunction(ctx, funcColl, routineWithArgs, d.IfExists)
 		if err != nil {
 			return nil, err
 		}
@@ -144,133 +115,37 @@ func (d *DropFunction) WithResolvedChildren(children []any) (any, error) {
 	return d, nil
 }
 
-// findFunctionByName searches through the available functions, looking for one named |routineName|.
-// If multiple functions with that name are found, then the function overload with no parameters
-// will be returned if it exists. If multiple functions match, but they all have parameters, then
-// an error message about the name not being unique will be returned.
-func (d *DropFunction) findFunctionByName(ctx *sql.Context, routineName string) (functions.Function, error) {
-	collection, err := core.GetFunctionsCollectionFromContext(ctx)
+func dropFunction(ctx *sql.Context, funcColl *functions.Collection, fn *RoutineWithArgs, ifExists bool) error {
+	// TODO: provide db
+	schema, err := core.GetSchemaName(ctx, nil, fn.SchemaName)
 	if err != nil {
-		return functions.Function{}, err
+		return err
 	}
-
-	var matchingFunctions []functions.Function
-	err = collection.IterateFunctions(ctx, func(function functions.Function) (bool, error) {
-		if function.ID.FunctionName() == routineName {
-			matchingFunctions = append(matchingFunctions, function)
-		}
-		return false, nil
-	})
-	if err != nil {
-		return functions.Function{}, err
-	}
-
-	switch len(matchingFunctions) {
-	case 0:
-		return functions.Function{}, nil
-	case 1:
-		return matchingFunctions[0], nil
-	default:
-		for _, function := range matchingFunctions {
-			if len(function.ParameterNames) == 0 {
-				return function, nil
-			}
-		}
-		return functions.Function{}, fmt.Errorf(`function name "%s" is not unique`, routineName)
-	}
-}
-
-// findFunctionBySignature takes the specified signature of |routineWithArgs| and forms a function
-// ID using the optional catalog and schema name, the routine name, and the specified parameter
-// types. If a function matching that signature is found, it will be returned.
-func (d *DropFunction) findFunctionBySignature(ctx *sql.Context, routineWithArgs tree.RoutineWithArgs) (functions.Function, error) {
-	collection, err := core.GetFunctionsCollectionFromContext(ctx)
-	if err != nil {
-		return functions.Function{}, err
-	}
-
-	unresolvedObjectName := routineWithArgs.Name
-	routineName := unresolvedObjectName.Object()
-	// TODO: User defined functions need to search the entire search path for matches
-	schemaName, err := core.GetSchemaName(ctx, nil, "")
-	if err != nil {
-		return functions.Function{}, err
-	}
-
-	typeIds := make([]id.Type, 0, len(routineWithArgs.Args))
-	for _, routineArg := range routineWithArgs.Args {
-		switch routineArg.Mode {
-		case tree.RoutineArgModeIn:
-			// This is the default parameter mode
-		case tree.RoutineArgModeOut:
-			// Skip any out params, since they are not used to disambiguate function overloads
-			continue
-		case tree.RoutineArgModeVariadic:
-			return functions.Function{}, fmt.Errorf("DROP FUNCTION does not currently support VARIADIC parameters")
-		case tree.RoutineArgModeInout:
-			return functions.Function{}, fmt.Errorf("DROP FUNCTION does not currently support INOUT parameters")
-		}
-
-		// TODO: This is becoming a common pattern... should extract a helper function
-		var typeName string
-		switch typ := routineArg.Type.(type) {
-		case *parsertypes.T:
-			typeName = strings.ToLower(typ.Name())
-		default:
-			typeName = strings.ToLower(typ.SQLString())
-		}
-
-		// TODO: we need to add a way to search for a matching type along the search path, rather than hardcoding
-		//  pg_catalog and the current schema
-		typeId := id.NewType("pg_catalog", typeName)
-		typeCollection, err := core.GetTypesCollectionFromContext(ctx)
+	var funcId = id.NewFunction(schema, fn.RoutineName)
+	if len(fn.Args) == 0 {
+		funcs, err := funcColl.GetFunctionOverloads(ctx, funcId)
 		if err != nil {
-			return functions.Function{}, err
+			return err
 		}
-		getType, err := typeCollection.GetType(ctx, typeId)
-		if err != nil {
-			return functions.Function{}, err
-		}
-		if getType == nil {
-			// TODO: we're doing a second check on the current schema, but this should use the search path instead
-			typeId = id.NewType(schemaName, typeName)
-			getType, err = typeCollection.GetType(ctx, typeId)
-			if err != nil {
-				return functions.Function{}, err
-			}
-			if getType == nil {
-				return functions.Function{}, types.ErrTypeDoesNotExist.New(typeName)
+		if len(funcs) == 1 {
+			funcId = funcs[0].ID
+		} else if len(funcs) > 1 {
+			funcExists := funcColl.HasFunction(ctx, funcId)
+			if !funcExists {
+				return errors.Errorf(`function name "%s" is not unique`, fn.RoutineName)
 			}
 		}
-		typeIds = append(typeIds, getType.ID)
-	}
+	} else {
+		var argTypes = make([]id.Type, len(fn.Args))
+		for i, arg := range fn.Args {
 
-	functionId := id.NewFunction(schemaName, routineName, typeIds...)
-	return collection.GetFunction(ctx, functionId)
-}
-
-// formatRoutineName takes the specified |routineWithArgs| and returns a string representing
-// it, including the catalog and schema name if they are specified, as well as any type
-// information if it is specified.
-func formatRoutineName(routineWithArgs tree.RoutineWithArgs) (s string) {
-	if routineWithArgs.Name.Catalog() != "" {
-		s += routineWithArgs.Name.Catalog() + "."
-	}
-	if routineWithArgs.Name.Schema() != "" {
-		s += routineWithArgs.Name.Schema() + "."
-	}
-	s += routineWithArgs.Name.Object()
-
-	if len(routineWithArgs.Args) > 0 {
-		s += "("
-		for i, arg := range routineWithArgs.Args {
-			if i > 0 {
-				s += ", "
-			}
-			s += arg.Type.SQLString()
+			argTypes[i] = arg.Type.ID
 		}
-		s += ")"
+		funcId = id.NewFunction(schema, fn.RoutineName, argTypes...)
 	}
-
-	return s
+	funcExists := funcColl.HasFunction(ctx, funcId)
+	if !funcExists && ifExists {
+		return nil
+	}
+	return funcColl.DropFunction(ctx, funcId)
 }

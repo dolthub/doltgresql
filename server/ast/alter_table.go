@@ -16,6 +16,7 @@ package ast
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -312,7 +313,7 @@ func nodeAlterTableSetDefault(ctx *Context, node *tree.AlterTableSetDefault, tab
 		IfExists: ifExists,
 		DefaultSpec: &vitess.DefaultSpec{
 			Action: "set",
-			Column: vitess.NewColIdent(node.Column.String()),
+			Column: vitess.NewColIdent(strings.Trim(node.Column.String(), "\"")),
 			Value:  expr,
 		},
 	}, nil

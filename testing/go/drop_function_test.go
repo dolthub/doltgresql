@@ -255,5 +255,36 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "drop function with empty search_path",
+			SetUpScript: []string{
+				`SELECT pg_catalog.set_config('search_path', '', false);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `DROP FUNCTION IF EXISTS public.vmstate(s integer);`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "user defined type used as parameter",
+			SetUpScript: []string{
+				`CREATE TABLE public.trans (vmid integer NOT NULL);`,
+				`CREATE FUNCTION public.tax_job_trans(t public.trans) RETURNS public.trans
+    LANGUAGE plpgsql
+    AS '
+BEGIN
+    SELECT * FROM public.trans;
+END;
+';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `DROP FUNCTION IF EXISTS public.tax_job_trans(t public.trans);`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
