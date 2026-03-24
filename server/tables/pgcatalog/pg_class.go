@@ -16,6 +16,7 @@ package pgcatalog
 
 import (
 	"fmt"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"io"
 	"math"
 
@@ -154,7 +155,13 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 		return err
 	}
 
-	if includeSystemTables {
+	showSystemTablesVar, err := ctx.GetSessionVariable(ctx, dsess.ShowSystemTables)
+	if err != nil {
+		return err
+	}
+	alreadySeenSystemTables := showSystemTablesVar.(int8) == 1
+
+	if includeSystemTables && !alreadySeenSystemTables {
 		_, root, err := core.GetRootFromContext(ctx)
 		if err != nil {
 			return err
