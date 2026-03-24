@@ -17,6 +17,7 @@ package pgcatalog
 import (
 	"fmt"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/index"
 	"io"
 	"math"
 
@@ -155,6 +156,8 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 		return err
 	}
 
+	// If the system variable dolt_show_system_tables is set, then IterateCurrentDatabase
+	// will already contain all existing system tables. Else, we need to add them manually
 	showSystemTablesVar, err := ctx.GetSessionVariable(ctx, dsess.ShowSystemTables)
 	if err != nil {
 		return err
@@ -199,6 +202,12 @@ func formatIndexName(idx sql.Index) string {
 	if idx.ID() == "PRIMARY" {
 		return fmt.Sprintf("%s_pkey", idx.Table())
 	}
+
+	switch idx.(type) {
+	case *index.BranchNameIndex, *index.CommitIndex:
+		return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
+	}
+
 	return idx.ID()
 	// TODO: Unnamed indexes should have below format
 	// return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())

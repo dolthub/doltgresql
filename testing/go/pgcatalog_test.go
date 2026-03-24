@@ -608,6 +608,44 @@ JOIN pg_am AS am ON ix.relam = am.oid WHERE t.relname = 'foo' AND n.nspname = 'p
 				},
 			},
 		},
+		{
+			Name: "pg_class independent of dolt_show_system_tables",
+			SetUpScript: []string{
+				`SET dolt_show_system_tables=1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT relname FROM pg_class where relname like 'dolt_%' order by relname`,
+					Expected: []sql.Row{
+						{"dolt_backups"},
+						{"dolt_branch_activity"},
+						{"dolt_branches"},
+						{"dolt_branches_dolt_branches_name_idx_key"},
+						{"dolt_column_diff"},
+						{"dolt_commit_ancestors"},
+						{"dolt_commit_ancestors_commit_hash_key"},
+						{"dolt_commits"},
+						{"dolt_commits_commit_hash_key"},
+						{"dolt_conflicts"},
+						{"dolt_constraint_violations"},
+						{"dolt_diff"},
+						{"dolt_diff_commit_hash_key"},
+						{"dolt_help"},
+						{"dolt_log"},
+						{"dolt_log_commit_hash_key"},
+						{"dolt_merge_status"},
+						{"dolt_remote_branches"},
+						{"dolt_remote_branches_dolt_branches_name_idx_key"},
+						{"dolt_remotes"},
+						{"dolt_schema_conflicts"},
+						{"dolt_stashes"},
+						{"dolt_status"},
+						{"dolt_status_ignored"},
+						{"dolt_tags"},
+					},
+				},
+			},
+		},
 	})
 }
 
