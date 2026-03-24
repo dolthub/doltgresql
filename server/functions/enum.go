@@ -78,28 +78,11 @@ var enum_recv = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// TODO: should return the index instead of label?
 		data := val1.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		reader := utils.NewReader(data)
-		value := reader.String()
-		if ctx == nil {
-			// TODO: currently, in some places we use nil context, should fix it.
-			return value, nil
-		}
-		typ, err := getDoltgresTypeFromId(ctx, val2.(id.Id))
-		if err != nil {
-			return nil, err
-		}
-		if typ.TypCategory != pgtypes.TypeCategory_EnumTypes {
-			return nil, errors.Errorf(`"%s" is not an enum type`, typ.Name())
-		}
-		if _, exists := typ.EnumLabels[value]; !exists {
-			return nil, pgtypes.ErrInvalidInputValueForEnum.New(typ.Name(), value)
-		}
-		return value, nil
+		return string(data), nil
 	},
 }
 

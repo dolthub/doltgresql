@@ -31,10 +31,10 @@ import (
 	"github.com/xdg-go/scram"
 )
 
-// TestWireTypes allows us to directly test what is received on the wire regarding types, ensuring that the wire
+// TestWireTypesSending allows us to directly test what is sent on the wire regarding types, ensuring that the wire
 // protocol is correctly implemented. ANY changes made to ANY test must be validated against an external Postgres server
 // using the `ExternalServerPort` field.
-func TestWireTypes(t *testing.T) {
+func TestWireTypesSending(t *testing.T) {
 	RunWireScripts(t, []WireScriptTest{
 		{
 			Name: "Smoke Test",
@@ -697,6 +697,172 @@ func TestWireTypes(t *testing.T) {
 			},
 		},
 		{
+			Name: "BYTEA returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 BYTEA, v2 BYTEA);",
+				"INSERT INTO test VALUES ('', E'\\\\xDEADBEEF'), ('\\xC0FFEE', NULL);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test ORDER BY v1;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          17,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          17,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`\x`),
+								[]byte(`\xdeadbeef`),
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`\xc0ffee`),
+								nil,
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "BYTEA returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 BYTEA, v2 BYTEA);",
+				"INSERT INTO test VALUES ('', E'\\\\xDEADBEEF'), ('\\xC0FFEE', NULL);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test ORDER BY v1;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          17,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          17,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{},
+								{222, 173, 190, 239},
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{192, 255, 238},
+								nil,
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
 			Name: `"char" returning text format`,
 			SetUpScript: []string{
 				`CREATE TABLE test (v1 "char", v2 "char");`,
@@ -841,6 +1007,163 @@ func TestWireTypes(t *testing.T) {
 							Values: [][]byte{
 								{'1'},
 								{'v'},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "DATE returning text format",
+			Skip: true, // TODO: datestyle isn't working for DATE
+			SetUpScript: []string{
+				"SET datestyle TO 'ISO, YMD';",
+				"CREATE TABLE test (v1 DATE, v2 DATE);",
+				"INSERT INTO test VALUES ('1999-01-08', 'April 17, 2025');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          1082,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          1082,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("1999-01-08"),
+								[]byte("2025-04-17"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "DATE returning binary format",
+			SetUpScript: []string{
+				"SET datestyle TO 'ISO, YMD';",
+				"CREATE TABLE test (v1 DATE, v2 DATE);",
+				"INSERT INTO test VALUES ('1999-01-08', 'April 17, 2025');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          1082,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          1082,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{255, 255, 254, 154},
+								{0, 0, 36, 22},
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
@@ -997,6 +1320,930 @@ func TestWireTypes(t *testing.T) {
 							Values: [][]byte{
 								[]byte("eval1"),
 								[]byte("eval3"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "FLOAT4 returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 FLOAT4, v2 FLOAT4);",
+				"INSERT INTO test VALUES (-0.5, 26.015625);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          700,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          700,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("-0.5"),
+								[]byte("26.015625"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "FLOAT4 returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 FLOAT4, v2 FLOAT4);",
+				"INSERT INTO test VALUES (-0.5, 26.015625);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          700,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          700,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{191, 0, 0, 0},
+								{65, 208, 32, 0},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "FLOAT8 returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 FLOAT8, v2 FLOAT8);",
+				"INSERT INTO test VALUES (-0.5, 26.015625);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          701,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          701,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("-0.5"),
+								[]byte("26.015625"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "FLOAT8 returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 FLOAT8, v2 FLOAT8);",
+				"INSERT INTO test VALUES (-0.5, 26.015625);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          701,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          701,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{191, 224, 0, 0, 0, 0, 0, 0},
+								{64, 58, 4, 0, 0, 0, 0, 0},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "INT2 returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT2, v2 INT2);",
+				"INSERT INTO test VALUES (3, 12646);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          21,
+									DataTypeSize:         2,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          21,
+									DataTypeSize:         2,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("3"),
+								[]byte("12646"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "INT2 returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT2, v2 INT2);",
+				"INSERT INTO test VALUES (3, 12646);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          21,
+									DataTypeSize:         2,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          21,
+									DataTypeSize:         2,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 3},
+								{49, 102},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "INT2VECTOR returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 int2vector, v2 int2vector);",
+				"INSERT INTO test VALUES ('1 2 4 5', '5 87 991');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          22,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          22,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("1 2 4 5"),
+								[]byte("5 87 991"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "INT2VECTOR returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 int2vector, v2 int2vector);",
+				"INSERT INTO test VALUES ('1 2 4 5', '5 87 991');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          22,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          22,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 2, 0, 2, 0, 0, 0, 2, 0, 4, 0, 0, 0, 2, 0, 5},
+								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 2, 0, 5, 0, 0, 0, 2, 0, 87, 0, 0, 0, 2, 3, 223},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "INT4 returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT4, v2 INT4);",
+				"INSERT INTO test VALUES (-5, 3578457);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          23,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          23,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("-5"),
+								[]byte("3578457"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "INT4 returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT4, v2 INT4);",
+				"INSERT INTO test VALUES (-5, 3578457);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          23,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          23,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{255, 255, 255, 251},
+								{0, 54, 154, 89},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "INT8 returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT8, v2 INT8);",
+				"INSERT INTO test VALUES (-44, 2578457279345);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          20,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          20,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("-44"),
+								[]byte("2578457279345"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "INT8 returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT8, v2 INT8);",
+				"INSERT INTO test VALUES (-44, 2578457279345);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          20,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          20,
+									DataTypeSize:         8,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{255, 255, 255, 255, 255, 255, 255, 212},
+								{0, 0, 2, 88, 88, 7, 187, 113},
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
@@ -1992,6 +3239,160 @@ func TestWireTypes(t *testing.T) {
 							Values: [][]byte{
 								{0, 0, 0, 1},
 								{148, 8, 88, 129},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "OIDVECTOR returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 oidvector, v2 oidvector);",
+				"INSERT INTO test VALUES ('1234 2489', '2483 574 913');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          30,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          30,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("1234 2489"),
+								[]byte("2483 574 913"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "OIDVECTOR returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 oidvector, v2 oidvector);",
+				"INSERT INTO test VALUES ('1234 2489', '2483 574 913');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          30,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          30,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 210, 0, 0, 0, 4, 0, 0, 9, 185},
+								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 9, 179, 0, 0, 0, 4, 0, 0, 2, 62, 0, 0, 0, 4, 0, 0, 3, 145},
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
@@ -3314,6 +4715,160 @@ func TestWireTypes(t *testing.T) {
 			},
 		},
 		{
+			Name: "UUID returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 UUID, v2 UUID);",
+				"INSERT INTO test VALUES ('fdabf03d-9b21-4531-b900-c6f6cff8386c', '0730791c-c0dd-4972-9e72-11ead9317a5a');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          2950,
+									DataTypeSize:         16,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          2950,
+									DataTypeSize:         16,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("fdabf03d-9b21-4531-b900-c6f6cff8386c"),
+								[]byte("0730791c-c0dd-4972-9e72-11ead9317a5a"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "UUID returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 UUID, v2 UUID);",
+				"INSERT INTO test VALUES ('fdabf03d-9b21-4531-b900-c6f6cff8386c', '0730791c-c0dd-4972-9e72-11ead9317a5a');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          2950,
+									DataTypeSize:         16,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          2950,
+									DataTypeSize:         16,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{253, 171, 240, 61, 155, 33, 69, 49, 185, 0, 198, 246, 207, 248, 56, 108},
+								{7, 48, 121, 28, 192, 221, 73, 114, 158, 114, 17, 234, 217, 49, 122, 90},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
 			Name: "VARCHAR returning text format",
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 VARCHAR, v2 VARCHAR(5));",
@@ -3633,58 +5188,59 @@ func TestWireTypes(t *testing.T) {
 				},
 			},
 		},
+	})
+}
+
+// TestWireTypesReceiving allows us to directly test what is received on the wire regarding types, ensuring that the
+// wire protocol is correctly implemented. ANY changes made to ANY test must be validated against an external Postgres
+// server using the `ExternalServerPort` field.
+func TestWireTypesReceiving(t *testing.T) {
+	RunWireScripts(t, []WireScriptTest{
 		{
-			Name: "OIDVECTOR returning text format",
+			Name: "BIT receiving binary format",
 			SetUpScript: []string{
-				"CREATE TABLE test (v1 oidvector, v2 oidvector);",
-				"INSERT INTO test VALUES ('1234 2489', '2483 574 913');",
+				"CREATE TABLE test (v1 BIT(65), v2 BIT(3));",
 			},
 			Assertions: []WireScriptTestAssertion{
 				{
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Parse{
-							Name:  "stmt_name",
-							Query: "SELECT * FROM test;",
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
 						},
-						&pgproto3.Describe{
-							ObjectType: 'S',
-							Name:       "stmt_name",
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1, 1},
+							Parameters: [][]byte{
+								{0, 0, 0, 65, 170, 35, 108, 179, 21, 106, 150, 172, 128},
+								{0, 0, 0, 3, 160},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
 						},
 						&pgproto3.Sync{},
 					},
 					Receive: []pgproto3.BackendMessage{
 						&pgproto3.ParseComplete{},
-						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
-						&pgproto3.RowDescription{
-							Fields: []pgproto3.FieldDescription{
-								{
-									Name:                 []byte("v1"),
-									TableOID:             0,
-									TableAttributeNumber: 1,
-									DataTypeOID:          30,
-									DataTypeSize:         -1,
-									TypeModifier:         -1,
-									Format:               0,
-								},
-								{
-									Name:                 []byte("v2"),
-									TableOID:             0,
-									TableAttributeNumber: 2,
-									DataTypeOID:          30,
-									DataTypeSize:         -1,
-									TypeModifier:         -1,
-									Format:               0,
-								},
-							},
-						},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
 				},
 				{
 					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
 						&pgproto3.Bind{
 							DestinationPortal:    "",
-							PreparedStatement:    "stmt_name",
+							PreparedStatement:    "stmt_name2",
 							ParameterFormatCodes: nil,
 							Parameters:           nil,
 							ResultFormatCodes:    []int16{0},
@@ -3696,11 +5252,12 @@ func TestWireTypes(t *testing.T) {
 						&pgproto3.Sync{},
 					},
 					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								[]byte("1234 2489"),
-								[]byte("2483 574 913"),
+								[]byte("10101010001000110110110010110011000101010110101010010110101011001"),
+								[]byte("101"),
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
@@ -3711,57 +5268,335 @@ func TestWireTypes(t *testing.T) {
 			},
 		},
 		{
-			Name: "OIDVECTOR returning binary format",
+			Name: "BIT VARYING receiving binary format",
 			SetUpScript: []string{
-				"CREATE TABLE test (v1 oidvector, v2 oidvector);",
-				"INSERT INTO test VALUES ('1234 2489', '2483 574 913');",
+				"CREATE TABLE test (v1 BIT VARYING, v2 BIT VARYING(5));",
 			},
 			Assertions: []WireScriptTestAssertion{
 				{
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Parse{
-							Name:  "stmt_name",
-							Query: "SELECT * FROM test;",
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
 						},
-						&pgproto3.Describe{
-							ObjectType: 'S',
-							Name:       "stmt_name",
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 18, 149, 102, 64},
+								{0, 0, 0, 3, 192},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
 						},
 						&pgproto3.Sync{},
 					},
 					Receive: []pgproto3.BackendMessage{
 						&pgproto3.ParseComplete{},
-						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
-						&pgproto3.RowDescription{
-							Fields: []pgproto3.FieldDescription{
-								{
-									Name:                 []byte("v1"),
-									TableOID:             0,
-									TableAttributeNumber: 1,
-									DataTypeOID:          30,
-									DataTypeSize:         -1,
-									TypeModifier:         -1,
-									Format:               0,
-								},
-								{
-									Name:                 []byte("v2"),
-									TableOID:             0,
-									TableAttributeNumber: 2,
-									DataTypeOID:          30,
-									DataTypeSize:         -1,
-									TypeModifier:         -1,
-									Format:               0,
-								},
-							},
-						},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
 				},
 				{
 					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
 						&pgproto3.Bind{
 							DestinationPortal:    "",
-							PreparedStatement:    "stmt_name",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("100101010110011001"),
+								[]byte("110"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "BOOL receiving binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 BOOL, v2 BOOL);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{1},
+								{0},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("t"),
+								[]byte("f"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "BYTEA receiving binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 BYTEA, v2 BYTEA);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{222, 173, 190, 239},
+								{192, 255, 238},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`\xdeadbeef`),
+								[]byte(`\xc0ffee`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `"char" receiving binary format`,
+			SetUpScript: []string{
+				`CREATE TABLE test (v1 "char", v2 "char");`,
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{'1'},
+								{'v'},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{'1'},
+								{'v'},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `DATE receiving binary format`,
+			SetUpScript: []string{
+				"SET datestyle TO 'ISO, YMD';",
+				"CREATE TABLE test (v1 DATE, v2 DATE);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{255, 255, 254, 154},
+								{0, 0, 36, 22},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
 							ParameterFormatCodes: nil,
 							Parameters:           nil,
 							ResultFormatCodes:    []int16{1},
@@ -3773,11 +5608,12 @@ func TestWireTypes(t *testing.T) {
 						&pgproto3.Sync{},
 					},
 					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 210, 0, 0, 0, 4, 0, 0, 9, 185},
-								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 9, 179, 0, 0, 0, 4, 0, 0, 2, 62, 0, 0, 0, 4, 0, 0, 3, 145},
+								{255, 255, 254, 154},
+								{0, 0, 36, 22},
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
@@ -3788,57 +5624,51 @@ func TestWireTypes(t *testing.T) {
 			},
 		},
 		{
-			Name: "INT2VECTOR returning text format",
+			Name: `ENUM receiving binary format`,
 			SetUpScript: []string{
-				"CREATE TABLE test (v1 int2vector, v2 int2vector);",
-				"INSERT INTO test VALUES ('1 2 4 5', '5 87 991');",
+				"CREATE TYPE enumType AS ENUM ('eval1', 'eval2', 'eval3');",
+				"CREATE TABLE test (v1 enumType, v2 enumType);",
 			},
 			Assertions: []WireScriptTestAssertion{
 				{
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Parse{
-							Name:  "stmt_name",
-							Query: "SELECT * FROM test;",
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
 						},
-						&pgproto3.Describe{
-							ObjectType: 'S',
-							Name:       "stmt_name",
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								[]byte("eval1"),
+								[]byte("eval3"),
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
 						},
 						&pgproto3.Sync{},
 					},
 					Receive: []pgproto3.BackendMessage{
 						&pgproto3.ParseComplete{},
-						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
-						&pgproto3.RowDescription{
-							Fields: []pgproto3.FieldDescription{
-								{
-									Name:                 []byte("v1"),
-									TableOID:             0,
-									TableAttributeNumber: 1,
-									DataTypeOID:          22,
-									DataTypeSize:         -1,
-									TypeModifier:         -1,
-									Format:               0,
-								},
-								{
-									Name:                 []byte("v2"),
-									TableOID:             0,
-									TableAttributeNumber: 2,
-									DataTypeOID:          22,
-									DataTypeSize:         -1,
-									TypeModifier:         -1,
-									Format:               0,
-								},
-							},
-						},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
 				},
 				{
 					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
 						&pgproto3.Bind{
 							DestinationPortal:    "",
-							PreparedStatement:    "stmt_name",
+							PreparedStatement:    "stmt_name2",
 							ParameterFormatCodes: nil,
 							Parameters:           nil,
 							ResultFormatCodes:    []int16{0},
@@ -3850,6 +5680,291 @@ func TestWireTypes(t *testing.T) {
 						&pgproto3.Sync{},
 					},
 					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("eval1"),
+								[]byte("eval3"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `FLOAT4 receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 FLOAT4, v2 FLOAT4);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{191, 0, 0, 0},
+								{65, 208, 32, 0},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("-0.5"),
+								[]byte("26.015625"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `FLOAT8 receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 FLOAT8, v2 FLOAT8);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{191, 224, 0, 0, 0, 0, 0, 0},
+								{64, 58, 4, 0, 0, 0, 0, 0},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("-0.5"),
+								[]byte("26.015625"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `INT2 receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT2, v2 INT2);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 3},
+								{49, 102},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("3"),
+								[]byte("12646"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `INT2VECTOR receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT2VECTOR, v2 INT2VECTOR);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 2, 0, 2, 0, 0, 0, 2, 0, 4, 0, 0, 0, 2, 0, 5},
+								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 2, 0, 5, 0, 0, 0, 2, 0, 87, 0, 0, 0, 2, 3, 223},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
@@ -3865,57 +5980,192 @@ func TestWireTypes(t *testing.T) {
 			},
 		},
 		{
-			Name: "INT2VECTOR returning binary format",
+			Name: `INT4 receiving binary format`,
 			SetUpScript: []string{
-				"CREATE TABLE test (v1 int2vector, v2 int2vector);",
-				"INSERT INTO test VALUES ('1 2 4 5', '5 87 991');",
+				"CREATE TABLE test (v1 INT4, v2 INT4);",
 			},
 			Assertions: []WireScriptTestAssertion{
 				{
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Parse{
-							Name:  "stmt_name",
-							Query: "SELECT * FROM test;",
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
 						},
-						&pgproto3.Describe{
-							ObjectType: 'S',
-							Name:       "stmt_name",
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{255, 255, 255, 251},
+								{0, 54, 154, 89},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
 						},
 						&pgproto3.Sync{},
 					},
 					Receive: []pgproto3.BackendMessage{
 						&pgproto3.ParseComplete{},
-						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
-						&pgproto3.RowDescription{
-							Fields: []pgproto3.FieldDescription{
-								{
-									Name:                 []byte("v1"),
-									TableOID:             0,
-									TableAttributeNumber: 1,
-									DataTypeOID:          22,
-									DataTypeSize:         -1,
-									TypeModifier:         -1,
-									Format:               0,
-								},
-								{
-									Name:                 []byte("v2"),
-									TableOID:             0,
-									TableAttributeNumber: 2,
-									DataTypeOID:          22,
-									DataTypeSize:         -1,
-									TypeModifier:         -1,
-									Format:               0,
-								},
-							},
-						},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
 				},
 				{
 					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
 						&pgproto3.Bind{
 							DestinationPortal:    "",
-							PreparedStatement:    "stmt_name",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("-5"),
+								[]byte("3578457"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `INT8 receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INT8, v2 INT8);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{255, 255, 255, 255, 255, 255, 255, 212},
+								{0, 0, 2, 88, 88, 7, 187, 113},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("-44"),
+								[]byte("2578457279345"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `INTERVAL receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 INTERVAL, v2 INTERVAL);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 0, 3, 147, 135, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+								{0, 0, 0, 111, 185, 177, 134, 8, 0, 0, 2, 188, 0, 0, 0, 39},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
 							ParameterFormatCodes: nil,
 							Parameters:           nil,
 							ResultFormatCodes:    []int16{1},
@@ -3927,11 +6177,1226 @@ func TestWireTypes(t *testing.T) {
 						&pgproto3.Sync{},
 					},
 					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 2, 0, 2, 0, 0, 0, 2, 0, 4, 0, 0, 0, 2, 0, 5},
-								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 2, 0, 5, 0, 0, 0, 2, 0, 87, 0, 0, 0, 2, 3, 223},
+								{0, 0, 0, 0, 3, 147, 135, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+								{0, 0, 0, 111, 185, 177, 134, 8, 0, 0, 2, 188, 0, 0, 0, 39},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `JSON receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 JSON, v2 JSON);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								[]byte(`{"key1": {"key": "value"}}`),
+								[]byte(`{}`),
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`{"key1": {"key": "value"}}`),
+								[]byte(`{}`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `JSONB receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 JSONB, v2 JSONB);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								append([]byte{1}, []byte(`{"key1": {"key": [2, 3]}}`)...),
+								{1, 91, 93},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`{"key1": {"key": [2, 3]}}`),
+								[]byte(`[]`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `NAME receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 NAME, v2 NAME);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								[]byte(""),
+								[]byte("abc"),
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(""),
+								[]byte("abc"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `NUMERIC receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 NUMERIC, v2 NUMERIC(5,2), v3 NUMERIC(14,5));",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2, $3);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 8, 0, 1, 0, 0, 0, 21, 4, 211, 28, 64, 17, 215, 33, 217, 12, 152, 30, 7, 21, 203, 35, 40},
+								{0, 2, 0, 0, 0, 0, 0, 2, 0, 235, 26, 44},
+								{0, 2, 0, 0, 0, 0, 0, 5, 16, 182, 0, 90},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`12357232.456786653224768755799`),
+								[]byte(`235.67`),
+								[]byte(`4278.00900`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `OID receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 OID, v2 OID);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 1},
+								{148, 8, 88, 129},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("1"),
+								[]byte("2483574913"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `OIDVECTOR receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 OIDVECTOR, v2 OIDVECTOR);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 210, 0, 0, 0, 4, 0, 0, 9, 185},
+								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 9, 179, 0, 0, 0, 4, 0, 0, 2, 62, 0, 0, 0, 4, 0, 0, 3, 145},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("1234 2489"),
+								[]byte("2483 574 913"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `RECORD receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE pre1 (v1 TEXT, v2 INT8, v3 NUMERIC(6,1));",
+				"CREATE TABLE pre2 (v1 VARCHAR, v2 OID, v3 BOOL);",
+				"CREATE TABLE test (v1 pre1, v2 pre2);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 3, 0, 0, 0, 25, 0, 0, 0, 3, 97, 98, 99, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 6, 164, 0, 0, 0, 14, 0, 3, 0, 1, 0, 0, 0, 1, 0, 1, 9, 41, 23, 112},
+								{0, 0, 0, 3, 0, 0, 4, 19, 0, 0, 0, 3, 100, 101, 102, 0, 0, 0, 26, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 1, 1},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`(abc,1,12345.6)`),
+								[]byte(`(def,2,t)`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `REGTYPE receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 REGTYPE, v2 REGTYPE);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 6, 164},
+								{0, 0, 0, 25},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("numeric"),
+								[]byte("text"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `TEXT receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TEXT, v2 TEXT);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								[]byte(""),
+								[]byte("abc"),
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(""),
+								[]byte("abc"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `TEXT ARRAY receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TEXT[], v2 TEXT[]);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25},
+								{0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 1, 97, 0, 0, 0, 2, 98, 98, 0, 0, 0, 3, 99, 99, 99},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("{}"),
+								[]byte("{a,bb,ccc}"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `TIME receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TIME, v2 TIME);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 17, 250, 171, 177, 0},
+								{0, 0, 0, 10, 57, 214, 4, 0},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`21:27:00`),
+								[]byte(`12:12:00`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `TIMETZ receiving binary format`,
+			Skip: true, // TODO: need to consider daylight savings
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TIMETZ, v2 TIMETZ);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 17, 250, 171, 177, 0, 0, 0, 112, 128},
+								{0, 0, 0, 10, 57, 214, 4, 0, 0, 0, 112, 128},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`21:27:00-08`),
+								[]byte(`12:12:00-08`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `TIMESTAMP receiving binary format`,
+			SetUpScript: []string{
+				"SET datestyle TO 'Postgres, MDY';",
+				"CREATE TABLE test (v1 TIMESTAMP, v2 TIMESTAMP);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 2, 62, 228, 207, 3, 128, 0},
+								{0, 2, 94, 46, 160, 114, 138, 136},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`Sun Jan 12 00:00:00 2020`),
+								[]byte(`Sat Feb 13 04:05:06.789 2021`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `TIMESTAMPTZ receiving binary format`,
+			SetUpScript: []string{
+				"SET datestyle TO 'Postgres, MDY';",
+				"CREATE TABLE test (v1 TIMESTAMPTZ, v2 TIMESTAMPTZ);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 2, 62, 235, 131, 160, 160, 0},
+								{0, 2, 94, 52, 126, 124, 6, 136},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`Sun Jan 12 00:00:00 2020 PST`),
+								[]byte(`Sat Feb 13 03:05:06.789 2021 PST`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `UUID receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 UUID, v2 UUID);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{253, 171, 240, 61, 155, 33, 69, 49, 185, 0, 198, 246, 207, 248, 56, 108},
+								{7, 48, 121, 28, 192, 221, 73, 114, 158, 114, 17, 234, 217, 49, 122, 90},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("fdabf03d-9b21-4531-b900-c6f6cff8386c"),
+								[]byte("0730791c-c0dd-4972-9e72-11ead9317a5a"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `VARCHAR receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 VARCHAR, v2 VARCHAR(5));",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								[]byte(""),
+								[]byte(`a",c`),
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(""),
+								[]byte(`a",c`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: `XID receiving binary format`,
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 XID, v2 XID);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 1},
+								{148, 8, 88, 129},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("1"),
+								[]byte("2483574913"),
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},

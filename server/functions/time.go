@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
@@ -79,17 +80,15 @@ var time_recv = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
-		//oid := val2.(id.Id)
-		//typmod := val3.(int32)
-		// TODO: decode typmod to precision
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		t := time.Time{}
-		if err := t.UnmarshalBinary(data); err != nil {
+		var out pgtype.Time
+		err := out.DecodeBinary(nil, data)
+		if err != nil {
 			return nil, err
 		}
-		return t, nil
+		return time.UnixMicro(out.Microseconds).UTC(), nil
 	},
 }
 

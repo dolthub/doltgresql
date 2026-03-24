@@ -15,12 +15,12 @@
 package functions
 
 import (
-	"encoding/binary"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -162,14 +162,53 @@ var array_recv = framework.Function3{
 	Return:     pgtypes.AnyArray,
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		data := val1.([]byte)
-		baseTypeOid := val2.(id.Id)
-		baseType := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
-		typmod := val3.(int32)
-		baseType = baseType.WithAttTypMod(typmod)
-		return deserializeArray(ctx, data, baseType)
-	},
+	Callable:   array_recv_callable,
+}
+
+// array_recv_callable is the function definition of array_recv.
+func array_recv_callable(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	data := val1.([]byte)
+	if data == nil {
+		return nil, nil
+	}
+	typeColl, err := core.GetTypesCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	reader := utils.NewWireReader(data)
+	dimensions := reader.ReadInt32()
+	_ = reader.ReadInt32() // Whether the array has a null, doesn't seem useful
+	baseTypeID := id.Type(id.Cache().ToInternal(reader.ReadUint32()))
+	baseType, err := typeColl.GetType(ctx, baseTypeID)
+	if err != nil {
+		return nil, err
+	}
+	if baseType == nil {
+		return nil, pgtypes.ErrTypeDoesNotExist.New(baseTypeID.TypeName())
+	}
+	// TODO: handle more than 1 dimension
+	if dimensions > 1 {
+		return nil, errors.Errorf("array dimensions greater than 1 are not yet supported")
+	}
+	var vals []any
+	for dimensionIdx := int32(0); dimensionIdx < dimensions; dimensionIdx++ {
+		elementsCount := reader.ReadInt32()
+		_ = reader.ReadInt32() // Lower bound, not sure what to do with this
+		for i := int32(0); i < elementsCount; i++ {
+			elementLen := reader.ReadInt32()
+			if elementLen != -1 {
+				valBytes := reader.ReadBytes(uint32(elementLen))
+				val, err := baseType.CallReceive(ctx, valBytes)
+				if err != nil {
+					return nil, err
+				}
+				vals = append(vals, val)
+			} else {
+				vals = append(vals, nil)
+			}
+		}
+	}
+	return vals, nil
 }
 
 // array_send represents the PostgreSQL function of array type IO send.
@@ -291,36 +330,4 @@ var array_subscript_handler = framework.Function1{
 		// TODO
 		return []byte{}, nil
 	},
-}
-
-// deserializeArray deserializes an array of given base type.
-func deserializeArray(ctx *sql.Context, data []byte, baseType *pgtypes.DoltgresType) ([]any, error) {
-	// Check for the nil value, then ensure the minimum length of the slice
-	if len(data) == 0 {
-		return nil, nil
-	}
-	if len(data) < 4 {
-		return nil, errors.Errorf("deserializing non-nil array value has invalid length of %d", len(data))
-	}
-	// Grab the number of elements and construct an output slice of the appropriate size
-	elementCount := binary.LittleEndian.Uint32(data)
-	output := make([]any, elementCount)
-	// Read all elements
-	for i := uint32(0); i < elementCount; i++ {
-		// We read from i+1 to account for the element count at the beginning
-		offset := binary.LittleEndian.Uint32(data[(i+1)*4:])
-		// If the value is null, then we can skip it, since the output slice default initializes all values to nil
-		if data[offset] == 1 {
-			continue
-		}
-		// The element data is everything from the offset to the next offset, excluding the null determinant
-		nextOffset := binary.LittleEndian.Uint32(data[(i+2)*4:])
-		o, err := baseType.DeserializeValue(ctx, data[offset+1:nextOffset])
-		if err != nil {
-			return nil, err
-		}
-		output[i] = o
-	}
-	// Returns all read elements
-	return output, nil
 }

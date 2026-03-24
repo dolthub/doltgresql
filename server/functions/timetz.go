@@ -81,18 +81,15 @@ var timetz_recv = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		data := val1.([]byte)
-		//oid := val2.(id.Id)
-		//typmod := val3.(int32)
 		// TODO: decode typmod to precision
-		if len(data) == 0 {
+		data := val1.([]byte)
+		if data == nil {
 			return nil, nil
 		}
-		t := time.Time{}
-		if err := t.UnmarshalBinary(data); err != nil {
-			return nil, err
-		}
-		return t, nil
+		reader := utils.NewWireReader(data)
+		micro := reader.ReadInt64()
+		timezoneMicro := int64(reader.ReadInt32()) * 1000000
+		return time.UnixMicro(micro + timezoneMicro), nil
 	},
 }
 

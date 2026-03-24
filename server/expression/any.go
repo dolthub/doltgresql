@@ -202,6 +202,9 @@ func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}
 		if err != nil {
 			return nil, err
 		}
+		if result == nil {
+			return nil, nil
+		}
 		if result.(bool) {
 			return true, nil
 		}
@@ -269,7 +272,7 @@ func (a *AnyExpr) String() string {
 	if a.leftExpr == nil || a.rightExpr == nil {
 		return fmt.Sprintf("? %s (?)", a.name)
 	}
-	return fmt.Sprintf("%s %s (%s)", a.leftExpr, a.name, a.rightExpr)
+	return fmt.Sprintf("%s = %s (%s)", a.leftExpr, a.name, a.rightExpr)
 }
 
 // DebugString implements the Expression interface.

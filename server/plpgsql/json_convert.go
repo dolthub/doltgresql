@@ -98,6 +98,8 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 		return stmt.Exit.Convert(), nil
 	case stmt.ForILoop != nil:
 		return stmt.ForILoop.Convert()
+	case stmt.ForSLoop != nil:
+		return stmt.ForSLoop.Convert()
 	case stmt.If != nil:
 		return stmt.If.Convert()
 	case stmt.Loop != nil:

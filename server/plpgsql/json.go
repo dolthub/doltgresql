@@ -181,6 +181,15 @@ type plpgSQL_stmt_fori struct {
 	LineNumber int32       `json:"lineno"`
 }
 
+// plpgSQL_stmt_fors exists to match the expected JSON format.
+type plpgSQL_stmt_fors struct {
+	Label      string      `json:"label"`
+	Var        datum       `json:"var"`
+	Body       []statement `json:"body"`
+	Query      *expr       `json:"query"`
+	LineNumber int32       `json:"lineno"`
+}
+
 // plpgSQL_stmt_if exists to match the expected JSON format.
 type plpgSQL_stmt_if struct {
 	Condition  cond        `json:"cond"`
@@ -270,6 +279,7 @@ type statement struct {
 	ExecSQL     *plpgSQL_stmt_execsql      `json:"PLpgSQL_stmt_execsql"`
 	Exit        *plpgSQL_stmt_exit         `json:"PLpgSQL_stmt_exit"`
 	ForILoop    *plpgSQL_stmt_fori         `json:"PLpgSQL_stmt_fori"`
+	ForSLoop    *plpgSQL_stmt_fors         `json:"PLpgSQL_stmt_fors"`
 	If          *plpgSQL_stmt_if           `json:"PLpgSQL_stmt_if"`
 	Loop        *plpgSQL_stmt_loop         `json:"PLpgSQL_stmt_loop"`
 	Perform     *plpgSQL_stmt_perform      `json:"PLpgSQL_stmt_perform"`
@@ -547,6 +557,52 @@ func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
 			Offset: -(3 + bodySize),
 		},
 	)
+	return block, nil
+}
+
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_fors) Convert() (block Block, err error) {
+	block.Label = stmt.Label
+	block.IsLoop = true
+
+	if stmt.Query == nil {
+		return Block{}, errors.New("FOR..IN..SELECT loop must have a query")
+	}
+
+	var varName string
+	switch {
+	case stmt.Var.Record != nil:
+		varName = stmt.Var.Record.RefName
+	case stmt.Var.Variable != nil:
+		varName = stmt.Var.Variable.RefName
+	case stmt.Var.Row != nil:
+		varName = stmt.Var.Row.RefName
+	default:
+		return Block{}, errors.New("FOR..IN..SELECT loop variable must be a record, row, or variable")
+	}
+
+	// Use the line number to keep cursor names unique across multiple ForS loops
+	// that might use the same variable name.
+	cursorName := fmt.Sprintf("__cursor_%s_%d__", varName, stmt.LineNumber)
+	query := stmt.Query.Expression.Query
+
+	convertedBody, err := jsonConvertStatements(stmt.Body)
+	if err != nil {
+		return Block{}, err
+	}
+	bodySize := OperationSizeForStatements(convertedBody)
+
+	// Layout inside the block (ScopeBegin/ScopeEnd are added by Block.AppendOperations):
+	//   [0] ForQueryInit  – execute query, store rows in cursor
+	//   [1] ForQueryNext  – fetch next row into varName, or jump forward by (bodySize+2) to ScopeEnd
+	//   [2..2+bodySize-1] body statements
+	//   [2+bodySize]      Goto back to ForQueryNext: offset = -(1 + bodySize)
+	block.Body = []Statement{
+		ForQueryInit{CursorName: cursorName, Query: query},
+		ForQueryNext{CursorName: cursorName, RecordVar: varName, GotoOffset: bodySize + 2},
+	}
+	block.Body = append(block.Body, convertedBody...)
+	block.Body = append(block.Body, Goto{Offset: -(1 + bodySize)})
 	return block, nil
 }
 

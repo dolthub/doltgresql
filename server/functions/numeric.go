@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -82,14 +83,16 @@ var numeric_recv = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
-		//typmod := val3.(int32)
-		//precision, scale := getPrecisionAndScaleFromTypmod(typmod)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		retVal := decimal.NewFromInt(0)
-		err := retVal.UnmarshalBinary(data)
-		return retVal, err
+		typmod := val3.(int32)
+		var out pgtype.Numeric
+		err := out.DecodeBinary(nil, data)
+		if err != nil {
+			return nil, err
+		}
+		return pgtypes.GetNumericValueWithTypmod(decimal.NewFromBigInt(out.Int, out.Exp), typmod)
 	},
 }
 

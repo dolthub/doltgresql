@@ -121,8 +121,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 			},
 		},
 		{
-			Name:        "function returning multiple rows",
-			SetUpScript: []string{},
+			Name: "function returning multiple rows",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `CREATE FUNCTION gen(a int) RETURNS SETOF INT LANGUAGE SQL AS $$ SELECT generate_series(1, a) $$ STABLE;`,
@@ -131,6 +130,97 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				{
 					Query:    `SELECT * FROM gen(3);`,
 					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+			},
+		},
+		{
+			Name: "function with create or replace view",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION public.sp_build_view_bathymetry_layer() RETURNS void
+							LANGUAGE sql
+							AS $$
+								CREATE OR REPLACE VIEW public.view_bathymetry_layer AS 
+								SELECT 1;
+							$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public.sp_build_view_bathymetry_layer()`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * from view_bathymetry_layer`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT public.sp_build_view_bathymetry_layer()`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * from view_bathymetry_layer`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "function with update ... returning",
+			SetUpScript: []string{
+				`CREATE TYPE public.tax_job_state AS ENUM (
+					'sched',
+					'busy',
+					'final',
+					'help'
+				);`,
+				`CREATE TABLE public.tax_job (
+					id bigint NOT NULL,
+					state public.tax_job_state NOT NULL,
+					created timestamp NOT NULL,
+					modified timestamp NOT NULL,
+					scheduled timestamp,
+					worker text,
+					processor text,
+					ext_id text,
+					data jsonb,
+					gross integer,
+					notes text[],
+					ops jsonb,
+					CONSTRAINT tax_job_check CHECK ((NOT ((state = 'sched'::public.tax_job_state) AND (scheduled IS NULL)))),
+					CONSTRAINT tax_job_check1 CHECK ((NOT ((state = 'busy'::public.tax_job_state) AND (worker IS NULL))))
+				);`,
+				`INSERT INTO tax_job (id, state, created, modified, scheduled, worker, processor, ext_id, data) VALUES (1, 'sched', '2025-05-05 05:05:05', '2025-05-05 05:05:05', '2025-05-05 05:05:05', 'worker', 'processor', 'ext_id', NULL)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION public.tax_job_take(arg_worker text) RETURNS SETOF public.tax_job
+								LANGUAGE sql
+								AS '
+								UPDATE
+									tax_job
+								SET
+									state = ''busy'',
+									worker = arg_worker
+								WHERE
+									state = ''sched''
+									AND scheduled <= CURRENT_TIMESTAMP
+								RETURNING
+									*;
+							';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public.tax_job_take('worker')`,
+					Expected: []sql.Row{{`(1,busy,"2025-05-05 05:05:05","2025-05-05 05:05:05","2025-05-05 05:05:05",worker,processor,ext_id,,,,)`}},
+				},
+				{
+					Query: `INSERT INTO tax_job (id, state, created, modified, scheduled, worker, processor, ext_id, data) VALUES (2, 'sched', '2025-05-05 05:05:06', '2025-05-05 05:05:06', '2025-05-05 05:05:06', 'worker', 'processor', 'ext_id', NULL), (3, 'sched', '2025-05-05 05:05:07', '2025-05-05 05:05:07', '2025-05-05 05:05:07', 'worker', 'processor', 'ext_id', NULL)`,
+				},
+				{
+					Query: `SELECT public.tax_job_take('worker')`,
+					Expected: []sql.Row{
+						{`(2,busy,"2025-05-05 05:05:06","2025-05-05 05:05:06","2025-05-05 05:05:06",worker,processor,ext_id,,,,)`},
+						{`(3,busy,"2025-05-05 05:05:07","2025-05-05 05:05:07","2025-05-05 05:05:07",worker,processor,ext_id,,,,)`},
+					},
 				},
 			},
 		},

@@ -70,7 +70,7 @@ var json_recv = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
 		return string(data), nil

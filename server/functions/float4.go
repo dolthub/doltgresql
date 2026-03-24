@@ -15,8 +15,6 @@
 package functions
 
 import (
-	"encoding/binary"
-	"math"
 	"strconv"
 	"strings"
 
@@ -72,13 +70,11 @@ var float4recv = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		data := val.([]byte)
-		unsignedBits := binary.BigEndian.Uint32(data)
-		if unsignedBits&(1<<31) != 0 {
-			unsignedBits ^= 1 << 31
-		} else {
-			unsignedBits = ^unsignedBits
+		if data == nil {
+			return nil, nil
 		}
-		return math.Float32frombits(unsignedBits), nil
+		reader := utils.NewWireReader(data)
+		return reader.ReadFloat32(), nil
 	},
 }
 

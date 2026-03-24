@@ -88,13 +88,12 @@ var varcharrecv = framework.Function3{
 	Return:     pgtypes.VarChar,
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
+	Callable: func(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		data := val1.([]byte)
-		if len(data) == 0 {
+		if data == nil {
 			return nil, nil
 		}
-		reader := utils.NewReader(data)
-		return reader.String(), nil
+		return t[3].IoInput(ctx, string(data))
 	},
 }
 
