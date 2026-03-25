@@ -19,7 +19,7 @@ jobs:
     env:
       use_credentials: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' && secrets.AWS_ACCESS_KEY_ID != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
