@@ -336,6 +336,72 @@ func TestBinaryLogic(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "IS DISTINCT FROM",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 1 IS DISTINCT FROM 2;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 2 IS DISTINCT FROM 2;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT null IS DISTINCT FROM 2;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT null IS DISTINCT FROM null;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 2 IS DISTINCT FROM null;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 2 IS DISTINCT FROM 2.5;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:       `SELECT 2 IS DISTINCT FROM 'a';`,
+					ExpectedErr: `invalid input syntax for type int4: "a"`,
+				},
+			},
+		},
+		{
+			Name: "IS NOT DISTINCT FROM",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 1 IS NOT DISTINCT FROM 2;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 2 IS NOT DISTINCT FROM 2;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT null IS NOT DISTINCT FROM 2;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT null IS NOT DISTINCT FROM null;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 2 IS NOT DISTINCT FROM null;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 2 IS NOT DISTINCT FROM 2.5;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:       `SELECT 2 IS NOT DISTINCT FROM 'a';`,
+					ExpectedErr: `invalid input syntax for type int4: "a"`,
+				},
+			},
+		},
 	})
 }
 
