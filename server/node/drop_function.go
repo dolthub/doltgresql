@@ -138,7 +138,6 @@ func dropFunction(ctx *sql.Context, funcColl *functions.Collection, fn *RoutineW
 	} else {
 		var argTypes = make([]id.Type, len(fn.Args))
 		for i, arg := range fn.Args {
-
 			argTypes[i] = arg.Type.ID
 		}
 		funcId = id.NewFunction(schema, fn.RoutineName, argTypes...)

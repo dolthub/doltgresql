@@ -286,5 +286,14 @@ END;
 				},
 			},
 		},
+		{
+			Name: "drop non existing function with non existing type",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "DROP FUNCTION IF EXISTS public.tax_job_trans(t public.trans);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
