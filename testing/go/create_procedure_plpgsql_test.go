@@ -30,7 +30,7 @@ func TestCreateProcedureLanguagePlpgsql(t *testing.T) {
 				BEGIN
 					INSERT INTO test VALUES (input);
 				END;
-				$$ LANGUAGE plpgsql;`,
+				$$ LANGUAGE 'plpgsql';`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{

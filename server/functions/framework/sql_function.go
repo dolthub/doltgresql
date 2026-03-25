@@ -130,7 +130,7 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			if err != nil {
 				return nil, err
 			}
-			// single row result
+			// single column row result
 			if len(sch) != 1 {
 				return nil, errors.New("expression does not result in a single value")
 			}
@@ -142,7 +142,7 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			}
 			return rows[0][0], nil
 		}
-		// multiple row result
+		// multiple column row result
 		if f.ReturnType.TypCategory == pgtypes.TypeCategory_CompositeTypes {
 			// record type
 			return rowIterToRecord(ctx, rowIter, sch)

@@ -179,17 +179,45 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			// TODO: implement
 		case OpCode_Execute:
 			if len(operation.Target) > 0 {
-				target := stack.GetVariable(operation.Target)
-				if target.Type == nil {
-					return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
-				}
-				retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, target.Type, operation.SecondaryData)
-				if err != nil {
-					return nil, err
-				}
-				err = stack.SetVariable(ctx, operation.Target, retVal)
-				if err != nil {
-					return nil, err
+				if vars := strings.Split(operation.Target, ","); len(vars) > 1 {
+					// multiple column row result
+					sch, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+					if err != nil {
+						return nil, err
+					}
+					if len(rows) > 1 {
+						return nil, errors.New("query returned more than one row")
+					}
+					for i, row := range rows {
+						if len(row) != len(vars) {
+							return nil, errors.New("number of row values does not match number of schema columns")
+						}
+						target := stack.GetVariable(vars[i])
+						if target.Type == nil {
+							return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
+						}
+						if sch[i].Type.(*pgtypes.DoltgresType).ID != target.Type.ID {
+							return nil, fmt.Errorf("variable type `%s` does not match `%s`", sch[i].Type.String(), target.Type.String())
+						}
+						err = stack.SetVariable(ctx, vars[i], rows[0][i])
+						if err != nil {
+							return nil, err
+						}
+					}
+				} else {
+					// single column
+					target := stack.GetVariable(operation.Target)
+					if target.Type == nil {
+						return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
+					}
+					retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, target.Type, operation.SecondaryData)
+					if err != nil {
+						return nil, err
+					}
+					err = stack.SetVariable(ctx, operation.Target, retVal)
+					if err != nil {
+						return nil, err
+					}
 				}
 			} else {
 				_, _, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)

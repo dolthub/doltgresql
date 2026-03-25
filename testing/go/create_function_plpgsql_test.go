@@ -1620,5 +1620,22 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "use record type",
+			SetUpScript: []string{
+				`CREATE TABLE test (id int, v text);`,
+				`INSERT INTO test VALUES (1, 'r'), (2, 'g');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION return_table() RETURNS int AS $$ DECLARE ti int; tt text; BEGIN INSERT INTO test VALUES (3, 'w') returning * INTO ti, tt; RETURN ti; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select return_table();",
+					Expected: []sql.Row{{3}},
+				},
+			},
+		},
 	})
 }

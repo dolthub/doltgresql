@@ -407,10 +407,11 @@ func (stmt *plpgSQL_stmt_dynexecute) Convert() (DynamicExecute, error) {
 	if stmt.Into {
 		switch {
 		case stmt.Target.Row != nil:
-			if len(stmt.Target.Row.Fields) != 1 {
-				return DynamicExecute{}, errors.New("record types are not yet supported")
+			names := make([]string, len(stmt.Target.Row.Fields))
+			for i, rowField := range stmt.Target.Row.Fields {
+				names[i] = rowField.Name
 			}
-			target = stmt.Target.Row.Fields[0].Name
+			target = strings.Join(names, ",")
 		case stmt.Target.Variable != nil:
 			target = stmt.Target.Variable.RefName
 		default:
@@ -431,10 +432,11 @@ func (stmt *plpgSQL_stmt_execsql) Convert() (ExecuteSQL, error) {
 	if stmt.Into {
 		switch {
 		case stmt.Target.Row != nil:
-			if len(stmt.Target.Row.Fields) != 1 {
-				return ExecuteSQL{}, errors.New("record types are not yet supported")
+			names := make([]string, len(stmt.Target.Row.Fields))
+			for i, rowField := range stmt.Target.Row.Fields {
+				names[i] = rowField.Name
 			}
-			target = stmt.Target.Row.Fields[0].Name
+			target = strings.Join(names, ",")
 		case stmt.Target.Variable != nil:
 			target = stmt.Target.Variable.RefName
 		default:

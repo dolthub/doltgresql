@@ -4523,7 +4523,7 @@ create_procedure_option_list:
   }
 
 create_procedure_option:
-  LANGUAGE name
+  LANGUAGE non_reserved_word_or_sconst
   {
     $$.val = tree.RoutineOption{OptionType: tree.OptionLanguage, Language: $2}
   }
@@ -9031,9 +9031,21 @@ view_option:
 | SECURITY_BARRIER { $$.val = tree.ViewOption{Name: $1, Security: false} }
 | SECURITY_BARRIER '=' TRUE { $$.val = tree.ViewOption{Name: $1, Security: true} }
 | SECURITY_BARRIER '=' FALSE { $$.val = tree.ViewOption{Name: $1, Security: false} }
+| SECURITY_BARRIER '=' non_reserved_word_or_sconst
+  {
+    v, err := tree.GetBoolFromString("security_barrier", $3)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = tree.ViewOption{Name: $1, Security: v}
+  }
 | SECURITY_INVOKER { $$.val = tree.ViewOption{Name: $1, Security: false} }
 | SECURITY_INVOKER '=' TRUE { $$.val = tree.ViewOption{Name: $1, Security: true} }
 | SECURITY_INVOKER '=' FALSE { $$.val = tree.ViewOption{Name: $1, Security: false} }
+| SECURITY_INVOKER '=' non_reserved_word_or_sconst
+  {
+    v, err := tree.GetBoolFromString("security_invoker", $3)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = tree.ViewOption{Name: $1, Security: v}
+  }
 
 create_materialized_view_stmt:
   CREATE MATERIALIZED VIEW view_name opt_column_list opt_using_method opt_with_storage_parameter_list opt_tablespace AS select_stmt opt_create_as_with_data

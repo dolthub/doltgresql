@@ -61,9 +61,6 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 			block.Records[recordParentNumber].Fields = append(
 				block.Records[recordParentNumber].Fields, v.RecordField.FieldName)
 		case v.Row != nil:
-			if len(v.Row.Fields) != 1 {
-				return Block{}, errors.New("record types are not yet supported")
-			}
 		case v.Variable != nil:
 			block.Variables = append(block.Variables, Variable{
 				Name:        v.Variable.RefName,
