@@ -45,7 +45,7 @@ func ValidateCreateFunction(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, 
 	}
 
 	builder := planbuilder.New(ctx, a.Catalog, nil)
-	for _, parsed := range ct.SqlDefParseds {
+	for _, parsed := range ct.SqlDefParsedStmts {
 		_, _, err = builder.BindOnly(parsed, ct.SqlDef, nil)
 		if err != nil {
 			return nil, transform.SameTree, err
