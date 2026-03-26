@@ -463,10 +463,14 @@ func (*TypeCollection) tableToType(ctx *sql.Context, tbl sql.Table, schema strin
 	attrs := make([]pgtypes.CompositeAttribute, len(tblSch))
 	for i, col := range tblSch {
 		collation := "" // TODO: what should we use for the collation?
-		colType, ok := col.Type.(*pgtypes.DoltgresType)
-		if !ok {
-			// TODO: perhaps we should use a better error message stating that it uses a non-Doltgres type?
-			return nil, pgtypes.ErrTypeDoesNotExist.New(tblName)
+		var colType *pgtypes.DoltgresType
+		var err error
+		if dt, ok := col.Type.(*pgtypes.DoltgresType); ok {
+			colType = dt
+		} else {
+			if colType, err = pgtypes.FromGmsTypeToDoltgresType(col.Type); err != nil {
+				return nil, fmt.Errorf("unable to convert column type for %s.%s: %w", tblName, col.Name, err)
+			}
 		}
 		attrs[i] = pgtypes.NewCompositeAttribute(ctx, relID, col.Name, colType.ID, int16(i+1), collation)
 	}
