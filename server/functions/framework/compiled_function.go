@@ -284,6 +284,19 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		}
 	}
 
+	return c.EvalWtihNonNullArgs(ctx, args)
+}
+
+// EvalWtihNonNullArgs evaluates the function by taking only non-null arguments directly.
+// This allows evaluating the arguments separately compared to Eval().
+func (c *CompiledFunction) EvalWtihNonNullArgs(ctx *sql.Context, args []any) (interface{}, error) {
+	// If we have a stashed error, then we should return that now. Errors are stashed when they're supposed to be
+	// returned during the call to Eval. This helps to ensure consistency with how errors are returned in Postgres.
+	if c.stashedErr != nil {
+		return nil, c.stashedErr
+	}
+
+	var err error
 	if len(c.overload.casts) > 0 {
 		targetParamTypes := c.overload.Function().GetParameters()
 		for i, arg := range args {

@@ -120,12 +120,12 @@ func (node ViewOptions) Format(ctx *FmtCtx) {
 // GetBoolFromString returns bool value parsed from given string.
 // E.g. "fal" is accepted as false.
 func GetBoolFromString(option, s string) (bool, error) {
-	lower := strings.ToLower(s)
-	if strings.HasPrefix("true", lower) {
+	switch strings.ToLower(s) {
+	case "true", "tru", "tr", "t":
 		return true, nil
-	}
-	if strings.HasPrefix("false", lower) {
+	case "false", "fals", "fal", "fa", "f":
 		return false, nil
+	default:
+		return false, errors.New(`invalid value for boolean option "` + option + `": ` + s)
 	}
-	return false, errors.New(`invalid value for boolean option "` + option + `": ` + s)
 }

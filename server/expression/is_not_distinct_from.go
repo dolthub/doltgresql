@@ -28,7 +28,6 @@ import (
 type IsNotDistinctFrom struct {
 	leftExpr  sql.Expression
 	rightExpr sql.Expression
-	equalFunc framework.Function
 }
 
 var _ vitess.Injectable = (*IsNotDistinctFrom)(nil)
@@ -49,25 +48,27 @@ func (n *IsNotDistinctFrom) Children() []sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (n *IsNotDistinctFrom) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	val, err := n.equalFunc.Eval(ctx, row)
+	cf := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_binary_operator_func_=", n.leftExpr, n.rightExpr)
+	if cf == nil {
+		return nil, errors.Errorf("input types do not match: %s %s", n.leftExpr.Type().String(), n.rightExpr.Type().String())
+	}
+
+	left, err := n.leftExpr.Eval(ctx, row)
 	if err != nil {
 		return nil, err
 	}
-	if val == nil {
-		left, err := n.leftExpr.Eval(ctx, row)
-		if err != nil {
-			return nil, err
-		}
-		right, err := n.rightExpr.Eval(ctx, row)
-		if err != nil {
-			return nil, err
-		}
-		if left == nil && right == nil {
-			return true, nil
-		}
+	right, err := n.rightExpr.Eval(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+
+	if left == nil && right == nil {
+		return true, nil
+	} else if left == nil || right == nil {
 		return false, nil
 	}
-	return val, nil
+
+	return cf.EvalWtihNonNullArgs(ctx, []any{left, right})
 }
 
 // IsNullable implements the sql.Expression interface.
@@ -98,23 +99,11 @@ func (n *IsNotDistinctFrom) WithChildren(children ...sql.Expression) (sql.Expres
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(n, len(children), 2)
 	}
-	if n.equalFunc != nil {
-		compiledFunc, err := n.equalFunc.WithChildren(children...)
-		if err != nil {
-			return nil, err
-		}
-		return &IsNotDistinctFrom{
-			leftExpr:  children[0],
-			rightExpr: children[1],
-			equalFunc: compiledFunc.(framework.Function),
-		}, nil
-	} else {
-		i, err := n.WithResolvedChildren([]any{children[0], children[1]})
-		if err != nil {
-			return nil, err
-		}
-		return i.(sql.Expression), nil
+	i, err := n.WithResolvedChildren([]any{children[0], children[1]})
+	if err != nil {
+		return nil, err
 	}
+	return i.(sql.Expression), nil
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
@@ -130,14 +119,8 @@ func (n *IsNotDistinctFrom) WithResolvedChildren(children []any) (any, error) {
 	if !ok {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
 	}
-
-	compiledFunc := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_binary_operator_func_=", left, right)
-	if compiledFunc == nil {
-		return nil, errors.Errorf("input types do not match: %s %s", left.Type().String(), right.Type().String())
-	}
 	return &IsNotDistinctFrom{
 		leftExpr:  left,
 		rightExpr: right,
-		equalFunc: compiledFunc,
 	}, nil
 }
