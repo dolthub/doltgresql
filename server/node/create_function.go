@@ -32,20 +32,20 @@ import (
 
 // CreateFunction implements CREATE FUNCTION.
 type CreateFunction struct {
-	FunctionName    string
-	SchemaName      string
-	Replace         bool
-	ReturnType      *pgtypes.DoltgresType
-	ParameterNames  []string
-	ParameterTypes  []*pgtypes.DoltgresType
-	Strict          bool
-	Statements      []plpgsql.InterpreterOperation
-	ExtensionName   string
-	ExtensionSymbol string
-	Definition      string
-	SqlDef          string
-	SqlDefParsed    vitess.Statement
-	SetOf           bool
+	FunctionName      string
+	SchemaName        string
+	Replace           bool
+	ReturnType        *pgtypes.DoltgresType
+	ParameterNames    []string
+	ParameterTypes    []*pgtypes.DoltgresType
+	Strict            bool
+	Statements        []plpgsql.InterpreterOperation
+	ExtensionName     string
+	ExtensionSymbol   string
+	Definition        string
+	SqlDef            string
+	SqlDefParsedStmts []vitess.Statement
+	SetOf             bool
 }
 
 var _ sql.ExecSourceRel = (*CreateFunction)(nil)
@@ -65,23 +65,23 @@ func NewCreateFunction(
 	extensionSymbol string,
 	statements []plpgsql.InterpreterOperation,
 	sqlDef string,
-	sqlDefParsed vitess.Statement,
+	sqlDefParsedStmts []vitess.Statement,
 	setOf bool) *CreateFunction {
 	return &CreateFunction{
-		FunctionName:    functionName,
-		SchemaName:      schemaName,
-		Replace:         replace,
-		ReturnType:      retType,
-		ParameterNames:  paramNames,
-		ParameterTypes:  paramTypes,
-		Strict:          strict,
-		Statements:      statements,
-		ExtensionName:   extensionName,
-		ExtensionSymbol: extensionSymbol,
-		Definition:      definition,
-		SqlDef:          sqlDef,
-		SqlDefParsed:    sqlDefParsed,
-		SetOf:           setOf,
+		FunctionName:      functionName,
+		SchemaName:        schemaName,
+		Replace:           replace,
+		ReturnType:        retType,
+		ParameterNames:    paramNames,
+		ParameterTypes:    paramTypes,
+		Strict:            strict,
+		Statements:        statements,
+		ExtensionName:     extensionName,
+		ExtensionSymbol:   extensionSymbol,
+		Definition:        definition,
+		SqlDef:            sqlDef,
+		SqlDefParsedStmts: sqlDefParsedStmts,
+		SetOf:             setOf,
 	}
 }
 

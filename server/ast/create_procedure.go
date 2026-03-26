@@ -64,7 +64,7 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 	// We only support PL/pgSQL, SQL and C for now, so we verify that here
 	var parsedBody []plpgsql.InterpreterOperation
 	var sqlDef string
-	var sqlDefParsed vitess.Statement
+	var sqlDefParsedStmts []vitess.Statement
 	var extensionName, extensionSymbol string
 	if languageOption, ok := options[tree.OptionLanguage]; ok {
 		switch strings.ToLower(languageOption.Language) {
@@ -80,7 +80,7 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 			if !ok {
 				return nil, errors.Errorf("CREATE PROCEDURE definition needed for LANGUAGE SQL")
 			}
-			sqlDef, sqlDefParsed, err = handleLanguageSQL(as.Definition, paramNames, paramTypes)
+			sqlDef, sqlDefParsedStmts, err = handleLanguageSQL(as.Definition, paramNames, paramTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -111,7 +111,7 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 			extensionSymbol,
 			parsedBody,
 			sqlDef,
-			sqlDefParsed,
+			sqlDefParsedStmts,
 		),
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_CREATE,

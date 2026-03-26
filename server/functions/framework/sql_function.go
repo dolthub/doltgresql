@@ -93,11 +93,6 @@ func (sqlFunc SQLFunction) enforceInterfaceInheritance(error) {}
 
 // CallSqlFunction runs the given SQL definition inside the function on the given runner.
 func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner, args []any) (any, error) {
-	parsed, err := parser.ParseOne(f.SqlStatement)
-	if err != nil {
-		return "", err
-	}
-
 	paramMap := make(map[string]*ParamTypAndValue)
 	for i, name := range f.ParameterNames {
 		formattedVar, err := f.ParameterTypes[i].FormatValue(args[i])
@@ -114,6 +109,37 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 		}
 	}
 
+	parseds, err := parser.Parse(f.SqlStatement)
+	if err != nil {
+		return "", err
+	}
+
+	if len(parseds) > 1 {
+		// multiple statements
+		if f.ReturnType.ID != pgtypes.Void.ID {
+			return nil, errors.New("multiple statements with non void return type is not supported yet")
+		}
+		for _, parsed := range parseds {
+			err = ReplaceFunctionColumn(parsed.AST, paramMap)
+			if err != nil {
+				return nil, err
+			}
+			_, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
+				_, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), nil, nil, nil)
+				if err != nil {
+					return nil, err
+				}
+				return sql.RowIterToRows(ctx, rowIter)
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	}
+
+	// single statement
+	parsed := parseds[0]
 	err = ReplaceFunctionColumn(parsed.AST, paramMap)
 	if err != nil {
 		return nil, err
@@ -201,11 +227,15 @@ func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTyp
 		}
 		return nil
 	case *tree.Delete:
-		if s.Returning != nil {
-			return errors.Errorf("DELETE ... RETURNING statement in functions is not yet supported")
+		if s.Where != nil {
+			s.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, s.Where.Expr)
 		}
+		return nil
+	case *tree.Truncate:
+		return nil
+	default:
+		return errors.Errorf("unsupported statement defined in function: %T", parsedAST)
 	}
-	return errors.Errorf("unsupported final statement defined in function")
 }
 
 // ReplaceUnresolvedToFunctionColumn replaces Placeholder and UnresolvedName expressions with FunctionColumn containing

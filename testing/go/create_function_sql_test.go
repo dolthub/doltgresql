@@ -224,5 +224,45 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "function with update ... returning",
+			SetUpScript: []string{
+				`CREATE TABLE test (id int);`,
+				`INSERT INTO test VALUES (1), (2), (3);`,
+				`CREATE VIEW test1 AS SELECT * FROM test WHERE id = 1;`,
+				`CREATE VIEW test2 AS SELECT * FROM test WHERE id = 2;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION drop_views() RETURNS void
+								LANGUAGE sql
+								AS $$
+							DROP VIEW test1;
+							DROP VIEW test2;
+							$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM test1`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM test2`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT drop_views();`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:       `SELECT * FROM test1`,
+					ExpectedErr: `not found`,
+				},
+				{
+					Query:       `SELECT * FROM test2`,
+					ExpectedErr: `not found`,
+				},
+			},
+		},
 	})
 }

@@ -71,7 +71,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	// We only support PL/pgSQL, SQL and C for now, so we verify that here
 	var parsedBody []plpgsql.InterpreterOperation
 	var sqlDef string
-	var sqlDefParsed vitess.Statement
+	var sqlDefParsedStmts []vitess.Statement
 	var extensionName, extensionSymbol string
 	if languageOption, ok := options[tree.OptionLanguage]; ok {
 		switch strings.ToLower(languageOption.Language) {
@@ -104,7 +104,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			if !ok {
 				return nil, errors.Errorf("CREATE FUNCTION definition needed for LANGUAGE SQL")
 			}
-			sqlDef, sqlDefParsed, err = handleLanguageSQL(as.Definition, paramNames, paramTypes)
+			sqlDef, sqlDefParsedStmts, err = handleLanguageSQL(as.Definition, paramNames, paramTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -136,7 +136,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			extensionSymbol,
 			parsedBody,
 			sqlDef,
-			sqlDefParsed,
+			sqlDefParsedStmts,
 			node.ReturnsSetOf,
 		),
 		Auth: vitess.AuthInformation{
@@ -175,12 +175,11 @@ func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.Do
 }
 
 // handleLanguageSQL handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE.
-func handleLanguageSQL(definition string, paramNames []string, paramTypes []*pgtypes.DoltgresType) (string, vitess.Statement, error) {
-	stmt, err := parser.ParseOne(definition)
+func handleLanguageSQL(definition string, paramNames []string, paramTypes []*pgtypes.DoltgresType) (string, []vitess.Statement, error) {
+	stmts, err := parser.Parse(definition)
 	if err != nil {
 		return "", nil, err
 	}
-	sqlDef := stmt.AST.String()
 
 	paramMap := make(map[string]*framework.ParamTypAndValue, len(paramNames))
 	if len(paramNames) != len(paramTypes) {
@@ -201,13 +200,18 @@ func handleLanguageSQL(definition string, paramNames []string, paramTypes []*pgt
 		}
 	}
 
-	err = framework.ReplaceFunctionColumn(stmt.AST, paramMap)
-	if err != nil {
-		return "", nil, err
+	var sqlDefs = make([]string, len(stmts))
+	var vitessASTs = make([]vitess.Statement, len(stmts))
+	for i, stmt := range stmts {
+		sqlDefs[i] = stmt.AST.String()
+		err = framework.ReplaceFunctionColumn(stmt.AST, paramMap)
+		if err != nil {
+			return "", nil, err
+		}
+		// stmt.AST is updated at this point with FunctionColumn
+		vitessASTs[i], err = Convert(stmt)
 	}
-	// stmt.AST is updated at this point with FunctionColumn
-	vitessAST, err := Convert(stmt)
-	return sqlDef, vitessAST, err
+	return strings.Join(sqlDefs, ";"), vitessASTs, err
 }
 
 // validateRoutineOptions ensures that each option is defined only once. Returns a map containing all options, or an

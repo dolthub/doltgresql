@@ -30,18 +30,18 @@ import (
 
 // CreateProcedure implements CREATE PROCEDURE.
 type CreateProcedure struct {
-	ProcedureName   string
-	SchemaName      string
-	Replace         bool
-	ParameterNames  []string
-	ParameterTypes  []*pgtypes.DoltgresType
-	ParameterModes  []procedures.ParameterMode
-	Statements      []plpgsql.InterpreterOperation
-	ExtensionName   string
-	ExtensionSymbol string
-	Definition      string
-	SqlDef          string
-	SqlDefParsed    vitess.Statement
+	ProcedureName     string
+	SchemaName        string
+	Replace           bool
+	ParameterNames    []string
+	ParameterTypes    []*pgtypes.DoltgresType
+	ParameterModes    []procedures.ParameterMode
+	Statements        []plpgsql.InterpreterOperation
+	ExtensionName     string
+	ExtensionSymbol   string
+	Definition        string
+	SqlDef            string
+	SqlDefParsedStmts []vitess.Statement
 }
 
 var _ sql.ExecSourceRel = (*CreateProcedure)(nil)
@@ -60,20 +60,20 @@ func NewCreateProcedure(
 	extensionSymbol string,
 	statements []plpgsql.InterpreterOperation,
 	sqlDef string,
-	sqlDefParsed vitess.Statement) *CreateProcedure {
+	sqlDefParsedStmts []vitess.Statement) *CreateProcedure {
 	return &CreateProcedure{
-		ProcedureName:   procedureName,
-		SchemaName:      schemaName,
-		Replace:         replace,
-		ParameterNames:  paramNames,
-		ParameterTypes:  paramTypes,
-		ParameterModes:  paramModes,
-		Statements:      statements,
-		ExtensionName:   extensionName,
-		ExtensionSymbol: extensionSymbol,
-		Definition:      definition,
-		SqlDef:          sqlDef,
-		SqlDefParsed:    sqlDefParsed,
+		ProcedureName:     procedureName,
+		SchemaName:        schemaName,
+		Replace:           replace,
+		ParameterNames:    paramNames,
+		ParameterTypes:    paramTypes,
+		ParameterModes:    paramModes,
+		Statements:        statements,
+		ExtensionName:     extensionName,
+		ExtensionSymbol:   extensionSymbol,
+		Definition:        definition,
+		SqlDef:            sqlDef,
+		SqlDefParsedStmts: sqlDefParsedStmts,
 	}
 }
 
