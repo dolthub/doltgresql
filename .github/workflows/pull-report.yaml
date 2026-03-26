@@ -15,7 +15,7 @@ jobs:
     if: ${{ github.event.client_payload.issue_number != -1 }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
