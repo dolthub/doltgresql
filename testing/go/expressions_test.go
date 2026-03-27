@@ -364,6 +364,10 @@ func TestBinaryLogic(t *testing.T) {
 					Expected: []sql.Row{{"t"}},
 				},
 				{
+					Query:    `SELECT 2 IS DISTINCT FROM '2';`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
 					Query:       `SELECT 2 IS DISTINCT FROM 'a';`,
 					ExpectedErr: `invalid input syntax for type int4: "a"`,
 				},
@@ -395,6 +399,10 @@ func TestBinaryLogic(t *testing.T) {
 				{
 					Query:    `SELECT 2 IS NOT DISTINCT FROM 2.5;`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 2 IS NOT DISTINCT FROM '2';`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:       `SELECT 2 IS NOT DISTINCT FROM 'a';`,

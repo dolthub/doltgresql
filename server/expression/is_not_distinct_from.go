@@ -105,12 +105,14 @@ func (n *IsNotDistinctFrom) WithChildren(children ...sql.Expression) (sql.Expres
 		return nil, sql.ErrInvalidChildrenNumber.New(n, len(children), 2)
 	}
 
+	// This allows evaluating the arguments separate from function.Eval() in order to resolve NULL values.
+	// This follows the same logic as InTuple expression.
 	allAreWell := true
-	leftType, ok := children[0].Type().(sql.Type)
+	leftType, ok := children[0].Type().(*pgtypes.DoltgresType)
 	if !ok {
 		allAreWell = false
 	}
-	rightType, ok := children[1].Type().(sql.Type)
+	rightType, ok := children[1].Type().(*pgtypes.DoltgresType)
 	if !ok {
 		allAreWell = false
 	}
