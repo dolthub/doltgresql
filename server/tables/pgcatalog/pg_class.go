@@ -453,12 +453,33 @@ func pgClassToRow(class *pgClass) sql.Row {
 		relam = id.NewAccessMethod("heap").AsId()
 	}
 
+	// Compute reltype - the OID of the composite type for this table/view's row type
+	var reltype id.Id
+
+	if class.kind == "r" || class.kind == "v" {
+		// Tables and views have composite types with the same name in the same schema
+		var schemaName, objectName string
+		if class.kind == "r" {
+			tblId := id.Table(class.oid)
+			schemaName = tblId.SchemaName()
+			objectName = tblId.TableName()
+		} else { // kind == "v"
+			viewId := id.View(class.oid)
+			schemaName = viewId.SchemaName()
+			objectName = viewId.ViewName()
+		}
+		typeId := id.NewType(schemaName, objectName)
+		reltype = typeId.AsId()
+	} else {
+		reltype = id.Null
+	}
+
 	// TODO: Fill in the rest of the pg_class columns
 	return sql.Row{
 		class.oid,        // oid
 		class.name,       // relname
 		class.schemaOid,  // relnamespace
-		id.Null,          // reltype
+		reltype,          // reltype
 		id.Null,          // reloftype
 		id.Null,          // relowner
 		relam,            // relam

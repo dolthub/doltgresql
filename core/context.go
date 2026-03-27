@@ -17,6 +17,7 @@ package core
 import (
 	"maps"
 	"slices"
+	"sort"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -554,4 +555,93 @@ func (cv *contextValues) clear(objID objinterface.RootObjectID) {
 	default:
 		panic("unhandled context clear object ID")
 	}
+}
+
+func IterateDatabaseTables(ctx *sql.Context, callback func(schemaName string, table sql.Table) (stop bool, err error)) error {
+	sess := dsess.DSessFromSess(ctx.Session)
+	currentDatabase, err := sess.Provider().Database(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return err
+	}
+
+	schemaDb, ok := currentDatabase.(sql.SchemaDatabase)
+	if !ok {
+		return nil
+	}
+
+	schemas, err := schemaDb.AllSchemas(ctx)
+	if err != nil {
+		return err
+	}
+
+	sort.Slice(schemas, func(i, j int) bool {
+		return schemas[i].SchemaName() < schemas[j].SchemaName()
+	})
+	for _, schema := range schemas {
+		tableNames, err := schema.GetTableNames(ctx)
+		if err != nil {
+			return err
+		}
+
+		sort.Strings(tableNames)
+		for _, tableName := range tableNames {
+			table, ok, err := schema.GetTableInsensitive(ctx, tableName)
+			if err != nil {
+				return err
+			} else if !ok {
+				continue
+			}
+
+			stop, err := callback(schema.SchemaName(), table)
+			if err != nil || stop {
+				return err
+			}
+		}
+	}
+
+	// If the system variable dolt_show_system_tables is set, then IterateCurrentDatabase
+	// will already contain all existing system tables. Else, we need to add them manually
+	showSystemTablesVar, err := ctx.GetSessionVariable(ctx, dsess.ShowSystemTables)
+	if err != nil {
+		return err
+	}
+	alreadySeenSystemTables := showSystemTablesVar.(int8) == 1
+
+	if !alreadySeenSystemTables {
+		_, root, err := GetRootFromContext(ctx)
+		if err != nil {
+			return err
+		}
+
+		systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
+		if err != nil {
+			return err
+		}
+
+		// Sort system tables for deterministic iteration (OIDs depend on this)
+		sort.Slice(systemTables, func(i, j int) bool {
+			if systemTables[i].Schema == systemTables[j].Schema {
+				return systemTables[i].Name < systemTables[j].Name
+			}
+			return systemTables[i].Schema < systemTables[j].Schema
+		})
+
+		for _, tblName := range systemTables {
+			table, err := GetSqlTableFromContext(ctx, "", tblName)
+			if err != nil {
+				// Skip tables that can't be loaded
+				continue
+			}
+			if table == nil {
+				continue
+			}
+
+			stop, err := callback(tblName.Schema, table)
+			if err != nil || stop {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

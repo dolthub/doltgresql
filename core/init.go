@@ -37,6 +37,7 @@ func Init() {
 	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
 	typecollection.GetSqlTableFromContext = GetSqlTableFromContext
 	typecollection.GetSchemaName = GetSchemaName
+	typecollection.IterateDatabaseTables = IterateDatabaseTables
 	pgtypes.GetTypesCollectionFromContext = func(ctx *sql.Context) (pgtypes.TypeCollection, error) {
 		return GetTypesCollectionFromContext(ctx)
 	}

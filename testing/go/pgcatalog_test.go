@@ -4797,6 +4797,77 @@ func TestPgType(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "composite table types",
+			SetUpScript: []string{
+				`CREATE TABLE users (id int, name text)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM pg_type where typname like 'users'",
+					Expected: []sql.Row{
+						{135364127, `users`, 2200, 0, -1, "f", "c", "C", "f", "t", ",", 3272826793, "-", 0, 3142499152, "record_in", "record_out", "record_recv", "record_send", "-", "-", "-", "d", "x", "f", 0, -1, 0, 0, "", "", "{}"},
+					},
+				},
+			},
+		},
+		{
+			Name:        "pg_type ignores dolt_show_system_tables",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT typname FROM pg_type where typname like 'dolt_%' order by typname`,
+					Expected: []sql.Row{
+						{"dolt_backups"},
+						{"dolt_branch_activity"},
+						{"dolt_branches"},
+						{"dolt_column_diff"},
+						{"dolt_commit_ancestors"},
+						{"dolt_commits"},
+						{"dolt_conflicts"},
+						{"dolt_constraint_violations"},
+						{"dolt_diff"},
+						{"dolt_help"},
+						{"dolt_log"},
+						{"dolt_merge_status"},
+						{"dolt_remote_branches"},
+						{"dolt_remotes"},
+						{"dolt_schema_conflicts"},
+						{"dolt_stashes"},
+						{"dolt_status"},
+						{"dolt_status_ignored"},
+						{"dolt_tags"},
+					},
+				},
+				{
+					Query: `SET dolt_show_system_tables=1`,
+				},
+				{
+					Query: `SELECT typname FROM pg_type where typname like 'dolt_%' order by typname;`,
+					Expected: []sql.Row{
+						{"dolt_backups"},
+						{"dolt_branch_activity"},
+						{"dolt_branches"},
+						{"dolt_column_diff"},
+						{"dolt_commit_ancestors"},
+						{"dolt_commits"},
+						{"dolt_conflicts"},
+						{"dolt_constraint_violations"},
+						{"dolt_diff"},
+						{"dolt_help"},
+						{"dolt_log"},
+						{"dolt_merge_status"},
+						{"dolt_remote_branches"},
+						{"dolt_remotes"},
+						{"dolt_schema_conflicts"},
+						{"dolt_stashes"},
+						{"dolt_status"},
+						{"dolt_status_ignored"},
+						{"dolt_tags"},
+					},
+				},
+			},
+		},
 	})
 }
 

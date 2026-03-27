@@ -344,6 +344,32 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 			return nil
 		}
 	})
+	if err != nil {
+		return err
+	}
+
+	sqlCtx, ok := ctx.(*sql.Context)
+	if !ok {
+		return nil
+	}
+
+	err = IterateDatabaseTables(sqlCtx, func(schemaName string, table sql.Table) (stop bool, err error) {
+		typ, err := pgs.tableToType(sqlCtx, table, schemaName)
+		if err != nil {
+			return false, err
+		}
+		//Add associated array type  for this table
+		if typ.IsDefined {
+			arrayType := pgtypes.CreateArrayTypeFromBaseType(typ)
+			stop, err = f(arrayType)
+			if stop || err != nil {
+				return stop, err
+			}
+		}
+
+		return f(typ)
+	})
+
 	return err
 }
 
@@ -482,3 +508,6 @@ var GetSqlTableFromContext func(ctx *sql.Context, databaseName string, tableName
 
 // GetSchemaName is a forward declaration to get around import cycles
 var GetSchemaName func(ctx *sql.Context, db sql.Database, schemaName string) (string, error)
+
+// IterateDatabaseTables is a forward declaration to get around import cycles
+var IterateDatabaseTables func(ctx *sql.Context, callback func(schemaName string, table sql.Table) (stop bool, err error)) error
