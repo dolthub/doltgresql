@@ -17,6 +17,7 @@ package expression
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -26,8 +27,11 @@ import (
 
 // IsDistinctFrom represents IS DISTINCT FROM expression.
 type IsDistinctFrom struct {
-	leftExpr  sql.Expression
-	rightExpr sql.Expression
+	leftExpr           sql.Expression
+	rightExpr          sql.Expression
+	staticLeftLiteral  *expression.Literal
+	staticRightLiteral *expression.Literal
+	notEqualFunc       *framework.CompiledFunction
 }
 
 var _ vitess.Injectable = (*IsDistinctFrom)(nil)
@@ -48,11 +52,6 @@ func (n *IsDistinctFrom) Children() []sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (n *IsDistinctFrom) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	cf := framework.GetBinaryFunction(framework.Operator_BinaryNotEqual).Compile("internal_binary_operator_func_<>", n.leftExpr, n.rightExpr)
-	if cf == nil {
-		return nil, errors.Errorf("input types do not match: %s %s", n.leftExpr.Type().String(), n.rightExpr.Type().String())
-	}
-
 	left, err := n.leftExpr.Eval(ctx, row)
 	if err != nil {
 		return nil, err
@@ -68,7 +67,13 @@ func (n *IsDistinctFrom) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return true, nil
 	}
 
-	return cf.EvalWtihNonNullArgs(ctx, []any{left, right})
+	n.staticLeftLiteral.Val = left
+	n.staticRightLiteral.Val = right
+
+	if n.notEqualFunc == nil {
+		return nil, errors.Errorf("input types do not match: %s %s", n.leftExpr.Type().String(), n.rightExpr.Type().String())
+	}
+	return n.notEqualFunc.Eval(ctx, row)
 }
 
 // IsNullable implements the sql.Expression interface.
@@ -99,11 +104,36 @@ func (n *IsDistinctFrom) WithChildren(children ...sql.Expression) (sql.Expressio
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(n, len(children), 2)
 	}
-	i, err := n.WithResolvedChildren([]any{children[0], children[1]})
-	if err != nil {
-		return nil, err
+
+	// This allows evaluating the arguments separate from function.Eval() in order to resolve NULL values.
+	// This follows the same logic as InTuple expression.
+	allValidChildren := true
+	leftType, ok := children[0].Type().(sql.Type)
+	if !ok {
+		allValidChildren = false
 	}
-	return i.(sql.Expression), nil
+	rightType, ok := children[1].Type().(sql.Type)
+	if !ok {
+		allValidChildren = false
+	}
+	staticLeftLiteral := expression.NewLiteral(nil, leftType)
+	staticRightLiteral := expression.NewLiteral(nil, rightType)
+
+	if allValidChildren {
+		cf := framework.GetBinaryFunction(framework.Operator_BinaryNotEqual).Compile("internal_binary_operator_func_<>", staticLeftLiteral, staticRightLiteral)
+		return &IsDistinctFrom{
+			leftExpr:           children[0],
+			rightExpr:          children[1],
+			staticLeftLiteral:  staticLeftLiteral,
+			staticRightLiteral: staticRightLiteral,
+			notEqualFunc:       cf,
+		}, nil
+	}
+
+	return &IsDistinctFrom{
+		leftExpr:  children[0],
+		rightExpr: children[1],
+	}, nil
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
@@ -119,8 +149,6 @@ func (n *IsDistinctFrom) WithResolvedChildren(children []any) (any, error) {
 	if !ok {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
 	}
-	return &IsDistinctFrom{
-		leftExpr:  left,
-		rightExpr: right,
-	}, nil
+
+	return n.WithChildren(left, right)
 }

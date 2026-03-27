@@ -121,9 +121,9 @@ func (node ViewOptions) Format(ctx *FmtCtx) {
 // E.g. "fal" is accepted as false.
 func GetBoolFromString(option, s string) (bool, error) {
 	switch strings.ToLower(s) {
-	case "true", "tru", "tr", "t":
+	case "true", "tru", "tr", "t", "yes", "ye", "y", "on", "1":
 		return true, nil
-	case "false", "fals", "fal", "fa", "f":
+	case "false", "fals", "fal", "fa", "f", "no", "n", "off", "of", "0":
 		return false, nil
 	default:
 		return false, errors.New(`invalid value for boolean option "` + option + `": ` + s)

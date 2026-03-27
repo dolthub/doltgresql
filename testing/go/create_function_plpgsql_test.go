@@ -1644,7 +1644,7 @@ $$ LANGUAGE plpgsql;`,
 			},
 		},
 		{
-			Name: "use multiple types returning in block statement",
+			Name: "distinct expression over function",
 			SetUpScript: []string{
 				`CREATE TABLE test (pk SERIAL PRIMARY KEY);`,
 			},
