@@ -27,7 +27,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           token: ${{ secrets.PUBLIC_REPO_ACCESS_TOKEN || secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Build SQL Syntax
@@ -52,7 +52,7 @@ jobs:
       release_id: ${{ steps.create_release.outputs.id }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           token: ${{ secrets.PUBLIC_REPO_ACCESS_TOKEN || secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Build SQL Syntax
