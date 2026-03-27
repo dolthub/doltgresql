@@ -70,6 +70,9 @@ func (n *IsNotDistinctFrom) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	n.staticLeftLiteral.Val = left
 	n.staticRightLiteral.Val = right
 
+	if n.equalFunc == nil {
+		return nil, errors.Errorf("input types do not match: %s %s", n.leftExpr.Type().String(), n.rightExpr.Type().String())
+	}
 	return n.equalFunc.Eval(ctx, row)
 }
 
