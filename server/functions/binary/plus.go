@@ -23,6 +23,8 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -299,7 +301,9 @@ var interval_pl = framework.Function2{
 
 // interval_pl_time_callable is the callable logic for the interval_pl_time function.
 func interval_pl_time_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	return val2.(time.Time).Add(time.Duration(val1.(duration.Duration).Nanos())), nil
+	interval := val1.(duration.Duration)
+	timeVal := val2.(timeofday.TimeOfDay)
+	return timeVal.Add(interval), nil
 }
 
 // interval_pl_time represents the PostgreSQL function of the same name, taking the same parameters.
@@ -327,8 +331,10 @@ var interval_pl_date = framework.Function2{
 
 // interval_pl_timetz_callable is the callable logic for the interval_pl_timetz function.
 func interval_pl_timetz_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	ttz := val2.(time.Time)
-	return ttz.Add(time.Duration(val1.(duration.Duration).Nanos())), nil
+	interval := val1.(duration.Duration)
+	timeVal := val2.(timetz.TimeTZ)
+	timeVal.TimeOfDay = timeVal.TimeOfDay.Add(interval)
+	return timeVal, nil
 }
 
 // interval_pl_timetz represents the PostgreSQL function of the same name, taking the same parameters.
@@ -436,7 +442,7 @@ var datetime_pl = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		date := val1.(time.Time)
-		timeVal := val2.(time.Time)
+		timeVal := val2.(timeofday.TimeOfDay).ToTime()
 
 		// Combine date from first parameter with time from second parameter
 		// Extract hour, minute, second, nanosecond from time
@@ -458,7 +464,7 @@ var datetimetz_pl = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		date := val1.(time.Time)
-		timetzVal := val2.(time.Time)
+		timetzVal := val2.(timetz.TimeTZ).ToTime()
 
 		// Combine date from first parameter with time+timezone from second parameter
 		// Extract hour, minute, second, nanosecond, and timezone from timetz
@@ -480,7 +486,7 @@ var timedate_pl = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		timeVal := val1.(time.Time)
+		timeVal := val1.(timeofday.TimeOfDay).ToTime()
 		date := val2.(time.Time)
 
 		// Combine time from first parameter with date from second parameter
@@ -502,7 +508,7 @@ var timetzdate_pl = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		timetzVal := val1.(time.Time)
+		timetzVal := val1.(timetz.TimeTZ).ToTime()
 		date := val2.(time.Time)
 
 		// Combine timetz from first parameter with date from second parameter
@@ -555,12 +561,9 @@ var time_pl_interval = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Interval},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		timeVal := val1.(time.Time)
+		timeVal := val1.(timeofday.TimeOfDay)
 		interval := val2.(duration.Duration)
-
-		// Add the interval to the time
-		// Convert interval to duration and add to time
-		return timeVal.Add(time.Duration(interval.Nanos())), nil
+		return timeVal.Add(interval), nil
 	},
 }
 
@@ -571,12 +574,10 @@ var timetz_pl_interval = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.Interval},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		timetzVal := val1.(time.Time)
+		timetzVal := val1.(timetz.TimeTZ)
 		interval := val2.(duration.Duration)
-
-		// Add the interval to the timetz
-		// Convert interval to duration and add to timetz
-		return timetzVal.Add(time.Duration(interval.Nanos())), nil
+		timetzVal.TimeOfDay = timetzVal.TimeOfDay.Add(interval)
+		return timetzVal, nil
 	},
 }
 
@@ -585,9 +586,7 @@ var timetz_pl_interval = framework.Function2{
 func intervalPlusNonInterval(d duration.Duration, t time.Time) (time.Time, error) {
 	seconds, ok := d.AsInt64()
 	if !ok {
-		if !ok {
-			return time.Time{}, errors.Errorf("interval overflow")
-		}
+		return time.Time{}, errors.Errorf("interval overflow")
 	}
 	nanos := float64(seconds) * functions.NanosPerSec
 	if nanos > float64(math.MaxInt64) || nanos < float64(math.MinInt64) {

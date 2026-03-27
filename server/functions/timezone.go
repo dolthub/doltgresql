@@ -79,14 +79,14 @@ var timezone_text_timetz = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		tz := val1.(string)
-		timeVal := val2.(time.Time)
+		timeVal := val2.(timetz.TimeTZ).ToTime()
 		_, newOffset, _, err := convertTzToOffsetSecs(timeVal, tz)
 		if err != nil {
 			return nil, err
 		}
 		_, currentOffset := timeVal.Zone()
 		t := timeVal.Add(time.Duration((-int64(currentOffset) + int64(newOffset)) * NanosPerSec))
-		return timetz.MakeTimeTZ(timeofday.FromTime(t), -newOffset).ToTime(), nil
+		return timetz.MakeTimeTZ(timeofday.FromTime(t), -newOffset), nil
 	},
 }
 
@@ -99,11 +99,11 @@ var timezone_interval_timetz = framework.Function2{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		dur := val1.(duration.Duration)
-		timeVal := val2.(time.Time)
+		timeVal := val2.(timetz.TimeTZ).ToTime()
 		newOffset := int32(dur.Nanos() / NanosPerSec)
 		_, currentOffset := timeVal.Zone()
 		t := timeVal.Add(time.Duration((-int64(currentOffset) + int64(newOffset)) * NanosPerSec))
-		return timetz.MakeTimeTZ(timeofday.FromTime(t), -newOffset).ToTime(), nil
+		return timetz.MakeTimeTZ(timeofday.FromTime(t), -newOffset), nil
 	},
 }
 

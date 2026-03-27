@@ -15,8 +15,6 @@
 package functions
 
 import (
-	"time"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgtype"
 
@@ -57,7 +55,7 @@ var time_in = framework.Function3{
 		if err != nil {
 			return nil, err
 		}
-		return timeofday.TimeOfDay(*t).ToTime(), nil
+		return timeofday.TimeOfDay(*t), nil
 	},
 }
 
@@ -68,7 +66,7 @@ var time_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Time},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(time.Time).Format("15:04:05.999999999"), nil
+		return val.(timeofday.TimeOfDay).String(), nil
 	},
 }
 
@@ -88,7 +86,7 @@ var time_recv = framework.Function3{
 		if err != nil {
 			return nil, err
 		}
-		return time.UnixMicro(out.Microseconds).UTC(), nil
+		return timeofday.New(0, 0, 0, int(out.Microseconds)), nil
 	},
 }
 
@@ -100,7 +98,7 @@ var time_send = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		writer := utils.NewWireWriter()
-		writer.WriteInt64(val.(time.Time).UnixMicro())
+		writer.WriteInt64(int64(val.(timeofday.TimeOfDay)))
 		return writer.BufferData(), nil
 	},
 }
@@ -138,8 +136,8 @@ var time_cmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(time.Time)
-		bb := val2.(time.Time)
+		ab := val1.(timeofday.TimeOfDay)
+		bb := val2.(timeofday.TimeOfDay)
 		return int32(ab.Compare(bb)), nil
 	},
 }

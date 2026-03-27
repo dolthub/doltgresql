@@ -15,9 +15,9 @@
 package cast
 
 import (
-	"time"
-
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -35,7 +35,7 @@ func timeTZAssignment() {
 		FromType: pgtypes.TimeTZ,
 		ToType:   pgtypes.Time,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return val.(time.Time), nil
+			return val.(timetz.TimeTZ).TimeOfDay, nil
 		},
 	})
 }
@@ -46,7 +46,7 @@ func timeTZImplicit() {
 		FromType: pgtypes.TimeTZ,
 		ToType:   pgtypes.TimeTZ,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return val.(time.Time), nil
+			return val.(timetz.TimeTZ), nil
 		},
 	})
 }

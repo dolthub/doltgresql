@@ -678,7 +678,7 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return val
-	case types.Interval.ID, types.Time.ID, types.Uuid.ID:
+	case types.Interval.ID, types.Uuid.ID:
 		// These values need to be normalized into the appropriate types
 		// before being converted to string type using the Doltgres
 		// IoOutput method.
@@ -720,6 +720,8 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			decStr := decimal.NewFromBigInt(val.Int, val.Exp).StringFixed(val.Exp * -1)
 			return Numeric(decStr)
 		}
+	case pgtype.Time:
+		return timeofday.TimeOfDay(val.Microseconds).String()
 	case []any:
 		if dt.IsArrayType() {
 			return NormalizeArrayType(dt, val)
@@ -790,7 +792,7 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 		}
 	case pgtype.Time:
 		// This value type is used for TIME type.
-		return timeofday.FromInt(val.Microseconds).ToTime()
+		return timeofday.FromInt(val.Microseconds)
 	case pgtype.Interval:
 		// This value type is used for INTERVAL type.
 		return duration.MakeDuration(val.Microseconds*functions.NanosPerMicro, int64(val.Days), int64(val.Months))

@@ -15,12 +15,12 @@
 package functions
 
 import (
-	"strconv"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -58,7 +58,7 @@ var timetz_in = framework.Function3{
 		if err != nil {
 			return nil, err
 		}
-		return t.ToTime(), nil
+		return t, nil
 	},
 }
 
@@ -69,8 +69,7 @@ var timetz_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: this always displays the time with an offset relevant to the server location
-		return timetz.MakeTimeTZFromTime(val.(time.Time)).String(), nil
+		return val.(timetz.TimeTZ).String(), nil
 	},
 }
 
@@ -87,9 +86,9 @@ var timetz_recv = framework.Function3{
 			return nil, nil
 		}
 		reader := utils.NewWireReader(data)
-		micro := reader.ReadInt64()
-		timezoneMicro := int64(reader.ReadInt32()) * 1000000
-		return time.UnixMicro(micro + timezoneMicro), nil
+		tod := reader.ReadInt64()
+		offset := reader.ReadInt32()
+		return timetz.MakeTimeTZ(timeofday.TimeOfDay(tod), offset), nil
 	},
 }
 
@@ -100,26 +99,10 @@ var timetz_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// We have to isolate the UTC time from the timezone, so we subtract the timezone delta from the original time
-		tim := val.(time.Time)
-		timezone, _ := strconv.Atoi(tim.Format("-070000"))
-		isNegative := false
-		if timezone < 0 {
-			isNegative = true
-			timezone = -timezone
-		}
-		seconds := timezone % 100
-		minutes := (timezone / 100) % 100
-		hours := (timezone / 10000) % 100
-		totalSeconds := int32(seconds + (60 * minutes) + (3600 * hours))
-		if !isNegative {
-			totalSeconds = -totalSeconds // The sign is inverted when writing the integer
-		}
-		timeOffset := time.Duration(-totalSeconds) * time.Second // Adding a negative is the same as subtracting
-		tim = tim.UTC().Add(timeOffset)
+		tim := val.(timetz.TimeTZ)
 		writer := utils.NewWireWriter()
-		writer.WriteInt64(tim.UnixMicro())
-		writer.WriteInt32(totalSeconds)
+		writer.WriteInt64(int64(tim.TimeOfDay))
+		writer.WriteInt32(tim.OffsetSecs)
 		return writer.BufferData(), nil
 	},
 }
@@ -157,8 +140,8 @@ var timetz_cmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimeTZ, pgtypes.TimeTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(time.Time)
-		bb := val2.(time.Time)
+		ab := val1.(timetz.TimeTZ)
+		bb := val2.(timetz.TimeTZ)
 		return int32(ab.Compare(bb)), nil
 	},
 }

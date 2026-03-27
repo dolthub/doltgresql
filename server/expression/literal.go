@@ -24,6 +24,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -113,12 +115,12 @@ func NewRawLiteralDate(date time.Time) *expression.Literal {
 }
 
 // NewRawLiteralTime returns a new *expression.Literal containing a TIME value.
-func NewRawLiteralTime(t time.Time) *expression.Literal {
+func NewRawLiteralTime(t timeofday.TimeOfDay) *expression.Literal {
 	return expression.NewLiteral(t, pgtypes.Time)
 }
 
 // NewRawLiteralTimeTZ returns a new *expression.Literal containing a TIMETZ value.
-func NewRawLiteralTimeTZ(ttz time.Time) *expression.Literal {
+func NewRawLiteralTimeTZ(ttz timetz.TimeTZ) *expression.Literal {
 	return expression.NewLiteral(ttz, pgtypes.TimeTZ)
 }
 

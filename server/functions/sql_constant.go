@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -56,7 +58,8 @@ var current_time = framework.Function0{
 	Return: pgtypes.TimeTZ,
 	Strict: true,
 	Callable: func(ctx *sql.Context) (any, error) {
-		return ctx.QueryTime(), nil
+		t := ctx.QueryTime()
+		return timetz.MakeTimeTZFromLocation(timeofday.New(t.Hour(), t.Minute(), t.Second(), t.Nanosecond()/1000), t.Location()), nil
 	},
 }
 
@@ -69,7 +72,8 @@ var current_time_int32 = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: support precision
-		return ctx.QueryTime(), nil
+		t := ctx.QueryTime()
+		return timetz.MakeTimeTZFromLocation(timeofday.New(t.Hour(), t.Minute(), t.Second(), t.Nanosecond()/1000), t.Location()), nil
 	},
 }
 

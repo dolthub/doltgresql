@@ -215,13 +215,24 @@ func (t TimeTZ) Before(other TimeTZ) bool {
 }
 
 // After returns whether the TimeTZ is after the other TimeTZ.
-func (t *TimeTZ) After(other TimeTZ) bool {
+func (t TimeTZ) After(other TimeTZ) bool {
 	return t.ToTime().After(other.ToTime()) || (t.ToTime().Equal(other.ToTime()) && t.OffsetSecs > other.OffsetSecs)
 }
 
 // Equal returns whether the TimeTZ is equal to the other TimeTZ.
 func (t TimeTZ) Equal(other TimeTZ) bool {
 	return t.TimeOfDay == other.TimeOfDay && t.OffsetSecs == other.OffsetSecs
+}
+
+// Compare compares the calling TimeTZ with the given one, returning a comparison integer.
+func (t TimeTZ) Compare(other TimeTZ) int {
+	if t.Before(other) {
+		return -1
+	} else if t.After(other) {
+		return 1
+	} else {
+		return 0
+	}
 }
 
 // ReplaceLibPQTimePrefix replaces unparsable lib/pq dates used for timestamps
