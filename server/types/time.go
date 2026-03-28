@@ -15,10 +15,11 @@
 package types
 
 import (
-	"time"
-
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
@@ -92,7 +93,10 @@ func GetTimePrecisionFromTypMod(typmod int32) int32 {
 // serializeTypeTime handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeTime(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	return val.(time.Time).MarshalBinary()
+	v := val.(timeofday.TimeOfDay)
+	writer := utils.NewWriter(8)
+	writer.Int64(int64(v))
+	return writer.Data(), nil
 }
 
 // deserializeTypeTime handles deserialization from the Dolt serialized format to our standard representation used by
@@ -101,9 +105,6 @@ func deserializeTypeTime(ctx *sql.Context, _ *DoltgresType, data []byte) (any, e
 	if len(data) == 0 {
 		return nil, nil
 	}
-	t := time.Time{}
-	if err := t.UnmarshalBinary(data); err != nil {
-		return nil, err
-	}
-	return t, nil
+	reader := utils.NewReader(data)
+	return timeofday.TimeOfDay(reader.Int64()), nil
 }

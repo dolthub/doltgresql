@@ -139,6 +139,22 @@ func (t TimeOfDay) Add(d duration.Duration) TimeOfDay {
 	return FromInt(int64(t) + d.Nanos()/nanosPerMicro)
 }
 
+// Sub subtracts a Duration to a TimeOfDay, wrapping into the previous day if necessary.
+func (t TimeOfDay) Sub(d duration.Duration) TimeOfDay {
+	return FromInt(int64(t) - d.Nanos()/nanosPerMicro)
+}
+
+// Compare compares the calling TimeOfDay with the given one, returning a comparison integer.
+func (t TimeOfDay) Compare(other TimeOfDay) int {
+	if t < other {
+		return -1
+	} else if t == other {
+		return 0
+	} else {
+		return 1
+	}
+}
+
 // Difference returns the interval between t1 and t2, which may be negative.
 func Difference(t1 TimeOfDay, t2 TimeOfDay) duration.Duration {
 	return duration.MakeDuration(int64(t1-t2)*nanosPerMicro, 0, 0)

@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -48,7 +49,7 @@ func timestampTZAssignment() {
 		FromType: pgtypes.TimestampTZ,
 		ToType:   pgtypes.Time,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return timeofday.FromTime(val.(time.Time)).ToTime(), nil
+			return timeofday.FromTime(val.(time.Time)), nil
 		},
 	})
 	framework.MustAddAssignmentTypeCast(framework.TypeCast{
@@ -63,7 +64,7 @@ func timestampTZAssignment() {
 		FromType: pgtypes.TimestampTZ,
 		ToType:   pgtypes.TimeTZ,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return val.(time.Time), nil
+			return timetz.MakeTimeTZFromTime(val.(time.Time)), nil
 		},
 	})
 }

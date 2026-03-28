@@ -22,6 +22,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/compare"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -572,7 +574,7 @@ var record_eq = framework.Function2{
 
 // time_eq_callable is the callable logic for the time_eq function.
 func time_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.Time.Compare(ctx, val1.(time.Time), val2.(time.Time))
+	res, err := pgtypes.Time.Compare(ctx, val1.(timeofday.TimeOfDay), val2.(timeofday.TimeOfDay))
 	return res == 0, err
 }
 
@@ -677,7 +679,7 @@ var timestamptz_eq = framework.Function2{
 
 // timetz_eq_callable is the callable logic for the timetz_eq function.
 func timetz_eq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.TimeTZ.Compare(ctx, val1.(time.Time), val2.(time.Time))
+	res, err := pgtypes.TimeTZ.Compare(ctx, val1.(timetz.TimeTZ), val2.(timetz.TimeTZ))
 	return res == 0, err
 }
 

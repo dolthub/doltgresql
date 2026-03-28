@@ -22,6 +22,8 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -70,7 +72,7 @@ var date_part_text_time = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
-		timeVal := val2.(time.Time)
+		timeVal := val2.(timeofday.TimeOfDay).ToTime()
 		switch strings.ToLower(field) {
 		case "century", "centuries", "day", "days", "decade", "decades", "dow", "doy",
 			"isodow", "isoyear", "julian", "millennium", "millenniums", "month", "months",
@@ -95,7 +97,7 @@ var date_part_text_timetz = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		field := val1.(string)
-		timetzVal := val2.(time.Time)
+		timetzVal := val2.(timetz.TimeTZ).ToTime()
 		_, currentOffset := timetzVal.Zone()
 		switch strings.ToLower(field) {
 		case "century", "centuries", "day", "days", "decade", "decades", "dow", "doy",

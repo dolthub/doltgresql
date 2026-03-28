@@ -4214,7 +4214,6 @@ func TestWireTypesSending(t *testing.T) {
 		},
 		{
 			Name: "TIMETZ returning text format",
-			Skip: true, // TODO: it doesn't consider DST when deserializing timezone offset. Look into: https://cs.opensource.google/go/go/+/master:src/time/time.go;l=1564
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 TIMETZ, v2 TIMETZ);",
 				"INSERT INTO test VALUES ('0:0 PST', '04:05:06.789 MST'), ('09:27 PM CST', '12:12 EST');",
@@ -4298,10 +4297,9 @@ func TestWireTypesSending(t *testing.T) {
 		},
 		{
 			Name: "TIMETZ returning binary format",
-			Skip: true,
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 TIMETZ, v2 TIMETZ);",
-				"INSERT INTO test VALUES ('0:0', '04:05:06.789'), ('09:27 PM', '12:12');",
+				"INSERT INTO test VALUES ('0:0 PST', '04:05:06.789 PDT'), ('09:27 PM CST', '12:12 EST');",
 			},
 			Assertions: []WireScriptTestAssertion{
 				{
@@ -4364,13 +4362,13 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.DataRow{
 							Values: [][]byte{
 								{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 112, 128},
-								{0, 0, 0, 3, 108, 151, 202, 136, 0, 0, 112, 128},
+								{0, 0, 0, 3, 108, 151, 202, 136, 0, 0, 98, 112},
 							},
 						},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								{0, 0, 0, 17, 250, 171, 177, 0, 0, 0, 112, 128},
-								{0, 0, 0, 10, 57, 214, 4, 0, 0, 0, 112, 128},
+								{0, 0, 0, 17, 250, 171, 177, 0, 0, 0, 84, 96},
+								{0, 0, 0, 10, 57, 214, 4, 0, 0, 0, 70, 80},
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
@@ -6979,7 +6977,6 @@ func TestWireTypesReceiving(t *testing.T) {
 		},
 		{
 			Name: `TIMETZ receiving binary format`,
-			Skip: true, // TODO: need to consider daylight savings
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 TIMETZ, v2 TIMETZ);",
 			},

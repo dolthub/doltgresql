@@ -23,6 +23,8 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -368,12 +370,11 @@ var time_mi_time = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Time},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		time1 := val1.(time.Time)
-		time2 := val2.(time.Time)
+		time1 := val1.(timeofday.TimeOfDay)
+		time2 := val2.(timeofday.TimeOfDay)
 
 		// Calculate the difference and return as interval
-		diff := time1.Sub(time2)
-		return duration.MakeDuration(diff.Nanoseconds(), 0, 0), nil
+		return timeofday.TimeOfDay(int64(time1) - int64(time2)).Round(time.Microsecond), nil
 	},
 }
 
@@ -384,11 +385,9 @@ var time_mi_interval = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Time, pgtypes.Interval},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		timeVal := val1.(time.Time)
+		timeVal := val1.(timeofday.TimeOfDay)
 		interval := val2.(duration.Duration)
-
-		// Subtract the interval from the time
-		return timeVal.Add(-time.Duration(interval.Nanos())), nil
+		return timeVal.Sub(interval), nil
 	},
 }
 
@@ -400,10 +399,9 @@ var timetz_mi_interval = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		interval := val1.(duration.Duration)
-		timetzVal := val2.(time.Time)
-
-		// Subtract the interval from the timetz (note: parameters are reversed)
-		return timetzVal.Add(-time.Duration(interval.Nanos())), nil
+		timetzVal := val2.(timetz.TimeTZ)
+		timetzVal.TimeOfDay = timetzVal.TimeOfDay.Sub(interval)
+		return timetzVal, nil
 	},
 }
 

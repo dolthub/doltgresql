@@ -33,6 +33,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -317,6 +319,12 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 	case decimal.Decimal:
 		bb := v2.(decimal.Decimal)
 		return ab.Cmp(bb), nil
+	case timeofday.TimeOfDay:
+		bb := v2.(timeofday.TimeOfDay)
+		return ab.Compare(bb), nil
+	case timetz.TimeTZ:
+		bb := v2.(timetz.TimeTZ)
+		return ab.Compare(bb), nil
 	case uuid.UUID:
 		bb := v2.(uuid.UUID)
 		return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
@@ -403,7 +411,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if ok {
 			return v, sql.InRange, nil
 		}
-	case "date", "time", "timestamp", "timestamptz", "timetz":
+	case "date", "timestamp", "timestamptz":
 		if _, ok := v.(time.Time); ok {
 			return v, sql.InRange, nil
 		}
@@ -437,6 +445,14 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		}
 	case "oid", "regclass", "regproc", "regtype":
 		if _, ok := v.(id.Id); ok {
+			return v, sql.InRange, nil
+		}
+	case "time":
+		if _, ok := v.(timeofday.TimeOfDay); ok {
+			return v, sql.InRange, nil
+		}
+	case "timetz":
+		if _, ok := v.(timetz.TimeTZ); ok {
 			return v, sql.InRange, nil
 		}
 	case "xid":

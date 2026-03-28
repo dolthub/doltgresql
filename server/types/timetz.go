@@ -15,9 +15,11 @@
 package types
 
 import (
-	"time"
-
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	"github.com/dolthub/doltgresql/postgres/parser/timetz"
+	"github.com/dolthub/doltgresql/utils"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
@@ -73,7 +75,11 @@ func NewTimeTZType(precision int32) (*DoltgresType, error) {
 // serializeTypeTimeTZ handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeTimeTZ(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	return val.(time.Time).MarshalBinary()
+	v := val.(timetz.TimeTZ)
+	writer := utils.NewWriter(12)
+	writer.Int64(int64(v.TimeOfDay))
+	writer.Int32(v.OffsetSecs)
+	return writer.Data(), nil
 }
 
 // deserializeTypeTimeTZ handles deserialization from the Dolt serialized format to our standard representation used by
@@ -82,9 +88,8 @@ func deserializeTypeTimeTZ(ctx *sql.Context, _ *DoltgresType, data []byte) (any,
 	if len(data) == 0 {
 		return nil, nil
 	}
-	t := time.Time{}
-	if err := t.UnmarshalBinary(data); err != nil {
-		return nil, err
-	}
-	return t, nil
+	reader := utils.NewReader(data)
+	tod := reader.Int64()
+	offset := reader.Int32()
+	return timetz.MakeTimeTZ(timeofday.TimeOfDay(tod), offset), nil
 }

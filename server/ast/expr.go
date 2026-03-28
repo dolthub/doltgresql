@@ -568,11 +568,11 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		}, nil
 	case *tree.DTime:
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralTime(timeofday.TimeOfDay(*node).ToTime()),
+			Expression: pgexprs.NewRawLiteralTime(timeofday.TimeOfDay(*node)),
 		}, nil
 	case *tree.DTimeTZ:
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralTimeTZ(node.TimeTZ.ToTime()),
+			Expression: pgexprs.NewRawLiteralTimeTZ(node.TimeTZ),
 		}, nil
 	case *tree.DTimestamp:
 		return vitess.InjectedExpr{
