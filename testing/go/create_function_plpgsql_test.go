@@ -1620,5 +1620,57 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "use multiple types returning in block statement",
+			SetUpScript: []string{
+				`CREATE TABLE test (id int, v text);`,
+				`INSERT INTO test VALUES (1, 'r'), (2, 'g');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION return_table() RETURNS int AS $$ 
+DECLARE ti int; tt text; 
+BEGIN 
+	INSERT INTO test VALUES (3, 'w') returning * INTO ti, tt; 
+	RETURN ti; 
+END; 
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "select return_table();",
+					Expected: []sql.Row{{3}},
+				},
+			},
+		},
+		{
+			Name: "distinct expression over function",
+			SetUpScript: []string{
+				`CREATE TABLE test (pk SERIAL PRIMARY KEY);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION func1() RETURNS INT4 AS $$
+DECLARE
+  ret INT4;
+BEGIN
+  INSERT INTO test VALUES (DEFAULT) RETURNING pk INTO ret;
+  IF ret % 2 <> 0 THEN
+    RETURN NULL;
+  END IF;
+  RETURN ret;
+END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT func1() IS DISTINCT FROM func1() as DISTINCT_RESULT;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+			},
+		},
 	})
 }

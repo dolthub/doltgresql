@@ -124,7 +124,8 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 					if !arg.Type.IsResolvedType() {
 						dt, err := resolveType(ctx, db, arg.Type)
 						if err != nil {
-							return nil, transform.NewTree, err
+							// the type can be non-existing type
+							continue
 						}
 						same = transform.NewTree
 						r.Args[j].Type = dt
@@ -138,7 +139,8 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 					if !arg.Type.IsResolvedType() {
 						dt, err := resolveType(ctx, db, arg.Type)
 						if err != nil {
-							return nil, transform.NewTree, err
+							// the type can be non-existing type
+							continue
 						}
 						same = transform.NewTree
 						r.Args[j].Type = dt

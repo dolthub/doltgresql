@@ -33,7 +33,11 @@
 
 package tree
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/cockroachdb/errors"
+)
 
 var _ Statement = &CreateView{}
 
@@ -111,4 +115,17 @@ func (node ViewOptions) Format(ctx *FmtCtx) {
 		}
 	}
 	ctx.WriteString(" )")
+}
+
+// GetBoolFromString returns bool value parsed from given string.
+// E.g. "fal" is accepted as false.
+func GetBoolFromString(option, s string) (bool, error) {
+	switch strings.ToLower(s) {
+	case "true", "tru", "tr", "t", "yes", "ye", "y", "on", "1":
+		return true, nil
+	case "false", "fals", "fal", "fa", "f", "no", "n", "off", "of", "0":
+		return false, nil
+	default:
+		return false, errors.New(`invalid value for boolean option "` + option + `": ` + s)
+	}
 }

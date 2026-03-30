@@ -239,11 +239,11 @@ var createViewStmts = []ScriptTest{
 				Skip:  true,
 			},
 			{
-				Query: "CREATE VIEW v WITH check_option = 'local' AS SELECT 1;",
+				Query: "CREATE VIEW v WITH (check_option = 'local') AS SELECT 1;",
 				Skip:  true,
 			},
 			{
-				Query: "CREATE VIEW v WITH security_barrier = true AS SELECT 1;",
+				Query: "CREATE VIEW v WITH (security_barrier = true) AS SELECT 1;",
 				Skip:  true,
 			},
 		},

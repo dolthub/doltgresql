@@ -421,7 +421,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		case tree.SimilarTo:
 			return nil, errors.Errorf("similar to is not yet supported")
 		case tree.NotSimilarTo:
-			return nil, errors.Errorf("similar to is not yet supported")
+			return nil, errors.Errorf("not similar to is not yet supported")
 		case tree.RegMatch:
 			operator = vitess.RegexpStr
 		case tree.NotRegMatch:
@@ -429,13 +429,19 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		case tree.RegIMatch:
 			return nil, errors.Errorf("~* is not yet supported")
 		case tree.NotRegIMatch:
-			return nil, errors.Errorf("~* is not yet supported")
+			return nil, errors.Errorf("!~* is not yet supported")
 		case tree.TextSearchMatch:
 			return nil, errors.Errorf("@@ is not yet supported")
 		case tree.IsDistinctFrom:
-			return nil, errors.Errorf("IS DISTINCT FROM is not yet supported")
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewIsDistinctFrom(),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.IsNotDistinctFrom:
-			return nil, errors.Errorf("IS NOT DISTINCT FROM is not yet supported")
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewIsNotDistinctFrom(),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.Contains:
 			return vitess.InjectedExpr{
 				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryJSONContainsRight),

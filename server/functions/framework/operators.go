@@ -52,6 +52,7 @@ const (
 	Operator_BinaryJSONTopLevelAll                     // ?&
 	Operator_UnaryPlus                                 // +
 	Operator_UnaryMinus                                // -
+	// NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
 )
 
 // unaryFunction represents the signature for a unary function.
@@ -180,6 +181,24 @@ func (o Operator) String() string {
 		return "<"
 	case Operator_BinaryLessOrEqual:
 		return "<="
+	case Operator_BinaryJSONExtractJson:
+		return "->"
+	case Operator_BinaryJSONExtractText:
+		return "->>"
+	case Operator_BinaryJSONExtractPathJson:
+		return "#>"
+	case Operator_BinaryJSONExtractPathText:
+		return "#>>"
+	case Operator_BinaryJSONContainsRight:
+		return "@>"
+	case Operator_BinaryJSONContainsLeft:
+		return "<@"
+	case Operator_BinaryJSONTopLevel:
+		return "?"
+	case Operator_BinaryJSONTopLevelAny:
+		return "?|"
+	case Operator_BinaryJSONTopLevelAll:
+		return "?&"
 	default:
 		return "unknown operator"
 	}
@@ -203,18 +222,60 @@ func (o Operator) IsBinary() bool {
 // GetOperatorFromString returns the binary operator for the given subOperator.
 func GetOperatorFromString(op string) (Operator, error) {
 	switch op {
-	case "=":
-		return Operator_BinaryEqual, nil
-	case "<>", "!=":
-		return Operator_BinaryNotEqual, nil
+	case "+":
+		// TODO: Operator_UnaryPlus
+		return Operator_BinaryPlus, nil
+	case "-":
+		// TODO: Operator_UnaryMinus
+		return Operator_BinaryMinus, nil
+	case "*":
+		return Operator_BinaryMultiply, nil
+	case "/":
+		return Operator_BinaryDivide, nil
+	case "%":
+		return Operator_BinaryMod, nil
+	case "<<":
+		return Operator_BinaryShiftLeft, nil
+	case ">>":
+		return Operator_BinaryShiftRight, nil
 	case "<":
 		return Operator_BinaryLessThan, nil
-	case "<=":
-		return Operator_BinaryLessOrEqual, nil
 	case ">":
 		return Operator_BinaryGreaterThan, nil
+	case "<=":
+		return Operator_BinaryLessOrEqual, nil
 	case ">=":
 		return Operator_BinaryGreaterOrEqual, nil
+	case "=":
+		return Operator_BinaryEqual, nil
+	case "<>":
+		return Operator_BinaryNotEqual, nil
+	case "&":
+		return Operator_BinaryBitAnd, nil
+	case "|":
+		return Operator_BinaryBitOr, nil
+	case "#":
+		return Operator_BinaryBitXor, nil
+	case "||":
+		return Operator_BinaryConcatenate, nil
+	case "->":
+		return Operator_BinaryJSONExtractJson, nil
+	case "->>":
+		return Operator_BinaryJSONExtractText, nil
+	case "#>":
+		return Operator_BinaryJSONExtractPathJson, nil
+	case "#>>":
+		return Operator_BinaryJSONExtractPathText, nil
+	case "@>":
+		return Operator_BinaryJSONContainsRight, nil
+	case "<@":
+		return Operator_BinaryJSONContainsLeft, nil
+	case "?":
+		return Operator_BinaryJSONTopLevel, nil
+	case "?|":
+		return Operator_BinaryJSONTopLevelAny, nil
+	case "?&":
+		return Operator_BinaryJSONTopLevelAll, nil
 	default:
 		return 0, errors.Errorf("unhandled Operator `%s`", op)
 	}

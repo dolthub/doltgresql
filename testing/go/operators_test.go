@@ -3582,5 +3582,28 @@ func TestOperators(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "json extract text operator used in generated column default",
+			SetUpScript: []string{
+				`CREATE TABLE users_sync (
+		raw_json jsonb NOT NULL,
+		id text GENERATED ALWAYS AS ((raw_json ->> 'id'::text)) STORED NOT NULL
+);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE ONLY users_sync ADD CONSTRAINT users_sync_pkey PRIMARY KEY (id);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO users_sync (raw_json) VALUES ('{"id":2}')`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM users_sync`,
+					Expected: []sql.Row{{`{"id": 2}`, "2"}},
+				},
+			},
+		},
 	})
 }
