@@ -1771,7 +1771,7 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT t.oid, t.typname, n.nspname FROM pg_catalog.pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname='myschema' OR n.nspname='testschema' ORDER BY t.typname;`,
+					Query: `SELECT t.oid, t.typname, n.nspname FROM pg_catalog.pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE (n.nspname='myschema' OR n.nspname='testschema') AND t.typname not like '%dolt%' ORDER BY t.typname;`,
 					Expected: []sql.Row{
 						{4183151504, "_mydomain", "myschema"},
 						{2179370508, "_myenum", "myschema"},

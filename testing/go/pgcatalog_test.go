@@ -493,7 +493,7 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing' order by 1;`,
 					Expected: []sql.Row{
-						{3120782595, "testing", 2638679668, 0, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{3120782595, "testing", 2638679668, 2288626564, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				// Index
@@ -507,7 +507,7 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
 					Expected: []sql.Row{
-						{887295443, "testview", 2638679668, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{887295443, "testview", 2638679668, 491597638, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -573,7 +573,7 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing'::regclass;`,
 					Expected: []sql.Row{
-						{3120782595, "testing", 2638679668, 0, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{3120782595, "testing", 2638679668, 2288626564, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				{
@@ -585,7 +585,7 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testview'::regclass;`,
 					Expected: []sql.Row{
-						{887295443, "testview", 2638679668, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{887295443, "testview", 2638679668, 491597638, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 			},
