@@ -28,7 +28,11 @@ import (
 func TestBindingWithOidZero(t *testing.T) {
 	// Start up a test server
 	ctx, connection, controller := CreateServer(t, "postgres")
-	defer controller.Stop()
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
 	conn := connection.Default
 
 	// Create a table to insert into
@@ -51,7 +55,11 @@ func TestBindingWithOidZero(t *testing.T) {
 
 func TestBindingWithTextArray(t *testing.T) {
 	ctx, connection, controller := CreateServer(t, "postgres")
-	defer controller.Stop()
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
 	conn := connection.Default
 
 	m := pgtype.NewMap()
