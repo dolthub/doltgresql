@@ -53,6 +53,42 @@ func TestBindingWithOidZero(t *testing.T) {
 	require.NoError(t, result.Err)
 }
 
+func TestIssue2386(t *testing.T) {
+	// https://github.com/dolthub/doltgresql/issues/2386
+	ctx, connection, controller := CreateServer(t, "postgres")
+	defer controller.Stop()
+	conn := connection.Default
+	_, err := connection.Exec(ctx, "CREATE TABLE users (id INT PRIMARY KEY, name TEXT NOT NULL);")
+	require.NoError(t, err)
+	_, err = connection.Exec(ctx, "INSERT INTO users VALUES (1, 'alice'), (2, 'bob'), (3, 'carol'), (4, 'dave');")
+	require.NoError(t, err)
+	targetIDs := []int32{1, 3}
+	rows, err := conn.Query(ctx,
+		`SELECT id, name FROM users WHERE id = ANY($1)`,
+		targetIDs,
+	)
+	require.NoError(t, err)
+	defer rows.Close()
+	i := 0
+	for rows.Next() {
+		var id int32
+		var name string
+		err = rows.Scan(&id, &name)
+		require.NoError(t, err)
+		switch i {
+		case 0:
+			require.Equal(t, int32(1), id)
+			require.Equal(t, "alice", name)
+		case 1:
+			require.Equal(t, int32(3), id)
+			require.Equal(t, "carol", name)
+		default:
+			t.FailNow()
+		}
+		i++
+	}
+}
+
 func TestBindingWithTextArray(t *testing.T) {
 	ctx, connection, controller := CreateServer(t, "postgres")
 	defer func() {

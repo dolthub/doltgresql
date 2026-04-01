@@ -237,9 +237,19 @@ func (a *AnyExpr) WithChildren(children ...sql.Expression) (sql.Expression, erro
 		return nil, sql.ErrInvalidChildrenNumber.New(a, len(children), 2)
 	}
 
+	leftExpr := children[0]
+	rightExpr := children[1]
+	// Unmodified BindVars use deferred type resolution, so we replace the deference with the left's type in array form
+	if bv, ok := rightExpr.(*expression.BindVar); ok {
+		if _, ok = bv.Typ.(*pgtypes.DoltgresType); !ok {
+			if leftType, ok := leftExpr.Type().(*pgtypes.DoltgresType); ok {
+				bv.Typ = leftType.ToArrayType()
+			}
+		}
+	}
 	anyExpr := &AnyExpr{
-		leftExpr:    children[0],
-		rightExpr:   children[1],
+		leftExpr:    leftExpr,
+		rightExpr:   rightExpr,
 		subOperator: a.subOperator,
 		name:        a.name,
 	}
