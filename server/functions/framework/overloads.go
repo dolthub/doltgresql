@@ -117,6 +117,21 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 				argTypes:   params,
 				variadic:   -1,
 			})
+		} else if sqlFunc, ok := overload.(SQLFunction); ok && len(params) > numParams {
+			hasEmptyDefault := false
+			for _, d := range sqlFunc.ParameterDefaults[numParams:] {
+				if d == "" {
+					hasEmptyDefault = true
+				}
+			}
+			if !hasEmptyDefault {
+				results = append(results, Overload{
+					function:   overload,
+					paramTypes: params,
+					argTypes:   params,
+					variadic:   -1,
+				})
+			}
 		}
 	}
 	return results

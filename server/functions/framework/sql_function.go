@@ -32,6 +32,7 @@ type SQLFunction struct {
 	ReturnType         *pgtypes.DoltgresType
 	ParameterNames     []string
 	ParameterTypes     []*pgtypes.DoltgresType
+	ParameterDefaults  []string
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool

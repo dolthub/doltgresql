@@ -115,6 +115,7 @@ func ResolveRoutineDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.Nod
 					ReturnType:         pgtypes.Void,
 					ParameterNames:     overload.ParameterNames,
 					ParameterTypes:     paramTypes,
+					ParameterDefaults:  overload.ParameterDefaults,
 					Variadic:           false,
 					IsNonDeterministic: true,
 					Strict:             false,

@@ -15,10 +15,14 @@
 package analyzer
 
 import (
+	"fmt"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -58,6 +62,22 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
 					return quickFunction, transform.NewTree, nil
 				}
+
+				// fill in defaults
+				if err := compiledFunction.FillDefaults(func(defExpr string) (sql.Expression, error) {
+					builder := planbuilder.New(ctx, a.Catalog, nil)
+					proj, _, _, _, err := builder.Parse(fmt.Sprintf("select %s", defExpr), nil, false)
+					if err != nil {
+						return nil, err
+					}
+					parsedExpr := proj.(*plan.Project).Projections[0]
+					if a, ok := parsedExpr.(*expression.Alias); ok {
+						parsedExpr = a.Child
+					}
+					return parsedExpr, nil
+				}); err != nil {
+					return nil, transform.SameTree, err
+				}
 			}
 			if v, ok := in.(*plan.Values); ok {
 				hasMultipleExpressionTuples = len(v.ExpressionTuples) > 1
@@ -91,6 +111,22 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 					if err != nil {
 						return nil, transform.SameTree, err
 					}
+				}
+
+				// fill in defaults
+				if err = compiledFunction.FillDefaults(func(defExpr string) (sql.Expression, error) {
+					builder := planbuilder.New(ctx, a.Catalog, nil)
+					proj, _, _, _, err := builder.Parse(fmt.Sprintf("select %s", defExpr), nil, false)
+					if err != nil {
+						return nil, err
+					}
+					parsedExpr := proj.(*plan.Project).Projections[0]
+					if a, ok := parsedExpr.(*expression.Alias); ok {
+						parsedExpr = a.Child
+					}
+					return parsedExpr, nil
+				}); err != nil {
+					return nil, transform.SameTree, err
 				}
 			}
 			return expr, transform.SameTree, nil

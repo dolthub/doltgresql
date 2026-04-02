@@ -112,7 +112,7 @@ func newCompiledFunctionInternal(
 			// resolve will ensure that the parameter types are valid, so we can just assign them here
 			hasPolymorphicParam = true
 			c.callResolved[i] = originalTypes[i]
-		} else {
+		} else if i < len(args) {
 			if d, ok := args[i].Type().(*pgtypes.DoltgresType); ok {
 				// `param` is a default type which does not have type modifier set
 				param = param.WithAttTypMod(d.GetAttTypMod())
@@ -604,7 +604,7 @@ func (*CompiledFunction) closestTypeMatches(argTypes []*pgtypes.DoltgresType, ca
 		currentMatchCount := 0
 		for argIdx := range argTypes {
 			argType := cand.params.argTypes[argIdx]
-			if argTypes[argIdx].ID == argType.ID || argTypes[argIdx].ID == pgtypes.Unknown.ID {
+			if argTypes[argIdx].ID == argType.ID || (argTypes[argIdx].ID == pgtypes.Unknown.ID && argType.ID == pgtypes.Text.ID) {
 				currentMatchCount++
 			}
 		}
@@ -814,4 +814,39 @@ func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) *pgtypes.DoltgresType
 		}
 	}
 	return t
+}
+
+// FillDefaults analyzes the parameters within an Eval call.
+func (c *CompiledFunction) FillDefaults(getDefExpr func(defExpr string) (sql.Expression, error)) error {
+	if !c.overload.Valid() {
+		return nil
+	}
+	sqlFunc, ok := c.overload.params.function.(SQLFunction)
+	if !ok {
+		return nil
+	}
+
+	if len(c.Arguments) < len(sqlFunc.ParameterTypes) {
+		// fill in defaults
+		for i, param := range sqlFunc.ParameterTypes {
+			if i < len(c.Arguments) {
+				if exprTypeId := c.Arguments[i].Type().(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && param.ID != exprTypeId {
+					// if non-matching type, then skip appending defaults
+					break
+				}
+			} else {
+				//if there is default, then append
+				if sqlFunc.ParameterDefaults[i] != "" {
+					cdv, err := getDefExpr(sqlFunc.ParameterDefaults[i])
+					if err != nil {
+						return err
+					}
+					c.Arguments = append(c.Arguments, cdv)
+					c.overload.casts = append(c.overload.casts, GetImplicitCast(cdv.Type().(*pgtypes.DoltgresType), sqlFunc.ParameterTypes[i]))
+				}
+			}
+		}
+	}
+
+	return nil
 }
