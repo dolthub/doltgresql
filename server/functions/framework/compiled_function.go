@@ -816,8 +816,9 @@ func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) *pgtypes.DoltgresType
 	return t
 }
 
-// FillDefaults analyzes the parameters within an Eval call.
-func (c *CompiledFunction) FillDefaults(getDefExpr func(defExpr string) (sql.Expression, error)) error {
+// ResolveDefaultValues adds missing arguments if there is any using the default value set on the parameter.
+// It checks if it's a valid SQL function that has fewer arguments than defined parameters.
+func (c *CompiledFunction) ResolveDefaultValues(getDefExpr func(defExpr string) (sql.Expression, error)) error {
 	if !c.overload.Valid() {
 		return nil
 	}
@@ -827,7 +828,6 @@ func (c *CompiledFunction) FillDefaults(getDefExpr func(defExpr string) (sql.Exp
 	}
 
 	if len(c.Arguments) < len(sqlFunc.ParameterTypes) {
-		// fill in defaults
 		for i, param := range sqlFunc.ParameterTypes {
 			if i < len(c.Arguments) {
 				if exprTypeId := c.Arguments[i].Type().(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && param.ID != exprTypeId {
@@ -835,7 +835,7 @@ func (c *CompiledFunction) FillDefaults(getDefExpr func(defExpr string) (sql.Exp
 					break
 				}
 			} else {
-				//if there is default, then append
+				// only if there is default, then append
 				if sqlFunc.ParameterDefaults[i] != "" {
 					cdv, err := getDefExpr(sqlFunc.ParameterDefaults[i])
 					if err != nil {

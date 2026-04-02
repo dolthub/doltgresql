@@ -63,18 +63,9 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 					return quickFunction, transform.NewTree, nil
 				}
 
-				// fill in defaults
-				if err := compiledFunction.FillDefaults(func(defExpr string) (sql.Expression, error) {
-					builder := planbuilder.New(ctx, a.Catalog, nil)
-					proj, _, _, _, err := builder.Parse(fmt.Sprintf("select %s", defExpr), nil, false)
-					if err != nil {
-						return nil, err
-					}
-					parsedExpr := proj.(*plan.Project).Projections[0]
-					if a, ok := parsedExpr.(*expression.Alias); ok {
-						parsedExpr = a.Child
-					}
-					return parsedExpr, nil
+				// fill in default exprs if applicable
+				if err := compiledFunction.ResolveDefaultValues(func(defExpr string) (sql.Expression, error) {
+					return getDefaultExpr(ctx, a.Catalog, defExpr)
 				}); err != nil {
 					return nil, transform.SameTree, err
 				}
@@ -113,18 +104,9 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 					}
 				}
 
-				// fill in defaults
-				if err = compiledFunction.FillDefaults(func(defExpr string) (sql.Expression, error) {
-					builder := planbuilder.New(ctx, a.Catalog, nil)
-					proj, _, _, _, err := builder.Parse(fmt.Sprintf("select %s", defExpr), nil, false)
-					if err != nil {
-						return nil, err
-					}
-					parsedExpr := proj.(*plan.Project).Projections[0]
-					if a, ok := parsedExpr.(*expression.Alias); ok {
-						parsedExpr = a.Child
-					}
-					return parsedExpr, nil
+				// fill in default exprs if applicablea
+				if err = compiledFunction.ResolveDefaultValues(func(defExpr string) (sql.Expression, error) {
+					return getDefaultExpr(ctx, a.Catalog, defExpr)
 				}); err != nil {
 					return nil, transform.SameTree, err
 				}
@@ -148,4 +130,18 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 
 		return projectNode, sameNode && sameExprs, err
 	})
+}
+
+// getDefaultExpr takes the default value definition, parses, builds and returns sql.ColumnDefaultValue.
+func getDefaultExpr(ctx *sql.Context, c sql.Catalog, defExpr string) (sql.Expression, error) {
+	builder := planbuilder.New(ctx, c, nil)
+	proj, _, _, _, err := builder.Parse(fmt.Sprintf("select %s", defExpr), nil, false)
+	if err != nil {
+		return nil, err
+	}
+	parsedExpr := proj.(*plan.Project).Projections[0]
+	if a, ok := parsedExpr.(*expression.Alias); ok {
+		parsedExpr = a.Child
+	}
+	return parsedExpr, nil
 }

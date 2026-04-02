@@ -164,7 +164,7 @@ func (c *CreateProcedure) WithChildren(children ...sql.Node) (sql.Node, error) {
 // WithResolvedChildren implements the interface vitess.Injectable.
 func (c *CreateProcedure) WithResolvedChildren(children []any) (any, error) {
 	if len(children) > len(c.Parameters) {
-		// TODO
+		// the number of default values can be fewer but cannot be more.
 		return nil, ErrVitessChildCount.New(len(c.Parameters), len(children))
 	}
 	newParams := make([]RoutineArg, len(c.Parameters))
