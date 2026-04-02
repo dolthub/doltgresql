@@ -56,7 +56,11 @@ func TestBindingWithOidZero(t *testing.T) {
 func TestIssue2386(t *testing.T) {
 	// https://github.com/dolthub/doltgresql/issues/2386
 	ctx, connection, controller := CreateServer(t, "postgres")
-	defer controller.Stop()
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
 	conn := connection.Default
 	_, err := connection.Exec(ctx, "CREATE TABLE users (id INT PRIMARY KEY, name TEXT NOT NULL);")
 	require.NoError(t, err)
