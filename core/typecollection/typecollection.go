@@ -355,10 +355,6 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 
 	//Now get composite table types
 	err = IterateDatabaseTables(sqlCtx, func(schemaName string, table sql.Table) (stop bool, err error) {
-		if schemaName == "pg_catalog" {
-			return false, nil
-		}
-
 		typ, err := pgs.tableToType(sqlCtx, table, schemaName)
 		if err != nil {
 			return false, err
