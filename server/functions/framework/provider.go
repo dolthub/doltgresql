@@ -92,6 +92,27 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 				return nil, false
 			}
 		} else if len(overload.SQLDefinition) > 0 {
+			//if len(n.Exprs) < len(overload.ParameterTypes) {
+			//	// fill in defaults
+			//	for i, param := range overload.ParameterTypes {
+			//		if i < len(n.Exprs) {
+			//			if exprTypeId := n.Exprs[i].Type().(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && param != exprTypeId {
+			//				// if non-matching type, then skip appending defaults
+			//				break
+			//			}
+			//		} else {
+			//			//if there is default, then append
+			//			if overload.ParameterDefaults[i] != "" {
+			//				cdv, err := getDefaultExpr(ctx, a, overload.ParameterDefaults[i])
+			//				if err != nil {
+			//					return nil, transform.SameTree, err
+			//				}
+			//				same = transform.NewTree
+			//				n.Exprs = append(n.Exprs, cdv)
+			//			}
+			//		}
+			//	}
+			//}
 			if err = overloadTree.Add(SQLFunction{
 				ID:                 overload.ID,
 				ReturnType:         returnType,

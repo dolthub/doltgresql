@@ -26,9 +26,26 @@ import (
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+// RoutineWithArgs represent a function or a procedure with schema name, routine name and its arguments.
+type RoutineWithArgs struct {
+	SchemaName  string
+	RoutineName string
+	Args        []RoutineArg
+}
+
+// RoutineArg represents a routine parameter with parameter name and parameter type.
+type RoutineArg struct {
+	Mode       procedures.ParameterMode
+	Name       string
+	Type       *pgtypes.DoltgresType
+	HasDefault bool
+	Default    sql.Expression
+}
 
 // CreateFunction implements CREATE FUNCTION.
 type CreateFunction struct {
@@ -36,8 +53,7 @@ type CreateFunction struct {
 	SchemaName        string
 	Replace           bool
 	ReturnType        *pgtypes.DoltgresType
-	ParameterNames    []string
-	ParameterTypes    []*pgtypes.DoltgresType
+	Parameters        []RoutineArg
 	Strict            bool
 	Statements        []plpgsql.InterpreterOperation
 	ExtensionName     string
@@ -57,8 +73,7 @@ func NewCreateFunction(
 	schemaName string,
 	replace bool,
 	retType *pgtypes.DoltgresType,
-	paramNames []string,
-	paramTypes []*pgtypes.DoltgresType,
+	params []RoutineArg,
 	strict bool,
 	definition string,
 	extensionName string,
@@ -72,8 +87,7 @@ func NewCreateFunction(
 		SchemaName:        schemaName,
 		Replace:           replace,
 		ReturnType:        retType,
-		ParameterNames:    paramNames,
-		ParameterTypes:    paramTypes,
+		Parameters:        params,
 		Strict:            strict,
 		Statements:        statements,
 		ExtensionName:     extensionName,
@@ -102,23 +116,26 @@ func (c *CreateFunction) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	idTypes := make([]id.Type, len(c.ParameterTypes))
-	for i, typ := range c.ParameterTypes {
-		idTypes[i] = typ.ID
-	}
 	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	paramTypes := make([]id.Type, len(c.ParameterTypes))
-	for i, paramType := range c.ParameterTypes {
-		paramTypes[i] = paramType.ID
+	paramNames := make([]string, len(c.Parameters))
+	paramTypes := make([]id.Type, len(c.Parameters))
+	paramDefaults := make([]string, len(c.Parameters))
+	for i, param := range c.Parameters {
+		paramNames[i] = param.Name
+		paramTypes[i] = param.Type.ID
+		if param.Default != nil {
+			paramDefaults[i] = param.Default.String()
+		}
 	}
+
 	schemaName, err := core.GetSchemaName(ctx, nil, c.SchemaName)
 	if err != nil {
 		return nil, err
 	}
-	funcID := id.NewFunction(schemaName, c.FunctionName, idTypes...)
+	funcID := id.NewFunction(schemaName, c.FunctionName, paramTypes...)
 	if c.Replace && funcCollection.HasFunction(ctx, funcID) {
 		if err = funcCollection.DropFunction(ctx, funcID); err != nil {
 			return nil, err
@@ -140,8 +157,9 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	err = funcCollection.AddFunction(ctx, functions.Function{
 		ID:                 funcID,
 		ReturnType:         c.ReturnType.ID,
-		ParameterNames:     c.ParameterNames,
+		ParameterNames:     paramNames,
 		ParameterTypes:     paramTypes,
+		ParameterDefaults:  paramDefaults,
 		Variadic:           false, // TODO: implement this
 		IsNonDeterministic: true,
 		Strict:             c.Strict,
@@ -176,10 +194,26 @@ func (c *CreateFunction) WithChildren(children ...sql.Node) (sql.Node, error) {
 
 // WithResolvedChildren implements the interface vitess.Injectable.
 func (c *CreateFunction) WithResolvedChildren(children []any) (any, error) {
-	if len(children) != 0 {
-		return nil, ErrVitessChildCount.New(0, len(children))
+	if len(children) > len(c.Parameters) {
+		// TODO
+		return nil, ErrVitessChildCount.New(len(c.Parameters), len(children))
 	}
-	return c, nil
+	newParams := make([]RoutineArg, len(c.Parameters))
+	childIdx := 0
+	for i, param := range c.Parameters {
+		newParams[i] = param
+		if c.Parameters[i].HasDefault && childIdx < len(children) {
+			expr, ok := children[childIdx].(sql.Expression)
+			if !ok {
+				return nil, errors.Errorf("invalid vitess child, expected sql.Expression for Default value but got %t", children[i])
+			}
+			newParams[i].Default = expr
+			childIdx++
+		}
+	}
+	ncp := *c
+	ncp.Parameters = newParams
+	return &ncp, nil
 }
 
 // FunctionColumn represents the deferred column used in functions.

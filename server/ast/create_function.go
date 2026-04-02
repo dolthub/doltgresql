@@ -53,13 +53,24 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		retType = createAnonymousCompositeType(node.RetType)
 	}
 
-	paramNames := make([]string, len(node.Args))
-	paramTypes := make([]*pgtypes.DoltgresType, len(node.Args))
+	params := make([]pgnodes.RoutineArg, len(node.Args))
+	var defaults []vitess.Expr
 	for i, arg := range node.Args {
-		paramNames[i] = arg.Name.String()
-		_, paramTypes[i], err = nodeResolvableTypeReference(ctx, arg.Type, false)
+		// parameter name
+		params[i].Name = arg.Name.String()
+		// parameter type
+		_, params[i].Type, err = nodeResolvableTypeReference(ctx, arg.Type, false)
 		if err != nil {
 			return nil, err
+		}
+		// parameter default
+		if arg.Default != nil {
+			params[i].HasDefault = true
+			d, err := nodeExpr(ctx, arg.Default)
+			if err != nil {
+				return nil, err
+			}
+			defaults = append(defaults, d)
 		}
 	}
 	var strict bool
@@ -104,7 +115,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			if !ok {
 				return nil, errors.Errorf("CREATE FUNCTION definition needed for LANGUAGE SQL")
 			}
-			sqlDef, sqlDefParsedStmts, err = handleLanguageSQL(as.Definition, paramNames, paramTypes)
+			sqlDef, sqlDefParsedStmts, err = handleLanguageSQL(as.Definition, params)
 			if err != nil {
 				return nil, err
 			}
@@ -128,8 +139,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			tableName.Schema(),
 			node.Replace,
 			retType,
-			paramNames,
-			paramTypes,
+			params,
 			strict,
 			ctx.originalQuery,
 			extensionName,
@@ -144,6 +154,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			TargetType:  auth.AuthTargetType_SchemaIdentifiers,
 			TargetNames: []string{tableName.Catalog(), tableName.Schema()},
 		},
+		Children: defaults,
 	}, nil
 }
 
@@ -175,28 +186,25 @@ func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.Do
 }
 
 // handleLanguageSQL handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE.
-func handleLanguageSQL(definition string, paramNames []string, paramTypes []*pgtypes.DoltgresType) (string, []vitess.Statement, error) {
+func handleLanguageSQL(definition string, params []pgnodes.RoutineArg) (string, []vitess.Statement, error) {
 	stmts, err := parser.Parse(definition)
 	if err != nil {
 		return "", nil, err
 	}
 
-	paramMap := make(map[string]*framework.ParamTypAndValue, len(paramNames))
-	if len(paramNames) != len(paramTypes) {
-		return "", nil, errors.Errorf("expected %d parameters but got %d", len(paramNames), len(paramTypes))
-	}
-	for i, paramName := range paramNames {
+	paramMap := make(map[string]*framework.ParamTypAndValue, len(params))
+	for i, param := range params {
 		tv := &framework.ParamTypAndValue{
-			Typ:    paramTypes[i],
+			Typ:    param.Type,
 			StrVal: "", // must be empty string
 		}
 		// placeholder name is empty
-		if paramName == "\"\"" {
+		if param.Name == "\"\"" {
 			n := fmt.Sprintf("$%d", i+1)
 			paramMap[n] = tv
-			paramNames[i] = n
+			params[i].Name = n
 		} else {
-			paramMap[paramName] = tv
+			paramMap[param.Name] = tv
 		}
 	}
 

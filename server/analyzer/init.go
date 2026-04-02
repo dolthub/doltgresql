@@ -48,8 +48,9 @@ const (
 	ruleId_ValidateCreateTable                                           // validateCreateTable
 	ruleId_ValidateCreateSchema                                          // validateCreateSchema
 	ruleId_ResolveAlterColumn                                            // resolveAlterColumn
-	ruleId_ValidateCreateFunction
-	ruleId_ResolveValuesTypes // resolveValuesTypes
+	ruleId_ValidateCreateFunction                                        // validateCreateFunction
+	ruleId_ResolveValuesTypes                                            // resolveValuesTypes
+	ruleId_ResolveRoutineDefaults                                        // resolveRoutineDefaults
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -66,6 +67,7 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AssignTriggers, Apply: AssignTriggers},
 		analyzer.Rule{Id: ruleId_ValidateCreateFunction, Apply: ValidateCreateFunction},
 		analyzer.Rule{Id: ruleId_ValidateCreateSchema, Apply: ValidateCreateSchema},
+		analyzer.Rule{Id: ruleId_ResolveRoutineDefaults, Apply: ResolveRoutineDefaults},
 	)
 
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{

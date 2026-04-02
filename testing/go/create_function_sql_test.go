@@ -225,7 +225,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 			},
 		},
 		{
-			Name: "function with update ... returning",
+			Name: "multiple statements in function",
 			SetUpScript: []string{
 				`CREATE TABLE test (id int);`,
 				`INSERT INTO test VALUES (1), (2), (3);`,
@@ -261,6 +261,42 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				{
 					Query:       `SELECT * FROM test2`,
 					ExpectedErr: `not found`,
+				},
+			},
+		},
+		{
+			Name: "function with default expression in parameter",
+			SetUpScript: []string{
+				`CREATE TABLE cp_test (a int, b text);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE OR REPLACE FUNCTION dfunc(e int, d text, f int default 100)
+							 RETURNS int LANGUAGE SQL
+							AS $$
+								INSERT INTO cp_test VALUES(e+f, d);
+								SELECT a FROM cp_test WHERE b = d;
+							$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dfunc(10, 'Hello', 20);`,
+					Expected: []sql.Row{{30}},
+				},
+				{
+					Query:    `SELECT * FROM cp_test`,
+					Expected: []sql.Row{{30, "Hello"}},
+				},
+				{
+					Skip: true,
+					// TODO: also test for SELECT * FROM dfunc(50, 'Bye');
+					Query:    `SELECT dfunc(50, 'Bye');`,
+					Expected: []sql.Row{{150}},
+				},
+				{
+					Skip:     true,
+					Query:    `SELECT * FROM cp_test`,
+					Expected: []sql.Row{{10, "Hello"}, {150, "Bye"}},
 				},
 			},
 		},

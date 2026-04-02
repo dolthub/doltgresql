@@ -54,15 +54,16 @@ type Collection struct {
 
 // Procedure represents a created procedure.
 type Procedure struct {
-	ID              id.Procedure
-	ParameterNames  []string
-	ParameterTypes  []id.Type
-	ParameterModes  []ParameterMode
-	Definition      string
-	ExtensionName   string                         // Only used when this is an extension procedure
-	ExtensionSymbol string                         // Only used when this is an extension procedure
-	Operations      []plpgsql.InterpreterOperation // Only used when this is a plpgsql language
-	SQLDefinition   string                         // Only used when this is a sql language
+	ID                id.Procedure
+	ParameterNames    []string
+	ParameterTypes    []id.Type
+	ParameterModes    []ParameterMode
+	ParameterDefaults []string
+	Definition        string
+	ExtensionName     string                         // Only used when this is an extension procedure
+	ExtensionSymbol   string                         // Only used when this is an extension procedure
+	Operations        []plpgsql.InterpreterOperation // Only used when this is a plpgsql language
+	SQLDefinition     string                         // Only used when this is a sql language
 }
 
 var _ objinterface.Collection = (*Collection)(nil)

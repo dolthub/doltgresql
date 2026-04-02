@@ -15,20 +15,14 @@
 package node
 
 import (
-	"strings"
-
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
-	"github.com/dolthub/doltgresql/core/id"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
-	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Call is used to call stored procedures.
@@ -39,6 +33,7 @@ type Call struct {
 	Runner        pgexprs.StatementRunner
 	cachedSch     sql.Schema
 	originalExprs vitess.Exprs
+	CompiledFunc  *framework.CompiledFunction
 }
 
 var _ sql.ExecSourceRel = (*Call)(nil)
@@ -80,89 +75,15 @@ func (c *Call) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	if c.CompiledFunc == nil {
+		return nil, errors.New("invalid context while attempting to call a procedure")
+	}
 	if !core.IsContextValid(ctx) {
 		return nil, errors.New("invalid context while attempting to call a procedure")
 	}
-	procCollection, err := core.GetProceduresCollectionFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	typesCollection, err := core.GetTypesCollectionFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	schemaName, err := core.GetSchemaName(ctx, nil, c.SchemaName)
-	if err != nil {
-		return nil, err
-	}
-	procName := id.NewProcedure(schemaName, c.ProcedureName)
-	overloads, err := procCollection.GetProcedureOverloads(ctx, procName)
-	if err != nil {
-		return nil, err
-	}
-	if len(overloads) == 0 {
-		if strings.HasPrefix(c.ProcedureName, "dolt_") {
-			return nil, functions.ErrDoltProcedureSelectOnly
-		}
-		return nil, sql.ErrStoredProcedureDoesNotExist.New(c.ProcedureName)
-	}
 
-	overloadTree := framework.NewOverloads()
-	for _, overload := range overloads {
-		paramTypes := make([]*pgtypes.DoltgresType, len(overload.ParameterTypes))
-		for i, paramType := range overload.ParameterTypes {
-			paramTypes[i], err = typesCollection.GetType(ctx, paramType)
-			if err != nil || paramTypes[i] == nil {
-				return nil, err
-			}
-		}
-		// TODO: we should probably have procedure equivalents instead of converting these to functions
-		//  probably fine for now since we don't implement/support the differing functionality between the two just yet
-		if len(overload.ExtensionName) > 0 {
-			if err = overloadTree.Add(framework.CFunction{
-				ID:                 id.Function(overload.ID),
-				ReturnType:         pgtypes.Void,
-				ParameterTypes:     paramTypes,
-				Variadic:           false,
-				IsNonDeterministic: true,
-				Strict:             false,
-				ExtensionName:      extensions.LibraryIdentifier(overload.ExtensionName),
-				ExtensionSymbol:    overload.ExtensionSymbol,
-			}); err != nil {
-				return nil, err
-			}
-		} else if len(overload.SQLDefinition) > 0 {
-			if err = overloadTree.Add(framework.SQLFunction{
-				ID:                 id.Function(overload.ID),
-				ReturnType:         pgtypes.Void,
-				ParameterNames:     overload.ParameterNames,
-				ParameterTypes:     paramTypes,
-				Variadic:           false,
-				IsNonDeterministic: true,
-				Strict:             false,
-				SqlStatement:       overload.SQLDefinition,
-				SetOf:              false,
-			}); err != nil {
-				return nil, err
-			}
-		} else {
-			if err = overloadTree.Add(framework.InterpretedFunction{
-				ID:                 id.Function(overload.ID),
-				ReturnType:         pgtypes.Void,
-				ParameterNames:     overload.ParameterNames,
-				ParameterTypes:     paramTypes,
-				Variadic:           false,
-				IsNonDeterministic: true,
-				Strict:             false,
-				Statements:         overload.Operations,
-			}); err != nil {
-				return nil, err
-			}
-		}
-	}
-	compiledFunc := framework.NewCompiledFunction(c.ProcedureName, c.Exprs, overloadTree, false)
-	compiledFunc = compiledFunc.SetStatementRunner(ctx, c.Runner.Runner).(*framework.CompiledFunction)
-	_, err = compiledFunc.Eval(ctx, nil)
+	cf := c.CompiledFunc.SetStatementRunner(ctx, c.Runner.Runner).(*framework.CompiledFunction)
+	_, err := cf.Eval(ctx, nil)
 	if err != nil {
 		return nil, err
 	}

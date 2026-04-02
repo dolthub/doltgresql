@@ -115,27 +115,42 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 	}
 
 	if len(parseds) > 1 {
-		// multiple statements
-		if f.ReturnType.ID != pgtypes.Void.ID {
-			return nil, errors.New("multiple statements with non void return type is not supported yet")
-		}
+		// of multiple statements, the function returns the result of the final statement in the execution block
+		var res any
 		for _, parsed := range parseds {
 			err = ReplaceFunctionColumn(parsed.AST, paramMap)
 			if err != nil {
 				return nil, err
 			}
-			_, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
-				_, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), nil, nil, nil)
+			res, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
+				sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), nil, nil, nil)
 				if err != nil {
 					return nil, err
 				}
-				return sql.RowIterToRows(ctx, rowIter)
+				rows, err := sql.RowIterToRows(subCtx, rowIter)
+				if err != nil {
+					return nil, err
+				}
+				if len(sch) != 1 {
+					return nil, errors.New("expression does not result in a single value")
+				}
+				if len(rows) != 1 {
+					return nil, errors.New("expression returned multiple result sets")
+				}
+				if len(rows[0]) != 1 {
+					return nil, errors.New("expression returned multiple results")
+				}
+				return rows[0][0], nil
 			})
 			if err != nil {
 				return nil, err
 			}
 		}
-		return nil, nil
+		if f.ReturnType.ID == pgtypes.Void.ID {
+			// TODO
+			return nil, nil
+		}
+		return res, nil
 	}
 
 	// single statement

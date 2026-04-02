@@ -48,6 +48,7 @@ type Function struct {
 	ReturnType         id.Type
 	ParameterNames     []string
 	ParameterTypes     []id.Type
+	ParameterDefaults  []string
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool

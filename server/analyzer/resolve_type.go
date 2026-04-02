@@ -70,26 +70,22 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 			if err != nil {
 				return nil, transform.NewTree, err
 			}
-			paramTypes := make([]*pgtypes.DoltgresType, len(n.ParameterTypes))
-			for i := range n.ParameterTypes {
-				paramTypes[i], err = resolveType(ctx, db, n.ParameterTypes[i])
+			for i := range n.Parameters {
+				n.Parameters[i].Type, err = resolveType(ctx, db, n.Parameters[i].Type)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
 			}
 			n.ReturnType = retType
-			n.ParameterTypes = paramTypes
 			return node, transform.NewTree, nil
 		case *pgnodes.CreateProcedure:
-			paramTypes := make([]*pgtypes.DoltgresType, len(n.ParameterTypes))
-			for i := range n.ParameterTypes {
+			for i := range n.Parameters {
 				var err error
-				paramTypes[i], err = resolveType(ctx, db, n.ParameterTypes[i])
+				n.Parameters[i].Type, err = resolveType(ctx, db, n.Parameters[i].Type)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
 			}
-			n.ParameterTypes = paramTypes
 			return node, transform.NewTree, nil
 		case *plan.CreateTable:
 			for _, col := range n.TargetSchema() {
