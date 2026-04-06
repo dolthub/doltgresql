@@ -834,16 +834,14 @@ func (c *CompiledFunction) ResolveDefaultValues(getDefExpr func(defExpr string) 
 					// if non-matching type, then skip appending defaults
 					break
 				}
-			} else {
+			} else if sqlFunc.ParameterDefaults[i] != "" {
 				// only if there is default, then append
-				if sqlFunc.ParameterDefaults[i] != "" {
-					cdv, err := getDefExpr(sqlFunc.ParameterDefaults[i])
-					if err != nil {
-						return err
-					}
-					c.Arguments = append(c.Arguments, cdv)
-					c.overload.casts = append(c.overload.casts, GetImplicitCast(cdv.Type().(*pgtypes.DoltgresType), sqlFunc.ParameterTypes[i]))
+				cdv, err := getDefExpr(sqlFunc.ParameterDefaults[i])
+				if err != nil {
+					return err
 				}
+				c.Arguments = append(c.Arguments, cdv)
+				c.overload.casts = append(c.overload.casts, GetImplicitCast(cdv.Type().(*pgtypes.DoltgresType), sqlFunc.ParameterTypes[i]))
 			}
 		}
 	}

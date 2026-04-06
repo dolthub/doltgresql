@@ -330,7 +330,6 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 					Expected: []sql.Row{{30, "Hello"}},
 				},
 				{
-					// TODO: also test for SELECT * FROM dfunc(50, 'Bye');
 					Query:    `SELECT * FROM dfunc(50, 'Bye');`,
 					Expected: []sql.Row{{150}},
 				},

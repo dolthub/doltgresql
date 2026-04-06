@@ -148,7 +148,6 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			}
 		}
 		if f.ReturnType.ID == pgtypes.Void.ID {
-			// TODO
 			return nil, nil
 		}
 		return res, nil

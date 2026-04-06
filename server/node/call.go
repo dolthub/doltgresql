@@ -75,8 +75,8 @@ func (c *Call) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	if c.CompiledFunc == nil {
-		return nil, errors.New("invalid context while attempting to call a procedure")
+	if c.CompiledFunc == nil || !c.CompiledFunc.Resolved() {
+		return nil, errors.New("cannot call unresolved procedure")
 	}
 	if !core.IsContextValid(ctx) {
 		return nil, errors.New("invalid context while attempting to call a procedure")

@@ -211,9 +211,9 @@ func (c *CreateFunction) WithResolvedChildren(children []any) (any, error) {
 			childIdx++
 		}
 	}
-	ncp := *c
-	ncp.Parameters = newParams
-	return &ncp, nil
+	ncf := *c
+	ncf.Parameters = newParams
+	return &ncf, nil
 }
 
 // FunctionColumn represents the deferred column used in functions.
