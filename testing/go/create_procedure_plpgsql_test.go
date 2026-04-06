@@ -414,5 +414,32 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "DECLARE variable with default value of literal value or parameter reference",
+			SetUpScript: []string{
+				`CREATE TABLE t (a int, b text);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE OR REPLACE PROCEDURE m (x text, y text, e int) LANGUAGE plpgsql AS $$
+declare
+  xx text := x;
+  yy text := y;
+  zz int := e;
+begin
+  insert into t values (zz, xx || yy);
+end
+$$;`,
+				},
+				{
+					Query:    "CALL m('a', 'B', 1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t",
+					Expected: []sql.Row{{1, "aB"}},
+				},
+			},
+		},
 	})
 }

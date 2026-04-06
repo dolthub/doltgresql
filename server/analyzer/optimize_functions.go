@@ -15,10 +15,14 @@
 package analyzer
 
 import (
+	"fmt"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -58,6 +62,13 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
 					return quickFunction, transform.NewTree, nil
 				}
+
+				// fill in default exprs if applicable
+				if err := compiledFunction.ResolveDefaultValues(func(defExpr string) (sql.Expression, error) {
+					return getDefaultExpr(ctx, a.Catalog, defExpr)
+				}); err != nil {
+					return nil, transform.SameTree, err
+				}
 			}
 			if v, ok := in.(*plan.Values); ok {
 				hasMultipleExpressionTuples = len(v.ExpressionTuples) > 1
@@ -92,6 +103,13 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 						return nil, transform.SameTree, err
 					}
 				}
+
+				// fill in default exprs if applicablea
+				if err = compiledFunction.ResolveDefaultValues(func(defExpr string) (sql.Expression, error) {
+					return getDefaultExpr(ctx, a.Catalog, defExpr)
+				}); err != nil {
+					return nil, transform.SameTree, err
+				}
 			}
 			return expr, transform.SameTree, nil
 		})
@@ -112,4 +130,18 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 
 		return projectNode, sameNode && sameExprs, err
 	})
+}
+
+// getDefaultExpr takes the default value definition, parses, builds and returns sql.ColumnDefaultValue.
+func getDefaultExpr(ctx *sql.Context, c sql.Catalog, defExpr string) (sql.Expression, error) {
+	builder := planbuilder.New(ctx, c, nil)
+	proj, _, _, _, err := builder.Parse(fmt.Sprintf("select %s", defExpr), nil, false)
+	if err != nil {
+		return nil, err
+	}
+	parsedExpr := proj.(*plan.Project).Projections[0]
+	if a, ok := parsedExpr.(*expression.Alias); ok {
+		parsedExpr = a.Child
+	}
+	return parsedExpr, nil
 }

@@ -24,7 +24,7 @@ import (
 	pgnode "github.com/dolthub/doltgresql/server/node"
 )
 
-// validateColumnDefaults ensures that newly created column defaults from a DDL statement are legal for the type of
+// ValidateColumnDefaults ensures that newly created column defaults from a DDL statement are legal for the type of
 // column, various other business logic checks to match MySQL's logic.
 func ValidateColumnDefaults(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ *plan.Scope, _ analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	span, ctx := ctx.Span("validateColumnDefaults")

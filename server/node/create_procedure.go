@@ -15,6 +15,7 @@
 package node
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -25,23 +26,20 @@ import (
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/plpgsql"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // CreateProcedure implements CREATE PROCEDURE.
 type CreateProcedure struct {
-	ProcedureName   string
-	SchemaName      string
-	Replace         bool
-	ParameterNames  []string
-	ParameterTypes  []*pgtypes.DoltgresType
-	ParameterModes  []procedures.ParameterMode
-	Statements      []plpgsql.InterpreterOperation
-	ExtensionName   string
-	ExtensionSymbol string
-	Definition      string
-	SqlDef          string
-	SqlDefParsed    vitess.Statement
+	ProcedureName     string
+	SchemaName        string
+	Replace           bool
+	Parameters        []RoutineArg
+	Statements        []plpgsql.InterpreterOperation
+	ExtensionName     string
+	ExtensionSymbol   string
+	Definition        string
+	SqlDef            string
+	SqlDefParsedStmts []vitess.Statement
 }
 
 var _ sql.ExecSourceRel = (*CreateProcedure)(nil)
@@ -52,28 +50,24 @@ func NewCreateProcedure(
 	procedureName string,
 	schemaName string,
 	replace bool,
-	paramNames []string,
-	paramTypes []*pgtypes.DoltgresType,
-	paramModes []procedures.ParameterMode,
+	params []RoutineArg,
 	definition string,
 	extensionName string,
 	extensionSymbol string,
 	statements []plpgsql.InterpreterOperation,
 	sqlDef string,
-	sqlDefParsed vitess.Statement) *CreateProcedure {
+	sqlDefParsedStmts []vitess.Statement) *CreateProcedure {
 	return &CreateProcedure{
-		ProcedureName:   procedureName,
-		SchemaName:      schemaName,
-		Replace:         replace,
-		ParameterNames:  paramNames,
-		ParameterTypes:  paramTypes,
-		ParameterModes:  paramModes,
-		Statements:      statements,
-		ExtensionName:   extensionName,
-		ExtensionSymbol: extensionSymbol,
-		Definition:      definition,
-		SqlDef:          sqlDef,
-		SqlDefParsed:    sqlDefParsed,
+		ProcedureName:     procedureName,
+		SchemaName:        schemaName,
+		Replace:           replace,
+		Parameters:        params,
+		Statements:        statements,
+		ExtensionName:     extensionName,
+		ExtensionSymbol:   extensionSymbol,
+		Definition:        definition,
+		SqlDef:            sqlDef,
+		SqlDefParsedStmts: sqlDefParsedStmts,
 	}
 }
 
@@ -94,23 +88,28 @@ func (c *CreateProcedure) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
-	idTypes := make([]id.Type, len(c.ParameterTypes))
-	for i, typ := range c.ParameterTypes {
-		idTypes[i] = typ.ID
-	}
 	procCollection, err := core.GetProceduresCollectionFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	paramTypes := make([]id.Type, len(c.ParameterTypes))
-	for i, paramType := range c.ParameterTypes {
-		paramTypes[i] = paramType.ID
+
+	paramTypes := make([]id.Type, len(c.Parameters))
+	paramNames := make([]string, len(c.Parameters))
+	paramModes := make([]procedures.ParameterMode, len(c.Parameters))
+	paramDefaults := make([]string, len(c.Parameters))
+	for i, param := range c.Parameters {
+		paramNames[i] = param.Name
+		paramTypes[i] = param.Type.ID
+		if param.Default != nil {
+			paramDefaults[i] = param.Default.String()
+		}
 	}
+
 	schemaName, err := core.GetSchemaName(ctx, nil, c.SchemaName)
 	if err != nil {
 		return nil, err
 	}
-	procID := id.NewProcedure(schemaName, c.ProcedureName, idTypes...)
+	procID := id.NewProcedure(schemaName, c.ProcedureName, paramTypes...)
 	if c.Replace && procCollection.HasProcedure(ctx, procID) {
 		if err = procCollection.DropProcedure(ctx, procID); err != nil {
 			return nil, err
@@ -130,15 +129,16 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 		extName = string(ident)
 	}
 	err = procCollection.AddProcedure(ctx, procedures.Procedure{
-		ID:              procID,
-		ParameterNames:  c.ParameterNames,
-		ParameterTypes:  paramTypes,
-		ParameterModes:  c.ParameterModes,
-		Definition:      c.Definition,
-		ExtensionName:   extName,
-		ExtensionSymbol: c.ExtensionSymbol,
-		Operations:      c.Statements,
-		SQLDefinition:   c.SqlDef,
+		ID:                procID,
+		ParameterNames:    paramNames,
+		ParameterTypes:    paramTypes,
+		ParameterModes:    paramModes,
+		ParameterDefaults: paramDefaults,
+		Definition:        c.Definition,
+		ExtensionName:     extName,
+		ExtensionSymbol:   c.ExtensionSymbol,
+		Operations:        c.Statements,
+		SQLDefinition:     c.SqlDef,
 	})
 	if err != nil {
 		return nil, err
@@ -163,8 +163,24 @@ func (c *CreateProcedure) WithChildren(children ...sql.Node) (sql.Node, error) {
 
 // WithResolvedChildren implements the interface vitess.Injectable.
 func (c *CreateProcedure) WithResolvedChildren(children []any) (any, error) {
-	if len(children) != 0 {
-		return nil, ErrVitessChildCount.New(0, len(children))
+	if len(children) > len(c.Parameters) {
+		// the number of default values can be fewer but cannot be more.
+		return nil, ErrVitessChildCount.New(len(c.Parameters), len(children))
 	}
-	return c, nil
+	newParams := make([]RoutineArg, len(c.Parameters))
+	childIdx := 0
+	for i, param := range c.Parameters {
+		newParams[i] = param
+		if c.Parameters[i].HasDefault && childIdx < len(children) {
+			expr, ok := children[childIdx].(sql.Expression)
+			if !ok {
+				return nil, errors.Errorf("invalid vitess child, expected sql.Expression for Default value but got %t", children[i])
+			}
+			newParams[i].Default = expr
+			childIdx++
+		}
+	}
+	ncp := *c
+	ncp.Parameters = newParams
+	return &ncp, nil
 }

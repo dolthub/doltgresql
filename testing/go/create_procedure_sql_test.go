@@ -93,5 +93,38 @@ $$;`,
 				},
 			},
 		},
+		{
+			Name: "procedure with default expression in parameter",
+			SetUpScript: []string{
+				`CREATE TABLE cp_test (a int, b text);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)
+							LANGUAGE SQL
+							AS $$
+								INSERT INTO cp_test VALUES(a, b);
+								INSERT INTO cp_test VALUES(c, b);
+							$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CALL ptest5(10, 'Hello', 20);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM cp_test`,
+					Expected: []sql.Row{{10, "Hello"}, {20, "Hello"}},
+				},
+				{
+					Query:    `CALL ptest5(50, 'Bye');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM cp_test`,
+					Expected: []sql.Row{{10, "Hello"}, {20, "Hello"}, {50, "Bye"}, {100, "Bye"}},
+				},
+			},
+		},
 	})
 }

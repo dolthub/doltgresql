@@ -23,23 +23,7 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	"github.com/dolthub/doltgresql/server/types"
 )
-
-// RoutineWithArgs represent a function or a procedure with schema name, routine name and its arguments.
-type RoutineWithArgs struct {
-	SchemaName  string
-	RoutineName string
-	Args        []RoutineArg
-}
-
-// RoutineArg represents a routine parameter with parameter name and parameter type.
-type RoutineArg struct {
-	Mode tree.RoutineArgMode
-	Name string
-	Type *types.DoltgresType
-}
 
 // DropFunction implements DROP FUNCTION.
 type DropFunction struct {

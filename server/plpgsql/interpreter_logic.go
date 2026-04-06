@@ -162,7 +162,12 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 					}
 				}
 				if isParam {
-					stack.NewVariable(operation.Target, resolvedType)
+					ivr := stack.GetVariable(defVal)
+					if ivr.Value != nil {
+						stack.NewVariableWithValue(operation.Target, resolvedType, *ivr.Value)
+					} else {
+						stack.NewVariable(operation.Target, resolvedType)
+					}
 				} else {
 					val, err := resolvedType.IoInput(ctx, strings.Trim(operation.SecondaryData[0], "'"))
 					if err != nil {

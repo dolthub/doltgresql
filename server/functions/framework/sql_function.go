@@ -32,6 +32,7 @@ type SQLFunction struct {
 	ReturnType         *pgtypes.DoltgresType
 	ParameterNames     []string
 	ParameterTypes     []*pgtypes.DoltgresType
+	ParameterDefaults  []string
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
@@ -93,11 +94,6 @@ func (sqlFunc SQLFunction) enforceInterfaceInheritance(error) {}
 
 // CallSqlFunction runs the given SQL definition inside the function on the given runner.
 func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner, args []any) (any, error) {
-	parsed, err := parser.ParseOne(f.SqlStatement)
-	if err != nil {
-		return "", err
-	}
-
 	paramMap := make(map[string]*ParamTypAndValue)
 	for i, name := range f.ParameterNames {
 		formattedVar, err := f.ParameterTypes[i].FormatValue(args[i])
@@ -114,6 +110,51 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 		}
 	}
 
+	parseds, err := parser.Parse(f.SqlStatement)
+	if err != nil {
+		return "", err
+	}
+
+	if len(parseds) > 1 {
+		// of multiple statements, the function returns the result of the final statement in the execution block
+		var res any
+		for _, parsed := range parseds {
+			err = ReplaceFunctionColumn(parsed.AST, paramMap)
+			if err != nil {
+				return nil, err
+			}
+			res, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
+				sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), nil, nil, nil)
+				if err != nil {
+					return nil, err
+				}
+				rows, err := sql.RowIterToRows(subCtx, rowIter)
+				if err != nil {
+					return nil, err
+				}
+				if len(sch) != 1 {
+					return nil, errors.New("expression does not result in a single value")
+				}
+				if len(rows) != 1 {
+					return nil, errors.New("expression returned multiple result sets")
+				}
+				if len(rows[0]) != 1 {
+					return nil, errors.New("expression returned multiple results")
+				}
+				return rows[0][0], nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+		if f.ReturnType.ID == pgtypes.Void.ID {
+			return nil, nil
+		}
+		return res, nil
+	}
+
+	// single statement
+	parsed := parseds[0]
 	err = ReplaceFunctionColumn(parsed.AST, paramMap)
 	if err != nil {
 		return nil, err
@@ -204,8 +245,12 @@ func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTyp
 		if s.Where != nil {
 			s.Where.Expr = ReplaceUnresolvedToFunctionColumn(params, s.Where.Expr)
 		}
+		return nil
+	case *tree.Truncate:
+		return nil
+	default:
+		return errors.Errorf("unsupported statement defined in function: %T", parsedAST)
 	}
-	return errors.Errorf("unsupported final statement defined in function")
 }
 
 // ReplaceUnresolvedToFunctionColumn replaces Placeholder and UnresolvedName expressions with FunctionColumn containing

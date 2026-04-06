@@ -140,7 +140,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 					Query: `CREATE FUNCTION public.sp_build_view_bathymetry_layer() RETURNS void
 							LANGUAGE sql
 							AS $$
-								CREATE OR REPLACE VIEW public.view_bathymetry_layer AS 
+								CREATE OR REPLACE VIEW public.view_bathymetry_layer AS
 								SELECT 1;
 							$$;`,
 					Expected: []sql.Row{},
@@ -221,6 +221,143 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 						{`(2,busy,"2025-05-05 05:05:06","2025-05-05 05:05:06","2025-05-05 05:05:06",worker,processor,ext_id,,,,)`},
 						{`(3,busy,"2025-05-05 05:05:07","2025-05-05 05:05:07","2025-05-05 05:05:07",worker,processor,ext_id,,,,)`},
 					},
+				},
+			},
+		},
+		{
+			Name: "function with delete",
+			SetUpScript: []string{
+				`CREATE TABLE test (id bigint NOT NULL, state text NOT NULL);`,
+				`INSERT INTO test VALUES (1, 'sched'), (2, 'busy');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION d(w text) RETURNS bigint
+								LANGUAGE sql
+								AS '
+								DELETE FROM test
+								WHERE
+									state = w
+								RETURNING
+									id;
+							';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM test;`,
+					Expected: []sql.Row{{1, "sched"}, {2, "busy"}},
+				},
+				{
+					Query:    `SELECT d('sched');`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM test;`,
+					Expected: []sql.Row{{2, "busy"}},
+				},
+			},
+		},
+		{
+			Name: "multiple statements in function",
+			SetUpScript: []string{
+				`CREATE TABLE test (id int);`,
+				`INSERT INTO test VALUES (1), (2), (3);`,
+				`CREATE VIEW test1 AS SELECT * FROM test WHERE id = 1;`,
+				`CREATE VIEW test2 AS SELECT * FROM test WHERE id = 2;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION drop_views() RETURNS void
+								LANGUAGE sql
+								AS $$
+							DROP VIEW test1;
+							DROP VIEW test2;
+							$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM test1`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT * FROM test2`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT drop_views();`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:       `SELECT * FROM test1`,
+					ExpectedErr: `not found`,
+				},
+				{
+					Query:       `SELECT * FROM test2`,
+					ExpectedErr: `not found`,
+				},
+			},
+		},
+		{
+			Name: "function with default expression in parameter",
+			SetUpScript: []string{
+				`CREATE TABLE cp_test (a int, b text);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE OR REPLACE FUNCTION dfunc(e int, d text, f int default 100)
+							 RETURNS int LANGUAGE SQL
+							AS $$
+								INSERT INTO cp_test VALUES(e+f, d);
+								SELECT a FROM cp_test WHERE b = d;
+							$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `CREATE OR REPLACE FUNCTION dfunc(e int, f int default 100)
+							 RETURNS int LANGUAGE SQL
+							AS $$
+								INSERT INTO cp_test VALUES(e+f, 'seconddfunc');
+								SELECT a FROM cp_test WHERE b = 'seconddfunc';
+							$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dfunc(10, 'Hello', 20);`,
+					Expected: []sql.Row{{30}},
+				},
+				{
+					Query:    `SELECT * FROM cp_test`,
+					Expected: []sql.Row{{30, "Hello"}},
+				},
+				{
+					Query:    `SELECT * FROM dfunc(50, 'Bye');`,
+					Expected: []sql.Row{{150}},
+				},
+				{
+					Query:    `SELECT * FROM cp_test`,
+					Expected: []sql.Row{{30, "Hello"}, {150, "Bye"}},
+				},
+				{
+					Query:    `SELECT dfunc(2, 'After');`,
+					Expected: []sql.Row{{102}},
+				},
+				{
+					Query:    `SELECT * FROM cp_test`,
+					Expected: []sql.Row{{30, "Hello"}, {150, "Bye"}, {102, "After"}},
+				},
+				{
+					Query: `CREATE OR REPLACE FUNCTION dfunc(e int, f text default '100')
+							 RETURNS int LANGUAGE SQL
+							AS $$
+								INSERT INTO cp_test VALUES(e, f);
+								SELECT a FROM cp_test WHERE b = f;
+							$$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: the error message should be "function dfunc(integer) is not unique"
+					Query:       `SELECT dfunc(50);`,
+					ExpectedErr: `does not exist`,
 				},
 			},
 		},
