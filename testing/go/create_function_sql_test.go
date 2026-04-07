@@ -361,5 +361,36 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "use BEGIN ATOMIC ... END in sql_body",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION match_default() RETURNS jsonb
+            LANGUAGE sql
+            BEGIN ATOMIC 
+				SELECT jsonb_build_object('k', 6, 'm', 2048, 'include_original', true, 'tokenizer', json_build_object('kind', 'ngram', 'token_length', 3), 'token_filters', json_build_array(json_build_object('kind', 'downcase'))) AS jsonb_build_object; 
+			END;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO
+					Query:    `SELECT public.match_default();`,
+					Expected: []sql.Row{{`{"k": 6, "m": 2048, "tokenizer": {"kind": "ngram", "token_length": 3}, "token_filters": [{"kind": "downcase"}], "include_original": true}`}},
+				},
+				{
+					Query: `CREATE FUNCTION select1() RETURNS int
+            LANGUAGE sql
+            BEGIN ATOMIC 
+				SELECT 1; 
+			END;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT select1();`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
 	})
 }

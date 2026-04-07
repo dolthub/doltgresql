@@ -129,15 +129,15 @@ func (p *Parser) parseOneWithDepth(depth int, sql string) (Statement, error) {
 	return stmts[0], nil
 }
 
-func (p *Parser) scanOneStmt() (sql string, tokens []sqlSymType, done bool) {
+func (p *Parser) scanOneStmt(parse func(sqlStr string, tokens []sqlSymType) error) bool {
 	var lval sqlSymType
-	tokens = p.tokBuf[:0]
+	tokens := p.tokBuf[:0]
 
 	// Scan the first token.
 	for {
 		p.scanner.scan(&lval)
 		if lval.id == 0 {
-			return "", nil, true
+			return true
 		}
 		if lval.id != ';' {
 			break
@@ -150,12 +150,21 @@ func (p *Parser) scanOneStmt() (sql string, tokens []sqlSymType, done bool) {
 	tokens = append(tokens, lval)
 	for {
 		if lval.id == ERROR {
-			return p.scanner.in[startPos:], tokens, true
+			_ = parse(p.scanner.in[startPos:], tokens)
+			return true
 		}
 		posBeforeScan := p.scanner.pos
 		p.scanner.scan(&lval)
 		if lval.id == 0 || lval.id == ';' {
-			return p.scanner.in[startPos:posBeforeScan], tokens, (lval.id == 0)
+			err := parse(p.scanner.in[startPos:posBeforeScan], tokens)
+			if lval.id == 0 || (err != nil && !strings.Contains(err.Error(), "EOF")) {
+				// done scanning all statements OR due to non EOF error
+				return true
+			} else if err == nil {
+				// done scanning single statement
+				return false
+			}
+			// continue scanning if it's EOF error
 		}
 		lval.pos -= startPos
 		tokens = append(tokens, lval)
@@ -166,18 +175,26 @@ func (p *Parser) parseWithDepth(depth int, sql string, nakedIntType *types.T) (S
 	stmts := Statements(p.stmtBuf[:0])
 	p.scanner.init(sql)
 	defer p.scanner.cleanup()
+	var err error
 	for {
-		sql, tokens, done := p.scanOneStmt()
-		stmt, err := p.parse(depth+1, sql, tokens, nakedIntType)
-		if err != nil {
-			return nil, err
-		}
-		if stmt.AST != nil {
-			stmts = append(stmts, stmt)
-		}
+		done := p.scanOneStmt(func(sqlStr string, tokens []sqlSymType) error {
+			var stmt Statement
+			stmt, err = p.parse(depth+1, sqlStr, tokens, nakedIntType)
+			if err != nil {
+				// if it's EOF syntax error, try running again
+				return err
+			}
+			if stmt.AST != nil {
+				stmts = append(stmts, stmt)
+			}
+			return nil
+		})
 		if done {
 			break
 		}
+	}
+	if err != nil {
+		return nil, err
 	}
 	return stmts, nil
 }
@@ -259,7 +276,9 @@ func HasMultipleStatements(sql string) bool {
 	defer p.scanner.cleanup()
 	count := 0
 	for {
-		_, _, done := p.scanOneStmt()
+		done := p.scanOneStmt(func(sqlStr string, tokens []sqlSymType) error {
+			return nil
+		})
 		if done {
 			break
 		}
