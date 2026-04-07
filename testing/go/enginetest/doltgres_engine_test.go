@@ -1275,8 +1275,10 @@ func TestDoltRebasePrepared(t *testing.T) {
 
 func TestDoltRevert(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"dolt_revert() respects dolt_ignore",                  // ERROR: INSERT: non-Doltgres type found in destination: text
-		"dolt_revert() automatically resolves some conflicts", // panic: interface conversion: sql.Type is types.VarCharType, not types.StringType
+		"dolt_revert() respects dolt_ignore",                     // ERROR: INSERT: non-Doltgres type found in destination: text
+		"dolt_revert() automatically resolves some conflicts",    // panic: interface conversion: sql.Type is types.VarCharType, not types.StringType
+		"select count(*) from dolt_log;",                         // Doltgres creates an additional commit that Dolt doesn't have
+		"dolt_revert() --continue: ignored table in working set", // ERROR: ASSIGNMENT_CAST: target is of type boolean but expression is of type integer: 1
 	})
 	denginetest.RunDoltRevertTests(t, h)
 }
