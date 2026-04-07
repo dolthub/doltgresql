@@ -2267,8 +2267,9 @@ func TestDoltRevert(t *testing.T) {
 					Expected: []sql.Row{{34}},
 				},
 				{
-					Query:    "SELECT DOLT_REVERT('HEAD');",
-					Expected: []sql.Row{{"{0}"}},
+					// This returns a hash, so we need to take the consistent substring portion for testing
+					Query:    `SELECT substring(DOLT_REVERT('HEAD')::text, 34);`,
+					Expected: []sql.Row{{",0,0,0}"}},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
