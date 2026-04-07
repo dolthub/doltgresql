@@ -1153,11 +1153,11 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <str> table_alias_name constraint_name target_name opt_from_ref_table
 %type <*tree.UnresolvedObjectName> collation_name 
 %type <str> db_object_name_component
-%type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name aggregate_name
+%type <*tree.UnresolvedObjectName> table_name standalone_index_name sequence_name type_name routine_name aggregate_name partition_name
 %type <*tree.UnresolvedObjectName> view_name db_object_name simple_db_object_name complex_db_object_name  opt_collate
 %type <*tree.UnresolvedObjectName> db_object_name_no_keywords simple_db_object_name_no_keywords complex_db_object_name_no_keywords
 %type <[]*tree.UnresolvedObjectName> type_name_list sequence_name_list
-%type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name partition_name
+%type <str> schema_name opt_schema_name opt_schema opt_version tablespace_name
 %type <[]string> schema_name_list role_spec_list opt_role_list opt_owned_by_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star
@@ -1201,7 +1201,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <[]*tree.Order> sortby_list
 %type <tree.IndexParams> constraint_index_params
 %type <tree.IndexElemList> index_params index_params_name_only opt_index_params_name_only opt_include_index_cols partition_index_params exclude_elems
-%type <tree.NameList> name_list opt_name_list privilege_list
+%type <tree.NameList> name_list opt_name_list privilege_list sconst_as_name_list
 %type <[]int32> opt_array_bounds
 %type <tree.From> from_clause
 %type <tree.TableExprs> from_list opt_from_list
@@ -8726,6 +8726,44 @@ create_trigger_stmt:
       Args: $20.nameList(),
     }
   }
+| CREATE opt_constraint TRIGGER trigger_name trigger_time trigger_events ON table_name opt_from_ref_table
+  opt_trigger_deferrable_mode opt_trigger_relations opt_for_each opt_when EXECUTE function_or_procedure routine_name '(' sconst_as_name_list ')'
+  {
+    $$.val = &tree.CreateTrigger{
+      Replace: false,
+      Constraint: $2.bool(),
+      Name: tree.Name($4),
+      Time: $5.triggerTime(),
+      Events: $6.triggerEvents(),
+      OnTable: $8.unresolvedObjectName().ToTableName(),
+      RefTable: tree.Name($9),
+      Deferrable: $10.triggerDeferrableMode(),
+      Relations: $11.triggerRelations(),
+      ForEachRow: $12.bool(),
+      When: $13.expr(),
+      FuncName: $16.unresolvedObjectName(),
+      Args: $18.nameList(),
+    }
+  }
+| CREATE OR REPLACE opt_constraint TRIGGER trigger_name trigger_time trigger_events ON table_name opt_from_ref_table
+  opt_trigger_deferrable_mode opt_trigger_relations opt_for_each opt_when EXECUTE function_or_procedure routine_name '(' sconst_as_name_list ')'
+  {
+    $$.val = &tree.CreateTrigger{
+      Replace: true,
+      Constraint: $4.bool(),
+      Name: tree.Name($6),
+      Time: $7.triggerTime(),
+      Events: $8.triggerEvents(),
+      OnTable: $10.unresolvedObjectName().ToTableName(),
+      RefTable: tree.Name($11),
+      Deferrable: $12.triggerDeferrableMode(),
+      Relations: $13.triggerRelations(),
+      ForEachRow: $14.bool(),
+      When: $15.expr(),
+      FuncName: $18.unresolvedObjectName(),
+      Args: $20.nameList(),
+    }
+  }
   
 function_or_procedure:
   FUNCTION
@@ -9573,28 +9611,28 @@ alter_table_all_in_tablespace_stmt:
   }
 
 alter_table_parition_stmt:
-  ALTER TABLE table_name ATTACH PARTITION partition_name partition_of
+  ALTER TABLE relation_expr ATTACH PARTITION partition_name partition_of
   {
     $$.val = &tree.AlterTablePartition{
-      Name: $3.unresolvedObjectName(), IfExists: false, Partition: tree.Name($6), Spec: $7.partitionBoundSpec(),
+      Name: $3.unresolvedObjectName(), IfExists: false, Partition: $6.unresolvedObjectName(), Spec: $7.partitionBoundSpec(),
     }
   }
-| ALTER TABLE IF EXISTS table_name ATTACH PARTITION partition_name partition_of
+| ALTER TABLE IF EXISTS relation_expr ATTACH PARTITION partition_name partition_of
   {
     $$.val = &tree.AlterTablePartition{
-      Name: $5.unresolvedObjectName(), IfExists: true, Partition: tree.Name($8), Spec: $9.partitionBoundSpec(),
+      Name: $5.unresolvedObjectName(), IfExists: true, Partition: $8.unresolvedObjectName(), Spec: $9.partitionBoundSpec(),
     }
   }
-| ALTER TABLE table_name DETACH PARTITION partition_name detach_partition_type
+| ALTER TABLE relation_expr DETACH PARTITION partition_name detach_partition_type
   {
     $$.val = &tree.AlterTablePartition{
-      Name: $3.unresolvedObjectName(), IfExists: false, Partition: tree.Name($6), IsDetach: true, DetachType: $7.detachPartition(),
+      Name: $3.unresolvedObjectName(), IfExists: false, Partition: $6.unresolvedObjectName(), IsDetach: true, DetachType: $7.detachPartition(),
     }
   }
-| ALTER TABLE IF EXISTS table_name DETACH PARTITION partition_name detach_partition_type
+| ALTER TABLE IF EXISTS relation_expr DETACH PARTITION partition_name detach_partition_type
   {
     $$.val = &tree.AlterTablePartition{
-      Name: $5.unresolvedObjectName(), IfExists: true, Partition: tree.Name($8), IsDetach: true, DetachType: $9.detachPartition(),
+      Name: $5.unresolvedObjectName(), IfExists: true, Partition: $8.unresolvedObjectName(), IsDetach: true, DetachType: $9.detachPartition(),
     }
   }
 
@@ -14223,6 +14261,16 @@ name_list:
     $$.val = append($1.nameList(), tree.Name($3))
   }
 
+sconst_as_name_list:
+  SCONST
+  {
+    $$.val = tree.NameList{tree.Name($1)}
+  }
+| sconst_as_name_list ',' SCONST
+  {
+    $$.val = append($1.nameList(), tree.Name($3))
+  }
+
 sequence_name_list:
   sequence_name
   {
@@ -14421,7 +14469,7 @@ cursor_name:           name
 
 tablespace_name:       name
 
-partition_name:        name
+partition_name:        db_object_name
 
 routine_name:         db_object_name
 

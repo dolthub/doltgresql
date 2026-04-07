@@ -100,7 +100,6 @@ var createViewStmts = []ScriptTest{
 				Query:    "select name from dolt_schemas;",
 				Expected: []sql.Row{{"testview"}},
 			},
-
 			{
 				Query:    "SET search_path = testschema, myschema;",
 				Expected: []sql.Row{},
@@ -257,6 +256,24 @@ var createViewStmts = []ScriptTest{
 			{
 				Query:    `create view public.v1 as with table1 as (select * from t1) select id from table1;`,
 				Expected: []sql.Row{},
+			},
+		},
+	},
+	{
+		Name: "create view with custom type in its select statement",
+		SetUpScript: []string{
+			"CREATE TYPE e AS ENUM ('sched', 'busy', 'final', 'help');",
+			"CREATE TABLE t (id integer NOT NULL, t e);",
+			"INSERT INTO t VALUES (1, 'busy'), (2, 'final'), (3, 'busy'), (4, 'help');",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `create view v as select * from t where (t = 'busy'::e);`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `select * from v;`,
+				Expected: []sql.Row{{1, "busy"}, {3, "busy"}},
 			},
 		},
 	},
