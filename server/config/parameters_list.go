@@ -3556,6 +3556,24 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 					if err == nil {
 						return v, true
 					}
+					for _, layout := range []string{
+						"-07",
+						"-0700",
+						"-070000",
+						"-07:00",
+						"-07:00:00",
+						"UTC-07",
+						"UTC-0700",
+						"UTC-070000",
+						"UTC-07:00",
+						"UTC-07:00:00",
+						"MST",
+					} {
+						parsed, err := time.Parse(layout, v)
+						if err == nil {
+							return parsed.Format("-07:00:00"), true
+						}
+					}
 					return nil, false
 				}
 			}
