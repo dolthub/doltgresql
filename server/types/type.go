@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/schema/typeinfo"
+	dtypes "github.com/dolthub/dolt/go/store/types"
 	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -105,6 +107,7 @@ var _ sql.NullType = &DoltgresType{}
 var _ sql.StringType = &DoltgresType{}
 var _ sql.NumberType = &DoltgresType{}
 var _ val.TupleTypeHandler = &DoltgresType{}
+var _ typeinfo.ExtendedType = &DoltgresType{}
 
 // NewUnresolvedDoltgresType returns a DoltgresType that is not resolved.
 // The type will have the schema and name defined with given values, with IsUnresolved == true.
@@ -1142,6 +1145,100 @@ func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTyp
 
 	return t.SerializeValue(ctx, toValue)
 }
+
+// TypeInfo implements the typeinfo.ExtendedType interface.
+func (t *DoltgresType) TypeInfo() typeinfo.TypeInfo {
+	// TODO implement me
+	panic("implement me")
+}
+
+type typeInfo struct {
+	Type     *DoltgresType
+	encoding val.Encoding
+}
+
+func (t typeInfo) Equals(other typeinfo.TypeInfo) bool {
+	ot, ok := other.(typeInfo)
+	return ok && t.Type.Equals(ot.Type) && t.encoding == ot.encoding
+}
+
+func (t typeInfo) NomsKind() dtypes.NomsKind {
+	return dtypes.ExtendedKind
+}
+
+func (t typeInfo) ToSqlType() sql.Type {
+	return t.Type
+}
+
+func (t typeInfo) Encoding() val.Encoding {
+	if t.encoding > 0 {
+		return t.encoding
+	}
+
+	// TODO: giant type switch for default encoding
+	switch t.Type.ID.TypeName() {
+	case "int2":
+		return val.Int16Enc
+	case "int4":
+		return val.Int32Enc
+	case "int8":
+		return val.Int64Enc
+	case "float4":
+		return val.Float32Enc
+	case "float8":
+		return val.Float64Enc
+	case "numeric", "decimal":
+		return val.DecimalEnc
+	case "bool":
+		return val.Uint8Enc
+	case "bytea":
+		return val.BytesAdaptiveEnc
+	case "date":
+		return val.DateEnc
+	case "time":
+		return val.TimeEnc
+	case "timestamp", "timestamptz":
+		return val.DatetimeEnc
+	case "timetz":
+		return val.ExtendedEnc
+	case "interval":
+		return val.ExtendedEnc
+	case "json", "jsonb":
+		return val.JSONEnc
+	case "oid", "regclass", "regproc", "regtype":
+		return val.Int32Enc
+	case "xid":
+		return val.Uint32Enc
+	case "uuid":
+		return val.BytesAdaptiveEnc
+	case "varchar", "text", "name", "bpchar", "char":
+		return val.StringAdaptiveEnc
+	default:
+		switch t.Type.MaxSerializedWidth() {
+		case sql.ExtendedTypeSerializedWidth_64K:
+			return val.ExtendedEnc
+		case sql.ExtendedTypeSerializedWidth_Unbounded:
+			return val.ExtendedAdaptiveEnc
+		default:
+			panic(fmt.Errorf("unknown extended type serialization width"))
+		}
+	}
+	return t.encoding
+}
+
+func (t typeInfo) WithEncoding(enc val.Encoding) typeinfo.TypeInfo {
+	return typeInfo{
+		Type:     t.Type,
+		encoding: enc,
+	}
+}
+
+func (t typeInfo) String() string {
+	// TODO implement me
+	panic("implement me")
+}
+
+var _ typeinfo.TypeInfo = (*typeInfo)(nil)
 
 // TypeCastFunction is a function that takes a value of a particular kind of type, and returns it as another kind of type.
 // The targetType given should match the "To" type used to obtain the cast.
