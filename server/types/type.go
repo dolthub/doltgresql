@@ -1190,20 +1190,8 @@ func (t typeInfo) Encoding() val.Encoding {
 		return val.Float64Enc
 	case "numeric", "decimal":
 		return val.DecimalEnc
-	case "bool":
-		return val.Uint8Enc
 	case "bytea":
 		return val.BytesAdaptiveEnc
-	case "date":
-		return val.DateEnc
-	case "time":
-		return val.TimeEnc
-	case "timestamp", "timestamptz":
-		return val.DatetimeEnc
-	case "timetz":
-		return val.ExtendedEnc
-	case "interval":
-		return val.ExtendedEnc
 	case "json", "jsonb":
 		return val.JSONEnc
 	case "oid", "regclass", "regproc", "regtype":
