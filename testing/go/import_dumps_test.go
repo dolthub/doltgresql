@@ -33,16 +33,16 @@ import (
 
 // TestImportingDumps are regression tests against dumps taken from various sources.
 func TestImportingDumps(t *testing.T) {
-	t.Skip("The majority fail for now")
+	//t.Skip("The majority fail for now")
 	RunImportTests(t, []ImportTest{
-		{
-			Name: "Scrubbed-1",
-			SetUpScript: []string{
-				"CREATE USER behfjgnf WITH SUPERUSER PASSWORD 'password';",
-			},
-			SkipQueries: []string{"CREATE UNIQUE INDEX dawkmezfehakyikllr"},
-			SQLFilename: "scrubbed-1.sql",
-		},
+		//{
+		//	Name: "Scrubbed-1",
+		//	SetUpScript: []string{
+		//		"CREATE USER behfjgnf WITH SUPERUSER PASSWORD 'password';",
+		//	},
+		//	SkipQueries: []string{"CREATE UNIQUE INDEX dawkmezfehakyikllr"},
+		//	SQLFilename: "scrubbed-1.sql",
+		//},
 		{
 			Name:        "A-lang209/Salon-Appointment-Scheduler",
 			Skip:        true, // Database creation uses unsupported params then attempts to connect, hangs indefinitely

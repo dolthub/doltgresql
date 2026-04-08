@@ -4611,6 +4611,10 @@ begin_end_block:
   {
     $$.val = &tree.BeginEndBlock{Statements: $3.stmts()}
   }
+| BEGIN ATOMIC RETURN a_expr ';' END
+  {
+    $$.val = &tree.BeginEndBlock{Statements: []tree.Statement{&tree.Return{Expr: $4.expr()}}}
+  }
 
 opt_schema:
   /* EMPTY */

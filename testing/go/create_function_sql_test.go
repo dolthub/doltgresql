@@ -362,7 +362,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 			},
 		},
 		{
-			Name:        "use BEGIN ATOMIC ... END in sql_body",
+			Name:        "use sql statements in BEGIN ATOMIC ... END in sql_body",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -374,7 +374,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:     true, // TODO
+					Skip:     true, // TODO support json_build_object() function
 					Query:    `SELECT public.match_default();`,
 					Expected: []sql.Row{{`{"k": 6, "m": 2048, "tokenizer": {"kind": "ngram", "token_length": 3}, "token_filters": [{"kind": "downcase"}], "include_original": true}`}},
 				},
@@ -389,6 +389,24 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				{
 					Query:    `SELECT select1();`,
 					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name:        "use RETURN in BEGIN ATOMIC ... END in sql_body",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION return1() RETURNS text
+            LANGUAGE sql
+            BEGIN ATOMIC 
+				RETURN 1::text || 'one'; 
+			END;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT return1();`,
+					Expected: []sql.Row{{"1one"}},
 				},
 			},
 		},
