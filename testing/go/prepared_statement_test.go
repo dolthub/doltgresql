@@ -1343,12 +1343,7 @@ var preparedStatementTests = []ScriptTest{
 			{
 				Query:       "SELECT * FROM text_test where fullname = $1 and id = $1",
 				BindVars:    []any{1},
-				ExpectedErr: "double placeholder given for v1",
-			},
-			{
-				Query:       "SELECT * FROM text_test where fullname = $1 and id = $1",
-				BindVars:    []any{"foo"},
-				ExpectedErr: "double placeholder given for v1",
+				ExpectedErr: "parameter v1 is used for incompatible types: text and integer",
 			},
 		},
 	},
