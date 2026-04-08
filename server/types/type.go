@@ -1148,8 +1148,9 @@ func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTyp
 
 // TypeInfo implements the typeinfo.ExtendedType interface.
 func (t *DoltgresType) TypeInfo() typeinfo.TypeInfo {
-	// TODO implement me
-	panic("implement me")
+	return typeInfo{
+		Type: t,
+	}
 }
 
 type typeInfo struct {
@@ -1234,8 +1235,7 @@ func (t typeInfo) WithEncoding(enc val.Encoding) typeinfo.TypeInfo {
 }
 
 func (t typeInfo) String() string {
-	// TODO implement me
-	panic("implement me")
+	return fmt.Sprintf("TypeInfo(%s, encoding=%d)", t.Type.String(), t.encoding)
 }
 
 var _ typeinfo.TypeInfo = (*typeInfo)(nil)
