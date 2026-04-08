@@ -76,7 +76,24 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 	for _, overload := range o.AllOverloads {
 		params := overload.GetParameters()
 		variadicIndex := overload.VariadicIndex()
-		if variadicIndex >= 0 && len(params) <= numParams {
+		if overload.IsCVariadic() {
+			if len(params) <= numParams {
+				paramTypes := make([]*pgtypes.DoltgresType, numParams)
+				argTypes := make([]*pgtypes.DoltgresType, numParams)
+				copy(paramTypes, params)
+				copy(argTypes, params)
+				for i := len(params); i < numParams; i++ {
+					paramTypes[i] = pgtypes.Any
+					argTypes[i] = pgtypes.Any
+				}
+				results = append(results, Overload{
+					function:   overload,
+					paramTypes: paramTypes,
+					argTypes:   argTypes,
+					variadic:   -1,
+				})
+			}
+		} else if variadicIndex >= 0 && len(params) <= numParams {
 			// Variadic functions may only match when the function is declared with parameters that are fewer or equal
 			// to our target length. If our target length is less, then we cannot expand, so we do not treat it as
 			// variadic.
