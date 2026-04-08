@@ -5186,6 +5186,34 @@ func TestWireTypesSending(t *testing.T) {
 				},
 			},
 		},
+		{ // https://github.com/dolthub/doltgresql/issues/2546
+			Name: "Issue #2546",
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Query{String: "SELECT 'foo';"},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("?column?"),
+									TableOID:             0,
+									TableAttributeNumber: 0,
+									DataTypeOID:          25,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("foo")}},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
 	})
 }
 

@@ -407,5 +407,33 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #2548",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT4 PRIMARY KEY, v1 TIMESTAMP WITH TIME ZONE);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SET TimeZone = 'UTC-01:00';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (1, '2026-04-15 10:11:12');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SET TimeZone = 'UTC-03:00';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (2, '2026-04-15 10:11:12');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT (SELECT v1 FROM test WHERE pk = 2) - (SELECT v1 FROM test WHERE pk = 1);`,
+					Expected: []sql.Row{{"-02:00:00"}},
+				},
+			},
+		},
 	})
 }
