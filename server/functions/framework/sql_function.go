@@ -78,6 +78,11 @@ func (sqlFunc SQLFunction) NonDeterministic() bool {
 	return sqlFunc.IsNonDeterministic
 }
 
+// IsCVariadic implements the FunctionInterface interface.
+func (sqlFunc SQLFunction) IsCVariadic() bool {
+	return false
+}
+
 // VariadicIndex implements the interface FunctionInterface.
 func (sqlFunc SQLFunction) VariadicIndex() int {
 	// TODO: implement variadic

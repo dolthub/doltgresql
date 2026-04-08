@@ -99,6 +99,11 @@ func (iFunc InterpretedFunction) NonDeterministic() bool {
 	return iFunc.IsNonDeterministic
 }
 
+// IsCVariadic implements the FunctionInterface interface.
+func (iFunc InterpretedFunction) IsCVariadic() bool {
+	return false
+}
+
 // VariadicIndex implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) VariadicIndex() int {
 	// TODO: implement variadic

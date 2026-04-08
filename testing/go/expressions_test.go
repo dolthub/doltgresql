@@ -92,11 +92,11 @@ func TestIn(t *testing.T) {
 				},
 				{
 					Query:    `SELECT concat('a', NULL) in ('a', 'b', 'ab');`,
-					Expected: []sql.Row{{nil}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT concat('a', NULL) in ('a', NULL);`,
-					Expected: []sql.Row{{nil}},
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},

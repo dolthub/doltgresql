@@ -3428,6 +3428,35 @@ func TestStringFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "concat",
+			Assertions: []ScriptTestAssertion{
+				{ // https://github.com/dolthub/doltgresql/issues/2547
+					Query:    `SELECT LENGTH(CONCAT('', NULL, ''));`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT CONCAT('a', NULL, 'b');`,
+					Expected: []sql.Row{{"ab"}},
+				},
+				{
+					Query:    `SELECT CONCAT(1, 2, true);`,
+					Expected: []sql.Row{{"12t"}},
+				},
+				{
+					Query:    `SELECT CONCAT(1::int2, 2::int4, true::bool, false::text);`,
+					Expected: []sql.Row{{"12tfalse"}},
+				},
+				{
+					Query:    `SELECT CONCAT('b');`,
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    `SELECT CONCAT(NULL);`,
+					Expected: []sql.Row{{""}},
+				},
+			},
+		},
 	})
 }
 

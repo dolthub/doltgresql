@@ -96,6 +96,7 @@ func Init() {
 	initCharLength()
 	initChr()
 	initColDescription()
+	initConcat()
 	initCos()
 	initCosd()
 	initCosh()
