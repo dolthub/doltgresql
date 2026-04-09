@@ -96,7 +96,8 @@ var json_send = framework.Function1{
 			}
 		}
 		writer := utils.NewWireWriter()
-		writer.WriteString(val.(tree.IndexedJsonDocument).GetBytes(ctx))
+		str := val.(tree.IndexedJsonDocument).String()
+		writer.WriteString(str)
 		return writer.BufferData(), nil
 	},
 }

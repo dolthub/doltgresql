@@ -42,7 +42,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgtree "github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	dserver "github.com/dolthub/doltgresql/server"
@@ -212,8 +212,8 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
 			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
 				panic(fmt.Sprintf("The assertion `%s` has Focus set to `true`. GitHub Actions requires that "+
-					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-					"all tests.", assertion.Query))
+						"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+						"all tests.", assertion.Query))
 			}
 			focusAssertions = append(focusAssertions, assertion)
 		}
@@ -368,8 +368,8 @@ func runScripts(t *testing.T, scripts []ScriptTest, normalizeRows bool) {
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
 			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
 				panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
-					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-					"all tests.", script.Name))
+						"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+						"all tests.", script.Name))
 			}
 			focusScripts = append(focusScripts, script)
 		}
@@ -593,14 +593,14 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				} else if dt.ID == types.Date.ID {
 					newRow[i] = row[i]
 					if row[i] != nil {
-						if t, _, err := tree.ParseDTimestampTZ(nil, row[i].(string), tree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
+						if t, _, err := pgtree.ParseDTimestampTZ(nil, row[i].(string), pgtree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
 							newRow[i] = functions.FormatDateTimeWithBC(t.Time.UTC(), "2006-01-02", dt.ID == types.TimestampTZ.ID)
 						}
 					}
 				} else if dt.ID == types.Timestamp.ID || dt.ID == types.TimestampTZ.ID {
 					newRow[i] = row[i]
 					if row[i] != nil {
-						if t, _, err := tree.ParseDTimestampTZ(nil, row[i].(string), tree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
+						if t, _, err := pgtree.ParseDTimestampTZ(nil, row[i].(string), pgtree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
 							newRow[i] = functions.FormatDateTimeWithBC(t.Time.UTC(), "2006-01-02 15:04:05.999999", dt.ID == types.TimestampTZ.ID)
 						}
 					}
@@ -643,26 +643,12 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 	}
 
 	switch dt.ID {
-	case types.Json.ID:
-		str, err := json.Marshal(v)
+	case types.Json.ID, types.JsonB.ID:
+		jsonBytes, err := json.Marshal(v)
 		if err != nil {
 			panic(err)
 		}
-		ret, err := dt.FormatValue(string(str))
-		if err != nil {
-			panic(err)
-		}
-		return ret
-	case types.JsonB.ID:
-		jv, err := types.ConvertToJsonDocument(v)
-		if err != nil {
-			panic(err)
-		}
-		str, err := dt.FormatValue(types.JsonDocument{Value: jv})
-		if err != nil {
-			panic(err)
-		}
-		return str
+		return string(jsonBytes)
 	case types.InternalChar.ID:
 		if v == nil {
 			return nil
