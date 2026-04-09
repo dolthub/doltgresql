@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/goccy/go-json"
 
@@ -58,7 +59,7 @@ var json_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Json},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(string), nil
+		return val.(tree.IndexedJsonDocument).String(), nil
 	},
 }
 
@@ -95,7 +96,7 @@ var json_send = framework.Function1{
 			}
 		}
 		writer := utils.NewWireWriter()
-		writer.WriteString(val.(string))
+		writer.WriteString(val.(tree.IndexedJsonDocument).GetBytes(ctx))
 		return writer.BufferData(), nil
 	},
 }
