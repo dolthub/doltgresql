@@ -16,6 +16,7 @@ package framework
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -113,6 +114,10 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			Typ:    f.ParameterTypes[i],
 			StrVal: formattedVar,
 		}
+	}
+
+	if lower := strings.ToLower(f.SqlStatement); strings.HasPrefix(lower, "return") {
+		f.SqlStatement = fmt.Sprintf("SELECT%s", f.SqlStatement[6:])
 	}
 
 	parseds, err := parser.Parse(f.SqlStatement)
@@ -252,6 +257,9 @@ func ReplaceFunctionColumn(parsedAST tree.Statement, params map[string]*ParamTyp
 		}
 		return nil
 	case *tree.Truncate:
+		return nil
+	case *tree.Return:
+		s.Expr = ReplaceUnresolvedToFunctionColumn(params, s.Expr)
 		return nil
 	default:
 		return errors.Errorf("unsupported statement defined in function: %T", parsedAST)

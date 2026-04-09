@@ -27,7 +27,7 @@ import (
 
 // DropProcedure implements DROP PROCEDURE.
 type DropProcedure struct {
-	RoutinesWithArgs []*RoutineWithArgs
+	RoutinesWithArgs []*RoutineWithParams
 	IfExists         bool
 	Cascade          bool
 }
@@ -36,7 +36,7 @@ var _ sql.ExecSourceRel = (*DropProcedure)(nil)
 var _ vitess.Injectable = (*DropProcedure)(nil)
 
 // NewDropProcedure returns a new *DropProcedure.
-func NewDropProcedure(ifExists bool, routinesWithArgs []*RoutineWithArgs, cascade bool) *DropProcedure {
+func NewDropProcedure(ifExists bool, routinesWithArgs []*RoutineWithParams, cascade bool) *DropProcedure {
 	return &DropProcedure{
 		IfExists:         ifExists,
 		RoutinesWithArgs: routinesWithArgs,
@@ -99,7 +99,7 @@ func (d *DropProcedure) WithResolvedChildren(children []any) (any, error) {
 	return d, nil
 }
 
-func dropProcedure(ctx *sql.Context, procColl *procedures.Collection, fn *RoutineWithArgs, ifExists bool) error {
+func dropProcedure(ctx *sql.Context, procColl *procedures.Collection, fn *RoutineWithParams, ifExists bool) error {
 	// TODO: provide db
 	schema, err := core.GetSchemaName(ctx, nil, fn.SchemaName)
 	if err != nil {

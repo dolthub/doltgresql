@@ -37,23 +37,23 @@ func nodeDropProcedure(ctx *Context, node *tree.DropProcedure) (vitess.Statement
 		return nil, fmt.Errorf("no function name specified for DROP PROCEDURE")
 	}
 
-	procedures := make([]*pgnodes.RoutineWithArgs, len(node.Procedures))
+	procedures := make([]*pgnodes.RoutineWithParams, len(node.Procedures))
 	for i, fn := range node.Procedures {
-		var args []pgnodes.RoutineArg
+		var args []pgnodes.RoutineParam
 		for _, a := range fn.Args {
 			if a.Mode != tree.RoutineArgModeOut {
 				_, dt, err := nodeResolvableTypeReference(ctx, a.Type, false)
 				if err != nil {
 					return nil, err
 				}
-				args = append(args, pgnodes.RoutineArg{
+				args = append(args, pgnodes.RoutineParam{
 					Name: a.Name.String(),
 					Type: dt,
 				})
 			}
 		}
 		objName := fn.Name.ToTableName()
-		procedures[i] = &pgnodes.RoutineWithArgs{
+		procedures[i] = &pgnodes.RoutineWithParams{
 			Args:        args,
 			SchemaName:  objName.Schema(),
 			RoutineName: objName.Object(),
