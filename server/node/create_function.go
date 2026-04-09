@@ -31,15 +31,8 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// RoutineWithArgs represent a function or a procedure with schema name, routine name and its arguments.
-type RoutineWithArgs struct {
-	SchemaName  string
-	RoutineName string
-	Args        []RoutineArg
-}
-
-// RoutineArg represents a routine parameter with parameter name and parameter type.
-type RoutineArg struct {
+// RoutineParam represents a routine parameter with parameter name, type and default value if exists.
+type RoutineParam struct {
 	Mode       procedures.ParameterMode
 	Name       string
 	Type       *pgtypes.DoltgresType
@@ -53,7 +46,7 @@ type CreateFunction struct {
 	SchemaName        string
 	Replace           bool
 	ReturnType        *pgtypes.DoltgresType
-	Parameters        []RoutineArg
+	Parameters        []RoutineParam
 	Strict            bool
 	Statements        []plpgsql.InterpreterOperation
 	ExtensionName     string
@@ -73,7 +66,7 @@ func NewCreateFunction(
 	schemaName string,
 	replace bool,
 	retType *pgtypes.DoltgresType,
-	params []RoutineArg,
+	params []RoutineParam,
 	strict bool,
 	definition string,
 	extensionName string,
@@ -198,7 +191,7 @@ func (c *CreateFunction) WithResolvedChildren(children []any) (any, error) {
 		// the number of default values can be fewer but cannot be more.
 		return nil, ErrVitessChildCount.New(len(c.Parameters), len(children))
 	}
-	newParams := make([]RoutineArg, len(c.Parameters))
+	newParams := make([]RoutineParam, len(c.Parameters))
 	childIdx := 0
 	for i, param := range c.Parameters {
 		newParams[i] = param

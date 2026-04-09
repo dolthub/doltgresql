@@ -63,6 +63,8 @@ func Init() {
 		analyzer.OnceBeforeDefault...)
 
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
+		// ResolveType rule must run in this batch in addition to OnceBeforeDefault batch
+		// because of custom batch set optimization in GMS skipping OnceBeforeDefault batch for some nodes.
 		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		analyzer.Rule{Id: ruleId_ResolveValuesTypes, Apply: ResolveValuesTypes},

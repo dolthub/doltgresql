@@ -17,6 +17,7 @@ package node
 import (
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 )
@@ -28,6 +29,7 @@ type Return struct {
 }
 
 var _ sql.ExecSourceRel = (*Return)(nil)
+var _ sql.Expressioner = (*Return)(nil)
 var _ vitess.Injectable = (*Return)(nil)
 
 // NewReturn creates a new *Return node.
@@ -58,12 +60,7 @@ func (r *Return) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (r *Return) RowIter(ctx *sql.Context, row sql.Row) (sql.RowIter, error) {
-	// TODO: this cannot be called as we replace RETURN with SELECT to be able to parse the expression
-	//val, err := r.Expr.Eval(ctx, row)
-	//if err != nil {
-	//	return nil, err
-	//}
-	return sql.RowsToRowIter(), nil
+	return nil, errors.Errorf(`cannot call RowIter on Return node`)
 }
 
 // String implements the interface sql.ExecSourceRel.
@@ -97,5 +94,21 @@ func (r *Return) WithResolvedChildren(children []any) (any, error) {
 
 	nr := *r
 	nr.Expr = children[0].(sql.Expression)
+	return &nr, nil
+}
+
+// Expressions implements the interface sql.Expressioner.
+func (r *Return) Expressions() []sql.Expression {
+	return []sql.Expression{r.Expr}
+}
+
+// WithExpressions implements the interface sql.Expressioner.
+func (r *Return) WithExpressions(exprs ...sql.Expression) (sql.Node, error) {
+	if len(exprs) != 1 {
+		return nil, sql.ErrInvalidChildrenNumber.New(r, len(exprs), 1)
+	}
+
+	nr := *r
+	nr.Expr = exprs[0]
 	return &nr, nil
 }

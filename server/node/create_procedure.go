@@ -33,7 +33,7 @@ type CreateProcedure struct {
 	ProcedureName     string
 	SchemaName        string
 	Replace           bool
-	Parameters        []RoutineArg
+	Parameters        []RoutineParam
 	Statements        []plpgsql.InterpreterOperation
 	ExtensionName     string
 	ExtensionSymbol   string
@@ -50,7 +50,7 @@ func NewCreateProcedure(
 	procedureName string,
 	schemaName string,
 	replace bool,
-	params []RoutineArg,
+	params []RoutineParam,
 	definition string,
 	extensionName string,
 	extensionSymbol string,
@@ -167,7 +167,7 @@ func (c *CreateProcedure) WithResolvedChildren(children []any) (any, error) {
 		// the number of default values can be fewer but cannot be more.
 		return nil, ErrVitessChildCount.New(len(c.Parameters), len(children))
 	}
-	newParams := make([]RoutineArg, len(c.Parameters))
+	newParams := make([]RoutineParam, len(c.Parameters))
 	childIdx := 0
 	for i, param := range c.Parameters {
 		newParams[i] = param

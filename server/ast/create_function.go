@@ -53,7 +53,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		retType = createAnonymousCompositeType(node.RetType)
 	}
 
-	params := make([]pgnodes.RoutineArg, len(node.Args))
+	params := make([]pgnodes.RoutineParam, len(node.Args))
 	var defaults []vitess.Expr
 	for i, arg := range node.Args {
 		// parameter name
@@ -123,7 +123,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			if ok {
 				beginAtomic, ok := sqlBody.SqlBody.(*tree.BeginEndBlock)
 				if !ok {
-					return nil, errors.Errorf("Expected BEGIN ATOMIC in CREATE FUNCTION definition, got %T", sqlBody.SqlBody)
+					return nil, errors.Errorf("Expected BEGIN in CREATE FUNCTION definition, got %T", sqlBody.SqlBody)
 				}
 				stmts := make([]parser.Statement, len(beginAtomic.Statements))
 				for i, s := range beginAtomic.Statements {
@@ -205,8 +205,9 @@ func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.Do
 	return pgtypes.NewCompositeType(context.Background(), id.Null, id.NullType, typeId, attrs)
 }
 
-// handleLanguageSQLAs handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE.
-func handleLanguageSQLAs(definition string, params []pgnodes.RoutineArg) (string, []vitess.Statement, error) {
+// handleLanguageSQLAs handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE
+// and returns converted the sql statements into vitess statements.
+func handleLanguageSQLAs(definition string, params []pgnodes.RoutineParam) (string, []vitess.Statement, error) {
 	stmts, err := parser.Parse(definition)
 	if err != nil {
 		return "", nil, err
@@ -215,7 +216,9 @@ func handleLanguageSQLAs(definition string, params []pgnodes.RoutineArg) (string
 	return convertSQLStmts(stmts, params)
 }
 
-func convertSQLStmts(stmts []parser.Statement, params []pgnodes.RoutineArg) (string, []vitess.Statement, error) {
+// convertSQLStmts takes parser.Statements and routine parameters and
+// returns converted to string representation and vitess statements.
+func convertSQLStmts(stmts parser.Statements, params []pgnodes.RoutineParam) (string, []vitess.Statement, error) {
 	paramMap := make(map[string]*framework.ParamTypAndValue, len(params))
 	for i, param := range params {
 		tv := &framework.ParamTypAndValue{
