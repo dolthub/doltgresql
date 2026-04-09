@@ -15,7 +15,7 @@
 package types
 
 import (
-	"bytes"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -25,6 +25,10 @@ import (
 
 	"github.com/dolthub/doltgresql/utils"
 )
+
+// jsonDocumentStringUnicodeRegex is used on a JsonDocument's string to find all Unicode escape sequences that have an
+// additional backslash.
+var jsonDocumentStringUnicodeRegex = regexp.MustCompile(`\\\\u([0-9A-Fa-f]{4})`)
 
 // JsonValueType represents a JSON value type. These values are serialized, and therefore should never be modified.
 type JsonValueType byte
@@ -340,11 +344,6 @@ func JsonValueFormatter(sb *strings.Builder, value JsonValue) {
 
 // UnmarshalToJsonDocument converts a JSON document byte slice into the actual JSON document.
 func UnmarshalToJsonDocument(val []byte) (JsonDocument, error) {
-	// The JSON unmarshaller incorrectly replaces the two ASCII characters for a newline (92 & 110) with a single ASCII
-	// newline character (10). We also handle \t and \r.
-	val = bytes.ReplaceAll(val, []byte{'\\', 'n'}, []byte{'\\', '\\', 'n'})
-	val = bytes.ReplaceAll(val, []byte{'\\', 'r'}, []byte{'\\', '\\', 'r'})
-	val = bytes.ReplaceAll(val, []byte{'\\', 't'}, []byte{'\\', '\\', 't'})
 	var decoded interface{}
 	if err := json.Unmarshal(val, &decoded); err != nil {
 		return JsonDocument{}, err
@@ -396,6 +395,15 @@ func ConvertToJsonDocument(val interface{}) (JsonValue, error) {
 		}
 		return values, nil
 	case string:
+		// JSON parsing will convert some escaped whitespace characters to their actual characters, which is incorrect.
+		// We must retain their escaped form to be considered valid JSON.
+		val = strings.ReplaceAll(val, "\\", `\\`)
+		val = strings.ReplaceAll(val, "\n", `\n`)
+		val = strings.ReplaceAll(val, "\t", `\t`)
+		val = strings.ReplaceAll(val, "\r", `\r`)
+		// We specifically don't want Unicode escape sequences to be replaced, so we revert those.
+		// This is safe as we double backslashes before this step, so this will return it to its original input.
+		val = jsonDocumentStringUnicodeRegex.ReplaceAllString(val, `\u$1`)
 		return JsonValueString(val), nil
 	case float64:
 		// TODO: handle this as a proper numeric as float64 is not precise enough

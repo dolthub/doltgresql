@@ -30,6 +30,7 @@ import (
 	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/core/id"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -147,9 +148,8 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 					return false
 				}
 			}
-			if _, ok := types[e.Name]; ok {
-				// sanity check
-				err = errors.Errorf("double placeholder given for %s", e.Name)
+			if existingOid, ok := types[e.Name]; ok {
+				err = checkCompatibleTypes(existingOid, typOid, e.Name)
 			}
 			types[e.Name] = typOid
 		case *pgexprs.ExplicitCast:
@@ -164,9 +164,8 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 						return false
 					}
 				}
-				if _, ok = types[bindVar.Name]; ok {
-					// sanity check
-					err = errors.Errorf("double placeholder given for %s", bindVar.Name)
+				if existingOid, ok := types[bindVar.Name]; ok {
+					err = checkCompatibleTypes(existingOid, typOid, bindVar.Name)
 				}
 				types[bindVar.Name] = typOid
 				return false
@@ -180,9 +179,8 @@ func extractBindVarTypes(queryPlan sql.Node) ([]uint32, error) {
 					err = errors.Errorf("could not determine OID for placeholder %s: %e", bindVar.Name, err)
 					return false
 				}
-				if _, ok = types[bindVar.Name]; ok {
-					// sanity check
-					err = errors.Errorf("double placeholder given for %s", bindVar.Name)
+				if existingOid, ok := types[bindVar.Name]; ok {
+					err = checkCompatibleTypes(existingOid, typOid, bindVar.Name)
 				}
 				types[bindVar.Name] = typOid
 				return false
@@ -224,4 +222,15 @@ func VitessTypeToObjectID(typ sql.Type) (uint32, error) {
 		return 0, err
 	}
 	return id.Cache().ToOID(doltgresType.ID.AsId()), nil
+}
+
+// checkCompatibleTypes checks if multiple types for which a parameter are used are compatible.
+func checkCompatibleTypes(existingOid, newOid uint32, newName string) error {
+	var err error
+	existing := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(existingOid)))
+	newType := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(newOid)))
+	if _, _, err = framework.FindCommonType([]*pgtypes.DoltgresType{existing, newType}); err != nil {
+		err = errors.Errorf("parameter %s is used for incompatible types: %s and %s", newName, existing.String(), newType.String())
+	}
+	return err
 }

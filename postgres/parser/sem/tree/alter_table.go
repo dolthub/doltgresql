@@ -951,7 +951,7 @@ var _ Statement = &AlterTablePartition{}
 type AlterTablePartition struct {
 	Name       *UnresolvedObjectName
 	IfExists   bool
-	Partition  Name
+	Partition  *UnresolvedObjectName
 	Spec       PartitionBoundSpec
 	IsDetach   bool
 	DetachType DetachPartition
@@ -966,7 +966,7 @@ func (node *AlterTablePartition) Format(ctx *FmtCtx) {
 	node.Name.Format(ctx)
 	if node.IsDetach {
 		ctx.WriteString(" DETACH PARTITION ")
-		ctx.FormatNode(&node.Partition)
+		node.Name.Format(ctx)
 		switch node.DetachType {
 		case DetachPartitionNone:
 		case DetachPartitionConcurrently:
@@ -976,7 +976,7 @@ func (node *AlterTablePartition) Format(ctx *FmtCtx) {
 		}
 	} else {
 		ctx.WriteString(" ATTACH PARTITION ")
-		ctx.FormatNode(&node.Partition)
+		node.Name.Format(ctx)
 		ctx.WriteByte(' ')
 		ctx.FormatNode(&node.Spec)
 	}

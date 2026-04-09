@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -404,6 +405,220 @@ limit 1`,
 					Query:            `SELECT NOT EXISTS(SELECT 1 FROM pg_catalog.pg_tables WHERE tablename = 'test');`,
 					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
 					Expected:         []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name: "Issue #2548",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk INT4 PRIMARY KEY, v1 TIMESTAMP WITH TIME ZONE);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SET TimeZone = 'UTC-01:00';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (1, '2026-04-15 10:11:12');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SET TimeZone = 'UTC-03:00';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (2, '2026-04-15 10:11:12');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT (SELECT v1 FROM test WHERE pk = 2) - (SELECT v1 FROM test WHERE pk = 1);`,
+					Expected: []sql.Row{{"-02:00:00"}},
+				},
+			},
+		},
+	})
+}
+
+func TestIssuesWire(t *testing.T) {
+	RunWireScripts(t, []WireScriptTest{
+		{
+			Name: "Issue #2546",
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Query{String: "SELECT 'foo';"},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("?column?"),
+									TableOID:             0,
+									TableAttributeNumber: 0,
+									DataTypeOID:          25,
+									DataTypeSize:         -1,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("foo")}},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "Issue #2557",
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: `SELECT '{"v":"a\\nb"}'::jsonb;`,
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							PreparedStatement: "stmt_name1",
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`{"v": "a\\nb"}`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: `SELECT $${"v":"a\\nb"}$$::jsonb;`,
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							PreparedStatement: "stmt_name2",
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`{"v": "a\\nb"}`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name3",
+							Query: `SELECT $${"v":"a\\\nb"}$$::jsonb;`,
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							PreparedStatement: "stmt_name3",
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`{"v": "a\\\nb"}`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name4",
+							Query: `select json '{ "a":  "dollar \\u0024 character" }' ->> 'a' as not_an_escape;`,
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							PreparedStatement: "stmt_name4",
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`dollar \u0024 character`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
 				},
 			},
 		},

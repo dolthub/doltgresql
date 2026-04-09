@@ -104,13 +104,14 @@ func newCompiledFunctionInternal(
 
 	// Then we'll handle the polymorphic types
 	// https://www.postgresql.org/docs/15/extend-type-system.html#EXTEND-TYPES-POLYMORPHIC
-	functionParameterTypes := fn.GetParameters()
-	c.callResolved = make([]*pgtypes.DoltgresType, len(functionParameterTypes)+1)
+	c.callResolved = make([]*pgtypes.DoltgresType, len(overload.params.paramTypes)+1)
 	hasPolymorphicParam := false
-	for i, param := range functionParameterTypes {
+	for i, param := range overload.params.paramTypes {
 		if param.IsPolymorphicType() {
 			// resolve will ensure that the parameter types are valid, so we can just assign them here
 			hasPolymorphicParam = true
+			c.callResolved[i] = originalTypes[i]
+		} else if param.ID == pgtypes.Any.ID {
 			c.callResolved[i] = originalTypes[i]
 		} else if i < len(args) {
 			if d, ok := args[i].Type().(*pgtypes.DoltgresType); ok {
@@ -124,7 +125,7 @@ func newCompiledFunctionInternal(
 	c.callResolved[len(c.callResolved)-1] = returnType
 	if returnType.IsPolymorphicType() {
 		if hasPolymorphicParam {
-			c.callResolved[len(c.callResolved)-1] = c.resolvePolymorphicReturnType(functionParameterTypes, originalTypes, returnType)
+			c.callResolved[len(c.callResolved)-1] = c.resolvePolymorphicReturnType(overload.params.paramTypes, originalTypes, returnType)
 		} else if c.Name == "array_in" || c.Name == "array_recv" || c.Name == "enum_in" || c.Name == "enum_recv" || c.Name == "anyenum_in" || c.Name == "anyenum_recv" {
 			// The return type should resolve to the type of OID value passed in as second argument.
 			// TODO: Possible that the oid type has a special property with polymorphic return types,
@@ -266,18 +267,20 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	var err error
 	isStrict := c.overload.Function().IsStrict()
 	args := make([]any, len(c.Arguments))
+	exprTypes := make([]*pgtypes.DoltgresType, len(args))
 	for i, arg := range c.Arguments {
 		args[i], err = arg.Eval(ctx, row)
 		if err != nil {
 			return nil, err
 		}
-		// TODO: once we remove GMS types from all of our expressions, we can remove this step which ensures the correct type
-		if _, ok := arg.Type().(*pgtypes.DoltgresType); !ok {
+		var ok bool
+		if exprTypes[i], ok = arg.Type().(*pgtypes.DoltgresType); !ok {
 			dt, err := pgtypes.FromGmsTypeToDoltgresType(arg.Type())
 			if err != nil {
 				return nil, err
 			}
 			args[i], _, _ = dt.Convert(ctx, args[i])
+			exprTypes[i] = dt
 		}
 		if args[i] == nil && isStrict {
 			return nil, nil
@@ -285,7 +288,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	}
 
 	if len(c.overload.casts) > 0 {
-		targetParamTypes := c.overload.Function().GetParameters()
+		targetParamTypes := c.overload.params.paramTypes
 		for i, arg := range args {
 			// For variadic params, we need to identify the corresponding target type
 			var targetType *pgtypes.DoltgresType
@@ -320,8 +323,12 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return f.Callable(ctx)
 	case Function1:
 		return f.Callable(ctx, ([2]*pgtypes.DoltgresType)(c.callResolved), args[0])
+	case Function1N:
+		return f.Callable(ctx, c.callResolved, args[0], args[1:])
 	case Function2:
 		return f.Callable(ctx, ([3]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1])
+	case Function2N:
+		return f.Callable(ctx, c.callResolved, args[0], args[1], args[2:])
 	case Function3:
 		return f.Callable(ctx, ([4]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2])
 	case Function4:

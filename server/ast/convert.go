@@ -191,6 +191,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeReparentDatabase(ctx, stmt)
 	case *tree.Restore:
 		return nodeRestore(ctx, stmt)
+	case *tree.Return:
+		return nodeReturn(ctx, stmt)
 	case *tree.Revoke:
 		return nodeRevoke(ctx, stmt)
 	case *tree.RevokeRole:

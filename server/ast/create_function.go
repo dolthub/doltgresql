@@ -53,7 +53,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		retType = createAnonymousCompositeType(node.RetType)
 	}
 
-	params := make([]pgnodes.RoutineArg, len(node.Args))
+	params := make([]pgnodes.RoutineParam, len(node.Args))
 	var defaults []vitess.Expr
 	for i, arg := range node.Args {
 		// parameter name
@@ -112,13 +112,33 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			}
 		case "sql":
 			as, ok := options[tree.OptionAs1]
-			if !ok {
-				return nil, errors.Errorf("CREATE FUNCTION definition needed for LANGUAGE SQL")
+			if ok {
+				sqlDef, sqlDefParsedStmts, err = handleLanguageSQLAs(as.Definition, params)
+				if err != nil {
+					return nil, err
+				}
+				break
 			}
-			sqlDef, sqlDefParsedStmts, err = handleLanguageSQL(as.Definition, params)
-			if err != nil {
-				return nil, err
+			sqlBody, ok := options[tree.OptionSqlBody]
+			if ok {
+				beginAtomic, ok := sqlBody.SqlBody.(*tree.BeginEndBlock)
+				if !ok {
+					return nil, errors.Errorf("Expected BEGIN in CREATE FUNCTION definition, got %T", sqlBody.SqlBody)
+				}
+				stmts := make([]parser.Statement, len(beginAtomic.Statements))
+				for i, s := range beginAtomic.Statements {
+					stmts[i] = parser.Statement{
+						AST: s,
+						SQL: s.String(),
+					}
+				}
+				sqlDef, sqlDefParsedStmts, err = convertSQLStmts(stmts, params)
+				if err != nil {
+					return nil, err
+				}
+				break
 			}
+			return nil, errors.Errorf("CREATE FUNCTION definition needed for LANGUAGE SQL")
 		case "c":
 			symbolOption, ok := options[tree.OptionAs2]
 			if !ok {
@@ -185,13 +205,20 @@ func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.Do
 	return pgtypes.NewCompositeType(context.Background(), id.Null, id.NullType, typeId, attrs)
 }
 
-// handleLanguageSQL handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE.
-func handleLanguageSQL(definition string, params []pgnodes.RoutineArg) (string, []vitess.Statement, error) {
+// handleLanguageSQLAs handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE
+// and returns converted the sql statements into vitess statements.
+func handleLanguageSQLAs(definition string, params []pgnodes.RoutineParam) (string, []vitess.Statement, error) {
 	stmts, err := parser.Parse(definition)
 	if err != nil {
 		return "", nil, err
 	}
 
+	return convertSQLStmts(stmts, params)
+}
+
+// convertSQLStmts takes parser.Statements and routine parameters and
+// returns converted to string representation and vitess statements.
+func convertSQLStmts(stmts parser.Statements, params []pgnodes.RoutineParam) (string, []vitess.Statement, error) {
 	paramMap := make(map[string]*framework.ParamTypAndValue, len(params))
 	for i, param := range params {
 		tv := &framework.ParamTypAndValue{
@@ -212,14 +239,17 @@ func handleLanguageSQL(definition string, params []pgnodes.RoutineArg) (string, 
 	var vitessASTs = make([]vitess.Statement, len(stmts))
 	for i, stmt := range stmts {
 		sqlDefs[i] = stmt.AST.String()
-		err = framework.ReplaceFunctionColumn(stmt.AST, paramMap)
+		err := framework.ReplaceFunctionColumn(stmt.AST, paramMap)
 		if err != nil {
 			return "", nil, err
 		}
 		// stmt.AST is updated at this point with FunctionColumn
 		vitessASTs[i], err = Convert(stmt)
+		if err != nil {
+			return "", nil, err
+		}
 	}
-	return strings.Join(sqlDefs, ";"), vitessASTs, err
+	return strings.Join(sqlDefs, ";"), vitessASTs, nil
 }
 
 // validateRoutineOptions ensures that each option is defined only once. Returns a map containing all options, or an

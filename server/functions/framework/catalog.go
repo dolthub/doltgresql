@@ -48,7 +48,13 @@ func RegisterFunction(f FunctionInterface) {
 	case Function1:
 		name := strings.ToLower(f.Name)
 		Catalog[name] = append(Catalog[name], f)
+	case Function1N:
+		name := strings.ToLower(f.Name)
+		Catalog[name] = append(Catalog[name], f)
 	case Function2:
+		name := strings.ToLower(f.Name)
+		Catalog[name] = append(Catalog[name], f)
+	case Function2N:
 		name := strings.ToLower(f.Name)
 		Catalog[name] = append(Catalog[name], f)
 	case Function3:

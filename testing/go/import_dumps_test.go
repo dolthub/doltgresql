@@ -100,6 +100,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "Billoxinogen18_ar_backend.sql",
 		},
 		{
+			SetUpScript: []string{
+				"CREATE USER crisisresolver_visitor WITH SUPERUSER PASSWORD 'password';",
+			},
 			Name:        "blacktscoder/CrisisSolver",
 			SQLFilename: "blacktscoder_CrisisSolver.sql",
 		},

@@ -464,7 +464,7 @@ func CreateServerLocalWithPort(t *testing.T, database string, port int) (context
 // newTestDatabaseConnection returns a Connection to the test |database| at |host|:|port|. If the |database| provided
 // does not exist, it will be automatically created.
 func newTestDatabaseConnection(t *testing.T, ctx context.Context, database, host string, port int) *Connection {
-	const connectionUrlFmt = "postgres://postgres:password@%s:%d/%s"
+	const connectionUrlFmt = "postgres://postgres:password@%s:%d/%s?DateStyle=ISO%%2C%%20MDY"
 	func() {
 		var conn *pgx.Conn
 		var err error
