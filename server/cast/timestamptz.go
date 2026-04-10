@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
@@ -26,18 +28,18 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initTimestampTZ handles all casts that are built-in. This comprises only the "From" types.
-func initTimestampTZ() {
-	timestampTZAssignment()
-	timestampTZImplicit()
+// initTimestampTZ handles all casts that are built-in. This comprises only the source types.
+func initTimestampTZ(builtInCasts map[id.Cast]casts.Cast) {
+	timestampTZAssignment(builtInCasts)
+	timestampTZImplicit(builtInCasts)
 }
 
-// timestampTZAssignment registers all assignment casts. This comprises only the "From" types.
-func timestampTZAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// timestampTZAssignment registers all assignment casts. This comprises only the source types.
+func timestampTZAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.TimestampTZ,
 		ToType:   pgtypes.Date,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			d, err := pgdate.MakeDateFromTime(val.(time.Time))
 			if err != nil {
 				return nil, err
@@ -45,36 +47,36 @@ func timestampTZAssignment() {
 			return d.ToTime()
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.TimestampTZ,
 		ToType:   pgtypes.Time,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return timeofday.FromTime(val.(time.Time)), nil
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.TimestampTZ,
 		ToType:   pgtypes.Timestamp,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			// TODO: check
 			return val.(time.Time), nil
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.TimestampTZ,
 		ToType:   pgtypes.TimeTZ,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return timetz.MakeTimeTZFromTime(val.(time.Time)), nil
 		},
 	})
 }
 
-// timestampTZImplicit registers all implicit casts. This comprises only the "From" types.
-func timestampTZImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// timestampTZImplicit registers all implicit casts. This comprises only the source types.
+func timestampTZImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.TimestampTZ,
 		ToType:   pgtypes.TimestampTZ,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(time.Time), nil
 		},
 	})

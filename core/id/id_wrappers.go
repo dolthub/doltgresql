@@ -19,6 +19,9 @@ import "strconv"
 // AccessMethod is an Id wrapper for access methods. This wrapper must not be returned to the client.
 type AccessMethod Id
 
+// Cast is an Id wrapper for casts. This wrapper must not be returned to the client.
+type Cast Id
+
 // Check is an Id wrapper for checks. This wrapper must not be returned to the client.
 type Check Id
 
@@ -76,6 +79,14 @@ func NewAccessMethod(methodName string) AccessMethod {
 		return NullAccessMethod
 	}
 	return AccessMethod(NewId(Section_AccessMethod, methodName))
+}
+
+// NewCast returns a new Cast. This wrapper must not be returned to the client.
+func NewCast(sourceType Type, targetType Type) Cast {
+	if len(sourceType) == 0 && len(targetType) == 0 {
+		return NullCast
+	}
+	return Cast(NewId(Section_Cast, string(sourceType), string(targetType)))
 }
 
 // NewCheck returns a new Check. This wrapper must not be returned to the client.
@@ -226,6 +237,16 @@ func NewView(schemaName string, viewName string) View {
 // MethodName returns the method's name.
 func (id AccessMethod) MethodName() string {
 	return Id(id).Segment(0)
+}
+
+// SourceType returns the source type.
+func (id Cast) SourceType() Type {
+	return Type(Id(id).Segment(0))
+}
+
+// TargetType returns the target type.
+func (id Cast) TargetType() Type {
+	return Type(Id(id).Segment(1))
 }
 
 // CheckName returns the check's name.
@@ -438,6 +459,9 @@ func (id View) ViewName() string {
 func (id AccessMethod) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
+func (id Cast) IsValid() bool { return Id(id).IsValid() }
+
+// IsValid returns whether the ID is valid.
 func (id Check) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
@@ -490,6 +514,9 @@ func (id View) IsValid() bool { return Id(id).IsValid() }
 
 // AsId returns the unwrapped ID.
 func (id AccessMethod) AsId() Id { return Id(id) }
+
+// AsId returns the unwrapped ID.
+func (id Cast) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id Check) AsId() Id { return Id(id) }

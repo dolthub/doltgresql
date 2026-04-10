@@ -15,42 +15,36 @@
 package cast
 
 import (
-	"github.com/dolthub/doltgresql/server/functions/framework"
-	"github.com/dolthub/doltgresql/server/types"
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // Init initializes all casts in this package.
-func Init() {
-	initBit()
-	initBool()
-	initChar()
-	initDate()
-	initFloat32()
-	initFloat64()
-	initInt16()
-	initInt32()
-	initInt64()
-	initInternalChar()
-	initInterval()
-	initJson()
-	initJsonB()
-	initName()
-	initNumeric()
-	initOid()
-	initRegclass()
-	initRegproc()
-	initRegtype()
-	initText()
-	initTime()
-	initTimestamp()
-	initTimestampTZ()
-	initTimeTZ()
-	initVarBit()
-	initVarChar()
-
-	// This is a hack to get around import cycles. The types package needs these references for type conversions in
-	// some contexts
-	types.GetImplicitCast = framework.GetImplicitCast
-	types.GetAssignmentCast = framework.GetAssignmentCast
-	types.GetExplicitCast = framework.GetExplicitCast
+func Init(builtInCasts map[id.Cast]casts.Cast) {
+	initBit(builtInCasts)
+	initBool(builtInCasts)
+	initChar(builtInCasts)
+	initDate(builtInCasts)
+	initFloat32(builtInCasts)
+	initFloat64(builtInCasts)
+	initInt16(builtInCasts)
+	initInt32(builtInCasts)
+	initInt64(builtInCasts)
+	initInternalChar(builtInCasts)
+	initInterval(builtInCasts)
+	initJson(builtInCasts)
+	initJsonB(builtInCasts)
+	initName(builtInCasts)
+	initNumeric(builtInCasts)
+	initOid(builtInCasts)
+	initRegclass(builtInCasts)
+	initRegproc(builtInCasts)
+	initRegtype(builtInCasts)
+	initText(builtInCasts)
+	initTime(builtInCasts)
+	initTimestamp(builtInCasts)
+	initTimestampTZ(builtInCasts)
+	initTimeTZ(builtInCasts)
+	initVarBit(builtInCasts)
+	initVarChar(builtInCasts)
 }

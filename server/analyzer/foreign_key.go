@@ -21,16 +21,26 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
 // validateForeignKeyDefinition validates that the given foreign key definition is valid for creation
 func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstraint, cols map[string]*sql.Column, parentCols map[string]*sql.Column) error {
+	var castsColl *casts.Collection
+	if len(fkDef.Columns) > 0 {
+		var err error
+		castsColl, err = core.GetCastsCollectionFromContext(ctx)
+		if err != nil {
+			return err
+		}
+	}
 	for i := range fkDef.Columns {
 		col := cols[strings.ToLower(fkDef.Columns[i])]
 		parentCol := parentCols[strings.ToLower(fkDef.ParentColumns[i])]
-		if !foreignKeyComparableTypes(col.Type, parentCol.Type) {
+		if !foreignKeyComparableTypes(ctx, castsColl, col.Type, parentCol.Type) {
 			return errors.Errorf("Key columns %q and %q are of incompatible types: %s and %s", col.Name, parentCol.Name, col.Type.String(), parentCol.Type.String())
 		}
 	}
@@ -39,7 +49,7 @@ func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstrai
 
 // foreignKeyComparableTypes returns whether the two given types are able to be used as parent/child columns in a
 // foreign key.
-func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
+func foreignKeyComparableTypes(ctx *sql.Context, castColl *casts.Collection, from sql.Type, to sql.Type) bool {
 	dtFrom, ok := from.(*types.DoltgresType)
 	if !ok {
 		return false // should never be possible
@@ -67,8 +77,8 @@ func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
 
 	// Additionally, we need to be able to convert freely between the two types in both directions, since we do this
 	// during the process of enforcing the constraints
-	forwardConversion := types.GetAssignmentCast(dtFrom, dtTo)
-	reverseConversion := types.GetAssignmentCast(dtTo, dtFrom)
+	forwardConversion, fErr := castColl.GetAssignmentCast(ctx, dtFrom, dtTo)
+	reverseConversion, rErr := castColl.GetAssignmentCast(ctx, dtTo, dtFrom)
 
-	return forwardConversion != nil && reverseConversion != nil
+	return fErr == nil && rErr == nil && forwardConversion.ID.IsValid() && reverseConversion.ID.IsValid()
 }

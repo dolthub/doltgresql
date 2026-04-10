@@ -16,18 +16,17 @@ package expression
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/core"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // ImplicitCast handles implicit casts.
 type ImplicitCast struct {
-	expr     sql.Expression
-	fromType *pgtypes.DoltgresType
-	toType   *pgtypes.DoltgresType
+	expr       sql.Expression
+	sourceType *pgtypes.DoltgresType
+	targetType *pgtypes.DoltgresType
 }
 
 var _ sql.Expression = (*ImplicitCast)(nil)
@@ -37,9 +36,9 @@ func NewImplicitCast(expr sql.Expression, fromType *pgtypes.DoltgresType, toType
 	toType = checkForDomainType(toType)
 	fromType = checkForDomainType(fromType)
 	return &ImplicitCast{
-		expr:     expr,
-		fromType: fromType,
-		toType:   toType,
+		expr:       expr,
+		sourceType: fromType,
+		targetType: toType,
 	}
 }
 
@@ -54,11 +53,18 @@ func (ic *ImplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil || val == nil {
 		return val, err
 	}
-	castFunc := framework.GetImplicitCast(ic.fromType, ic.toType)
-	if castFunc == nil {
-		return nil, errors.Errorf("target is of type %s but expression is of type %s", ic.toType.String(), ic.fromType.String())
+	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return castFunc(ctx, val, ic.toType)
+	cast, err := castsColl.GetImplicitCast(ctx, ic.sourceType, ic.targetType)
+	if err != nil {
+		return nil, err
+	}
+	if !cast.ID.IsValid() {
+		return nil, errors.Errorf("target is of type %s but expression is of type %s", ic.targetType.String(), ic.sourceType.String())
+	}
+	return cast.Eval(ctx, val, ic.sourceType, ic.targetType)
 }
 
 // IsNullable implements the sql.Expression interface.
@@ -78,7 +84,7 @@ func (ic *ImplicitCast) String() string {
 
 // Type implements the sql.Expression interface.
 func (ic *ImplicitCast) Type() sql.Type {
-	return ic.toType
+	return ic.targetType
 }
 
 // WithChildren implements the sql.Expression interface.
@@ -86,5 +92,5 @@ func (ic *ImplicitCast) WithChildren(children ...sql.Expression) (sql.Expression
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(ic, len(children), 1)
 	}
-	return NewImplicitCast(children[0], ic.fromType, ic.toType), nil
+	return NewImplicitCast(children[0], ic.sourceType, ic.targetType), nil
 }

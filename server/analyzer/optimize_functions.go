@@ -64,7 +64,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				}
 
 				// fill in default exprs if applicable
-				if err := compiledFunction.ResolveDefaultValues(func(defExpr string) (sql.Expression, error) {
+				if err := compiledFunction.ResolveDefaultValues(ctx, func(defExpr string) (sql.Expression, error) {
 					return getDefaultExpr(ctx, a.Catalog, defExpr)
 				}); err != nil {
 					return nil, transform.SameTree, err
@@ -105,7 +105,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				}
 
 				// fill in default exprs if applicablea
-				if err = compiledFunction.ResolveDefaultValues(func(defExpr string) (sql.Expression, error) {
+				if err = compiledFunction.ResolveDefaultValues(ctx, func(defExpr string) (sql.Expression, error) {
 					return getDefaultExpr(ctx, a.Catalog, defExpr)
 				}); err != nil {
 					return nil, transform.SameTree, err

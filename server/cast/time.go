@@ -17,24 +17,25 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
-
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initTime handles all casts that are built-in. This comprises only the "From" types.
-func initTime() {
-	timeImplicit()
+// initTime handles all casts that are built-in. This comprises only the source types.
+func initTime(builtInCasts map[id.Cast]casts.Cast) {
+	timeImplicit(builtInCasts)
 }
 
-// timeImplicit registers all implicit casts. This comprises only the "From" types.
-func timeImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// timeImplicit registers all implicit casts. This comprises only the source types.
+func timeImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Time,
 		ToType:   pgtypes.Interval,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			t := val.(timeofday.TimeOfDay)
 			dur := functions.GetIntervalDurationFromTimeComponents(0, 0, 0, int64(t.Hour()), int64(t.Minute()), int64(t.Second()), int64(t.Microsecond())*1000)
 			return dur, nil

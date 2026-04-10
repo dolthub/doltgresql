@@ -48,7 +48,8 @@ func NewCompiledAggregateFunction(name string, args []sql.Expression, functions 
 
 // newCompiledAggregateFunctionInternal is called internally, which skips steps that may have already been processed.
 func newCompiledAggregateFunctionInternal(name string, args []sql.Expression, overloads *Overloads, fnOverloads []Overload, newBuffer NewBufferFn) *CompiledAggregateFunction {
-	cf := newCompiledFunctionInternal(name, args, overloads, fnOverloads, false, nil)
+	// TODO: sql.Context should be threaded everywhere
+	cf := newCompiledFunctionInternal(nil, name, args, overloads, fnOverloads, false, nil)
 	c := &CompiledAggregateFunction{
 		CompiledFunction: cf,
 		newBuffer:        newBuffer,

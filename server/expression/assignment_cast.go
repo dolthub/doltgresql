@@ -16,30 +16,29 @@ package expression
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/core"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // AssignmentCast handles assignment casts.
 type AssignmentCast struct {
-	expr     sql.Expression
-	fromType *pgtypes.DoltgresType
-	toType   *pgtypes.DoltgresType
+	expr       sql.Expression
+	sourceType *pgtypes.DoltgresType
+	targetType *pgtypes.DoltgresType
 }
 
 var _ sql.Expression = (*AssignmentCast)(nil)
 
 // NewAssignmentCast returns a new *AssignmentCast expression.
-func NewAssignmentCast(expr sql.Expression, fromType *pgtypes.DoltgresType, toType *pgtypes.DoltgresType) *AssignmentCast {
-	toType = checkForDomainType(toType)
-	fromType = checkForDomainType(fromType)
+func NewAssignmentCast(expr sql.Expression, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) *AssignmentCast {
+	targetType = checkForDomainType(targetType)
+	sourceType = checkForDomainType(sourceType)
 	return &AssignmentCast{
-		expr:     expr,
-		fromType: fromType,
-		toType:   toType,
+		expr:       expr,
+		sourceType: sourceType,
+		targetType: targetType,
 	}
 }
 
@@ -54,12 +53,19 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil || val == nil {
 		return val, err
 	}
-	castFunc := framework.GetAssignmentCast(ac.fromType, ac.toType)
-	if castFunc == nil {
-		return nil, errors.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
-			ac.toType.String(), ac.fromType.String(), ac.expr.String())
+	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return castFunc(ctx, val, ac.toType)
+	cast, err := castsColl.GetAssignmentCast(ctx, ac.sourceType, ac.targetType)
+	if err != nil {
+		return nil, err
+	}
+	if !cast.ID.IsValid() {
+		return nil, errors.Errorf("ASSIGNMENT_CAST: target is of type %s but expression is of type %s: %s",
+			ac.targetType.String(), ac.sourceType.String(), ac.expr.String())
+	}
+	return cast.Eval(ctx, val, ac.sourceType, ac.targetType)
 }
 
 // IsNullable implements the sql.Expression interface.
@@ -79,7 +85,7 @@ func (ac *AssignmentCast) String() string {
 
 // Type implements the sql.Expression interface.
 func (ac *AssignmentCast) Type() sql.Type {
-	return ac.toType
+	return ac.targetType
 }
 
 // WithChildren implements the sql.Expression interface.
@@ -87,9 +93,11 @@ func (ac *AssignmentCast) WithChildren(children ...sql.Expression) (sql.Expressi
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(ac, len(children), 1)
 	}
-	return NewAssignmentCast(children[0], ac.fromType, ac.toType), nil
+	return NewAssignmentCast(children[0], ac.sourceType, ac.targetType), nil
 }
 
+// checkForDomainType returns the underlying type if the given type is a domain type. Casting always applies to the base
+// type.
 func checkForDomainType(t *pgtypes.DoltgresType) *pgtypes.DoltgresType {
 	if t.TypType == pgtypes.TypeType_Domain {
 		t = t.DomainUnderlyingBaseType()

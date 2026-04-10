@@ -117,7 +117,7 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 		}
 		compiledFunction := framework.NewCompiledFunction(n.ProcedureName, n.Exprs, overloadTree, false)
 		// fill in default exprs if applicable
-		if err := compiledFunction.ResolveDefaultValues(func(defExpr string) (sql.Expression, error) {
+		if err := compiledFunction.ResolveDefaultValues(ctx, func(defExpr string) (sql.Expression, error) {
 			return getDefaultExpr(ctx, a.Catalog, defExpr)
 		}); err != nil {
 			return nil, transform.SameTree, err

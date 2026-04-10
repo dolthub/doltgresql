@@ -26,7 +26,11 @@ type RootValue struct {
 
 func InitRootValueRoot(o *RootValue, buf []byte, offset flatbuffers.UOffsetT) error {
 	n := flatbuffers.GetUOffsetT(buf[offset:])
-	return o.Init(buf, n+offset)
+	o.Init(buf, n+offset)
+	if RootValueNumFields < o.Table().NumFields() {
+		return flatbuffers.ErrTableHasUnknownFields
+	}
+	return nil
 }
 
 func TryGetRootAsRootValue(buf []byte, offset flatbuffers.UOffsetT) (*RootValue, error) {
@@ -34,18 +38,26 @@ func TryGetRootAsRootValue(buf []byte, offset flatbuffers.UOffsetT) (*RootValue,
 	return x, InitRootValueRoot(x, buf, offset)
 }
 
+func GetRootAsRootValue(buf []byte, offset flatbuffers.UOffsetT) *RootValue {
+	x := &RootValue{}
+	InitRootValueRoot(x, buf, offset)
+	return x
+}
+
 func TryGetSizePrefixedRootAsRootValue(buf []byte, offset flatbuffers.UOffsetT) (*RootValue, error) {
 	x := &RootValue{}
 	return x, InitRootValueRoot(x, buf, offset+flatbuffers.SizeUint32)
 }
 
-func (rcv *RootValue) Init(buf []byte, i flatbuffers.UOffsetT) error {
+func GetSizePrefixedRootAsRootValue(buf []byte, offset flatbuffers.UOffsetT) *RootValue {
+	x := &RootValue{}
+	InitRootValueRoot(x, buf, offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func (rcv *RootValue) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
-	if RootValueNumFields < rcv.Table().NumFields() {
-		return flatbuffers.ErrTableHasUnknownFields
-	}
-	return nil
 }
 
 func (rcv *RootValue) Table() flatbuffers.Table {
@@ -142,6 +154,18 @@ func (rcv *RootValue) Collation() Collation {
 
 func (rcv *RootValue) MutateCollation(n Collation) bool {
 	return rcv._tab.MutateUint16Slot(10, uint16(n))
+}
+
+func (rcv *RootValue) Schemas(obj *DatabaseSchema, j int) bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(12))
+	if o != 0 {
+		x := rcv._tab.Vector(o)
+		x += flatbuffers.UOffsetT(j) * 4
+		x = rcv._tab.Indirect(x)
+		obj.Init(rcv._tab.Bytes, x)
+		return true
+	}
+	return false
 }
 
 func (rcv *RootValue) TrySchemas(obj *DatabaseSchema, j int) (bool, error) {
@@ -405,7 +429,41 @@ func (rcv *RootValue) MutateProcedures(j int, n byte) bool {
 	return false
 }
 
-const RootValueNumFields = 12
+func (rcv *RootValue) Casts(j int) byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		a := rcv._tab.Vector(o)
+		return rcv._tab.GetByte(a + flatbuffers.UOffsetT(j*1))
+	}
+	return 0
+}
+
+func (rcv *RootValue) CastsLength() int {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		return rcv._tab.VectorLen(o)
+	}
+	return 0
+}
+
+func (rcv *RootValue) CastsBytes() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
+func (rcv *RootValue) MutateCasts(j int, n byte) bool {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(28))
+	if o != 0 {
+		a := rcv._tab.Vector(o)
+		return rcv._tab.MutateByte(a+flatbuffers.UOffsetT(j*1), n)
+	}
+	return false
+}
+
+const RootValueNumFields = 13
 
 func RootValueStart(builder *flatbuffers.Builder) {
 	builder.StartObject(RootValueNumFields)
@@ -476,6 +534,12 @@ func RootValueAddProcedures(builder *flatbuffers.Builder, procedures flatbuffers
 func RootValueStartProceduresVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(1, numElems, 1)
 }
+func RootValueAddCasts(builder *flatbuffers.Builder, casts flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(12, flatbuffers.UOffsetT(casts), 0)
+}
+func RootValueStartCastsVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
+	return builder.StartVector(1, numElems, 1)
+}
 func RootValueEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
 }
@@ -486,7 +550,11 @@ type DatabaseSchema struct {
 
 func InitDatabaseSchemaRoot(o *DatabaseSchema, buf []byte, offset flatbuffers.UOffsetT) error {
 	n := flatbuffers.GetUOffsetT(buf[offset:])
-	return o.Init(buf, n+offset)
+	o.Init(buf, n+offset)
+	if DatabaseSchemaNumFields < o.Table().NumFields() {
+		return flatbuffers.ErrTableHasUnknownFields
+	}
+	return nil
 }
 
 func TryGetRootAsDatabaseSchema(buf []byte, offset flatbuffers.UOffsetT) (*DatabaseSchema, error) {
@@ -494,18 +562,26 @@ func TryGetRootAsDatabaseSchema(buf []byte, offset flatbuffers.UOffsetT) (*Datab
 	return x, InitDatabaseSchemaRoot(x, buf, offset)
 }
 
+func GetRootAsDatabaseSchema(buf []byte, offset flatbuffers.UOffsetT) *DatabaseSchema {
+	x := &DatabaseSchema{}
+	InitDatabaseSchemaRoot(x, buf, offset)
+	return x
+}
+
 func TryGetSizePrefixedRootAsDatabaseSchema(buf []byte, offset flatbuffers.UOffsetT) (*DatabaseSchema, error) {
 	x := &DatabaseSchema{}
 	return x, InitDatabaseSchemaRoot(x, buf, offset+flatbuffers.SizeUint32)
 }
 
-func (rcv *DatabaseSchema) Init(buf []byte, i flatbuffers.UOffsetT) error {
+func GetSizePrefixedRootAsDatabaseSchema(buf []byte, offset flatbuffers.UOffsetT) *DatabaseSchema {
+	x := &DatabaseSchema{}
+	InitDatabaseSchemaRoot(x, buf, offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func (rcv *DatabaseSchema) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
-	if DatabaseSchemaNumFields < rcv.Table().NumFields() {
-		return flatbuffers.ErrTableHasUnknownFields
-	}
-	return nil
 }
 
 func (rcv *DatabaseSchema) Table() flatbuffers.Table {

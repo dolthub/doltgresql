@@ -23,7 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/core"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -79,7 +79,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	fromType, ok := c.sqlChild.Type().(*pgtypes.DoltgresType)
+	sourceType, ok := c.sqlChild.Type().(*pgtypes.DoltgresType)
 	if !ok {
 		// We'll leverage GMSCast to handle the conversion from a GMS type to a Doltgres type.
 		// Rather than re-evaluating the expression, we put the result in a literal.
@@ -88,7 +88,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		fromType = gmsCast.DoltgresType()
+		sourceType = gmsCast.DoltgresType()
 	}
 	if val == nil {
 		if c.castToType.TypType == pgtypes.TypeType_Domain && !c.domainNullable {
@@ -98,14 +98,21 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 
 	baseCastToType := checkForDomainType(c.castToType)
-	castFunction := framework.GetExplicitCast(fromType, baseCastToType)
-	if castFunction == nil {
+	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cast, err := castsColl.GetExplicitCast(ctx, sourceType, baseCastToType)
+	if err != nil {
+		return nil, err
+	}
+	if !cast.ID.IsValid() {
 		return nil, errors.Errorf(
 			"EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
-			fromType.String(), c.castToType.String(), c.sqlChild.String(),
+			sourceType.String(), c.castToType.String(), c.sqlChild.String(),
 		)
 	}
-	castResult, err := castFunction(ctx, val, c.castToType)
+	castResult, err := cast.Eval(ctx, val, sourceType, c.castToType)
 	if err != nil {
 		// For string types and string array types, we intentionally ignore the error as using a length-restricted cast
 		// is a way to intentionally truncate the data. All string types will always return the truncated result, even
