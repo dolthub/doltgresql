@@ -177,7 +177,8 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2049",
+			Name:  "Issue #2049",
+			Focus: true,
 			SetUpScript: []string{
 				`CREATE TABLE jsonb_test (id VARCHAR(256) NOT NULL PRIMARY KEY, "jsonbColumn" JSONB);`,
 				`INSERT INTO jsonb_test VALUES ('test', '{"test": "value\n"}');`,

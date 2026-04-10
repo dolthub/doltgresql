@@ -443,7 +443,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 			return v, sql.InRange, nil
 		}
 	case "jsonb":
-		if _, ok := v.(JsonDocument); ok {
+		if _, ok := v.(sql.JSONWrapper); ok {
 			return v, sql.InRange, nil
 		}
 	case "oid", "regclass", "regproc", "regtype":

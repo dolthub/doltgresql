@@ -43,13 +43,17 @@ var json_in = framework.Function1{
 	Return:     pgtypes.Json,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
-		if json.Valid(unsafe.Slice(unsafe.StringData(input), len(input))) {
-			return input, nil
-		}
+	Callable:   json_in_callable,
+}
+
+func json_in_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	input := val.(string)
+	var jsonVal any
+	err := json.Unmarshal(unsafe.Slice(unsafe.StringData(input), len(input)), &jsonVal)
+	if err != nil {
 		return nil, pgtypes.ErrInvalidSyntaxForType.New("json", input[:10]+"...")
-	},
+	}
+	return types.JSONDocument{Val: jsonVal}, nil
 }
 
 // json_out represents the PostgreSQL function of json type IO output.
@@ -58,17 +62,19 @@ var json_out = framework.Function1{
 	Return:     pgtypes.Cstring,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Json},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		j, err := val.(sql.JSONWrapper).ToInterface(ctx)
-		if err != nil {
-			return nil, err
-		}
-		jsonBytes, err := json.Marshal(j)
-		if err != nil {
-			return nil, err
-		}
-		return string(jsonBytes), nil
-	},
+	Callable:   json_out_callable,
+}
+
+func json_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	j, err := val.(sql.JSONWrapper).ToInterface(ctx)
+	if err != nil {
+		return nil, err
+	}
+	jsonBytes, err := json.Marshal(j)
+	if err != nil {
+		return nil, err
+	}
+	return string(jsonBytes), nil
 }
 
 // json_recv represents the PostgreSQL function of json type IO receive.
@@ -82,7 +88,7 @@ var json_recv = framework.Function1{
 		if data == nil {
 			return nil, nil
 		}
-		// TODO: do we need a json wrapper here?
+		// TODO: do we need a json wrapper here? Seems like we prob do
 		return string(data), nil
 	},
 }
@@ -141,15 +147,15 @@ var json_build_object = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		return string(json), nil
+		return json, nil
 	},
 }
 
 // buildJsonObject constructs a json object from the input array provided, which are alternating keys and values.
-func buildJsonObject(fnName string, _ [2]*pgtypes.DoltgresType, val1 any) ([]byte, error) {
+func buildJsonObject(fnName string, _ [2]*pgtypes.DoltgresType, val1 any) (types.JSONDocument, error) {
 	inputArray := val1.([]any)
 	if len(inputArray)%2 != 0 {
-		return nil, sql.ErrInvalidArgumentNumber.New(fnName, "even number of arguments", len(inputArray))
+		return types.JSONDocument{}, sql.ErrInvalidArgumentNumber.New(fnName, "even number of arguments", len(inputArray))
 	}
 	jsonObject := make(map[string]any)
 	var key string
@@ -169,5 +175,5 @@ func buildJsonObject(fnName string, _ [2]*pgtypes.DoltgresType, val1 any) ([]byt
 		}
 	}
 
-	return json.Marshal(jsonObject)
+	return types.JSONDocument{Val: jsonObject}, nil
 }

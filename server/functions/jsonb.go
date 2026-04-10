@@ -15,9 +15,6 @@
 package functions
 
 import (
-	"strings"
-	"unsafe"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/goccy/go-json"
 
@@ -44,18 +41,7 @@ var jsonb_in = framework.Function1{
 	Return:     pgtypes.JsonB,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
-		inputBytes := unsafe.Slice(unsafe.StringData(input), len(input))
-		if json.Valid(inputBytes) {
-			doc, err := pgtypes.UnmarshalToJsonDocument(inputBytes)
-			return doc, err
-		}
-		if len(input) > 10 {
-			input = input[:10] + "..."
-		}
-		return nil, pgtypes.ErrInvalidSyntaxForType.New("jsonb", input)
-	},
+	Callable:   json_in_callable,
 }
 
 // jsonb_out represents the PostgreSQL function of jsonb type IO output.
@@ -64,16 +50,7 @@ var jsonb_out = framework.Function1{
 	Return:     pgtypes.Cstring,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.JsonB},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		res, err := sql.UnwrapAny(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		sb := strings.Builder{}
-		sb.Grow(256)
-		pgtypes.JsonValueFormatter(&sb, res.(pgtypes.JsonDocument).Value)
-		return sb.String(), nil
-	},
+	Callable:   json_out_callable,
 }
 
 // jsonb_recv represents the PostgreSQL function of jsonb type IO receive.
@@ -169,11 +146,6 @@ var jsonb_build_object = framework.Function1{
 			return nil, err
 		}
 
-		jsonDoc, err := pgtypes.UnmarshalToJsonDocument(json)
-		if err != nil {
-			return nil, err
-		}
-
-		return jsonDoc, nil
+		return json, nil
 	},
 }
