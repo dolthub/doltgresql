@@ -125,6 +125,14 @@ type plpgSQL_stmt_block struct {
 	LineNumber int32       `json:"lineno"`
 }
 
+// plpgSQL_stmt_call exists to match the expected JSON format.
+type plpgSQL_stmt_call struct {
+	LineNumber int32 `json:"lineno"`
+	Expression expr  `json:"expr"`
+	IsCall     bool  `json:"is_call"`
+	Target     datum `json:"target"`
+}
+
 // plpgSQL_stmt_case exists to match the expected JSON format.
 type plpgSQL_stmt_case struct {
 	LineNumber int32 `json:"lineno"`
@@ -274,6 +282,8 @@ type sqlstmt struct {
 // having a singular expected implementation.
 type statement struct {
 	Assignment  *plpgSQL_stmt_assign       `json:"PLpgSQL_stmt_assign"`
+	Block       *plpgSQL_stmt_block        `json:"PLpgSQL_stmt_block"`
+	Call        *plpgSQL_stmt_call         `json:"PLpgSQL_stmt_call"`
 	Case        *plpgSQL_stmt_case         `json:"PLpgSQL_stmt_case"`
 	DynExec     *plpgSQL_stmt_dynexecute   `json:"PLpgSQL_stmt_dynexecute"`
 	ExecSQL     *plpgSQL_stmt_execsql      `json:"PLpgSQL_stmt_execsql"`
@@ -310,6 +320,30 @@ func (stmt *plpgSQL_stmt_assign) Convert() (Assignment, error) {
 	}, nil
 }
 
+// Convert converts the JSON statement into its output form.
+func (stmt *plpgSQL_stmt_call) Convert() (ExecuteSQL, error) {
+	var target string
+	if !stmt.IsCall {
+		switch {
+		case stmt.Target.Row != nil:
+			names := make([]string, len(stmt.Target.Row.Fields))
+			for i, rowField := range stmt.Target.Row.Fields {
+				names[i] = rowField.Name
+			}
+			target = strings.Join(names, ",")
+		case stmt.Target.Variable != nil:
+			target = stmt.Target.Variable.RefName
+		default:
+			return ExecuteSQL{}, errors.Errorf("unhandled datum type: %T", stmt.Target)
+		}
+	}
+	return ExecuteSQL{
+		Statement: stmt.Expression.Expression.Query,
+		Target:    target,
+	}, nil
+}
+
+// Convert converts the JSON statement into its output form.
 func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
 	// If the CASE statement has a main expression, start by assigning it to a variable so
 	// we can evaluate it once and only once.
