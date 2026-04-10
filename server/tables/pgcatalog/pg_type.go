@@ -16,23 +16,23 @@ package pgcatalog
 
 import (
 	"fmt"
-	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/server/functions"
 	"io"
 	"math"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // PgTypeName is a constant to the pg_type name.
 const (
-	PgTypeName         = "pg_type"
-	PgOidIndexName     = "pg_type_oid_index"
-	PgTypnameIndexName = "pg_type_typname_nsp_index"
+	PgTypeName     = "pg_type"
+	PgTypeOidIndex = "pg_type_oid_index"
+	PgTypnameIndex = "pg_type_typname_nsp_index"
 )
 
 // InitPgType handles registration of the pg_type handler.
@@ -144,7 +144,7 @@ func (p PgTypeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgTyp
 	var hasLowerBound, hasUpperBound bool
 
 	switch index.(pgCatalogInMemIndex).name {
-	case PgOidIndexName:
+	case PgTypeOidIndex:
 		msrng := rng.(sql.MySQLRange)
 		oidRng := msrng[0]
 		if oidRng.HasLowerBound() {
@@ -169,7 +169,7 @@ func (p PgTypeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgTyp
 			}
 		}
 
-	case PgTypnameIndexName:
+	case PgTypnameIndex:
 		msrng := rng.(sql.MySQLRange)
 		typNameRange := msrng[0]
 		schemaOidRange := msrng[1]
@@ -247,14 +247,14 @@ func (p PgTypeHandler) PkSchema() sql.PrimaryKeySchema {
 func (p PgTypeHandler) Indexes() ([]sql.Index, error) {
 	return []sql.Index{
 		pgCatalogInMemIndex{
-			name:        PgOidIndexName,
+			name:        PgTypeOidIndex,
 			tblName:     "pg_type",
 			dbName:      "pg_catalog",
 			uniq:        true,
 			columnExprs: []sql.ColumnExpressionType{{Expression: "pg_type.oid", Type: pgtypes.Oid}},
 		},
 		pgCatalogInMemIndex{
-			name:    PgTypnameIndexName,
+			name:    PgTypnameIndex,
 			tblName: "pg_type",
 			dbName:  "pg_catalog",
 			uniq:    true,

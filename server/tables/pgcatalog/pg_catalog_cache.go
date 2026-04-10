@@ -101,20 +101,23 @@ func (p pgClassCache) getIndex(name string) *inMemIndexStorage[*pgClass] {
 
 var _ BTreeStorageAccess[*pgClass] = &pgClassCache{}
 
+// pgTypeCache holds cached data for the pg_type table, including two btree indexes for fast lookups by OID and
+// by typname
 type pgTypeCache struct {
 	types   []*pgType
 	nameIdx *inMemIndexStorage[*pgType]
 	oidIdx  *inMemIndexStorage[*pgType]
 }
 
+// getIndex implements BTreeStorageAccess.
 func (p pgTypeCache) getIndex(name string) *inMemIndexStorage[*pgType] {
 	switch name {
-	case PgOidIndexName:
+	case PgTypeOidIndex:
 		return p.oidIdx
-	case PgTypnameIndexName:
+	case PgTypnameIndex:
 		return p.nameIdx
 	default:
-		panic("unknown pg_class index: " + name)
+		panic("unknown pg_type index: " + name)
 	}
 }
 
