@@ -5345,6 +5345,139 @@ WHERE i.indrelid IN (1496157033, 1496157034) ORDER BY 1`,
 	})
 }
 
+func TestPgTypeIndexes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_type_oid_index",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE oid = 23 ORDER BY 1;`,
+					Expected: []sql.Row{{"int4"}},
+				},
+				{
+					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE oid = '23' ORDER BY 1;`,
+					Expected: []sql.Row{{"int4"}},
+				},
+				{
+					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE oid > 22 AND oid < 25 ORDER BY typname;`,
+					Expected: []sql.Row{{"int4"}, {"regproc"}},
+				},
+				{
+					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE oid IN (23, 25) ORDER BY typname;`,
+					Expected: []sql.Row{{"int4"}, {"text"}},
+				},
+				{
+					// Full scan still works without index filter
+					Query:    `SELECT typname FROM pg_catalog.pg_type ORDER BY oid LIMIT 1;`,
+					Expected: []sql.Row{{"bool"}},
+				},
+				{
+					Query: `EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE oid = 23 ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_type.typname]"},
+						{" └─ Sort(pg_type.typname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ pg_type.oid = 23"},
+						{"         └─ IndexedTableAccess(pg_type)"},
+						{"             ├─ index: [pg_type.oid]"},
+						{"             └─ filters: [{[{Type:[\"pg_catalog\",\"int4\"]}, {Type:[\"pg_catalog\",\"int4\"]}]}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE oid > 22 AND oid < 25 ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_type.typname]"},
+						{" └─ Sort(pg_type.typname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (pg_type.oid > 22 AND pg_type.oid < 25)"},
+						{"         └─ IndexedTableAccess(pg_type)"},
+						{"             ├─ index: [pg_type.oid]"},
+						{"             └─ filters: [{({Type:[\"pg_catalog\",\"int2vector\"]}, {Type:[\"pg_catalog\",\"text\"]})}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE oid IN (23, 25) ORDER BY typname;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_type.typname]"},
+						{" └─ Sort(pg_type.typname ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ pg_type.oid IN (23, 25)"},
+						{"         └─ IndexedTableAccess(pg_type)"},
+						{"             ├─ index: [pg_type.oid]"},
+						{"             └─ filters: [{[{Type:[\"pg_catalog\",\"int4\"]}, {Type:[\"pg_catalog\",\"int4\"]}]}, {[{Type:[\"pg_catalog\",\"text\"]}, {Type:[\"pg_catalog\",\"text\"]}]}]"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_type_typname_nsp_index",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT oid FROM pg_catalog.pg_type WHERE typname = 'int4' AND typnamespace = 11 ORDER BY 1;`,
+					Expected: []sql.Row{{23}},
+				},
+				{
+					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE typname > 'int2' AND typname < 'int8' AND typnamespace = 11 ORDER BY 1;`,
+					Expected: []sql.Row{{"int2vector"}, {"int4"}},
+				},
+				{
+					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE typname >= 'int2' AND typname <= 'int4' AND typnamespace = 11 ORDER BY 1;`,
+					Expected: []sql.Row{{"int2"}, {"int2vector"}, {"int4"}},
+				},
+				{
+					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE typname > 'int2' AND typname <= 'int4' AND typnamespace = 11 ORDER BY 1;`,
+					Expected: []sql.Row{{"int2vector"}, {"int4"}},
+				},
+				{
+					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE typname >= 'int4' AND typname <= 'int4' AND typnamespace = 11 ORDER BY 1;`,
+					Expected: []sql.Row{{"int4"}},
+				},
+				{
+					Query: `EXPLAIN SELECT oid FROM pg_catalog.pg_type WHERE typname = 'int4' AND typnamespace = 11 ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_type.oid]"},
+						{" └─ Sort(pg_type.oid ASC)"},
+						{"     └─ Filter"},
+						{"         ├─ (pg_type.typname = 'int4' AND pg_type.typnamespace = 11)"},
+						{"         └─ IndexedTableAccess(pg_type)"},
+						{"             ├─ index: [pg_type.typname,pg_type.typnamespace]"},
+						{"             └─ filters: [{[int4, int4], [{Namespace:[\"pg_catalog\"]}, {Namespace:[\"pg_catalog\"]}]}]"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE typname > 'int2' AND typname < 'int8' AND typnamespace = 11 ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [pg_type.typname]"},
+						{" └─ Filter"},
+						{"     ├─ ((pg_type.typname > 'int2' AND pg_type.typname < 'int8') AND pg_type.typnamespace = 11)"},
+						{"     └─ IndexedTableAccess(pg_type)"},
+						{"         ├─ index: [pg_type.typname,pg_type.typnamespace]"},
+						{"         └─ filters: [{(int2, int8), [{Namespace:[\"pg_catalog\"]}, {Namespace:[\"pg_catalog\"]}]}]"},
+					},
+				},
+			},
+		},
+		{
+			Name: "join on pg_type using index",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT t.typname, n.nspname
+  FROM pg_catalog.pg_type t
+  JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
+  WHERE t.typname = 'int4'
+  ORDER BY 1;`,
+					Expected: []sql.Row{{"int4", "pg_catalog"}},
+				},
+			},
+		},
+	})
+}
+
 func TestSqlAlchemyQueries(t *testing.T) {
 	sharedSetupScript := []string{
 		`create table t1 (a int primary key, b int not null)`,
