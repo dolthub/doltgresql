@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/goccy/go-json"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -59,7 +59,15 @@ var json_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Json},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(tree.IndexedJsonDocument).String(), nil
+		j, err := val.(sql.JSONWrapper).ToInterface(ctx)
+		if err != nil {
+			return nil, err
+		}
+		jsonBytes, err := json.Marshal(j)
+		if err != nil {
+			return nil, err
+		}
+		return string(jsonBytes), nil
 	},
 }
 
@@ -74,6 +82,7 @@ var json_recv = framework.Function1{
 		if data == nil {
 			return nil, nil
 		}
+		// TODO: do we need a json wrapper here?
 		return string(data), nil
 	},
 }
@@ -96,8 +105,15 @@ var json_send = framework.Function1{
 			}
 		}
 		writer := utils.NewWireWriter()
-		str := val.(tree.IndexedJsonDocument).String()
-		writer.WriteString(str)
+		j, err := val.(sql.JSONWrapper).ToInterface(ctx)
+		if err != nil {
+			return nil, err
+		}
+		jsonBytes, err := json.Marshal(j)
+		if err != nil {
+			return nil, err
+		}
+		writer.WriteString(string(jsonBytes))
 		return writer.BufferData(), nil
 	},
 }
@@ -110,8 +126,7 @@ var json_build_array = framework.Function1{
 	Variadic:   true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		inputArray := val1.([]any)
-		json, err := json.Marshal(inputArray)
-		return string(json), err
+		return types.JSONDocument{Val: inputArray}, nil
 	},
 }
 

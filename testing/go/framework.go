@@ -212,8 +212,8 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
 			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
 				panic(fmt.Sprintf("The assertion `%s` has Focus set to `true`. GitHub Actions requires that "+
-						"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-						"all tests.", assertion.Query))
+					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+					"all tests.", assertion.Query))
 			}
 			focusAssertions = append(focusAssertions, assertion)
 		}
@@ -368,8 +368,8 @@ func runScripts(t *testing.T, scripts []ScriptTest, normalizeRows bool) {
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
 			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
 				panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
-						"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-						"all tests.", script.Name))
+					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+					"all tests.", script.Name))
 			}
 			focusScripts = append(focusScripts, script)
 		}
