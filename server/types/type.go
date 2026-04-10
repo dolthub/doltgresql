@@ -406,7 +406,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.([]byte); ok {
 			return v, sql.InRange, nil
 		}
-	case "bpchar", "char", "json", "name", "text", "unknown", "varchar":
+	case "bpchar", "char", "name", "text", "unknown", "varchar":
 		_, ok, err := sql.Unwrap[string](ctx, v)
 		if err != nil {
 			return nil, sql.InRange, err
@@ -442,7 +442,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.(duration.Duration); ok {
 			return v, sql.InRange, nil
 		}
-	case "jsonb":
+	case "jsonb", "json":
 		if _, ok := v.(sql.JSONWrapper); ok {
 			return v, sql.InRange, nil
 		}
@@ -613,7 +613,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 // Or it can be pseudo category with name 'anyarray'.
 func (t *DoltgresType) IsArrayType() bool {
 	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType && t.Array == id.NullType) ||
-		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
+			(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 
 // IsArrayCategory returns true if the type is of 'array' category.
