@@ -15,12 +15,10 @@
 package functions
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/goccy/go-json"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // initJsonB registers the functions to the catalog.
@@ -118,20 +116,7 @@ var jsonb_build_array = framework.Function1{
 	Return:     pgtypes.JsonB,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Variadic:   true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		inputArray := val1.([]any)
-		json, err := json.Marshal(inputArray)
-		if err != nil {
-			return nil, err
-		}
-
-		jsonDoc, err := pgtypes.UnmarshalToJsonDocument(json)
-		if err != nil {
-			return nil, err
-		}
-
-		return jsonDoc, nil
-	},
+	Callable:   json_build_array_callable,
 }
 
 // jsonb_build_object represents the PostgreSQL function jsonb_build_object.
@@ -140,12 +125,5 @@ var jsonb_build_object = framework.Function1{
 	Return:     pgtypes.JsonB,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Variadic:   true,
-	Callable: func(ctx *sql.Context, argTypes [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		json, err := buildJsonObject("jsonb_build_object", argTypes, val1)
-		if err != nil {
-			return nil, err
-		}
-
-		return json, nil
-	},
+	Callable:   json_build_object_callable,
 }

@@ -130,10 +130,12 @@ var json_build_array = framework.Function1{
 	Return:     pgtypes.Json,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Variadic:   true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		inputArray := val1.([]any)
-		return types.JSONDocument{Val: inputArray}, nil
-	},
+	Callable:   json_build_array_callable,
+}
+
+func json_build_array_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+	inputArray := val1.([]any)
+	return types.JSONDocument{Val: inputArray}, nil
 }
 
 // json_build_object represents the PostgreSQL function json_build_object.
@@ -142,13 +144,15 @@ var json_build_object = framework.Function1{
 	Return:     pgtypes.Json,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.AnyArray},
 	Variadic:   true,
-	Callable: func(ctx *sql.Context, argTypes [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		json, err := buildJsonObject("json_build_object", argTypes, val1)
-		if err != nil {
-			return nil, err
-		}
-		return json, nil
-	},
+	Callable:   json_build_object_callable,
+}
+
+func json_build_object_callable(ctx *sql.Context, argTypes [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+	json, err := buildJsonObject("json_build_object", argTypes, val1)
+	if err != nil {
+		return nil, err
+	}
+	return json, nil
 }
 
 // buildJsonObject constructs a json object from the input array provided, which are alternating keys and values.
