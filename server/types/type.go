@@ -1195,8 +1195,9 @@ func (t typeInfo) Encoding() val.Encoding {
 		return val.DecimalEnc
 	case "bytea":
 		return val.BytesAdaptiveEnc
-	case "json", "jsonb":
-		return val.JSONAddrEnc
+	// TODO: use dolt JSON document encoding here
+	// case "json", "jsonb":
+	// 	return val.JSONAddrEnc
 	case "oid", "regclass", "regproc", "regtype":
 		return val.Int32Enc
 	case "xid":
