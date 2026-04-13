@@ -25,9 +25,16 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 )
 
+// RoutineWithParams represent a function or a procedure with schema name, routine name and its parameters.
+type RoutineWithParams struct {
+	SchemaName  string
+	RoutineName string
+	Args        []RoutineParam
+}
+
 // DropFunction implements DROP FUNCTION.
 type DropFunction struct {
-	RoutinesWithArgs []*RoutineWithArgs
+	RoutinesWithArgs []*RoutineWithParams
 	IfExists         bool
 	Cascade          bool
 }
@@ -36,7 +43,7 @@ var _ sql.ExecSourceRel = (*DropFunction)(nil)
 var _ vitess.Injectable = (*DropFunction)(nil)
 
 // NewDropFunction returns a new *DropFunction.
-func NewDropFunction(ifExists bool, routinesWithArgs []*RoutineWithArgs, cascade bool) *DropFunction {
+func NewDropFunction(ifExists bool, routinesWithArgs []*RoutineWithParams, cascade bool) *DropFunction {
 	return &DropFunction{
 		IfExists:         ifExists,
 		RoutinesWithArgs: routinesWithArgs,
@@ -99,7 +106,7 @@ func (d *DropFunction) WithResolvedChildren(children []any) (any, error) {
 	return d, nil
 }
 
-func dropFunction(ctx *sql.Context, funcColl *functions.Collection, fn *RoutineWithArgs, ifExists bool) error {
+func dropFunction(ctx *sql.Context, funcColl *functions.Collection, fn *RoutineWithParams, ifExists bool) error {
 	// TODO: provide db
 	schema, err := core.GetSchemaName(ctx, nil, fn.SchemaName)
 	if err != nil {

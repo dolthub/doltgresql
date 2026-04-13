@@ -663,6 +663,9 @@ func (t *DoltgresType) IsResolvedType() bool {
 // IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
 func (t *DoltgresType) IsValidForPolymorphicType(target *DoltgresType) bool {
 	switch t.ID.TypeName() {
+	case "any":
+		// "any" is not a polymorphic type like the others are, but it's useful to treat it as such for this check
+		return true
 	case "anyelement":
 		return true
 	case "anyarray":

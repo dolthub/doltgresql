@@ -69,6 +69,12 @@ func (cFunc CFunction) NonDeterministic() bool {
 	return cFunc.IsNonDeterministic
 }
 
+// IsCVariadic implements the FunctionInterface interface.
+func (cFunc CFunction) IsCVariadic() bool {
+	// TODO: implement c-language variadic
+	return false
+}
+
 // VariadicIndex implements the interface FunctionInterface.
 func (cFunc CFunction) VariadicIndex() int {
 	// TODO: implement variadic

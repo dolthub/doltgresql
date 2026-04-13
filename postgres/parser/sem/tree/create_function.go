@@ -280,14 +280,12 @@ type BeginEndBlock struct {
 }
 
 func (node *BeginEndBlock) Format(ctx *FmtCtx) {
-	ctx.WriteString("BEGIN ATOMIC")
-	for i, s := range node.Statements {
-		if i != 0 {
-			ctx.WriteString("; ")
-		}
+	ctx.WriteString("BEGIN ATOMIC ")
+	for _, s := range node.Statements {
 		ctx.FormatNode(s)
+		ctx.WriteString("; ")
 	}
-	ctx.WriteString(" END")
+	ctx.WriteString("END")
 }
 
 var _ Statement = &Return{}

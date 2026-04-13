@@ -441,5 +441,48 @@ $$;`,
 				},
 			},
 		},
+		{
+			Name: "use nested block statements and call statement in procedure body",
+			SetUpScript: []string{
+				`CREATE TABLE tbl (a int, b text);`,
+				`CREATE PROCEDURE add_value(IN a int, IN b text)
+            LANGUAGE plpgsql
+            AS $$
+        BEGIN
+            INSERT INTO tbl VALUES (a, b);
+        END;
+		$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE PROCEDURE check_and_add(IN i int, IN t text)
+            LANGUAGE plpgsql
+            AS $$
+		DECLARE d text := t;
+        BEGIN
+            IF LENGTH(t) < 6 THEN
+                d = t || ' is too short';
+            END IF;
+
+            BEGIN
+                CALL add_value(i, d);
+            END;
+        END;
+        $$;`,
+				},
+				{
+					Query:    "CALL check_and_add(1, 'hi');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CALL check_and_add(3, 'hellooo');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM tbl",
+					Expected: []sql.Row{{1, "hi is too short"}, {3, "hellooo"}},
+				},
+			},
+		},
 	})
 }

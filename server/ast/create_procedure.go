@@ -37,7 +37,7 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 	}
 	// Grab the general information that we'll need to create the procedure
 	tableName := node.Name.ToTableName()
-	params := make([]pgnodes.RoutineArg, len(node.Args))
+	params := make([]pgnodes.RoutineParam, len(node.Args))
 	var defaults []vitess.Expr
 	for i, arg := range node.Args {
 		// parameter name
@@ -106,7 +106,7 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 			if !ok {
 				return nil, errors.Errorf("CREATE PROCEDURE definition needed for LANGUAGE SQL")
 			}
-			sqlDef, sqlDefParsedStmts, err = handleLanguageSQL(as.Definition, params)
+			sqlDef, sqlDefParsedStmts, err = handleLanguageSQLAs(as.Definition, params)
 			if err != nil {
 				return nil, err
 			}

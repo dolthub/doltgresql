@@ -507,7 +507,20 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, formatCodes []int
 		var typmod = int32(-1)
 
 		var err error
+		colName := c.Name
+		dataTypeSize := int16(c.Type.MaxTextResponseByteLength(ctx))
+		tableAttributeNumber := uint16(i + 1) // TODO: this should be based on the actual table field index, not the return schema
 		if doltgresType, ok := c.Type.(*pgtypes.DoltgresType); ok {
+			if doltgresType.ID == pgtypes.Unknown.ID {
+				// It appears that the `unknown` type is always converted to `text` on output since they're binary
+				// coercible. There are other assumptions that we can make as well, as no function or column will return
+				// the `unknown` type, so we can infer that this is a raw value being returned as-is from the query,
+				// such as `SELECT 'foo';`
+				doltgresType = pgtypes.Text
+				dataTypeSize = int16(doltgresType.MaxTextResponseByteLength(ctx))
+				colName = "?column?"
+				tableAttributeNumber = 0
+			}
 			if doltgresType.TypType == pgtypes.TypeType_Domain {
 				oid = id.Cache().ToOID(doltgresType.BaseTypeID.AsId())
 			} else {
@@ -522,11 +535,11 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, formatCodes []int
 		}
 
 		fields[i] = pgproto3.FieldDescription{
-			Name:                 []byte(c.Name),
+			Name:                 []byte(colName),
 			TableOID:             uint32(0),
-			TableAttributeNumber: uint16(i + 1), // TODO: this should be based on the actual table field index, not the return schema
+			TableAttributeNumber: tableAttributeNumber,
 			DataTypeOID:          oid,
-			DataTypeSize:         int16(c.Type.MaxTextResponseByteLength(ctx)),
+			DataTypeSize:         dataTypeSize,
 			TypeModifier:         typmod,
 			Format:               formatCodes[i],
 		}

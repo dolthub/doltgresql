@@ -71,6 +71,10 @@ func (c *ExplicitCast) Child() sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
+	if !c.castToType.IsResolvedType() {
+		return nil, errors.Errorf("cannot call ExplicitCast.Eval with unresolved cast to type: %s", c.castToType.String())
+	}
+
 	val, err := c.sqlChild.Eval(ctx, row)
 	if err != nil {
 		return nil, err
@@ -100,7 +104,6 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			"EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
 			fromType.String(), c.castToType.String(), c.sqlChild.String(),
 		)
-
 	}
 	castResult, err := castFunction(ctx, val, c.castToType)
 	if err != nil {

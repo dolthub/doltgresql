@@ -1294,6 +1294,59 @@ var preparedStatementTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Bind parameter to compatible different types",
+		SetUpScript: []string{
+			"CREATE TABLE text_test (id text, code varchar(10))",
+			"CREATE TABLE num_test(small int2, large int8, other float4)",
+			"INSERT INTO text_test values ('foo', 'bar'), ('bar', 'foo')",
+			"INSERT INTO num_test values (0,0,0), (1, 2, 1.5)",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT * FROM text_test where id = any($1) and code = any($1)",
+				BindVars: []any{[]string{"foo", "bar"}},
+				Expected: []sql.Row{
+					{"foo", "bar"},
+					{"bar", "foo"},
+				},
+			},
+			{
+				Query:    "SELECT * from num_test where small = $1 and large = $1 and other = $1",
+				BindVars: []any{0},
+				Expected: []sql.Row{
+					{0, 0, float64(0)},
+				},
+			},
+			{
+				Query:    "SELECT * from num_test where small = $1::INTEGER and large = $1::INTEGER and other = $1::INTEGER",
+				BindVars: []any{0},
+				Expected: []sql.Row{
+					{0, 0, float64(0)},
+				},
+			},
+			{
+				Query:    "SELECT * FROM num_test where small = $1 or other = $1",
+				BindVars: []any{1.5},
+				Expected: []sql.Row{
+					{1, 2, 1.5},
+				},
+			},
+		},
+	},
+	{
+		Name: "Cannot bind parameter to column with incompatible type",
+		SetUpScript: []string{
+			"CREATE TABLE text_test (fullname text, id int)",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:       "SELECT * FROM text_test where fullname = $1 and id = $1",
+				BindVars:    []any{1},
+				ExpectedErr: "parameter v1 is used for incompatible types: text and integer",
+			},
+		},
+	},
 }
 
 var pgCatalogTests = []ScriptTest{

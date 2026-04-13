@@ -36,6 +36,9 @@ type FunctionInterface interface {
 	GetExpectedParameterCount() int
 	// NonDeterministic returns whether the function is non-deterministic.
 	NonDeterministic() bool
+	// IsCVariadic returns whether this function uses a variadic form restricted to C-language functions.
+	// https://www.postgresql.org/docs/15/xfunc-c.html#id-1.8.3.13.13
+	IsCVariadic() bool
 	// IsStrict returns whether the function is STRICT, which means if any parameter is NULL, then it returns NULL.
 	// Otherwise, if it's not, the NULL input must be handled by user.
 	IsStrict() bool
@@ -48,7 +51,7 @@ type FunctionInterface interface {
 	enforceInterfaceInheritance(error)
 }
 
-// AggregateFunction is an interface for PostgreSQL aggregate functions
+// AggregateFunctionInterface is an interface for PostgreSQL aggregate functions
 type AggregateFunctionInterface interface {
 	FunctionInterface
 	// TODO: this maybe needs to take the place of the Callable function
@@ -78,6 +81,20 @@ type Function1 struct {
 	Callable           func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error)
 }
 
+// Function1N is a function that takes at least one parameter. This is different from a SQL variadic function, as the
+// additional parameters may have different types (that do not contribute to type deduction like with `anyelement`), and
+// is only usable by C-language functions (notably built-in ones such as `concat`). The field `paramsAndReturn` works
+// similarly to standard functions, with the last type being the return type.
+type Function1N struct {
+	Name               string
+	Return             *pgtypes.DoltgresType
+	Parameters         [1]*pgtypes.DoltgresType
+	IsNonDeterministic bool
+	Strict             bool
+	SRF                bool
+	Callable           func(ctx *sql.Context, paramsAndReturn []*pgtypes.DoltgresType, val1 any, vals []any) (any, error)
+}
+
 // Function2 is a function that takes two parameters. The parameter and return types are passed into the Callable
 // function when the parameters (and possibly return type) have at least one polymorphic type. The return type is the
 // last type in the array.
@@ -90,6 +107,20 @@ type Function2 struct {
 	Strict             bool
 	SRF                bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error)
+}
+
+// Function2N is a function that takes at least two parameters. This is different from a SQL variadic function, as the
+// additional parameters may have different types (that do not contribute to type deduction like with `anyelement`), and
+// is only usable by C-language functions (notably built-in ones such as `concat_ws`). The field `paramsAndReturn` works
+// similarly to standard functions, with the last type being the return type.
+type Function2N struct {
+	Name               string
+	Return             *pgtypes.DoltgresType
+	Parameters         [2]*pgtypes.DoltgresType
+	IsNonDeterministic bool
+	Strict             bool
+	SRF                bool
+	Callable           func(ctx *sql.Context, paramsAndReturn []*pgtypes.DoltgresType, val1 any, val2 any, vals []any) (any, error)
 }
 
 // Function3 is a function that takes three parameters. The parameter and return types are passed into the Callable
@@ -164,7 +195,9 @@ type Function7 struct {
 
 var _ FunctionInterface = Function0{}
 var _ FunctionInterface = Function1{}
+var _ FunctionInterface = Function1N{}
 var _ FunctionInterface = Function2{}
+var _ FunctionInterface = Function2N{}
 var _ FunctionInterface = Function3{}
 var _ FunctionInterface = Function4{}
 var _ FunctionInterface = Function5{}
@@ -189,6 +222,9 @@ func (f Function0) GetExpectedParameterCount() int { return 0 }
 
 // NonDeterministic implements the FunctionInterface interface.
 func (f Function0) NonDeterministic() bool { return f.IsNonDeterministic }
+
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function0) IsCVariadic() bool { return false }
 
 // IsStrict implements the FunctionInterface interface.
 func (f Function0) IsStrict() bool { return f.Strict }
@@ -228,6 +264,9 @@ func (f Function1) GetExpectedParameterCount() int { return 1 }
 // NonDeterministic implements the FunctionInterface interface.
 func (f Function1) NonDeterministic() bool { return f.IsNonDeterministic }
 
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function1) IsCVariadic() bool { return false }
+
 // IsStrict implements the FunctionInterface interface.
 func (f Function1) IsStrict() bool { return f.Strict }
 
@@ -241,6 +280,43 @@ func (f Function1) InternalID() id.Id {
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function1) enforceInterfaceInheritance(error) {}
+
+// GetName implements the FunctionInterface interface.
+func (f Function1N) GetName() string { return f.Name }
+
+// GetReturn implements the FunctionInterface interface.
+func (f Function1N) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
+
+// GetParameters implements the FunctionInterface interface.
+func (f Function1N) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+
+// VariadicIndex implements the FunctionInterface interface.
+func (f Function1N) VariadicIndex() int {
+	return -1
+}
+
+// GetExpectedParameterCount implements the FunctionInterface interface.
+func (f Function1N) GetExpectedParameterCount() int { return 1 }
+
+// NonDeterministic implements the FunctionInterface interface.
+func (f Function1N) NonDeterministic() bool { return f.IsNonDeterministic }
+
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function1N) IsCVariadic() bool { return true }
+
+// IsStrict implements the FunctionInterface interface.
+func (f Function1N) IsStrict() bool { return f.Strict }
+
+// IsSRF implements the FunctionInterface interface.
+func (f Function1N) IsSRF() bool { return f.SRF }
+
+// InternalID implements the FunctionInterface interface.
+func (f Function1N) InternalID() id.Id {
+	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID).AsId()
+}
+
+// enforceInterfaceInheritance implements the FunctionInterface interface.
+func (f Function1N) enforceInterfaceInheritance(error) {}
 
 // GetName implements the FunctionInterface interface.
 func (f Function2) GetName() string { return f.Name }
@@ -266,6 +342,9 @@ func (f Function2) GetExpectedParameterCount() int { return 2 }
 // NonDeterministic implements the FunctionInterface interface.
 func (f Function2) NonDeterministic() bool { return f.IsNonDeterministic }
 
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function2) IsCVariadic() bool { return false }
+
 // IsStrict implements the FunctionInterface interface.
 func (f Function2) IsStrict() bool { return f.Strict }
 
@@ -279,6 +358,43 @@ func (f Function2) InternalID() id.Id {
 
 // enforceInterfaceInheritance implements the FunctionInterface interface.
 func (f Function2) enforceInterfaceInheritance(error) {}
+
+// GetName implements the FunctionInterface interface.
+func (f Function2N) GetName() string { return f.Name }
+
+// GetReturn implements the FunctionInterface interface.
+func (f Function2N) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
+
+// GetParameters implements the FunctionInterface interface.
+func (f Function2N) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+
+// VariadicIndex implements the FunctionInterface interface.
+func (f Function2N) VariadicIndex() int {
+	return -1
+}
+
+// GetExpectedParameterCount implements the FunctionInterface interface.
+func (f Function2N) GetExpectedParameterCount() int { return 2 }
+
+// NonDeterministic implements the FunctionInterface interface.
+func (f Function2N) NonDeterministic() bool { return f.IsNonDeterministic }
+
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function2N) IsCVariadic() bool { return true }
+
+// IsStrict implements the FunctionInterface interface.
+func (f Function2N) IsStrict() bool { return f.Strict }
+
+// IsSRF implements the FunctionInterface interface.
+func (f Function2N) IsSRF() bool { return f.SRF }
+
+// InternalID implements the FunctionInterface interface.
+func (f Function2N) InternalID() id.Id {
+	return id.NewFunction("pg_catalog", f.Name, f.Parameters[0].ID, f.Parameters[1].ID).AsId()
+}
+
+// enforceInterfaceInheritance implements the FunctionInterface interface.
+func (f Function2N) enforceInterfaceInheritance(error) {}
 
 // GetName implements the FunctionInterface interface.
 func (f Function3) GetName() string { return f.Name }
@@ -303,6 +419,9 @@ func (f Function3) GetExpectedParameterCount() int { return 3 }
 
 // NonDeterministic implements the FunctionInterface interface.
 func (f Function3) NonDeterministic() bool { return f.IsNonDeterministic }
+
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function3) IsCVariadic() bool { return false }
 
 // IsStrict implements the FunctionInterface interface.
 func (f Function3) IsStrict() bool { return f.Strict }
@@ -342,6 +461,9 @@ func (f Function4) GetExpectedParameterCount() int { return 4 }
 // NonDeterministic implements the FunctionInterface interface.
 func (f Function4) NonDeterministic() bool { return f.IsNonDeterministic }
 
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function4) IsCVariadic() bool { return false }
+
 // IsStrict implements the FunctionInterface interface.
 func (f Function4) IsStrict() bool { return f.Strict }
 
@@ -379,6 +501,9 @@ func (f Function5) GetExpectedParameterCount() int { return 5 }
 
 // NonDeterministic implements the FunctionInterface interface.
 func (f Function5) NonDeterministic() bool { return f.IsNonDeterministic }
+
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function5) IsCVariadic() bool { return false }
 
 // IsStrict implements the FunctionInterface interface.
 func (f Function5) IsStrict() bool { return f.Strict }
@@ -418,6 +543,9 @@ func (f Function6) GetExpectedParameterCount() int { return 6 }
 // NonDeterministic implements the FunctionInterface interface.
 func (f Function6) NonDeterministic() bool { return f.IsNonDeterministic }
 
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function6) IsCVariadic() bool { return false }
+
 // IsStrict implements the FunctionInterface interface.
 func (f Function6) IsStrict() bool { return f.Strict }
 
@@ -455,6 +583,9 @@ func (f Function7) GetExpectedParameterCount() int { return 7 }
 
 // NonDeterministic implements the FunctionInterface interface.
 func (f Function7) NonDeterministic() bool { return f.IsNonDeterministic }
+
+// IsCVariadic implements the FunctionInterface interface.
+func (f Function7) IsCVariadic() bool { return false }
 
 // IsStrict implements the FunctionInterface interface.
 func (f Function7) IsStrict() bool { return f.Strict }

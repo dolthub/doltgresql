@@ -55,7 +55,16 @@ const (
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
 func Init() {
+	// OnceBeforeDefault runs before AlwaysBeforeDefault in GMS
+	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
+		{Id: ruleId_ResolveType, Apply: ResolveType}, // ResolveType rule must run before simplifyFilters rule in GMS
+		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
+		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint}},
+		analyzer.OnceBeforeDefault...)
+
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
+		// ResolveType rule must run in this batch in addition to OnceBeforeDefault batch
+		// because of custom batch set optimization in GMS skipping OnceBeforeDefault batch for some nodes.
 		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		analyzer.Rule{Id: ruleId_ResolveValuesTypes, Apply: ResolveValuesTypes},
@@ -69,11 +78,6 @@ func Init() {
 		analyzer.Rule{Id: ruleId_ValidateCreateSchema, Apply: ValidateCreateSchema},
 		analyzer.Rule{Id: ruleId_ResolveProcedureDefaults, Apply: ResolveProcedureDefaults},
 	)
-
-	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
-		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
-		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint}},
-		analyzer.OnceBeforeDefault...)
 
 	// We remove several validation rules and substitute our own
 	analyzer.OnceBeforeDefault = insertAnalyzerRules(analyzer.OnceBeforeDefault, analyzer.ValidateCreateTableId, true,
