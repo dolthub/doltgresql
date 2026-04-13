@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -129,15 +130,27 @@ var jsonb_object_field = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		object, ok := val1.(pgtypes.JsonDocument).Value.(pgtypes.JsonValueObject)
+		wrapper, ok := val1.(sql.JSONWrapper)
 		if !ok {
 			return nil, nil
 		}
-		idx, ok := object.Index[val2.(string)]
+
+		j, err := wrapper.ToInterface(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		obj, ok := j.(map[string]any)
 		if !ok {
 			return nil, nil
 		}
-		return pgtypes.JsonDocument{Value: object.Items[idx].Value}, nil
+
+		v, ok := obj[val2.(string)]
+		if !ok {
+			return nil, nil
+		}
+
+		return types.JSONDocument{Val: v}, nil
 	},
 }
 
