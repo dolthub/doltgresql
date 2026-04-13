@@ -324,16 +324,15 @@ func (stmt *plpgSQL_stmt_assign) Convert() (Assignment, error) {
 func (stmt *plpgSQL_stmt_call) Convert() (ExecuteSQL, error) {
 	var target string
 	if !stmt.IsCall {
-		switch {
-		case stmt.Target.Row != nil:
+		if stmt.Target.Row != nil {
 			names := make([]string, len(stmt.Target.Row.Fields))
 			for i, rowField := range stmt.Target.Row.Fields {
 				names[i] = rowField.Name
 			}
 			target = strings.Join(names, ",")
-		case stmt.Target.Variable != nil:
+		} else if stmt.Target.Variable != nil {
 			target = stmt.Target.Variable.RefName
-		default:
+		} else {
 			return ExecuteSQL{}, errors.Errorf("unhandled datum type: %T", stmt.Target)
 		}
 	}
@@ -464,16 +463,15 @@ func (stmt *plpgSQL_stmt_dynexecute) Convert() (DynamicExecute, error) {
 func (stmt *plpgSQL_stmt_execsql) Convert() (ExecuteSQL, error) {
 	var target string
 	if stmt.Into {
-		switch {
-		case stmt.Target.Row != nil:
+		if stmt.Target.Row != nil {
 			names := make([]string, len(stmt.Target.Row.Fields))
 			for i, rowField := range stmt.Target.Row.Fields {
 				names[i] = rowField.Name
 			}
 			target = strings.Join(names, ",")
-		case stmt.Target.Variable != nil:
+		} else if stmt.Target.Variable != nil {
 			target = stmt.Target.Variable.RefName
-		default:
+		} else {
 			return ExecuteSQL{}, errors.Errorf("unhandled datum type: %T", stmt.Target)
 		}
 	}
