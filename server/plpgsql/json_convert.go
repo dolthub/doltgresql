@@ -85,6 +85,16 @@ func jsonConvertStatement(stmt statement) (Statement, error) {
 	switch {
 	case stmt.Assignment != nil:
 		return stmt.Assignment.Convert()
+	case stmt.Block != nil:
+		stmts, err := jsonConvertStatements(stmt.Block.Body)
+		if err != nil {
+			return Block{}, err
+		}
+		return Block{
+			Body: stmts,
+		}, nil
+	case stmt.Call != nil:
+		return stmt.Call.Convert()
 	case stmt.Case != nil:
 		return stmt.Case.Convert()
 	case stmt.DynExec != nil:
