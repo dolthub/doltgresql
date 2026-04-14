@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"runtime/debug"
 	"runtime/trace"
 	"sync"
 	"time"
@@ -626,7 +627,8 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	pan2err := func(err *error) {
 		if HandlePanics {
 			if recoveredPanic := recover(); recoveredPanic != nil {
-				*err = goerrors.Join(*err, errors.Errorf("DoltgresHandler caught panic: %v", recoveredPanic))
+				// debug.Stack() here prints the stack trace of the original panic, not the lexical stack of this defer function
+				*err = goerrors.Join(*err, errors.Errorf("DoltgresHandler caught panic: %v: %s", recoveredPanic, debug.Stack()))
 			}
 		}
 	}
