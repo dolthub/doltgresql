@@ -140,6 +140,7 @@ func (h *ConnectionHandler) HandleConnection() {
 	if HandlePanics {
 		defer func() {
 			if r := recover(); r != nil {
+				// debug.Stack() here prints the stack trace of the original panic, not the lexical stack of this defer function
 				logrus.Errorf("Listener recovered panic: %v: %s", r, string(debug.Stack()))
 
 				var eomErr error
