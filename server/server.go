@@ -139,7 +139,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 
 	// Determine whether we need to initialize the default database
 	initializeDefaultDatabase := true
-	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFs, Version, dEnv)
+	mrEnv, err := env.MultiEnvForDirectory(ctx, dataDirFs, dEnv)
 	if err != nil {
 		return nil, err
 	}
