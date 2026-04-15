@@ -245,8 +245,8 @@ github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 h1:I
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12/go.mod h1:rN7X8BHwkjPcfMQQ2QTAq/xM3leUSGLfb+1Js7Y6TVo=
 github.com/dolthub/dolt-mcp v0.3.4 h1:AyG5cw+fNWXDHXujtQnqUPZrpWtPg6FN6yYtjv1pP44=
 github.com/dolthub/dolt-mcp v0.3.4/go.mod h1:bCZ7KHvDYs+M0e+ySgmGiNvLhcwsN7bbf5YCyillLrk=
-github.com/dolthub/dolt/go v0.40.5-0.20260414231020-4781ced3f3b8 h1:rsJXcFV3eYnUV2yeS9g6ZMvL4d+EnSaaPRb0SyaEX1M=
-github.com/dolthub/dolt/go v0.40.5-0.20260414231020-4781ced3f3b8/go.mod h1:herP1qJMjcHmk0i4211oIP8WEfKWIk9aXEYJ9/ha59M=
+github.com/dolthub/dolt/go v0.40.5-0.20260415043957-a02a89d7a0ed h1:R+BXeBtAaZP+8PVURliLBN3EBpuj5ZyURLeyxGSY6rM=
+github.com/dolthub/dolt/go v0.40.5-0.20260415043957-a02a89d7a0ed/go.mod h1:tixrAzOFdLCGmRMJtbCu3wMmbHVKYiQkyVmpbURt/oM=
 github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69 h1:JShhbqMw26nKx3pqqu/cFxOpzBkN+4elVhzuUfgDw2k=
 github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69/go.mod h1:SSLraQS/jGLYFgff3vuZ+JbVUct6vyEeMzjLBqWqoyM=
 github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 h1:u3PMzfF8RkKd3lB9pZ2bfn0qEG+1Gms9599cr0REMww=
@@ -259,8 +259,8 @@ github.com/dolthub/go-mysql-server v0.20.1-0.20260412215059-d7fc9477f4b7 h1:FIjS
 github.com/dolthub/go-mysql-server v0.20.1-0.20260412215059-d7fc9477f4b7/go.mod h1:vcp9FtFdeSI2vTld+6HlouLKKaI8aF8Ey4wvYeMUqVg=
 github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 h1:OAsXLAPL4du6tfbBgK0xXHZkOlos63RdKYS3Sgw/dfI=
 github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63/go.mod h1:lV7lUeuDhH5thVGDCKXbatwKy2KW80L4rMT46n+Y2/Q=
-github.com/dolthub/ishell v0.0.0-20240701202509-2b217167d718 h1:lT7hE5k+0nkBdj/1UOSFwjWpNxf+LCApbRHgnCA17XE=
-github.com/dolthub/ishell v0.0.0-20240701202509-2b217167d718/go.mod h1:ehexgi1mPxRTk0Mok/pADALuHbvATulTh6gzr7NzZto=
+github.com/dolthub/ishell v0.0.0-20260414231531-5f031e3e9037 h1:oIW9HwuWrhxv+4HZxA+QQSKHLqWFyXZ2FmNjUYwkdiM=
+github.com/dolthub/ishell v0.0.0-20260414231531-5f031e3e9037/go.mod h1:ehexgi1mPxRTk0Mok/pADALuHbvATulTh6gzr7NzZto=
 github.com/dolthub/jsonpath v0.0.2-0.20240227200619-19675ab05c71 h1:bMGS25NWAGTEtT5tOBsCuCrlYnLRKpbJVJkDbrTRhwQ=
 github.com/dolthub/jsonpath v0.0.2-0.20240227200619-19675ab05c71/go.mod h1:2/2zjLQ/JOOSbbSboojeg+cAwcRV0fDLzIiWch/lhqI=
 github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1 h1:GY17cGA4XJA4x2c5JKveps5gNwv5utYl7ntvz9uEuJc=
