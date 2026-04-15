@@ -15,8 +15,11 @@
 package tables
 
 import (
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core"
 )
 
 // Init handles initialization of all Postgres-specific and Doltgres-specific tables.
@@ -27,4 +30,5 @@ func Init() {
 		}
 		return db, nil
 	}
+	doltdb.IsValidIdentifier = core.IsValidPostgresIdentifier
 }

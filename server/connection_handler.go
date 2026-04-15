@@ -140,6 +140,7 @@ func (h *ConnectionHandler) HandleConnection() {
 	if HandlePanics {
 		defer func() {
 			if r := recover(); r != nil {
+				// debug.Stack() here prints the stack trace of the original panic, not the lexical stack of this defer function
 				logrus.Errorf("Listener recovered panic: %v: %s", r, string(debug.Stack()))
 
 				var eomErr error
@@ -498,7 +499,6 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 	case *sqlparser.Commit:
 		h.inTransaction = false
 	case *sqlparser.Deallocate:
-		// TODO: handle ALL keyword
 		return true, true, h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
 	case sqlparser.InjectedStatement:
 		switch injectedStmt := stmt.Statement.(type) {
@@ -968,12 +968,21 @@ func startTransactionIfNecessary(ctx *sql.Context) error {
 	return nil
 }
 
+// deallocatePreparedStatement handles a DEALLOCATE statement by deleting the corresponding prepared statement from the
+// handler's prepared statement map, and sending a CommandComplete message back to the client. Pass an empty |name|
+// for `ALL`. This matches the behavior in the parser, which doesn't include a separate field for ALL.
 func (h *ConnectionHandler) deallocatePreparedStatement(name string, preparedStatements map[string]PreparedStatementData, query ConvertedQuery, conn net.Conn) error {
-	_, ok := preparedStatements[name]
-	if !ok {
-		return errors.Errorf("prepared statement %s does not exist", name)
+	if name == "" {
+		for name := range preparedStatements {
+			delete(preparedStatements, name)
+		}
+	} else {
+		_, ok := preparedStatements[name]
+		if !ok {
+			return errors.Errorf("prepared statement %s does not exist", name)
+		}
+		delete(preparedStatements, name)
 	}
-	delete(preparedStatements, name)
 
 	return h.send(&pgproto3.CommandComplete{
 		CommandTag: []byte(query.StatementTag),
