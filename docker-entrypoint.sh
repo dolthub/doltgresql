@@ -91,16 +91,28 @@ exec_sql() {
 
   echo "running psql command found in: "
   echo $(which psql)
+
+  local user=$DOLTGRES_USER
+  local password=$DOLTGRES_PASSWORD
+
+  # use the default user and pass if not specified in the env
+  if [ -z $user ]; then
+      user="postgres"
+  fi
+
+  if [ -z $password ]; then
+      password="password"
+  fi
   
   while true; do
       if [ -n "$query" ]; then
           set +e
-          output=$(PGPASSWORD=password psql -h 127.0.0.1 -U postgres -c "$query" 2>&1)
+          output=$(PGPASSWORD=$password psql -h 127.0.0.1 -U $user -c "$query" 2>&1)
           status=$?
           set -e
     else
       set +e # tmp disabled to initdb.d/ file err
-      output=$(PGPASSWORD=password psql -h 127.0.0.1 -U postgres < /dev/stdin 2>&1)
+      output=$(PGPASSWORD=$password psql -h 127.0.0.1 -U $user < /dev/stdin 2>&1)
       status=$?
       set -e
     fi
@@ -304,7 +316,6 @@ start_server() {
   db=$(get_env_var "DB")
   export DOLTGRES_USER=$user
   export DOLTGRES_PASSWORD=$password
-  export DOLTGRES_DB=$db
   
   SERVER_PID=-1
 
