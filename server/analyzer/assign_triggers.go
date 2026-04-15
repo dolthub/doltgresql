@@ -47,6 +47,7 @@ func AssignTriggers(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope
 			if len(beforeTrigs) > 0 {
 				handling := getTriggerRowHandling(node)
 				newNode, err = nodeWithTriggers(ctx, newNode, &pgnodes.TriggerExecution{
+					Timing:   triggers.TriggerTiming_Before,
 					Triggers: beforeTrigs,
 					Split:    handling,
 					Return:   handling,
@@ -60,6 +61,7 @@ func AssignTriggers(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope
 			}
 			if len(afterTrigs) > 0 {
 				newNode = &pgnodes.TriggerExecution{
+					Timing:   triggers.TriggerTiming_After,
 					Triggers: afterTrigs,
 					Split:    getTriggerRowHandling(node),
 					Return:   pgnodes.TriggerExecutionRowHandling_None,
