@@ -10685,6 +10685,12 @@ empty_select:
       Window:  $7.window(),
     }
   }
+| SELECT
+  {
+    $$.val = &tree.SelectClause{
+      Exprs:   make(tree.SelectExprs, 0, 0),
+    }
+  }
 
 // %Help: SELECT - retrieve rows from a data source and compute a result
 // %Category: DML
@@ -10747,7 +10753,6 @@ simple_select_clause:
       Window:     $9.window(),
     }
   }
-| SELECT error // SHOW HELP: SELECT
 
 opt_join_hint_comment:
   {
