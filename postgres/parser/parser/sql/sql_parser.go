@@ -137,7 +137,7 @@ func (p PostgresFormatter) GenerateCreateTablePrimaryKeyDefinition(pkCols []stri
 
 func (p PostgresFormatter) GenerateCreateTableIndexDefinition(isUnique, isSpatial, isFullText, isVector bool, indexID string, indexCols []string, comment string) (string, bool) {
 	if isUnique {
-		return fmt.Sprintf("  UNIQUE %s (%s)", p.QuoteIdentifier(indexID), strings.Join(indexCols, ",")), true
+		return fmt.Sprintf("  CONSTRAINT %s UNIQUE (%s)", p.QuoteIdentifier(indexID), strings.Join(indexCols, ",")), true
 	}
 
 	// TODO: this interface is not sufficient for SHOW CREATE TABLE output, where we will need to return multiple

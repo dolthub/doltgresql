@@ -436,6 +436,31 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #2604",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a TEXT, b TEXT DEFAULT 'x');",
+				"CREATE UNIQUE INDEX idx_t_a ON t(a);",
+				"SELECT dolt_add('-A');",
+				"SELECT dolt_commit('-m', 'schema');",
+				"SELECT dolt_branch('f', 'main');",
+				"SELECT dolt_checkout('f');",
+				"INSERT INTO t (id, a) VALUES (1, 'feat');",
+				"SELECT dolt_add('-A');",
+				"SELECT dolt_commit('-m', 'feat');",
+				"SELECT dolt_checkout('main');",
+				"INSERT INTO t (id, a) VALUES (2, 'main');",
+				"SELECT dolt_add('-A');",
+				"SELECT dolt_commit('-m', 'main');",
+				"SELECT dolt_checkout('f');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT length(dolt_merge('main')::text) = 57;",
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
 	})
 }
 
