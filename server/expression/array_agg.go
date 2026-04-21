@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"sort"
 	"strings"
 
@@ -37,7 +38,7 @@ var _ sql.OrderedAggregation = (*ArrayAgg)(nil)
 
 // WithResolvedChildren returns a new ArrayAgg with the provided children as its select expressions.
 // The last child is expected to be the order by expressions.
-func (a *ArrayAgg) WithResolvedChildren(children []any) (any, error) {
+func (a *ArrayAgg) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	a.selectExprs = make([]sql.Expression, len(children)-1)
 	for i := 0; i < len(children)-1; i++ {
 		a.selectExprs[i] = children[i].(sql.Expression)
@@ -81,13 +82,13 @@ func (a *ArrayAgg) String() string {
 }
 
 // Type implements sql.Expression
-func (a *ArrayAgg) Type() sql.Type {
-	dt := a.selectExprs[0].Type().(*types.DoltgresType)
+func (a *ArrayAgg) Type(ctx *sql.Context) sql.Type {
+	dt := a.selectExprs[0].Type(ctx).(*types.DoltgresType)
 	return dt.ToArrayType()
 }
 
 // IsNullable implements sql.Expression
-func (a *ArrayAgg) IsNullable() bool {
+func (a *ArrayAgg) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -106,13 +107,13 @@ func (a *ArrayAgg) OutputExpressions() []sql.Expression {
 }
 
 // WithChildren implements sql.Expression
-func (a ArrayAgg) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (a ArrayAgg) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != len(a.selectExprs)+len(a.orderBy) {
 		return nil, sql.ErrInvalidChildrenNumber.New(a, len(children), len(a.selectExprs)+len(a.orderBy))
 	}
 
 	a.selectExprs = children[:len(a.selectExprs)]
-	a.orderBy = a.orderBy.FromExpressions(children[len(a.selectExprs):]...)
+	a.orderBy = a.orderBy.FromExpressions(ctx, children[len(a.selectExprs):]...)
 	return &a, nil
 }
 
@@ -128,12 +129,12 @@ func (a ArrayAgg) WithId(id sql.ColumnId) sql.IdExpression {
 }
 
 // NewWindowFunction implements sql.WindowAdaptableExpression
-func (a *ArrayAgg) NewWindowFunction() (sql.WindowFunction, error) {
+func (a *ArrayAgg) NewWindowFunction(ctx *sql.Context) (sql.WindowFunction, error) {
 	panic("window functions not yet supported for array_agg")
 }
 
 // WithWindow implements sql.WindowAdaptableExpression
-func (a *ArrayAgg) WithWindow(window *sql.WindowDefinition) sql.WindowAdaptableExpression {
+func (a *ArrayAgg) WithWindow(ctx *sql.Context, window *sql.WindowDefinition) sql.WindowAdaptableExpression {
 	panic("window functions not yet supported for array_agg")
 }
 
@@ -143,7 +144,7 @@ func (a *ArrayAgg) Window() *sql.WindowDefinition {
 }
 
 // NewBuffer implements sql.Aggregation
-func (a *ArrayAgg) NewBuffer() (sql.AggregationBuffer, error) {
+func (a *ArrayAgg) NewBuffer(ctx *sql.Context) (sql.AggregationBuffer, error) {
 	return &arrayAggBuffer{
 		elements: make([]sql.Row, 0),
 		a:        a,
@@ -157,7 +158,7 @@ type arrayAggBuffer struct {
 }
 
 // Dispose implements sql.AggregationBuffer
-func (a *arrayAggBuffer) Dispose() {}
+func (a *arrayAggBuffer) Dispose(ctx *sql.Context) {}
 
 // Eval implements sql.AggregationBuffer
 func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {

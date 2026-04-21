@@ -15,13 +15,14 @@
 package node
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/types"
-
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // ShowSequences is a node that implements the SHOW SCHEMAS	statement.
@@ -83,7 +84,7 @@ func (s *ShowSequences) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (s *ShowSequences) Schema() sql.Schema {
+func (s *ShowSequences) Schema(ctx *sql.Context) sql.Schema {
 	return sql.Schema{
 		{Name: "sequence_schema", Type: types.Text, Source: "show sequences"},
 		{Name: "sequence_name", Type: types.Text, Source: "show sequences"},
@@ -99,7 +100,7 @@ func (s *ShowSequences) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (s *ShowSequences) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (s *ShowSequences) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
 		return nil, errors.New("SHOW SCHEMAS does not support children")
 	}
@@ -107,7 +108,7 @@ func (s *ShowSequences) WithChildren(children ...sql.Node) (sql.Node, error) {
 }
 
 // WithResolvedChildren implements the interface vitess.InjectedStatement.
-func (s *ShowSequences) WithResolvedChildren(children []any) (any, error) {
+func (s *ShowSequences) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, errors.New("SHOW SCHEMAS does not support children")
 	}

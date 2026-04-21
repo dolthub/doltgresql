@@ -62,7 +62,7 @@ func (ic *ImplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (ic *ImplicitCast) IsNullable() bool {
+func (ic *ImplicitCast) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -77,12 +77,12 @@ func (ic *ImplicitCast) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (ic *ImplicitCast) Type() sql.Type {
+func (ic *ImplicitCast) Type(ctx *sql.Context) sql.Type {
 	return ic.toType
 }
 
 // WithChildren implements the sql.Expression interface.
-func (ic *ImplicitCast) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (ic *ImplicitCast) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(ic, len(children), 1)
 	}

@@ -30,11 +30,11 @@ func ValidateColumnDefaults(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, 
 	span, ctx := ctx.Span("validateColumnDefaults")
 	defer span.End()
 
-	return transform.Node(n, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+	return transform.Node(ctx, n, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		switch node := n.(type) {
 		case *plan.AlterDefaultSet:
 			table := getResolvedTable(node)
-			sch := table.Schema()
+			sch := table.Schema(ctx)
 			index := sch.IndexOfColName(node.ColumnName)
 			if index == -1 {
 				return nil, transform.SameTree, sql.ErrColumnNotFound.New(node.ColumnName)
@@ -59,7 +59,7 @@ func ValidateColumnDefaults(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, 
 			// There may be multiple DDL nodes in the plan (ALTER TABLE statements can have many clauses), and for each of them
 			// we need to count the column indexes in the very hacky way outlined above.
 			i := 0
-			return transform.NodeExprs(n, func(e sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+			return transform.NodeExprs(ctx, n, func(ctx *sql.Context, e sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 				eWrapper, ok := e.(*expression.Wrapper)
 				if !ok {
 					return e, transform.SameTree, nil
@@ -140,7 +140,7 @@ func validateColumnDefault(ctx *sql.Context, col *sql.Column, colDefault *sql.Co
 	}
 
 	var err error
-	sql.Inspect(colDefault.Expr, func(e sql.Expression) bool {
+	sql.Inspect(ctx, colDefault.Expr, func(ctx *sql.Context, e sql.Expression) bool {
 		switch e.(type) {
 		case sql.FunctionExpression, *expression.UnresolvedFunction:
 			// TODO: functions must be deterministic to be used in column defaults

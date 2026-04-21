@@ -178,8 +178,8 @@ func compileNonOperatorFunction(funcName string, overloads []FunctionInterface) 
 
 	// Store the compiled function into the engine's built-in functions
 	// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
-	createFunc := func(params ...sql.Expression) (sql.Expression, error) {
-		return NewCompiledFunction(funcName, params, overloadTree, false), nil
+	createFunc := func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
+		return NewCompiledFunction(ctx, funcName, params, overloadTree, false), nil
 	}
 	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
 		Name: funcName,
@@ -201,8 +201,8 @@ func compileAggFunction(funcName string, overloads []AggregateFunctionInterface)
 
 	// Store the compiled function into the engine's built-in functions
 	// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
-	createFunc := func(params ...sql.Expression) (sql.Expression, error) {
-		return NewCompiledAggregateFunction(funcName, params, overloadTree, newBuffer), nil
+	createFunc := func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
+		return NewCompiledAggregateFunction(ctx, funcName, params, overloadTree, newBuffer), nil
 	}
 	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
 		Name: funcName,

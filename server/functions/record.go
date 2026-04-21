@@ -150,13 +150,13 @@ var record_send = framework.Function1{
 				}
 			default:
 				cast := pgexprs.NewGMSCast(expression.NewLiteral(recordVal.Value, recordType))
-				writer.WriteUint32(id.Cache().ToOID(cast.DoltgresType().ID.AsId()))
+				writer.WriteUint32(id.Cache().ToOID(cast.DoltgresType(ctx).ID.AsId()))
 				if recordVal.Value != nil {
 					castVal, err := cast.Eval(ctx, nil)
 					if err != nil {
 						return nil, err
 					}
-					valBytes, err := cast.DoltgresType().CallSend(ctx, castVal)
+					valBytes, err := cast.DoltgresType(ctx).CallSend(ctx, castVal)
 					if err != nil {
 						return nil, err
 					}

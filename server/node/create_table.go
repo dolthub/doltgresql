@@ -48,8 +48,8 @@ func (c *CreateTable) Children() []sql.Node {
 }
 
 // DebugString implements the sql.DebugStringer interface
-func (c *CreateTable) DebugString() string {
-	return sql.DebugString(c.gmsCreateTable)
+func (c *CreateTable) DebugString(ctx *sql.Context) string {
+	return sql.DebugString(ctx, c.gmsCreateTable)
 }
 
 // Expressions implements the sql.Expressioner interface.
@@ -97,8 +97,8 @@ func (c *CreateTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sq
 }
 
 // Schema implements the interface sql.ExecBuilderNode.
-func (c *CreateTable) Schema() sql.Schema {
-	return c.gmsCreateTable.Schema()
+func (c *CreateTable) Schema(ctx *sql.Context) sql.Schema {
+	return c.gmsCreateTable.Schema(ctx)
 }
 
 // String implements the interface sql.ExecBuilderNode.
@@ -112,8 +112,8 @@ func (c *CreateTable) TargetSchema() sql.Schema {
 }
 
 // WithChildren implements the interface sql.ExecBuilderNode.
-func (c *CreateTable) WithChildren(children ...sql.Node) (sql.Node, error) {
-	gmsCreateTable, err := c.gmsCreateTable.WithChildren(children...)
+func (c *CreateTable) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
+	gmsCreateTable, err := c.gmsCreateTable.WithChildren(ctx, children...)
 	if err != nil {
 		return nil, err
 	}
@@ -124,9 +124,9 @@ func (c *CreateTable) WithChildren(children ...sql.Node) (sql.Node, error) {
 }
 
 // WithExpressions implements the interface sql.Expressioner.
-func (c *CreateTable) WithExpressions(expression ...sql.Expression) (sql.Node, error) {
+func (c *CreateTable) WithExpressions(ctx *sql.Context, expression ...sql.Expression) (sql.Node, error) {
 	nc := *c
-	n, err := nc.gmsCreateTable.WithExpressions(expression...)
+	n, err := nc.gmsCreateTable.WithExpressions(ctx, expression...)
 	if err != nil {
 		return nil, err
 	}

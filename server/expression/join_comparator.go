@@ -36,11 +36,11 @@ var _ expression.Equality = (*JoinComparator)(nil)
 var _ expression.Comparer = (*JoinComparator)(nil)
 
 // NewJoinComparator returns a new *JoinComparator.
-func NewJoinComparator(eq *BinaryOperator) (*JoinComparator, error) {
+func NewJoinComparator(ctx *sql.Context, eq *BinaryOperator) (*JoinComparator, error) {
 	if eq.operator != framework.Operator_BinaryEqual {
 		return nil, errors.Errorf("join comparator may only be created from equality operators")
 	}
-	less, err := (&BinaryOperator{operator: framework.Operator_BinaryLessThan}).WithResolvedChildren([]any{eq.Left(), eq.Right()})
+	less, err := (&BinaryOperator{operator: framework.Operator_BinaryLessThan}).WithResolvedChildren(ctx, []any{eq.Left(), eq.Right()})
 	if err != nil {
 		return nil, err
 	}
@@ -84,8 +84,8 @@ func (j *JoinComparator) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (j *JoinComparator) IsNullable() bool {
-	return j.eq.IsNullable()
+func (j *JoinComparator) IsNullable(ctx *sql.Context) bool {
+	return j.eq.IsNullable(ctx)
 }
 
 // RepresentsEquality implements the expression.Equality interface.
@@ -109,21 +109,21 @@ func (j *JoinComparator) SwapParameters(ctx *sql.Context) (expression.Equality, 
 	if err != nil {
 		return nil, err
 	}
-	return NewJoinComparator(newOper.(*BinaryOperator))
+	return NewJoinComparator(ctx, newOper.(*BinaryOperator))
 }
 
 // ToComparer implements the expression.Equality interface.
-func (j *JoinComparator) ToComparer() (expression.Comparer, error) {
+func (j *JoinComparator) ToComparer(ctx *sql.Context) (expression.Comparer, error) {
 	return j, nil
 }
 
 // Type implements the sql.Expression interface.
-func (j *JoinComparator) Type() sql.Type {
-	return j.eq.Type()
+func (j *JoinComparator) Type(ctx *sql.Context) sql.Type {
+	return j.eq.Type(ctx)
 }
 
 // WithChildren implements the sql.Expression interface.
-func (j *JoinComparator) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (j *JoinComparator) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(j, len(children), 1)
 	}
@@ -131,7 +131,7 @@ func (j *JoinComparator) WithChildren(children ...sql.Expression) (sql.Expressio
 	if !ok {
 		return nil, errors.Errorf("expected join comparator child to be a binary operator but has type `%T`", children[0])
 	}
-	return NewJoinComparator(binaryOper)
+	return NewJoinComparator(ctx, binaryOper)
 }
 
 // Left implements the expression.BinaryExpression interface.

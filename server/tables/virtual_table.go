@@ -47,7 +47,7 @@ func (tbl *VirtualTable) Collation() sql.CollationID {
 }
 
 // DebugString implements the interface sql.DebugStringer.
-func (tbl *VirtualTable) DebugString() string {
+func (tbl *VirtualTable) DebugString(ctx *sql.Context) string {
 	return "virt_table_" + tbl.String()
 }
 
@@ -69,13 +69,13 @@ func (tbl *VirtualTable) Partitions(ctx *sql.Context) (sql.PartitionIter, error)
 }
 
 // PrimaryKeySchema implements the interface sql.PrimaryKeyTable.
-func (tbl *VirtualTable) PrimaryKeySchema() sql.PrimaryKeySchema {
+func (tbl *VirtualTable) PrimaryKeySchema(ctx *sql.Context) sql.PrimaryKeySchema {
 	return tbl.handler.PkSchema()
 }
 
 // Schema implements the interface sql.Table.
-func (tbl *VirtualTable) Schema() sql.Schema {
-	return tbl.PrimaryKeySchema().Schema
+func (tbl *VirtualTable) Schema(ctx *sql.Context) sql.Schema {
+	return tbl.PrimaryKeySchema(ctx).Schema
 }
 
 // String implements the interface sql.Table.

@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -53,8 +54,8 @@ func (b *BinaryOperator) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (b *BinaryOperator) IsNullable() bool {
-	return b.compiledFunc.IsNullable()
+func (b *BinaryOperator) IsNullable(ctx *sql.Context) bool {
+	return b.compiledFunc.IsNullable(ctx)
 }
 
 // RepresentsEquality implements the expression.Equality interface.
@@ -88,7 +89,7 @@ func (b *BinaryOperator) String() string {
 // SwapParameters implements the expression.Equality interface.
 func (b *BinaryOperator) SwapParameters(ctx *sql.Context) (expression.Equality, error) {
 	// TODO: for now we'll assume this is valid, but we should check for the `COMMUTATOR` property on the operator
-	f, err := b.WithResolvedChildren([]any{b.Right(), b.Left()})
+	f, err := b.WithResolvedChildren(ctx, []any{b.Right(), b.Left()})
 	if err != nil {
 		return nil, err
 	}
@@ -96,22 +97,22 @@ func (b *BinaryOperator) SwapParameters(ctx *sql.Context) (expression.Equality, 
 }
 
 // ToComparer implements the expression.Equality interface.
-func (b *BinaryOperator) ToComparer() (expression.Comparer, error) {
-	return NewJoinComparator(b)
+func (b *BinaryOperator) ToComparer(ctx *sql.Context) (expression.Comparer, error) {
+	return NewJoinComparator(ctx, b)
 }
 
 // Type implements the sql.Expression interface.
-func (b *BinaryOperator) Type() sql.Type {
-	return b.compiledFunc.Type()
+func (b *BinaryOperator) Type(ctx *sql.Context) sql.Type {
+	return b.compiledFunc.Type(ctx)
 }
 
 // WithChildren implements the sql.Expression interface.
-func (b *BinaryOperator) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (b *BinaryOperator) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(b, len(children), 2)
 	}
 	if b.compiledFunc != nil {
-		compiledFunc, err := b.compiledFunc.WithChildren(children...)
+		compiledFunc, err := b.compiledFunc.WithChildren(ctx, children...)
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +121,7 @@ func (b *BinaryOperator) WithChildren(children ...sql.Expression) (sql.Expressio
 			compiledFunc: compiledFunc.(framework.Function),
 		}, nil
 	} else {
-		binOp, err := b.WithResolvedChildren([]any{children[0], children[1]})
+		binOp, err := b.WithResolvedChildren(ctx, []any{children[0], children[1]})
 		if err != nil {
 			return nil, err
 		}
@@ -129,10 +130,11 @@ func (b *BinaryOperator) WithChildren(children ...sql.Expression) (sql.Expressio
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (b *BinaryOperator) WithResolvedChildren(children []any) (any, error) {
+func (b *BinaryOperator) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 2 {
 		return nil, errors.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
 	}
+	sqlCtx := ctx.(*sql.Context)
 	left, ok := children[0].(sql.Expression)
 	if !ok {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
@@ -142,10 +144,10 @@ func (b *BinaryOperator) WithResolvedChildren(children []any) (any, error) {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
 	}
 	funcName := "internal_binary_operator_func_" + b.operator.String()
-	compiledFunc := framework.GetBinaryFunction(b.operator).Compile(funcName, left, right)
+	compiledFunc := framework.GetBinaryFunction(b.operator).Compile(sqlCtx, funcName, left, right)
 	if compiledFunc == nil {
 		return nil, errors.Errorf("operator does not exist: %s %s %s",
-			left.Type().String(), b.operator.String(), right.Type().String())
+			left.Type(sqlCtx).String(), b.operator.String(), right.Type(sqlCtx).String())
 	}
 	return &BinaryOperator{
 		operator:     b.operator,

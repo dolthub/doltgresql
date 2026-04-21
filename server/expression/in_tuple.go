@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -144,7 +145,7 @@ func (it *InTuple) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (it *InTuple) IsNullable() bool {
+func (it *InTuple) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -170,12 +171,12 @@ func (it *InTuple) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (it *InTuple) Type() sql.Type {
+func (it *InTuple) Type(ctx *sql.Context) sql.Type {
 	return pgtypes.Bool
 }
 
 // WithChildren implements the sql.Expression interface.
-func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (it *InTuple) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(it, len(children), 2)
 	}
@@ -188,7 +189,7 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 	}
 	// We'll only resolve the comparison functions once we have all Doltgres types.
 	// We may see GMS types during some analyzer steps, so we should wait until those are done.
-	if leftType, ok := children[0].Type().(*pgtypes.DoltgresType); ok {
+	if leftType, ok := children[0].Type(ctx).(*pgtypes.DoltgresType); ok {
 		// Rather than finding and resolving a comparison function every time we call Eval, we resolve them once and
 		// reuse the functions. We also want to avoid re-assigning the parameters of the comparison functions since that
 		// will also cause the functions to resolve again. To do this, we store expressions within our struct that the
@@ -203,25 +204,25 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 		compFuncs := make([]framework.Function, len(rightTuple))
 		allValidChildren := true
 		for i, rightExpr := range rightTuple {
-			rightType, ok := rightExpr.Type().(*pgtypes.DoltgresType)
+			rightType, ok := rightExpr.Type(ctx).(*pgtypes.DoltgresType)
 			if !ok {
 				allValidChildren = false
 				break
 			}
 			arrayLiterals[i] = expression.NewLiteral(nil, rightType)
-			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", staticLiteral, arrayLiterals[i])
+			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_in_comparison", staticLiteral, arrayLiterals[i])
 			if compFuncs[i] == nil {
 				return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			cid := compFuncs[i].Type().(*pgtypes.DoltgresType).ID
+			cid := compFuncs[i].Type(ctx).(*pgtypes.DoltgresType).ID
 			if cid != pgtypes.Bool.ID {
 				// Prepared statement binding values will need explicit casting to appropriate type
-				ec := NewAssignmentCast(arrayLiterals[i], pgtypes.Unknown, staticLiteral.Type().(*pgtypes.DoltgresType))
-				compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", staticLiteral, ec)
+				ec := NewAssignmentCast(arrayLiterals[i], pgtypes.Unknown, staticLiteral.Type(ctx).(*pgtypes.DoltgresType))
+				compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_in_comparison", staticLiteral, ec)
 				if compFuncs[i] == nil {
 					return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 				}
-				cid = compFuncs[i].Type().(*pgtypes.DoltgresType).ID
+				cid = compFuncs[i].Type(ctx).(*pgtypes.DoltgresType).ID
 				if cid != pgtypes.Bool.ID {
 					// This should never happen, but this is just to be safe
 					return nil, errors.Errorf("%T: found equality comparison that does not return a bool", it)
@@ -245,10 +246,11 @@ func (it *InTuple) WithChildren(children ...sql.Expression) (sql.Expression, err
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (it *InTuple) WithResolvedChildren(children []any) (any, error) {
+func (it *InTuple) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 2 {
 		return nil, errors.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
 	}
+	sqlCtx := ctx.(*sql.Context)
 	left, ok := children[0].(sql.Expression)
 	if !ok {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
@@ -256,12 +258,12 @@ func (it *InTuple) WithResolvedChildren(children []any) (any, error) {
 
 	switch right := children[1].(type) {
 	case expression.Tuple:
-		return it.WithChildren(left, right)
+		return it.WithChildren(sqlCtx, left, right)
 	case *RecordExpr:
 		// TODO: For now, if we see a RecordExpr come in, we convert it to a vitess Tuple representation, so that
 		//       the existing in_tuple code can work with it. Alternatively, we could change in_tuple to always
 		//       work directly with a Record expression.
-		return it.WithChildren(left, expression.Tuple(right.exprs))
+		return it.WithChildren(sqlCtx, left, expression.Tuple(right.exprs))
 	default:
 		return nil, errors.Errorf("expected child to be a RecordExpr or vitess Tuple but has type `%T`", children[1])
 	}

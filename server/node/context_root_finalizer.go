@@ -46,8 +46,8 @@ func (rf *ContextRootFinalizer) Children() []sql.Node {
 }
 
 // DebugString implements the interface sql.DebugStringer.
-func (rf *ContextRootFinalizer) DebugString() string {
-	return sql.DebugString(rf.child)
+func (rf *ContextRootFinalizer) DebugString(ctx *sql.Context) string {
+	return sql.DebugString(ctx, rf.child)
 }
 
 // IsReadOnly implements the interface sql.ExecBuilderNode.
@@ -73,8 +73,8 @@ func (rf *ContextRootFinalizer) BuildRowIter(ctx *sql.Context, b sql.NodeExecBui
 }
 
 // Schema implements the interface sql.ExecBuilderNode.
-func (rf *ContextRootFinalizer) Schema() sql.Schema {
-	return rf.child.Schema()
+func (rf *ContextRootFinalizer) Schema(ctx *sql.Context) sql.Schema {
+	return rf.child.Schema(ctx)
 }
 
 // String implements the interface sql.ExecBuilderNode.
@@ -83,7 +83,7 @@ func (rf *ContextRootFinalizer) String() string {
 }
 
 // WithChildren implements the interface sql.ExecBuilderNode.
-func (rf *ContextRootFinalizer) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (rf *ContextRootFinalizer) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(rf, len(children), 1)
 	}

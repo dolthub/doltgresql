@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -49,8 +50,8 @@ func (b *UnaryOperator) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (b *UnaryOperator) IsNullable() bool {
-	return b.compiledFunc.IsNullable()
+func (b *UnaryOperator) IsNullable(ctx *sql.Context) bool {
+	return b.compiledFunc.IsNullable(ctx)
 }
 
 // Resolved implements the sql.Expression interface.
@@ -75,16 +76,16 @@ func (b *UnaryOperator) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (b *UnaryOperator) Type() sql.Type {
-	return b.compiledFunc.Type()
+func (b *UnaryOperator) Type(ctx *sql.Context) sql.Type {
+	return b.compiledFunc.Type(ctx)
 }
 
 // WithChildren implements the sql.Expression interface.
-func (b *UnaryOperator) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (b *UnaryOperator) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(b, len(children), 1)
 	}
-	compiledFunc, err := b.compiledFunc.WithChildren(children...)
+	compiledFunc, err := b.compiledFunc.WithChildren(ctx, children...)
 	if err != nil {
 		return nil, err
 	}
@@ -95,18 +96,19 @@ func (b *UnaryOperator) WithChildren(children ...sql.Expression) (sql.Expression
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (b *UnaryOperator) WithResolvedChildren(children []any) (any, error) {
+func (b *UnaryOperator) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 1 {
 		return nil, errors.Errorf("invalid vitess child count, expected `1` but got `%d`", len(children))
 	}
+	sqlCtx := ctx.(*sql.Context)
 	child, ok := children[0].(sql.Expression)
 	if !ok {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
 	}
 	funcName := "internal_unary_operator_func_" + b.operator.String()
-	compiledFunc := framework.GetUnaryFunction(b.operator).Compile(funcName, child)
+	compiledFunc := framework.GetUnaryFunction(b.operator).Compile(sqlCtx, funcName, child)
 	if compiledFunc == nil {
-		return nil, errors.Errorf("operator does not exist: %s%s", b.operator.String(), child.Type().String())
+		return nil, errors.Errorf("operator does not exist: %s%s", b.operator.String(), child.Type(sqlCtx).String())
 	}
 	return &UnaryOperator{
 		operator:     b.operator,

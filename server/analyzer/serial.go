@@ -65,7 +65,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		isGeneratedFromSequence := false
 		if col.Generated != nil {
 			seenNextVal := false
-			transform.InspectExpr(col.Generated, func(expr sql.Expression) bool {
+			transform.InspectExpr(ctx, col.Generated, func(ctx *sql.Context, expr sql.Expression) bool {
 				switch e := expr.(type) {
 				case *framework.CompiledFunction:
 					if strings.ToLower(e.Name) == "nextval" {
@@ -102,7 +102,7 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		}
 
 		seqName := doltdb.TableName{Name: sequenceName, Schema: schemaName}.String()
-		nextVal, isDoltgresType, err := framework.GetFunction("nextval", pgexprs.NewTextLiteral(seqName))
+		nextVal, isDoltgresType, err := framework.GetFunction(ctx, "nextval", pgexprs.NewTextLiteral(seqName))
 		if err != nil {
 			return nil, transform.NewTree, err
 		}

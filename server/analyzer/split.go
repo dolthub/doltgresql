@@ -23,21 +23,21 @@ import (
 )
 
 // SplitConjunction breaks AND expressions into their left and right parts, recursively.
-func SplitConjunction(expr sql.Expression) []sql.Expression {
+func SplitConjunction(ctx *sql.Context, expr sql.Expression) []sql.Expression {
 	if expr == nil {
 		return nil
 	}
 	switch expr := expr.(type) {
 	case *expression.And:
 		return append(
-			SplitConjunction(expr.LeftChild),
-			SplitConjunction(expr.RightChild)...,
+			SplitConjunction(ctx, expr.LeftChild),
+			SplitConjunction(ctx, expr.RightChild)...,
 		)
 	case *pgexprs.GMSCast:
 		// We should check to see if we need to preserve the cast on each child individually
-		split := SplitConjunction(expr.Child())
+		split := SplitConjunction(ctx, expr.Child())
 		for i := range split {
-			if _, ok := split[i].Type().(*pgtypes.DoltgresType); !ok {
+			if _, ok := split[i].Type(ctx).(*pgtypes.DoltgresType); !ok {
 				split[i] = pgexprs.NewGMSCast(split[i])
 			}
 		}

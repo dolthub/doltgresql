@@ -153,7 +153,7 @@ func (cdl *CsvDataLoader) String() string {
 	return "CsvDataLoader"
 }
 
-func (cdl *CsvDataLoader) Schema() sql.Schema {
+func (cdl *CsvDataLoader) Schema(ctx *sql.Context) sql.Schema {
 	return cdl.sch
 }
 
@@ -161,7 +161,7 @@ func (cdl *CsvDataLoader) Children() []sql.Node {
 	return nil
 }
 
-func (cdl *CsvDataLoader) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (cdl *CsvDataLoader) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
 		return nil, sql.ErrInvalidChildrenNumber.New(cdl, len(children), 0)
 	}

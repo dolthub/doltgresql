@@ -15,6 +15,8 @@
 package node
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -114,7 +116,7 @@ func (c *AlterSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 				return nil, errors.Errorf(`table "%s" cannot be found but says it exists`, c.ownedBy.Table)
 			}
 			var tableColumn *sql.Column
-			for _, col := range table.Schema() {
+			for _, col := range table.Schema(ctx) {
 				if col.Name == c.ownedBy.Column {
 					tableColumn = col.Copy()
 					break
@@ -146,7 +148,7 @@ func (c *AlterSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *AlterSequence) Schema() sql.Schema {
+func (c *AlterSequence) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -156,12 +158,12 @@ func (c *AlterSequence) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *AlterSequence) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *AlterSequence) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *AlterSequence) WithResolvedChildren(children []any) (any, error) {
+func (c *AlterSequence) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}

@@ -84,7 +84,7 @@ func newBoolOrBuffer(exprs []sql.Expression) (sql.AggregationBuffer, error) {
 }
 
 // Dispose implements the sql.AggregationBuffer interface.
-func (a *boolAggBuffer) Dispose() {}
+func (a *boolAggBuffer) Dispose(ctx *sql.Context) {}
 
 // Eval implements the sql.AggregationBuffer interface.
 func (a *boolAggBuffer) Eval(context *sql.Context) (interface{}, error) {

@@ -87,7 +87,7 @@ var pg_get_serial_sequence_text_text = framework.Function2{
 		if table == nil {
 			return nil, errors.Errorf(`relation "%s" does not exist`, tableName)
 		}
-		tableSchema := table.Schema()
+		tableSchema := table.Schema(ctx)
 
 		// Find the column in the table's schema
 		columnIndex := tableSchema.IndexOfColName(columnName)

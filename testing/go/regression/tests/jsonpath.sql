@@ -63,12 +63,12 @@ select '$ ? (last > 0)'::jsonpath;
 select '$[last]'::jsonpath;
 select '$[$[0] ? (last > 0)]'::jsonpath;
 
-select 'null.type()'::jsonpath;
-select '1.type()'::jsonpath;
-select '(1).type()'::jsonpath;
-select '1.2.type()'::jsonpath;
-select '"aaa".type()'::jsonpath;
-select 'true.type()'::jsonpath;
+select 'null.Type(ctx)'::jsonpath;
+select '1.Type(ctx)'::jsonpath;
+select '(1).Type(ctx)'::jsonpath;
+select '1.2.Type(ctx)'::jsonpath;
+select '"aaa".Type(ctx)'::jsonpath;
+select 'true.Type(ctx)'::jsonpath;
 select '$.double().floor().ceiling().abs()'::jsonpath;
 select '$.keyvalue().key'::jsonpath;
 select '$.datetime()'::jsonpath;

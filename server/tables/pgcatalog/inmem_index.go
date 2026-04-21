@@ -177,7 +177,7 @@ func (p pgCatalogInMemIndex) IsGenerated() bool {
 }
 
 // ColumnExpressionTypes implements the interface sql.Index.
-func (p pgCatalogInMemIndex) ColumnExpressionTypes() []sql.ColumnExpressionType {
+func (p pgCatalogInMemIndex) ColumnExpressionTypes(ctx *sql.Context) []sql.ColumnExpressionType {
 	return p.columnExprs
 }
 

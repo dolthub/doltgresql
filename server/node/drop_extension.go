@@ -15,6 +15,8 @@
 package node
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -62,7 +64,7 @@ func (c *DropExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *DropExtension) Schema() sql.Schema {
+func (c *DropExtension) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -72,12 +74,12 @@ func (c *DropExtension) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *DropExtension) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *DropExtension) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *DropExtension) WithResolvedChildren(children []any) (any, error) {
+func (c *DropExtension) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}

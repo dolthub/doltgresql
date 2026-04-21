@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -75,8 +76,8 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	// also if no match is found in the list and one of the expressions in the list is NULL.
 	leftNull := left == nil
 
-	if types.NumColumns(in.Left().Type()) != types.NumColumns(in.Right().Type()) {
-		return nil, sql.ErrInvalidOperandColumns.New(types.NumColumns(in.Left().Type()), types.NumColumns(in.Right().Type()))
+	if types.NumColumns(in.Left().Type(ctx)) != types.NumColumns(in.Right().Type(ctx)) {
+		return nil, sql.ErrInvalidOperandColumns.New(types.NumColumns(in.Left().Type(ctx)), types.NumColumns(in.Right().Type(ctx)))
 	}
 
 	right := in.rightExpr
@@ -147,7 +148,7 @@ func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Ro
 }
 
 // IsNullable implements the sql.Expression interface.
-func (in *InSubquery) IsNullable() bool {
+func (in *InSubquery) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -173,12 +174,12 @@ func (in *InSubquery) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (in *InSubquery) Type() sql.Type {
+func (in *InSubquery) Type(ctx *sql.Context) sql.Type {
 	return pgtypes.Bool
 }
 
 // WithChildren implements the sql.Expression interface.
-func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (in *InSubquery) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(in, len(children), 2)
 	}
@@ -188,7 +189,7 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 	}
 	// We'll only resolve the comparison functions once we have all Doltgres types.
 	// We may see GMS types during some analyzer steps, so we should wait until those are done.
-	if leftType, ok := children[0].Type().(*pgtypes.DoltgresType); ok {
+	if leftType, ok := children[0].Type(ctx).(*pgtypes.DoltgresType); ok {
 		// Rather than finding and resolving a comparison function every time we call Eval, we resolve them once and
 		// reuse the functions. We also want to avoid re-assigning the parameters of the comparison functions since that
 		// will also cause the functions to resolve again. To do this, we store expressions within our struct that the
@@ -199,7 +200,7 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 		// (preferably once).
 
 		// We need a comparison function for each type in the query result
-		sch := sq.Query.Schema()
+		sch := sq.Query.Schema(ctx)
 		leftLiteral := expression.NewLiteral(nil, leftType)
 		rightLiterals := make([]*expression.Literal, len(sch))
 		compFuncs := make([]framework.Function, len(sch))
@@ -211,11 +212,11 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 				break
 			}
 			rightLiterals[i] = expression.NewLiteral(nil, rightType)
-			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_in_comparison", leftLiteral, rightLiterals[i])
+			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_in_comparison", leftLiteral, rightLiterals[i])
 			if compFuncs[i] == nil {
 				return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			if compFuncs[i].Type().(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
+			if compFuncs[i].Type(ctx).(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
 				// This should never happen, but this is just to be safe
 				return nil, errors.Errorf("%T: found equality comparison that does not return a bool", in)
 			}
@@ -237,7 +238,7 @@ func (in *InSubquery) WithChildren(children ...sql.Expression) (sql.Expression, 
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (in *InSubquery) WithResolvedChildren(children []any) (any, error) {
+func (in *InSubquery) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 2 {
 		return nil, errors.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
 	}
@@ -249,7 +250,7 @@ func (in *InSubquery) WithResolvedChildren(children []any) (any, error) {
 	if !ok {
 		return nil, errors.Errorf("expected vitess child to be a *plan.Subquery but has type `%T`", children[1])
 	}
-	return in.WithChildren(left, right)
+	return in.WithChildren(ctx.(*sql.Context), left, right)
 }
 
 // Left implements the expression.BinaryExpression interface.

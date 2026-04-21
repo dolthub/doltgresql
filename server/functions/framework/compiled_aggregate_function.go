@@ -42,13 +42,13 @@ var _ AggregateFunction = (*CompiledAggregateFunction)(nil)
 
 // NewCompiledAggregateFunction returns a newly compiled function.
 // TODO: newBuffer probably needs to be parameterized in the overloads
-func NewCompiledAggregateFunction(name string, args []sql.Expression, functions *Overloads, newBuffer NewBufferFn) *CompiledAggregateFunction {
-	return newCompiledAggregateFunctionInternal(name, args, functions, functions.overloadsForParams(len(args)), newBuffer)
+func NewCompiledAggregateFunction(ctx *sql.Context, name string, args []sql.Expression, functions *Overloads, newBuffer NewBufferFn) *CompiledAggregateFunction {
+	return newCompiledAggregateFunctionInternal(ctx, name, args, functions, functions.overloadsForParams(len(args)), newBuffer)
 }
 
 // newCompiledAggregateFunctionInternal is called internally, which skips steps that may have already been processed.
-func newCompiledAggregateFunctionInternal(name string, args []sql.Expression, overloads *Overloads, fnOverloads []Overload, newBuffer NewBufferFn) *CompiledAggregateFunction {
-	cf := newCompiledFunctionInternal(name, args, overloads, fnOverloads, false, nil)
+func newCompiledAggregateFunctionInternal(ctx *sql.Context, name string, args []sql.Expression, overloads *Overloads, fnOverloads []Overload, newBuffer NewBufferFn) *CompiledAggregateFunction {
+	cf := newCompiledFunctionInternal(ctx, name, args, overloads, fnOverloads, false, nil)
 	c := &CompiledAggregateFunction{
 		CompiledFunction: cf,
 		newBuffer:        newBuffer,
@@ -63,13 +63,13 @@ func (c *CompiledAggregateFunction) Eval(ctx *sql.Context, row sql.Row) (interfa
 }
 
 // WithChildren implements the interface sql.Expression.
-func (c *CompiledAggregateFunction) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (c *CompiledAggregateFunction) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != len(c.Arguments) {
 		return nil, sql.ErrInvalidChildrenNumber.New(len(children), len(c.Arguments))
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	return newCompiledAggregateFunctionInternal(c.Name, children, c.overloads, c.fnOverloads, c.newBuffer), nil
+	return newCompiledAggregateFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.newBuffer), nil
 }
 
 // SetStatementRunner implements the interface analyzer.Interpreter.
@@ -82,7 +82,7 @@ func (c *CompiledAggregateFunction) SetStatementRunner(ctx *sql.Context, runner 
 // specificFuncImpl implements the interface sql.Expression.
 func (*CompiledAggregateFunction) specificFuncImpl() {}
 
-func (c *CompiledAggregateFunction) DebugString() string {
+func (c *CompiledAggregateFunction) DebugString(ctx *sql.Context) string {
 	sb := strings.Builder{}
 	sb.WriteString("CompiledAggregateFunction:")
 	sb.WriteString(c.Name + "(")
@@ -94,14 +94,14 @@ func (c *CompiledAggregateFunction) DebugString() string {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(sql.DebugString(param))
+		sb.WriteString(sql.DebugString(ctx, param))
 	}
 	sb.WriteString(")")
 	return sb.String()
 }
 
 // NewBuffer implements the interface sql.Aggregation.
-func (c *CompiledAggregateFunction) NewBuffer() (sql.AggregationBuffer, error) {
+func (c *CompiledAggregateFunction) NewBuffer(ctx *sql.Context) (sql.AggregationBuffer, error) {
 	return c.newBuffer(c.Arguments)
 }
 
@@ -118,12 +118,12 @@ func (c *CompiledAggregateFunction) WithId(id sql.ColumnId) sql.IdExpression {
 }
 
 // NewWindowFunction implements the interface sql.WindowAdaptableExpression.
-func (c *CompiledAggregateFunction) NewWindowFunction() (sql.WindowFunction, error) {
+func (c *CompiledAggregateFunction) NewWindowFunction(ctx *sql.Context) (sql.WindowFunction, error) {
 	panic("windows are not implemented yet")
 }
 
 // WithWindow implements the interface sql.WindowAdaptableExpression.
-func (c *CompiledAggregateFunction) WithWindow(window *sql.WindowDefinition) sql.WindowAdaptableExpression {
+func (c *CompiledAggregateFunction) WithWindow(ctx *sql.Context, window *sql.WindowDefinition) sql.WindowAdaptableExpression {
 	panic("windows are not implemented yet")
 }
 

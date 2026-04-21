@@ -15,6 +15,8 @@
 package expression
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -44,8 +46,8 @@ func (a ArrayFlatten) String() string {
 }
 
 // Type implements sql.Expression.
-func (a ArrayFlatten) Type() sql.Type {
-	sqType := a.Subquery.Type()
+func (a ArrayFlatten) Type(ctx *sql.Context) sql.Type {
+	sqType := a.Subquery.Type(ctx)
 	dt, ok := sqType.(*types.DoltgresType)
 	if !ok {
 		// If we don't have a doltgres type, we'll error out at execution time. A special case is the tuple type,
@@ -59,7 +61,7 @@ func (a ArrayFlatten) Type() sql.Type {
 }
 
 // IsNullable implements sql.Expression.
-func (a ArrayFlatten) IsNullable() bool {
+func (a ArrayFlatten) IsNullable(ctx *sql.Context) bool {
 	return false
 }
 
@@ -70,7 +72,7 @@ func (a ArrayFlatten) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		return nil, errors.Errorf("expected subquery, got %T", a.Subquery)
 	}
 
-	sqType := subquery.Type()
+	sqType := subquery.Type(ctx)
 	_, ok = sqType.(*types.DoltgresType)
 	if !ok {
 		if tt, ok := sqType.(gmstypes.TupleType); ok {
@@ -88,7 +90,7 @@ func (a ArrayFlatten) Children() []sql.Expression {
 }
 
 // WithChildren implements sql.Expression.
-func (a ArrayFlatten) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (a ArrayFlatten) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(a, len(children), 1)
 	}
@@ -97,7 +99,7 @@ func (a ArrayFlatten) WithChildren(children ...sql.Expression) (sql.Expression, 
 }
 
 // WithResolvedChildren implements vitess.Injectable.
-func (a ArrayFlatten) WithResolvedChildren(children []any) (any, error) {
+func (a ArrayFlatten) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(a, len(children), 1)
 	}
