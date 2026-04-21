@@ -1098,41 +1098,41 @@ func TestAlterTable(t *testing.T) {
 			Name: "foreign key names can be the same but should be on different tables",
 			SetUpScript: []string{
 				` CREATE TABLE public.boards (
-		   id uuid DEFAULT gen_random_uuid() NOT NULL,
-		   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-		   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-		   title character varying(255),
-		   project_id uuid
-		);`,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    title character varying(255),
+    project_id uuid
+);`,
 				`CREATE TABLE public.project_assignments (
-		   id uuid DEFAULT gen_random_uuid() NOT NULL,
-		   role character varying(20) DEFAULT 'viewer'::character varying,
-		   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-		   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-		   user_id uuid NOT NULL,
-		   project_id uuid NOT NULL
-		);`,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    role character varying(20) DEFAULT 'viewer'::character varying,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    user_id uuid NOT NULL,
+    project_id uuid NOT NULL
+);`,
 				`CREATE TABLE public.projects (
-		   id uuid DEFAULT gen_random_uuid() NOT NULL,
-		   title character varying(100) NOT NULL,
-		   description text,
-		   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-		   updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-		   owner_id uuid
-		);`,
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    title character varying(100) NOT NULL,
+    description text,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    owner_id uuid
+);`,
 				`ALTER TABLE ONLY public.boards
-		   ADD CONSTRAINT boards_pkey PRIMARY KEY (id);`,
+    ADD CONSTRAINT boards_pkey PRIMARY KEY (id);`,
 				`ALTER TABLE ONLY public.project_assignments
-		   ADD CONSTRAINT project_assignments_pkey PRIMARY KEY (id);`,
+    ADD CONSTRAINT project_assignments_pkey PRIMARY KEY (id);`,
 				`ALTER TABLE ONLY public.projects
-		   ADD CONSTRAINT projects_pkey PRIMARY KEY (id);`,
+    ADD CONSTRAINT projects_pkey PRIMARY KEY (id);`,
 				`ALTER TABLE ONLY public.project_assignments
-		   ADD CONSTRAINT fk_project_id FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;`,
+    ADD CONSTRAINT fk_project_id FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
 					Query: `ALTER TABLE ONLY public.boards
-		   ADD CONSTRAINT fk_project_id FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;`,
+    ADD CONSTRAINT fk_project_id FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;`,
 					Expected: []sql.Row{},
 				},
 			},
