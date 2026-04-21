@@ -64,6 +64,14 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{"+00:00"}},
 			},
 			{
+				Query:    "SET TIME ZONE '00:00:00';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW timezone",
+				Expected: []sql.Row{{"+00:00:00"}},
+			},
+			{
 				Query:    "SET TIME ZONE DEFAULT;",
 				Expected: []sql.Row{},
 			},

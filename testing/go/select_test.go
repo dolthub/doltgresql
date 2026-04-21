@@ -24,6 +24,15 @@ import (
 func TestSelect(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "SELECT empty",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT;",
+					Expected: []sql.Row{nil},
+				},
+			},
+		},
+		{
 			Name: "SELECT DISTINCT ON",
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 INT4, v2 INT4);",

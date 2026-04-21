@@ -3583,6 +3583,23 @@ func TestOperators(t *testing.T) {
 			},
 		},
 		{
+			Name: "ARRAY",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT ARRAY[4] || 20;",
+					Expected: []sql.Row{{"{4,20}"}},
+				},
+				{
+					Query:    "SELECT 20 || ARRAY[4];",
+					Expected: []sql.Row{{"{20,4}"}},
+				},
+				{
+					Query:    "SELECT ARRAY[4] || ARRAY[5,6];",
+					Expected: []sql.Row{{"{4,5,6}"}},
+				},
+			},
+		},
+		{
 			Name: "json extract text operator used in generated column default",
 			SetUpScript: []string{
 				`CREATE TABLE users_sync (
