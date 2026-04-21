@@ -15,13 +15,13 @@
 package functions
 
 import (
+	"encoding/binary"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgtype"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -47,12 +47,12 @@ var numeric_in = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
-		val, err := decimal.NewFromString(strings.TrimSpace(input))
+		typmod := val3.(int32)
+		val, err := pgtypes.GetNumericFromString(input, typmod)
 		if err != nil {
 			return nil, pgtypes.ErrInvalidSyntaxForType.New("numeric", input)
 		}
-		typmod := val3.(int32)
-		return pgtypes.GetNumericValueWithTypmod(val, typmod)
+		return val, nil
 	},
 }
 
@@ -63,15 +63,9 @@ var numeric_out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		typ := t[0]
-		dec := val.(decimal.Decimal)
-		tm := typ.GetAttTypMod()
-		if tm == -1 {
-			return dec.StringFixed(dec.Exponent() * -1), nil
-		} else {
-			_, s := pgtypes.GetPrecisionAndScaleFromTypmod(tm)
-			return dec.StringFixed(s), nil
-		}
+		num := val.(pgtype.Numeric)
+		str := pgtypes.NumericToStringRepresentation(num, -1)
+		return str, nil
 	},
 }
 
@@ -92,7 +86,11 @@ var numeric_recv = framework.Function3{
 		if err != nil {
 			return nil, err
 		}
-		return pgtypes.GetNumericValueWithTypmod(decimal.NewFromBigInt(out.Int, out.Exp), typmod)
+		val, err := pgtypes.GetNumericFromString(pgtypes.NumericToStringRepresentation(out, -1), typmod)
+		if err != nil {
+			return nil, pgtypes.ErrInvalidSyntaxForType.New("numeric", val)
+		}
+		return val, nil
 	},
 }
 
@@ -103,16 +101,31 @@ var numeric_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(decimal.Decimal)
+		num := val.(pgtype.Numeric)
+		typmod := t[0].GetAttTypMod()
 		writer := utils.NewWireWriter()
+		if num.NaN || num.InfinityModifier == pgtype.Infinity || num.InfinityModifier == pgtype.NegativeInfinity {
+			var buf []byte
+			buf, err := num.EncodeBinary(nil, buf)
+			if err != nil {
+				return nil, err
+			}
+			if typmod == -1 {
+				binary.BigEndian.PutUint16(buf[6:], uint16(32))
+			}
+			writer.WriteBytes(buf)
+			return writer.BufferData(), nil
+		}
+
 		// Short-circuit if this is the zero value
-		if dec.IsZero() {
+		if num.Int != nil && num.Int.Sign() == 0 {
 			writer.WriteBytes([]byte{0, 0, 0, 0, 0, 0, 0, 0})
 			return writer.BufferData(), nil
 		}
+
 		// There's a way to do this more efficiently, but we can do that work once this becomes a performance issue.
 		// This is based on the terminology used in Postgres' `numeric.c` file
-		decStr := dec.String()
+		decStr := pgtypes.NumericToStringRepresentation(num, -1)
 		isNegative := false
 		if strings.HasPrefix(decStr, "-") {
 			isNegative = true
@@ -128,7 +141,6 @@ var numeric_send = framework.Function1{
 			intPart = decStr
 		}
 		// Find the "dscale", which is the number of digits in the fractional part
-		typmod := t[0].GetAttTypMod()
 		var dscale int16
 		if typmod != -1 {
 			_, dscale32 := pgtypes.GetPrecisionAndScaleFromTypmod(typmod)
@@ -142,19 +154,28 @@ var numeric_send = framework.Function1{
 		} else if len(intPart)%4 != 0 {
 			intPart = strings.Repeat("0", 4-(len(intPart)%4)) + intPart
 		}
+
 		if len(fractPart)%4 != 0 {
+			// remove trailing zeroes on right side before filling it.
+			fractPart = strings.TrimRightFunc(fractPart, func(r rune) bool {
+				return r == '0'
+			})
 			fractPart = fractPart + strings.Repeat("0", 4-(len(fractPart)%4))
 		}
+
 		// Write the "ndigits" first, or the number of base-10000 digits
 		writer.WriteInt16(int16((len(intPart) / 4) + (len(fractPart) / 4)))
+
 		// Write the "weight", which is the number of base-10000 digits in the integer part subtracted by 1
 		writer.WriteInt16(int16((len(intPart) / 4) - 1))
+
 		// Write the "sign"
 		if isNegative {
 			writer.WriteInt16(16384)
 		} else {
 			writer.WriteInt16(0)
 		}
+
 		// Write the "dscale"
 		writer.WriteInt16(dscale)
 		// Write all of the digits
@@ -221,8 +242,6 @@ var numeric_cmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(decimal.Decimal)
-		bb := val2.(decimal.Decimal)
-		return int32(ab.Cmp(bb)), nil
+		return pgtypes.NumericCompare(val1.(pgtype.Numeric), val2.(pgtype.Numeric)), nil
 	},
 }

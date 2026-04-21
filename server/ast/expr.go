@@ -20,10 +20,11 @@ import (
 	"go/constant"
 	"strings"
 
+	"github.com/cockroachdb/apd/v2"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -520,12 +521,25 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.DDecimal:
 		// TODO: should we use apd.Decimal for Numeric type values?
 		// |Coeff| is always positive, so need to |Negative| to negate the big.Int
-		bigInt := &node.Coeff
-		if node.Negative {
-			bigInt = bigInt.Neg(bigInt)
+		var num pgtype.Numeric
+		switch node.Form {
+		case apd.Infinite:
+			if node.Negative {
+				num = pgtypes.NumericNegativeInfinite
+			} else {
+				num = pgtypes.NumericInfinite
+			}
+		case apd.NaN:
+			num = pgtypes.NumericNaN
+		default:
+			bigInt := &node.Coeff
+			if node.Negative {
+				bigInt = bigInt.Neg(bigInt)
+			}
+			num = pgtype.Numeric{Int: bigInt, Exp: node.Exponent, Status: pgtype.Present}
 		}
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralNumeric(decimal.NewFromBigInt(bigInt, node.Exponent)),
+			Expression: pgexprs.NewRawLiteralNumeric(num),
 		}, nil
 	case *tree.DEnum:
 		return nil, errors.Errorf("the statement is not yet supported")

@@ -16,7 +16,7 @@ package functions
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 
@@ -52,7 +52,15 @@ var sign_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return decimal.NewFromInt(int64(val1.(decimal.Decimal).Cmp(decimal.Zero))), nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		num := val.(pgtype.Numeric)
+		if num.NaN {
+			return num, nil
+		} else if num.InfinityModifier == pgtype.Infinity {
+			return pgtypes.AnyToNumeric(1)
+		} else if num.InfinityModifier == pgtype.NegativeInfinity {
+			return pgtypes.AnyToNumeric(-1)
+		}
+		return pgtypes.AnyToNumeric(num.Int.Sign())
 	},
 }

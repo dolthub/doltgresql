@@ -28,7 +28,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/shopspring/decimal"
 
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -174,11 +173,11 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 		}
 		return pgexprs.NewRawLiteralFloat64(newVal.(float64)), transform.NewTree, nil
 	case query.Type_DECIMAL:
-		dec, ok := gmsLiteral.Value().(decimal.Decimal)
-		if !ok {
-			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected decimal type: %T", gmsLiteral.Value())
+		num, err := pgtypes.AnyToNumeric(gmsLiteral.Value())
+		if err != nil {
+			return nil, transform.NewTree, err
 		}
-		return pgexprs.NewRawLiteralNumeric(dec), transform.NewTree, nil
+		return pgexprs.NewRawLiteralNumeric(num), transform.NewTree, nil
 	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 		newVal, _, err := types.Datetime.Convert(ctx, gmsLiteral.Value())
 		if err != nil {

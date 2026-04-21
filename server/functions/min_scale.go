@@ -18,7 +18,7 @@ import (
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -35,8 +35,16 @@ var min_scale_numeric = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		str := val1.(decimal.Decimal).String()
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		num := val.(pgtype.Numeric)
+		if num.NaN || num.InfinityModifier == pgtype.Infinity || num.InfinityModifier == pgtype.NegativeInfinity {
+			return nil, nil
+		}
+		var str string
+		err := num.AssignTo(&str)
+		if err != nil {
+			return nil, err
+		}
 		if idx := strings.Index(str, "."); idx != -1 {
 			str = str[idx+1:]
 			i := len(str) - 1

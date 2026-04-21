@@ -15,10 +15,12 @@
 package types
 
 import (
+	"math/big"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -30,13 +32,9 @@ const (
 )
 
 var (
-	NumericValueMaxInt16  = decimal.NewFromInt(32767)                // NumericValueMaxInt16 is the max Int16 value for NUMERIC types
-	NumericValueMaxInt32  = decimal.NewFromInt(2147483647)           // NumericValueMaxInt32 is the max Int32 value for NUMERIC types
-	NumericValueMaxInt64  = decimal.NewFromInt(9223372036854775807)  // NumericValueMaxInt64 is the max Int64 value for NUMERIC types
-	NumericValueMinInt16  = decimal.NewFromInt(-32768)               // NumericValueMinInt16 is the min Int16 value for NUMERIC types
-	NumericValueMinInt32  = decimal.NewFromInt(MinInt32)             // NumericValueMinInt32 is the min Int32 value for NUMERIC types
-	NumericValueMinInt64  = decimal.NewFromInt(-9223372036854775808) // NumericValueMinInt64 is the min Int64 value for NUMERIC types
-	NumericValueMaxUint32 = decimal.NewFromInt(MaxUint32)            // NumericValueMaxUint32 is the max Uint32 value for NUMERIC types
+	NumericNaN              = pgtype.Numeric{Status: pgtype.Present, NaN: true}
+	NumericInfinite         = pgtype.Numeric{Status: pgtype.Present, InfinityModifier: pgtype.Infinity}
+	NumericNegativeInfinite = pgtype.Numeric{Status: pgtype.Present, InfinityModifier: pgtype.NegativeInfinity}
 )
 
 // Numeric is a precise and unbounded decimal value.
@@ -106,26 +104,187 @@ func GetPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
 	return precision, scale
 }
 
-// GetNumericValueWithTypmod returns either given numeric value or truncated or error
-// depending on the precision and scale decoded from given type modifier value.
-func GetNumericValueWithTypmod(val decimal.Decimal, typmod int32) (decimal.Decimal, error) {
-	if typmod == -1 {
-		return val, nil
+func SetTypmod(str string, typmod int32) (string, error) {
+	dec, err := decimal.NewFromString(str)
+	if err != nil {
+		return "", err
 	}
 	precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
-	str := val.StringFixed(scale)
+	str = dec.StringFixed(scale)
 	parts := strings.Split(str, ".")
-	if int32(len(parts[0])) > precision-scale && val.IntPart() != 0 {
+	if int32(len(parts[0])) > precision-scale && dec.IntPart() != 0 {
 		// TODO: split error message to ERROR and DETAIL
-		return decimal.Decimal{}, errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
+		return "", errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
 	}
-	return decimal.NewFromString(str)
+	return str, nil
+}
+
+// GetNumericValueWithTypmod returns either given value converted into pgtype.Numeric
+// with updated type modifier value if applicable(typmod == -1).
+func GetNumericValueWithTypmod(val any, typmod int32) (pgtype.Numeric, error) {
+	if val == nil {
+		// TODO: should I return nil?
+		val = nil
+	}
+	num, ok := val.(pgtype.Numeric)
+	if !ok {
+		err := num.Set(val)
+		if err != nil {
+			return pgtype.Numeric{}, err
+		}
+	}
+	if num.NaN {
+		return num, nil
+	}
+	if num.InfinityModifier == pgtype.Infinity || num.InfinityModifier == pgtype.NegativeInfinity {
+		if typmod != -1 {
+			return pgtype.Numeric{}, errors.Errorf(`numeric field overflow`)
+		}
+	}
+	if typmod != -1 {
+		dec := decimal.NewFromBigInt(num.Int, num.Exp)
+		str, err := SetTypmod(dec.String(), typmod)
+		if err != nil {
+			return pgtype.Numeric{}, err
+		}
+		// TODO : or decode text???
+		err = num.Set(str)
+		if err != nil {
+			return pgtype.Numeric{}, err
+		}
+	}
+	return num, nil
+}
+
+// GetNumeric returns either given value converted into pgtype.Numeric.
+func GetNumeric(val any) (pgtype.Numeric, error) {
+	return GetNumericValueWithTypmod(val, -1)
+}
+
+// GetNumericFromString returns given string converted to pgtype.Numeric value.
+// It handles the special values of numeric types including NaN, Infinity, -Infinity, case-insensitive.
+func GetNumericFromString(val string, typmod int32) (pgtype.Numeric, error) {
+	input := strings.TrimSpace(val)
+	switch strings.ToLower(input) {
+	case "nan":
+		return NumericNaN, nil
+	case "inf", "infinity":
+		return NumericInfinite, nil
+	case "-inf", "-infinity":
+		return NumericNegativeInfinite, nil
+	}
+
+	if typmod != -1 {
+		dec, err := decimal.NewFromString(val)
+		if err != nil {
+			return pgtype.Numeric{}, err
+		}
+		precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
+		input = dec.StringFixed(scale)
+		parts := strings.Split(input, ".")
+		if int32(len(parts[0])) > precision-scale && dec.IntPart() != 0 {
+			// TODO: split error message to ERROR and DETAIL
+			return pgtype.Numeric{}, errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
+		}
+	}
+
+	var out pgtype.Numeric
+	err := out.DecodeText(nil, []byte(input))
+	if err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// NumericCompare compares two pgtype.Numeric values handling NaN, Infinity and -Infinity.
+// It uses shopspring/decimal Cmp function logic for all other values.
+func NumericCompare(num1 pgtype.Numeric, num2 pgtype.Numeric) int {
+	if (num1.NaN && num2.NaN) ||
+		(num1.InfinityModifier == pgtype.Infinity && num2.InfinityModifier == pgtype.Infinity) ||
+		(num1.InfinityModifier == pgtype.NegativeInfinity && num2.InfinityModifier == pgtype.NegativeInfinity) {
+		return 0
+	}
+	if num1.NaN {
+		return 1
+	}
+	if num2.NaN {
+		return -1
+	}
+	if num1.InfinityModifier == pgtype.Infinity || num2.InfinityModifier == pgtype.NegativeInfinity {
+		return 1
+	}
+	if num1.InfinityModifier == pgtype.NegativeInfinity || num2.InfinityModifier == pgtype.Infinity {
+		return -1
+	}
+
+	return NumericToDecimal(num1).Cmp(NumericToDecimal(num2))
+}
+
+// NumericZeroo converts a pgtype.Numeric to a shopspring decimal.Decimal.
+// NOTE: NaN, Infinity, -Infinity values needs to be handled before using this function.
+func NumericZeroo() pgtype.Numeric {
+	// TODO:
+	var num pgtype.Numeric
+	_ = num.Set(0)
+	return num
+}
+
+// NumericToDecimal converts a pgtype.Numeric to a shopspring decimal.Decimal.
+// NOTE: NaN, Infinity, -Infinity values needs to be handled before using this function.
+func NumericToDecimal(num pgtype.Numeric) decimal.Decimal {
+	return decimal.NewFromBigInt(num.Int, num.Exp)
+}
+
+func NumericToStringRepresentation(num pgtype.Numeric, typmod int32) string {
+	if num.NaN {
+		return "NaN"
+	}
+	if num.InfinityModifier == pgtype.Infinity {
+		return "Infinity"
+	}
+	if num.InfinityModifier == pgtype.NegativeInfinity {
+		return "-Infinity"
+	}
+
+	dec := decimal.NewFromBigInt(num.Int, num.Exp)
+	if typmod == -1 {
+		return dec.StringFixed(dec.Exponent() * -1)
+	} else {
+		_, s := GetPrecisionAndScaleFromTypmod(typmod)
+		return dec.StringFixed(s)
+	}
+}
+
+// DecimalToNumeric converts a shopspring decimal.Decimal to a pgtype.Numeric.
+func DecimalToNumeric(d decimal.Decimal) pgtype.Numeric {
+	// TODO: check this
+	coeff := new(big.Int).Set(d.Coefficient())
+	return pgtype.Numeric{Int: coeff, Exp: d.Exponent(), Status: pgtype.Present}
+}
+
+// AnyToNumeric attempts to convert an any value to pgtype.Numeric
+// including shopspring/decimal.Decimal.
+func AnyToNumeric(v any) (pgtype.Numeric, error) {
+	var num pgtype.Numeric
+	d, ok := v.(decimal.Decimal)
+	if !ok {
+		err := num.Set(v)
+		if err != nil {
+			return pgtype.Numeric{}, err
+		}
+	} else {
+		coeff := new(big.Int).Set(d.Coefficient())
+		num = pgtype.Numeric{Int: coeff, Exp: d.Exponent(), Status: pgtype.Present}
+	}
+	return num, nil
 }
 
 // serializeTypeNumeric handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeNumeric(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	return val.(decimal.Decimal).MarshalBinary()
+	v := val.(pgtype.Numeric)
+	var buf []byte
+	return v.EncodeBinary(nil, buf)
 }
 
 // deserializeTypeNumeric handles deserialization from the Dolt serialized format to our standard representation used by
@@ -134,7 +293,10 @@ func deserializeTypeNumeric(ctx *sql.Context, t *DoltgresType, data []byte) (any
 	if len(data) == 0 {
 		return nil, nil
 	}
-	retVal := decimal.NewFromInt(0)
-	err := retVal.UnmarshalBinary(data)
-	return retVal, err
+	var out pgtype.Numeric
+	err := out.DecodeBinary(nil, data)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }

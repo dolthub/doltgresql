@@ -16,7 +16,7 @@ package functions
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -82,7 +82,14 @@ var abs_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return val1.(decimal.Decimal).Abs(), nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		num := val.(pgtype.Numeric)
+		if num.NaN {
+			return num, nil
+		} else if num.InfinityModifier == pgtype.Infinity || num.InfinityModifier == pgtype.NegativeInfinity {
+			return pgtypes.NumericInfinite, nil
+		}
+		num.Int.Abs(num.Int)
+		return num, nil
 	},
 }

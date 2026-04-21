@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -34,8 +35,6 @@ func initPower() {
 var (
 	// errPowerZeroToNegative is an error for raising zero to a negative power in the "power" functions.
 	errPowerZeroToNegative = errors.New("zero raised to a negative power is undefined")
-	// numericOne is equivalent to decimal.NewFromInt(1), but represented as a value for the sake of efficiency.
-	numericOne = decimal.NewFromInt(1)
 )
 
 // power_float64_float64 represents the PostgreSQL function of the same name, taking the same parameters.
@@ -61,22 +60,67 @@ var power_numeric_numeric = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
+		num1 := val1.(pgtype.Numeric)
+		num2 := val2.(pgtype.Numeric)
+		if num1.NaN || num2.NaN {
+			return pgtypes.NumericNaN, nil
 		}
-		d1 := val1.(decimal.Decimal)
-		d2 := val2.(decimal.Decimal)
-		if d1.Equal(numericOne) {
-			return numericOne, nil
-		}
-		if d1.Equal(decimal.Zero) && d2.Cmp(decimal.Zero) == -1 {
-			return nil, errPowerZeroToNegative
+		var res pgtype.Numeric
+		if num1.InfinityModifier == pgtype.Infinity {
+			if num2.InfinityModifier == pgtype.Infinity || (num2.Int != nil && num2.Int.Sign() > 0) {
+				return pgtypes.NumericInfinite, nil
+			}
+			if num2.InfinityModifier == pgtype.NegativeInfinity || (num2.Int != nil && num2.Int.Sign() < 0) {
+				err := res.Set(0)
+				return res, err
+			}
+			err := res.Set(1)
+			return res, err
+		} else if num1.InfinityModifier == pgtype.NegativeInfinity {
+			even := false
+			if num2.Int != nil {
+				var i int64
+				err := num2.AssignTo(&i)
+				if err != nil {
+					return nil, errors.Errorf(`a negative number raised to a non-integer power yields a complex result`)
+				}
+				even = i%2 == 0
+			}
+			if num2.InfinityModifier == pgtype.Infinity || (num2.Int != nil && num2.Int.Sign() > 0) {
+				if even {
+					return pgtypes.NumericInfinite, nil
+				}
+				return pgtypes.NumericNegativeInfinite, nil
+			}
+			if num2.InfinityModifier == pgtype.NegativeInfinity || (num2.Int != nil && num2.Int.Sign() < 0) {
+				err := res.Set(0)
+				return res, err
+			}
+			err := res.Set(1)
+			return res, err
+		} else if num1.Int != nil && num1.Int.Sign() == 0 {
+			if num2.InfinityModifier == pgtype.Infinity {
+				err := res.Set(0)
+				return res, err
+			}
+			if num2.InfinityModifier == pgtype.NegativeInfinity || num2.Int != nil && num2.Int.Sign() < 0 {
+				return nil, errPowerZeroToNegative
+			}
+			if num2.Int != nil && num2.Int.Sign() > 0 {
+				err := res.Set("0.0000000000000000")
+				return res, err
+			}
 		}
 		// decimal.Pow() does not handle the zero exponent properly, so we special case it
-		if d2.Equal(decimal.Zero) {
-			return numericOne, nil
+		if num2.Int != nil && num2.Int.Sign() == 0 {
+			err := res.Set("1.0000000000000000")
+			return res, err
 		}
-		// TODO: this doesn't handle non-integer exponents
-		return d1.Pow(d2), nil
+		dec1 := pgtypes.NumericToDecimal(num1)
+		if dec1.Equal(decimal.NewFromInt(1)) {
+			err := res.Set("1.0000000000000000")
+			return res, err
+		}
+		return pgtypes.AnyToNumeric(pgtypes.NumericToDecimal(num1).Pow(pgtypes.NumericToDecimal(num2)))
 	},
 }

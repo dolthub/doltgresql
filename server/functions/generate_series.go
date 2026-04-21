@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
@@ -143,10 +144,20 @@ var generate_series_numeric_numeric = framework.Function2{
 	Strict:     true,
 	SRF:        true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		start := val1.(decimal.Decimal)
-		finish := val2.(decimal.Decimal)
-		step := numericOne // by default
-		return numericGenerateSeries(start, finish, step)
+		start := val1.(pgtype.Numeric)
+		if start.NaN {
+			return nil, errors.Errorf(`start value cannot be NaN`)
+		} else if start.InfinityModifier == pgtype.Infinity || start.InfinityModifier == pgtype.NegativeInfinity {
+			return nil, errors.Errorf(`start value cannot be infinity`)
+		}
+		stop := val2.(pgtype.Numeric)
+		if stop.NaN {
+			return nil, errors.Errorf(`stop value cannot be NaN`)
+		} else if stop.InfinityModifier == pgtype.Infinity || stop.InfinityModifier == pgtype.NegativeInfinity {
+			return nil, errors.Errorf(`stop value cannot be infinity`)
+		}
+		step := decimal.NewFromInt(1) // by default
+		return numericGenerateSeries(pgtypes.NumericToDecimal(start), pgtypes.NumericToDecimal(stop), step)
 	},
 }
 
@@ -158,15 +169,30 @@ var generate_series_numeric_numeric_numeric = framework.Function3{
 	Strict:     true,
 	SRF:        true,
 	Callable: func(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		start := val1.(decimal.Decimal)
-		finish := val2.(decimal.Decimal)
-		step := val3.(decimal.Decimal)
-		return numericGenerateSeries(start, finish, step)
+		start := val1.(pgtype.Numeric)
+		if start.NaN {
+			return nil, errors.Errorf(`start value cannot be NaN`)
+		} else if start.InfinityModifier == pgtype.Infinity || start.InfinityModifier == pgtype.NegativeInfinity {
+			return nil, errors.Errorf(`start value cannot be infinity`)
+		}
+		stop := val2.(pgtype.Numeric)
+		if stop.NaN {
+			return nil, errors.Errorf(`stop value cannot be NaN`)
+		} else if stop.InfinityModifier == pgtype.Infinity || stop.InfinityModifier == pgtype.NegativeInfinity {
+			return nil, errors.Errorf(`stop value cannot be infinity`)
+		}
+		step := val3.(pgtype.Numeric)
+		if step.NaN {
+			return nil, errors.Errorf(`step value cannot be NaN`)
+		} else if step.InfinityModifier == pgtype.Infinity || step.InfinityModifier == pgtype.NegativeInfinity {
+			return nil, errors.Errorf(`step value cannot be infinity`)
+		}
+		return numericGenerateSeries(pgtypes.NumericToDecimal(start), pgtypes.NumericToDecimal(stop), pgtypes.NumericToDecimal(step))
 	},
 }
 
 // numericGenerateSeries returns RowIter for generate_series function results for given numeric values.
-// This function checks for error of step being zero.
+// This function checks for error of step being zero. It takes decimal.Decimal and returns pgtype.Numeric.
 func numericGenerateSeries(start, finish, step decimal.Decimal) (*pgtypes.SetReturningFunctionRowIter, error) {
 	if step.Equal(decimal.Zero) {
 		return nil, errStepSizeZero
@@ -179,7 +205,11 @@ func numericGenerateSeries(start, finish, step decimal.Decimal) (*pgtypes.SetRet
 			(step.LessThan(decimal.Zero) && start.LessThan(finish)) {
 			return nil, io.EOF
 		}
-		return sql.Row{start}, nil
+		cur, err := pgtypes.AnyToNumeric(start)
+		if err != nil {
+			return nil, err
+		}
+		return sql.Row{cur}, nil
 	}), nil
 }
 

@@ -20,7 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
@@ -240,7 +240,19 @@ var numeric_sub = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return val1.(decimal.Decimal).Sub(val2.(decimal.Decimal)), nil
+		n1, n2 := val1.(pgtype.Numeric), val2.(pgtype.Numeric)
+		if n1.NaN || n2.NaN ||
+			(n1.InfinityModifier == pgtype.Infinity && n2.InfinityModifier == pgtype.Infinity) ||
+			(n1.InfinityModifier == pgtype.NegativeInfinity && n2.InfinityModifier == pgtype.NegativeInfinity) {
+			return pgtypes.NumericNaN, nil
+		}
+		if n1.InfinityModifier == pgtype.Infinity || n2.InfinityModifier == pgtype.NegativeInfinity {
+			return pgtypes.NumericInfinite, nil
+		}
+		if n1.InfinityModifier == pgtype.NegativeInfinity || n2.InfinityModifier == pgtype.Infinity {
+			return pgtypes.NumericNegativeInfinite, nil
+		}
+		return pgtypes.AnyToNumeric(pgtypes.NumericToDecimal(n1).Sub(pgtypes.NumericToDecimal(n2)))
 	},
 }
 

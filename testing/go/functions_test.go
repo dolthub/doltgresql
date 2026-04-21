@@ -385,6 +385,11 @@ func TestFunctionsMath(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Query:            `SELECT 0::numeric::float8;`,
+					ExpectedColNames: []string{"float8"},
+					Expected:         []sql.Row{{0.0}},
+				},
+				{
 					Query: `SELECT cbrt(v1), cbrt(v2), cbrt(v3) FROM test ORDER BY pk;`,
 					Skip:  true, // Our values are slightly different
 					Expected: []sql.Row{
@@ -419,6 +424,11 @@ func TestFunctionsMath(t *testing.T) {
 					Expected: []sql.Row{
 						{4.0},
 					},
+				},
+				{
+					Query:            `SELECT round('NaN'::numeric);`,
+					ExpectedColNames: []string{"round"},
+					Expected:         []sql.Row{{Numeric("NaN")}},
 				},
 			},
 		},
@@ -584,6 +594,55 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:       `SELECT power(0::numeric, -1::numeric);`,
 					ExpectedErr: `zero raised to a negative power is undefined`,
+				},
+				{
+					Query: `select power('3'::numeric, '-1'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0.3333333333333333")},
+					},
+				},
+				{
+					Query: `select power('3'::numeric, '-3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0.0370370370370370")},
+					},
+				},
+				{
+					Query: `select power('Nan'::numeric, '-3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("NaN")},
+					},
+				},
+				{
+					Query: `select power('inf'::numeric, '-3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0")},
+					},
+				},
+				{
+					Query: `select power('-inf'::numeric, '-3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0")},
+					},
+				},
+				{
+					Query: `select power('-inf'::numeric, '3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("-Infinity")},
+					},
+				},
+				{
+					Query: `select power('-inf'::numeric, '4'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("Infinity")},
+					},
+				},
+				{
+					Skip:  true, //TODO: fix
+					Query: `select power('0'::numeric, '3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0.0000000000000000")},
+					},
 				},
 			},
 		},
@@ -3830,6 +3889,34 @@ func TestSetReturningFunctions(t *testing.T) {
 							{"2008-03-01 16:00:00"},
 							{"2008-03-01 06:00:00"},
 						},
+					},
+					{
+						Query:    `SELECT generate_series('1.2'::numeric,2.4)`,
+						Expected: []sql.Row{{Numeric("1.2")}, {Numeric("2.2")}},
+					},
+					{
+						Query:    `SELECT generate_series('1.2'::numeric,1.4,0.1)`,
+						Expected: []sql.Row{{Numeric("1.2")}, {Numeric("1.3")}, {Numeric("1.4")}},
+					},
+					{
+						Query:       `SELECT generate_series('Nan'::numeric,1.4,0.1)`,
+						ExpectedErr: `start value cannot be NaN`,
+					},
+					{
+						Query:       `SELECT generate_series('NaN'::numeric,1.4)`,
+						ExpectedErr: `start value cannot be NaN`,
+					},
+					{
+						Query:       `SELECT generate_series('1.2'::numeric,'Infinity',0.1)`,
+						ExpectedErr: `stop value cannot be infinity`,
+					},
+					{
+						Query:       `SELECT generate_series('1.2'::numeric,'-Infinity')`,
+						ExpectedErr: `stop value cannot be infinity`,
+					},
+					{
+						Query:       `SELECT generate_series('1.2'::numeric,1.4,'NAN')`,
+						ExpectedErr: `step value cannot be NaN`,
 					},
 				},
 			},

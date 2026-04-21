@@ -18,7 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -35,13 +35,29 @@ var div_numeric = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
-		val1 := val1Interface.(decimal.Decimal)
-		val2 := val2Interface.(decimal.Decimal)
-		if val2.Cmp(decimal.Zero) == 0 {
-			return nil, errors.Errorf("division by zero")
-		}
-		val := val1.Div(val2)
-		return val.Truncate(0), nil
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		num1, num2 := val1.(pgtype.Numeric), val2.(pgtype.Numeric)
+		return NumericDiv(num1, num2)
 	},
+}
+
+// NumericDiv takes two pgtype.Numeric arguments and returns division result of them.
+func NumericDiv(n1, n2 pgtype.Numeric) (pgtype.Numeric, error) {
+	if n1.NaN || n2.NaN {
+		return pgtypes.NumericNaN, nil
+	}
+	if n2.Int != nil && n2.Int.Sign() == 0 {
+		return pgtype.Numeric{}, errors.Errorf("division by zero")
+	}
+	if (n1.InfinityModifier == pgtype.Infinity || n1.InfinityModifier == pgtype.NegativeInfinity) &&
+		(n2.InfinityModifier == pgtype.Infinity || n2.InfinityModifier == pgtype.NegativeInfinity) {
+		return pgtypes.NumericNaN, nil
+	}
+	if n1.InfinityModifier == pgtype.Infinity || n1.InfinityModifier == pgtype.NegativeInfinity {
+		return n1, nil
+	}
+	if n2.InfinityModifier == pgtype.Infinity || n2.InfinityModifier == pgtype.NegativeInfinity {
+		return pgtypes.NumericZeroo(), nil
+	}
+	return pgtypes.AnyToNumeric(pgtypes.NumericToDecimal(n1).Div(pgtypes.NumericToDecimal(n2)))
 }

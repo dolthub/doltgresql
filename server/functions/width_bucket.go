@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -71,9 +72,9 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 	Parameters: [4]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [5]*pgtypes.DoltgresType, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
-		operand := operandInterface.(decimal.Decimal)
-		low := lowInterface.(decimal.Decimal)
-		high := highInterface.(decimal.Decimal)
+		operand := pgtypes.NumericToDecimal(operandInterface.(pgtype.Numeric))
+		low := pgtypes.NumericToDecimal(lowInterface.(pgtype.Numeric))
+		high := pgtypes.NumericToDecimal(highInterface.(pgtype.Numeric))
 		if low.Cmp(high) == 0 {
 			return nil, errors.Errorf("lower bound cannot equal upper bound")
 		}
