@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/lib/pq"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -141,39 +142,38 @@ func (iFunc InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgs
 		if rows[0][0] == nil {
 			return nil, nil
 		}
-		fromType, ok := sch[0].Type.(*pgtypes.DoltgresType)
+		sourceType, ok := sch[0].Type.(*pgtypes.DoltgresType)
 		if !ok {
 			// TODO: We ensure we have a DoltgresType, but we should also convert the value to
 			//       ensure it's in the correct form for the DoltgresType. This logic lives in
 			//       pgexpressions.GMSCast, but need to be extracted to avoid a dependency cycle
 			//       so it can be used here and from server.plpgsql.
-			fromType, err = pgtypes.FromGmsTypeToDoltgresType(sch[0].Type)
+			sourceType, err = pgtypes.FromGmsTypeToDoltgresType(sch[0].Type)
 			if err != nil {
 				return nil, err
 			}
 		}
-		castFunc := GetAssignmentCast(fromType, targetType)
-		if castFunc == nil {
+		castsColl, err := core.GetCastsCollectionFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		cast, err := castsColl.GetAssignmentCast(ctx, sourceType, targetType)
+		if err != nil {
+			return nil, err
+		}
+		if !cast.ID.IsValid() {
 			// TODO: We're using assignment casting, but for some reason we have to use I/O casting here, which is incorrect?
 			//  We need to dig into this and figure out exactly what's happening, as this is "wrong" according to what
 			//  I understand. This lines up more with explicit casting, but it's supposed to be assignment.
 			//  Maybe there are specific rules for pgsql?
-			if fromType.TypCategory == pgtypes.TypeCategory_StringTypes {
-				castFunc = func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-					if val == nil {
-						return nil, nil
-					}
-					str, err := fromType.IoOutput(ctx, val)
-					if err != nil {
-						return nil, err
-					}
-					return targetType.IoInput(ctx, str)
-				}
+			if sourceType.TypCategory == pgtypes.TypeCategory_StringTypes {
+				cast.ID = id.NewCast(sourceType.ID, targetType.ID)
+				cast.UseInOut = true
 			} else {
 				return nil, errors.New("no valid cast for return value")
 			}
 		}
-		return castFunc(subCtx, rows[0][0], targetType)
+		return cast.Eval(subCtx, rows[0][0], sourceType, targetType)
 	})
 }
 

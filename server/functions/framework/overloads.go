@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 
+	"github.com/dolthub/doltgresql/core/casts"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -198,7 +199,7 @@ func (o *Overload) coalesceVariadicValues(returnValues []any) []any {
 // as the type cast functions required to convert every argument to its appropriate parameter type
 type overloadMatch struct {
 	params Overload
-	casts  []pgtypes.TypeCastFunction
+	casts  []casts.Cast
 }
 
 // Valid returns whether this overload is valid (has a callable function)

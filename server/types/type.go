@@ -469,17 +469,9 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	return nil, sql.InRange, ErrUnhandledType.New(t.String(), v)
 }
 
-// GetImplicitCast is a reference to the implicit cast logic in the functions/framework package, which we can't use
-// here due to import cycles
-var GetImplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
-
-// GetAssignmentCast is a reference to the assignment cast logic in the functions/framework package, which we can't use
-// here due to import cycles
-var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
-
-// GetExplicitCast is a reference to the explicit cast logic in the functions/framework package, which we can't use
-// here due to import cycles
-var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+// GetAssignmentCast is a reference to the assignment cast logic in the core package, which we can't use here due to
+// import cycles
+var GetAssignmentCast func(ctx *sql.Context, fromType *DoltgresType, toType *DoltgresType) (Cast, error)
 
 // ConvertToType implements the types.ExtendedType interface.
 func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
@@ -488,8 +480,11 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
-	castFn := GetAssignmentCast(dt, t)
-	if castFn == nil {
+	cast, err := GetAssignmentCast(ctx, dt, t)
+	if err != nil {
+		return nil, sql.InRange, err
+	}
+	if cast == nil {
 		// In the case that we have an unknown type string literal, we attempt to parse it with the target type's
 		// input function
 		// TODO: this is probably not the best place to perform this conversion, it would probably be better as an
@@ -511,7 +506,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		return nil, sql.InRange, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
 	}
 
-	castResult, err := castFn(ctx, val, t)
+	castResult, err := cast.Eval(ctx, val, dt, t)
 	if err != nil && errors.Is(err, ErrCastOutOfRange) {
 		// TODO: this could be either an overflow or an underflow, we should distinguish
 		return castResult, sql.Overflow, nil
@@ -1148,4 +1143,4 @@ func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTyp
 
 // TypeCastFunction is a function that takes a value of a particular kind of type, and returns it as another kind of type.
 // The targetType given should match the "To" type used to obtain the cast.
-type TypeCastFunction func(ctx *sql.Context, val any, targetType *DoltgresType) (any, error)
+type TypeCastFunction func(ctx *sql.Context, val any, sourceType *DoltgresType, targetType *DoltgresType) (any, error)

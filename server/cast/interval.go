@@ -17,26 +17,27 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/server/functions"
-
-	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initInterval handles all casts that are built-in. This comprises only the "From" types.
-func initInterval() {
-	intervalAssignment()
-	intervalImplicit()
+// initInterval handles all casts that are built-in. This comprises only the source types.
+func initInterval(builtInCasts map[id.Cast]casts.Cast) {
+	intervalAssignment(builtInCasts)
+	intervalImplicit(builtInCasts)
 }
 
-// intervalAssignment registers all assignment casts. This comprises only the "From" types.
-func intervalAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// intervalAssignment registers all assignment casts. This comprises only the source types.
+func intervalAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Interval,
 		ToType:   pgtypes.Time,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			dur := val.(duration.Duration)
 			// the month and day of the duration are excluded
 			return timeofday.FromInt(dur.Nanos() / functions.NanosPerMicro), nil
@@ -44,12 +45,12 @@ func intervalAssignment() {
 	})
 }
 
-// intervalImplicit registers all implicit casts. This comprises only the "From" types.
-func intervalImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// intervalImplicit registers all implicit casts. This comprises only the source types.
+func intervalImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Interval,
 		ToType:   pgtypes.Interval,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(duration.Duration), nil
 		},
 	})

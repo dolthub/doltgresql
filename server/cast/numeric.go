@@ -16,26 +16,27 @@ package cast
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initNumeric handles all casts that are built-in. This comprises only the "From" types.
-func initNumeric() {
-	numericAssignment()
-	numericImplicit()
+// initNumeric handles all casts that are built-in. This comprises only the source types.
+func initNumeric(builtInCasts map[id.Cast]casts.Cast) {
+	numericAssignment(builtInCasts)
+	numericImplicit(builtInCasts)
 }
 
-// numericAssignment registers all assignment casts. This comprises only the "From" types.
-func numericAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// numericAssignment registers all assignment casts. This comprises only the source types.
+func numericAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Int16,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(decimal.Decimal)
 			if d.LessThan(pgtypes.NumericValueMinInt16) || d.GreaterThan(pgtypes.NumericValueMaxInt16) {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "smallint out of range")
@@ -43,10 +44,10 @@ func numericAssignment() {
 			return int16(d.Round(0).IntPart()), nil
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(decimal.Decimal)
 			if d.LessThan(pgtypes.NumericValueMinInt32) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "integer out of range")
@@ -54,10 +55,10 @@ func numericAssignment() {
 			return int32(d.Round(0).IntPart()), nil
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Int64,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(decimal.Decimal)
 			if d.LessThan(pgtypes.NumericValueMinInt64) || d.GreaterThan(pgtypes.NumericValueMaxInt64) {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "bigint out of range")
@@ -67,28 +68,28 @@ func numericAssignment() {
 	})
 }
 
-// numericImplicit registers all implicit casts. This comprises only the "From" types.
-func numericImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// numericImplicit registers all implicit casts. This comprises only the source types.
+func numericImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Float32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			f, _ := val.(decimal.Decimal).Float64()
 			return float32(f), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Float64,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			f, _ := val.(decimal.Decimal).Float64()
 			return f, nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Numeric,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return pgtypes.GetNumericValueWithTypmod(val.(decimal.Decimal), targetType.GetAttTypMod())
 		},
 	})

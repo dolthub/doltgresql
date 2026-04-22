@@ -38,6 +38,7 @@ const (
 	RootObjectID_Extensions
 	RootObjectID_Conflicts
 	RootObjectID_Procedures
+	RootObjectID_Casts
 )
 
 const (

@@ -17,42 +17,42 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/id"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initRegclass handles all casts that are built-in. This comprises only the "From" types.
-func initRegclass() {
-	regclassAssignment()
-	regclassImplicit()
+// initRegclass handles all casts that are built-in. This comprises only the source types.
+func initRegclass(builtInCasts map[id.Cast]casts.Cast) {
+	regclassAssignment(builtInCasts)
+	regclassImplicit(builtInCasts)
 }
 
-// regclassAssignment registers all assignment casts. This comprises only the "From" types.
-func regclassAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// regclassAssignment registers all assignment casts. This comprises only the source types.
+func regclassAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Regclass,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return int32(id.Cache().ToOID(val.(id.Id))), nil
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Regclass,
 		ToType:   pgtypes.Int64,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return int64(id.Cache().ToOID(val.(id.Id))), nil
 		},
 	})
 }
 
-// regclassImplicit registers all implicit casts. This comprises only the "From" types.
-func regclassImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// regclassImplicit registers all implicit casts. This comprises only the source types.
+func regclassImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Regclass,
 		ToType:   pgtypes.Oid,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})

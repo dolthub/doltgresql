@@ -16,6 +16,9 @@ package framework
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -23,7 +26,7 @@ import (
 // FindCommonType returns the common type that given types can convert to. Returns false if no implicit casts are needed
 // to resolve the given types as the returned common type.
 // https://www.postgresql.org/docs/15/typeconv-union-case.html
-func FindCommonType(types []*pgtypes.DoltgresType) (_ *pgtypes.DoltgresType, requiresCasts bool, err error) {
+func FindCommonType(ctx *sql.Context, types []*pgtypes.DoltgresType) (_ *pgtypes.DoltgresType, requiresCasts bool, err error) {
 	candidateType := pgtypes.Unknown
 	differentTypes := false
 	for _, typ := range types {
@@ -53,14 +56,24 @@ func FindCommonType(types []*pgtypes.DoltgresType) (_ *pgtypes.DoltgresType, req
 			return nil, false, errors.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
 		}
 	}
+	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, false, err
+	}
 	// Attempt to find the most general type (or the preferred type in the type category)
 	for _, typ := range types {
 		if typ.ID == pgtypes.Unknown.ID || typ.ID == candidateType.ID {
 			continue
-		} else if GetImplicitCast(typ, candidateType) != nil {
+		} else if cast, err := castsColl.GetImplicitCast(ctx, typ, candidateType); err != nil || cast.ID.IsValid() {
+			if err != nil {
+				return nil, false, err
+			}
 			// typ can convert to the candidate type, so the candidate type is at least as general
 			continue
-		} else if GetImplicitCast(candidateType, typ) != nil {
+		} else if cast, err = castsColl.GetImplicitCast(ctx, candidateType, typ); err != nil || cast.ID.IsValid() {
+			if err != nil {
+				return nil, false, err
+			}
 			// the candidate type can convert to typ, but not vice versa, so typ is likely more general
 			candidateType = typ
 			if candidateType.IsPreferred {
@@ -73,7 +86,9 @@ func FindCommonType(types []*pgtypes.DoltgresType) (_ *pgtypes.DoltgresType, req
 	for _, typ := range types {
 		if typ.ID == pgtypes.Unknown.ID || typ.ID == candidateType.ID {
 			continue
-		} else if GetImplicitCast(typ, candidateType) == nil {
+		} else if cast, err := castsColl.GetImplicitCast(ctx, typ, candidateType); err != nil {
+			return nil, false, err
+		} else if !cast.ID.IsValid() {
 			return nil, false, errors.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
 		}
 	}

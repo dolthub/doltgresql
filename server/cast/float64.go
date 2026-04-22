@@ -21,28 +21,30 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initFloat64 handles all casts that are built-in. This comprises only the "From" types.
-func initFloat64() {
-	float64Assignment()
+// initFloat64 handles all casts that are built-in. This comprises only the source types.
+func initFloat64(builtInCasts map[id.Cast]casts.Cast) {
+	float64Assignment(builtInCasts)
 }
 
-// float64Assignment registers all assignment casts. This comprises only the "From" types.
-func float64Assignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// float64Assignment registers all assignment casts. This comprises only the source types.
+func float64Assignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Float32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return float32(val.(float64)), nil
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Int16,
-		Function: func(ctx *sql.Context, valInterface any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, valInterface any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
 			if val > 32767 || val < -32768 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "smallint out of range")
@@ -50,10 +52,10 @@ func float64Assignment() {
 			return int16(val), nil
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, valInterface any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, valInterface any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
 			if val > 2147483647 || val < -2147483648 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "integer out of range")
@@ -61,10 +63,10 @@ func float64Assignment() {
 			return int32(val), nil
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Int64,
-		Function: func(ctx *sql.Context, valInterface any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, valInterface any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			val := math.RoundToEven(valInterface.(float64))
 			if val > 9223372036854775807 || val < -9223372036854775808 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "bigint out of range")
@@ -72,10 +74,10 @@ func float64Assignment() {
 			return int64(val), nil
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Numeric,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return pgtypes.GetNumericValueWithTypmod(decimal.NewFromFloat(val.(float64)), targetType.GetAttTypMod())
 		},
 	})

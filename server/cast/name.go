@@ -17,40 +17,43 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initName handles all casts that are built-in. This comprises only the "From" types.
-func initName() {
-	nameAssignment()
-	nameImplicit()
+// initName handles all casts that are built-in. This comprises only the source types.
+func initName(builtInCasts map[id.Cast]casts.Cast) {
+	nameAssignment(builtInCasts)
+	nameImplicit(builtInCasts)
 }
 
-// nameAssignment registers all assignment casts. This comprises only the "From" types.
-func nameAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// nameAssignment registers all assignment casts. This comprises only the source types.
+func nameAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Name,
 		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Name,
 		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
 }
 
-// nameImplicit registers all implicit casts. This comprises only the "From" types.
-func nameImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// nameImplicit registers all implicit casts. This comprises only the source types.
+func nameImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Name,
 		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})

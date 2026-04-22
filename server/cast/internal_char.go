@@ -20,41 +20,43 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initInternalChar handles all casts that are built-in. This comprises only the "From" types.
-func initInternalChar() {
-	internalCharAssignment()
-	internalCharExplicit()
-	internalCharImplicit()
+// initInternalChar handles all casts that are built-in. This comprises only the source types.
+func initInternalChar(builtInCasts map[id.Cast]casts.Cast) {
+	internalCharAssignment(builtInCasts)
+	internalCharExplicit(builtInCasts)
+	internalCharImplicit(builtInCasts)
 }
 
-// internalCharAssignment registers all assignment casts. This comprises only the "From" types.
-func internalCharAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// internalCharAssignment registers all assignment casts. This comprises only the source types.
+func internalCharAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return targetType.IoInput(ctx, val.(string))
 		},
 	})
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
 }
 
-// internalCharExplicit registers all explicit casts. This comprises only the "From" types.
-func internalCharExplicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+// internalCharExplicit registers all explicit casts. This comprises only the source types.
+func internalCharExplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			s := val.(string)
 			if len(s) == 0 {
 				return int32(0), nil
@@ -71,12 +73,12 @@ func internalCharExplicit() {
 	})
 }
 
-// internalCharImplicit registers all implicit casts. This comprises only the "From" types.
-func internalCharImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// internalCharImplicit registers all implicit casts. This comprises only the source types.
+func internalCharImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.InternalChar,
 		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})

@@ -21,34 +21,36 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initChar handles all casts that are built-in. This comprises only the "From" types.
-func initChar() {
-	charAssignment()
-	charExplicit()
-	charImplicit()
+// initChar handles all casts that are built-in. This comprises only the source types.
+func initChar(builtInCasts map[id.Cast]casts.Cast) {
+	charAssignment(builtInCasts)
+	charExplicit(builtInCasts)
+	charImplicit(builtInCasts)
 }
 
-// charAssignment registers all assignment casts. This comprises only the "From" types.
-func charAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// charAssignment registers all assignment casts. This comprises only the source types.
+func charAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.InternalChar,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return targetType.IoInput(ctx, val.(string))
 		},
 	})
 }
 
-// charExplicit registers all explicit casts. This comprises only the "From" types.
-func charExplicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+// charExplicit registers all explicit casts. This comprises only the source types.
+func charExplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
 			if err != nil {
 				return nil, errors.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
@@ -61,33 +63,33 @@ func charExplicit() {
 	})
 }
 
-// charImplicit registers all implicit casts. This comprises only the "From" types.
-func charImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// charImplicit registers all implicit casts. This comprises only the source types.
+func charImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.BpChar,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return targetType.IoInput(ctx, val.(string))
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.Name,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.Text,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.VarChar,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return handleStringCast(val.(string), targetType)
 		},
 	})

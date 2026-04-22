@@ -16,39 +16,39 @@ package cast
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initInt32 handles all casts that are built-in. This comprises only the "From" types.
-func initInt32() {
-	int32Explicit()
-	int32Assignment()
-	int32Implicit()
+// initInt32 handles all casts that are built-in. This comprises only the source types.
+func initInt32(builtInCasts map[id.Cast]casts.Cast) {
+	int32Explicit(builtInCasts)
+	int32Assignment(builtInCasts)
+	int32Implicit(builtInCasts)
 }
 
-// int32Explicit registers all explicit casts. This comprises only the "From" types.
-func int32Explicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+// int32Explicit registers all explicit casts. This comprises only the source types.
+func int32Explicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Bool,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(int32) != 0, nil
 		},
 	})
 }
 
-// int32Assignment registers all assignment casts. This comprises only the "From" types.
-func int32Assignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// int32Assignment registers all assignment casts. This comprises only the source types.
+func int32Assignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Int16,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			if val.(int32) > 32767 || val.(int32) < -32768 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "smallint out of range")
 			}
@@ -57,70 +57,70 @@ func int32Assignment() {
 	})
 }
 
-// int32Implicit registers all implicit casts. This comprises only the "From" types.
-func int32Implicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// int32Implicit registers all implicit casts. This comprises only the source types.
+func int32Implicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Float32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return float32(val.(int32)), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Float64,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return float64(val.(int32)), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Int64,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return int64(val.(int32)), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Numeric,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return decimal.NewFromInt(int64(val.(int32))), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Oid,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
 			return id.NewOID(uint32(val.(int32))).AsId(), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Regclass,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
 			return id.NewOID(uint32(val.(int32))).AsId(), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Regproc,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}
 			return id.NewOID(uint32(val.(int32))).AsId(), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Int32,
 		ToType:   pgtypes.Regtype,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			if internalID := id.Cache().ToInternal(uint32(val.(int32))); internalID.IsValid() {
 				return internalID, nil
 			}

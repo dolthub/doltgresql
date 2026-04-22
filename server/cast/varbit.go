@@ -17,23 +17,24 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initVarBit handles all casts that are built-in. This comprises only the "From" types.
-func initVarBit() {
-	varBitImplicit()
+// initVarBit handles all casts that are built-in. This comprises only the source types.
+func initVarBit(builtInCasts map[id.Cast]casts.Cast) {
+	varBitImplicit(builtInCasts)
 }
 
-// varBitImplicit registers all implicit casts. This comprises only the "From" types.
-func varBitImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// varBitImplicit registers all implicit casts. This comprises only the source types.
+func varBitImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.VarBit,
 		ToType:   pgtypes.Bit,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			input := val.(string)
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
@@ -46,10 +47,10 @@ func varBitImplicit() {
 			return tree.AsStringWithFlags(array, tree.FmtPgwireText), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.VarBit,
 		ToType:   pgtypes.VarBit,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			input := val.(string)
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {

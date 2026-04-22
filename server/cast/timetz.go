@@ -17,35 +17,36 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initTimeTZ handles all casts that are built-in. This comprises only the "From" types.
-func initTimeTZ() {
-	timeTZAssignment()
-	timeTZImplicit()
+// initTimeTZ handles all casts that are built-in. This comprises only the source types.
+func initTimeTZ(builtInCasts map[id.Cast]casts.Cast) {
+	timeTZAssignment(builtInCasts)
+	timeTZImplicit(builtInCasts)
 }
 
-// timeTZAssignment registers all assignment casts. This comprises only the "From" types.
-func timeTZAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// timeTZAssignment registers all assignment casts. This comprises only the source types.
+func timeTZAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.TimeTZ,
 		ToType:   pgtypes.Time,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(timetz.TimeTZ).TimeOfDay, nil
 		},
 	})
 }
 
-// timeTZImplicit registers all implicit casts. This comprises only the "From" types.
-func timeTZImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// timeTZImplicit registers all implicit casts. This comprises only the source types.
+func timeTZImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.TimeTZ,
 		ToType:   pgtypes.TimeTZ,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(timetz.TimeTZ), nil
 		},
 	})

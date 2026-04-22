@@ -40,4 +40,11 @@ func Init() {
 	pgtypes.GetTypesCollectionFromContext = func(ctx *sql.Context) (pgtypes.TypeCollection, error) {
 		return GetTypesCollectionFromContext(ctx)
 	}
+	pgtypes.GetAssignmentCast = func(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (pgtypes.Cast, error) {
+		castsColl, err := GetCastsCollectionFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return castsColl.GetAssignmentCast(ctx, sourceType, targetType)
+	}
 }

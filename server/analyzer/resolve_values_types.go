@@ -38,7 +38,7 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 	// We record which VDTs changed so we can fix up GetField types afterward.
 	transformedVDTs := make(map[sql.TableId]sql.Schema)
 	node, same, err := transform.NodeWithOpaque(node, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
-		newNode, same, err := transformValuesNode(n)
+		newNode, same, err := transformValuesNode(ctx, n)
 		if err != nil {
 			return nil, same, err
 		}
@@ -155,7 +155,7 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 }
 
 // transformValuesNode transforms a plan.Values or plan.ValueDerivedTable node to use common types
-func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+func transformValuesNode(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	var values *plan.Values
 	var expressionerNode sql.Expressioner
 	switch v := n.(type) {
@@ -202,7 +202,7 @@ func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	// Find common type for each column
 	var newTuples [][]sql.Expression
 	for colIdx := 0; colIdx < numCols; colIdx++ {
-		commonType, requiresCasts, err := framework.FindCommonType(columnTypes[colIdx])
+		commonType, requiresCasts, err := framework.FindCommonType(ctx, columnTypes[colIdx])
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
