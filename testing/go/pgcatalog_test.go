@@ -493,7 +493,7 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testing' order by 1;`,
 					Expected: []sql.Row{
-						{3120782595, "testing", 2638679668, 0, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{3120782595, "testing", 2638679668, 2288626564, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				// Index
@@ -507,7 +507,7 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE relname='testview';`,
 					Expected: []sql.Row{
-						{887295443, "testview", 2638679668, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{887295443, "testview", 2638679668, 491597638, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -573,7 +573,7 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing'::regclass;`,
 					Expected: []sql.Row{
-						{3120782595, "testing", 2638679668, 0, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{3120782595, "testing", 2638679668, 2288626564, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 				{
@@ -585,7 +585,7 @@ func TestPgClass(t *testing.T) {
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testview'::regclass;`,
 					Expected: []sql.Row{
-						{887295443, "testview", 2638679668, 0, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
+						{887295443, "testview", 2638679668, 491597638, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
 				},
 			},
@@ -605,6 +605,44 @@ JOIN pg_class ix ON ix.oid = i.indexrelid
 JOIN pg_namespace n ON t.relnamespace = n.oid 
 JOIN pg_am AS am ON ix.relam = am.oid WHERE t.relname = 'foo' AND n.nspname = 'public';`,
 					Expected: []sql.Row{{"foo_pkey", "BTREE"}, {"b", "BTREE"}, {"b_2", "BTREE"}}, // TODO: should follow Postgres index naming convention: "foo_pkey", "foo_b_idx", "foo_b_a_idx"
+				},
+			},
+		},
+		{
+			Name: "pg_class independent of dolt_show_system_tables",
+			SetUpScript: []string{
+				`SET dolt_show_system_tables=1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT relname FROM pg_class where relname like 'dolt_%' order by relname`,
+					Expected: []sql.Row{
+						{"dolt_backups"},
+						{"dolt_branch_activity"},
+						{"dolt_branches"},
+						{"dolt_branches_dolt_branches_name_idx_key"},
+						{"dolt_column_diff"},
+						{"dolt_commit_ancestors"},
+						{"dolt_commit_ancestors_commit_hash_key"},
+						{"dolt_commits"},
+						{"dolt_commits_commit_hash_key"},
+						{"dolt_conflicts"},
+						{"dolt_constraint_violations"},
+						{"dolt_diff"},
+						{"dolt_diff_commit_hash_key"},
+						{"dolt_help"},
+						{"dolt_log"},
+						{"dolt_log_commit_hash_key"},
+						{"dolt_merge_status"},
+						{"dolt_remote_branches"},
+						{"dolt_remote_branches_dolt_branches_name_idx_key"},
+						{"dolt_remotes"},
+						{"dolt_schema_conflicts"},
+						{"dolt_stashes"},
+						{"dolt_status"},
+						{"dolt_status_ignored"},
+						{"dolt_tags"},
+					},
 				},
 			},
 		},
@@ -4756,6 +4794,77 @@ func TestPgType(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_enum_type' order by 1;`,
 					Expected: []sql.Row{{4245115549, "_enum_type", 2200, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 2310414518, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+				},
+			},
+		},
+		{
+			Name: "composite table types",
+			SetUpScript: []string{
+				`CREATE TABLE users (id int, name text)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM pg_type where typname like 'users'",
+					Expected: []sql.Row{
+						{135364127, `users`, 2200, 0, -1, "f", "c", "C", "f", "t", ",", 3272826793, "-", 0, 3142499152, "record_in", "record_out", "record_recv", "record_send", "-", "-", "-", "d", "x", "f", 0, -1, 0, 0, "", "", "{}"},
+					},
+				},
+			},
+		},
+		{
+			Name:        "pg_type ignores dolt_show_system_tables",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT typname FROM pg_type where typname like 'dolt_%' order by typname`,
+					Expected: []sql.Row{
+						{"dolt_backups"},
+						{"dolt_branch_activity"},
+						{"dolt_branches"},
+						{"dolt_column_diff"},
+						{"dolt_commit_ancestors"},
+						{"dolt_commits"},
+						{"dolt_conflicts"},
+						{"dolt_constraint_violations"},
+						{"dolt_diff"},
+						{"dolt_help"},
+						{"dolt_log"},
+						{"dolt_merge_status"},
+						{"dolt_remote_branches"},
+						{"dolt_remotes"},
+						{"dolt_schema_conflicts"},
+						{"dolt_stashes"},
+						{"dolt_status"},
+						{"dolt_status_ignored"},
+						{"dolt_tags"},
+					},
+				},
+				{
+					Query: `SET dolt_show_system_tables=1`,
+				},
+				{
+					Query: `SELECT typname FROM pg_type where typname like 'dolt_%' order by typname;`,
+					Expected: []sql.Row{
+						{"dolt_backups"},
+						{"dolt_branch_activity"},
+						{"dolt_branches"},
+						{"dolt_column_diff"},
+						{"dolt_commit_ancestors"},
+						{"dolt_commits"},
+						{"dolt_conflicts"},
+						{"dolt_constraint_violations"},
+						{"dolt_diff"},
+						{"dolt_help"},
+						{"dolt_log"},
+						{"dolt_merge_status"},
+						{"dolt_remote_branches"},
+						{"dolt_remotes"},
+						{"dolt_schema_conflicts"},
+						{"dolt_stashes"},
+						{"dolt_status"},
+						{"dolt_status_ignored"},
+						{"dolt_tags"},
+					},
 				},
 			},
 		},

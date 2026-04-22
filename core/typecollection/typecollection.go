@@ -344,6 +344,32 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 			return nil
 		}
 	})
+	if err != nil {
+		return err
+	}
+
+	sqlCtx, ok := ctx.(*sql.Context)
+	if !ok {
+		return nil
+	}
+
+	//Now get composite table types
+	err = IterateDatabaseTables(sqlCtx, func(schemaName string, table sql.Table) (stop bool, err error) {
+		typ, err := pgs.tableToType(sqlCtx, table, schemaName)
+		if err != nil {
+			return false, err
+		}
+		//Add associated array type for this table
+		if typ.IsDefined {
+			arrayType := pgtypes.CreateArrayTypeFromBaseType(typ)
+			stop, err = f(arrayType)
+			if stop || err != nil {
+				return stop, err
+			}
+		}
+		return f(typ)
+	})
+
 	return err
 }
 
@@ -463,10 +489,14 @@ func (*TypeCollection) tableToType(ctx *sql.Context, tbl sql.Table, schema strin
 	attrs := make([]pgtypes.CompositeAttribute, len(tblSch))
 	for i, col := range tblSch {
 		collation := "" // TODO: what should we use for the collation?
-		colType, ok := col.Type.(*pgtypes.DoltgresType)
-		if !ok {
-			// TODO: perhaps we should use a better error message stating that it uses a non-Doltgres type?
-			return nil, pgtypes.ErrTypeDoesNotExist.New(tblName)
+		var colType *pgtypes.DoltgresType
+		var err error
+		if dt, ok := col.Type.(*pgtypes.DoltgresType); ok {
+			colType = dt
+		} else {
+			if colType, err = pgtypes.FromGmsTypeToDoltgresType(col.Type); err != nil {
+				return nil, fmt.Errorf("unable to convert column type for %s.%s: %w", tblName, col.Name, err)
+			}
 		}
 		attrs[i] = pgtypes.NewCompositeAttribute(ctx, relID, col.Name, colType.ID, int16(i+1), collation)
 	}
@@ -478,3 +508,6 @@ var GetSqlTableFromContext func(ctx *sql.Context, databaseName string, tableName
 
 // GetSchemaName is a forward declaration to get around import cycles
 var GetSchemaName func(ctx *sql.Context, db sql.Database, schemaName string) (string, error)
+
+// IterateDatabaseTables is a forward declaration to get around import cycles
+var IterateDatabaseTables func(ctx *sql.Context, callback func(schemaName string, table sql.Table) (stop bool, err error)) error

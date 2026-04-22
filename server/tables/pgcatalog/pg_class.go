@@ -19,6 +19,8 @@ import (
 	"io"
 	"math"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/index"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -154,7 +156,15 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 		return err
 	}
 
-	if includeSystemTables {
+	// If the system variable dolt_show_system_tables is set, then IterateCurrentDatabase
+	// will already contain all existing system tables. Else, we need to add them manually
+	showSystemTablesVar, err := ctx.GetSessionVariable(ctx, dsess.ShowSystemTables)
+	if err != nil {
+		return err
+	}
+	alreadySeenSystemTables := showSystemTablesVar.(int8) == 1
+
+	if includeSystemTables && !alreadySeenSystemTables {
 		_, root, err := core.GetRootFromContext(ctx)
 		if err != nil {
 			return err
@@ -192,6 +202,12 @@ func formatIndexName(idx sql.Index) string {
 	if idx.ID() == "PRIMARY" {
 		return fmt.Sprintf("%s_pkey", idx.Table())
 	}
+
+	switch idx.(type) {
+	case *index.BranchNameIndex, *index.CommitIndex:
+		return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
+	}
+
 	return idx.ID()
 	// TODO: Unnamed indexes should have below format
 	// return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
@@ -437,12 +453,33 @@ func pgClassToRow(class *pgClass) sql.Row {
 		relam = id.NewAccessMethod("heap").AsId()
 	}
 
+	// Compute reltype - the OID of the composite type for this table/view's row type
+	var reltype id.Id
+
+	if class.kind == "r" || class.kind == "v" {
+		// Tables and views have composite types with the same name in the same schema
+		var schemaName, objectName string
+		if class.kind == "r" {
+			tblId := id.Table(class.oid)
+			schemaName = tblId.SchemaName()
+			objectName = tblId.TableName()
+		} else { // kind == "v"
+			viewId := id.View(class.oid)
+			schemaName = viewId.SchemaName()
+			objectName = viewId.ViewName()
+		}
+		typeId := id.NewType(schemaName, objectName)
+		reltype = typeId.AsId()
+	} else {
+		reltype = id.Null
+	}
+
 	// TODO: Fill in the rest of the pg_class columns
 	return sql.Row{
 		class.oid,        // oid
 		class.name,       // relname
 		class.schemaOid,  // relnamespace
-		id.Null,          // reltype
+		reltype,          // reltype
 		id.Null,          // reloftype
 		id.Null,          // relowner
 		relam,            // relam
