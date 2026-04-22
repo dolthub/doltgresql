@@ -113,7 +113,7 @@ func AfterTableAddColumn(ctx *sql.Context, runner sql.StatementRunner, nodeInter
 	if err != nil {
 		return err
 	}
-	sch := doltTable.Schema()
+	sch := doltTable.Schema(ctx)
 
 	for _, otherTableName := range allTableNames {
 		if doltdb.IsSystemTable(otherTableName) {

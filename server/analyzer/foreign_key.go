@@ -30,7 +30,7 @@ func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstrai
 	for i := range fkDef.Columns {
 		col := cols[strings.ToLower(fkDef.Columns[i])]
 		parentCol := parentCols[strings.ToLower(fkDef.ParentColumns[i])]
-		if !foreignKeyComparableTypes(col.Type, parentCol.Type) {
+		if !foreignKeyComparableTypes(ctx, col.Type, parentCol.Type) {
 			return errors.Errorf("Key columns %q and %q are of incompatible types: %s and %s", col.Name, parentCol.Name, col.Type.String(), parentCol.Type.String())
 		}
 	}
@@ -39,7 +39,7 @@ func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstrai
 
 // foreignKeyComparableTypes returns whether the two given types are able to be used as parent/child columns in a
 // foreign key.
-func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
+func foreignKeyComparableTypes(ctx *sql.Context, from sql.Type, to sql.Type) bool {
 	dtFrom, ok := from.(*types.DoltgresType)
 	if !ok {
 		return false // should never be possible
@@ -60,7 +60,7 @@ func foreignKeyComparableTypes(from sql.Type, to sql.Type) bool {
 	// a foreign key between two different types is valid if there is an equality operator on the two types
 	// TODO: there are some subtleties in postgres not captured by this logic, e.g. a foreign key from double -> int
 	//  is valid, but the reverse is not. This works fine, but is more permissive than postgres is.
-	eq := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("=", fromLiteral, toLiteral)
+	eq := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "=", fromLiteral, toLiteral)
 	if eq == nil || eq.StashedError() != nil {
 		return false
 	}

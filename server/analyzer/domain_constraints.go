@@ -40,9 +40,9 @@ import (
 func AddDomainConstraints(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	switch n := node.(type) {
 	case *plan.InsertInto:
-		return loadDomainConstraints(ctx, a, n, n.Schema())
+		return loadDomainConstraints(ctx, a, n, n.Schema(ctx))
 	case *plan.Update:
-		return loadDomainConstraints(ctx, a, n, n.Schema())
+		return loadDomainConstraints(ctx, a, n, n.Schema(ctx))
 	default:
 		return node, transform.SameTree, nil
 	}
@@ -126,11 +126,11 @@ func getDomainCheckConstraintsForTable(ctx *sql.Context, a *analyzer.Analyzer, c
 
 // AddDomainConstraintsToCasts adds domain type's constraints to cast expressions.
 func AddDomainConstraintsToCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	return pgtransform.NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	return pgtransform.NodeExprsWithOpaque(ctx, node, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		var same = transform.SameTree
 		switch e := expr.(type) {
 		case *expression.ExplicitCast:
-			if rt, ok := e.Type().(*pgtypes.DoltgresType); ok && rt.TypType == pgtypes.TypeType_Domain {
+			if rt, ok := e.Type(ctx).(*pgtypes.DoltgresType); ok && rt.TypType == pgtypes.TypeType_Domain {
 				// the domain type should be resolved by this point
 				colChecks, err := getDomainCheckConstraintsForCast(ctx, a, rt.Checks, e.Child())
 				if err != nil {
@@ -158,7 +158,7 @@ func getDomainCheckConstraintsForCast(ctx *sql.Context, a *analyzer.Analyzer, ch
 		}
 
 		// replace DomainColumn with given sql.Expression
-		checkExpr, _, _ = transform.Expr(checkExpr, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		checkExpr, _, _ = transform.Expr(ctx, checkExpr, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			switch e := expr.(type) {
 			case *node.DomainColumn:
 				expr = value

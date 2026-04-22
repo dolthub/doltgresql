@@ -217,7 +217,7 @@ func resolveAlterColumn(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 
 	// Need a TransformUp here because multiple of these statement types can be nested under a Block node.
 	// It doesn't look it, but this is actually an iterative loop over all the independent clauses in an ALTER statement
-	n, same, err := transform.Node(n, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+	n, same, err := transform.Node(ctx, n, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		switch nn := n.(type) {
 		case *plan.ModifyColumn:
 			n, err := nn.WithTargetSchema(sch.Copy())
@@ -235,7 +235,7 @@ func resolveAlterColumn(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
-			sch, err = analyzer.ValidateRenameColumn(initialSch, sch, n.(*plan.RenameColumn))
+			sch, err = analyzer.ValidateRenameColumn(ctx, initialSch, sch, n.(*plan.RenameColumn))
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
@@ -246,7 +246,7 @@ func resolveAlterColumn(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 				return nil, transform.SameTree, err
 			}
 
-			sch, err = analyzer.ValidateAddColumn(sch, n.(*plan.AddColumn))
+			sch, err = analyzer.ValidateAddColumn(ctx, sch, n.(*plan.AddColumn))
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
@@ -257,7 +257,7 @@ func resolveAlterColumn(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
-			sch, err = analyzer.ValidateDropColumn(initialSch, sch, n.(*plan.DropColumn))
+			sch, err = analyzer.ValidateDropColumn(ctx, initialSch, sch, n.(*plan.DropColumn))
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
@@ -291,7 +291,7 @@ func resolveAlterColumn(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
-			sch, err = analyzer.ValidateAlterDefault(initialSch, sch, n.(*plan.AlterDefaultSet))
+			sch, err = analyzer.ValidateAlterDefault(ctx, initialSch, sch, n.(*plan.AlterDefaultSet))
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
@@ -301,7 +301,7 @@ func resolveAlterColumn(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
-			sch, err = analyzer.ValidateDropDefault(initialSch, sch, n.(*plan.AlterDefaultDrop))
+			sch, err = analyzer.ValidateDropDefault(ctx, initialSch, sch, n.(*plan.AlterDefaultDrop))
 			if err != nil {
 				return nil, transform.SameTree, err
 			}

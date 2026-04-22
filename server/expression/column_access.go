@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -72,17 +73,17 @@ func (expr *ColumnAccess) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if !ok {
 		if len(expr.colName) > 0 {
 			return nil, errors.Errorf("column notation .%s applied to type %s, which is not a composite type",
-				expr.colName, expr.child.Type().String())
+				expr.colName, expr.child.Type(ctx).String())
 		} else {
 			return nil, errors.Errorf("column notation .@%d applied to type %s, which is not a composite type",
-				expr.colNameIdx+1, expr.child.Type().String())
+				expr.colNameIdx+1, expr.child.Type(ctx).String())
 		}
 	}
 	return recordVals[expr.colNameIdx].Value, nil
 }
 
 // IsNullable implements the sql.Expression interface.
-func (expr *ColumnAccess) IsNullable() bool {
+func (expr *ColumnAccess) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -104,7 +105,7 @@ func (expr *ColumnAccess) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (expr *ColumnAccess) Type() sql.Type {
+func (expr *ColumnAccess) Type(ctx *sql.Context) sql.Type {
 	if expr.colTyp != nil {
 		return expr.colTyp
 	}
@@ -113,15 +114,15 @@ func (expr *ColumnAccess) Type() sql.Type {
 	}
 	// We're technically returning a different type here since an unresolved type is not the same as a resolved one.
 	// However, for many early analyzer steps, we only check the ID, so this at least lets us get past those cases.
-	return pgtypes.NewUnresolvedDoltgresTypeFromID(expr.child.Type().(*pgtypes.DoltgresType).CompositeAttrs[expr.colNameIdx].TypeID)
+	return pgtypes.NewUnresolvedDoltgresTypeFromID(expr.child.Type(ctx).(*pgtypes.DoltgresType).CompositeAttrs[expr.colNameIdx].TypeID)
 }
 
 // WithChildren implements the sql.Expression interface.
-func (expr *ColumnAccess) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (expr *ColumnAccess) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(expr, len(children), 1)
 	}
-	childType := children[0].Type()
+	childType := children[0].Type(ctx)
 	doltgresType, ok := childType.(*pgtypes.DoltgresType)
 	if !ok {
 		return nil, errors.New("column access is only valid for Doltgres types")
@@ -129,10 +130,10 @@ func (expr *ColumnAccess) WithChildren(children ...sql.Expression) (sql.Expressi
 	if !doltgresType.IsCompositeType() {
 		if len(expr.colName) > 0 {
 			return nil, errors.Errorf("column notation .%s applied to type %s, which is not a composite type",
-				expr.colName, children[0].Type().String())
+				expr.colName, children[0].Type(ctx).String())
 		} else {
 			return nil, errors.Errorf("column notation .@%d applied to type %s, which is not a composite type",
-				expr.colNameIdx+1, children[0].Type().String())
+				expr.colNameIdx+1, children[0].Type(ctx).String())
 		}
 	}
 	var idx int
@@ -151,7 +152,7 @@ func (expr *ColumnAccess) WithChildren(children ...sql.Expression) (sql.Expressi
 	} else {
 		if expr.colNameIdx < 0 || expr.colNameIdx >= len(doltgresType.CompositeAttrs) {
 			return nil, errors.Errorf("column notation .@%d applied to type %s is out of bounds",
-				expr.colNameIdx+1, children[0].Type().String())
+				expr.colNameIdx+1, children[0].Type(ctx).String())
 		}
 		idx = expr.colNameIdx
 	}
@@ -164,7 +165,7 @@ func (expr *ColumnAccess) WithChildren(children ...sql.Expression) (sql.Expressi
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (expr *ColumnAccess) WithResolvedChildren(children []any) (any, error) {
+func (expr *ColumnAccess) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	newExpressions := make([]sql.Expression, len(children))
 	for i, resolvedChild := range children {
 		resolvedExpression, ok := resolvedChild.(sql.Expression)
@@ -173,7 +174,7 @@ func (expr *ColumnAccess) WithResolvedChildren(children []any) (any, error) {
 		}
 		newExpressions[i] = resolvedExpression
 	}
-	return expr.WithChildren(newExpressions...)
+	return expr.WithChildren(ctx.(*sql.Context), newExpressions...)
 }
 
 // WithType returns this expression with the given type set, as it must be set within the analyzer.

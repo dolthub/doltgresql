@@ -43,7 +43,7 @@ func (e *IsNull) IsNullExpression() bool {
 }
 
 // Type implements the Expression interface.
-func (e *IsNull) Type() sql.Type {
+func (e *IsNull) Type(ctx *sql.Context) sql.Type {
 	return pgtypes.Bool
 }
 
@@ -53,7 +53,7 @@ func (*IsNull) CollationCoercibility(ctx *sql.Context) (collation sql.CollationI
 }
 
 // IsNullable implements the Expression interface.
-func (e *IsNull) IsNullable() bool {
+func (e *IsNull) IsNullable(ctx *sql.Context) bool {
 	return false
 }
 
@@ -82,12 +82,12 @@ func (e *IsNull) String() string {
 	return e.Child.String() + " IS NULL"
 }
 
-func (e *IsNull) DebugString() string {
-	return sql.DebugString(e.Child) + " IS NULL"
+func (e *IsNull) DebugString(ctx *sql.Context) string {
+	return sql.DebugString(ctx, e.Child) + " IS NULL"
 }
 
 // WithChildren implements the Expression interface.
-func (e *IsNull) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (e *IsNull) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(e, len(children), 1)
 	}

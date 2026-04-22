@@ -123,8 +123,8 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 	}
 	return sql.FunctionN{
 		Name: name,
-		Fn: func(params ...sql.Expression) (sql.Expression, error) {
-			return NewCompiledFunction(name, params, overloadTree, false), nil
+		Fn: func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
+			return NewCompiledFunction(ctx, name, params, overloadTree, false), nil
 		},
 	}, true
 }

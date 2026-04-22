@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -53,12 +54,12 @@ func (t *RecordExpr) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (t *RecordExpr) Type() sql.Type {
+func (t *RecordExpr) Type(ctx *sql.Context) sql.Type {
 	return pgtypes.Record
 }
 
 // IsNullable implements the sql.Expression interface.
-func (t *RecordExpr) IsNullable() bool {
+func (t *RecordExpr) IsNullable(ctx *sql.Context) bool {
 	return false
 }
 
@@ -71,9 +72,9 @@ func (t *RecordExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 			return nil, err
 		}
 
-		typ, ok := expr.Type().(*pgtypes.DoltgresType)
+		typ, ok := expr.Type(ctx).(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, fmt.Errorf("expected a DoltgresType, but got %T", expr.Type())
+			return nil, fmt.Errorf("expected a DoltgresType, but got %T", expr.Type(ctx))
 		}
 		vals[i] = pgtypes.RecordValue{
 			Value: val,
@@ -90,14 +91,14 @@ func (t *RecordExpr) Children() []sql.Expression {
 }
 
 // WithChildren implements the sql.Expression interface.
-func (t *RecordExpr) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (t *RecordExpr) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	tCopy := *t
 	tCopy.exprs = children
 	return &tCopy, nil
 }
 
 // WithResolvedChildren implements the vitess.Injectable interface
-func (t *RecordExpr) WithResolvedChildren(children []any) (any, error) {
+func (t *RecordExpr) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	newExpressions := make([]sql.Expression, len(children))
 	for i, resolvedChild := range children {
 		resolvedExpression, ok := resolvedChild.(sql.Expression)
@@ -106,5 +107,5 @@ func (t *RecordExpr) WithResolvedChildren(children []any) (any, error) {
 		}
 		newExpressions[i] = resolvedExpression
 	}
-	return t.WithChildren(newExpressions...)
+	return t.WithChildren(ctx.(*sql.Context), newExpressions...)
 }

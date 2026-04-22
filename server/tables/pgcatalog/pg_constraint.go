@@ -394,7 +394,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 			}
 			inner[table.Item.Name()] = table.OID.AsId()
 
-			for i, col := range table.Item.Schema() {
+			for i, col := range table.Item.Schema(ctx) {
 				tableColToIdxMap[fmt.Sprintf("%s.%s", table.Item.Name(), col.Name)] = int16(i + 1)
 			}
 			return true, nil
@@ -437,7 +437,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 			if err != nil {
 				return false, err
 			} else if ok {
-				for i, col := range parentTable.Schema() {
+				for i, col := range parentTable.Schema(ctx) {
 					parentTableColToIdxMap[col.Name] = int16(i + 1)
 				}
 			}

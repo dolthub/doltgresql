@@ -132,7 +132,7 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 		}
 		return nil, nil, err
 	}
-	fields, err := schemaToFieldDescriptions(sqlCtx, queryPlan.Schema(), formatCodes)
+	fields, err := schemaToFieldDescriptions(sqlCtx, queryPlan.Schema(sqlCtx), formatCodes)
 	return queryPlan, fields, err
 }
 
@@ -163,9 +163,13 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 
 // ComPrepareParsed implements the Handler interface.
 func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement) (mysql.ParsedQuery, []pgproto3.FieldDescription, error) {
-	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
-	if err != nil {
-		return nil, nil, err
+	sqlCtx, ok := ctx.(*sql.Context)
+	if !ok {
+		var err error
+		sqlCtx, err = h.sm.NewContextWithQuery(ctx, c, query)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	node, err := h.e.PrepareParsedQuery(sqlCtx, query, query, parsed)
@@ -179,7 +183,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 	analyzed := node
 	// We do not analyze expressions with bind variables, since that step comes later and analysis will return invalid results
 	hasBindVars := false
-	pgtransform.InspectNodeExprs(node, func(expr sql.Expression) bool {
+	pgtransform.InspectNodeExprs(sqlCtx, node, func(sqlCtx *sql.Context, expr sql.Expression) bool {
 		if _, ok := expr.(*expression.BindVar); ok {
 			hasBindVars = true
 			return true
@@ -199,7 +203,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 
 	var fields []pgproto3.FieldDescription
 	// The query is not a SELECT statement if it corresponds to an OK result.
-	if nodeReturnsOkResultSchema(analyzed) {
+	if nodeReturnsOkResultSchema(sqlCtx, analyzed) {
 		fields = []pgproto3.FieldDescription{
 			{
 				Name:         []byte("Rows"),
@@ -208,7 +212,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			},
 		}
 	} else {
-		fields, err = schemaToFieldDescriptions(sqlCtx, analyzed.Schema(), nil)
+		fields, err = schemaToFieldDescriptions(sqlCtx, analyzed.Schema(sqlCtx), nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -460,7 +464,7 @@ func (h *DoltgresHandler) maybeReleaseAllLocks(c *mysql.Conn) {
 // nodeReturnsOkResultSchema returns whether the node returns OK result or the schema is OK result schema.
 // These nodes will eventually return an OK result, but their intermediate forms here return a different schema
 // than they will at execution time.
-func nodeReturnsOkResultSchema(node sql.Node) bool {
+func nodeReturnsOkResultSchema(ctx *sql.Context, node sql.Node) bool {
 	switch n := node.(type) {
 	case *plan.InsertInto:
 		return len(n.Returning) == 0
@@ -469,7 +473,7 @@ func nodeReturnsOkResultSchema(node sql.Node) bool {
 	case *plan.DeleteFrom, *plan.UpdateJoin:
 		return true
 	}
-	return types.IsOkResultSchema(node.Schema())
+	return types.IsOkResultSchema(node.Schema(ctx))
 }
 
 // extendFormatCodes ensures that the given format codes match the expected field length by extending the short-form
@@ -779,7 +783,7 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16
 				if err != nil {
 					return nil, err
 				}
-				o[i], err = cast.DoltgresType().CallSend(ctx, v)
+				o[i], err = cast.DoltgresType(ctx).CallSend(ctx, v)
 				if err != nil {
 					return nil, err
 				}

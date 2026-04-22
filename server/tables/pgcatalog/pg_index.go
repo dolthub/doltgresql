@@ -293,7 +293,7 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			if tableSchemas[table.OID.AsId()] == nil {
-				tableSchemas[table.OID.AsId()] = table.Item.Schema()
+				tableSchemas[table.OID.AsId()] = table.Item.Schema(ctx)
 			}
 			if tableNames[table.OID.AsId()] == "" {
 				tableNames[table.OID.AsId()] = table.Item.Name()

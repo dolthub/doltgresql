@@ -15,6 +15,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -152,7 +153,7 @@ func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *CreateExtension) Schema() sql.Schema {
+func (c *CreateExtension) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -162,12 +163,12 @@ func (c *CreateExtension) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *CreateExtension) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *CreateExtension) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithExpressions implements the interface sql.Expressioner.
-func (c *CreateExtension) WithExpressions(expressions ...sql.Expression) (sql.Node, error) {
+func (c *CreateExtension) WithExpressions(ctx *sql.Context, expressions ...sql.Expression) (sql.Node, error) {
 	if len(expressions) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(c, len(expressions), 1)
 	}
@@ -177,7 +178,7 @@ func (c *CreateExtension) WithExpressions(expressions ...sql.Expression) (sql.No
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *CreateExtension) WithResolvedChildren(children []any) (any, error) {
+func (c *CreateExtension) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}

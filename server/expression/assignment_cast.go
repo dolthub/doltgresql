@@ -63,7 +63,7 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (ac *AssignmentCast) IsNullable() bool {
+func (ac *AssignmentCast) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -78,12 +78,12 @@ func (ac *AssignmentCast) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (ac *AssignmentCast) Type() sql.Type {
+func (ac *AssignmentCast) Type(ctx *sql.Context) sql.Type {
 	return ac.toType
 }
 
 // WithChildren implements the sql.Expression interface.
-func (ac *AssignmentCast) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (ac *AssignmentCast) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(ac, len(children), 1)
 	}

@@ -23,11 +23,11 @@ import (
 )
 
 // InspectNode functions similarly to GMS' InspectUp function, except it also walks through opaque and disjointed nodes.
-func InspectNode(node sql.Node, nodeFunc func(sql.Node) bool) bool {
+func InspectNode(ctx *sql.Context, node sql.Node, nodeFunc func(*sql.Context, sql.Node) bool) bool {
 	// This implementation is based on the one in GMS, except that we use our functions instead to handle disjointed
 	stop := errors.New("stop")
-	_, _, err := NodeWithOpaque(node, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
-		ok := nodeFunc(node)
+	_, _, err := NodeWithOpaque(ctx, node, func(ctx *sql.Context, node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
+		ok := nodeFunc(ctx, node)
 		if ok {
 			return nil, gmstransform.NewTree, stop
 		}
@@ -38,11 +38,11 @@ func InspectNode(node sql.Node, nodeFunc func(sql.Node) bool) bool {
 
 // InspectNodeExprs functions similarly to GMS' InspectUp function, except that it traverses expressions (there is no
 // InspectUp derivative for expressions in GMS), and it also walks through opaque and disjointed nodes.
-func InspectNodeExprs(node sql.Node, exprFunc func(expr sql.Expression) bool) bool {
+func InspectNodeExprs(ctx *sql.Context, node sql.Node, exprFunc func(ctx *sql.Context, expr sql.Expression) bool) bool {
 	// This implementation is based on the one in GMS, except that we use our functions instead to handle disjointed
 	stop := errors.New("stop")
-	_, _, err := NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, gmstransform.TreeIdentity, error) {
-		ok := exprFunc(expr)
+	_, _, err := NodeExprsWithOpaque(ctx, node, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, gmstransform.TreeIdentity, error) {
+		ok := exprFunc(ctx, expr)
 		if ok {
 			return nil, gmstransform.NewTree, stop
 		}
@@ -52,19 +52,19 @@ func InspectNodeExprs(node sql.Node, exprFunc func(expr sql.Expression) bool) bo
 }
 
 // NodeWithOpaque functions similarly to GMS' NodeWithOpaque function, except it also walks through disjointed nodes.
-func NodeWithOpaque(node sql.Node, nodeFunc gmstransform.NodeFunc) (sql.Node, gmstransform.TreeIdentity, error) {
-	return gmstransform.NodeWithOpaque(node, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
+func NodeWithOpaque(ctx *sql.Context, node sql.Node, nodeFunc gmstransform.NodeFunc) (sql.Node, gmstransform.TreeIdentity, error) {
+	return gmstransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
 		treeIdentity := gmstransform.SameTree
 		if disjointedNode, ok := node.(plan.DisjointedChildrenNode); ok {
 			var err error
 			node, treeIdentity, err = handleDisjointedNodes(disjointedNode, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
-				return NodeWithOpaque(node, nodeFunc)
+				return NodeWithOpaque(ctx, node, nodeFunc)
 			})
 			if err != nil {
 				return nil, gmstransform.NewTree, err
 			}
 		}
-		node, newTreeIdentity, err := nodeFunc(node)
+		node, newTreeIdentity, err := nodeFunc(ctx, node)
 		if err != nil {
 			return nil, gmstransform.NewTree, err
 		}
@@ -74,11 +74,11 @@ func NodeWithOpaque(node sql.Node, nodeFunc gmstransform.NodeFunc) (sql.Node, gm
 
 // NodeExprsWithOpaque functions similarly to GMS' NodeExprsWithOpaque function, except it also walks through disjointed
 // nodes.
-func NodeExprsWithOpaque(node sql.Node, exprFunc gmstransform.ExprFunc) (sql.Node, gmstransform.TreeIdentity, error) {
-	node, disjointCheck, err := gmstransform.NodeWithOpaque(node, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
+func NodeExprsWithOpaque(ctx *sql.Context, node sql.Node, exprFunc gmstransform.ExprFunc) (sql.Node, gmstransform.TreeIdentity, error) {
+	node, disjointCheck, err := gmstransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
 		if disjointedNode, ok := node.(plan.DisjointedChildrenNode); ok {
 			return handleDisjointedNodes(disjointedNode, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
-				return NodeExprsWithOpaque(node, exprFunc)
+				return NodeExprsWithOpaque(ctx, node, exprFunc)
 			})
 		}
 		return node, gmstransform.SameTree, nil
@@ -86,7 +86,7 @@ func NodeExprsWithOpaque(node sql.Node, exprFunc gmstransform.ExprFunc) (sql.Nod
 	if err != nil {
 		return nil, gmstransform.NewTree, err
 	}
-	node, exprCheck, err := gmstransform.NodeExprsWithOpaque(node, exprFunc)
+	node, exprCheck, err := gmstransform.NodeExprsWithOpaque(ctx, node, exprFunc)
 	if err != nil {
 		return nil, gmstransform.NewTree, err
 	}
@@ -95,11 +95,11 @@ func NodeExprsWithOpaque(node sql.Node, exprFunc gmstransform.ExprFunc) (sql.Nod
 
 // NodeExprsWithNodeWithOpaque functions similarly to GMS' NodeExprsWithNodeWithOpaque function, except it also walks
 // through disjointed nodes.
-func NodeExprsWithNodeWithOpaque(node sql.Node, exprFunc gmstransform.ExprWithNodeFunc) (sql.Node, gmstransform.TreeIdentity, error) {
-	node, disjointCheck, err := gmstransform.NodeWithOpaque(node, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
+func NodeExprsWithNodeWithOpaque(ctx *sql.Context, node sql.Node, exprFunc gmstransform.ExprWithNodeFunc) (sql.Node, gmstransform.TreeIdentity, error) {
+	node, disjointCheck, err := gmstransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
 		if disjointedNode, ok := node.(plan.DisjointedChildrenNode); ok {
 			return handleDisjointedNodes(disjointedNode, func(node sql.Node) (sql.Node, gmstransform.TreeIdentity, error) {
-				return NodeExprsWithNodeWithOpaque(node, exprFunc)
+				return NodeExprsWithNodeWithOpaque(ctx, node, exprFunc)
 			})
 		}
 		return node, gmstransform.SameTree, nil
@@ -107,7 +107,7 @@ func NodeExprsWithNodeWithOpaque(node sql.Node, exprFunc gmstransform.ExprWithNo
 	if err != nil {
 		return nil, gmstransform.NewTree, err
 	}
-	node, exprCheck, err := gmstransform.NodeExprsWithNodeWithOpaque(node, exprFunc)
+	node, exprCheck, err := gmstransform.NodeExprsWithNodeWithOpaque(ctx, node, exprFunc)
 	if err != nil {
 		return nil, gmstransform.NewTree, err
 	}

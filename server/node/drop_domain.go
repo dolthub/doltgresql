@@ -15,6 +15,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -112,7 +113,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			return nil, err
 		}
 		if ok {
-			for _, col := range t.Schema() {
+			for _, col := range t.Schema(ctx) {
 				if dt, isDoltgresType := col.Type.(*types.DoltgresType); isDoltgresType && dt.TypType == types.TypeType_Domain {
 					if dt.Name() == domain.Name() {
 						// TODO: issue a detail (list of all columns and tables that uses this domain)
@@ -139,7 +140,7 @@ func (c *DropDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *DropDomain) Schema() sql.Schema {
+func (c *DropDomain) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -149,12 +150,12 @@ func (c *DropDomain) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *DropDomain) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *DropDomain) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *DropDomain) WithResolvedChildren(children []any) (any, error) {
+func (c *DropDomain) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}

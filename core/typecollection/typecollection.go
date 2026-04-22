@@ -456,7 +456,7 @@ func (*TypeCollection) getTable(ctx *sql.Context, schema string, tblName string)
 // https://www.postgresql.org/docs/15/sql-createtable.html
 func (*TypeCollection) tableToType(ctx *sql.Context, tbl sql.Table, schema string) (*pgtypes.DoltgresType, error) {
 	tblName := tbl.Name()
-	tblSch := tbl.Schema()
+	tblSch := tbl.Schema(ctx)
 	typeID := id.NewType(schema, tblName)
 	relID := id.NewTable(schema, tblName).AsId()
 	arrayID := id.NewType(schema, "_"+tblName)

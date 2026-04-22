@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -74,9 +75,9 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			continue
 		}
 
-		doltgresType, ok := expr.Type().(*pgtypes.DoltgresType)
+		doltgresType, ok := expr.Type(ctx).(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, errors.Errorf("expected DoltgresType, but got %s", expr.Type().String())
+			return nil, errors.Errorf("expected DoltgresType, but got %s", expr.Type(ctx).String())
 		}
 
 		// We always cast the element, as there may be parameter restrictions in place
@@ -94,7 +95,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (array *Array) IsNullable() bool {
+func (array *Array) IsNullable(ctx *sql.Context) bool {
 	// TODO: verify if this is actually nullable
 	return false
 }
@@ -128,13 +129,13 @@ func (array *Array) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (array *Array) Type() sql.Type {
+func (array *Array) Type(ctx *sql.Context) sql.Type {
 	return array.coercedType
 }
 
 // WithChildren implements the sql.Expression interface.
-func (array *Array) WithChildren(children ...sql.Expression) (sql.Expression, error) {
-	resultType, err := array.getTargetType(children...)
+func (array *Array) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
+	resultType, err := array.getTargetType(ctx, children...)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +146,7 @@ func (array *Array) WithChildren(children ...sql.Expression) (sql.Expression, er
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (array *Array) WithResolvedChildren(children []any) (any, error) {
+func (array *Array) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	newExpressions := make([]sql.Expression, len(children))
 	for i, resolvedChild := range children {
 		resolvedExpression, ok := resolvedChild.(sql.Expression)
@@ -154,16 +155,16 @@ func (array *Array) WithResolvedChildren(children []any) (any, error) {
 		}
 		newExpressions[i] = resolvedExpression
 	}
-	return array.WithChildren(newExpressions...)
+	return array.WithChildren(ctx.(*sql.Context), newExpressions...)
 }
 
 // getTargetType returns the evaluated type for this expression.
 // Returns the "anyarray" type if the type combination is invalid.
-func (array *Array) getTargetType(children ...sql.Expression) (*pgtypes.DoltgresType, error) {
+func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) (*pgtypes.DoltgresType, error) {
 	var childrenTypes []*pgtypes.DoltgresType
 	for _, child := range children {
 		if child != nil {
-			childType, ok := child.Type().(*pgtypes.DoltgresType)
+			childType, ok := child.Type(ctx).(*pgtypes.DoltgresType)
 			if !ok {
 				// We use "anyarray" as the indeterminate/invalid type
 				return pgtypes.AnyArray, nil

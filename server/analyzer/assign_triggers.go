@@ -33,7 +33,7 @@ import (
 
 // AssignTriggers assigns triggers wherever they're needed.
 func AssignTriggers(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	return pgtransform.NodeWithOpaque(node, func(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
+	return pgtransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		switch node := node.(type) {
 		case *plan.DeleteFrom, *plan.InsertInto, *plan.Truncate, *plan.Update:
 			sch, beforeTrigs, afterTrigs, err := getTriggerInformation(ctx, node)
@@ -132,7 +132,7 @@ func getTriggerInformation(ctx *sql.Context, node sql.Node) (sch sql.Schema, bef
 	allTrigs := trigCollection.GetTriggersForTable(ctx, tblID)
 	// Return early if there are no triggers for the table
 	if len(allTrigs) == 0 {
-		return tbl.Schema(), nil, nil, nil
+		return tbl.Schema(ctx), nil, nil, nil
 	}
 	// Trigger order is determined by the name
 	sort.Slice(allTrigs, func(i, j int) bool {
@@ -174,7 +174,7 @@ func getTriggerInformation(ctx *sql.Context, node sql.Node) (sch sql.Schema, bef
 			return nil, nil, nil, fmt.Errorf("trigger timing has not yet been implemented")
 		}
 	}
-	return tbl.Schema(), beforeTrigs, afterTrigs, nil
+	return tbl.Schema(ctx), beforeTrigs, afterTrigs, nil
 }
 
 // hasJoinNode returns true if |node| or any child is a JoinNode.
@@ -226,13 +226,13 @@ func getTriggerRowHandling(node sql.Node) pgnodes.TriggerExecutionRowHandling {
 func nodeWithTriggers(ctx *sql.Context, node sql.Node, executionNode *pgnodes.TriggerExecution) (sql.Node, error) {
 	switch node := node.(type) {
 	case *plan.DeleteFrom:
-		return node.WithChildren(executionNode)
+		return node.WithChildren(ctx, executionNode)
 	case *plan.InsertInto:
 		return node.WithSource(executionNode), nil
 	case *plan.Truncate:
-		return node.WithChildren(executionNode)
+		return node.WithChildren(ctx, executionNode)
 	case *plan.Update:
-		return node.WithChildren(executionNode)
+		return node.WithChildren(ctx, executionNode)
 	default:
 		return nil, fmt.Errorf("unknown node for triggers")
 	}

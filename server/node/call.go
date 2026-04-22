@@ -15,6 +15,8 @@
 package node
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -91,7 +93,7 @@ func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *Call) Schema() sql.Schema {
+func (c *Call) Schema(ctx *sql.Context) sql.Schema {
 	// TODO: this should be the INOUT and OUT parameters of the target procedure assuming we're not using the cached schema
 	return c.cachedSch
 }
@@ -102,12 +104,12 @@ func (c *Call) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *Call) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *Call) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithExpressions implements the interface sql.Expressioner.
-func (c *Call) WithExpressions(exprs ...sql.Expression) (sql.Node, error) {
+func (c *Call) WithExpressions(ctx *sql.Context, exprs ...sql.Expression) (sql.Node, error) {
 	if len(c.Exprs)+1 != len(exprs) {
 		return nil, errors.Errorf("expected `%d` child expressions but received `%d`", len(c.Exprs), len(exprs))
 	}
@@ -118,7 +120,7 @@ func (c *Call) WithExpressions(exprs ...sql.Expression) (sql.Node, error) {
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *Call) WithResolvedChildren(children []any) (any, error) {
+func (c *Call) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	resolvedChildren := make([]sql.Expression, len(children))
 	for i, child := range children {
 		var ok bool

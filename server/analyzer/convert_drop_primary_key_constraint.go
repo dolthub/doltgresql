@@ -24,7 +24,7 @@ import (
 // convertDropPrimaryKeyConstraint converts a DropConstraint node dropping a primary key constraint into
 // an AlterPK node that GMS can process to remove the primary key.
 func convertDropPrimaryKeyConstraint(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ *plan.Scope, _ analyzer.RuleSelector, _ *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	return transform.Node(n, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+	return transform.Node(ctx, n, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		dropConstraint, ok := n.(*plan.DropConstraint)
 		if !ok {
 			return n, transform.SameTree, nil
@@ -45,7 +45,7 @@ func convertDropPrimaryKeyConstraint(ctx *sql.Context, _ *analyzer.Analyzer, n s
 			for _, index := range indexes {
 				if index.ID() == "PRIMARY" && dropConstraint.Name == rt.Name()+"_pkey" {
 					alterDropPk := plan.NewAlterDropPk(rt.Database(), rt)
-					newNode, err := alterDropPk.WithTargetSchema(rt.Schema())
+					newNode, err := alterDropPk.WithTargetSchema(rt.Schema(ctx))
 					if err != nil {
 						return n, transform.SameTree, err
 					}

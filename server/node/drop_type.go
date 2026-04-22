@@ -15,6 +15,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -134,7 +135,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			return nil, err
 		}
 		if ok {
-			for _, col := range t.Schema() {
+			for _, col := range t.Schema(ctx) {
 				if dt, isDoltgresType := col.Type.(*types.DoltgresType); isDoltgresType {
 					if dt.Name() == typ.Name() {
 						// TODO: issue a detail (list of all columns and tables that uses this type)
@@ -163,7 +164,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *DropType) Schema() sql.Schema {
+func (c *DropType) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -173,12 +174,12 @@ func (c *DropType) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *DropType) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *DropType) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *DropType) WithResolvedChildren(children []any) (any, error) {
+func (c *DropType) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}
