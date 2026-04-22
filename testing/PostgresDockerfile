@@ -51,7 +51,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal && \
 
 # install go
 WORKDIR /root
-ENV GO_VERSION=1.25.0
+ENV GO_VERSION=1.26.2
 ENV GOPATH=/go
 ENV PATH=$PATH:$GOPATH/bin
 ENV PATH=$PATH:$GOPATH/bin:/usr/local/go/bin
