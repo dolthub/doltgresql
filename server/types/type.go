@@ -613,7 +613,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 // Or it can be pseudo category with name 'anyarray'.
 func (t *DoltgresType) IsArrayType() bool {
 	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType && t.Array == id.NullType) ||
-		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
+			(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 
 // IsArrayCategory returns true if the type is of 'array' category.
@@ -1198,8 +1198,6 @@ func (t typeInfo) Encoding() val.Encoding {
 	// TODO: use dolt JSON document encoding here
 	// case "json", "jsonb":
 	// 	return val.JSONAddrEnc
-	case "oid", "regclass", "regproc", "regtype":
-		return val.Int32Enc
 	case "xid":
 		return val.Uint32Enc
 		// TODO: uuid is represented as a uuid.Uuid in doltgres, but dolt wants []byte for BytesAdaptiveEnc
