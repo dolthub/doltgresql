@@ -1215,7 +1215,6 @@ func (t typeInfo) Encoding() val.Encoding {
 			panic(fmt.Errorf("unknown extended type serialization width"))
 		}
 	}
-	return t.encoding
 }
 
 func (t typeInfo) WithEncoding(enc val.Encoding) typeinfo.TypeInfo {
