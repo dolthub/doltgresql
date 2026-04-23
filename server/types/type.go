@@ -1203,7 +1203,14 @@ func (t typeInfo) Encoding() val.Encoding {
 		// TODO: uuid is represented as a uuid.Uuid in doltgres, but dolt wants []byte for BytesAdaptiveEnc
 	// case "uuid":
 	// 	return val.BytesAdaptiveEnc
-	case "varchar", "text", "name", "bpchar", "char":
+	case "varchar":
+		if t.Type.attTypMod == -1 {
+			return val.StringAdaptiveEnc
+		}
+		return val.StringEnc
+	case "name", "char":
+		return val.StringEnc
+	case "bpchar", "text":
 		return val.StringAdaptiveEnc
 	default:
 		switch t.Type.MaxSerializedWidth() {
