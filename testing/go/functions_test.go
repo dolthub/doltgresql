@@ -3134,8 +3134,8 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{18}},
 				},
 				{
-					Query:    `SELECT length('now'::time::text);`,
-					Expected: []sql.Row{{15}},
+					Query:    `SELECT length(to_char('now'::time, 'HH24:MI:SS.US'));`,
+					Expected: []sql.Row{{int32(15)}},
 				},
 			},
 		},
