@@ -51,7 +51,7 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 	if dbnode, ok := node.(sql.Databaser); ok {
 		db = dbnode.Database()
 	}
-	return transform.Node(node, func(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
+	return transform.Node(ctx, node, func(ctx *sql.Context, node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		var same = transform.SameTree
 		switch n := node.(type) {
 		case *plan.AddColumn:
@@ -168,10 +168,10 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 	if dbnode, ok := node.(sql.Databaser); ok {
 		db = dbnode.Database()
 	}
-	return pgtransform.NodeExprsWithOpaque(node, func(e sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	return pgtransform.NodeExprsWithOpaque(ctx, node, func(ctx *sql.Context, e sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		switch expr := e.(type) {
 		case *pgexprs.ColumnAccess:
-			exprType, _ := expr.Type().(*pgtypes.DoltgresType)
+			exprType, _ := expr.Type(ctx).(*pgtypes.DoltgresType)
 			if exprType == nil {
 				return nil, transform.NewTree, errors.New("column access is missing its child expression")
 			} else if exprType.IsResolvedType() {
@@ -184,7 +184,7 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 			}
 			return expr.WithType(newType), transform.NewTree, nil
 		case *pgexprs.ExplicitCast:
-			if rt, ok := expr.Type().(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
+			if rt, ok := expr.Type(ctx).(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
 				dt, err := resolveType(ctx, db, rt)
 				if err != nil {
 					return nil, transform.NewTree, err

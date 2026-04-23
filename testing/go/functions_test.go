@@ -1671,6 +1671,27 @@ func TestArrayFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array_prepend",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_prepend(NULL, NULL);`,
+					Expected: []sql.Row{{"{NULL}"}},
+				},
+				{
+					Query:    `SELECT array_prepend(NULL, ARRAY[6]);`,
+					Expected: []sql.Row{{"{NULL,6}"}},
+				},
+				{
+					Query:    `SELECT array_prepend(5, NULL);`,
+					Expected: []sql.Row{{"{5}"}},
+				},
+				{
+					Query:    `SELECT array_prepend(5, ARRAY[6]);`,
+					Expected: []sql.Row{{"{5,6}"}},
+				},
+			},
+		},
 	})
 }
 
@@ -3107,6 +3128,14 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Skip:     true, // TODO: support precision
 					Query:    `SELECT now()::timetz(4)::text = current_time(5)::text;`,
 					Expected: []sql.Row{{false}},
+				},
+				{
+					Query:    `SELECT length('now'::timetz::text);`,
+					Expected: []sql.Row{{18}},
+				},
+				{
+					Query:    `SELECT length('now'::time::text);`,
+					Expected: []sql.Row{{15}},
 				},
 			},
 		},

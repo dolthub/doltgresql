@@ -16,7 +16,6 @@ package ast
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -184,6 +183,7 @@ func nodeAlterTableAddConstraint(
 	ifExists bool) (*vitess.DDL, error) {
 
 	if node.ValidationBehavior == tree.ValidationSkip {
+		// currently only allowed for foreign key and CHECK constraints
 		return nil, errors.Errorf("NOT VALID is not supported yet")
 	}
 
@@ -313,7 +313,7 @@ func nodeAlterTableSetDefault(ctx *Context, node *tree.AlterTableSetDefault, tab
 		IfExists: ifExists,
 		DefaultSpec: &vitess.DefaultSpec{
 			Action: "set",
-			Column: vitess.NewColIdent(strings.Trim(node.Column.String(), "\"")),
+			Column: vitess.NewColIdent(bareIdentifier(node.Column)),
 			Value:  expr,
 		},
 	}, nil

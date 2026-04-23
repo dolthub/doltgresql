@@ -41,8 +41,9 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query:    `SELECT 1::pg_catalog.int8;`,
-				Expected: []sql.Row{{1}},
+				Query:            `SELECT 1::pg_catalog.int8;`,
+				ExpectedColNames: []string{"int8"},
+				Expected:         []sql.Row{{1}},
 			},
 		},
 	},
@@ -415,13 +416,15 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query: "SELECT '!'::bpchar;",
+				Query:            "SELECT '!'::bpchar;",
+				ExpectedColNames: []string{"bpchar"},
 				Expected: []sql.Row{
 					{"!"},
 				},
 			},
 			{
-				Query: "SELECT '!'::bpchar(1);",
+				Query:            "SELECT '!'::bpchar(1);",
+				ExpectedColNames: []string{"bpchar"},
 				Expected: []sql.Row{
 					{"!"},
 				},
@@ -547,7 +550,8 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query: `SELECT 'def'::name::"char";`,
+				Query:            `SELECT 'def'::name::"char";`,
+				ExpectedColNames: []string{"char"},
 				Expected: []sql.Row{
 					{"d"},
 				},
@@ -799,7 +803,8 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
-				Query: "SELECT date '2022-02-02'",
+				Query:            "SELECT date '2022-02-02'",
+				ExpectedColNames: []string{"date"},
 				Expected: []sql.Row{
 					{"2022-02-02"},
 				},
@@ -3668,6 +3673,16 @@ var enumTypeTests = []ScriptTest{
 			{
 				Query:    `INSERT INTO person VALUES ('Moe', 'happy'), ('Larry', 'sad'), ('Curly', 'ok');`,
 				Expected: []sql.Row{},
+			},
+			{
+				Query:            `SELECT 'happy'::mood;`,
+				ExpectedColNames: []string{"mood"},
+				Expected:         []sql.Row{{"happy"}},
+			},
+			{
+				Query:            `SELECT current_mood::mood from person where name = 'Moe';`,
+				ExpectedColNames: []string{"current_mood"},
+				Expected:         []sql.Row{{"happy"}},
 			},
 			{
 				Query:    `SELECT * FROM person order by current_mood;`,

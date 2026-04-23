@@ -54,13 +54,13 @@ func (c *GMSCast) Child() sql.Expression {
 }
 
 // DoltgresType returns the DoltgresType that the cast evaluates to. This is the same value that is returned by Type().
-func (c *GMSCast) DoltgresType() *pgtypes.DoltgresType {
+func (c *GMSCast) DoltgresType(ctx *sql.Context) *pgtypes.DoltgresType {
 	// GMSCast shouldn't receive a DoltgresType, but we shouldn't error if it happens
-	if t, ok := c.sqlChild.Type().(*pgtypes.DoltgresType); ok {
+	if t, ok := c.sqlChild.Type(ctx).(*pgtypes.DoltgresType); ok {
 		return t
 	}
 
-	return pgtypes.FromGmsType(c.sqlChild.Type())
+	return pgtypes.FromGmsType(c.sqlChild.Type(ctx))
 }
 
 // Eval implements the sql.Expression interface.
@@ -73,10 +73,10 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		return nil, nil
 	}
 	// GMSCast shouldn't receive a DoltgresType, but we shouldn't error if it happens
-	if _, ok := c.sqlChild.Type().(*pgtypes.DoltgresType); ok {
+	if _, ok := c.sqlChild.Type(ctx).(*pgtypes.DoltgresType); ok {
 		return val, nil
 	}
-	sqlTyp := c.sqlChild.Type()
+	sqlTyp := c.sqlChild.Type(ctx)
 	switch sqlTyp.Type() {
 	// Boolean types are a special case because of how they are translated on the wire in Postgres. If we identify a
 	// boolean result, we want to convert it from an int back to a boolean.
@@ -193,12 +193,12 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	case query.Type_GEOMETRY:
 		return nil, errors.Errorf("GMS geometry types are not supported")
 	default:
-		return nil, errors.Errorf("GMS type `%s` is not supported", c.sqlChild.Type().String())
+		return nil, errors.Errorf("GMS type `%s` is not supported", c.sqlChild.Type(ctx).String())
 	}
 }
 
 // IsNullable implements the sql.Expression interface.
-func (c *GMSCast) IsNullable() bool {
+func (c *GMSCast) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -216,12 +216,12 @@ func (c *GMSCast) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (c *GMSCast) Type() sql.Type {
-	return c.DoltgresType()
+func (c *GMSCast) Type(ctx *sql.Context) sql.Type {
+	return c.DoltgresType(ctx)
 }
 
 // WithChildren implements the sql.Expression interface.
-func (c *GMSCast) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (c *GMSCast) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(c, len(children), 1)
 	}

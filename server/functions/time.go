@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"strings"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgtype"
 
@@ -43,15 +45,18 @@ var time_in = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		input := val1.(string)
-		//oid := val2.(id.Id)
-		//typmod := val3.(int32)
-		// TODO: decode typmod to precision
-		p := 6
-		//if b.Precision == -1 {
-		//	p = b.Precision
-		//}
-		t, _, err := tree.ParseDTime(nil, input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
+		input := strings.TrimSpace(val1.(string))
+		typmod := val3.(int32)
+		if typmod == -1 {
+			typmod = 6
+		}
+		precision := tree.TimeFamilyPrecisionToRoundDuration(typmod)
+		if strings.EqualFold(input, "now") {
+			t := ctx.QueryTime()
+			t = t.Round(precision)
+			return timeofday.New(t.Hour(), t.Minute(), t.Second(), t.Nanosecond()/1000), nil
+		}
+		t, _, err := tree.ParseDTime(nil, input, precision)
 		if err != nil {
 			return nil, err
 		}

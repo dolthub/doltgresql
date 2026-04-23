@@ -32,7 +32,7 @@ type QuickFunction interface {
 
 // LoadFunctionFromCatalog returns the function matching the given name and parameter types. This is intended solely for
 // functions that are used for types, as the returned functions are not valid using the Eval function.
-var LoadFunctionFromCatalog func(funcName string, parameterTypes []*DoltgresType) any
+var LoadFunctionFromCatalog func(ctx *sql.Context, funcName string, parameterTypes []*DoltgresType) any
 
 // functionRegistry is a local registry that holds a mapping from ID to QuickFunction. This is done as types are now
 // passed by struct, meaning that we need to cache the loading of functions somewhere. In addition, we don't yet support
@@ -75,7 +75,7 @@ func (r *functionRegistry) InternalToRegistryID(functionID id.Function) uint32 {
 }
 
 // GetFunction returns the associated function for the given ID. This will always return a valid function.
-func (r *functionRegistry) GetFunction(id uint32) QuickFunction {
+func (r *functionRegistry) GetFunction(ctx *sql.Context, id uint32) QuickFunction {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	f := r.functions[id]
@@ -85,7 +85,7 @@ func (r *functionRegistry) GetFunction(id uint32) QuickFunction {
 	if id == 0 {
 		return nil
 	}
-	f = r.loadFunction(id)
+	f = r.loadFunction(ctx, id)
 	if f == nil {
 		// If we hit this panic, then we're missing a test that uses this function (and we should add that test)
 		panic(errors.Errorf("cannot find function: `%s`", r.revMapping[id]))
@@ -108,7 +108,7 @@ func (r *functionRegistry) GetString(id uint32) string {
 }
 
 // loadFunction loads the given function
-func (r *functionRegistry) loadFunction(id uint32) QuickFunction {
+func (r *functionRegistry) loadFunction(ctx *sql.Context, id uint32) QuickFunction {
 	// We make this check a second time (first in GetFunction) since the function may have been added while another
 	// function acquired the lock.
 	f := r.functions[id]
@@ -123,7 +123,7 @@ func (r *functionRegistry) loadFunction(id uint32) QuickFunction {
 		return nil
 	}
 	funcName, types := r.toFuncSignature(functionID)
-	potentialFunction := LoadFunctionFromCatalog(funcName, types)
+	potentialFunction := LoadFunctionFromCatalog(ctx, funcName, types)
 	if potentialFunction == nil {
 		return nil
 	}

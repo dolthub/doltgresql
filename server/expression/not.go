@@ -15,8 +15,9 @@
 package expression
 
 import (
-	"github.com/cockroachdb/errors"
+	"context"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -62,7 +63,7 @@ func (n *Not) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (n *Not) IsNullable() bool {
+func (n *Not) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -80,12 +81,12 @@ func (n *Not) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (n *Not) Type() sql.Type {
+func (n *Not) Type(ctx *sql.Context) sql.Type {
 	return pgtypes.Bool
 }
 
 // WithChildren implements the sql.Expression interface.
-func (n *Not) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (n *Not) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(n, len(children), 1)
 	}
@@ -95,7 +96,7 @@ func (n *Not) WithChildren(children ...sql.Expression) (sql.Expression, error) {
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (n *Not) WithResolvedChildren(children []any) (any, error) {
+func (n *Not) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 1 {
 		return nil, errors.Errorf("invalid vitess child count, expected `1` but got `%d`", len(children))
 	}

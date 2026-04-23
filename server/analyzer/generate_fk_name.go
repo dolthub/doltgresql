@@ -29,7 +29,7 @@ import (
 // generateForeignKeyName populates a generated foreign key name, in the Postgres default foreign key name format,
 // when a foreign key is created without an explicit name specified.
 func generateForeignKeyName(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ *plan.Scope, _ analyzer.RuleSelector, _ *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	return transform.Node(n, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+	return transform.Node(ctx, n, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		switch n := n.(type) {
 		case *plan.CreateTable:
 			copiedForeignKeys := make([]*sql.ForeignKeyConstraint, len(n.ForeignKeys()))

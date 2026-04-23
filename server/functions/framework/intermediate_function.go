@@ -27,9 +27,9 @@ type IntermediateFunction struct {
 
 // Compile returns a CompiledFunction created from the calling IntermediateFunction. Returns a nil function if it could
 // not be compiled.
-func (f IntermediateFunction) Compile(name string, parameters ...sql.Expression) *CompiledFunction {
+func (f IntermediateFunction) Compile(ctx *sql.Context, name string, parameters ...sql.Expression) *CompiledFunction {
 	if f.Functions == nil {
 		return nil
 	}
-	return newCompiledFunctionInternal(name, parameters, f.Functions, f.AllOverloads, f.IsOperator, nil)
+	return newCompiledFunctionInternal(ctx, name, parameters, f.Functions, f.AllOverloads, f.IsOperator, nil)
 }

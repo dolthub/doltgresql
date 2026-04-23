@@ -77,12 +77,12 @@ func (q *QuickFunction1) String() string {
 }
 
 // Type implements the interface sql.Expression.
-func (q *QuickFunction1) Type() sql.Type {
+func (q *QuickFunction1) Type(ctx *sql.Context) sql.Type {
 	return getTypeIfRowType(q.IsSRF, q.callResolved[1])
 }
 
 // IsNullable implements the interface sql.Expression.
-func (q *QuickFunction1) IsNullable() bool {
+func (q *QuickFunction1) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -160,12 +160,12 @@ func (q *QuickFunction1) Children() []sql.Expression {
 }
 
 // WithChildren implements the interface sql.Expression.
-func (q *QuickFunction1) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (q *QuickFunction1) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(q, len(children), 1)
 	}
 
-	if children[0].Type().Equals(q.Argument.Type()) {
+	if children[0].Type(ctx).Equals(q.Argument.Type(ctx)) {
 		nq := *q
 		nq.Argument = children[0]
 		return &nq, nil
@@ -215,12 +215,12 @@ func (q *QuickFunction2) String() string {
 }
 
 // Type implements the interface sql.Expression.
-func (q *QuickFunction2) Type() sql.Type {
+func (q *QuickFunction2) Type(ctx *sql.Context) sql.Type {
 	return getTypeIfRowType(q.IsSRF, q.callResolved[2])
 }
 
 // IsNullable implements the interface sql.Expression.
-func (q *QuickFunction2) IsNullable() bool {
+func (q *QuickFunction2) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -302,13 +302,13 @@ func (q *QuickFunction2) Children() []sql.Expression {
 }
 
 // WithChildren implements the interface sql.Expression.
-func (q *QuickFunction2) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (q *QuickFunction2) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(q, len(children), 2)
 	}
 
-	if children[0].Type().Equals(q.Arguments[0].Type()) &&
-		children[1].Type().Equals(q.Arguments[1].Type()) {
+	if children[0].Type(ctx).Equals(q.Arguments[0].Type(ctx)) &&
+		children[1].Type(ctx).Equals(q.Arguments[1].Type(ctx)) {
 		nq := *q
 		nq.Arguments = [2]sql.Expression{children[0], children[1]}
 		return &nq, nil
@@ -358,12 +358,12 @@ func (q *QuickFunction3) String() string {
 }
 
 // Type implements the interface sql.Expression.
-func (q *QuickFunction3) Type() sql.Type {
+func (q *QuickFunction3) Type(ctx *sql.Context) sql.Type {
 	return getTypeIfRowType(q.IsSRF, q.callResolved[3])
 }
 
 // IsNullable implements the interface sql.Expression.
-func (q *QuickFunction3) IsNullable() bool {
+func (q *QuickFunction3) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -445,14 +445,14 @@ func (q *QuickFunction3) Children() []sql.Expression {
 }
 
 // WithChildren implements the interface sql.Expression.
-func (q *QuickFunction3) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (q *QuickFunction3) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 3 {
 		return nil, sql.ErrInvalidChildrenNumber.New(q, len(children), 3)
 	}
 
-	if children[0].Type().Equals(q.Arguments[0].Type()) &&
-		children[1].Type().Equals(q.Arguments[1].Type()) &&
-		children[2].Type().Equals(q.Arguments[2].Type()) {
+	if children[0].Type(ctx).Equals(q.Arguments[0].Type(ctx)) &&
+		children[1].Type(ctx).Equals(q.Arguments[1].Type(ctx)) &&
+		children[2].Type(ctx).Equals(q.Arguments[2].Type(ctx)) {
 		nq := *q
 		nq.Arguments = [3]sql.Expression{children[0], children[1], children[2]}
 		return &nq, nil

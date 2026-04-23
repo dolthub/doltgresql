@@ -15,7 +15,6 @@
 package analyzer
 
 import (
-	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -43,7 +42,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 	// TODO: this probably should not be opaque, we should let the analyzer dig into subqueries and analyze them when
 	//  it chooses. Doing all type transformations upfront like this masks bugs where certain tyupe conversion errors
 	//  only manifest in a subquery
-	return pgtransform.NodeExprsWithNodeWithOpaque(node, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	return pgtransform.NodeExprsWithNodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		// This can be updated if we find more expressions that return GMS types.
 		// These should eventually be replaced with Doltgres-equivalents over time, rendering this function unnecessary.
 		switch expr := expr.(type) {
@@ -54,7 +53,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				// Some dolt_ tables do not have doltgres types for their columns, so we convert them here
 				if rt, ok := child.(*plan.ResolvedTable); ok && strings.HasPrefix(rt.Name(), "dolt_") {
 					// This is a projection on a table, so we can safely convert the type
-					if _, ok := expr.Type().(*pgtypes.DoltgresType); !ok {
+					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
 						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 					}
 				}
@@ -81,7 +80,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				case "Count", "CountDistinct", "group_concat", "JSONObjectAgg", "Sum":
 				default:
 					// Some GMS functions wrap Doltgres parameters, so we'll only handle those that return GMS types
-					if _, ok := expr.Type().(*pgtypes.DoltgresType); !ok {
+					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
 						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 					}
 				}
@@ -92,10 +91,10 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			// Due to how interfaces work, we sometimes pass (*ColumnDefaultValue)(nil), so we have to check for it
 			if expr != nil && expr.Expr != nil {
 				defaultExpr := expr.Expr
-				if _, ok := defaultExpr.Type().(*pgtypes.DoltgresType); !ok {
+				if _, ok := defaultExpr.Type(ctx).(*pgtypes.DoltgresType); !ok {
 					defaultExpr = pgexprs.NewGMSCast(defaultExpr)
 				}
-				defaultExprType := defaultExpr.Type().(*pgtypes.DoltgresType)
+				defaultExprType := defaultExpr.Type(ctx).(*pgtypes.DoltgresType)
 				outType, ok := expr.OutType.(*pgtypes.DoltgresType)
 				if !ok {
 					return nil, transform.NewTree, errors.Errorf("default values must have a non-GMS OutType: `%s`", expr.OutType.String())
@@ -112,12 +111,12 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 }
 
 // typeSanitizerLiterals handles literal expressions for TypeSanitizer.
-func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) (sql.Expression, transform.TreeIdentity, error) {
+func typeSanitizerLiterals(ctx *sql.Context, gmsLiteral *expression.Literal) (sql.Expression, transform.TreeIdentity, error) {
 	// GMS may resolve Doltgres literals and then stick them in GMS literals, so we have to account for that here
-	if doltgresType, ok := gmsLiteral.Type().(*pgtypes.DoltgresType); ok {
+	if doltgresType, ok := gmsLiteral.Type(ctx).(*pgtypes.DoltgresType); ok {
 		return pgexprs.NewUnsafeLiteral(gmsLiteral.Value(), doltgresType), transform.NewTree, nil
 	}
-	switch gmsLiteral.Type().Type() {
+	switch gmsLiteral.Type(ctx).Type() {
 	case query.Type_INT8, query.Type_INT16, query.Type_YEAR, query.Type_INT24, query.Type_INT32:
 		newVal, _, err := types.Int32.Convert(ctx, gmsLiteral.Value())
 		if err != nil {
@@ -217,6 +216,6 @@ func typeSanitizerLiterals(ctx context.Context, gmsLiteral *expression.Literal) 
 	case query.Type_NULL_TYPE:
 		return pgexprs.NewNullLiteral(), transform.NewTree, nil
 	default:
-		return nil, transform.NewTree, errors.Errorf("SANITIZER: encountered a GMS type that cannot be handled: %s", gmsLiteral.Type().String())
+		return nil, transform.NewTree, errors.Errorf("SANITIZER: encountered a GMS type that cannot be handled: %s", gmsLiteral.Type(ctx).String())
 	}
 }

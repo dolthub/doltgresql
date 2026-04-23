@@ -88,8 +88,8 @@ func (c *DropTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sql.
 }
 
 // Schema implements the interface sql.ExecBuilderNode.
-func (c *DropTable) Schema() sql.Schema {
-	return c.gmsDropTable.Schema()
+func (c *DropTable) Schema(ctx *sql.Context) sql.Schema {
+	return c.gmsDropTable.Schema(ctx)
 }
 
 // String implements the interface sql.ExecBuilderNode.
@@ -98,8 +98,8 @@ func (c *DropTable) String() string {
 }
 
 // WithChildren implements the interface sql.ExecBuilderNode.
-func (c *DropTable) WithChildren(children ...sql.Node) (sql.Node, error) {
-	gmsDropTable, err := c.gmsDropTable.WithChildren(children...)
+func (c *DropTable) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
+	gmsDropTable, err := c.gmsDropTable.WithChildren(ctx, children...)
 	if err != nil {
 		return nil, err
 	}

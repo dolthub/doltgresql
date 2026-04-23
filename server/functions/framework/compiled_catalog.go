@@ -25,9 +25,9 @@ var compiledCatalog = map[string]sql.CreateFuncNArgs{}
 
 // GetFunction returns the compiled function with the given name and parameters. Returns false if the function could not
 // be found.
-func GetFunction(functionName string, params ...sql.Expression) (*CompiledFunction, bool, error) {
+func GetFunction(ctx *sql.Context, functionName string, params ...sql.Expression) (*CompiledFunction, bool, error) {
 	if createFunc, ok := compiledCatalog[functionName]; ok {
-		expr, err := createFunc(params...)
+		expr, err := createFunc(ctx, params...)
 		if err != nil {
 			return nil, false, err
 		}
@@ -44,26 +44,26 @@ type dummyExpression struct {
 
 var _ sql.Expression = dummyExpression{}
 
-func (d dummyExpression) Resolved() bool   { return true }
-func (d dummyExpression) String() string   { return d.t.String() }
-func (d dummyExpression) Type() sql.Type   { return d.t }
-func (d dummyExpression) IsNullable() bool { return false }
+func (d dummyExpression) Resolved() bool                   { return true }
+func (d dummyExpression) String() string                   { return d.t.String() }
+func (d dummyExpression) Type(ctx *sql.Context) sql.Type   { return d.t }
+func (d dummyExpression) IsNullable(ctx *sql.Context) bool { return false }
 func (d dummyExpression) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	panic("cannot Eval dummyExpression")
 }
 func (d dummyExpression) Children() []sql.Expression { return nil }
-func (d dummyExpression) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (d dummyExpression) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	return d, nil
 }
 
 // getQuickFunctionForTypes is used by the types package to load quick functions. This is declared here to work around
 // import cycles. Returns nil if a QuickFunction could not be constructed.
-func getQuickFunctionForTypes(functionName string, params []*pgtypes.DoltgresType) any {
+func getQuickFunctionForTypes(ctx *sql.Context, functionName string, params []*pgtypes.DoltgresType) any {
 	exprs := make([]sql.Expression, len(params))
 	for i := range params {
 		exprs[i] = dummyExpression{t: params[i]}
 	}
-	cf, ok, err := GetFunction(functionName, exprs...)
+	cf, ok, err := GetFunction(ctx, functionName, exprs...)
 	if err != nil || !ok {
 		return nil
 	}

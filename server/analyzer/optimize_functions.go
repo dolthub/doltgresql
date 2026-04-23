@@ -39,7 +39,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	}
 
 	_, isInsertNode := node.(*plan.InsertInto)
-	return pgtransform.NodeWithOpaque(node, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+	return pgtransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		projectNode, ok := n.(*plan.Project)
 		if !ok {
 			return n, transform.SameTree, nil
@@ -48,7 +48,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		hasMultipleExpressionTuples := false
 		hasSRF := false
 		// Check if there is set returning function in the source node (e.g. SELECT * FROM unnest())
-		n, sameNode, err := transform.NodeExprsWithNode(projectNode.Child, func(in sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		n, sameNode, err := transform.NodeExprsWithNode(ctx, projectNode.Child, func(ctx *sql.Context, in sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 				// TODO: need better way to detect sequence usage
 				switch compiledFunction.FunctionName() {
@@ -64,7 +64,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				}
 
 				// fill in default exprs if applicable
-				if err := compiledFunction.ResolveDefaultValues(func(defExpr string) (sql.Expression, error) {
+				if err := compiledFunction.ResolveDefaultValues(ctx, func(defExpr string) (sql.Expression, error) {
 					return getDefaultExpr(ctx, a.Catalog, defExpr)
 				}); err != nil {
 					return nil, transform.SameTree, err
@@ -89,7 +89,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 
 		// Check if there is set returning function in the projection expressions (e.g. SELECT unnest() [FROM table/srf])
 		hasSRFInProjection := false
-		exprs, sameExprs, err := transform.Exprs(projectNode.Projections, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		exprs, sameExprs, err := transform.Exprs(ctx, projectNode.Projections, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 				hasSRFInProjection = hasSRFInProjection || compiledFunction.IsSRF()
 				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
@@ -105,7 +105,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				}
 
 				// fill in default exprs if applicablea
-				if err = compiledFunction.ResolveDefaultValues(func(defExpr string) (sql.Expression, error) {
+				if err = compiledFunction.ResolveDefaultValues(ctx, func(defExpr string) (sql.Expression, error) {
 					return getDefaultExpr(ctx, a.Catalog, defExpr)
 				}); err != nil {
 					return nil, transform.SameTree, err

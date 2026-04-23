@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -45,16 +46,22 @@ var timetz_in = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		input := val1.(string)
-		//oid := val2.(id.Id)
-		//typmod := val3.(int32)
-		// TODO: decode typmod to precision
-		p := 6
+		input := strings.TrimSpace(val1.(string))
+		typmod := val3.(int32)
+		if typmod == -1 {
+			typmod = 6
+		}
+		precision := tree.TimeFamilyPrecisionToRoundDuration(typmod)
+		if strings.EqualFold(input, "now") {
+			t := ctx.QueryTime()
+			t = t.Round(precision)
+			return timetz.MakeTimeTZFromLocation(timeofday.New(t.Hour(), t.Minute(), t.Second(), t.Nanosecond()/1000), t.Location()), nil
+		}
 		loc, err := GetServerLocation(ctx)
 		if err != nil {
 			return nil, err
 		}
-		t, _, err := timetz.ParseTimeTZ(time.Now().In(loc), input, tree.TimeFamilyPrecisionToRoundDuration(int32(p)))
+		t, _, err := timetz.ParseTimeTZ(time.Now().In(loc), input, precision)
 		if err != nil {
 			return nil, err
 		}

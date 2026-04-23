@@ -15,6 +15,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -72,14 +73,14 @@ func (r *Return) String() string {
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (r *Return) Schema() sql.Schema {
+func (r *Return) Schema(ctx *sql.Context) sql.Schema {
 	return sql.Schema{
-		{Name: r.Expr.String(), Type: r.Expr.Type(), Source: ""},
+		{Name: r.Expr.String(), Type: r.Expr.Type(ctx), Source: ""},
 	}
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (r *Return) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (r *Return) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
 		return nil, sql.ErrInvalidChildrenNumber.New(r, len(children), 0)
 	}
@@ -87,7 +88,7 @@ func (r *Return) WithChildren(children ...sql.Node) (sql.Node, error) {
 }
 
 // WithResolvedChildren implements the interface sql.ExecSourceRel.
-func (r *Return) WithResolvedChildren(children []any) (any, error) {
+func (r *Return) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(r, len(children), 1)
 	}
@@ -103,7 +104,7 @@ func (r *Return) Expressions() []sql.Expression {
 }
 
 // WithExpressions implements the interface sql.Expressioner.
-func (r *Return) WithExpressions(exprs ...sql.Expression) (sql.Node, error) {
+func (r *Return) WithExpressions(ctx *sql.Context, exprs ...sql.Expression) (sql.Node, error) {
 	if len(exprs) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(r, len(exprs), 1)
 	}

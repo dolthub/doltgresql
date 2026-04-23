@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -79,16 +80,16 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	fromType, ok := c.sqlChild.Type().(*pgtypes.DoltgresType)
+	fromType, ok := c.sqlChild.Type(ctx).(*pgtypes.DoltgresType)
 	if !ok {
 		// We'll leverage GMSCast to handle the conversion from a GMS type to a Doltgres type.
 		// Rather than re-evaluating the expression, we put the result in a literal.
-		gmsCast := NewGMSCast(expression.NewLiteral(val, c.sqlChild.Type()))
+		gmsCast := NewGMSCast(expression.NewLiteral(val, c.sqlChild.Type(ctx)))
 		val, err = gmsCast.Eval(ctx, row)
 		if err != nil {
 			return nil, err
 		}
-		fromType = gmsCast.DoltgresType()
+		fromType = gmsCast.DoltgresType(ctx)
 	}
 	if val == nil {
 		if c.castToType.TypType == pgtypes.TypeType_Domain && !c.domainNullable {
@@ -136,7 +137,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (c *ExplicitCast) IsNullable() bool {
+func (c *ExplicitCast) IsNullable(ctx *sql.Context) bool {
 	// TODO: verify if this is actually nullable
 	return true
 }
@@ -162,12 +163,12 @@ func (c *ExplicitCast) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (c *ExplicitCast) Type() sql.Type {
+func (c *ExplicitCast) Type(ctx *sql.Context) sql.Type {
 	return c.castToType
 }
 
 // WithChildren implements the sql.Expression interface.
-func (c *ExplicitCast) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (c *ExplicitCast) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(c, len(children), 1)
 	}
@@ -180,7 +181,7 @@ func (c *ExplicitCast) WithChildren(children ...sql.Expression) (sql.Expression,
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (c *ExplicitCast) WithResolvedChildren(children []any) (any, error) {
+func (c *ExplicitCast) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 1 {
 		return nil, errors.Errorf("invalid vitess child count, expected `1` but got `%d`", len(children))
 	}

@@ -65,7 +65,7 @@ func (w *doltgresDoltStatusTable) Name() string {
 }
 
 // Schema returns the schema for Doltgres' version of the Dolt status table.
-func (w *doltgresDoltStatusTable) Schema() sql.Schema {
+func (w *doltgresDoltStatusTable) Schema(ctx *sql.Context) sql.Schema {
 	return []*sql.Column{
 		{Name: "table_name", Type: pgtypes.Text, Source: DoltgresDoltStatusTableName, PrimaryKey: true, Nullable: false},
 		{Name: "staged", Type: pgtypes.Bool, Source: DoltgresDoltStatusTableName, PrimaryKey: true, Nullable: false},
@@ -128,7 +128,7 @@ func (i *doltgresDoltStatusRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 
 	// Dolt uses byte to avoid MySQL wire protocol ambiguity on tinyint(1) and bool.
 	// See: https://github.com/dolthub/dolt/pull/10117
-	stagedIndex := i.doltStatusTable.Schema().IndexOfColName("staged")
+	stagedIndex := i.doltStatusTable.Schema(ctx).IndexOfColName("staged")
 	stagedVal, ok := row[stagedIndex].(byte)
 	if !ok {
 		return nil, fmt.Errorf("expected staged column at index %d to be byte, got %T", stagedIndex, row[stagedIndex])

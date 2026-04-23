@@ -29,11 +29,14 @@ import (
 // initBinaryConcatenate registers the functions to the catalog.
 func initBinaryConcatenate() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, anytextcat)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, array_append)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, array_cat)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, array_prepend)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, byteacat)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, jsonb_concat)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, textanycat)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryConcatenate, textcat)
-	// TODO: array_append, array_cat, array_prepend, bitcat, tsquery_or, tsvector_concat
+	// TODO: bitcat, tsquery_or, tsvector_concat
 }
 
 // anytextcat_callable is the callable logic for the anytextcat function.
@@ -53,6 +56,65 @@ var anytextcat = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyNonArray, pgtypes.Text},
 	Strict:     true,
 	Callable:   anytextcat_callable,
+}
+
+// array_append represents the PostgreSQL function of the same name, taking the same parameters.
+var array_append = framework.Function2{
+	Name:       "array_append",
+	Return:     pgtypes.AnyArray,                                               // TODO: should be anycompatiblearray
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyElement}, // TODO: should be anycompatiblearray, anycompatible
+	Strict:     false,
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		if val1 == nil {
+			return []any{val2}, nil
+		}
+		array := val1.([]any)
+		returnArray := make([]any, len(array)+1)
+		copy(returnArray, array)
+		returnArray[len(returnArray)-1] = val2
+		return returnArray, nil
+	},
+}
+
+// array_cat represents the PostgreSQL function of the same name, taking the same parameters.
+var array_cat = framework.Function2{
+	Name:       "array_cat",
+	Return:     pgtypes.AnyArray,                                             // TODO: should be anycompatiblearray
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray}, // TODO: should be anycompatiblearray, anycompatiblearray
+	Strict:     false,
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		if val1 == nil && val2 == nil {
+			return nil, nil
+		} else if val1 == nil {
+			return val2, nil
+		} else if val2 == nil {
+			return val1, nil
+		}
+
+		array1 := val1.([]any)
+		array2 := val2.([]any)
+
+		// Concatenate the arrays
+		result := make([]any, len(array1)+len(array2))
+		copy(result, array1)
+		copy(result[len(array1):], array2)
+
+		return result, nil
+	},
+}
+
+// array_prepend represents the PostgreSQL function of the same name, taking the same parameters.
+var array_prepend = framework.Function2{
+	Name:       "array_prepend",
+	Return:     pgtypes.AnyArray,                                               // TODO: should be anycompatiblearray
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyElement, pgtypes.AnyArray}, // TODO: should be anycompatible, anycompatiblearray
+	Strict:     false,
+	Callable: func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		if val2 == nil {
+			return []any{val1}, nil
+		}
+		return append([]any{val1}, val2.([]any)...), nil
+	},
 }
 
 // byteacat_callable is the callable logic for the byteacat function.

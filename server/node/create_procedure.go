@@ -15,16 +15,17 @@
 package node
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/core/procedures"
-
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 )
 
@@ -147,7 +148,7 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *CreateProcedure) Schema() sql.Schema {
+func (c *CreateProcedure) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -157,12 +158,12 @@ func (c *CreateProcedure) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *CreateProcedure) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *CreateProcedure) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *CreateProcedure) WithResolvedChildren(children []any) (any, error) {
+func (c *CreateProcedure) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) > len(c.Parameters) {
 		// the number of default values can be fewer but cannot be more.
 		return nil, ErrVitessChildCount.New(len(c.Parameters), len(children))

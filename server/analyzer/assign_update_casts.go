@@ -37,11 +37,11 @@ func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	var newUpdate sql.Node
 	switch child := update.Child.(type) {
 	case *plan.UpdateSource:
-		newUpdateSource, err := assignUpdateCastsHandleSource(child)
+		newUpdateSource, err := assignUpdateCastsHandleSource(ctx, child)
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
-		newUpdate, err = update.WithChildren(newUpdateSource)
+		newUpdate, err = update.WithChildren(ctx, newUpdateSource)
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -50,15 +50,15 @@ func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		if !ok {
 			return nil, transform.NewTree, errors.Errorf("UPDATE: assumption that Foreign Key child is always UpdateSource is incorrect: %T", child.OriginalNode)
 		}
-		newUpdateSource, err := assignUpdateCastsHandleSource(updateSource)
+		newUpdateSource, err := assignUpdateCastsHandleSource(ctx, updateSource)
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
-		newHandler, err := child.WithChildren(newUpdateSource)
+		newHandler, err := child.WithChildren(ctx, newUpdateSource)
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
-		newUpdate, err = update.WithChildren(newHandler)
+		newUpdate, err = update.WithChildren(ctx, newHandler)
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -68,15 +68,15 @@ func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			return nil, transform.NewTree, fmt.Errorf("UPDATE: unknown source type: %T", child.Child)
 		}
 
-		newUpdateSource, err := assignUpdateCastsHandleSource(updateSource)
+		newUpdateSource, err := assignUpdateCastsHandleSource(ctx, updateSource)
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
-		newHandler, err := child.WithChildren(newUpdateSource)
+		newHandler, err := child.WithChildren(ctx, newUpdateSource)
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
-		newUpdate, err = update.WithChildren(newHandler)
+		newUpdate, err = update.WithChildren(ctx, newHandler)
 		if err != nil {
 			return nil, transform.NewTree, err
 		}
@@ -87,40 +87,40 @@ func AssignUpdateCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 }
 
 // assignUpdateCastsHandleSource handles the *plan.UpdateSource portion of AssignUpdateCasts.
-func assignUpdateCastsHandleSource(updateSource *plan.UpdateSource) (*plan.UpdateSource, error) {
+func assignUpdateCastsHandleSource(ctx *sql.Context, updateSource *plan.UpdateSource) (*plan.UpdateSource, error) {
 	updateExprs := updateSource.UpdateExprs
-	newUpdateExprs, err := assignUpdateFieldCasts(updateExprs.AllExpressions())
+	newUpdateExprs, err := assignUpdateFieldCasts(ctx, updateExprs.AllExpressions())
 	if err != nil {
 		return nil, err
 	}
-	newUpdateSource, err := updateSource.WithExpressions(newUpdateExprs...)
+	newUpdateSource, err := updateSource.WithExpressions(ctx, newUpdateExprs...)
 	if err != nil {
 		return nil, err
 	}
 	return newUpdateSource.(*plan.UpdateSource), nil
 }
 
-func assignUpdateFieldCasts(updateExprs []sql.Expression) ([]sql.Expression, error) {
+func assignUpdateFieldCasts(ctx *sql.Context, updateExprs []sql.Expression) ([]sql.Expression, error) {
 	newUpdateExprs := make([]sql.Expression, len(updateExprs))
 	for i, updateExpr := range updateExprs {
 		setField, ok := updateExpr.(*expression.SetField)
 		if !ok {
 			return nil, errors.Errorf("UPDATE: assumption that expression is always SetField is incorrect: %T", updateExpr)
 		}
-		fromType, ok := setField.RightChild.Type().(*pgtypes.DoltgresType)
+		fromType, ok := setField.RightChild.Type(ctx).(*pgtypes.DoltgresType)
 		if !ok {
 			return nil, errors.Errorf("UPDATE: non-Doltgres type found in source: %s", setField.RightChild.String())
 		}
-		toType, ok := setField.LeftChild.Type().(*pgtypes.DoltgresType)
+		toType, ok := setField.LeftChild.Type(ctx).(*pgtypes.DoltgresType)
 		if !ok {
 			// Only non-Doltgres destination tables will have GMS types (such as system tables), so we don't error here
-			toType = pgtypes.FromGmsType(setField.LeftChild.Type())
+			toType = pgtypes.FromGmsType(setField.LeftChild.Type(ctx))
 		}
 		// We only assign the existing expression if the types perfectly match (same parameters), otherwise we'll cast
 		if fromType.Equals(toType) {
 			newUpdateExprs[i] = setField
 		} else {
-			newSetField, err := setField.WithChildren(setField.LeftChild, pgexprs.NewAssignmentCast(setField.RightChild, fromType, toType))
+			newSetField, err := setField.WithChildren(ctx, setField.LeftChild, pgexprs.NewAssignmentCast(setField.RightChild, fromType, toType))
 			if err != nil {
 				return nil, err
 			}

@@ -126,8 +126,8 @@ func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder
 }
 
 // Schema implements the interface sql.ExecBuilderNode.
-func (te *TriggerExecution) Schema() sql.Schema {
-	return te.Source.Schema()
+func (te *TriggerExecution) Schema(ctx *sql.Context) sql.Schema {
+	return te.Source.Schema(ctx)
 }
 
 // String implements the interface sql.ExecBuilderNode.
@@ -136,7 +136,7 @@ func (te *TriggerExecution) String() string {
 }
 
 // WithChildren implements the interface sql.ExecBuilderNode.
-func (te *TriggerExecution) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (te *TriggerExecution) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(te, len(children), 1)
 	}
@@ -146,7 +146,7 @@ func (te *TriggerExecution) WithChildren(children ...sql.Node) (sql.Node, error)
 }
 
 // WithExpressions implements the interface sql.Expressioner.
-func (te *TriggerExecution) WithExpressions(expressions ...sql.Expression) (sql.Node, error) {
+func (te *TriggerExecution) WithExpressions(ctx *sql.Context, expressions ...sql.Expression) (sql.Node, error) {
 	if len(expressions) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(te, len(expressions), 1)
 	}

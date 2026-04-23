@@ -149,6 +149,6 @@ func checkRecordArgs(v1, v2 interface{}) (leftRecord, rightRecord []pgtypes.Reco
 func callComparisonFunction(ctx *sql.Context, op framework.Operator, leftLiteral, rightLiteral sql.Expression) (result any, err error) {
 	intermediateFunction := framework.GetBinaryFunction(op)
 	compiledFunction := intermediateFunction.Compile(
-		"_internal_record_comparison_function", leftLiteral, rightLiteral)
+		ctx, "_internal_record_comparison_function", leftLiteral, rightLiteral)
 	return compiledFunction.Eval(ctx, nil)
 }

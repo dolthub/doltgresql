@@ -160,7 +160,8 @@ func NewUnsafeLiteral(val any, t *pgtypes.DoltgresType) *expression.Literal {
 // expect a Vitess literal. This should only be used as a temporary measure, as the GMS code needs to be updated, or the
 // equivalent functionality should be built into Doltgres (recommend the second approach).
 func ToVitessLiteral(l *expression.Literal) *vitess.SQLVal {
-	switch l.Type().(*pgtypes.DoltgresType).ID {
+	// It's fine to use a nil context here as we know that the Literal expression doesn't need it
+	switch l.Type(nil).(*pgtypes.DoltgresType).ID {
 	case pgtypes.Bool.ID:
 		if l.Value().(bool) {
 			return vitess.NewIntVal([]byte("1"))
@@ -181,9 +182,9 @@ func ToVitessLiteral(l *expression.Literal) *vitess.SQLVal {
 		} else if str, ok := l.Value().(string); ok {
 			return vitess.NewStrVal([]byte(str))
 		} else {
-			panic("unhandled value of 'unknown' type in temporary literal conversion: " + l.Type().String())
+			panic("unhandled value of 'unknown' type in temporary literal conversion: " + l.Type(nil).String())
 		}
 	default:
-		panic("unhandled type in temporary literal conversion: " + l.Type().String())
+		panic("unhandled type in temporary literal conversion: " + l.Type(nil).String())
 	}
 }

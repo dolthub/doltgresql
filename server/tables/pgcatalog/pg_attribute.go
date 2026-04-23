@@ -87,7 +87,7 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Table: func(ctx *sql.Context, _ functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
-			for i, col := range table.Item.Schema() {
+			for i, col := range table.Item.Schema(ctx) {
 				typeOid := id.Null
 				if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
 					typeOid = doltgresType.ID.AsId()
@@ -153,7 +153,7 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				return err
 			}
 
-			schema := tbl.Schema()
+			schema := tbl.Schema(ctx)
 			for i, col := range schema {
 				typeOid := id.Null
 				if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {

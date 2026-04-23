@@ -399,7 +399,7 @@ func iterateChecks(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema,
 
 // iterateColumnDefaults is called by iterateTables to handle column defaults.
 func iterateColumnDefaults(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, columnDefaultCount *int) error {
-	columns := itemTable.Item.Schema()
+	columns := itemTable.Item.Schema(ctx)
 	for i, col := range columns {
 		if col.Default != nil {
 			*columnDefaultCount++
@@ -608,7 +608,7 @@ func runColumnDefault(ctx *sql.Context, internalID id.Id, callbacks Callbacks, i
 	if itemSchema.Item.SchemaName() != internalID.Segment(0) && itemTable.Item.Name() != internalID.Segment(1) {
 		return true, nil
 	}
-	columns := itemTable.Item.Schema()
+	columns := itemTable.Item.Schema(ctx)
 	var colDefaults []ColumnWithIndex
 	for i, col := range columns {
 		if col.Default != nil {
