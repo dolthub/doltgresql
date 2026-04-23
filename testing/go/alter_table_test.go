@@ -1028,33 +1028,40 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
-			Name: "nullable is not checked during ALTER TABLE",
+			Name: "setting foreign key to SET NULL on NOT NULL defined column",
 			SetUpScript: []string{
 				`CREATE TABLE public.products (
-    product_id integer NOT NULL,
-    product_name character varying(100) NOT NULL,
-    category_id integer NOT NULL,
-    price numeric(10,2) NOT NULL,
-    description text
-);`,
+		   product_id integer NOT NULL,
+		   product_name character varying(100) NOT NULL,
+		   category_id integer NOT NULL,
+		   price numeric(10,2) NOT NULL,
+		   description text
+		);`,
+				`INSERT INTO public.products VALUES
+		                               (13, 'Smartphone', 1, 599.99, 'Latest model with advanced features'),
+		                               (14, 'Laptop', 1, 999.99, 'High performance laptop with 16GB RAM'),
+		                               (18, 'Novel', 2, 19.99, 'Bestselling fiction novel');`,
 				`CREATE TABLE public.categories (
-    category_id integer NOT NULL,
-    category_name character varying(50) NOT NULL
-);`,
+		   category_id integer NOT NULL,
+		   category_name character varying(50) NOT NULL
+		);`,
+				`INSERT INTO public.categories VALUES (1, 'Electronics'), (2, 'Books'), (3, 'Clothing');`,
+				`ALTER TABLE ONLY public.products
+		   ADD CONSTRAINT products_pkey PRIMARY KEY (product_id);`,
+				`ALTER TABLE ONLY public.categories
+		   ADD CONSTRAINT categories_pkey PRIMARY KEY (category_id);`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `ALTER TABLE ONLY public.products ADD CONSTRAINT products_pkey PRIMARY KEY (product_id);`,
+					// Postgres allows this query to run successfully, but MySQL don't.
+					Query: `ALTER TABLE ONLY public.products
+		   ADD CONSTRAINT fk_category_id FOREIGN KEY (category_id) REFERENCES public.categories(category_id) ON UPDATE SET NULL ON DELETE SET NULL;`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `ALTER TABLE ONLY public.categories ADD CONSTRAINT categories_pkey PRIMARY KEY (category_id);`,
-					Expected: []sql.Row{},
-				},
-				{
-					Skip:     true,
-					Query:    `ALTER TABLE ONLY public.products ADD CONSTRAINT fk_category_id FOREIGN KEY (category_id) REFERENCES public.categories(category_id) ON UPDATE SET NULL ON DELETE SET NULL;`,
-					Expected: []sql.Row{},
+					// null value in column "category_id" of relation "products" violates not-null constraint
+					Query:       `DELETE FROM categories WHERE category_id = 1;`,
+					ExpectedErr: `null value in column "category_id" violates not-null constraint`,
 				},
 			},
 		},
@@ -1088,7 +1095,6 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
-			Skip: true,
 			Name: "foreign key names can be the same but should be on different tables",
 			SetUpScript: []string{
 				` CREATE TABLE public.boards (

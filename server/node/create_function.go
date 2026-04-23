@@ -15,6 +15,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -170,7 +171,7 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *CreateFunction) Schema() sql.Schema {
+func (c *CreateFunction) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -181,12 +182,12 @@ func (c *CreateFunction) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *CreateFunction) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *CreateFunction) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *CreateFunction) WithResolvedChildren(children []any) (any, error) {
+func (c *CreateFunction) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) > len(c.Parameters) {
 		// the number of default values can be fewer but cannot be more.
 		return nil, ErrVitessChildCount.New(len(c.Parameters), len(children))
@@ -234,7 +235,7 @@ func (f *FunctionColumn) String() string {
 }
 
 // Type implements the interface sql.Expression.
-func (f *FunctionColumn) Type() sql.Type {
+func (f *FunctionColumn) Type(ctx *sql.Context) sql.Type {
 	if f.Typ.IsEmptyType() {
 		return pgtypes.Unknown
 	}
@@ -242,7 +243,7 @@ func (f *FunctionColumn) Type() sql.Type {
 }
 
 // IsNullable implements the interface sql.Expression.
-func (f *FunctionColumn) IsNullable() bool {
+func (f *FunctionColumn) IsNullable(ctx *sql.Context) bool {
 	return false
 }
 
@@ -257,7 +258,7 @@ func (f *FunctionColumn) Children() []sql.Expression {
 }
 
 // WithChildren implements the interface sql.Expression.
-func (f *FunctionColumn) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (f *FunctionColumn) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 0 {
 		return nil, sql.ErrInvalidChildrenNumber.New(f, len(children), 0)
 	}
@@ -265,7 +266,7 @@ func (f *FunctionColumn) WithChildren(children ...sql.Expression) (sql.Expressio
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (f *FunctionColumn) WithResolvedChildren(children []any) (any, error) {
+func (f *FunctionColumn) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, errors.Errorf("invalid FunctionColumn child count, expected `0` but got `%d`", len(children))
 	}

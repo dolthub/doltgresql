@@ -60,12 +60,13 @@ var _ procedures.InterpreterExpr = (*CompiledFunction)(nil)
 var _ sql.RowIterExpression = (*CompiledFunction)(nil)
 
 // NewCompiledFunction returns a newly compiled function.
-func NewCompiledFunction(name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
-	return newCompiledFunctionInternal(name, args, functions, functions.overloadsForParams(len(args)), isOperator, nil)
+func NewCompiledFunction(ctx *sql.Context, name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
+	return newCompiledFunctionInternal(ctx, name, args, functions, functions.overloadsForParams(len(args)), isOperator, nil)
 }
 
 // newCompiledFunctionInternal is called internally, which skips steps that may have already been processed.
 func newCompiledFunctionInternal(
+	ctx *sql.Context,
 	name string,
 	args []sql.Expression,
 	overloads *Overloads,
@@ -82,7 +83,7 @@ func newCompiledFunctionInternal(
 		runner:      runner,
 	}
 	// First we'll analyze all the parameters.
-	originalTypes, err := c.analyzeParameters()
+	originalTypes, err := c.analyzeParameters(ctx)
 	if err != nil {
 		// Errors should be returned from the call to Eval, so we'll stash it for now
 		c.stashedErr = err
@@ -114,7 +115,7 @@ func newCompiledFunctionInternal(
 		} else if param.ID == pgtypes.Any.ID {
 			c.callResolved[i] = originalTypes[i]
 		} else if i < len(args) {
-			if d, ok := args[i].Type().(*pgtypes.DoltgresType); ok {
+			if d, ok := args[i].Type(ctx).(*pgtypes.DoltgresType); ok {
 				// `param` is a default type which does not have type modifier set
 				param = param.WithAttTypMod(d.GetAttTypMod())
 			}
@@ -204,7 +205,7 @@ func (c *CompiledFunction) OverloadString(types []*pgtypes.DoltgresType) string 
 }
 
 // Type implements the interface sql.Expression.
-func (c *CompiledFunction) Type() sql.Type {
+func (c *CompiledFunction) Type(ctx *sql.Context) sql.Type {
 	if len(c.callResolved) > 0 {
 		rt := c.callResolved[len(c.callResolved)-1]
 		rt = getTypeIfRowType(c.IsSRF(), rt)
@@ -224,7 +225,7 @@ func (c *CompiledFunction) Type() sql.Type {
 }
 
 // IsNullable implements the interface sql.Expression.
-func (c *CompiledFunction) IsNullable() bool {
+func (c *CompiledFunction) IsNullable(ctx *sql.Context) bool {
 	// All functions seem to return NULL when given a NULL value
 	return true
 }
@@ -274,8 +275,8 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			return nil, err
 		}
 		var ok bool
-		if exprTypes[i], ok = arg.Type().(*pgtypes.DoltgresType); !ok {
-			dt, err := pgtypes.FromGmsTypeToDoltgresType(arg.Type())
+		if exprTypes[i], ok = arg.Type(ctx).(*pgtypes.DoltgresType); !ok {
+			dt, err := pgtypes.FromGmsTypeToDoltgresType(arg.Type(ctx))
 			if err != nil {
 				return nil, err
 			}
@@ -406,13 +407,13 @@ func (c *CompiledFunction) Children() []sql.Expression {
 }
 
 // WithChildren implements the interface sql.Expression.
-func (c *CompiledFunction) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (c *CompiledFunction) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != len(c.Arguments) {
 		return nil, sql.ErrInvalidChildrenNumber.New(len(children), len(c.Arguments))
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	return newCompiledFunctionInternal(c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner), nil
+	return newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner), nil
 }
 
 // SetStatementRunner implements the interface analyzer.Interpreter.
@@ -787,10 +788,10 @@ func (c *CompiledFunction) resolvePolymorphicReturnType(functionInterfaceTypes [
 }
 
 // analyzeParameters analyzes the parameters within an Eval call.
-func (c *CompiledFunction) analyzeParameters() (originalTypes []*pgtypes.DoltgresType, err error) {
+func (c *CompiledFunction) analyzeParameters(ctx *sql.Context) (originalTypes []*pgtypes.DoltgresType, err error) {
 	originalTypes = make([]*pgtypes.DoltgresType, len(c.Arguments))
 	for i, param := range c.Arguments {
-		returnType := param.Type()
+		returnType := param.Type(ctx)
 		if extendedType, ok := returnType.(*pgtypes.DoltgresType); ok && !extendedType.IsEmptyType() {
 			if extendedType.TypType == pgtypes.TypeType_Domain {
 				extendedType = extendedType.DomainUnderlyingBaseType()
@@ -798,7 +799,7 @@ func (c *CompiledFunction) analyzeParameters() (originalTypes []*pgtypes.Doltgre
 			originalTypes[i] = extendedType
 		} else {
 			// TODO: we need to remove GMS types from all of our expressions so that we can remove this
-			dt, err := pgtypes.FromGmsTypeToDoltgresType(param.Type())
+			dt, err := pgtypes.FromGmsTypeToDoltgresType(param.Type(ctx))
 			if err != nil {
 				return nil, err
 			}
@@ -825,7 +826,7 @@ func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) *pgtypes.DoltgresType
 
 // ResolveDefaultValues adds missing arguments if there is any using the default value set on the parameter.
 // It checks if it's a valid SQL function that has fewer arguments than defined parameters.
-func (c *CompiledFunction) ResolveDefaultValues(getDefExpr func(defExpr string) (sql.Expression, error)) error {
+func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr func(defExpr string) (sql.Expression, error)) error {
 	if !c.overload.Valid() {
 		return nil
 	}
@@ -837,7 +838,7 @@ func (c *CompiledFunction) ResolveDefaultValues(getDefExpr func(defExpr string) 
 	if len(c.Arguments) < len(sqlFunc.ParameterTypes) {
 		for i, param := range sqlFunc.ParameterTypes {
 			if i < len(c.Arguments) {
-				if exprTypeId := c.Arguments[i].Type().(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && param.ID != exprTypeId {
+				if exprTypeId := c.Arguments[i].Type(ctx).(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && param.ID != exprTypeId {
 					// if non-matching type, then skip appending defaults
 					break
 				}
@@ -848,7 +849,7 @@ func (c *CompiledFunction) ResolveDefaultValues(getDefExpr func(defExpr string) 
 					return err
 				}
 				c.Arguments = append(c.Arguments, cdv)
-				c.overload.casts = append(c.overload.casts, GetImplicitCast(cdv.Type().(*pgtypes.DoltgresType), sqlFunc.ParameterTypes[i]))
+				c.overload.casts = append(c.overload.casts, GetImplicitCast(cdv.Type(ctx).(*pgtypes.DoltgresType), sqlFunc.ParameterTypes[i]))
 			}
 		}
 	}

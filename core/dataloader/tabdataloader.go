@@ -166,7 +166,7 @@ func (tdl *TabularDataLoader) String() string {
 	return "TabularDataLoader"
 }
 
-func (tdl *TabularDataLoader) Schema() sql.Schema {
+func (tdl *TabularDataLoader) Schema(ctx *sql.Context) sql.Schema {
 	return tdl.sch
 }
 
@@ -174,7 +174,7 @@ func (tdl *TabularDataLoader) Children() []sql.Node {
 	return nil
 }
 
-func (tdl *TabularDataLoader) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (tdl *TabularDataLoader) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
 		return nil, sql.ErrInvalidChildrenNumber.New(tdl, len(children), 0)
 	}

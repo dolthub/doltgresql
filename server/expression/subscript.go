@@ -15,6 +15,7 @@
 package expression
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -51,16 +52,16 @@ func (s Subscript) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (s Subscript) Type() sql.Type {
-	dt, ok := s.Child.Type().(*types.DoltgresType)
+func (s Subscript) Type(ctx *sql.Context) sql.Type {
+	dt, ok := s.Child.Type(ctx).(*types.DoltgresType)
 	if !ok {
-		panic(fmt.Sprintf("unexpected type %T for subscript", s.Child.Type()))
+		panic(fmt.Sprintf("unexpected type %T for subscript", s.Child.Type(ctx)))
 	}
 	return dt.ArrayBaseType()
 }
 
 // IsNullable implements the sql.Expression interface.
-func (s Subscript) IsNullable() bool {
+func (s Subscript) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -109,7 +110,7 @@ func (s Subscript) Children() []sql.Expression {
 }
 
 // WithChildren implements the sql.Expression interface.
-func (s Subscript) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (s Subscript) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, fmt.Errorf("expected 2 children, got %d", len(children))
 	}
@@ -117,7 +118,7 @@ func (s Subscript) WithChildren(children ...sql.Expression) (sql.Expression, err
 }
 
 // WithResolvedChildren implements the vitess.Injectable interface.
-func (s Subscript) WithResolvedChildren(children []any) (any, error) {
+func (s Subscript) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 2 {
 		return nil, fmt.Errorf("expected 2 children, got %d", len(children))
 	}

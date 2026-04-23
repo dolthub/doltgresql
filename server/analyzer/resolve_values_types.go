@@ -37,14 +37,14 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 	// Walk the tree and wrap mixed-type VALUES columns with ImplicitCast.
 	// We record which VDTs changed so we can fix up GetField types afterward.
 	transformedVDTs := make(map[sql.TableId]sql.Schema)
-	node, same, err := transform.NodeWithOpaque(node, func(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
-		newNode, same, err := transformValuesNode(n)
+	node, same, err := transform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+		newNode, same, err := transformValuesNode(ctx, n)
 		if err != nil {
 			return nil, same, err
 		}
 		if !same {
 			if vdt, ok := newNode.(*plan.ValueDerivedTable); ok {
-				transformedVDTs[vdt.Id()] = vdt.Schema()
+				transformedVDTs[vdt.Id()] = vdt.Schema(ctx)
 			}
 		}
 		return newNode, same, err
@@ -58,7 +58,7 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 	// GetField reading column "n" from that VDT still says int4 and needs
 	// to be updated to numeric.
 	if len(transformedVDTs) > 0 {
-		node, _, err = pgtransform.NodeExprsWithOpaque(node, func(expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		node, _, err = pgtransform.NodeExprsWithOpaque(ctx, node, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			gf, ok := expr.(*expression.GetField)
 			if !ok {
 				return expr, transform.SameTree, nil
@@ -84,13 +84,13 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 			}
 
 			newType := newSch[schemaIdx].Type
-			if gf.Type() == newType {
+			if gf.Type(ctx) == newType {
 				return expr, transform.SameTree, nil
 			}
 
 			return expression.NewGetFieldWithTable(
 				gf.Index(), int(gf.TableId()), newType,
-				gf.Database(), gf.Table(), gf.Name(), gf.IsNullable(),
+				gf.Database(), gf.Table(), gf.Name(), gf.IsNullable(ctx),
 			), transform.NewTree, nil
 		})
 		if err != nil {
@@ -117,7 +117,7 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 		//
 		// This pass catches those: for each GetField, check if its type
 		// disagrees with what the child node actually produces.
-		node, _, err = pgtransform.NodeExprsWithNodeWithOpaque(node, func(n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		node, _, err = pgtransform.NodeExprsWithNodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			gf, ok := expr.(*expression.GetField)
 			if !ok {
 				return expr, transform.SameTree, nil
@@ -129,7 +129,7 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 			// Collect the schema that this node's children produce
 			var childSchema sql.Schema
 			for _, child := range n.Children() {
-				childSchema = append(childSchema, child.Schema()...)
+				childSchema = append(childSchema, child.Schema(ctx)...)
 			}
 			// TODO: GMS is case-insensitive for identifiers, so aggregate
 			// GetField names and child schema names may differ in casing.
@@ -137,10 +137,10 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 			// case-sensitivity for quoted identifiers, which this breaks.
 			gfName := strings.ToLower(gf.Name())
 			for _, col := range childSchema {
-				if strings.ToLower(col.Name) == gfName && gf.Type() != col.Type {
+				if strings.ToLower(col.Name) == gfName && gf.Type(ctx) != col.Type {
 					return expression.NewGetFieldWithTable(
 						gf.Index(), int(gf.TableId()), col.Type,
-						gf.Database(), gf.Table(), gf.Name(), gf.IsNullable(),
+						gf.Database(), gf.Table(), gf.Name(), gf.IsNullable(ctx),
 					), transform.NewTree, nil
 				}
 			}
@@ -155,7 +155,7 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 }
 
 // transformValuesNode transforms a plan.Values or plan.ValueDerivedTable node to use common types
-func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+func transformValuesNode(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	var values *plan.Values
 	var expressionerNode sql.Expressioner
 	switch v := n.(type) {
@@ -188,7 +188,7 @@ func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	for colIdx := 0; colIdx < numCols; colIdx++ {
 		columnTypes[colIdx] = make([]*pgtypes.DoltgresType, len(values.ExpressionTuples))
 		for rowIdx, row := range values.ExpressionTuples {
-			exprType := row[colIdx].Type()
+			exprType := row[colIdx].Type(ctx)
 			if exprType == nil {
 				columnTypes[colIdx][rowIdx] = pgtypes.Unknown
 			} else if pgType, ok := exprType.(*pgtypes.DoltgresType); ok {
@@ -232,7 +232,7 @@ func transformValuesNode(n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	for _, row := range newTuples {
 		flatExprs = append(flatExprs, row...)
 	}
-	newNode, err := expressionerNode.WithExpressions(flatExprs...)
+	newNode, err := expressionerNode.WithExpressions(ctx, flatExprs...)
 	if err != nil {
 		return nil, transform.NewTree, err
 	}

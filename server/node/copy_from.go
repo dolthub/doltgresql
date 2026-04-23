@@ -15,6 +15,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -91,12 +92,12 @@ func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err err
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) Schema() sql.Schema {
+func (cf *CopyFrom) Schema(ctx *sql.Context) sql.Schema {
 	// For Parse calls, we need access to the schema before we have a DataLoader created, so return a stub schema.
 	if cf.DataLoader == nil {
 		return nil
 	}
-	return cf.DataLoader.Schema()
+	return cf.DataLoader.Schema(ctx)
 }
 
 // String implements the interface sql.ExecSourceRel.
@@ -109,7 +110,7 @@ func (cf *CopyFrom) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (cf *CopyFrom) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
 		return nil, sql.ErrInvalidChildrenNumber.New(cf, len(children), 0)
 	}
@@ -117,7 +118,7 @@ func (cf *CopyFrom) WithChildren(children ...sql.Node) (sql.Node, error) {
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (cf *CopyFrom) WithResolvedChildren(children []any) (any, error) {
+func (cf *CopyFrom) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}

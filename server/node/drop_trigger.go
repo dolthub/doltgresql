@@ -15,6 +15,8 @@
 package node
 
 import (
+	"context"
+
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -83,7 +85,7 @@ func (c *DropTrigger) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) 
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *DropTrigger) Schema() sql.Schema {
+func (c *DropTrigger) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -93,12 +95,12 @@ func (c *DropTrigger) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *DropTrigger) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *DropTrigger) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *DropTrigger) WithResolvedChildren(children []any) (any, error) {
+func (c *DropTrigger) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}

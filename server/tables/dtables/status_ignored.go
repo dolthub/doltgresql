@@ -65,7 +65,7 @@ func (w *doltgresDoltStatusIgnoredTable) Name() string {
 }
 
 // Schema returns the schema for Doltgres' version of the Dolt status_ignored table.
-func (w *doltgresDoltStatusIgnoredTable) Schema() sql.Schema {
+func (w *doltgresDoltStatusIgnoredTable) Schema(ctx *sql.Context) sql.Schema {
 	return []*sql.Column{
 		{Name: "table_name", Type: pgtypes.Text, Source: DoltgresDoltStatusIgnoredTableName, PrimaryKey: true, Nullable: false},
 		{Name: "staged", Type: pgtypes.Bool, Source: DoltgresDoltStatusIgnoredTableName, PrimaryKey: true, Nullable: false},
@@ -129,7 +129,7 @@ func (i *doltgresDoltStatusIgnoredRowIter) Next(ctx *sql.Context) (sql.Row, erro
 
 	// Dolt uses byte to avoid MySQL wire protocol ambiguity on tinyint(1) and bool.
 	// See: https://github.com/dolthub/dolt/pull/10117
-	stagedIndex := i.doltStatusIgnoredTable.Schema().IndexOfColName("staged")
+	stagedIndex := i.doltStatusIgnoredTable.Schema(ctx).IndexOfColName("staged")
 	stagedVal, ok := row[stagedIndex].(byte)
 	if !ok {
 		return nil, fmt.Errorf("expected staged column at index %d to be byte, got %T", stagedIndex, row[stagedIndex])

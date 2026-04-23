@@ -31,7 +31,7 @@ func InsertContextRootFinalizer(ctx *sql.Context, a *analyzer.Analyzer, node sql
 		return node, transform.SameTree, nil
 	}
 	// Analysis may occur separately on child nodes, so we have to ensure that only one finalizer exists in the tree
-	newNode, _, err := transform.NodeWithOpaque(node, transformRemoveContextRootFinalizer)
+	newNode, _, err := transform.NodeWithOpaque(ctx, node, transformRemoveContextRootFinalizer)
 	if err != nil {
 		return nil, transform.NewTree, err
 	}
@@ -39,7 +39,7 @@ func InsertContextRootFinalizer(ctx *sql.Context, a *analyzer.Analyzer, node sql
 }
 
 // transformRemoveContextRootFinalizer is the function used by the transform from within InsertContextRootFinalizer.
-func transformRemoveContextRootFinalizer(node sql.Node) (sql.Node, transform.TreeIdentity, error) {
+func transformRemoveContextRootFinalizer(ctx *sql.Context, node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	if finalizer, ok := node.(*pgnodes.ContextRootFinalizer); ok {
 		return finalizer.Child(), transform.NewTree, nil
 	} else if disjointedNode, ok := node.(plan.DisjointedChildrenNode); ok {
@@ -51,7 +51,7 @@ func transformRemoveContextRootFinalizer(node sql.Node) (sql.Node, transform.Tre
 			newDisjointedChildGroups[groupIdx] = make([]sql.Node, len(disjointedChildGroup))
 			for childIdx, disjointedChild := range disjointedChildGroup {
 				var childIdentity transform.TreeIdentity
-				newDisjointedChildGroups[groupIdx][childIdx], childIdentity, err = transform.NodeWithOpaque(disjointedChild, transformRemoveContextRootFinalizer)
+				newDisjointedChildGroups[groupIdx][childIdx], childIdentity, err = transform.NodeWithOpaque(ctx, disjointedChild, transformRemoveContextRootFinalizer)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}

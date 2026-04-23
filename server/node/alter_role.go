@@ -15,6 +15,7 @@
 package node
 
 import (
+	"context"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -173,7 +174,7 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *AlterRole) Schema() sql.Schema {
+func (c *AlterRole) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -183,12 +184,12 @@ func (c *AlterRole) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *AlterRole) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *AlterRole) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *AlterRole) WithResolvedChildren(children []any) (any, error) {
+func (c *AlterRole) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}

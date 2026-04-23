@@ -102,6 +102,21 @@ For convenience, `POSTGRES_USER` and `POSTGRES_PASSWORD` are accepted as aliases
 To create additional users, connect to the running database and issue `CREATE ROLE` and `GRANT`
 statements as the super-user.
 
+## Initialization
+
+By default, the Doltgres server is initialized with a single empty database with the same name as
+the system user (`postgres` by default). You can add additional data or execute arbitrary SQL setup
+by including initialization scripts in the mounted volume
+`/docker-entrypoint-initdb.d/`. Initialization scripts must have the `.sql` file extension and
+contain statements separated by semicolons. They can be optionally compressed as `.bz2`, `.gz`,
+`.xz`, or `.zst` files with the appropriate extension suffix, e.g. `init.sql.gz`.
+
+Specify an initialization script directory as a volume with `docker run`:
+
+```shell
+$ docker run -v ./init_scripts:/docker-entrypoint-initdb.d/ -p 5432:5432 dolthub/doltgresql:latest
+```
+
 ## Environment Variables
 
 The Doltgres image supports the following environment variables:
@@ -111,5 +126,3 @@ The Doltgres image supports the following environment variables:
   an alias.
 - `DOLTGRES_DATA`: Specifies a path in the container to store database data, created if it doesn't
   exist (default: `/var/lib/doltgresql/`). `PGDATA` is an alias.
-- `DOLTGRES_DB`: Specifies a database name to be created (default: none). The `postgres` database is
-  still created.

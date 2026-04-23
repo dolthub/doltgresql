@@ -40,7 +40,7 @@ func (StatementRunner) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 }
 
 // IsNullable implements the sql.Expression interface.
-func (StatementRunner) IsNullable() bool {
+func (StatementRunner) IsNullable(ctx *sql.Context) bool {
 	return false
 }
 
@@ -61,12 +61,12 @@ func (StatementRunner) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (StatementRunner) Type() sql.Type {
+func (StatementRunner) Type(ctx *sql.Context) sql.Type {
 	return pgtypes.Unknown
 }
 
 // WithChildren implements the sql.Expression interface.
-func (sr StatementRunner) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (sr StatementRunner) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 0 {
 		return nil, sql.ErrInvalidChildrenNumber.New(sr, len(children), 0)
 	}

@@ -15,6 +15,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -41,7 +42,7 @@ func (n NoOp) String() string {
 	return fmt.Sprintf("%v", n.Warnings)
 }
 
-func (n NoOp) Schema() sql.Schema {
+func (n NoOp) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -49,7 +50,7 @@ func (n NoOp) Children() []sql.Node {
 	return nil
 }
 
-func (n NoOp) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (n NoOp) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return n, nil
 }
 
@@ -57,7 +58,7 @@ func (n NoOp) IsReadOnly() bool {
 	return true
 }
 
-func (n NoOp) WithResolvedChildren(children []any) (any, error) {
+func (n NoOp) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	return n, nil
 }
 

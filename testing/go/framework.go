@@ -388,7 +388,7 @@ func ptr[T any](val T) *T {
 	return &val
 }
 
-var testServerLogLevel = "info"
+var testServerLogLevel = "warn"
 
 func init() {
 	if logLevel, ok := os.LookupEnv("TEST_SERVER_LOG_LEVEL"); ok {

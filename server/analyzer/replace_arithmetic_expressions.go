@@ -28,30 +28,30 @@ import (
 // ReplaceArithmeticExpressions replaces arithmetic expressions in the tree with the equivalent binary operators.
 // This is a problem in certain nodes that do arithmetic, such as TopN, but all nodes are covered.
 func ReplaceArithmeticExpressions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	return transform.NodeExprsWithOpaque(node, func(e sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	return transform.NodeExprsWithOpaque(ctx, node, func(ctx *sql.Context, e sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		switch e := e.(type) {
 		case *gms_expression.Arithmetic:
 			switch e.Operator() {
 			case "+":
-				expr, err := expression.NewBinaryOperator(framework.Operator_BinaryPlus).WithChildren(e.Children()...)
+				expr, err := expression.NewBinaryOperator(framework.Operator_BinaryPlus).WithChildren(ctx, e.Children()...)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
 				return expr.(*expression.BinaryOperator), transform.NewTree, nil
 			case "-":
-				expr, err := expression.NewBinaryOperator(framework.Operator_BinaryMinus).WithChildren(e.Children()...)
+				expr, err := expression.NewBinaryOperator(framework.Operator_BinaryMinus).WithChildren(ctx, e.Children()...)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
 				return expr.(*expression.BinaryOperator), transform.NewTree, nil
 			case "*":
-				expr, err := expression.NewBinaryOperator(framework.Operator_BinaryMultiply).WithChildren(e.Children()...)
+				expr, err := expression.NewBinaryOperator(framework.Operator_BinaryMultiply).WithChildren(ctx, e.Children()...)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
 				return expr.(*expression.BinaryOperator), transform.NewTree, nil
 			case "/":
-				expr, err := expression.NewBinaryOperator(framework.Operator_BinaryDivide).WithChildren(e.Children()...)
+				expr, err := expression.NewBinaryOperator(framework.Operator_BinaryDivide).WithChildren(ctx, e.Children()...)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}

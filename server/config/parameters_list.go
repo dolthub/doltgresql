@@ -3540,6 +3540,8 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		ValidateFunc: func(_, new any) (any, bool) {
 			switch v := new.(type) {
 			case string:
+				v = strings.TrimSpace(v)
+				vplus := "+" + v // This allows for 10:00:00 to match since we'd expect +10:00:00 for a time zone
 				if strings.ToLower(v) == "local" {
 					// TODO: this should be the IANA name, not whatever Go decides to use
 					//   https://pkg.go.dev/github.com/thlib/go-timezone-local/tzlocal seems useful in this case.
@@ -3570,6 +3572,10 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 						"MST",
 					} {
 						parsed, err := time.Parse(layout, v)
+						if err == nil {
+							return parsed.Format("-07:00:00"), true
+						}
+						parsed, err = time.Parse(layout, vplus)
 						if err == nil {
 							return parsed.Format("-07:00:00"), true
 						}

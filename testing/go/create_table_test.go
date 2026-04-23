@@ -24,6 +24,28 @@ import (
 func TestCreateTable(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			// https://github.com/dolthub/doltgresql/issues/2580
+			Name: "create table with UTF8 identifiers",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE foo😏(data🍆 TEXT);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE INDEX idx🍤 ON foo😏(data🍆);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `Insert into foo😏 (data🍆) VALUES ('foo');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT data🍆 FROM foo😏;`,
+					Expected: []sql.Row{{"foo"}},
+				},
+			},
+		},
+		{
 			Name: "create table with primary key",
 			Assertions: []ScriptTestAssertion{
 				{

@@ -38,7 +38,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	}
 
 	// We have some sources that are already postgres native, so skip them
-	if isDoltgresNativeSource(insertInto.Destination, insertInto.Source) {
+	if isDoltgresNativeSource(ctx, insertInto.Destination, insertInto.Source) {
 		return insertInto, transform.SameTree, nil
 	}
 
@@ -46,7 +46,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	// types use Doltgres types, as casts rely on them. At this point, we shouldn't have any GMS types floating around
 	// anymore, so no need to include a lot of additional code to handle them.
 	destinationNameToType := make(map[string]*pgtypes.DoltgresType)
-	for _, col := range insertInto.Destination.Schema() {
+	for _, col := range insertInto.Destination.Schema(ctx) {
 		colType, ok := col.Type.(*pgtypes.DoltgresType)
 		if !ok {
 			// Only non-Doltgres destination tables will have GMS types (such as system tables), so we don't error here
@@ -72,7 +72,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			newValues[rowIndex] = make([]sql.Expression, len(rowExprs))
 			for columnIndex, colExpr := range rowExprs {
 				// Null ColumnDefaultValues or empty DefaultValues are not properly typed in TypeSanitizer, so we must handle them here
-				colExprType := colExpr.Type()
+				colExprType := colExpr.Type(ctx)
 				if colExprType == nil || colExprType == types.Null {
 					colExprType = pgtypes.Unknown
 				}
@@ -91,7 +91,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		}
 		insertInto = insertInto.WithSource(plan.NewValues(newValues))
 	} else {
-		sourceSchema := insertInto.Source.Schema()
+		sourceSchema := insertInto.Source.Schema(ctx)
 		projections := make([]sql.Expression, len(sourceSchema))
 		for i, col := range sourceSchema {
 			fromColType, ok := col.Type.(*pgtypes.DoltgresType)
@@ -112,12 +112,12 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 
 	// handle on conflict clause if present
 	if insertInto.OnDupExprs.HasUpdates() {
-		newDupExprs, err := assignUpdateFieldCasts(insertInto.OnDupExprs.AllExpressions())
+		newDupExprs, err := assignUpdateFieldCasts(ctx, insertInto.OnDupExprs.AllExpressions())
 		if err != nil {
 			return nil, false, err
 		}
 		// TODO: this relies on a particular implementation detail InsertInto.WithExpressions
-		newInsertInto, err := insertInto.WithExpressions(append(newDupExprs, insertInto.Checks().ToExpressions()...)...)
+		newInsertInto, err := insertInto.WithExpressions(ctx, append(newDupExprs, insertInto.Checks().ToExpressions()...)...)
 		if err != nil {
 			return nil, false, err
 		}
@@ -128,9 +128,9 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 	return insertInto, transform.NewTree, nil
 }
 
-func isDoltgresNativeSource(dest sql.Node, source sql.Node) bool {
+func isDoltgresNativeSource(ctx *sql.Context, dest sql.Node, source sql.Node) bool {
 	// we still need this transformation if our destination has generated columns
-	for _, col := range dest.Schema() {
+	for _, col := range dest.Schema(ctx) {
 		if col.Generated != nil {
 			return false
 		}

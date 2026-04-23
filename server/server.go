@@ -48,7 +48,7 @@ import (
 // Version should have a new line that follows, else the formatter will fail the PR created by the release GH action
 
 const (
-	Version = "0.56.1"
+	Version = "0.56.2"
 
 	DefUserName         = "postres"
 	DefUserEmail        = "postgres@somewhere.com"
@@ -139,7 +139,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 
 	// Determine whether we need to initialize the default database
 	initializeDefaultDatabase := true
-	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), dataDirFs, Version, dEnv)
+	mrEnv, err := env.MultiEnvForDirectory(ctx, dataDirFs, dEnv)
 	if err != nil {
 		return nil, err
 	}

@@ -69,12 +69,12 @@ func (t *TableToComposite) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (t *TableToComposite) Type() sql.Type {
+func (t *TableToComposite) Type(ctx *sql.Context) sql.Type {
 	return t.typ
 }
 
 // IsNullable implements the sql.Expression interface.
-func (t *TableToComposite) IsNullable() bool {
+func (t *TableToComposite) IsNullable(ctx *sql.Context) bool {
 	return false
 }
 
@@ -87,9 +87,9 @@ func (t *TableToComposite) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			return nil, err
 		}
 
-		typ, ok := expr.Type().(*pgtypes.DoltgresType)
+		typ, ok := expr.Type(ctx).(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, fmt.Errorf("expected a DoltgresType, but got %T", expr.Type())
+			return nil, fmt.Errorf("expected a DoltgresType, but got %T", expr.Type(ctx))
 		}
 		vals[i] = pgtypes.RecordValue{
 			Value: val,
@@ -106,7 +106,7 @@ func (t *TableToComposite) Children() []sql.Expression {
 }
 
 // WithChildren implements the sql.Expression interface.
-func (t *TableToComposite) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (t *TableToComposite) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	tCopy := *t
 	tCopy.fields = children
 	return &tCopy, nil

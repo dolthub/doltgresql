@@ -15,13 +15,14 @@
 package expression
 
 import (
+	"context"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
-
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -71,13 +72,13 @@ func (n *IsNotDistinctFrom) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	n.staticRightLiteral.Val = right
 
 	if n.equalFunc == nil {
-		return nil, errors.Errorf("input types do not match: %s %s", n.leftExpr.Type().String(), n.rightExpr.Type().String())
+		return nil, errors.Errorf("input types do not match: %s %s", n.leftExpr.Type(ctx).String(), n.rightExpr.Type(ctx).String())
 	}
 	return n.equalFunc.Eval(ctx, row)
 }
 
 // IsNullable implements the sql.Expression interface.
-func (n *IsNotDistinctFrom) IsNullable() bool {
+func (n *IsNotDistinctFrom) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
@@ -95,12 +96,12 @@ func (n *IsNotDistinctFrom) String() string {
 }
 
 // Type implements the sql.Expression interface.
-func (n *IsNotDistinctFrom) Type() sql.Type {
+func (n *IsNotDistinctFrom) Type(ctx *sql.Context) sql.Type {
 	return pgtypes.Bool
 }
 
 // WithChildren implements the sql.Expression interface.
-func (n *IsNotDistinctFrom) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (n *IsNotDistinctFrom) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 2 {
 		return nil, sql.ErrInvalidChildrenNumber.New(n, len(children), 2)
 	}
@@ -108,11 +109,11 @@ func (n *IsNotDistinctFrom) WithChildren(children ...sql.Expression) (sql.Expres
 	// This allows evaluating the arguments separate from function.Eval() in order to resolve NULL values.
 	// This follows the same logic as InTuple expression.
 	allAreWell := true
-	leftType, ok := children[0].Type().(*pgtypes.DoltgresType)
+	leftType, ok := children[0].Type(ctx).(*pgtypes.DoltgresType)
 	if !ok {
 		allAreWell = false
 	}
-	rightType, ok := children[1].Type().(*pgtypes.DoltgresType)
+	rightType, ok := children[1].Type(ctx).(*pgtypes.DoltgresType)
 	if !ok {
 		allAreWell = false
 	}
@@ -120,7 +121,7 @@ func (n *IsNotDistinctFrom) WithChildren(children ...sql.Expression) (sql.Expres
 	staticRightLiteral := expression.NewLiteral(nil, rightType)
 
 	if allAreWell {
-		cf := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile("internal_binary_operator_func_=", staticLeftLiteral, staticRightLiteral)
+		cf := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_binary_operator_func_=", staticLeftLiteral, staticRightLiteral)
 		return &IsNotDistinctFrom{
 			leftExpr:           children[0],
 			rightExpr:          children[1],
@@ -137,7 +138,7 @@ func (n *IsNotDistinctFrom) WithChildren(children ...sql.Expression) (sql.Expres
 }
 
 // WithResolvedChildren implements the vitess.InjectableExpression interface.
-func (n *IsNotDistinctFrom) WithResolvedChildren(children []any) (any, error) {
+func (n *IsNotDistinctFrom) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 2 {
 		return nil, errors.Errorf("invalid vitess child count, expected `2` but got `%d`", len(children))
 	}
@@ -150,5 +151,5 @@ func (n *IsNotDistinctFrom) WithResolvedChildren(children []any) (any, error) {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
 	}
 
-	return n.WithChildren(left, right)
+	return n.WithChildren(ctx.(*sql.Context), left, right)
 }

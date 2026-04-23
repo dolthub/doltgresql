@@ -15,6 +15,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"slices"
 
@@ -131,7 +132,7 @@ func generateCheckNameForDomain(domainName string, allNames []string) string {
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (c *CreateDomain) Schema() sql.Schema {
+func (c *CreateDomain) Schema(ctx *sql.Context) sql.Schema {
 	return nil
 }
 
@@ -141,7 +142,7 @@ func (c *CreateDomain) String() string {
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (c *CreateDomain) WithChildren(children ...sql.Node) (sql.Node, error) {
+func (c *CreateDomain) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(c, children...)
 }
 
@@ -152,7 +153,7 @@ func (c *CreateDomain) WithOverrides(overrides sql.EngineOverrides) sql.Node {
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (c *CreateDomain) WithResolvedChildren(children []any) (any, error) {
+func (c *CreateDomain) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	checksStartAt := 0
 	var defExpr sql.Expression
 	if c.HasDefault {
@@ -209,7 +210,7 @@ func (d *DomainColumn) String() string {
 }
 
 // Type implements the interface sql.Expression.
-func (d *DomainColumn) Type() sql.Type {
+func (d *DomainColumn) Type(ctx *sql.Context) sql.Type {
 	if d.Typ.IsEmptyType() {
 		return types.Unknown
 	}
@@ -217,7 +218,7 @@ func (d *DomainColumn) Type() sql.Type {
 }
 
 // IsNullable implements the interface sql.Expression.
-func (d *DomainColumn) IsNullable() bool {
+func (d *DomainColumn) IsNullable(ctx *sql.Context) bool {
 	return false
 }
 
@@ -232,7 +233,7 @@ func (d *DomainColumn) Children() []sql.Expression {
 }
 
 // WithChildren implements the interface sql.Expression.
-func (d *DomainColumn) WithChildren(children ...sql.Expression) (sql.Expression, error) {
+func (d *DomainColumn) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
 	if len(children) != 0 {
 		return nil, sql.ErrInvalidChildrenNumber.New(d, len(children), 0)
 	}
@@ -240,7 +241,7 @@ func (d *DomainColumn) WithChildren(children ...sql.Expression) (sql.Expression,
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (d *DomainColumn) WithResolvedChildren(children []any) (any, error) {
+func (d *DomainColumn) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, errors.Errorf("invalid vitess child count, expected `0` but got `%d`", len(children))
 	}
