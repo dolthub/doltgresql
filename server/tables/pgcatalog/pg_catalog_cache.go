@@ -112,9 +112,9 @@ type pgTypeCache struct {
 // getIndex implements BTreeStorageAccess.
 func (p pgTypeCache) getIndex(name string) *inMemIndexStorage[*pgType] {
 	switch name {
-	case PgTypeOidIndex:
+	case pgTypeOidIndex:
 		return p.oidIdx
-	case PgTypnameIndex:
+	case pgTypnameIndex:
 		return p.nameIdx
 	default:
 		panic("unknown pg_type index: " + name)

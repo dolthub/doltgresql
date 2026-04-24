@@ -5473,6 +5473,29 @@ func TestPgTypeIndexes(t *testing.T) {
   ORDER BY 1;`,
 					Expected: []sql.Row{{"int4", "pg_catalog"}},
 				},
+				{
+					Query: `EXPLAIN SELECT t.typname, n.nspname
+								FROM pg_catalog.pg_type t
+								JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
+					   			WHERE t.typname = 'int4'
+								ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [t.typname, n.nspname]"},
+						{" └─ Sort(t.typname ASC)"},
+						{"     └─ LookupJoin"},
+						{"         ├─ Filter"},
+						{"         │   ├─ t.typname = 'int4'"},
+						{"         │   └─ TableAlias(t)"},
+						{"         │       └─ IndexedTableAccess(pg_type)"},
+						{"         │           ├─ index: [pg_type.typname,pg_type.typnamespace]"},
+						{"         │           └─ filters: [{[int4, int4], [NULL, ∞)}]"},
+						{"         └─ TableAlias(n)"},
+						{"             └─ IndexedTableAccess(pg_namespace)"},
+						{"                 ├─ index: [pg_namespace.oid]"},
+						{"                 └─ keys: t.typnamespace"},
+					},
+				},
 			},
 		},
 	})
