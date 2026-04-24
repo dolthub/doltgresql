@@ -16,6 +16,7 @@ package _go
 
 import (
 	"fmt"
+	"github.com/dolthub/go-mysql-server/sql"
 	"net"
 	"os"
 	"reflect"
@@ -24,7 +25,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
