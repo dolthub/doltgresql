@@ -213,8 +213,8 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
 			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
 				panic(fmt.Sprintf("The assertion `%s` has Focus set to `true`. GitHub Actions requires that "+
-					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-					"all tests.", assertion.Query))
+						"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+						"all tests.", assertion.Query))
 			}
 			focusAssertions = append(focusAssertions, assertion)
 		}
@@ -369,8 +369,8 @@ func runScripts(t *testing.T, scripts []ScriptTest, normalizeRows bool) {
 			// If this is running in GitHub Actions, then we'll panic, because someone forgot to disable it before committing
 			if _, ok := os.LookupEnv("GITHUB_ACTION"); ok {
 				panic(fmt.Sprintf("The script `%s` has Focus set to `true`. GitHub Actions requires that "+
-					"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
-					"all tests.", script.Name))
+						"all tests are run, which Focus circumvents, leading to this error. Please disable Focus on "+
+						"all tests.", script.Name))
 			}
 			focusScripts = append(focusScripts, script)
 		}
@@ -576,7 +576,6 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				if dt.ID == types.Json.ID && row[i] != nil {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
 				} else if dt.IsArrayType() && dt.ArrayBaseType().ID == types.Json.ID {
-					// TODO: need to have valid sql.Context
 					v, err := dt.IoInput(nil, row[i].(string))
 					if err != nil {
 						panic(err)
@@ -588,7 +587,7 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 						case string:
 							newArr[j] = UnmarshalAndMarshalJsonString(e)
 						case sql.JSONWrapper:
-							iface, err := e.ToInterface(nil)
+							iface, err := e.ToInterface(context.Background())
 							if err != nil {
 								panic(err)
 							}

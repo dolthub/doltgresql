@@ -27,19 +27,6 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// jsonWrapperToString converts a sql.JSONWrapper to a compact JSON string.
-func jsonWrapperToString(ctx *sql.Context, val sql.JSONWrapper) (string, error) {
-	j, err := val.ToInterface(ctx)
-	if err != nil {
-		return "", err
-	}
-	jsonBytes, err := json.Marshal(j)
-	if err != nil {
-		return "", err
-	}
-	return string(jsonBytes), nil
-}
-
 // jsonWrapperToFormattedString converts a sql.JSONWrapper to a formatted JSON string with spaces (JSONB format).
 func jsonWrapperToFormattedString(ctx *sql.Context, val sql.JSONWrapper) (string, error) {
 	v, err := val.ToInterface(ctx)

@@ -175,8 +175,7 @@ ON CONFLICT (id) do update set c1 = $4`,
 			},
 		},
 		{
-			Name:  "types",
-			Focus: true,
+			Name: "types",
 			SetUpScript: []string{
 				`create table child (i2 int2, i4 int4, i8 int8, f float, d double precision, v varchar, vl varchar(100), t text, j json, ts timestamp);`,
 			},
