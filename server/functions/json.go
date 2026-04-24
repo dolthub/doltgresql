@@ -27,6 +27,28 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
+// jsonWrapperToString converts a sql.JSONWrapper to a compact JSON string.
+func jsonWrapperToString(ctx *sql.Context, val sql.JSONWrapper) (string, error) {
+	j, err := val.ToInterface(ctx)
+	if err != nil {
+		return "", err
+	}
+	jsonBytes, err := json.Marshal(j)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonBytes), nil
+}
+
+// jsonWrapperToFormattedString converts a sql.JSONWrapper to a formatted JSON string with spaces (JSONB format).
+func jsonWrapperToFormattedString(ctx *sql.Context, val sql.JSONWrapper) (string, error) {
+	v, err := val.ToInterface(ctx)
+	if err != nil {
+		return "", err
+	}
+	return types.JSONDocument{Val: v}.JSONString()
+}
+
 // initJson registers the functions to the catalog.
 func initJson() {
 	framework.RegisterFunction(json_in)
@@ -66,15 +88,35 @@ var json_out = framework.Function1{
 }
 
 func json_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-	j, err := val.(sql.JSONWrapper).ToInterface(ctx)
-	if err != nil {
-		return nil, err
+	switch v := val.(type) {
+	case string:
+		return v, nil
+	case sql.JSONWrapper:
+		// JSON type is stored as binary JSON (same as JSONB), so output is normalized with spaces
+		return jsonWrapperToFormattedString(ctx, v)
+	default:
+		return nil, fmt.Errorf("unexpected type for json_out: %T", val)
 	}
-	jsonBytes, err := json.Marshal(j)
-	if err != nil {
-		return nil, err
+}
+
+// jsonb_out_callable formats a JSONB value for output. JSONB normalizes JSON with spaces after ':' and ','.
+func jsonb_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	switch v := val.(type) {
+	case string:
+		// Parse and reformat the string as proper JSONB (normalized with spaces)
+		doc, err := pgtypes.JsonB.IoInput(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		if doc == nil {
+			return nil, nil
+		}
+		return jsonWrapperToFormattedString(ctx, doc.(sql.JSONWrapper))
+	case sql.JSONWrapper:
+		return jsonWrapperToFormattedString(ctx, v)
+	default:
+		return nil, fmt.Errorf("unexpected type for jsonb_out: %T", val)
 	}
-	return string(jsonBytes), nil
 }
 
 // json_recv represents the PostgreSQL function of json type IO receive.
@@ -88,8 +130,7 @@ var json_recv = framework.Function1{
 		if data == nil {
 			return nil, nil
 		}
-		// TODO: do we need a json wrapper here? Seems like we prob do
-		return string(data), nil
+		return json_in_callable(ctx, [2]*pgtypes.DoltgresType{}, string(data))
 	},
 }
 
@@ -111,15 +152,20 @@ var json_send = framework.Function1{
 			}
 		}
 		writer := utils.NewWireWriter()
-		j, err := val.(sql.JSONWrapper).ToInterface(ctx)
-		if err != nil {
-			return nil, err
+		var jsonStr string
+		switch v := val.(type) {
+		case string:
+			jsonStr = v
+		case sql.JSONWrapper:
+			var err error
+			jsonStr, err = jsonWrapperToFormattedString(ctx, v)
+			if err != nil {
+				return nil, err
+			}
+		default:
+			return nil, fmt.Errorf("unexpected type for json_send: %T", val)
 		}
-		jsonBytes, err := json.Marshal(j)
-		if err != nil {
-			return nil, err
-		}
-		writer.WriteString(string(jsonBytes))
+		writer.WriteString(jsonStr)
 		return writer.BufferData(), nil
 	},
 }

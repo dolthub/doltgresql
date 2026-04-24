@@ -15,10 +15,14 @@
 package functions
 
 import (
+	"fmt"
+
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // initJsonB registers the functions to the catalog.
@@ -48,7 +52,7 @@ var jsonb_out = framework.Function1{
 	Return:     pgtypes.Cstring,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.JsonB},
 	Strict:     true,
-	Callable:   json_out_callable,
+	Callable:   jsonb_out_callable,
 }
 
 // jsonb_recv represents the PostgreSQL function of jsonb type IO receive.
@@ -104,9 +108,13 @@ var jsonb_cmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.JsonB},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(pgtypes.JsonDocument)
-		bb := val2.(pgtypes.JsonDocument)
-		return int32(pgtypes.JsonValueCompare(ab.Value, bb.Value)), nil
+		w1, ok1 := val1.(sql.JSONWrapper)
+		w2, ok2 := val2.(sql.JSONWrapper)
+		if !ok1 || !ok2 {
+			return nil, fmt.Errorf("jsonb_cmp: unexpected types %T, %T", val1, val2)
+		}
+		res, err := types.CompareJSON(ctx, w1, w2)
+		return int32(res), err
 	},
 }
 

@@ -33,6 +33,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -583,7 +584,22 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					arr := v.([]any)
 					newArr := make([]any, len(arr))
 					for j, el := range arr {
-						newArr[j] = UnmarshalAndMarshalJsonString(el.(string))
+						switch e := el.(type) {
+						case string:
+							newArr[j] = UnmarshalAndMarshalJsonString(e)
+						case sql.JSONWrapper:
+							iface, err := e.ToInterface(nil)
+							if err != nil {
+								panic(err)
+							}
+							b, err := json.Marshal(iface)
+							if err != nil {
+								panic(err)
+							}
+							newArr[j] = string(b)
+						default:
+							newArr[j] = el
+						}
 					}
 					ret, err := dt.FormatValue(newArr)
 					if err != nil {
@@ -643,12 +659,19 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 	}
 
 	switch dt.ID {
-	case types.Json.ID, types.JsonB.ID:
+	case types.Json.ID:
 		jsonBytes, err := json.Marshal(v)
 		if err != nil {
 			panic(err)
 		}
 		return string(jsonBytes)
+	case types.JsonB.ID:
+		// JSONB normalizes JSON with spaces after ':' and ',' (PostgreSQL JSONB format)
+		s, err := gmstypes.JSONDocument{Val: v}.JSONString()
+		if err != nil {
+			panic(err)
+		}
+		return s
 	case types.InternalChar.ID:
 		if v == nil {
 			return nil
@@ -751,11 +774,7 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 		}
 		return string(str)
 	case types.JsonB.ID:
-		jv, err := types.ConvertToJsonDocument(v)
-		if err != nil {
-			panic(err)
-		}
-		return types.JsonDocument{Value: jv}
+		return gmstypes.JSONDocument{Val: v}
 	case types.Oid.ID, types.Regclass.ID, types.Regproc.ID, types.Regtype.ID:
 		if uval, ok := v.(uint32); ok {
 			if internalID := id.Cache().ToInternal(uval); internalID.IsValid() {

@@ -315,9 +315,9 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 	case duration.Duration:
 		bb := v2.(duration.Duration)
 		return ab.Compare(bb), nil
-	case JsonDocument:
-		bb := v2.(JsonDocument)
-		return JsonValueCompare(ab.Value, bb.Value), nil
+	case sql.JSONWrapper:
+		res, err := types.CompareJSON(ctx, ab, v2)
+		return res, err
 	case decimal.Decimal:
 		bb := v2.(decimal.Decimal)
 		return ab.Cmp(bb), nil
