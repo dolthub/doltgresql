@@ -60,38 +60,22 @@ func convertTupleToIgnoreBoolean(ctx context.Context, valueDesc *val.TupleDesc, 
 
 // getIgnoreTablePatternKey reads the pattern key from a tuple and returns it.
 func getIgnoreTablePatternKey(ctx context.Context, keyDesc *val.TupleDesc, keyTuple val.Tuple) (string, error) {
-	// First we'll try with ref (address) encoding
-	extendedTuple := val.NewTupleDescriptorWithArgs(
-		val.TupleDescriptorArgs{Comparator: keyDesc.Comparator(), Handlers: keyDesc.Handlers},
-		val.Type{Enc: val.ExtendedAddrEnc, Nullable: false},
-	)
-	var keyAddrBytes []byte
-	if !keyDesc.Equals(extendedTuple) {
-		// Ref encoding didn't work, so now we'll try adaptive encoding
-		extendedTuple = val.NewTupleDescriptorWithArgs(
-			val.TupleDescriptorArgs{Comparator: keyDesc.Comparator(), Handlers: keyDesc.Handlers},
-			val.Type{Enc: val.ExtendedAdaptiveEnc, Nullable: false},
-		)
-		if !keyDesc.Equals(extendedTuple) {
-			return "", fmt.Errorf("dolt_ignore had unexpected key type, this should never happen")
-		}
-		var ok bool
-		keyAddrBytes, ok = keyDesc.GetExtendedAdaptiveValue(0, keyTuple)
-		if !ok {
-			return "", fmt.Errorf("could not read pattern")
-		}
-	} else {
-		keyAddr, ok := keyDesc.GetExtendedAddr(0, keyTuple)
-		if !ok {
-			return "", fmt.Errorf("could not read pattern")
-		}
-		keyAddrBytes = keyAddr[:]
+	key, ok, err := keyDesc.GetStringAdaptiveValue(0, nil, keyTuple)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("could not read pattern")
 	}
 
-	key, err := keyDesc.Handlers[0].DeserializeValue(ctx, keyAddrBytes)
+	unwrapped, ok, err := sql.Unwrap[string](ctx, key)
 	if err != nil {
 		return "", err
 	}
 
-	return key.(string), nil
+	if !ok {
+		return "", fmt.Errorf("could not read pattern")
+	}
+
+	return unwrapped, nil
 }

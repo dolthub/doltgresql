@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/schema/typeinfo"
 	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -105,6 +106,7 @@ var _ sql.NullType = &DoltgresType{}
 var _ sql.StringType = &DoltgresType{}
 var _ sql.NumberType = &DoltgresType{}
 var _ val.TupleTypeHandler = &DoltgresType{}
+var _ typeinfo.ExtendedType = &DoltgresType{}
 
 // NewUnresolvedDoltgresType returns a DoltgresType that is not resolved.
 // The type will have the schema and name defined with given values, with IsUnresolved == true.
@@ -1144,6 +1146,13 @@ func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTyp
 	}
 
 	return t.SerializeValue(ctx, toValue)
+}
+
+// TypeInfo implements the typeinfo.ExtendedType interface.
+func (t *DoltgresType) TypeInfo() typeinfo.TypeInfo {
+	return typeInfo{
+		Type: t,
+	}
 }
 
 // TypeCastFunction is a function that takes a value of a particular kind of type, and returns it as another kind of type.

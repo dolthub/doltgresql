@@ -42,6 +42,7 @@ const (
 
 // TriggerExecution handles the execution of a set of triggers on a table.
 type TriggerExecution struct {
+	Timing   triggers.TriggerTiming
 	Triggers []triggers.Trigger
 	Split    TriggerExecutionRowHandling // How the source row should be split
 	Return   TriggerExecutionRowHandling // How the returned rows should be combined
@@ -120,6 +121,7 @@ func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder
 		sch:       te.Sch,
 		source:    sourceIter,
 		tgOp:      tgOp,
+		timing:    te.Timing,
 	}, nil
 }
 
@@ -187,6 +189,7 @@ type triggerExecutionIter struct {
 	sch       sql.Schema
 	source    sql.RowIter
 	tgOp      string
+	timing    triggers.TriggerTiming
 }
 
 var _ sql.RowIter = (*triggerExecutionIter)(nil)
@@ -242,8 +245,14 @@ func (t *triggerExecutionIter) Next(ctx *sql.Context) (sql.Row, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		if returnedValue == nil {
-			return make(sql.Row, len(nextRow)), nil
+			// a returned value of NULL on a BEFORE trigger means to not modify the row, so we return a signal error
+			if t.timing == triggers.TriggerTiming_Before {
+				return nil, sql.ErrRowEditCanceled.New()
+			} else {
+				return nextRow, nil
+			}
 		}
 		var ok bool
 		returnedRow, ok := returnedValue.(sql.Row)

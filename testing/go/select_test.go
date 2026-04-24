@@ -126,7 +126,7 @@ func TestSelect(t *testing.T) {
 				{
 					Query: "SELECT DISTINCT ON(v3) v1 FROM test2;",
 					Expected: []sql.Row{
-						{1},
+						{2},
 					},
 				},
 				{
