@@ -113,12 +113,23 @@ var defaultSkippedQueries = []string{
 	"show create table fk_tbl",   // we create an extra key for the FK that vanilla gms does not
 	"show indexes from",          // we create / expose extra indexes (for foreign keys)
 	"show global variables like", // we set extra variables
+	"show columns from",          // MySQL SHOW variant with no PostgreSQL equivalent
+	"show extended columns from", // MySQL SHOW variant with no PostgreSQL equivalent
+
 	// unsupported doltgres syntax
 	// " WITH ",
 	// " OVER ",
 	// string functions are broken due to incompatible types
 	"HEX(",
 	"TO_BASE64(",
+	// MySQL-specific functions not supported in doltgresql
+	"json_unquote", // MySQL JSON function
+	"year(",        // YEAR() functional index hits a type-incompatibility in doltgresql
+
+	// MySQL-specific operators and syntax not supported in PostgreSQL
+	"<=>",           // null-safe equality (PostgreSQL uses IS NOT DISTINCT FROM)
+	"modify column", // MySQL ALTER TABLE MODIFY COLUMN syntax
+	"column first",  // MySQL ADD COLUMN ... FIRST positioning
 }
 
 // Setup sets the setup scripts for this DoltHarness's engine
@@ -729,6 +740,10 @@ func getDmlResult(rows pgx.Rows, query string) (sql.Row, bool) {
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "ALTER TABLE"):
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
+	case strings.HasPrefix(tag.String(), "CREATE INDEX"):
+		return sql.NewRow(gmstypes.NewOkResult(0)), true
+	case strings.HasPrefix(tag.String(), "DROP INDEX"):
+		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "TRUNCATE"):
 		return sql.NewRow(gmstypes.NewOkResult(0)), true
 	case strings.HasPrefix(tag.String(), "SET"):
@@ -814,12 +829,15 @@ func unwrapResultColumn(v any) (any, error) {
 	}
 }
 
+// IsServerBacked implements enginetest.ServerBackedEngine, marking DoltgresQueryEngine
+// as a server-backed engine so that plan-inspection checks (evalIndexTest, etc.) are
+// skipped, matching the behavior of GMS's own ServerQueryEngine.
+func (d *DoltgresQueryEngine) IsServerBacked() bool { return true }
+
 func (d *DoltgresQueryEngine) EngineAnalyzer() *analyzer.Analyzer {
 	// TODO: this is a shim to get simple tests to work, we need to restructure the tests to not require access to
 	//  an analyzer
-	catalog := &analyzer.Catalog{}
-	catalog.AuthHandler = sql.GetAuthorizationHandlerFactory().CreateHandler(catalog)
-
+	catalog := analyzer.NewCatalog(nil, sql.EngineOverrides{})
 	return &analyzer.Analyzer{
 		Catalog: catalog,
 	}

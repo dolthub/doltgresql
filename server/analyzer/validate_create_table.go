@@ -124,6 +124,10 @@ func schToColMap(sch sql.Schema) map[string]*sql.Column {
 func validateIndex(ctx *sql.Context, colMap map[string]*sql.Column, idxDef *sql.IndexDef) error {
 	seenCols := make(map[string]struct{})
 	for _, idxCol := range idxDef.Columns {
+		if idxCol.Expression != nil {
+			continue
+		}
+
 		schCol, exists := colMap[strings.ToLower(idxCol.Name)]
 		if !exists {
 			return sql.ErrKeyColumnDoesNotExist.New(idxCol.Name)
