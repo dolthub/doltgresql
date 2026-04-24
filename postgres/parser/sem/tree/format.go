@@ -442,9 +442,9 @@ func AsStringWithFQNames(n NodeFormatter, ann *Annotations) string {
 	return ctx.CloseAndGetString()
 }
 
-// AsString pretty prints a node to a string.
+// AsString pretty prints a node to a string, with unquoted identifiers.
 func AsString(n NodeFormatter) string {
-	return AsStringWithFlags(n, FmtSimple)
+	return AsStringWithFlags(n, FmtSimple|FmtBareIdentifiers)
 }
 
 // ErrString pretty prints a node to a string. Identifiers are not quoted.
