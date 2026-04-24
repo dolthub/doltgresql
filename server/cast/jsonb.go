@@ -18,9 +18,8 @@ import (
 	"encoding/json"
 
 	"github.com/cockroachdb/errors"
-	"github.com/shopspring/decimal"
-
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
