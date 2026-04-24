@@ -1132,8 +1132,7 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name:  "JSON type",
-		Focus: true,
+		Name: "JSON type",
 		SetUpScript: []string{
 			"CREATE TABLE t_json (id INTEGER primary key, v1 JSON);",
 			`INSERT INTO t_json VALUES (1, '{"key1": {"key": "value"}}'), (2, '{"num":42}'), (3, '{"key1": "value1", "key2": "value2"}'), (4, '{"key1": {"key": [2,3]}}');`,
