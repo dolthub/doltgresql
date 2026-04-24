@@ -3130,12 +3130,17 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{false}},
 				},
 				{
-					Query:    `SELECT length('now'::timetz::text);`,
-					Expected: []sql.Row{{18}},
+					Query:    `SELECT length(to_char(current_date + 'now'::timetz, 'HH24:MI:SS.USTZH:TZM'));`,
+					Expected: []sql.Row{{int32(21)}},
 				},
 				{
-					Query:    `SELECT length('now'::time::text);`,
-					Expected: []sql.Row{{15}},
+					Query: `SELECT length('now'::timetz::text) > length('now'::time::text);`,
+					// Direct ::text casts trim trailing zeros from microseconds, making the length variable.
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT length(to_char('now'::time, 'HH24:MI:SS.US'));`,
+					Expected: []sql.Row{{int32(15)}},
 				},
 			},
 		},
