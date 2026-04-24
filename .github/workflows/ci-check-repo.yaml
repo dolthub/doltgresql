@@ -30,8 +30,13 @@ jobs:
           if ./scripts/check_fmt.sh ; then
             echo "code is formatted"
           else
-            echo "Please run scripts/format_repo.sh to format this pull request."
-            exit 1;
+            echo "code is not formatted"
+            if [ "${{ github.repository }}" != "dolthub/doltgresql" ]; then
+              echo "Pull requests from forks must be manually formatted."
+              echo "Please run scripts/format_repo.sh to format this pull request."
+              exit 1;
+            fi
+            echo "format=true" >> $GITHUB_OUTPUT
           fi
 
           ./postgres/parser/build.sh
@@ -40,3 +45,40 @@ jobs:
         env:
           BRANCH_NAME: ${{ github.head_ref }}
           CHANGE_TARGET: ${{ github.base_ref }}
+  format:
+    needs: verify
+    if: ${{ needs.verify.outputs.format == 'true' }}
+    name: Format PR
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          submodules: true
+          token: ${{ secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install goimports
+        run: go install golang.org/x/tools/cmd/goimports@latest
+      - name: Format repo
+        run: ./scripts/format_repo.sh
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
+          CHANGE_TARGET: ${{ github.base_ref }}
+      - name: Changes detected
+        id: detect-changes
+        run: |
+          changes=$(git status --porcelain)
+          if [ ! -z "$changes" ]; then
+             echo "has-changes=true" >> $GITHUB_OUTPUT
+          fi
+      - uses: EndBug/add-and-commit@v9.1.4
+        if: ${{ steps.detect-changes.outputs.has-changes == 'true' }}
+        with:
+          message: "[ga-format-pr] Run scripts/format_repo.sh"
+          add: "."
+          cwd: "."
+          pull: "--ff"
