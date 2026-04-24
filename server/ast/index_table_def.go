@@ -39,7 +39,7 @@ func nodeIndexTableDef(ctx *Context, node *tree.IndexTableDef) (*vitess.IndexDef
 		logrus.Warn("tablespace is not yet supported, ignoring")
 	}
 
-	columns, err := nodeIndexElemList(ctx, node.Columns)
+	indexFields, err := nodeIndexElemList(ctx, node.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +49,6 @@ func nodeIndexTableDef(ctx *Context, node *tree.IndexTableDef) (*vitess.IndexDef
 			Type: "",
 			Name: vitess.NewColIdent(string(node.Name)),
 		},
-		Columns: columns,
+		Fields: indexFields,
 	}, nil
 }

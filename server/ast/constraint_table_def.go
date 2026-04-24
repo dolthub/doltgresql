@@ -110,7 +110,7 @@ func nodeUniqueConstraintTableDef(
 		return nil, errors.Errorf("NULLS NOT DISTINCT is not yet supported")
 	}
 
-	columns, err := nodeIndexElemList(ctx, node.Columns)
+	indexFields, err := nodeIndexElemList(ctx, node.Columns)
 	if err != nil {
 		return nil, err
 	}
@@ -125,10 +125,10 @@ func nodeUniqueConstraintTableDef(
 		Table:    tableName,
 		IfExists: ifExists,
 		IndexSpec: &vitess.IndexSpec{
-			ToName:  vitess.NewColIdent(bareIdentifier(node.Name)),
-			Action:  "create",
-			Type:    indexType,
-			Columns: columns,
+			ToName: vitess.NewColIdent(bareIdentifier(node.Name)),
+			Action: "create",
+			Type:   indexType,
+			Fields: indexFields,
 		},
 	}, nil
 }

@@ -115,7 +115,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 			tableColumns := utils.SliceToMapValues(target.TableSpec.Columns, func(col *vitess.ColumnDefinition) string {
 				return col.Name.String()
 			})
-			for _, indexedColumn := range indexDef.Columns {
+			for _, indexedColumn := range indexDef.Fields {
 				if column, ok := tableColumns[indexedColumn.Column.String()]; ok {
 					column.Type.Null = false
 					column.Type.NotNull = true

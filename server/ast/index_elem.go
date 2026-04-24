@@ -23,13 +23,14 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// nodeIndexElemList converts a tree.IndexElemList to a slice of vitess.IndexColumn.
-func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexColumn, error) {
-	vitessIndexColumns := make([]*vitess.IndexColumn, 0, len(node))
+// nodeIndexElemList converts a tree.IndexElemList to a slice of vitess.IndexField.
+func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexField, error) {
+	vitessIndexColumns := make([]*vitess.IndexField, 0, len(node))
 	for _, inputColumn := range node {
 		if inputColumn.Expr != nil {
 			return nil, errors.Errorf("expression index attribute is not yet supported")
 		}
+
 		if inputColumn.Collation != "" {
 			logrus.Warn("index attribute collation is not yet supported, ignoring")
 		}
@@ -63,9 +64,19 @@ func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexCo
 			return nil, errors.Errorf("unknown NULL ordering for index")
 		}
 
-		vitessIndexColumns = append(vitessIndexColumns, &vitess.IndexColumn{
-			Column: vitess.NewColIdent(string(inputColumn.Column)),
-			Order:  vitess.AscScr,
+		var expr vitess.Expr
+		if inputColumn.Expr != nil {
+			var err error
+			expr, err = nodeExpr(ctx, inputColumn.Expr)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		vitessIndexColumns = append(vitessIndexColumns, &vitess.IndexField{
+			Column:     vitess.NewColIdent(string(inputColumn.Column)),
+			Order:      vitess.AscScr,
+			Expression: expr,
 		})
 	}
 
