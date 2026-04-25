@@ -828,10 +828,10 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 				continue
 			}
 
-			indexCols := make(tree.IndexElemList, len(index.Columns))
-			for i, col := range index.Columns {
+			indexFields := make(tree.IndexElemList, len(index.Fields))
+			for i, col := range index.Fields {
 				colName := col.Column.String()
-				indexCols[i] = tree.IndexElem{
+				indexFields[i] = tree.IndexElem{
 					Column: tree.Name(colName),
 				}
 			}
@@ -839,7 +839,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 			indexDef := &tree.UniqueConstraintTableDef{
 				PrimaryKey: true,
 				IndexTableDef: tree.IndexTableDef{
-					Columns: indexCols,
+					Columns: indexFields,
 				},
 			}
 
@@ -871,10 +871,10 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 				Name:    tree.Name(index.Info.Name.String()),
 				Table:   tree.MakeTableNameWithSchema("", "", tree.Name(stmt.Table.Name.String())), // TODO: qualified
 				Unique:  index.Info.Unique,
-				Columns: make(tree.IndexElemList, len(index.Columns)),
+				Columns: make(tree.IndexElemList, len(index.Fields)),
 			}
 
-			for i, col := range index.Columns {
+			for i, col := range index.Fields {
 				createIndex.Columns[i] = tree.IndexElem{
 					Column:    tree.Name(col.Column.String()),
 					Direction: tree.Ascending,
