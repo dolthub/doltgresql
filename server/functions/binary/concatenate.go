@@ -15,9 +15,10 @@
 package binary
 
 import (
-	"sort"
+	"fmt"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -138,50 +139,45 @@ var byteacat = framework.Function2{
 
 // jsonb_concat_callable is the callable logic for the jsonb_concat function.
 func jsonb_concat_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
-	val1 := val1Interface.(pgtypes.JsonDocument).Value
-	val2 := val2Interface.(pgtypes.JsonDocument).Value
-	// First we'll merge objects if they're both objects
-	val1Obj, isVal1Obj := val1.(pgtypes.JsonValueObject)
-	val2Obj, isVal2Obj := val2.(pgtypes.JsonValueObject)
-	if isVal1Obj && isVal2Obj {
-		newObj := pgtypes.JsonValueCopy(val1Obj).(pgtypes.JsonValueObject)
-		for _, item := range val2Obj.Items {
-			if existingIdx, ok := newObj.Index[item.Key]; ok {
-				newObj.Items[existingIdx].Value = pgtypes.JsonValueCopy(item.Value)
-			} else {
-				newObj.Items = append(newObj.Items, pgtypes.JsonValueObjectItem{
-					Key:   item.Key,
-					Value: pgtypes.JsonValueCopy(item.Value),
-				})
-			}
+	wrapper1, ok1 := val1Interface.(sql.JSONWrapper)
+	wrapper2, ok2 := val2Interface.(sql.JSONWrapper)
+	if !ok1 || !ok2 {
+		return nil, fmt.Errorf("jsonb_concat: unexpected types %T, %T", val1Interface, val2Interface)
+	}
+	v1, err := wrapper1.ToInterface(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := wrapper2.ToInterface(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Merge objects if both are objects
+	obj1, isObj1 := v1.(map[string]interface{})
+	obj2, isObj2 := v2.(map[string]interface{})
+	if isObj1 && isObj2 {
+		newObj := make(map[string]interface{}, len(obj1)+len(obj2))
+		for k, v := range obj1 {
+			newObj[k] = v
 		}
-		sort.Slice(newObj.Items, func(i, j int) bool {
-			if len(newObj.Items[i].Key) < len(newObj.Items[j].Key) {
-				return true
-			} else if len(newObj.Items[i].Key) > len(newObj.Items[j].Key) {
-				return false
-			} else {
-				return newObj.Items[i].Key < newObj.Items[j].Key
-			}
-		})
-		for i, item := range newObj.Items {
-			newObj.Index[item.Key] = i
+		for k, v := range obj2 {
+			newObj[k] = v
 		}
-		return pgtypes.JsonDocument{Value: newObj}, nil
+		return gmstypes.JSONDocument{Val: newObj}, nil
 	}
-	// They're not both objects, so we'll make them both arrays if they're not already arrays
-	if _, ok := val1.(pgtypes.JsonValueArray); !ok {
-		val1 = pgtypes.JsonValueArray{val1}
+	// Not both objects: wrap non-arrays in single-element arrays and concatenate
+	arr1, isArr1 := v1.([]interface{})
+	arr2, isArr2 := v2.([]interface{})
+	if !isArr1 {
+		arr1 = []interface{}{v1}
 	}
-	if _, ok := val2.(pgtypes.JsonValueArray); !ok {
-		val2 = pgtypes.JsonValueArray{val2}
+	if !isArr2 {
+		arr2 = []interface{}{v2}
 	}
-	val1Array := pgtypes.JsonValueCopy(val1.(pgtypes.JsonValueArray)).(pgtypes.JsonValueArray)
-	val2Array := pgtypes.JsonValueCopy(val2.(pgtypes.JsonValueArray)).(pgtypes.JsonValueArray)
-	newArray := make(pgtypes.JsonValueArray, len(val1Array)+len(val2Array))
-	copy(newArray, val1Array)
-	copy(newArray[len(val1Array):], val2Array)
-	return pgtypes.JsonDocument{Value: newArray}, nil
+	newArray := make([]interface{}, len(arr1)+len(arr2))
+	copy(newArray, arr1)
+	copy(newArray[len(arr1):], arr2)
+	return gmstypes.JSONDocument{Val: newArray}, nil
 }
 
 // jsonb_concat represents the PostgreSQL function of the same name, taking the same parameters.

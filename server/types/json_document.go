@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/goccy/go-json"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/utils"
@@ -105,128 +104,6 @@ func (JsonValueBoolean) enforceJsonInterfaceInheritance(error) {}
 // enforceJsonInterfaceInheritance implements the JsonValue interface.
 func (JsonValueNull) enforceJsonInterfaceInheritance(error) {}
 
-// JsonValueCopy returns a new copy of the given JsonValue that may be freely modified.
-func JsonValueCopy(value JsonValue) JsonValue {
-	switch value := value.(type) {
-	case JsonValueObject:
-		newItems := make([]JsonValueObjectItem, len(value.Items))
-		newIndex := make(map[string]int)
-		for i := range value.Items {
-			newItems[i].Key = value.Items[i].Key
-			newItems[i].Value = JsonValueCopy(value.Items[i].Value)
-			newIndex[newItems[i].Key] = i
-		}
-		return JsonValueObject{
-			Items: newItems,
-			Index: newIndex,
-		}
-	case JsonValueArray:
-		newArray := make(JsonValueArray, len(value))
-		for i := range value {
-			newArray[i] = JsonValueCopy(value[i])
-		}
-		return newArray
-	default:
-		return value
-	}
-}
-
-// JsonValueCompare compares two values.
-func JsonValueCompare(v1 JsonValue, v2 JsonValue) int {
-	// Some types sort before others, so we'll check those first
-	v1TypeSortOrder := jsonValueTypeSortOrder(v1)
-	v2TypeSortOrder := jsonValueTypeSortOrder(v2)
-	if v1TypeSortOrder < v2TypeSortOrder {
-		return -1
-	} else if v1TypeSortOrder > v2TypeSortOrder {
-		return 1
-	}
-
-	// TODO: these should use the actual comparison operator functions for their respective types
-	switch v1 := v1.(type) {
-	case JsonValueObject:
-		v2 := v2.(JsonValueObject)
-		if len(v1.Items) < len(v2.Items) {
-			return -1
-		} else if len(v1.Items) > len(v2.Items) {
-			return 1
-		}
-		// Items in an object are already sorted, so we can simply iterate over the items
-		for i := 0; i < len(v1.Items); i++ {
-			if v1.Items[i].Key < v2.Items[i].Key {
-				return -1
-			} else if v1.Items[i].Key > v2.Items[i].Key {
-				return 1
-			} else {
-				innerCmp := JsonValueCompare(v1.Items[i].Value, v2.Items[i].Value)
-				if innerCmp != 0 {
-					return innerCmp
-				}
-			}
-		}
-		return 0
-	case JsonValueArray:
-		v2 := v2.(JsonValueArray)
-		if len(v1) < len(v2) {
-			return -1
-		} else if len(v1) > len(v2) {
-			return 1
-		}
-		for i := 0; i < len(v1); i++ {
-			innerCmp := JsonValueCompare(v1[i], v2[i])
-			if innerCmp != 0 {
-				return innerCmp
-			}
-		}
-		return 0
-	case JsonValueString:
-		v2 := v2.(JsonValueString)
-		if v1 == v2 {
-			return 0
-		} else if v1 < v2 {
-			return -1
-		} else {
-			return 1
-		}
-	case JsonValueNumber:
-		return decimal.Decimal(v1).Cmp(decimal.Decimal(v2.(JsonValueNumber)))
-	case JsonValueBoolean:
-		v2 := v2.(JsonValueBoolean)
-		if v1 == v2 {
-			return 0
-		} else if !v1 {
-			return -1
-		} else {
-			return 1
-		}
-	case JsonValueNull:
-		return 0
-	default:
-		return 0
-	}
-}
-
-// jsonValueTypeSortOrder returns the relative sorting order based on the JsonValueType of the JsonValue. This should
-// only be used from within jsonValueCompare. Lower values sort before larger values.
-func jsonValueTypeSortOrder(value JsonValue) int {
-	switch value.(type) {
-	case JsonValueObject:
-		return 5
-	case JsonValueArray:
-		return 4
-	case JsonValueString:
-		return 1
-	case JsonValueNumber:
-		return 2
-	case JsonValueBoolean:
-		return 3
-	case JsonValueNull:
-		return 0
-	default:
-		return 6
-	}
-}
-
 // JsonValueSerialize is the recursive serializer for JSON values.
 func JsonValueSerialize(writer *utils.Writer, value JsonValue) {
 	switch value := value.(type) {
@@ -299,60 +176,6 @@ func JsonValueDeserialize(reader *utils.Reader) (_ JsonValue, err error) {
 	default:
 		return nil, errors.Errorf("unknown json value type")
 	}
-}
-
-// JsonValueFormatter is the recursive formatter for JSON values.
-func JsonValueFormatter(sb *strings.Builder, value JsonValue) {
-	switch value := value.(type) {
-	case JsonValueObject:
-		sb.WriteRune('{')
-		for i, item := range value.Items {
-			if i > 0 {
-				sb.WriteString(", ")
-			}
-			sb.WriteRune('"')
-			sb.WriteString(strings.ReplaceAll(item.Key, `"`, `\"`))
-			sb.WriteString(`": `)
-			JsonValueFormatter(sb, item.Value)
-		}
-		sb.WriteRune('}')
-	case JsonValueArray:
-		sb.WriteRune('[')
-		for i, item := range value {
-			if i > 0 {
-				sb.WriteString(", ")
-			}
-			JsonValueFormatter(sb, item)
-		}
-		sb.WriteRune(']')
-	case JsonValueString:
-		sb.WriteRune('"')
-		sb.WriteString(strings.ReplaceAll(string(value), `"`, `\"`))
-		sb.WriteRune('"')
-	case JsonValueNumber:
-		sb.WriteString(decimal.Decimal(value).String())
-	case JsonValueBoolean:
-		if value {
-			sb.WriteString(`true`)
-		} else {
-			sb.WriteString(`false`)
-		}
-	case JsonValueNull:
-		sb.WriteString(`null`)
-	}
-}
-
-// UnmarshalToJsonDocument converts a JSON document byte slice into the actual JSON document.
-func UnmarshalToJsonDocument(val []byte) (JsonDocument, error) {
-	var decoded interface{}
-	if err := json.Unmarshal(val, &decoded); err != nil {
-		return JsonDocument{}, err
-	}
-	jsonValue, err := ConvertToJsonDocument(decoded)
-	if err != nil {
-		return JsonDocument{}, err
-	}
-	return JsonDocument{Value: jsonValue}, nil
 }
 
 // ConvertToJsonDocument recursively constructs a valid JsonDocument based on the structures returned by the decoder.

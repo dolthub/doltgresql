@@ -33,6 +33,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -42,7 +43,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgtree "github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	dserver "github.com/dolthub/doltgresql/server"
@@ -575,7 +576,6 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				if dt.ID == types.Json.ID && row[i] != nil {
 					newRow[i] = UnmarshalAndMarshalJsonString(row[i].(string))
 				} else if dt.IsArrayType() && dt.ArrayBaseType().ID == types.Json.ID {
-					// TODO: need to have valid sql.Context
 					v, err := dt.IoInput(nil, row[i].(string))
 					if err != nil {
 						panic(err)
@@ -583,7 +583,22 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 					arr := v.([]any)
 					newArr := make([]any, len(arr))
 					for j, el := range arr {
-						newArr[j] = UnmarshalAndMarshalJsonString(el.(string))
+						switch e := el.(type) {
+						case string:
+							newArr[j] = UnmarshalAndMarshalJsonString(e)
+						case sql.JSONWrapper:
+							iface, err := e.ToInterface(context.Background())
+							if err != nil {
+								panic(err)
+							}
+							b, err := json.Marshal(iface)
+							if err != nil {
+								panic(err)
+							}
+							newArr[j] = string(b)
+						default:
+							newArr[j] = el
+						}
 					}
 					ret, err := dt.FormatValue(newArr)
 					if err != nil {
@@ -593,14 +608,14 @@ func NormalizeExpectedRow(fds []pgconn.FieldDescription, rows []sql.Row) []sql.R
 				} else if dt.ID == types.Date.ID {
 					newRow[i] = row[i]
 					if row[i] != nil {
-						if t, _, err := tree.ParseDTimestampTZ(nil, row[i].(string), tree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
+						if t, _, err := pgtree.ParseDTimestampTZ(nil, row[i].(string), pgtree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
 							newRow[i] = functions.FormatDateTimeWithBC(t.Time.UTC(), "2006-01-02", dt.ID == types.TimestampTZ.ID)
 						}
 					}
 				} else if dt.ID == types.Timestamp.ID || dt.ID == types.TimestampTZ.ID {
 					newRow[i] = row[i]
 					if row[i] != nil {
-						if t, _, err := tree.ParseDTimestampTZ(nil, row[i].(string), tree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
+						if t, _, err := pgtree.ParseDTimestampTZ(nil, row[i].(string), pgtree.TimeFamilyPrecisionToRoundDuration(6), time.UTC); err == nil {
 							newRow[i] = functions.FormatDateTimeWithBC(t.Time.UTC(), "2006-01-02 15:04:05.999999", dt.ID == types.TimestampTZ.ID)
 						}
 					}
@@ -644,25 +659,18 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 
 	switch dt.ID {
 	case types.Json.ID:
-		str, err := json.Marshal(v)
+		jsonBytes, err := json.Marshal(v)
 		if err != nil {
 			panic(err)
 		}
-		ret, err := dt.FormatValue(string(str))
-		if err != nil {
-			panic(err)
-		}
-		return ret
+		return string(jsonBytes)
 	case types.JsonB.ID:
-		jv, err := types.ConvertToJsonDocument(v)
+		// JSONB normalizes JSON with spaces after ':' and ',' (PostgreSQL JSONB format)
+		s, err := gmstypes.JSONDocument{Val: v}.JSONString()
 		if err != nil {
 			panic(err)
 		}
-		str, err := dt.FormatValue(types.JsonDocument{Value: jv})
-		if err != nil {
-			panic(err)
-		}
-		return str
+		return s
 	case types.InternalChar.ID:
 		if v == nil {
 			return nil
@@ -765,11 +773,7 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 		}
 		return string(str)
 	case types.JsonB.ID:
-		jv, err := types.ConvertToJsonDocument(v)
-		if err != nil {
-			panic(err)
-		}
-		return types.JsonDocument{Value: jv}
+		return gmstypes.JSONDocument{Val: v}
 	case types.Oid.ID, types.Regclass.ID, types.Regproc.ID, types.Regtype.ID:
 		if uval, ok := v.(uint32); ok {
 			if internalID := id.Cache().ToInternal(uval); internalID.IsValid() {

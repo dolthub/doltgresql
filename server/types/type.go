@@ -315,9 +315,9 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 	case duration.Duration:
 		bb := v2.(duration.Duration)
 		return ab.Compare(bb), nil
-	case JsonDocument:
-		bb := v2.(JsonDocument)
-		return JsonValueCompare(ab.Value, bb.Value), nil
+	case sql.JSONWrapper:
+		res, err := types.CompareJSON(ctx, ab, v2)
+		return res, err
 	case decimal.Decimal:
 		bb := v2.(decimal.Decimal)
 		return ab.Cmp(bb), nil
@@ -405,7 +405,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.([]byte); ok {
 			return v, sql.InRange, nil
 		}
-	case "bpchar", "char", "json", "name", "text", "unknown", "varchar":
+	case "bpchar", "char", "name", "text", "unknown", "varchar":
 		_, ok, err := sql.Unwrap[string](ctx, v)
 		if err != nil {
 			return nil, sql.InRange, err
@@ -441,8 +441,8 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.(duration.Duration); ok {
 			return v, sql.InRange, nil
 		}
-	case "jsonb":
-		if _, ok := v.(JsonDocument); ok {
+	case "jsonb", "json":
+		if _, ok := v.(sql.JSONWrapper); ok {
 			return v, sql.InRange, nil
 		}
 	case "oid", "regclass", "regproc", "regtype":
