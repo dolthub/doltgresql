@@ -792,6 +792,12 @@ func TestIndexes(t *testing.T) {
 	enginetest.TestIndexes(t, harness)
 }
 
+func TestIndexedExpressions(t *testing.T) {
+	harness := newDoltgresServerHarness(t)
+	defer harness.Close()
+	enginetest.TestIndexedExpressions(t, harness)
+}
+
 func TestIndexPrefix(t *testing.T) {
 	t.Skip()
 	harness := newDoltgresServerHarness(t)
