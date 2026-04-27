@@ -15,9 +15,9 @@
 package types
 
 import (
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
-	"github.com/goccy/go-json"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -64,43 +64,48 @@ var JsonB = &DoltgresType{
 
 // serializeTypeJsonB handles serialization from the standard representation to our serialized representation that is
 // written in Dolt. This is used for the legacy ExtendedEnc storage path.
+// Deprecated. These values are now serialized and deserialized by Dolt natively.
 func serializeTypeJsonB(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
 	res, err := sql.UnwrapAny(ctx, val)
 	if err != nil {
 		return nil, err
 	}
+
+	var doc JsonDocument
 	switch v := res.(type) {
 	case sql.JSONWrapper:
 		j, err := v.ToInterface(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(j)
-	case string:
-		return []byte(v), nil
+		jsonVal, err := ConvertToJsonDocument(j)
+		if err != nil {
+			return nil, err
+		}
+		doc = JsonDocument{Value: jsonVal}
 	default:
-		return json.Marshal(v)
+		return nil, errors.Newf("jsonb: unexpected types %T, %T", res, val)
 	}
+
+	writer := utils.NewWriter(256)
+	JsonValueSerialize(writer, doc.Value)
+	return writer.Data(), nil
 }
 
 // deserializeTypeJsonB handles deserialization from the Dolt serialized format to our standard representation used by
 // expressions and nodes. This is used for the legacy ExtendedEnc storage path.
+// Deprecated. These values are now serialized and deserialized by Dolt natively, but previous releases still write
+// values in this old format.
 func deserializeTypeJsonB(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
-	var v any
-	if err := json.Unmarshal(data, &v); err != nil {
-		// Fall back to the legacy deserialization format for old data
-		reader := utils.NewReader(data)
-		jsonValue, err2 := JsonValueDeserialize(reader)
-		if err2 != nil {
-			return nil, err
-		}
-		// Convert from legacy JsonValue format to a types.JSONDocument
-		return gmstypes.JSONDocument{Val: jsonValueToInterface(jsonValue)}, nil
+	reader := utils.NewReader(data)
+	jsonValue, err := JsonValueDeserialize(reader)
+	if err != nil {
+		return nil, err
 	}
-	return gmstypes.JSONDocument{Val: v}, nil
+	return gmstypes.JSONDocument{Val: jsonValueToInterface(jsonValue)}, nil
 }
 
 // jsonValueToInterface converts a legacy JsonValue to a native Go interface value.
