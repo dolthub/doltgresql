@@ -20,7 +20,7 @@ import "os"
 const PgCatalogName = "pg_catalog"
 
 // includeSystemTables is a flag to determine whether to include system tables in the pg_catalog tables.
-var includeSystemTables = true
+var includeSystemTables = false
 
 // Init initializes everything necessary for the pg_catalog tables.
 func Init() {
