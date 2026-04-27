@@ -24,7 +24,6 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/functions"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // pgNamespace represents a row in the pg_namespace table.
@@ -47,6 +46,9 @@ type pgCatalogCache struct {
 
 	// pg_classes
 	pgClasses *pgClassCache
+
+	// pg_type
+	pgTypes *pgTypeCache
 
 	// pg_constraints
 	pgConstraints *pgConstraintCache
@@ -71,10 +73,6 @@ type pgCatalogCache struct {
 	// pg_views
 	views       []sql.ViewDefinition
 	viewSchemas []string
-
-	// pg_types
-	types        []*pgtypes.DoltgresType
-	schemasToOid map[string]id.Namespace
 
 	// pg_tables
 	tables       []sql.Table
@@ -102,6 +100,28 @@ func (p pgClassCache) getIndex(name string) *inMemIndexStorage[*pgClass] {
 }
 
 var _ BTreeStorageAccess[*pgClass] = &pgClassCache{}
+
+// pgTypeCache holds cached data for the pg_type table, including two btree indexes for fast lookups by OID and
+// by typname
+type pgTypeCache struct {
+	types   []*pgType
+	nameIdx *inMemIndexStorage[*pgType]
+	oidIdx  *inMemIndexStorage[*pgType]
+}
+
+// getIndex implements BTreeStorageAccess.
+func (p pgTypeCache) getIndex(name string) *inMemIndexStorage[*pgType] {
+	switch name {
+	case pgTypeOidIndex:
+		return p.oidIdx
+	case pgTypnameIndex:
+		return p.nameIdx
+	default:
+		panic("unknown pg_type index: " + name)
+	}
+}
+
+var _ BTreeStorageAccess[*pgType] = &pgTypeCache{}
 
 // pgIndexCache holds cached data for the pg_index table, including two btree indexes for fast lookups by index OID
 type pgIndexCache struct {
