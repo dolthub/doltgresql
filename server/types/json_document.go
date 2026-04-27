@@ -21,7 +21,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/goccy/go-json"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -72,7 +72,7 @@ type JsonValueArray []JsonValue
 type JsonValueString string
 
 // JsonValueNumber represents a number.
-type JsonValueNumber decimal.Decimal
+type JsonValueNumber pgtype.Numeric
 
 // JsonValueBoolean represents a boolean value.
 type JsonValueBoolean bool
@@ -189,7 +189,8 @@ func JsonValueCompare(v1 JsonValue, v2 JsonValue) int {
 			return 1
 		}
 	case JsonValueNumber:
-		return decimal.Decimal(v1).Cmp(decimal.Decimal(v2.(JsonValueNumber)))
+		v2 := v2.(JsonValueNumber)
+		return NumericCompare(pgtype.Numeric(v1), pgtype.Numeric(v2))
 	case JsonValueBoolean:
 		v2 := v2.(JsonValueBoolean)
 		if v1 == v2 {
@@ -248,9 +249,9 @@ func JsonValueSerialize(writer *utils.Writer, value JsonValue) {
 		writer.String(string(value))
 	case JsonValueNumber:
 		writer.Byte(byte(JsonValueType_Number))
-		// MarshalBinary cannot error, so we can safely ignore it
-		bytes, _ := decimal.Decimal(value).MarshalBinary()
-		writer.ByteSlice(bytes)
+		var buf []byte
+		buf, _ = pgtype.Numeric(value).EncodeBinary(nil, buf)
+		writer.ByteSlice(buf)
 	case JsonValueBoolean:
 		writer.Byte(byte(JsonValueType_Boolean))
 		writer.Bool(bool(value))
@@ -289,9 +290,9 @@ func JsonValueDeserialize(reader *utils.Reader) (_ JsonValue, err error) {
 	case JsonValueType_String:
 		return JsonValueString(reader.String()), nil
 	case JsonValueType_Number:
-		d := decimal.Decimal{}
-		err = d.UnmarshalBinary(reader.ByteSlice())
-		return JsonValueNumber(d), err
+		var num pgtype.Numeric
+		err = num.DecodeBinary(nil, reader.ByteSlice())
+		return JsonValueNumber(num), err
 	case JsonValueType_Boolean:
 		return JsonValueBoolean(reader.Bool()), nil
 	case JsonValueType_Null:
@@ -330,7 +331,7 @@ func JsonValueFormatter(sb *strings.Builder, value JsonValue) {
 		sb.WriteString(strings.ReplaceAll(string(value), `"`, `\"`))
 		sb.WriteRune('"')
 	case JsonValueNumber:
-		sb.WriteString(decimal.Decimal(value).String())
+		sb.WriteString(NumericToDecimal(pgtype.Numeric(value)).String())
 	case JsonValueBoolean:
 		if value {
 			sb.WriteString(`true`)
@@ -407,7 +408,8 @@ func ConvertToJsonDocument(val interface{}) (JsonValue, error) {
 		return JsonValueString(val), nil
 	case float64:
 		// TODO: handle this as a proper numeric as float64 is not precise enough
-		return JsonValueNumber(decimal.NewFromFloat(val)), nil
+		num, err := GetNumeric(val)
+		return JsonValueNumber(num), err
 	case bool:
 		return JsonValueBoolean(val), nil
 	case nil:

@@ -16,9 +16,8 @@ package functions
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -81,9 +80,28 @@ var mod_numeric_numeric = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		if val2.(decimal.Decimal).Cmp(decimal.Zero) == 0 {
-			return nil, errors.Errorf("division by zero")
-		}
-		return val1.(decimal.Decimal).Mod(val2.(decimal.Decimal)), nil
+		num1, num2 := val1.(pgtype.Numeric), val2.(pgtype.Numeric)
+		return NumericMod(num1, num2)
 	},
+}
+
+// NumericMod takes two pgtype.Numeric arguments and returns modulo result of them.
+func NumericMod(n1, n2 pgtype.Numeric) (pgtype.Numeric, error) {
+	if n1.NaN || n2.NaN {
+		return pgtypes.NumericNaN, nil
+	}
+	if n2.Int != nil && n2.Int.Sign() == 0 {
+		return pgtype.Numeric{}, errors.Errorf("division by zero")
+	}
+	if (n1.InfinityModifier == pgtype.Infinity || n1.InfinityModifier == pgtype.NegativeInfinity) &&
+		(n2.InfinityModifier == pgtype.Infinity || n2.InfinityModifier == pgtype.NegativeInfinity) {
+		return pgtypes.NumericNaN, nil
+	}
+	if n1.InfinityModifier == pgtype.Infinity || n1.InfinityModifier == pgtype.NegativeInfinity {
+		return n1, nil
+	}
+	if n2.InfinityModifier == pgtype.Infinity || n2.InfinityModifier == pgtype.NegativeInfinity {
+		return pgtypes.NumericZeroo(), nil
+	}
+	return pgtypes.AnyToNumeric(pgtypes.NumericToDecimal(n1).Mod(pgtypes.NumericToDecimal(n2)))
 }

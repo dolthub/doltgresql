@@ -19,7 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -225,7 +225,25 @@ var numeric_mul = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return val1.(decimal.Decimal).Mul(val2.(decimal.Decimal)), nil
+		n1, n2 := val1.(pgtype.Numeric), val2.(pgtype.Numeric)
+		if n1.NaN || n2.NaN {
+			return pgtypes.NumericNaN, nil
+		}
+		if n1.InfinityModifier == pgtype.Infinity || n2.InfinityModifier == pgtype.Infinity {
+			if n1.InfinityModifier == pgtype.NegativeInfinity || n2.InfinityModifier == pgtype.NegativeInfinity {
+				return pgtypes.NumericNegativeInfinite, nil
+			} else if (n1.Int != nil && n1.Int.Sign() == 0) || (n2.Int != nil && n2.Int.Sign() == 0) {
+				return pgtypes.NumericNaN, nil
+			}
+			return pgtypes.NumericInfinite, nil
+		}
+		if n1.InfinityModifier == pgtype.NegativeInfinity || n2.InfinityModifier == pgtype.NegativeInfinity {
+			if (n1.Int != nil && n1.Int.Sign() == 0) || (n2.Int != nil && n2.Int.Sign() == 0) {
+				return pgtypes.NumericNaN, nil
+			}
+			return pgtypes.NumericNegativeInfinite, nil
+		}
+		return pgtypes.AnyToNumeric(pgtypes.NumericToDecimal(n1).Mul(pgtypes.NumericToDecimal(n2)))
 	},
 }
 

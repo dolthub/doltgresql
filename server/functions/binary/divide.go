@@ -16,11 +16,11 @@ package binary
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -285,19 +285,14 @@ var interval_div = framework.Function2{
 	Callable:   interval_div_callable,
 }
 
-// numeric_div_callable is the callable logic for the numeric_div function.
-func numeric_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	if val2.(decimal.Decimal).Equal(decimal.Zero) {
-		return nil, errors.Errorf("division by zero")
-	}
-	return val1.(decimal.Decimal).Div(val2.(decimal.Decimal)), nil
-}
-
 // numeric_div represents the PostgreSQL function of the same name, taking the same parameters.
 var numeric_div = framework.Function2{
 	Name:       "numeric_div",
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable:   numeric_div_callable,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		n1, n2 := val1.(pgtype.Numeric), val2.(pgtype.Numeric)
+		return functions.NumericDiv(n1, n2)
+	},
 }

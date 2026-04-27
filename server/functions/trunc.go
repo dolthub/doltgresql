@@ -17,8 +17,9 @@ package functions
 import (
 	"math"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -51,11 +52,12 @@ var trunc_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		num := val.(pgtype.Numeric)
+		if num.NaN || num.InfinityModifier == pgtype.Infinity || num.InfinityModifier == pgtype.NegativeInfinity {
+			return pgtypes.NumericNaN, nil
 		}
-		return decimal.NewFromInt(val1.(decimal.Decimal).IntPart()), nil
+		return pgtypes.AnyToNumeric(num.Int.Int64())
 	},
 }
 
@@ -65,8 +67,17 @@ var trunc_numeric_int64 = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, num any, places any) (any, error) {
-		//TODO: test for negative values in places
-		return num.(decimal.Decimal).Truncate(places.(int32)), nil
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		num := val1.(pgtype.Numeric)
+		if num.NaN || num.InfinityModifier == pgtype.Infinity || num.InfinityModifier == pgtype.NegativeInfinity {
+			return pgtypes.NumericNaN, nil
+		}
+		places := val2.(int32)
+		if places > 16383 {
+			// TODO: check for actual limit
+			return nil, errors.Newf(`numeric scale %v must be between 0 and 16383`, places)
+		}
+		num.Exp = places
+		return num, nil
 	},
 }

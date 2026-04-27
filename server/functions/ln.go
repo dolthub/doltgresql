@@ -19,7 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -53,17 +53,20 @@ var ln_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
-		// TODO: add an actual ln for numerics rather than relying on float64
-		f, _ := val1.(decimal.Decimal).Float64()
-		if f == 0 {
-			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if f < 0 {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		num := val.(pgtype.Numeric)
+		if num.NaN || num.InfinityModifier == pgtype.Infinity {
+			return num, nil
+		} else if num.InfinityModifier == pgtype.NegativeInfinity || num.Int != nil && num.Int.Sign() == -1 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
+		} else if num.Int != nil && num.Int.Sign() == 0 {
+			return nil, errors.Errorf("cannot take logarithm of zero")
 		}
-		return decimal.NewFromFloat(math.Log(f)), nil
+		var f float64
+		err := num.AssignTo(&f)
+		if err != nil {
+			return nil, err
+		}
+		return pgtypes.AnyToNumeric(math.Log(f))
 	},
 }

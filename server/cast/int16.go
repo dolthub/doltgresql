@@ -16,7 +16,6 @@ package cast
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -62,7 +61,7 @@ func int16Implicit() {
 		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return decimal.NewFromInt(int64(val.(int16))), nil
+			return pgtypes.GetNumericValueWithTypmod(val, targetType.GetAttTypMod())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

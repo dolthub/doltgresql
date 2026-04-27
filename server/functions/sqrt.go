@@ -19,7 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -55,10 +55,19 @@ var sqrt_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1.(decimal.Decimal).Cmp(decimal.Zero) == -1 {
+		num := val1.(pgtype.Numeric)
+		if num.NaN || num.InfinityModifier == pgtype.Infinity {
+			return num, nil
+		}
+		if num.InfinityModifier == pgtype.NegativeInfinity || (num.Int != nil && num.Int.Sign() < 0) {
 			return nil, errors.Errorf("cannot take square root of a negative number")
 		}
 		// TODO: decimal's Pow function does not work correctly using an exponent of 0.5, need to fix
-		return decimal.NewFromFloat(math.Sqrt(val1.(decimal.Decimal).InexactFloat64())), nil
+		var f float64
+		err := num.AssignTo(&f)
+		if err != nil {
+			return nil, err
+		}
+		return pgtypes.AnyToNumeric(math.Sqrt(f))
 	},
 }

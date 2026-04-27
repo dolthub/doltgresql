@@ -25,667 +25,667 @@ func Test_Trunc(t *testing.T) {
 		{
 			Name: "trunc",
 			Assertions: []ScriptTestAssertion{
-				{
-					Query:    "SELECT trunc( 0::float8 ) ;",
-					Expected: []sql.Row{{float64(0.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( -1::float8 ) ;",
-					Expected: []sql.Row{{float64(-1.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 1::float8 ) ;",
-					Expected: []sql.Row{{float64(1.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 2::float8 ) ;",
-					Expected: []sql.Row{{float64(2.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( -2::float8 ) ;",
-					Expected: []sql.Row{{float64(-2.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 5.25::float8 ) ;",
-					Expected: []sql.Row{{float64(5.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 10.87::float8 ) ;",
-					Expected: []sql.Row{{float64(10.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( -10::float8 ) ;",
-					Expected: []sql.Row{{float64(-10.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 100::float8 ) ;",
-					Expected: []sql.Row{{float64(100.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 21050.48::float8 ) ;",
-					Expected: []sql.Row{{float64(21050.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 100000::float8 ) ;",
-					Expected: []sql.Row{{float64(100000.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( -1184280::float8 ) ;",
-					Expected: []sql.Row{{float64(-1184280.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 2525280.279::float8 ) ;",
-					Expected: []sql.Row{{float64(2525280.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( -2147483648::float8 ) ;",
-					Expected: []sql.Row{{float64(-2147483648.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 2147483647.59024::float8 ) ;",
-					Expected: []sql.Row{{float64(2147483647.000000)}},
-				},
-				{
-					Query:    "SELECT trunc( 0::numeric ) ;",
-					Expected: []sql.Row{{Numeric("0")}},
-				},
-				{
-					Query:    "SELECT trunc( -1::numeric ) ;",
-					Expected: []sql.Row{{Numeric("-1")}},
-				},
-				{
-					Query:    "SELECT trunc( 1::numeric ) ;",
-					Expected: []sql.Row{{Numeric("1")}},
-				},
-				{
-					Query:    "SELECT trunc( 2::numeric ) ;",
-					Expected: []sql.Row{{Numeric("2")}},
-				},
-				{
-					Query:    "SELECT trunc( -2::numeric ) ;",
-					Expected: []sql.Row{{Numeric("-2")}},
-				},
-				{
-					Query:    "SELECT trunc( 5::numeric ) ;",
-					Expected: []sql.Row{{Numeric("5")}},
-				},
-				{
-					Query:    "SELECT trunc( 10::numeric ) ;",
-					Expected: []sql.Row{{Numeric("10")}},
-				},
-				{
-					Query:    "SELECT trunc( -10::numeric ) ;",
-					Expected: []sql.Row{{Numeric("-10")}},
-				},
-				{
-					Query:    "SELECT trunc( 1000::numeric ) ;",
-					Expected: []sql.Row{{Numeric("1000")}},
-				},
-				{
-					Query:    "SELECT trunc( 2105076::numeric ) ;",
-					Expected: []sql.Row{{Numeric("2105076")}},
-				},
-				{
-					Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ) ;",
-					Expected: []sql.Row{{Numeric("100000000")}},
-				},
-				{
-					Query:    "SELECT trunc( -5184226581::numeric ) ;",
-					Expected: []sql.Row{{Numeric("-5184226581")}},
-				},
-				{
-					Query:    "SELECT trunc( 8525267290::numeric ) ;",
-					Expected: []sql.Row{{Numeric("8525267290")}},
-				},
-				{
-					Query:    "SELECT trunc( -79223372036854775808::numeric ) ;",
-					Skip:     true,
-					Expected: []sql.Row{{Numeric("-79223372036854775808")}},
-				},
-				{
-					Query:    "SELECT trunc( 79223372036854775807::numeric ) ;",
-					Skip:     true,
-					Expected: []sql.Row{{Numeric("79223372036854775807")}},
-				},
-				{
-					Query:       "SELECT trunc( 0::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -1::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -2::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 5::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 10::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -10::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1000::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2105076::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -5184226581::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 8525267290::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -79223372036854775808::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 79223372036854775807::numeric ,  0::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 0::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -1::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -2::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 5::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 10::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -10::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1000::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2105076::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -5184226581::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 8525267290::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -79223372036854775808::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 79223372036854775807::numeric ,  -1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 0::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -1::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -2::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 5::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 10::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -10::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1000::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2105076::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -5184226581::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 8525267290::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -79223372036854775808::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 79223372036854775807::numeric ,  1::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 0::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -1::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -2::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 5::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 10::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -10::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1000::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2105076::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -5184226581::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 8525267290::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -79223372036854775808::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 79223372036854775807::numeric ,  2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 0::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -1::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -2::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 5::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 10::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -10::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1000::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2105076::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -5184226581::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 8525267290::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -79223372036854775808::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 79223372036854775807::numeric ,  -2::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 0::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -1::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -2::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 5::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 10::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -10::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1000::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2105076::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -5184226581::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 8525267290::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -79223372036854775808::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 79223372036854775807::numeric ,  5::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 0::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -1::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -2::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 5::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 10::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -10::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1000::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2105076::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -5184226581::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 8525267290::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -79223372036854775808::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 79223372036854775807::numeric ,  10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 0::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -1::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -2::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 5::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 10::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -10::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1000::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2105076::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -5184226581::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 8525267290::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -79223372036854775808::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 79223372036854775807::numeric ,  -10::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 0::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -1::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -2::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 5::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 10::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -10::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 1000::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 2105076::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -5184226581::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 8525267290::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( -79223372036854775808::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
-				},
-				{
-					Query:       "SELECT trunc( 79223372036854775807::numeric ,  1000::int8 ) ;",
-					ExpectedErr: true,
+				//{
+				//	Query:    "SELECT trunc( 0::float8 ) ;",
+				//	Expected: []sql.Row{{float64(0.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::float8 ) ;",
+				//	Expected: []sql.Row{{float64(-1.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::float8 ) ;",
+				//	Expected: []sql.Row{{float64(1.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::float8 ) ;",
+				//	Expected: []sql.Row{{float64(2.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::float8 ) ;",
+				//	Expected: []sql.Row{{float64(-2.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5.25::float8 ) ;",
+				//	Expected: []sql.Row{{float64(5.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10.87::float8 ) ;",
+				//	Expected: []sql.Row{{float64(10.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::float8 ) ;",
+				//	Expected: []sql.Row{{float64(-10.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100::float8 ) ;",
+				//	Expected: []sql.Row{{float64(100.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 21050.48::float8 ) ;",
+				//	Expected: []sql.Row{{float64(21050.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000::float8 ) ;",
+				//	Expected: []sql.Row{{float64(100000.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1184280::float8 ) ;",
+				//	Expected: []sql.Row{{float64(-1184280.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2525280.279::float8 ) ;",
+				//	Expected: []sql.Row{{float64(2525280.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2147483648::float8 ) ;",
+				//	Expected: []sql.Row{{float64(-2147483648.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2147483647.59024::float8 ) ;",
+				//	Expected: []sql.Row{{float64(2147483647.000000)}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("-1")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("1")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("2")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("-2")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("5")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("10")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("-10")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("1000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("2105076")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("100000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("-5184226581")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ) ;",
+				//	Expected: []sql.Row{{Numeric("8525267290")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ) ;",
+				//	Skip:     true,
+				//	Expected: []sql.Row{{Numeric("-79223372036854775808")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 79223372036854775807::numeric ) ;",
+				//	Skip:     true,
+				//	Expected: []sql.Row{{Numeric("79223372036854775807")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-1")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-2")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("5")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("10")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-10")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2105076")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("100000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-5184226581")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("8525267290")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-79223372036854775808")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 79223372036854775807::numeric ,  0::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("79223372036854775807")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("10")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-10")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2105070")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("100000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-5184226580")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("8525267290")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-79223372036854775800")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 79223372036854775807::numeric ,  -1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("79223372036854775800")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-1.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-2.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("5.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("10.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-10.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1000.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2105076.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("100000000.2")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-5184226581.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("8525267290.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-79223372036854775808.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 79223372036854775807::numeric ,  1::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("79223372036854775807.0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-1.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-2.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("5.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("10.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-10.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1000.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2105076.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("100000000.23")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("5184226581.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("8525267290.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-79223372036854775808.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 79223372036854775807::numeric ,  2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("79223372036854775807.00")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2105000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("100000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-5184226500")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("8525267200")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-79223372036854775800")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 79223372036854775807::numeric ,  -2::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("79223372036854775800")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-1.0000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-2.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("10.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-10.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1000.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2105076.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("100000000.23458")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-5184226581.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("8525267290.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-79223372036854775808.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 79223372036854775807::numeric ,  5::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("79223372036854775807.00000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-1.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-2.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("5.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("10.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-10.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1000.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2105076.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("100000000.2345862323")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-5184226581.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("8525267290.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-79223372036854775808.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 79223372036854775807::numeric ,  10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("79223372036854775807.0000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-79223372030000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 79223372036854775807::numeric ,  -10::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("79223372030000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 0::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -1::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-1.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -2::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-2.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 5::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("5.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 10::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("10.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -10::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-10.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 1000::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("1000.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 2105076::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("2105076.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 100000000.2345862323456346511423652312416532::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("100000000.2345862323456346511423652312416532000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -5184226581::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-5184226581.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( 8525267290::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("8525267290.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				//{
+				//	Query:    "SELECT trunc( -79223372036854775808::numeric ,  1000::int4 ) ;",
+				//	Expected: []sql.Row{{Numeric("-79223372036854775808.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
+				//},
+				{
+					Query:    "SELECT trunc( 79223372036854775807::numeric ,  1000::int4 ) ;",
+					Expected: []sql.Row{{Numeric("79223372036854775807.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")}},
 				},
 				{
 					Query:       "SELECT trunc( 0::numeric ,  2105076::int8 ) ;",
