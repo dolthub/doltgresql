@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
@@ -36,7 +37,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -709,17 +709,6 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 		} else {
 			return "f"
 		}
-	case pgtype.Numeric:
-		if val.NaN {
-			return math.NaN()
-		} else if val.InfinityModifier != pgtype.Finite {
-			return math.Inf(int(val.InfinityModifier))
-		} else if !val.Valid {
-			return nil
-		} else {
-			decStr := decimal.NewFromBigInt(val.Int, val.Exp).StringFixed(val.Exp * -1)
-			return Numeric(decStr)
-		}
 	case pgtype.Time:
 		return timeofday.TimeOfDay(val.Microseconds).String()
 	case []any:
@@ -788,7 +777,7 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 		} else if !val.Valid {
 			return nil
 		} else {
-			return decimal.NewFromBigInt(val.Int, val.Exp)
+			return *apd.New(val.Int.Int64(), val.Exp)
 		}
 	case pgtype.Time:
 		// This value type is used for TIME type.
@@ -854,12 +843,12 @@ func NormalizeIntsAndFloats(v any) any {
 
 // Numeric creates a numeric value from a string.
 func Numeric(str string) pgtype.Numeric {
-	// 250.0 != 250 and 42.90 != 42.9, so we trim all trailing fractional zeroes (and decimal if no fractional zeroes)
-	// to ensure that the input strings are homogenized, which will give us comparable representations for the same value
-	if idx := strings.Index(str, "."); idx != -1 {
-		str = strings.TrimRight(str, "0")
-	}
-	str = strings.TrimRight(str, ".")
+	//// 250.0 != 250 and 42.90 != 42.9, so we trim all trailing fractional zeroes (and decimal if no fractional zeroes)
+	//// to ensure that the input strings are homogenized, which will give us comparable representations for the same value
+	//if idx := strings.Index(str, "."); idx != -1 {
+	//	str = strings.TrimRight(str, "0")
+	//}
+	//str = strings.TrimRight(str, ".")
 	numeric := pgtype.Numeric{}
 	if err := numeric.Scan(str); err != nil {
 		panic(err)

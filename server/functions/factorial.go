@@ -15,10 +15,10 @@
 package functions
 
 import (
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -35,15 +35,15 @@ var factorial_int64 = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
-		val1 := val1Interface.(int64)
-		if val1 < 0 {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		n := val.(int64)
+		if n < 0 {
 			return nil, errors.Errorf("factorial of a negative number is undefined")
 		}
 		total := int64(1)
-		for i := int64(2); i <= val1; i++ {
+		for i := int64(2); i <= n; i++ {
 			total *= i
 		}
-		return decimal.NewFromInt(total), nil
+		return *apd.New(total, 0), nil
 	},
 }

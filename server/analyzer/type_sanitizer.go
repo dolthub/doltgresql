@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
@@ -177,7 +178,7 @@ func typeSanitizerLiterals(ctx *sql.Context, gmsLiteral *expression.Literal) (sq
 		if !ok {
 			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected decimal type: %T", gmsLiteral.Value())
 		}
-		return pgexprs.NewRawLiteralNumeric(dec), transform.NewTree, nil
+		return pgexprs.NewRawLiteralNumeric(*apd.New(dec.Coefficient().Int64(), dec.Exponent())), transform.NewTree, nil
 	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 		newVal, _, err := types.Datetime.Convert(ctx, gmsLiteral.Value())
 		if err != nil {

@@ -15,8 +15,8 @@
 package unary
 
 import (
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 
@@ -112,6 +112,8 @@ var numeric_uminus = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return val1.(decimal.Decimal).Neg(), nil
+		dec := val1.(apd.Decimal)
+		neg := dec.Neg(&dec)
+		return *neg, nil
 	},
 }

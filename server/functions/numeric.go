@@ -17,15 +17,12 @@ package functions
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/jackc/pgtype"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/utils"
 )
 
 // initNumeric registers the functions to the catalog.
@@ -47,12 +44,12 @@ var numeric_in = framework.Function3{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
-		val, err := decimal.NewFromString(strings.TrimSpace(input))
+		typmod := val3.(int32)
+		dec, _, err := apd.NewFromString(input)
 		if err != nil {
 			return nil, pgtypes.ErrInvalidSyntaxForType.New("numeric", input)
 		}
-		typmod := val3.(int32)
-		return pgtypes.GetNumericValueWithTypmod(val, typmod)
+		return pgtypes.GetNumericValueWithTypmod(*dec, typmod)
 	},
 }
 
@@ -64,14 +61,14 @@ var numeric_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		typ := t[0]
-		dec := val.(decimal.Decimal)
+		dec := val.(apd.Decimal)
 		tm := typ.GetAttTypMod()
-		if tm == -1 {
-			return dec.StringFixed(dec.Exponent() * -1), nil
-		} else {
-			_, s := pgtypes.GetPrecisionAndScaleFromTypmod(tm)
-			return dec.StringFixed(s), nil
+		dec, err := pgtypes.GetNumericValueWithTypmod(dec, tm)
+		if err != nil {
+			return nil, err
 		}
+		return dec.Text('f'), nil
+		//return dec.StringFixed(dec.Exponent() * -1), nil
 	},
 }
 
@@ -87,12 +84,9 @@ var numeric_recv = framework.Function3{
 			return nil, nil
 		}
 		typmod := val3.(int32)
-		var out pgtype.Numeric
-		err := out.DecodeBinary(nil, data)
-		if err != nil {
-			return nil, err
-		}
-		return pgtypes.GetNumericValueWithTypmod(decimal.NewFromBigInt(out.Int, out.Exp), typmod)
+		// TODO: chekc this doesn't update the original type
+		newType := *pgtypes.Numeric.WithAttTypMod(typmod)
+		return newType.DeserializationFunc(ctx, &newType, data)
 	},
 }
 
@@ -103,70 +97,8 @@ var numeric_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(decimal.Decimal)
-		writer := utils.NewWireWriter()
-		// Short-circuit if this is the zero value
-		if dec.IsZero() {
-			writer.WriteBytes([]byte{0, 0, 0, 0, 0, 0, 0, 0})
-			return writer.BufferData(), nil
-		}
-		// There's a way to do this more efficiently, but we can do that work once this becomes a performance issue.
-		// This is based on the terminology used in Postgres' `numeric.c` file
-		decStr := dec.String()
-		isNegative := false
-		if strings.HasPrefix(decStr, "-") {
-			isNegative = true
-			decStr = decStr[1:]
-		}
-		// Split the integer and fractional parts
-		var intPart string
-		var fractPart string
-		if idx := strings.Index(decStr, "."); idx != -1 {
-			intPart = decStr[:idx]
-			fractPart = decStr[idx+1:]
-		} else {
-			intPart = decStr
-		}
-		// Find the "dscale", which is the number of digits in the fractional part
-		typmod := t[0].GetAttTypMod()
-		var dscale int16
-		if typmod != -1 {
-			_, dscale32 := pgtypes.GetPrecisionAndScaleFromTypmod(typmod)
-			dscale = int16(dscale32)
-		} else {
-			dscale = int16(len(fractPart))
-		}
-		// Pad the integer and fractional parts so that we can take groups of 4 numbers
-		if intPart == "0" {
-			intPart = ""
-		} else if len(intPart)%4 != 0 {
-			intPart = strings.Repeat("0", 4-(len(intPart)%4)) + intPart
-		}
-		if len(fractPart)%4 != 0 {
-			fractPart = fractPart + strings.Repeat("0", 4-(len(fractPart)%4))
-		}
-		// Write the "ndigits" first, or the number of base-10000 digits
-		writer.WriteInt16(int16((len(intPart) / 4) + (len(fractPart) / 4)))
-		// Write the "weight", which is the number of base-10000 digits in the integer part subtracted by 1
-		writer.WriteInt16(int16((len(intPart) / 4) - 1))
-		// Write the "sign"
-		if isNegative {
-			writer.WriteInt16(16384)
-		} else {
-			writer.WriteInt16(0)
-		}
-		// Write the "dscale"
-		writer.WriteInt16(dscale)
-		// Write all of the digits
-		fullPart := intPart + fractPart
-		for i := 0; i < len(fullPart); i += 4 {
-			part, err := strconv.Atoi(fullPart[i : i+4])
-			if err != nil {
-				return nil, err
-			}
-			writer.WriteInt16(int16(part))
-		}
-		return writer.BufferData(), nil
+		dec := val.(apd.Decimal)
+		return pgtypes.Numeric.SerializationFunc(ctx, t[0], dec)
 	},
 }
 
@@ -221,8 +153,8 @@ var numeric_cmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(decimal.Decimal)
-		bb := val2.(decimal.Decimal)
-		return int32(ab.Cmp(bb)), nil
+		ab := val1.(apd.Decimal)
+		bb := val2.(apd.Decimal)
+		return int32(pgtypes.NumericCompare(ab, bb)), nil
 	},
 }

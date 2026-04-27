@@ -17,8 +17,8 @@ package functions
 import (
 	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -54,7 +54,12 @@ var ceil_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return val1.(decimal.Decimal).Ceil(), nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		dec := val.(apd.Decimal)
+		_, err := pgtypes.BaseContext.Ceil(&dec, &dec)
+		if err != nil {
+			return nil, err
+		}
+		return dec, nil
 	},
 }

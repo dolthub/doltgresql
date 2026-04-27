@@ -65,8 +65,8 @@ func (t typeInfo) Encoding() val.Encoding {
 		return val.Float32Enc
 	case "float8":
 		return val.Float64Enc
-	case "numeric", "decimal":
-		return val.DecimalEnc
+	//case "numeric", "decimal":
+	//	return val.DecimalEnc
 	case "bytea":
 		return val.BytesAdaptiveEnc
 	// TODO: use dolt JSON document encoding here
