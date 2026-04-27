@@ -525,7 +525,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			bigInt = bigInt.Neg(bigInt)
 		}
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralNumeric(decimal.NewFromBigInt(bigInt, node.Exponent)),
+			Expression: pgexprs.NewRawLiteralNumeric(decimal.NewFromBigInt(bigInt.MathBigInt(), node.Exponent)),
 		}, nil
 	case *tree.DEnum:
 		return nil, errors.Errorf("the statement is not yet supported")
