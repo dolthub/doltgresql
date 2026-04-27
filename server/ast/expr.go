@@ -23,7 +23,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/shopspring/decimal"
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -518,15 +517,8 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Expression: pgexprs.NewRawLiteralDate(t),
 		}, nil
 	case *tree.DDecimal:
-		// TODO: should we use apd.Decimal for Numeric type values?
-		// |Coeff| is always positive, so need to |Negative| to negate the big.Int
-		bigInt := &node.Coeff
-		if node.Negative {
-			bigInt = bigInt.Neg(bigInt)
-		}
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralNumeric(decimal.NewFromBigInt(bigInt, node.Exponent)),
-		}, nil
+			Expression: pgexprs.NewRawLiteralNumeric(node.Decimal)}, nil
 	case *tree.DEnum:
 		return nil, errors.Errorf("the statement is not yet supported")
 	case *tree.DFloat:

@@ -173,6 +173,34 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{Numeric("3")}},
 				},
 				{
+					Query:    `SELECT 1::numeric + 'nan'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 1::numeric + 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric + 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric + 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT '-Inf'::numeric + '2'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT '-Infinity'::numeric + 'NaN'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'infinity'::numeric + '-inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
 					Query:    `select interval '2 days' + interval '1.5 days';`,
 					Expected: []sql.Row{{"3 days 12:00:00"}},
 				},
@@ -349,6 +377,38 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{Numeric("-1")}},
 				},
 				{
+					Query:    `SELECT 1::numeric - 'nan'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 1::numeric - 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric - 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric - 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT '-Inf'::numeric - '2'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT '2'::numeric - '-inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:    `SELECT '-Infinity'::numeric - 'NaN'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'infinity'::numeric - '-inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
 					Query:    `select interval '2 days' - interval '1.5 days';`,
 					Expected: []sql.Row{{"1 day -12:00:00"}},
 				},
@@ -505,6 +565,46 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{Numeric("2")}},
 				},
 				{
+					Query:    `SELECT 1::numeric * 'nan'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 0::numeric * 'nan'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 0::numeric * 'inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 1::numeric * 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric * 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric * 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT '-Inf'::numeric * '2'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT '2'::numeric * '-inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT '-Infinity'::numeric * 'NaN'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'infinity'::numeric * '-inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
 					Query:    `select interval '20 days' * 2.3`,
 					Expected: []sql.Row{{"46 days"}},
 				},
@@ -649,6 +749,11 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
 				{
+					Skip:     true, // TODO: fix scaling for division
+					Query:    `SELECT 44400080::numeric / 2::int2;`,
+					Expected: []sql.Row{{Numeric("22200040.000000000000")}},
+				},
+				{
 					Query:    `SELECT 8::numeric / 2::int4;`,
 					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
@@ -659,6 +764,66 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT 8::numeric / 2::numeric;`,
 					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
+				},
+				{
+					Query:    `SELECT 1::numeric / 'nan'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 0::numeric / 'nan'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 0::numeric / 'inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("0")}},
+				},
+				{
+					Query:    `SELECT 1::numeric / 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("0")}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric / 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric / 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT '-Inf'::numeric / '2'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT '2'::numeric / '-inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("0")}},
+				},
+				{
+					Query:    `SELECT '-Infinity'::numeric / 'NaN'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'infinity'::numeric / '-inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:       `SELECT '-Infinity'::numeric / '0'::numeric;`,
+					ExpectedErr: `division by zero`,
+				},
+				{
+					Query:    `SELECT 'nan'::numeric / '1'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric / '0'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'infinity'::numeric / '2'::numeric;`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:    `SELECT '-infinity'::numeric / '2'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
 				},
 				{
 					Query:    `select interval '20 days' / 2.3`,
@@ -735,6 +900,66 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT 11::numeric % 3::numeric;`,
 					Expected: []sql.Row{{Numeric("2")}},
+				},
+				{
+					Query:    `SELECT 1::numeric % 'nan'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 0::numeric % 'nan'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 0::numeric % 'inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("0")}},
+				},
+				{
+					Query:    `SELECT 1::numeric % 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("0")}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric % 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric % 'Inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT '-Inf'::numeric % '2'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT '2'::numeric % '-inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("0")}},
+				},
+				{
+					Query:    `SELECT '-Infinity'::numeric % 'NaN'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'infinity'::numeric % '-inf'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:       `SELECT '-Infinity'::numeric % '0'::numeric;`,
+					ExpectedErr: `division by zero`,
+				},
+				{
+					Query:    `SELECT 'nan'::numeric % '1'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric % '0'::numeric;`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT 'infinity'::numeric % '2'::numeric;`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:    `SELECT '-infinity'::numeric % '2'::numeric;`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
 				},
 			},
 		},
@@ -1023,6 +1248,30 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT 20.10::numeric < 10.20::numeric;`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric < 'inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric < 'inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric < '-inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric < 'NaN'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric < 'nan'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'inf'::numeric < 'nan'::numeric;`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 101::oid < 202::oid;`,
@@ -1347,6 +1596,34 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT 20.10::numeric > 10.20::numeric;`,
 					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric > 'inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric > 'inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric > '-inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric > 'NaN'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric > 'nan'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'inf'::numeric > 'nan'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'inf'::numeric > 'inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 101::oid > 202::oid;`,
@@ -1763,6 +2040,34 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT 20.10::numeric <= 10.20::numeric;`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric <= 'inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric <= 'inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric <= '-inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric <= 'NaN'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric <= 'nan'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'inf'::numeric <= 'nan'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'inf'::numeric <= 'inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 101::oid <= 202::oid;`,
@@ -2233,6 +2538,34 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{"t"}},
 				},
 				{
+					Query:    `SELECT '-inf'::numeric >= 'inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric >= 'inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric >= '-inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric >= 'NaN'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric >= 'nan'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'inf'::numeric >= 'nan'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric >= '-infinity'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
 					Query:    `SELECT 101::oid >= 202::oid;`,
 					Expected: []sql.Row{{"f"}},
 				},
@@ -2609,6 +2942,34 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{"f"}},
 				},
 				{
+					Query:    `SELECT '-inf'::numeric = 'inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric = 'inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric = '-inf'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric = 'NaN'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric = 'nan'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT 'inf'::numeric = 'nan'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric = '-infinity'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
 					Query:    `SELECT 101::oid = 101::oid;`,
 					Expected: []sql.Row{{"t"}},
 				},
@@ -2919,6 +3280,34 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT 20.10::numeric <> 10.20::numeric;`,
 					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric <> 'inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric <> 'inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric <> '-inf'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'nan'::numeric <> 'NaN'::numeric;`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT '-inf'::numeric <> 'nan'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'inf'::numeric <> 'nan'::numeric;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 'inf'::numeric <> 'infinity'::numeric;`,
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 101::oid <> 101::oid;`,

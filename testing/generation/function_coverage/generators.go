@@ -123,6 +123,9 @@ var int64ValueGenerators = utils.Or(
 
 // numericValueGenerators contains an assortment of numbers that may be used for testing NUMERIC.
 var numericValueGenerators = utils.Or(
+	utils.Text("'NaN'::numeric"),
+	utils.Text("'Infinity'::numeric"),
+	utils.Text("'-Infinity'::numeric"),
 	utils.Text("0::numeric"),
 	utils.Text("-1::numeric"),
 	utils.Text("1::numeric"),

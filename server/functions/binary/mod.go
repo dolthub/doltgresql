@@ -16,10 +16,9 @@ package binary
 
 import (
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -83,10 +82,5 @@ var numeric_mod = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		if val2.(decimal.Decimal).Equal(decimal.Zero) {
-			return nil, errors.Errorf("division by zero")
-		}
-		return val1.(decimal.Decimal).Mod(val2.(decimal.Decimal)), nil
-	},
+	Callable:   functions.NumericModCallable,
 }

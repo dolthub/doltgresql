@@ -15,10 +15,9 @@
 package functions
 
 import (
-	"github.com/cockroachdb/errors"
-
+	"github.com/cockroachdb/apd/v3"
+	errors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -35,13 +34,33 @@ var div_numeric = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
-		val1 := val1Interface.(decimal.Decimal)
-		val2 := val2Interface.(decimal.Decimal)
-		if val2.Cmp(decimal.Zero) == 0 {
-			return nil, errors.Errorf("division by zero")
-		}
-		val := val1.Div(val2)
-		return val.Truncate(0), nil
-	},
+	Callable:   NumericDivCallable,
+}
+
+// NumericDivCallable is the callable logic for the numeric_div and div functions.
+func NumericDivCallable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	num1 := val1.(apd.Decimal)
+	num2 := val2.(apd.Decimal)
+	if num1.Form == apd.NaN || num2.Form == apd.NaN ||
+		(num1.Form == apd.Infinite && num2.Form == apd.Infinite) {
+		return pgtypes.NumericNaN, nil
+	}
+	if num2.IsZero() {
+		return nil, errors.Errorf("division by zero")
+	}
+	if num1.Form == apd.Infinite {
+		return num1, nil
+	}
+	if num2.Form == apd.Infinite {
+		return *apd.New(0, 0), nil
+	}
+	_, err := pgtypes.BaseContext.Quo(&num1, &num1, &num2)
+	if err != nil {
+		return nil, err
+	}
+	_, err = pgtypes.BaseContext.Quantize(&num1, &num1, -16)
+	if err != nil {
+		return nil, err
+	}
+	return num1, nil
 }

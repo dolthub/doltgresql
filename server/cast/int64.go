@@ -15,10 +15,10 @@
 package cast
 
 import (
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -75,7 +75,7 @@ func int64Implicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return decimal.NewFromInt(val.(int64)), nil
+			return pgtypes.GetNumericValueWithTypmod(*apd.New(val.(int64), 0), targetType.GetAttTypMod())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

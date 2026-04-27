@@ -17,8 +17,8 @@ package functions
 import (
 	"strings"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -36,7 +36,11 @@ var min_scale_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		str := val1.(decimal.Decimal).String()
+		dec := val1.(apd.Decimal)
+		if dec.Form == apd.NaN || dec.Form == apd.Infinite {
+			return nil, nil
+		}
+		str := dec.String()
 		if idx := strings.Index(str, "."); idx != -1 {
 			str = str[idx+1:]
 			i := len(str) - 1

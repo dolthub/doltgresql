@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -122,10 +123,11 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := newVal.(decimal.Decimal); !ok {
+		dec, ok := newVal.(decimal.Decimal)
+		if !ok {
 			return nil, errors.Errorf("GMSCast expected type `decimal.Decimal`, got `%T`", val)
 		}
-		return newVal, nil
+		return *apd.New(dec.CoefficientInt64(), dec.Exponent()), nil
 	case query.Type_FLOAT32:
 		newVal, _, err := types.Float32.Convert(ctx, val)
 		if err != nil {
@@ -149,10 +151,11 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := newVal.(decimal.Decimal); !ok {
+		dec, ok := newVal.(decimal.Decimal)
+		if !ok {
 			return nil, errors.Errorf("GMSCast expected type `decimal.Decimal`, got `%T`", val)
 		}
-		return newVal, nil
+		return *apd.New(dec.CoefficientInt64(), dec.Exponent()), nil
 	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 		if val, ok := val.(time.Time); ok {
 			return val, nil

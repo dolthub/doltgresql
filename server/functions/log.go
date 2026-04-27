@@ -17,9 +17,9 @@ package functions
 import (
 	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -55,19 +55,18 @@ var log_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
-		if val1Interface == nil {
-			return nil, nil
-		}
-		val1 := val1Interface.(decimal.Decimal)
-		if val1.Equal(decimal.Zero) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		dec := val1.(apd.Decimal)
+		if dec.IsZero() {
 			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if val1.LessThan(decimal.Zero) {
+		} else if dec.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
-		// TODO: implement log for numeric instead of relying on float64
-		f, _ := val1.Float64()
-		return decimal.NewFromFloat(math.Log10(f)), nil
+		_, err := pgtypes.BaseContext.Log10(&dec, &dec)
+		if err != nil {
+			return nil, err
+		}
+		return dec, nil
 	},
 }
 
@@ -77,25 +76,32 @@ var log_numeric_numeric = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
-		if val1Interface == nil || val2Interface == nil {
-			return nil, nil
-		}
-		val1 := val1Interface.(decimal.Decimal)
-		val2 := val2Interface.(decimal.Decimal)
-		if val1.Equal(decimal.Zero) || val2.Equal(decimal.Zero) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		base := val1.(apd.Decimal)
+		num := val2.(apd.Decimal)
+		if base.IsZero() || num.IsZero() {
 			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if val1.LessThan(decimal.Zero) || val2.LessThan(decimal.Zero) {
+		} else if base.Sign() < 0 || num.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
-		// TODO: implement log for numeric instead of relying on float64
-		base, _ := val1.Float64()
-		num, _ := val2.Float64()
-		logNum := math.Log(num)
-		logBase := math.Log(base)
-		if logBase == 0 {
+		logBase := new(apd.Decimal)
+		_, err := pgtypes.BaseContext.Log10(&base, &base)
+		if err != nil {
+			return nil, err
+		}
+		logNum := new(apd.Decimal)
+		_, err = pgtypes.BaseContext.Log10(&num, &num)
+		if err != nil {
+			return nil, err
+		}
+		if logNum.IsZero() {
 			return nil, errors.Errorf("division by zero")
 		}
-		return decimal.NewFromFloat(logNum / logBase), nil
+		res := new(apd.Decimal)
+		_, err = pgtypes.BaseContext.Quo(res, logNum, logBase)
+		if err != nil {
+			return nil, err
+		}
+		return *res, nil
 	},
 }

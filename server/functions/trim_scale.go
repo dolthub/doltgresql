@@ -15,8 +15,8 @@
 package functions
 
 import (
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 
@@ -34,9 +34,9 @@ var trim_scale_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// We don't store the scale in the value, so I'm not sure if this is functionally correct.
 		// Seems like we'd need to modify the type of the return value (by trimming the scale), rather than the value itself.
-		return val1.(decimal.Decimal), nil
+		return val.(apd.Decimal), nil
 	},
 }

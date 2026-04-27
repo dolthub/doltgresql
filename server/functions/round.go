@@ -17,8 +17,8 @@ package functions
 import (
 	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -37,11 +37,8 @@ var round_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
-		return math.RoundToEven(val1.(float64)), nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		return math.RoundToEven(val.(float64)), nil
 	},
 }
 
@@ -51,11 +48,17 @@ var round_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		dec := val.(apd.Decimal)
+		_, err := pgtypes.BaseContext.Round(&dec, &dec)
+		if err != nil {
+			return nil, err
 		}
-		return val1.(decimal.Decimal).Round(0), nil
+		_, err = pgtypes.BaseContext.Quantize(&dec, &dec, 0)
+		if err != nil {
+			return nil, err
+		}
+		return dec, nil
 	},
 }
 
@@ -66,6 +69,16 @@ var round_numeric_int64 = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return val1.(decimal.Decimal).Round(int32(val2.(int64))), nil
+		dec := val1.(apd.Decimal)
+		places := val2.(int64)
+		_, err := pgtypes.BaseContext.Round(&dec, &dec)
+		if err != nil {
+			return nil, err
+		}
+		_, err = pgtypes.BaseContext.Quantize(&dec, &dec, int32(-places))
+		if err != nil {
+			return nil, err
+		}
+		return dec, nil
 	},
 }

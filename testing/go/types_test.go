@@ -1866,6 +1866,30 @@ var typesTests = []ScriptTest{
 				Query:       "select 1.03::float4::numeric(2,2);",
 				ExpectedErr: `numeric field overflow`,
 			},
+			{
+				Query:    "SELECT 'NaN'::numeric;",
+				Expected: []sql.Row{{Numeric("NaN")}},
+			},
+			{
+				Query:    "SELECT 'nan'::numeric;",
+				Expected: []sql.Row{{Numeric("NaN")}},
+			},
+			{
+				Query:    "SELECT '-inf'::numeric;",
+				Expected: []sql.Row{{Numeric("-Infinity")}},
+			},
+			{
+				Query:    "SELECT '-infinity'::numeric;",
+				Expected: []sql.Row{{Numeric("-Infinity")}},
+			},
+			{
+				Query:    "SELECT 'inf'::numeric;",
+				Expected: []sql.Row{{Numeric("Infinity")}},
+			},
+			{
+				Query:    "SELECT 'infinity'::numeric;",
+				Expected: []sql.Row{{Numeric("Infinity")}},
+			},
 		},
 	},
 	{
