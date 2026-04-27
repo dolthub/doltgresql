@@ -50,7 +50,9 @@ var trunc_numeric = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		dec := val.(apd.Decimal)
-		_, err := pgtypes.BaseContext.Quantize(&dec, &dec, 0)
+		// TODO: calculate precision and scale accurately
+		c := apd.BaseContext.WithPrecision(1000000)
+		_, err := c.Quantize(&dec, &dec, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -68,7 +70,9 @@ var trunc_numeric_int64 = framework.Function2{
 		//TODO: test for negative values in places
 		dec := val1.(apd.Decimal)
 		places := val2.(int32)
-		_, err := pgtypes.BaseContext.Quantize(&dec, &dec, -places)
+		// TODO: calculate precision and scale accurately
+		c := apd.BaseContext.WithPrecision(1000000)
+		_, err := c.Quantize(&dec, &dec, -places)
 		if err != nil {
 			return nil, err
 		}

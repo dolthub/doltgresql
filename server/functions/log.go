@@ -16,6 +16,7 @@ package functions
 
 import (
 	"math"
+	"strings"
 
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
@@ -62,7 +63,14 @@ var log_numeric = framework.Function1{
 		} else if dec.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
-		_, err := pgtypes.BaseContext.Log10(&dec, &dec)
+
+		// TODO: calculate precision and scale accurately
+		p := uint32(17)
+		if dec.Exponent < 0 {
+			p += uint32(-dec.Exponent)
+		}
+		c := apd.BaseContext.WithPrecision(p)
+		_, err := c.Log10(&dec, &dec)
 		if err != nil {
 			return nil, err
 		}
@@ -84,21 +92,44 @@ var log_numeric_numeric = framework.Function2{
 		} else if base.Sign() < 0 || num.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
-		logBase := new(apd.Decimal)
-		_, err := pgtypes.BaseContext.Log10(&base, &base)
+
+		// TODO: calculate precision and scale accurately
+		sNum := num.Text('f')
+		sBase := base.Text('f')
+		partsNum := strings.Split(sNum, ".")
+		partsBase := strings.Split(sBase, ".")
+		exp := int32(-16)
+		if minExp := math.Min(float64(base.Exponent), float64(num.Exponent)); int32(minExp) < exp {
+			exp = int32(minExp)
+		}
+		p := uint32(int32(math.Max(float64(len(partsNum[0])), float64(len(partsBase[0])))) + (-exp))
+		c := apd.BaseContext.WithPrecision(p)
+
+		lnBase := new(apd.Decimal)
+		_, err := c.Ln(lnBase, &base)
 		if err != nil {
 			return nil, err
 		}
-		logNum := new(apd.Decimal)
-		_, err = pgtypes.BaseContext.Log10(&num, &num)
-		if err != nil {
-			return nil, err
-		}
-		if logNum.IsZero() {
+		if lnBase.IsZero() {
 			return nil, errors.Errorf("division by zero")
 		}
+
+		lnNum := new(apd.Decimal)
+		_, err = c.Ln(lnNum, &num)
+		if err != nil {
+			return nil, err
+		}
+		if lnNum.IsZero() {
+			return *apd.New(0, -16), nil
+		}
+
 		res := new(apd.Decimal)
-		_, err = pgtypes.BaseContext.Quo(res, logNum, logBase)
+		_, err = c.Quo(res, lnNum, lnBase)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = c.Quantize(res, res, exp)
 		if err != nil {
 			return nil, err
 		}

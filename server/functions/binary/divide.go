@@ -15,11 +15,11 @@
 package binary
 
 import (
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
-	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -290,5 +290,33 @@ var numeric_div = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable:   functions.NumericDivCallable,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		num1 := val1.(apd.Decimal)
+		num2 := val2.(apd.Decimal)
+		if num1.Form == apd.NaN || num2.Form == apd.NaN ||
+			(num1.Form == apd.Infinite && num2.Form == apd.Infinite) {
+			return pgtypes.NumericNaN, nil
+		}
+		if num2.IsZero() {
+			return nil, errors.Errorf("division by zero")
+		}
+		if num1.Form == apd.Infinite {
+			return num1, nil
+		}
+		if num2.Form == apd.Infinite {
+			return *apd.New(0, 0), nil
+		}
+		// TODO: calculate precision and scale accurately
+		c := apd.BaseContext.WithPrecision(1000000)
+		_, err := c.QuoInteger(&num1, &num1, &num2)
+		if err != nil {
+			return nil, err
+		}
+		_, err = c.Quantize(&num1, &num1, -16)
+		if err != nil {
+			return nil, err
+		}
+
+		return num1, nil
+	},
 }

@@ -248,15 +248,15 @@ func Numeric(str string) pgtype.Numeric {
 
 // NumericToDecimal converts a pgtype.Numeric value to a decimal.Decimal value.
 func NumericToDecimal(val pgtype.Numeric) apd.Decimal {
-	strVal, err := val.Value()
-	if err != nil {
-		panic(err)
+	if val.NaN {
+		return pgtypes.NumericNaN
+	} else if val.InfinityModifier == pgtype.Infinity {
+		return pgtypes.NumericInf
+	} else if val.InfinityModifier == pgtype.NegativeInfinity {
+		return pgtypes.NumericNegInf
 	}
-	d, _, err := apd.NewFromString(strVal.(string))
-	if err != nil {
-		panic(err)
-	}
-	return *d
+
+	return *apd.New(val.Int.Int64(), val.Exp)
 }
 
 // CompareResults compares two sets of results, taking the equivalence thresholds into account when making the
@@ -302,7 +302,6 @@ func CompareRows(t *testing.T, a sql.Row, b sql.Row) bool {
 					return false
 				}
 				aDec = *aDec.Abs(&aDec)
-				_, err = pgtypes.BaseContext.Sub(&aDec, &aDec, &bDec)
 				// EquivalenceThresholdNumeric represents the allowable delta for values to be considered equivalent.
 				// This is computed using the float64 variant so that they're equivalent.
 				EquivalenceThresholdNumeric, _, _ := apd.NewFromString(strconv.FormatFloat(EquivalenceThresholdFloat64, 'f', -1, 64))

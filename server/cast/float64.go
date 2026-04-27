@@ -77,7 +77,6 @@ func float64Assignment() {
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			d := new(apd.Decimal)
-			d.String()
 			err := d.Scan(val.(float64))
 			if err != nil {
 				return nil, err

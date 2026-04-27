@@ -107,7 +107,7 @@ func NewRawLiteralFloat64(val float64) *expression.Literal {
 	return expression.NewLiteral(val, pgtypes.Float64)
 }
 
-// NewRawLiteralNumeric returns a new *expression.Literal containing a decimal.Decimal value.
+// NewRawLiteralNumeric returns a new *expression.Literal containing an apd.Decimal value.
 func NewRawLiteralNumeric(val apd.Decimal) *expression.Literal {
 	return expression.NewLiteral(val, pgtypes.Numeric)
 }

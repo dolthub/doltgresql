@@ -16,6 +16,7 @@ package functions
 
 import (
 	"math"
+	"strings"
 
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
@@ -60,7 +61,23 @@ var ln_numeric = framework.Function1{
 		} else if dec.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
-		_, err := pgtypes.BaseContext.Ln(&dec, &dec)
+
+		// TODO: calculate precision and scale accurately
+		s := dec.Text('f')
+		parts := strings.Split(s, ".")
+
+		exp := int32(-16)
+		if dec.Exponent < exp {
+			exp = dec.Exponent
+		}
+		p := uint32(len(parts[0]) + int(-exp))
+
+		c := apd.BaseContext.WithPrecision(p)
+		_, err := c.Ln(&dec, &dec)
+		if err != nil {
+			return nil, err
+		}
+		_, err = c.Quantize(&dec, &dec, exp)
 		if err != nil {
 			return nil, err
 		}

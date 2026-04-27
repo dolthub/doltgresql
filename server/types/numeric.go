@@ -55,7 +55,7 @@ var (
 	NumericNaN            = apd.Decimal{Form: apd.NaN}
 	NumericInf            = apd.Decimal{Form: apd.Infinite}
 	NumericNegInf         = apd.Decimal{Form: apd.Infinite, Negative: true}
-	BaseContext           = apd.BaseContext.WithPrecision(MaxPrecision)
+	BaseContext           = apd.BaseContext // .WithPrecision(MaxPrecision)
 )
 
 // Numeric is a precise and unbounded decimal value.
@@ -317,12 +317,6 @@ func deserializeTypeNumeric(ctx *sql.Context, t *DoltgresType, data []byte) (any
 		for i := 0; i < int(weight)-len(digits)+1; i++ {
 			sb.WriteString("0000")
 		}
-	}
-
-	// If weight is negative, we need leading zeros after decimal point
-	if weight < 0 {
-		// This logic can get complex; using apd.SetString is the safest path
-		// but ensure the decimal point is placed correctly based on dscale.
 	}
 
 	dec, _, err := BaseContext.NewFromString(sb.String())
