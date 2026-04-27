@@ -487,3 +487,27 @@ func TestSubscript(t *testing.T) {
 		},
 	})
 }
+
+func TestCaseStatement(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "case statement column name",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT CASE WHEN 1=1 THEN 'foo' ELSE 'bar' END AS colname;`,
+					Expected:         []sql.Row{{"foo"}},
+					ExpectedColNames: []string{"colname"},
+				},
+				{
+					Query:            `SELECT CASE WHEN 1=1 THEN 'foo' ELSE 'bar' END`,
+					ExpectedColNames: []string{"case"},
+				},
+				{
+					Query:            `SELECT CASE WHEN 1=1 THEN 1::int2 else 2 end`,
+					Expected:         []sql.Row{{1}},
+					ExpectedColNames: []string{"case"},
+				},
+			},
+		},
+	})
+}

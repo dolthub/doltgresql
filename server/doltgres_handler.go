@@ -523,7 +523,9 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, formatCodes []int
 				// such as `SELECT 'foo';`
 				doltgresType = pgtypes.Text
 				dataTypeSize = int16(doltgresType.MaxTextResponseByteLength(ctx))
-				colName = "?column?"
+				if c.Name == "" {
+					colName = "?column?"
+				}
 				tableAttributeNumber = 0
 			}
 			if doltgresType.TypType == pgtypes.TypeType_Domain {

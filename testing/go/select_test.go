@@ -196,5 +196,18 @@ func TestSelect(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "SELECT raw values column name",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "select 1",
+					ExpectedColNames: []string{"?column?"},
+				},
+				{
+					Query:            "select 'hello'",
+					ExpectedColNames: []string{"?column?"},
+				},
+			},
+		},
 	})
 }
