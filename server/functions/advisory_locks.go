@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -44,6 +45,10 @@ var pg_advisory_lock_bigint = framework.Function1{
 		lockName := fmt.Sprintf("%v", lockNumericId)
 
 		lockSubsystem := getLockSubsystem()
+		if lockSubsystem == nil {
+			return false, errors.Errorf("lock subsystem not available")
+		}
+
 		// TODO: Postgres supports reentrant locks, meaning if pg_advisory_lock(123) is called multiple times,
 		//       pg_advisory_unlock(123) must be called the same number of times to fully release a lock. This
 		//       is different from MySQL's locking behavior, so LockSubsystem should be updated to support
@@ -65,6 +70,10 @@ var pg_try_advisory_lock_bigint = framework.Function1{
 		lockName := fmt.Sprintf("%v", lockNumericId)
 
 		lockSubsystem := getLockSubsystem()
+		if lockSubsystem == nil {
+			return false, errors.Errorf("lock subsystem not available")
+		}
+
 		// TODO: We currently need to specify a timeout, but it may be a better mapping to
 		//       this function if we had a lockSubsystem.TryLock function that would try
 		//       to grab the lock once and then return immediately. Until then, we set a
@@ -91,6 +100,10 @@ var pg_advisory_unlock_bigint = framework.Function1{
 		lockName := fmt.Sprintf("%v", lockNumericId)
 
 		lockSubsystem := getLockSubsystem()
+		if lockSubsystem == nil {
+			return false, errors.Errorf("lock subsystem not available")
+		}
+
 		err := lockSubsystem.Unlock(ctx, lockName)
 		if sql.ErrLockDoesNotExist.Is(err) {
 			return false, nil
@@ -102,8 +115,11 @@ var pg_advisory_unlock_bigint = framework.Function1{
 
 // getLockSubsystem returns the active lock system for the SQL engine.
 func getLockSubsystem() *sql.LockSubsystem {
-	// TODO: Is there a better way to get the active engine? Doesn't seem to be possible from
-	//       the context or session.
 	engine := sqlserver.GetRunningServer().Engine
+	// This should be impossible if the server was initialized correctly, but for some test harnesses we
+	// take shortcuts that might invalidate that assumption
+	if engine == nil {
+		return nil
+	}
 	return engine.LS
 }
