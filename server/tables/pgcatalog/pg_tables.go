@@ -27,6 +27,12 @@ import (
 // PgTablesName is a constant to the pg_tables name.
 const PgTablesName = "pg_tables"
 
+// pgTableRow stores
+type pgTableRow struct {
+	Table       sql.Table
+	TableSchema string
+}
+
 // InitPgTables handles registration of the pg_tables handler.
 func InitPgTables() {
 	tables.AddHandler(PgCatalogName, PgTablesName, PgTablesHandler{})
@@ -51,14 +57,13 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context, _ sql.Partition) (sql.RowIter
 	}
 
 	if pgCatalogCache.tables == nil {
-		var tables []sql.Table
-		var tableSchemas []string
-		// TODO: This should include a few information_schema tables
+		var tables []pgTableRow
+		// TODO: This should include information_schema tables
+		// TODO: However, information schema is currently incorrect for Doltgres, so we exclude it.
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 				if schema.Item.SchemaName() != sql.InformationSchemaDatabaseName {
-					tables = append(tables, table.Item)
-					tableSchemas = append(tableSchemas, schema.Item.SchemaName())
+					tables = append(tables, pgTableRow{table.Item, schema.Item.SchemaName()})
 				}
 				return true, nil
 			},
@@ -68,12 +73,10 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context, _ sql.Partition) (sql.RowIter
 		}
 
 		pgCatalogCache.tables = tables
-		pgCatalogCache.tableSchemas = tableSchemas
 	}
 
 	return &pgTablesRowIter{
-		userTables:   pgCatalogCache.tables,
-		tableSchemas: pgCatalogCache.tableSchemas,
+		tables: pgCatalogCache.tables,
 	}, nil
 }
 
@@ -99,11 +102,9 @@ var pgTablesSchema = sql.Schema{
 
 // pgTablesRowIter is the sql.RowIter for the pg_tables table.
 type pgTablesRowIter struct {
-	// userTable are the set of user-defined tables
-	userTables []sql.Table
-	// tableSchemas is the list of names of the schema each table belongs in.
-	tableSchemas []string
-	// idx is the current index in the iteration through both slices
+	// tables are the set of tables and the name of the schema they belong in
+	tables []pgTableRow
+	// idx is the current index in the iteration through the above slice
 	idx int
 }
 
@@ -111,15 +112,15 @@ var _ sql.RowIter = (*pgTablesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if iter.idx >= len(iter.userTables) || iter.idx >= len(iter.tableSchemas) {
+	if iter.idx >= len(iter.tables) {
 		return nil, io.EOF
 	}
 	defer func() {
 		iter.idx++
 	}()
 
-	table := iter.userTables[iter.idx]
-	schema := iter.tableSchemas[iter.idx]
+	table := iter.tables[iter.idx].Table
+	schema := iter.tables[iter.idx].TableSchema
 	tableName := table.Name()
 
 	var hasIndexes bool

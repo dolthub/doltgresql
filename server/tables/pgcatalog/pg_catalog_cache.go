@@ -73,8 +73,7 @@ type pgCatalogCache struct {
 	viewSchemas []string
 
 	// pg_tables
-	tables       []sql.Table
-	tableSchemas []string
+	tables []pgTableRow
 }
 
 // pgClassCache holds cached data for the pg_class table, including two btree indexes for fast lookups by OID and
