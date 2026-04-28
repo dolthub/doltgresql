@@ -141,15 +141,14 @@ func (h *ConnectionHandler) HandleConnection() {
 		defer func() {
 			if r := recover(); r != nil {
 				// debug.Stack() here prints the stack trace of the original panic, not the lexical stack of this defer function
-				logrus.Errorf("Listener recovered panic: %v: %s", r, string(debug.Stack()))
+				stackTrace := string(debug.Stack())
+				logrus.Errorf("Listener recovered panic: %v: %s", r, stackTrace)
 
 				var eomErr error
 				if returnErr != nil {
 					eomErr = returnErr
-				} else if rErr, ok := r.(error); ok {
-					eomErr = rErr
 				} else {
-					eomErr = errors.Errorf("panic: %v", r)
+					eomErr = errors.Errorf("Listener recoverd panic: %v: %s", r, stackTrace)
 				}
 
 				// Sending eom can panic, which means we must recover again
@@ -349,15 +348,10 @@ func (h *ConnectionHandler) receiveMessage() (bool, error) {
 	if HandlePanics {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.Errorf("Listener recovered panic: %v: %s", r, string(debug.Stack()))
+				stackTrace := string(debug.Stack())
+				logrus.Errorf("Listener recovered panic: %v: %s", r, stackTrace)
 
-				var eomErr error
-				if rErr, ok := r.(error); ok {
-					eomErr = rErr
-				} else {
-					eomErr = errors.Errorf("panic: %v", r)
-				}
-
+				eomErr := errors.Errorf("receiveMessage recovered panic: %v: %s", r, stackTrace)
 				if !endOfMessages && h.waitForSync {
 					if syncErr := h.discardToSync(); syncErr != nil {
 						fmt.Println(syncErr.Error())
