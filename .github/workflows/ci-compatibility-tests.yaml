@@ -57,6 +57,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends postgresql-client-15
 
+      - name: Make scripts executable
+        run: chmod +x runner.sh test_files/setup_repo.sh
+        working-directory: ./integration-tests/compatibility
+
       - name: Run compatibility tests
         run: ./runner.sh
         working-directory: ./integration-tests/compatibility

@@ -152,7 +152,7 @@ setup_repo() {
   local binary="${2:-doltgres}"
   REPO_DIR="$(pwd)/repos/${label}"
   mkdir -p "$REPO_DIR"
-  bash test_files/setup_repo.sh "$REPO_DIR" "$binary"
+  ./test_files/setup_repo.sh "$REPO_DIR" "$binary"
 }
 
 # ---------------------------------------------------------------------------
