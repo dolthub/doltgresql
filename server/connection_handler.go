@@ -148,7 +148,7 @@ func (h *ConnectionHandler) HandleConnection() {
 				if returnErr != nil {
 					eomErr = returnErr
 				} else {
-					eomErr = errors.Errorf("Listener recoverd panic: %v: %s", r, stackTrace)
+					eomErr = errors.Errorf("Listener recovered panic: %v: %s", r, stackTrace)
 				}
 
 				// Sending eom can panic, which means we must recover again
