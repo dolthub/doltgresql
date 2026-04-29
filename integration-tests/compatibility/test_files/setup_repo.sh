@@ -104,12 +104,6 @@ INSERT INTO abc VALUES
 
 CREATE VIEW view1 AS SELECT 2+2;
 
-CREATE TABLE big (
-  pk  INT PRIMARY KEY,
-  str TEXT
-);
-INSERT INTO big SELECT i, 'row ' || i FROM generate_series(1, 1000) AS i;
-
 CREATE TABLE def (
   i INT CHECK (i > 0)
 );
@@ -159,6 +153,25 @@ SQL
 Q -c "SELECT dolt_add('.');"
 Q -c "SELECT dolt_commit('-m', 'initialized data');"
 
+Q <<'EOF'
+CREATE TABLE big (
+  pk  INT PRIMARY KEY,
+  str TEXT
+);
+EOF
+
+for i in $(seq 0 9); do
+    start=$((i * 100 + 1))
+    end=$((start + 99))
+    stmt="INSERT INTO big VALUES "
+    for j in $(seq $start $end); do
+        stmt+=$(printf "(%d, 'row %d')" $j $j)
+      [ $j -lt $end ] && stmt+=", "
+    done
+    stmt+=";"
+    Q -c "$stmt"
+done
+
 # ---------------------------------------------------------------------------
 # Step 2: Branch 'init' and 'other' from this initial-data commit.
 # ---------------------------------------------------------------------------
@@ -203,10 +216,9 @@ INSERT INTO abc VALUES (4, 'data', 1.1, 0, 0);
 ALTER TABLE abc DROP COLUMN x;
 ALTER TABLE abc ADD COLUMN z BIGINT;
 UPDATE abc SET z = 122;
+SELECT dolt_add('.');
+SELECT dolt_commit('-m', 'made changes to other');
 SQL
-
-Q -c "SELECT dolt_add('.');"
-Q -c "SELECT dolt_commit('-m', 'made changes to other');"
 
 # ---------------------------------------------------------------------------
 # Step 5: Populate 'check_merge' — add rows to def only.
@@ -217,13 +229,9 @@ echo "Step 5: populating check_merge branch ..."
 Q <<'SQL'
 SELECT dolt_checkout('check_merge');
 INSERT INTO def VALUES (5), (6), (7);
+SELECT dolt_add('.');
+SELECT dolt_commit('-m', 'made changes to check_merge');
 SQL
-
-Q -c "SELECT dolt_add('.');"
-Q -c "SELECT dolt_commit('-m', 'made changes to check_merge');"
-
-# Return to main.
-Q -c "SELECT dolt_checkout('main');"
 
 # ---------------------------------------------------------------------------
 # Done

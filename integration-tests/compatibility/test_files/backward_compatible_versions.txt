@@ -3,7 +3,5 @@
 # Format: one version tag per line, e.g. v0.8.0
 # Keep this list reasonably short; each entry downloads a binary and runs the full
 # test suite, so CI time grows linearly.
-v0.8.0
-v0.9.0
-v0.10.0
-v0.11.0
+v0.55.0
+v0.51.0
