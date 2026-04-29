@@ -124,8 +124,6 @@ SQL
   [[ "$output" =~ "0,asdf,1,121" ]] || false
   [[ "$output" =~ "2,asdf,0,121" ]] || false
   [[ "$output" =~ "3,data,0,121" ]] || false
-  # pk=1 was deleted on main
-  [[ ! "$output" =~ ",1," ]] || false
 }
 
 # ---------------------------------------------------------------------------
