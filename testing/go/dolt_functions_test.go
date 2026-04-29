@@ -2862,7 +2862,7 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.diff",
 					Expected: []sql.Row{
-						{"WORKING", "public.t1", nil, nil, nil, nil, "t", "t"},
+						{"WORKING", "public.t1", nil, nil, nil, nil, "t", "t", nil, nil, nil},
 					},
 				},
 				{
@@ -2978,8 +2978,8 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.diff",
 					Expected: []sql.Row{
-						{"WORKING", "public.t1", nil, nil, nil, nil, "t", "t"},
-						{"WORKING", "testschema.t2", nil, nil, nil, nil, "t", "t"},
+						{"WORKING", "public.t1", nil, nil, nil, nil, "t", "t", nil, nil, nil},
+						{"WORKING", "testschema.t2", nil, nil, nil, nil, "t", "t", nil, nil, nil},
 					},
 				},
 				{

@@ -89,11 +89,14 @@ jobs:
         if: steps.check_trackers.outputs.trackers_exist == 'true'
         run: |
           cd testing/go/regression/tool
-          output=$(go run . results1.trackers results2.trackers)
-          echo "program_output<<EOF" >> $GITHUB_OUTPUT
-          echo "$output" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "$output"
+          # Pass via file, not $GITHUB_OUTPUT: large output through env trips ARG_MAX in github-script.
+          go run . results1.trackers results2.trackers > "$RUNNER_TEMP/regression-comment.md"
+          cat "$RUNNER_TEMP/regression-comment.md"
+          if [ -s "$RUNNER_TEMP/regression-comment.md" ]; then
+            echo "has_output=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_output=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Is PR From Fork
         id: from_fork
@@ -107,16 +110,23 @@ jobs:
           fi
 
       - name: Post Comment
-        if: steps.from_fork.outputs.fork == 'false' && steps.build_results.outputs.program_output
-        uses: actions/github-script@v6
+        if: steps.from_fork.outputs.fork == 'false' && steps.build_results.outputs.has_output == 'true'
+        uses: actions/github-script@v7
         env:
-          PROGRAM_OUTPUT: ${{ steps.build_results.outputs.program_output }}
+          COMMENT_PATH: ${{ runner.temp }}/regression-comment.md
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require('fs')
             const commentMarker = '<!-- go-run-output -->'
-            const output = process.env.PROGRAM_OUTPUT
-            const body = `${commentMarker}\n${output}`
+            // GitHub caps comment bodies at 65536 chars.
+            const MAX_BODY = 65000
+            let output = fs.readFileSync(process.env.COMMENT_PATH, 'utf8')
+            let body = `${commentMarker}\n${output}`
+            if (body.length > MAX_BODY) {
+              const notice = '\n\n_Output truncated; see workflow logs for the full report._'
+              body = body.slice(0, MAX_BODY - notice.length) + notice
+            }
 
             // List comments on the PR
             const { data: comments } = await github.rest.issues.listComments({
