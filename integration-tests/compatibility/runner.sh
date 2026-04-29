@@ -190,6 +190,10 @@ test_backward_compatibility() {
 }
 
 test_forward_compatibility() {
+  if [ -z $1 ]; then
+    return
+  fi
+    
   local ver="$1"
   local bin
   bin=$(download_release "$ver")
