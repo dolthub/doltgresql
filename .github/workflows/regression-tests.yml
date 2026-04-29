@@ -151,7 +151,6 @@ jobs:
           compression-level: 0
 
   regression-tests:
-    name: Regression tests
     runs-on: ubuntu-latest
     needs:
       - resolve-main
