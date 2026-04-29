@@ -27,7 +27,7 @@ import (
 // PgTablesName is a constant to the pg_tables name.
 const PgTablesName = "pg_tables"
 
-// pgTableRow stores
+// pgTableRow stores the data needed for a row in pg_tables: the table data and the schema it exists in.
 type pgTableRow struct {
 	Table       sql.Table
 	TableSchema string
