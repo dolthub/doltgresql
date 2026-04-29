@@ -3,5 +3,5 @@
 # Typically a smaller set than backward_compatible_versions because forward
 # compatibility windows are narrower — old clients may lack support for newer
 # storage features written by HEAD.
-v0.55.0
-v0.51.0
+v0.56.0
+
