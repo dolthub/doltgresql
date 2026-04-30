@@ -104,8 +104,8 @@ func newTestSequence(schema, name string) *Sequence {
 // behavior. Used to drive the writeCache flush-failure path.
 type countingFailNodeStore struct {
 	tree.NodeStore
-	writes  int
-	budget  int  // -1 means unlimited
+	writes int
+	budget int // -1 means unlimited
 }
 
 func newCountingFailNodeStore(t *testing.T) *countingFailNodeStore {
