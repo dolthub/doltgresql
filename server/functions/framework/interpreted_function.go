@@ -214,7 +214,7 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 		}
 		var formattedVar string
 		if *variable.Value != nil {
-			formattedVar, err = variable.Type.FormatValue(*variable.Value)
+			formattedVar, err = variable.Type.FormatValueWithContext(ctx, *variable.Value)
 			if err != nil {
 				return newStmt, true, err
 			}

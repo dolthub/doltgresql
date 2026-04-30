@@ -547,14 +547,22 @@ func (t *DoltgresType) Equals(otherType sql.Type) bool {
 	return false
 }
 
-// FormatValue implements the types.ExtendedType interface.
+// FormatValue implements the types.ExtendedType interface. Callers with
+// a session context should use FormatValueWithContext instead, since
+// types whose output reads session state cannot resolve through a nil
+// context.
 func (t *DoltgresType) FormatValue(val any) (string, error) {
+	return t.FormatValueWithContext(nil, val)
+}
+
+// FormatValueWithContext returns the postgres output representation of
+// |val|, using |ctx| for any session-scoped state the type's output
+// function needs.
+func (t *DoltgresType) FormatValueWithContext(ctx *sql.Context, val any) (string, error) {
 	if val == nil {
 		return "", nil
 	}
-	// TODO: need valid sql.Context. This panics on certain types, regclass
-	//  https://github.com/dolthub/doltgresql/issues/1142
-	return t.IoOutput(nil, val)
+	return t.IoOutput(ctx, val)
 }
 
 // GetAttTypMod returns the attTypMod field of the type.

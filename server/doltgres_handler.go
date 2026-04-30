@@ -631,8 +631,12 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	pan2err := func(err *error) {
 		if HandlePanics {
 			if recoveredPanic := recover(); recoveredPanic != nil {
-				// debug.Stack() here prints the stack trace of the original panic, not the lexical stack of this defer function
-				*err = goerrors.Join(*err, errors.Errorf("DoltgresHandler caught panic: %v: %s", recoveredPanic, debug.Stack()))
+				if err == nil {
+					*err = errors.Errorf("DoltgresHandler caught panic with nil error: %v: %s", recoveredPanic, debug.Stack())
+				} else {
+					// debug.Stack() here prints the stack trace of the original panic, not the lexical stack of this defer function
+					*err = goerrors.Join(*err, errors.Errorf("DoltgresHandler caught panic: %v: %s", recoveredPanic, debug.Stack()))
+				}
 			}
 		}
 	}

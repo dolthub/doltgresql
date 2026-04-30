@@ -172,8 +172,12 @@ func (pgs *Collection) DropSequence(ctx context.Context, names ...id.Sequence) (
 			return err
 		}
 	}
-	pgs.underlyingMap, err = mapEditor.Flush(ctx)
-	return err
+	flushed, err := mapEditor.Flush(ctx)
+	if err != nil {
+		return err
+	}
+	pgs.underlyingMap = flushed
+	return nil
 }
 
 // resolveName returns the fully resolved name of the given sequence. Returns an error if the name is ambiguous.
@@ -416,10 +420,13 @@ func (pgs *Collection) writeCache(ctx context.Context) (err error) {
 			return err
 		}
 	}
-	pgs.underlyingMap, err = mapEditor.Flush(ctx)
+	// Assign underlyingMap only after the error check. Flush returns a
+	// zero AddressMap on failure, which would corrupt the Collection.
+	flushed, err := mapEditor.Flush(ctx)
 	if err != nil {
 		return err
 	}
+	pgs.underlyingMap = flushed
 	clear(pgs.accessedMap)
 	return nil
 }
