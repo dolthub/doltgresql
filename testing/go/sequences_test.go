@@ -1353,5 +1353,24 @@ ORDER BY 1,2;`,
 				},
 			},
 		},
+		{
+			Name: "sequence collection loaded independently with multiple databases",
+			SetUpScript: []string{
+				"CREATE DATABASE testdb2",
+				"USE testdb2",
+				"CREATE SEQUENCE seq_in_testdb2",
+				"USE postgres",
+				"CREATE SEQUENCE seq_in_postgres",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// nextval loads cv.seqs["postgres"]; the ::regclass cast for testdb2
+					// then calls GetSequencesCollectionFromContext("testdb2"), to test
+					// sequence loading across multiple databases.
+					Query:    "SELECT nextval('seq_in_postgres'), 'testdb2.public.seq_in_testdb2'::regclass IS NOT NULL",
+					Expected: []sql.Row{{1, "t"}},
+				},
+			},
+		},
 	})
 }
