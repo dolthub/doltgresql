@@ -18,12 +18,8 @@ import (
 	"io"
 	"math"
 
-	"github.com/cockroachdb/errors"
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
@@ -129,68 +125,6 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	})
 	if err != nil {
 		return err
-	}
-
-	if includeSystemTables {
-		_, root, err := core.GetRootFromContext(ctx)
-		if err != nil {
-			return err
-		}
-
-		systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
-		if err != nil {
-			return err
-		}
-
-		db := ctx.GetCurrentDatabase()
-		for _, tblName := range systemTables {
-			tbl, err := core.GetSqlTableFromContext(ctx, db, tblName)
-			if err != nil {
-				// Some of the system tables exist conditionally when accessed, so just skip them in this case
-				if errors.Is(doltdb.ErrTableNotFound, err) {
-					continue
-				}
-				return err
-			}
-
-			schema := tbl.Schema(ctx)
-			for i, col := range schema {
-				typeOid := id.Null
-				if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
-					typeOid = doltgresType.ID.AsId()
-				} else {
-					dt := pgtypes.FromGmsType(col.Type)
-					typeOid = dt.ID.AsId()
-				}
-
-				generated := ""
-				if col.Generated != nil {
-					generated = "s"
-				}
-
-				dimensions := int16(0)
-				if s, ok := col.Type.(sql.SetType); ok {
-					dimensions = int16(s.NumberOfElements())
-				}
-
-				hasDefault := col.Default != nil
-
-				attr := &pgAttribute{
-					attrelid:       id.NewTable(tblName.Schema, tblName.Name).AsId(),
-					attrelidNative: id.Cache().ToOID(id.NewTable(tblName.Schema, tblName.Name).AsId()),
-					attname:        col.Name,
-					atttypid:       typeOid,
-					attnum:         int16(i + 1),
-					attndims:       dimensions,
-					attnotnull:     !col.Nullable,
-					atthasdef:      hasDefault,
-					attgenerated:   generated,
-				}
-				attrelidIdx.Add(attr)
-				attrelidAttnameIdx.Add(attr)
-				attributes = append(attributes, attr)
-			}
-		}
 	}
 
 	pgCatalogCache.pgAttributes = &pgAttributeCache{
