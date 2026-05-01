@@ -27,10 +27,6 @@ import (
 func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexField, error) {
 	vitessIndexColumns := make([]*vitess.IndexField, 0, len(node))
 	for _, inputColumn := range node {
-		if inputColumn.Expr != nil {
-			return nil, errors.Errorf("expression index attribute is not yet supported")
-		}
-
 		if inputColumn.Collation != "" {
 			logrus.Warn("index attribute collation is not yet supported, ignoring")
 		}
