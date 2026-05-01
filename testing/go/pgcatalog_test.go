@@ -2832,7 +2832,7 @@ func TestPgSeclabels(t *testing.T) {
 func TestPgSequences(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "pg_sequences",
+			Name: "select from pg_sequences",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_sequences";`,
@@ -2849,6 +2849,75 @@ func TestPgSequences(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT sequencename FROM PG_catalog.pg_SEQUENCES ORDER BY sequencename;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "default sequence values",
+			SetUpScript: []string{
+				"CREATE SEQUENCE test;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT schemaname, sequencename, sequenceowner, data_type, start_value, min_value, " +
+						"max_value, increment_by, cycle, cache_size, last_value FROM pg_sequences",
+					Expected: []sql.Row{
+						{"public", "test", nil, "int8", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "custom sequence values",
+			SetUpScript: []string{
+				"CREATE SEQUENCE test as integer start 10 minvalue 5 maxvalue 11 increment 2 cycle;",
+				"CREATE SCHEMA test_schema",
+				"CREATE SEQUENCE test_schema.secondseq",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM pg_sequences where sequencename = 'test'",
+					Expected: []sql.Row{
+						{"public", "test", nil, "int4", int64(10), int64(5), int64(11), int64(2), "t", int64(1), nil},
+					},
+				},
+				{
+					Query: "SELECT * FROM pg_sequences where sequencename = 'secondseq'",
+					Expected: []sql.Row{
+						{"test_schema", "secondseq", nil, "int8", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
+					},
+				},
+			},
+		},
+		{
+			Name: "multiple sequences",
+			SetUpScript: []string{
+				"CREATE SEQUENCE c",
+				"CREATE SEQUENCE a",
+				"CREATE SEQUENCE b",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT schemaname, sequencename from pg_sequences",
+					Expected: []sql.Row{
+						{"public", "a"},
+						{"public", "b"},
+						{"public", "c"},
+					},
+				},
+			},
+		},
+		{
+			Name: "table with serial column",
+			SetUpScript: []string{
+				"CREATE TABLE test (id serial)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT sequencename, data_type, start_value, max_value FROM pg_sequences",
+					Expected: []sql.Row{
+						{"test_id_seq", "int4", int64(1), int64(2147483647)},
+					},
 				},
 			},
 		},

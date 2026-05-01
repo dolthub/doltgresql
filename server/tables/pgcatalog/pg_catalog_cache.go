@@ -20,7 +20,6 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/functions"
 )
 
@@ -60,9 +59,8 @@ type pgCatalogCache struct {
 	// pg_index / pg_indexes
 	pgIndexes *pgIndexCache
 
-	// pg_sequence
-	sequences    []*sequences.Sequence
-	sequenceOids []id.Id
+	// pg_sequence / pg_sequences
+	sequences []*pgSequence
 
 	// pg_attrdef
 	attrdefCols      []functions.ItemColumnDefault

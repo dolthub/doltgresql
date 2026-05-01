@@ -37,6 +37,13 @@ func InitPgSequence() {
 // PgSequenceHandler is the handler for the pg_sequence table.
 type PgSequenceHandler struct{}
 
+// pgSequence represents a row in the pg_sequence table and pg_sequences view
+type pgSequence struct {
+	sequence *sequences.Sequence
+	schema   string
+	oid      id.Id
+}
+
 var _ tables.Handler = PgSequenceHandler{}
 
 // Name implements the interface tables.Handler.
@@ -45,7 +52,7 @@ func (p PgSequenceHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgSequenceHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
+func (p PgSequenceHandler) RowIter(ctx *sql.Context, _ sql.Partition) (sql.RowIter, error) {
 	// Use cached data from this process if it exists
 	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
@@ -53,27 +60,40 @@ func (p PgSequenceHandler) RowIter(ctx *sql.Context, partition sql.Partition) (s
 	}
 
 	if pgCatalogCache.sequences == nil {
-		var sequences []*sequences.Sequence
-		var sequenceOids []id.Id
-		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
-			Sequence: func(ctx *sql.Context, _ functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
-				sequences = append(sequences, sequence.Item)
-				sequenceOids = append(sequenceOids, sequence.OID.AsId())
-				return true, nil
-			},
-		})
+		err = cachePgSequences(ctx, pgCatalogCache)
 		if err != nil {
 			return nil, err
 		}
-		pgCatalogCache.sequences = sequences
-		pgCatalogCache.sequenceOids = sequenceOids
 	}
 
 	return &pgSequenceRowIter{
 		sequences: pgCatalogCache.sequences,
-		oids:      pgCatalogCache.sequenceOids,
 		idx:       0,
 	}, nil
+}
+
+func cachePgSequences(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
+	var sequences []*pgSequence
+
+	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		Sequence: func(ctx *sql.Context, schema functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
+			pgSeq := &pgSequence{
+				sequence: sequence.Item,
+				schema:   schema.Item.SchemaName(),
+				oid:      sequence.OID.AsId(),
+			}
+
+			sequences = append(sequences, pgSeq)
+			return true, nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	pgCatalogCache.sequences = sequences
+
+	return nil
 }
 
 // Schema implements the interface tables.Handler.
@@ -98,8 +118,7 @@ var pgSequenceSchema = sql.Schema{
 
 // pgSequenceRowIter is the sql.RowIter for the pg_sequence table.
 type pgSequenceRowIter struct {
-	sequences []*sequences.Sequence
-	oids      []id.Id
+	sequences []*pgSequence
 	idx       int
 }
 
@@ -111,8 +130,8 @@ func (iter *pgSequenceRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		return nil, io.EOF
 	}
 	iter.idx++
-	sequence := iter.sequences[iter.idx-1]
-	oid := iter.oids[iter.idx-1]
+	sequence := iter.sequences[iter.idx-1].sequence
+	oid := iter.sequences[iter.idx-1].oid
 	return sql.Row{
 		oid,                        // seqrelid
 		sequence.DataTypeID.AsId(), // seqtypid
