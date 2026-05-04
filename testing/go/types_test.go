@@ -1218,6 +1218,14 @@ var typesTests = []ScriptTest{
 					{`"\ud83d\ude04\ud83d\udc36"`},
 				},
 			},
+			{
+				Query:       `SELECT '{'::json`,
+				ExpectedErr: "invalid input syntax for type json",
+			},
+			{
+				Query:       `SELECT '{"key": "value"'::json`,
+				ExpectedErr: "invalid input syntax for type json",
+			},
 		},
 	},
 	{
