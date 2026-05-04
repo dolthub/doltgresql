@@ -1,0 +1,8 @@
+# Doltgresql versions to test forward compatibility against.
+# These older versions must be able to read repos created by the current HEAD.
+# Typically a smaller set than backward_compatible_versions because forward
+# compatibility windows are narrower — old clients may lack support for newer
+# storage features written by HEAD.
+# This list is currently empty, as we are in the process of making a
+# forward-incompatible change to encoding. We should add new releases here beginning with 0.57.0
+

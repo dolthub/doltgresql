@@ -11,67 +11,181 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  regression-tests:
+  resolve-main:
+    name: Resolve main
     runs-on: ubuntu-latest
+    outputs:
+      main_sha: ${{ steps.resolve.outputs.main_sha }}
+
+    steps:
+      - name: Checkout DoltgreSQL
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Resolve main SHA
+        id: resolve
+        run: echo "main_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  pr-regression:
+    name: PR regression
+    runs-on: ubuntu-latest
+    needs: resolve-main
 
     steps:
       - name: Checkout DoltgreSQL
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
       - name: Setup Git User
         uses: fregante/setup-git-user@v2
 
-      - name: Merge main into PR
-        id: merge_main
+      - name: Merge base into PR
         run: |
-          git fetch --all --unshallow
-          git merge origin/main --no-commit --no-ff
-          if [ $? -ne 0 ]; then
-            echo "Skipping the remainder of the workflow due to a merge conflict."
-            echo "skip=true" >> $GITHUB_OUTPUT
-          else
-            echo "Merge performed successfully, continuing workflow."
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
+          git fetch origin ${{ needs.resolve-main.outputs.main_sha }}
+          git merge ${{ needs.resolve-main.outputs.main_sha }} --no-commit --no-ff
 
       - name: Install Go
         uses: actions/setup-go@v5
-        if: steps.merge_main.outputs.skip == 'false'
         with:
           go-version-file: go.mod
+          cache: true
 
       - name: Test PR branch
-        id: test_doltgresql_pr
-        if: steps.merge_main.outputs.skip == 'false'
         continue-on-error: true
         run: |
           ./postgres/parser/build.sh
           cd testing/go/regression
           mkdir -p out
+          {
+            echo "pr_head=${{ github.event.pull_request.head.sha }}"
+            echo "main_head=${{ needs.resolve-main.outputs.main_sha }}"
+            echo "merge_base=$(git merge-base HEAD ${{ needs.resolve-main.outputs.main_sha }})"
+            git status --short --branch
+            git diff --cached --stat
+            go version
+            go env
+            go list -m github.com/dolthub/dolt/go github.com/dolthub/go-mysql-server
+          } > out/pr-metadata.txt
           cd tool
-          go test --timeout=90m ./... --count=1
-          cp ../out/results.trackers ../out/results2.trackers
+          set +e
+          go test --timeout=90m ./... --count=1 2>&1 | tee ../out/pr-go-test.log
+          test_status=${PIPESTATUS[0]}
+          set -e
+          if [ -f ../out/results.trackers ]; then
+            cp ../out/results.trackers ../out/results2.trackers
+          fi
+          exit "$test_status"
+
+      - name: Upload PR regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-pr-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            testing/go/regression/out/results2.trackers
+            testing/go/regression/out/pr-go-test.log
+            testing/go/regression/out/pr-metadata.txt
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 0
+
+  main-regression:
+    name: Main regression
+    runs-on: ubuntu-latest
+    needs: resolve-main
+
+    steps:
+      - name: Checkout DoltgreSQL
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-main.outputs.main_sha }}
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
       - name: Test main branch
-        id: test_doltgresql_main
-        if: steps.merge_main.outputs.skip == 'false'
         continue-on-error: true
         run: |
-          git reset --hard
-          git checkout origin/main
           ./postgres/parser/build.sh
           cd testing/go/regression
           mkdir -p out
+          {
+            echo "main_head=${{ needs.resolve-main.outputs.main_sha }}"
+            git status --short --branch
+            go version
+            go env
+            go list -m github.com/dolthub/dolt/go github.com/dolthub/go-mysql-server
+          } > out/main-metadata.txt
           cd tool
-          go test --timeout=90m ./... --count=1
-          cp ../out/results.trackers ../out/results1.trackers
+          set +e
+          go test --timeout=90m ./... --count=1 2>&1 | tee ../out/main-go-test.log
+          test_status=${PIPESTATUS[0]}
+          set -e
+          if [ -f ../out/results.trackers ]; then
+            cp ../out/results.trackers ../out/results1.trackers
+          fi
+          exit "$test_status"
+
+      - name: Upload main regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-main-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            testing/go/regression/out/results1.trackers
+            testing/go/regression/out/main-go-test.log
+            testing/go/regression/out/main-metadata.txt
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 0
+
+  regression-tests:
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-main
+      - pr-regression
+      - main-regression
+    if: always() && needs.pr-regression.result != 'cancelled' && needs.main-regression.result != 'cancelled'
+
+    steps:
+      - name: Checkout DoltgreSQL
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-main.outputs.main_sha }}
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download PR regression artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: regression-pr-${{ github.run_id }}-${{ github.run_attempt }}
+          path: testing/go/regression/out
+
+      - name: Download main regression artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: regression-main-${{ github.run_id }}-${{ github.run_attempt }}
+          path: testing/go/regression/out
 
       - name: Check result trackers
         id: check_trackers
-        if: steps.merge_main.outputs.skip == 'false'
         run: |
           cd testing/go/regression/out
           if [[ -f "results1.trackers" && -f "results2.trackers" ]]; then
@@ -80,7 +194,7 @@ jobs:
           else
             echo "trackers_exist=false" >> $GITHUB_OUTPUT
             echo "One of the branches could not successfully complete their tests."
-            echo "Please review them for errors, which must be fixed."
+            echo "Please review uploaded regression artifacts for errors, which must be fixed."
             exit 1
           fi
 
@@ -88,12 +202,27 @@ jobs:
         id: build_results
         if: steps.check_trackers.outputs.trackers_exist == 'true'
         run: |
+          ./postgres/parser/build.sh
           cd testing/go/regression/tool
-          output=$(go run . results1.trackers results2.trackers)
-          echo "program_output<<EOF" >> $GITHUB_OUTPUT
-          echo "$output" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "$output"
+          # Pass via file, not $GITHUB_OUTPUT: large output through env trips ARG_MAX in github-script.
+          go run . results1.trackers results2.trackers > "$RUNNER_TEMP/regression-comment.md"
+          cp "$RUNNER_TEMP/regression-comment.md" ../out/regression-comment.md
+          cat "$RUNNER_TEMP/regression-comment.md"
+          if [ -s "$RUNNER_TEMP/regression-comment.md" ]; then
+            echo "has_output=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_output=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload comparison artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-comparison-${{ github.run_id }}-${{ github.run_attempt }}
+          path: testing/go/regression/out/regression-comment.md
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 0
 
       - name: Is PR From Fork
         id: from_fork
@@ -107,16 +236,23 @@ jobs:
           fi
 
       - name: Post Comment
-        if: steps.from_fork.outputs.fork == 'false' && steps.build_results.outputs.program_output
-        uses: actions/github-script@v6
+        if: steps.from_fork.outputs.fork == 'false' && steps.build_results.outputs.has_output == 'true'
+        uses: actions/github-script@v7
         env:
-          PROGRAM_OUTPUT: ${{ steps.build_results.outputs.program_output }}
+          COMMENT_PATH: ${{ runner.temp }}/regression-comment.md
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require('fs')
             const commentMarker = '<!-- go-run-output -->'
-            const output = process.env.PROGRAM_OUTPUT
-            const body = `${commentMarker}\n${output}`
+            // GitHub caps comment bodies at 65536 chars.
+            const MAX_BODY = 65000
+            let output = fs.readFileSync(process.env.COMMENT_PATH, 'utf8')
+            let body = `${commentMarker}\n${output}`
+            if (body.length > MAX_BODY) {
+              const notice = '\n\n_Output truncated; see workflow logs for the full report._'
+              body = body.slice(0, MAX_BODY - notice.length) + notice
+            }
 
             // List comments on the PR
             const { data: comments } = await github.rest.issues.listComments({
