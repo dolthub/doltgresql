@@ -47,7 +47,10 @@ var json_in = framework.Function1{
 		if json.Valid(unsafe.Slice(unsafe.StringData(input), len(input))) {
 			return input, nil
 		}
-		return nil, pgtypes.ErrInvalidSyntaxForType.New("json", input[:10]+"...")
+		if len(input) > 10 {
+			input = input[:10] + "..."
+		}
+		return nil, pgtypes.ErrInvalidSyntaxForType.New("json", input)
 	},
 }
 
