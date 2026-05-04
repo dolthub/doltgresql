@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -44,6 +43,6 @@ var factorial_int64 = framework.Function1{
 		for i := int64(2); i <= val1; i++ {
 			total *= i
 		}
-		return decimal.NewFromInt(total), nil
+		return pgtypes.AnyToNumeric(total)
 	},
 }

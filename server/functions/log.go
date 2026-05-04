@@ -19,7 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -38,14 +38,14 @@ var log_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
-		val1 := val1Interface.(float64)
-		if val1 == 0 {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		f := val.(float64)
+		if f == 0 {
 			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if val1 < 0 {
+		} else if f < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
-		return math.Log10(val1), nil
+		return math.Log10(f), nil
 	},
 }
 
@@ -55,19 +55,23 @@ var log_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
-		if val1Interface == nil {
-			return nil, nil
-		}
-		val1 := val1Interface.(decimal.Decimal)
-		if val1.Equal(decimal.Zero) {
-			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if val1.LessThan(decimal.Zero) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		num := val.(pgtype.Numeric)
+		if num.NaN || num.InfinityModifier == pgtype.Infinity {
+			return num, nil
+		} else if num.InfinityModifier == pgtype.NegativeInfinity || (num.Int != nil && num.Int.Sign() == -1) {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
+		} else if num.Int != nil && num.Int.Sign() == 0 {
+			return nil, errors.Errorf("cannot take logarithm of zero")
 		}
+
 		// TODO: implement log for numeric instead of relying on float64
-		f, _ := val1.Float64()
-		return decimal.NewFromFloat(math.Log10(f)), nil
+		var f float64
+		err := num.AssignTo(&f)
+		if err != nil {
+			return nil, err
+		}
+		return pgtypes.AnyToNumeric(math.Log10(f))
 	},
 }
 
@@ -77,25 +81,35 @@ var log_numeric_numeric = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
-		if val1Interface == nil || val2Interface == nil {
-			return nil, nil
-		}
-		val1 := val1Interface.(decimal.Decimal)
-		val2 := val2Interface.(decimal.Decimal)
-		if val1.Equal(decimal.Zero) || val2.Equal(decimal.Zero) {
-			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if val1.LessThan(decimal.Zero) || val2.LessThan(decimal.Zero) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		num1 := val1.(pgtype.Numeric)
+		num2 := val2.(pgtype.Numeric)
+		if num1.NaN || num2.NaN {
+			// return NaN
+			return num1, nil
+		} else if num1.InfinityModifier == pgtype.NegativeInfinity || num2.InfinityModifier == pgtype.NegativeInfinity ||
+			(num1.Int != nil && num1.Int.Sign() == -1) || (num2.Int != nil && num2.Int.Sign() == -1) {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
+		} else if (num1.Int != nil && num1.Int.Sign() == 0) || (num2.Int != nil && num2.Int.Sign() == 0) {
+			return nil, errors.Errorf("cannot take logarithm of zero")
 		}
+
 		// TODO: implement log for numeric instead of relying on float64
-		base, _ := val1.Float64()
-		num, _ := val2.Float64()
-		logNum := math.Log(num)
+		var base, num float64
+		err := num1.AssignTo(&base)
+		if err != nil {
+			return nil, err
+		}
 		logBase := math.Log(base)
 		if logBase == 0 {
 			return nil, errors.Errorf("division by zero")
 		}
-		return decimal.NewFromFloat(logNum / logBase), nil
+		err = num2.AssignTo(&num)
+		if err != nil {
+			return nil, err
+		}
+		var l pgtype.Numeric
+		err = l.Set(math.Log(num) / logBase)
+		return l, err
 	},
 }

@@ -20,7 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
@@ -376,7 +376,19 @@ var interval_pl_timestamptz = framework.Function2{
 
 // numeric_add_callable is the callable logic for the numeric_add function.
 func numeric_add_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	return val1.(decimal.Decimal).Add(val2.(decimal.Decimal)), nil
+	n1, n2 := val1.(pgtype.Numeric), val2.(pgtype.Numeric)
+	if n1.NaN || n2.NaN ||
+		(n1.InfinityModifier == pgtype.Infinity && n2.InfinityModifier == pgtype.NegativeInfinity) ||
+		(n1.InfinityModifier == pgtype.NegativeInfinity && n2.InfinityModifier == pgtype.Infinity) {
+		return pgtypes.NumericNaN, nil
+	}
+	if n1.InfinityModifier == pgtype.Infinity || n2.InfinityModifier == pgtype.Infinity {
+		return pgtypes.NumericInfinite, nil
+	}
+	if n1.InfinityModifier == pgtype.NegativeInfinity || n2.InfinityModifier == pgtype.NegativeInfinity {
+		return pgtypes.NumericNegativeInfinite, nil
+	}
+	return pgtypes.AnyToNumeric(pgtypes.NumericToDecimal(n1).Add(pgtypes.NumericToDecimal(n2)))
 }
 
 // numeric_add represents the PostgreSQL function of the same name, taking the same parameters.

@@ -20,7 +20,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
@@ -32,8 +32,12 @@ import (
 
 // NewNumericLiteral returns a new *expression.Literal containing a NUMERIC value.
 func NewNumericLiteral(numericValue string) (*expression.Literal, error) {
-	d, err := decimal.NewFromString(numericValue)
-	return expression.NewLiteral(d, pgtypes.Numeric), err
+	//TODO: should use the input function of the type
+	num, err := pgtypes.GetNumericFromString(numericValue, -1)
+	if err != nil {
+		return nil, err
+	}
+	return expression.NewLiteral(num, pgtypes.Numeric), nil
 }
 
 // NewIntegerLiteral returns a new *expression.Literal containing an integer (INT2/4/8 or NUMERIC) value.
@@ -48,8 +52,7 @@ func NewIntegerLiteral(integerValue string) (*expression.Literal, error) {
 		}
 	} else {
 		// If we errored the first time, then we'll assume it's a NUMERIC value
-		d, err := decimal.NewFromString(integerValue)
-		return expression.NewLiteral(d, pgtypes.Numeric), err
+		return NewNumericLiteral(integerValue)
 	}
 }
 
@@ -104,8 +107,8 @@ func NewRawLiteralFloat64(val float64) *expression.Literal {
 	return expression.NewLiteral(val, pgtypes.Float64)
 }
 
-// NewRawLiteralNumeric returns a new *expression.Literal containing a decimal.Decimal value.
-func NewRawLiteralNumeric(val decimal.Decimal) *expression.Literal {
+// NewRawLiteralNumeric returns a new *expression.Literal containing a pgtype.Numeric value.
+func NewRawLiteralNumeric(val pgtype.Numeric) *expression.Literal {
 	return expression.NewLiteral(val, pgtypes.Numeric)
 }
 
@@ -173,7 +176,9 @@ func ToVitessLiteral(l *expression.Literal) *vitess.SQLVal {
 	case pgtypes.Int64.ID:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(l.Value().(int64), 10)))
 	case pgtypes.Numeric.ID:
-		return vitess.NewFloatVal([]byte(l.Value().(decimal.Decimal).String()))
+		num := l.Value().(pgtype.Numeric)
+		str := pgtypes.NumericToStringRepresentation(num, -1)
+		return vitess.NewFloatVal([]byte(str))
 	case pgtypes.Text.ID:
 		return vitess.NewStrVal([]byte(l.Value().(string)))
 	case pgtypes.Unknown.ID:

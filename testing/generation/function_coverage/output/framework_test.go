@@ -27,9 +27,8 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -47,9 +46,6 @@ var (
 	// between Go and C/C++, so this threshold allows us to check that non-integer values are close enough. Over time,
 	// we may reduce or remove this value as we become more accurate.
 	EquivalenceThresholdFloat64 = 0.001
-	// EquivalenceThresholdNumeric represents the allowable delta for values to be considered equivalent.
-	// This is computed using the float64 variant so that they're equivalent.
-	EquivalenceThresholdNumeric = decimal.RequireFromString(strconv.FormatFloat(EquivalenceThresholdFloat64, 'f', -1, 64))
 )
 
 // ScriptTest defines a consistent structure for testing queries.
@@ -241,20 +237,12 @@ func ReadRows(rows pgx.Rows) (readRows []sql.Row, oids []uint32, err error) {
 
 // Numeric creates a numeric value from a string.
 func Numeric(str string) pgtype.Numeric {
-	numeric := pgtype.Numeric{}
-	if err := numeric.Scan(str); err != nil {
-		panic(err)
-	}
-	return numeric
-}
-
-// NumericToDecimal converts a pgtype.Numeric value to a decimal.Decimal value.
-func NumericToDecimal(val pgtype.Numeric) decimal.Decimal {
-	strVal, err := val.Value()
+	var numeric pgtype.Numeric
+	err := numeric.DecodeText(nil, []byte(str))
 	if err != nil {
 		panic(err)
 	}
-	return decimal.RequireFromString(strVal.(string))
+	return numeric
 }
 
 // CompareResults compares two sets of results, taking the equivalence thresholds into account when making the
@@ -293,8 +281,15 @@ func CompareRows(t *testing.T, a sql.Row, b sql.Row) bool {
 					return false
 				}
 			case pgtype.Numeric:
-				delta := NumericToDecimal(aVal.(pgtype.Numeric)).Sub(NumericToDecimal(bVal.(pgtype.Numeric))).Abs()
-				if delta.Cmp(EquivalenceThresholdNumeric) == 1 {
+				numericToFloat := func(n pgtype.Numeric) float64 {
+					s, err := n.Value()
+					if err != nil || s == nil {
+						return 0
+					}
+					f, _ := strconv.ParseFloat(s.(string), 64)
+					return f
+				}
+				if math.Abs(numericToFloat(aVal.(pgtype.Numeric))-numericToFloat(bVal.(pgtype.Numeric))) > EquivalenceThresholdFloat64 {
 					return false
 				}
 			default:

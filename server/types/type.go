@@ -30,7 +30,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/shopspring/decimal"
+	"github.com/jackc/pgtype"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
@@ -318,9 +318,9 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 	case JsonDocument:
 		bb := v2.(JsonDocument)
 		return JsonValueCompare(ab.Value, bb.Value), nil
-	case decimal.Decimal:
-		bb := v2.(decimal.Decimal)
-		return ab.Cmp(bb), nil
+	case pgtype.Numeric:
+		bb := v2.(pgtype.Numeric)
+		return NumericCompare(ab, bb), nil
 	case timeofday.TimeOfDay:
 		bb := v2.(timeofday.TimeOfDay)
 		return ab.Compare(bb), nil
@@ -1050,7 +1050,7 @@ func (t *DoltgresType) Zero() interface{} {
 		case "int8":
 			return int64(0)
 		case "numeric":
-			return decimal.Zero
+			return pgtype.Numeric{Status: pgtype.Present}
 		case "oid", "regclass", "regproc", "regtype":
 			return id.Null
 		default:
