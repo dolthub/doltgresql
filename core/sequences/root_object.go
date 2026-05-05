@@ -27,18 +27,19 @@ import (
 )
 
 const (
-	FIELD_NAME_DATA_TYPE    = "data_type"
-	FIELD_NAME_PERSISTENCE  = "persistence"
-	FIELD_NAME_START        = "start"
-	FIELD_NAME_CURRENT      = "current"
-	FIELD_NAME_INCREMENT    = "increment"
-	FIELD_NAME_MINIMUM      = "minimum"
-	FIELD_NAME_MAXIMUM      = "maximum"
-	FIELD_NAME_CACHE        = "cache"
-	FIELD_NAME_CYCLE        = "cycle"
-	FIELD_NAME_IS_AT_END    = "is_at_end"
-	FIELD_NAME_OWNER_TABLE  = "owner_table"
-	FIELD_NAME_OWNER_COLUMN = "owner_column"
+	FIELD_NAME_DATA_TYPE       = "data_type"
+	FIELD_NAME_PERSISTENCE     = "persistence"
+	FIELD_NAME_START           = "start"
+	FIELD_NAME_CURRENT         = "current"
+	FIELD_NAME_INCREMENT       = "increment"
+	FIELD_NAME_MINIMUM         = "minimum"
+	FIELD_NAME_MAXIMUM         = "maximum"
+	FIELD_NAME_CACHE           = "cache"
+	FIELD_NAME_CYCLE           = "cycle"
+	FIELD_NAME_IS_AT_END       = "is_at_end"
+	FIELD_NAME_HAS_BEEN_CALLED = "has_been_called"
+	FIELD_NAME_OWNER_TABLE     = "owner_table"
+	FIELD_NAME_OWNER_COLUMN    = "owner_column"
 )
 
 // DeserializeRootObject implements the interface objinterface.Collection.
@@ -107,6 +108,18 @@ func (pgs *Collection) DiffRootObjects(ctx context.Context, fromHash string, o o
 			diffs = append(diffs, diff)
 		} else {
 			ours.Current = diff.OurValue.(int64)
+		}
+	}
+	if ours.HasBeenCalled != theirs.HasBeenCalled {
+		diff := objinterface.RootObjectDiff{
+			Type:      pgtypes.Bool,
+			FromHash:  fromHash,
+			FieldName: FIELD_NAME_HAS_BEEN_CALLED,
+		}
+		if pgmerge.DiffValues(&diff, ours.HasBeenCalled, theirs.HasBeenCalled, ancestor.HasBeenCalled, hasAncestor) {
+			diffs = append(diffs, diff)
+		} else {
+			ours.HasBeenCalled = diff.OurValue.(bool)
 		}
 	}
 	if ours.Increment != theirs.Increment {
@@ -238,6 +251,8 @@ func (pgs *Collection) GetFieldType(ctx context.Context, fieldName string) *pgty
 	case FIELD_NAME_CYCLE:
 		return pgtypes.Bool
 	case FIELD_NAME_IS_AT_END:
+		return pgtypes.Bool
+	case FIELD_NAME_HAS_BEEN_CALLED:
 		return pgtypes.Bool
 	case FIELD_NAME_OWNER_TABLE:
 		return pgtypes.Text

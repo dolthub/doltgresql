@@ -31,7 +31,7 @@ func (sequence *Sequence) Serialize(ctx context.Context) ([]byte, error) {
 
 	// Create the writer
 	writer := utils.NewWriter(256)
-	writer.VariableUint(0) // Version
+	writer.VariableUint(1) // Version
 	// Write the sequence data
 	writer.Id(sequence.Id.AsId())
 	writer.Id(sequence.DataTypeID.AsId())
@@ -44,6 +44,7 @@ func (sequence *Sequence) Serialize(ctx context.Context) ([]byte, error) {
 	writer.Int64(sequence.Cache)
 	writer.Bool(sequence.Cycle)
 	writer.Bool(sequence.IsAtEnd)
+	writer.Bool(sequence.HasBeenCalled)
 	writer.Id(sequence.OwnerTable.AsId())
 	writer.String(sequence.OwnerColumn)
 	// Returns the data
@@ -52,13 +53,13 @@ func (sequence *Sequence) Serialize(ctx context.Context) ([]byte, error) {
 
 // DeserializeSequence returns the Sequence that was serialized in the byte slice. Returns an empty Sequence if data is
 // nil or empty.
-func DeserializeSequence(ctx context.Context, data []byte) (*Sequence, error) {
+func DeserializeSequence(_ context.Context, data []byte) (*Sequence, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
-	if version != 0 {
+	if version > 1 {
 		return nil, errors.Errorf("version %d of sequences is not supported, please upgrade the server", version)
 	}
 
@@ -75,6 +76,9 @@ func DeserializeSequence(ctx context.Context, data []byte) (*Sequence, error) {
 	sequence.Cache = reader.Int64()
 	sequence.Cycle = reader.Bool()
 	sequence.IsAtEnd = reader.Bool()
+	if version >= 1 {
+		sequence.HasBeenCalled = reader.Bool()
+	}
 	sequence.OwnerTable = id.Table(reader.Id())
 	sequence.OwnerColumn = reader.String()
 	if !reader.IsEmpty() {

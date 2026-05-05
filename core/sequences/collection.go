@@ -50,19 +50,20 @@ const (
 
 // Sequence represents a single sequence within the pg_sequence table.
 type Sequence struct {
-	Id          id.Sequence
-	DataTypeID  id.Type
-	Persistence Persistence
-	Start       int64
-	Current     int64
-	Increment   int64
-	Minimum     int64
-	Maximum     int64
-	Cache       int64
-	Cycle       bool
-	IsAtEnd     bool
-	OwnerTable  id.Table
-	OwnerColumn string
+	Id            id.Sequence
+	DataTypeID    id.Type
+	Persistence   Persistence
+	Start         int64
+	Current       int64
+	Increment     int64
+	Minimum       int64
+	Maximum       int64
+	Cache         int64
+	Cycle         bool
+	IsAtEnd       bool
+	HasBeenCalled bool
+	OwnerTable    id.Table
+	OwnerColumn   string
 }
 
 var _ objinterface.Collection = (*Collection)(nil)
@@ -297,6 +298,7 @@ func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue in
 	}
 	seq.Current = newValue
 	seq.IsAtEnd = false
+	seq.HasBeenCalled = false
 	if autoAdvance {
 		_, err := seq.nextValForSequence()
 		return err
@@ -450,6 +452,7 @@ func (sequence *Sequence) nextValForSequence() (int64, error) {
 		}
 	}
 	// We'll return the current value, so everything after this sets the value for the next call
+	sequence.HasBeenCalled = true
 	valueToReturn := sequence.Current
 	// Increment the current value
 	if sequence.Increment > 0 {
