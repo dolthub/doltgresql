@@ -78,22 +78,12 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		defaultExpr = &vitess.ParenExpr{Expr: defaultExpr}
 	}
 
-	var fkDef *vitess.ForeignKeyDefinition
 	if node.References.Table != nil {
 		if len(node.References.Col) == 0 {
 			return nil, errors.Errorf("implicit primary key matching on column foreign key is not yet supported")
 		}
-		fkDef, err = nodeForeignKeyConstraintTableDef(ctx, &tree.ForeignKeyConstraintTableDef{
-			Name:     node.References.ConstraintName,
-			Table:    *node.References.Table,
-			FromCols: tree.NameList{node.Name},
-			ToCols:   tree.NameList{node.References.Col},
-			Actions:  node.References.Actions,
-			Match:    node.References.Match,
-		})
-		if err != nil {
-			return nil, err
-		}
+		// Callers register the foreign key via the table constraint list, so ForeignKeyDef
+		// is left unset here to avoid creating the same constraint twice.
 	}
 
 	if len(node.Computed.Options) > 0 {
@@ -164,7 +154,6 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 			Length:        convertType.Length,
 			Scale:         convertType.Scale,
 			KeyOpt:        keyOpt,
-			ForeignKeyDef: fkDef,
 			GeneratedExpr: generated,
 			Stored:        generated != nil, // postgres generated columns are always stored, never virtual
 		},

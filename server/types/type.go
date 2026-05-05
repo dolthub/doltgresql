@@ -217,7 +217,12 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 
 	if t.TypType == TypeType_Enum {
 		// TODO: temporary solution to getting the enum type (which has label info) into the 'enum_cmp' function
-		qf := globalFunctionRegistry.GetFunction(ctx.(*sql.Context), t.CompareFunc)
+		// ctx is not guaranteed to be a *sql.Context when called from index comparator goroutines.
+		sqlCtx, ok := ctx.(*sql.Context)
+		if !ok {
+			sqlCtx = sql.NewEmptyContext()
+		}
+		qf := globalFunctionRegistry.GetFunction(sqlCtx, t.CompareFunc)
 		resTypes := qf.ResolvedTypes()
 		newFunc := qf.WithResolvedTypes([]*DoltgresType{t, t, resTypes[len(resTypes)-1]})
 		i, err := newFunc.(QuickFunction).CallVariadic(nil, v1, v2)
@@ -226,7 +231,12 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		}
 		return int(i.(int32)), nil
 	} else if t == Oidvector {
-		i, err := globalFunctionRegistry.GetFunction(ctx.(*sql.Context), t.CompareFunc).CallVariadic(nil, v1, v2)
+		// ctx is not guaranteed to be a *sql.Context when called from index comparator goroutines.
+		sqlCtx, ok := ctx.(*sql.Context)
+		if !ok {
+			sqlCtx = sql.NewEmptyContext()
+		}
+		i, err := globalFunctionRegistry.GetFunction(sqlCtx, t.CompareFunc).CallVariadic(nil, v1, v2)
 		if err != nil {
 			return 0, err
 		}
