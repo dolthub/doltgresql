@@ -20,6 +20,75 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// jsonbLexicalOrder is the 40 test values in ascending comparison order as determined
+// by CompareJSON (type precedence: null < number < string < object < array < boolean).
+// Objects are ordered by: shared-key value comparison, then key-count, then least
+// non-shared key lexicographically.  Arrays are ordered element-by-element; shorter
+// wins when all shared positions are equal.
+var jsonbLexicalOrder = []string{
+	`null`,
+	`-1`,
+	`0`,
+	`1`,
+	`2`,
+	`3.14`,
+	`42`,
+	`100`,
+	`9999`,
+	`"a"`,
+	`"ab"`,
+	`"abc"`,
+	`"b"`,
+	`"foo"`,
+	`"hello"`,
+	`"hello world"`,
+	`"longer string value"`,
+	`"z"`,
+	`{}`,
+	`{"a":1}`,
+	`{"a":{"b":{"c":1}}}`,
+	`{"aa":1}`,
+	`{"b":2}`,
+	`{"x":{"y":1}}`,
+	`{"z":null}`,
+	`{"a":1,"b":2}`,
+	`{"name":"test","value":42}`,
+	`{"a":1,"b":2,"c":3}`,
+	`[]`,
+	`[null]`,
+	`[1]`,
+	`[1,2]`,
+	`[1,2,3]`,
+	`["a"]`,
+	`["a","b","c"]`,
+	`[[1,2],[3,4]]`,
+	`[false]`,
+	`[true]`,
+	`false`,
+	`true`,
+}
+
+// TestJsonBPairwiseLessThan walks jsonbLexicalOrder and asserts that every
+// consecutive pair satisfies the < operator: SELECT 'a'::jsonb < 'b'::jsonb = t.
+// A failure here means either the comparison order table above is wrong, or the
+// < operator does not implement a valid total order on those values.
+func TestJsonBPairwiseLessThan(t *testing.T) {
+	assertions := make([]ScriptTestAssertion, 0, len(jsonbLexicalOrder)-1)
+	for i := 0; i < len(jsonbLexicalOrder)-1; i++ {
+		a, b := jsonbLexicalOrder[i], jsonbLexicalOrder[i+1]
+		assertions = append(assertions, ScriptTestAssertion{
+			Query:    `SELECT '` + a + `'::jsonb < '` + b + `'::jsonb`,
+			Expected: []sql.Row{{"t"}},
+		})
+	}
+	RunScriptsWithoutNormalization(t, []ScriptTest{
+		{
+			Name:       "JSONB pairwise less-than along lexical order",
+			Assertions: assertions,
+		},
+	})
+}
+
 // TestJsonBIndexSortConsistency verifies that, for an indexed JSONB column, the sort
 // order produced by ORDER BY is consistent with the < and > comparison operators.
 //
