@@ -101,9 +101,18 @@ func (iter *pgSequencesRowIter) Next(_ *sql.Context) (sql.Row, error) {
 	schemaName := iter.sequences[iter.idx].schema
 	iter.idx++
 
+	var lastValue interface{}
+	if sequence.HasBeenCalled {
+		if sequence.IsAtEnd {
+			lastValue = sequence.Current
+		} else {
+			lastValue = sequence.Current - sequence.Increment
+		}
+	}
+
 	return sql.Row{
 		schemaName,                     // schemaname
-		sequence.Id.SequenceName(),     //sequencename
+		sequence.Id.SequenceName(),     // sequencename
 		nil,                            // TODO sequenceowner
 		sequence.DataTypeID.TypeName(), // data_type
 		sequence.Start,                 // start_value
@@ -112,7 +121,7 @@ func (iter *pgSequencesRowIter) Next(_ *sql.Context) (sql.Row, error) {
 		sequence.Increment,             // increment_by
 		sequence.Cycle,                 // cycle
 		sequence.Cache,                 // cache_size
-		nil,                            // TODO last_value
+		lastValue,                      // TODO last_value
 	}, nil
 }
 

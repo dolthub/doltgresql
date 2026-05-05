@@ -2921,6 +2921,28 @@ func TestPgSequences(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "last value set correctly",
+			SetUpScript: []string{
+				"CREATE SEQUENCE seq1",
+				"CREATE SEQUENCE seq2",
+				"select nextval('seq2')",
+				"CREATE SEQUENCE seq3",
+				"CREATE SEQUENCE seq4",
+				"select setval('seq3', 2, false), setval('seq4', 2, true)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT sequencename, last_value FROM pg_sequences",
+					Expected: []sql.Row{
+						{"seq1", nil},
+						{"seq2", 1},
+						{"seq3", nil},
+						{"seq4", 2},
+					},
+				},
+			},
+		},
 	})
 }
 
