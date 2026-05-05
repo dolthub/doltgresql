@@ -279,6 +279,35 @@ order by 1,2;`,
 	})
 }
 
+func TestPgAttributeViewColumns(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "pg_attribute includes view columns",
+			SetUpScript: []string{
+				`CREATE TABLE t (k int);`,
+				`CREATE VIEW v AS SELECT * FROM t;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// View columns should appear in pg_attribute, just like table columns.
+					Query: `SELECT c.relname, a.attname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE c.relname IN ('t','v') ORDER BY c.relname, a.attnum;`,
+					Expected: []sql.Row{
+						{"t", "k"},
+						{"v", "k"},
+					},
+				},
+				{
+					// The view column's atttypid should match the underlying table column's type (int4 = 23).
+					Query: `SELECT a.attname, a.atttypid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE c.relname = 'v' ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"k", uint32(23)},
+					},
+				},
+			},
+		},
+	})
+}
+
 func TestPgAttrdef(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
