@@ -1218,6 +1218,14 @@ var typesTests = []ScriptTest{
 					{`"\ud83d\ude04\ud83d\udc36"`},
 				},
 			},
+			{
+				Query:       `SELECT '{'::json`,
+				ExpectedErr: "invalid input syntax for type json",
+			},
+			{
+				Query:       `SELECT '{"key": "value"'::json`,
+				ExpectedErr: "invalid input syntax for type json",
+			},
 		},
 	},
 	{
@@ -1531,6 +1539,42 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{1, 4112},
 				},
+			},
+		},
+	},
+	{
+		Name: "JSONB GROUP BY with equivalent numbers",
+		SetUpScript: []string{
+			`CREATE TABLE t (id SERIAL PRIMARY KEY, doc JSONB);`,
+			`INSERT INTO t (doc) VALUES ('{"age":25}'), ('{"age":25}'), ('{"age":25.0}'), ('{"age":30}');`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT doc, COUNT(*) FROM t GROUP BY doc ORDER BY doc;`,
+				Expected: []sql.Row{
+					{`{"age": 25}`, int64(3)},
+					{`{"age": 30}`, int64(1)},
+				},
+			},
+		},
+	},
+	{
+		Name: "JSONB int64 boundary values",
+		SetUpScript: []string{
+			`CREATE TABLE t (id SERIAL PRIMARY KEY, doc JSONB);`,
+			`INSERT INTO t (doc) VALUES ('-9223372036854775808'::jsonb), ('9223372036854775807'::jsonb);`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT doc FROM t ORDER BY id;`,
+				ExpectedRaw: [][][]byte{
+					{[]byte("-9223372036854775808")},
+					{[]byte("9223372036854775807")},
+				},
+			},
+			{
+				Query:    `SELECT doc::text::bigint FROM t ORDER BY id;`,
+				Expected: []sql.Row{{int64(-9223372036854775808)}, {int64(9223372036854775807)}},
 			},
 		},
 	},

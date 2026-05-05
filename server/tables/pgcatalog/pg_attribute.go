@@ -18,9 +18,12 @@ import (
 	"io"
 	"math"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
+	pgparser "github.com/dolthub/doltgresql/postgres/parser/parser"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -81,6 +84,15 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	attrelidIdx := NewUniqueInMemIndexStorage[*pgAttribute](lessAttNum)
 	attrelidAttnameIdx := NewUniqueInMemIndexStorage[*pgAttribute](lessAttName)
 
+	// Get the engine for resolving view column types. May be nil in some test environments.
+	type queryAnalyzer interface {
+		AnalyzeQuery(*sql.Context, string) (sql.Node, error)
+	}
+	var engine queryAnalyzer
+	if runningServer := sqlserver.GetRunningServer(); runningServer != nil && runningServer.Engine != nil {
+		engine = runningServer.Engine
+	}
+
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Table: func(ctx *sql.Context, _ functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 			for i, col := range table.Item.Schema(ctx) {
@@ -115,6 +127,56 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 					attnotnull:     !col.Nullable,
 					atthasdef:      hasDefault,
 					attgenerated:   generated,
+				}
+				attrelidIdx.Add(attr)
+				attrelidAttnameIdx.Add(attr)
+				attributes = append(attributes, attr)
+			}
+			return true, nil
+		},
+		View: func(ctx *sql.Context, _ functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
+			if engine == nil {
+				return true, nil
+			}
+
+			// Get the SELECT body from the view definition.
+			selectBody := view.Item.TextDefinition
+			if selectBody == "" {
+				stmts, parseErr := pgparser.Parse(view.Item.CreateViewStatement)
+				if parseErr != nil || len(stmts) == 0 {
+					return true, nil
+				}
+				cv, ok := stmts[0].AST.(*tree.CreateView)
+				if !ok {
+					return true, nil
+				}
+				selectBody = cv.AsSource.String()
+			}
+			if selectBody == "" {
+				return true, nil
+			}
+
+			// Analyze the SELECT statement to get the view's output schema.
+			analyzed, analyzeErr := engine.AnalyzeQuery(ctx, selectBody)
+			if analyzeErr != nil {
+				return true, nil
+			}
+
+			for i, col := range analyzed.Schema(ctx) {
+				typeOid := id.Null
+				if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
+					typeOid = doltgresType.ID.AsId()
+				} else {
+					dt := pgtypes.FromGmsType(col.Type)
+					typeOid = dt.ID.AsId()
+				}
+
+				attr := &pgAttribute{
+					attrelid:       view.OID.AsId(),
+					attrelidNative: id.Cache().ToOID(view.OID.AsId()),
+					attname:        col.Name,
+					atttypid:       typeOid,
+					attnum:         int16(i + 1),
 				}
 				attrelidIdx.Add(attr)
 				attrelidAttnameIdx.Add(attr)
