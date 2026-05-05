@@ -290,7 +290,7 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 	}
 	return h.send(&pgproto3.BackendKeyData{
 		ProcessID: processID,
-		SecretKey: 0, // TODO: this should represent an ID that can uniquely identify this connection, so that CancelRequest will work
+		SecretKey: nil, // TODO: this should represent an ID that can uniquely identify this connection, so that CancelRequest will work
 	})
 }
 
