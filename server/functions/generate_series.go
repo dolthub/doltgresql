@@ -18,9 +18,9 @@ import (
 	"io"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -143,10 +143,10 @@ var generate_series_numeric_numeric = framework.Function2{
 	Strict:     true,
 	SRF:        true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		start := val1.(decimal.Decimal)
-		finish := val2.(decimal.Decimal)
+		start := val1.(apd.Decimal)
+		stop := val2.(apd.Decimal)
 		step := numericOne // by default
-		return numericGenerateSeries(start, finish, step)
+		return numericGenerateSeries(start, stop, *step)
 	},
 }
 
@@ -158,25 +158,42 @@ var generate_series_numeric_numeric_numeric = framework.Function3{
 	Strict:     true,
 	SRF:        true,
 	Callable: func(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		start := val1.(decimal.Decimal)
-		finish := val2.(decimal.Decimal)
-		step := val3.(decimal.Decimal)
-		return numericGenerateSeries(start, finish, step)
+		start := val1.(apd.Decimal)
+		stop := val2.(apd.Decimal)
+		step := val3.(apd.Decimal)
+		return numericGenerateSeries(start, stop, step)
 	},
 }
 
 // numericGenerateSeries returns RowIter for generate_series function results for given numeric values.
 // This function checks for error of step being zero.
-func numericGenerateSeries(start, finish, step decimal.Decimal) (*pgtypes.SetReturningFunctionRowIter, error) {
-	if step.Equal(decimal.Zero) {
+func numericGenerateSeries(start, stop, step apd.Decimal) (*pgtypes.SetReturningFunctionRowIter, error) {
+	if step.IsZero() {
 		return nil, errStepSizeZero
+	}
+	if start.Form == apd.NaN {
+		return nil, errors.Errorf(`start value cannot be NaN`)
+	} else if start.Form == apd.Infinite {
+		return nil, errors.Errorf(`start value cannot be infinity`)
+	}
+	if stop.Form == apd.NaN {
+		return nil, errors.Errorf(`stop value cannot be NaN`)
+	} else if stop.Form == apd.Infinite {
+		return nil, errors.Errorf(`stop value cannot be infinity`)
+	}
+	if step.Form == apd.NaN {
+		return nil, errors.Errorf(`step value cannot be NaN`)
+	} else if step.Form == apd.Infinite {
+		return nil, errors.Errorf(`step value cannot be infinity`)
 	}
 	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 		defer func() {
-			start = start.Add(step)
+			_, err := sql.DecimalCtx.Add(&start, &start, &step)
+			if err != nil {
+				panic(err)
+			}
 		}()
-		if (step.GreaterThan(decimal.Zero) && start.GreaterThan(finish)) ||
-			(step.LessThan(decimal.Zero) && start.LessThan(finish)) {
+		if (step.Sign() > 0 && start.Cmp(&stop) > 0) || (step.Sign() < 0 && start.Cmp(&stop) < 0) {
 			return nil, io.EOF
 		}
 		return sql.Row{start}, nil

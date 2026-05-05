@@ -18,8 +18,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
+	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
@@ -191,14 +192,20 @@ var date_part_text_interval = framework.Function2{
 		// This mirrors the exact logic from extract_text_interval
 		switch strings.ToLower(field) {
 		case "century", "centuries":
-			result := decimal.NewFromFloat(float64(dur.Months) / 12 / 100).Floor()
-			f, _ := result.Float64()
+			dec, err := numericFloor(float64(dur.Months) / 12 / 100)
+			if err != nil {
+				return nil, err
+			}
+			f, _ := dec.Float64()
 			return f, nil
 		case "day", "days":
 			return float64(dur.Days), nil
 		case "decade", "decades":
-			result := decimal.NewFromFloat(float64(dur.Months) / 12 / 10).Floor()
-			f, _ := result.Float64()
+			dec, err := numericFloor(float64(dur.Months) / 12 / 10)
+			if err != nil {
+				return nil, err
+			}
+			f, _ := dec.Float64()
 			return f, nil
 		case "epoch":
 			epoch := float64(duration.SecsPerDay*duration.DaysPerMonth*dur.Months) + float64(duration.SecsPerDay*dur.Days) +
@@ -206,16 +213,22 @@ var date_part_text_interval = framework.Function2{
 			return epoch, nil
 		case "hour", "hours":
 			hours := float64(dur.Nanos()) / float64(NanosPerSec*duration.SecsPerHour)
-			result := decimal.NewFromFloat(hours).Floor()
-			f, _ := result.Float64()
+			dec, err := numericFloor(hours)
+			if err != nil {
+				return nil, err
+			}
+			f, _ := dec.Float64()
 			return f, nil
 		case "microsecond", "microseconds":
 			secondsInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerMinute)
 			microseconds := float64(secondsInNanos) / float64(NanosPerMicro)
 			return microseconds, nil
 		case "millennium", "millenniums":
-			result := decimal.NewFromFloat(float64(dur.Months) / 12 / 1000).Floor()
-			f, _ := result.Float64()
+			dec, err := numericFloor(float64(dur.Months) / 12 / 1000)
+			if err != nil {
+				return nil, err
+			}
+			f, _ := dec.Float64()
 			return f, nil
 		case "millisecond", "milliseconds":
 			secondsInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerMinute)
@@ -224,8 +237,11 @@ var date_part_text_interval = framework.Function2{
 		case "minute", "minutes":
 			minutesInNanos := dur.Nanos() % (NanosPerSec * duration.SecsPerHour)
 			minutes := float64(minutesInNanos) / float64(NanosPerSec*duration.SecsPerMinute)
-			result := decimal.NewFromFloat(minutes).Floor()
-			f, _ := result.Float64()
+			dec, err := numericFloor(minutes)
+			if err != nil {
+				return nil, err
+			}
+			f, _ := dec.Float64()
 			return f, nil
 		case "month", "months":
 			return float64(dur.Months % 12), nil
@@ -236,8 +252,11 @@ var date_part_text_interval = framework.Function2{
 			seconds := float64(secondsInNanos) / float64(NanosPerSec)
 			return seconds, nil
 		case "year", "years":
-			result := decimal.NewFromFloat(float64(dur.Months) / 12).Floor()
-			f, _ := result.Float64()
+			dec, err := numericFloor(float64(dur.Months) / 12)
+			if err != nil {
+				return nil, err
+			}
+			f, _ := dec.Float64()
 			return f, nil
 		case "dow", "doy", "isodow", "isoyear", "julian", "timezone", "timezone_hour", "timezone_minute", "week":
 			return nil, ErrUnitNotSupported.New(field, "interval")
@@ -245,4 +264,23 @@ var date_part_text_interval = framework.Function2{
 			return nil, ErrUnitNotSupported.New(field, "interval")
 		}
 	},
+}
+
+func numericFloor(val any) (apd.Decimal, error) {
+	switch val.(type) {
+	case int64, float64:
+		// expects these types to Scan from
+	default:
+		return apd.Decimal{}, cerrors.Errorf("invalid type for numeric convert: %T", val)
+	}
+	dec := new(apd.Decimal)
+	err := dec.Scan(val)
+	if err != nil {
+		return apd.Decimal{}, err
+	}
+	_, err = sql.DecimalCtx.Floor(dec, dec)
+	if err != nil {
+		return apd.Decimal{}, err
+	}
+	return *dec, nil
 }

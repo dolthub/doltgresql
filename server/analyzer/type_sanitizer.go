@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
@@ -27,7 +28,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/shopspring/decimal"
 
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -173,7 +173,7 @@ func typeSanitizerLiterals(ctx *sql.Context, gmsLiteral *expression.Literal) (sq
 		}
 		return pgexprs.NewRawLiteralFloat64(newVal.(float64)), transform.NewTree, nil
 	case query.Type_DECIMAL:
-		dec, ok := gmsLiteral.Value().(decimal.Decimal)
+		dec, ok := gmsLiteral.Value().(apd.Decimal)
 		if !ok {
 			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected decimal type: %T", gmsLiteral.Value())
 		}

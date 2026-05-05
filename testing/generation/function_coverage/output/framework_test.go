@@ -25,15 +25,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	dserver "github.com/dolthub/doltgresql/server"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 	"github.com/dolthub/doltgresql/utils"
@@ -47,9 +48,6 @@ var (
 	// between Go and C/C++, so this threshold allows us to check that non-integer values are close enough. Over time,
 	// we may reduce or remove this value as we become more accurate.
 	EquivalenceThresholdFloat64 = 0.001
-	// EquivalenceThresholdNumeric represents the allowable delta for values to be considered equivalent.
-	// This is computed using the float64 variant so that they're equivalent.
-	EquivalenceThresholdNumeric = decimal.RequireFromString(strconv.FormatFloat(EquivalenceThresholdFloat64, 'f', -1, 64))
 )
 
 // ScriptTest defines a consistent structure for testing queries.
@@ -248,13 +246,17 @@ func Numeric(str string) pgtype.Numeric {
 	return numeric
 }
 
-// NumericToDecimal converts a pgtype.Numeric value to a decimal.Decimal value.
-func NumericToDecimal(val pgtype.Numeric) decimal.Decimal {
-	strVal, err := val.Value()
-	if err != nil {
-		panic(err)
+// NumericToDecimal converts a pgtype.Numeric value to a apd.Decimal value.
+func NumericToDecimal(val pgtype.Numeric) apd.Decimal {
+	if val.NaN {
+		return pgtypes.NumericNaN
+	} else if val.InfinityModifier == pgtype.Infinity {
+		return pgtypes.NumericInf
+	} else if val.InfinityModifier == pgtype.NegativeInfinity {
+		return pgtypes.NumericNegInf
 	}
-	return decimal.RequireFromString(strVal.(string))
+
+	return *apd.New(val.Int.Int64(), val.Exp)
 }
 
 // CompareResults compares two sets of results, taking the equivalence thresholds into account when making the
@@ -293,8 +295,17 @@ func CompareRows(t *testing.T, a sql.Row, b sql.Row) bool {
 					return false
 				}
 			case pgtype.Numeric:
-				delta := NumericToDecimal(aVal.(pgtype.Numeric)).Sub(NumericToDecimal(bVal.(pgtype.Numeric))).Abs()
-				if delta.Cmp(EquivalenceThresholdNumeric) == 1 {
+				aDec := NumericToDecimal(aVal.(pgtype.Numeric))
+				bDec := NumericToDecimal(bVal.(pgtype.Numeric))
+				_, err := sql.DecimalCtx.Sub(&aDec, &aDec, &bDec)
+				if err != nil {
+					return false
+				}
+				aDec = *aDec.Abs(&aDec)
+				// EquivalenceThresholdNumeric represents the allowable delta for values to be considered equivalent.
+				// This is computed using the float64 variant so that they're equivalent.
+				EquivalenceThresholdNumeric, _, _ := apd.NewFromString(strconv.FormatFloat(EquivalenceThresholdFloat64, 'f', -1, 64))
+				if aDec.Cmp(EquivalenceThresholdNumeric) == 1 {
 					return false
 				}
 			default:

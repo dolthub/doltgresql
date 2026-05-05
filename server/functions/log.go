@@ -16,10 +16,11 @@ package functions
 
 import (
 	"math"
+	"strings"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -55,19 +56,25 @@ var log_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
-		if val1Interface == nil {
-			return nil, nil
-		}
-		val1 := val1Interface.(decimal.Decimal)
-		if val1.Equal(decimal.Zero) {
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		dec := val1.(apd.Decimal)
+		if dec.IsZero() {
 			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if val1.LessThan(decimal.Zero) {
+		} else if dec.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
-		// TODO: implement log for numeric instead of relying on float64
-		f, _ := val1.Float64()
-		return decimal.NewFromFloat(math.Log10(f)), nil
+
+		// TODO: calculate precision and scale accurately
+		p := uint32(17)
+		if dec.Exponent < 0 {
+			p += uint32(-dec.Exponent)
+		}
+		c := sql.DecimalCtx.WithPrecision(p)
+		_, err := c.Log10(&dec, &dec)
+		if err != nil {
+			return nil, err
+		}
+		return dec, nil
 	},
 }
 
@@ -77,25 +84,55 @@ var log_numeric_numeric = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
-		if val1Interface == nil || val2Interface == nil {
-			return nil, nil
-		}
-		val1 := val1Interface.(decimal.Decimal)
-		val2 := val2Interface.(decimal.Decimal)
-		if val1.Equal(decimal.Zero) || val2.Equal(decimal.Zero) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		base := val1.(apd.Decimal)
+		num := val2.(apd.Decimal)
+		if base.IsZero() || num.IsZero() {
 			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if val1.LessThan(decimal.Zero) || val2.LessThan(decimal.Zero) {
+		} else if base.Sign() < 0 || num.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
-		// TODO: implement log for numeric instead of relying on float64
-		base, _ := val1.Float64()
-		num, _ := val2.Float64()
-		logNum := math.Log(num)
-		logBase := math.Log(base)
-		if logBase == 0 {
+
+		// TODO: calculate precision and scale accurately
+		sNum := num.Text('f')
+		sBase := base.Text('f')
+		partsNum := strings.Split(sNum, ".")
+		partsBase := strings.Split(sBase, ".")
+		exp := int32(-16)
+		if minExp := math.Min(float64(base.Exponent), float64(num.Exponent)); int32(minExp) < exp {
+			exp = int32(minExp)
+		}
+		p := uint32(int32(math.Max(float64(len(partsNum[0])), float64(len(partsBase[0])))) + (-exp))
+		c := sql.DecimalCtx.WithPrecision(p)
+
+		lnBase := new(apd.Decimal)
+		_, err := c.Ln(lnBase, &base)
+		if err != nil {
+			return nil, err
+		}
+		if lnBase.IsZero() {
 			return nil, errors.Errorf("division by zero")
 		}
-		return decimal.NewFromFloat(logNum / logBase), nil
+
+		lnNum := new(apd.Decimal)
+		_, err = c.Ln(lnNum, &num)
+		if err != nil {
+			return nil, err
+		}
+		if lnNum.IsZero() {
+			return *apd.New(0, -16), nil
+		}
+
+		res := new(apd.Decimal)
+		_, err = c.Quo(res, lnNum, lnBase)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = c.Quantize(res, res, exp)
+		if err != nil {
+			return nil, err
+		}
+		return *res, nil
 	},
 }

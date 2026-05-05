@@ -15,10 +15,11 @@
 package cast
 
 import (
-	"github.com/cockroachdb/errors"
+	"math"
 
+	"github.com/cockroachdb/apd/v3"
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -75,14 +76,14 @@ func int64Implicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return decimal.NewFromInt(val.(int64)), nil
+			return pgtypes.GetNumericValueWithTypmod(*apd.New(val.(int64), 0), targetType.GetAttTypMod())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Oid,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
+			if val.(int64) > int64(math.MaxUint32) || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}
 			if internalID := id.Cache().ToInternal(uint32(val.(int64))); internalID.IsValid() {
@@ -95,7 +96,7 @@ func int64Implicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Regclass,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
+			if val.(int64) > int64(math.MaxUint32) || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}
 			if internalID := id.Cache().ToInternal(uint32(val.(int64))); internalID.IsValid() {
@@ -108,7 +109,7 @@ func int64Implicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Regproc,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
+			if val.(int64) > int64(math.MaxUint32) || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}
 			if internalID := id.Cache().ToInternal(uint32(val.(int64))); internalID.IsValid() {
@@ -121,7 +122,7 @@ func int64Implicit() {
 		FromType: pgtypes.Int64,
 		ToType:   pgtypes.Regtype,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			if val.(int64) > pgtypes.MaxUint32 || val.(int64) < 0 {
+			if val.(int64) > int64(math.MaxUint32) || val.(int64) < 0 {
 				return nil, errOutOfRange.New(targetType.String())
 			}
 			if internalID := id.Cache().ToInternal(uint32(val.(int64))); internalID.IsValid() {

@@ -17,9 +17,9 @@ package functions
 import (
 	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -71,29 +71,52 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 	Parameters: [4]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [5]*pgtypes.DoltgresType, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
-		operand := operandInterface.(decimal.Decimal)
-		low := lowInterface.(decimal.Decimal)
-		high := highInterface.(decimal.Decimal)
-		if low.Cmp(high) == 0 {
+		operand := operandInterface.(apd.Decimal)
+		low := lowInterface.(apd.Decimal)
+		high := highInterface.(apd.Decimal)
+		if low.Cmp(&high) == 0 {
 			return nil, errors.Errorf("lower bound cannot equal upper bound")
 		}
 		count := countInterface.(int32)
 		if count <= 0 {
 			return nil, errors.Errorf("count must be greater than zero")
 		}
-		if operand.Equal(high) {
+		if operand.Cmp(&high) == 0 {
 			return count + 1, nil
-		} else if operand.Equal(low) {
+		} else if operand.Cmp(&low) == 0 {
 			return int32(1), nil
 		}
-		bucket := high.Sub(low).Div(decimal.NewFromInt(int64(count)))
-		result := operand.Sub(low).Div(bucket).Ceil()
-		if result.LessThan(decimal.Zero) {
-			result = decimal.Zero
-		} else if result.GreaterThan(decimal.NewFromInt(int64(count + 1))) {
-			result = decimal.NewFromInt(int64(count + 1))
+		bucket := new(apd.Decimal)
+		_, err := sql.DecimalCtx.Sub(bucket, &high, &low)
+		if err != nil {
+			return nil, err
 		}
-		i64 := result.IntPart()
+		_, err = sql.DecimalCtx.Quo(bucket, bucket, apd.New(int64(count), 0))
+		if err != nil {
+			return nil, err
+		}
+		result := new(apd.Decimal)
+		_, err = sql.DecimalCtx.Sub(result, &operand, &low)
+		if err != nil {
+			return nil, err
+		}
+		_, err = sql.DecimalCtx.Sub(result, result, bucket)
+		if err != nil {
+			return nil, err
+		}
+		_, err = sql.DecimalCtx.Ceil(result, result)
+		if err != nil {
+			return nil, err
+		}
+		if result.Sign() < 0 {
+			result = apd.New(0, 0)
+		} else if c1 := apd.New(int64(count+1), 0); result.Cmp(c1) > 0 {
+			result = c1
+		}
+		i64, err := result.Int64()
+		if err != nil {
+			return nil, err
+		}
 		return int32(i64), nil
 	},
 }

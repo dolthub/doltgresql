@@ -17,8 +17,8 @@ package functions
 import (
 	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -47,10 +47,12 @@ var floor_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		dec := val.(apd.Decimal)
+		_, err := sql.DecimalCtx.Floor(&dec, &dec)
+		if err != nil {
+			return nil, err
 		}
-		return val1.(decimal.Decimal).Floor(), nil
+		return dec, nil
 	},
 }

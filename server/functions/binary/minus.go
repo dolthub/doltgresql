@@ -18,9 +18,9 @@ import (
 	"math"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
@@ -240,7 +240,13 @@ var numeric_sub = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return val1.(decimal.Decimal).Sub(val2.(decimal.Decimal)), nil
+		num1 := val1.(apd.Decimal)
+		num2 := val2.(apd.Decimal)
+		_, err := sql.DecimalCtx.Sub(&num1, &num1, &num2)
+		if err != nil {
+			return nil, err
+		}
+		return num1, nil
 	},
 }
 

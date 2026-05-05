@@ -17,9 +17,9 @@ package binary
 import (
 	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -225,7 +225,16 @@ var numeric_mul = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return val1.(decimal.Decimal).Mul(val2.(decimal.Decimal)), nil
+		num1 := val1.(apd.Decimal)
+		num2 := val2.(apd.Decimal)
+		if (num1.Form == apd.Infinite || num2.Form == apd.Infinite) && (num1.IsZero() || num2.IsZero()) {
+			return pgtypes.NumericNaN, nil
+		}
+		_, err := sql.DecimalCtx.Mul(&num1, &num1, &num2)
+		if err != nil {
+			return nil, err
+		}
+		return num1, nil
 	},
 }
 

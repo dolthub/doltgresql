@@ -17,9 +17,9 @@ package functions
 import (
 	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -34,8 +34,8 @@ func initPower() {
 var (
 	// errPowerZeroToNegative is an error for raising zero to a negative power in the "power" functions.
 	errPowerZeroToNegative = errors.New("zero raised to a negative power is undefined")
-	// numericOne is equivalent to decimal.NewFromInt(1), but represented as a value for the sake of efficiency.
-	numericOne = decimal.NewFromInt(1)
+	// numericOne is equivalent to apt.NewFromInt(1, 0), but represented as a value for the sake of efficiency.
+	numericOne = apd.New(1, 0)
 )
 
 // power_float64_float64 represents the PostgreSQL function of the same name, taking the same parameters.
@@ -61,22 +61,63 @@ var power_numeric_numeric = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		if val1 == nil || val2 == nil {
-			return nil, nil
+		dec1 := val1.(apd.Decimal)
+		dec2 := val2.(apd.Decimal)
+		if dec1.Form == apd.NaN || dec2.Form == apd.NaN {
+			return pgtypes.NumericNaN, nil
 		}
-		d1 := val1.(decimal.Decimal)
-		d2 := val2.(decimal.Decimal)
-		if d1.Equal(numericOne) {
-			return numericOne, nil
+		if dec1.Form == apd.Infinite && dec1.Negative {
+			even := dec2.Form == apd.Infinite && !dec2.Negative
+			if dec2.Form == apd.Finite {
+				i, err := dec2.Int64()
+				if err != nil {
+					return nil, errors.Errorf(`a negative number raised to a non-integer power yields a complex result`)
+				}
+				even = i%2 == 0
+			}
+
+			if dec2.Sign() > 0 {
+				// +inf will return neginf == fix!!
+				if even {
+					return pgtypes.NumericInf, nil
+				}
+				return pgtypes.NumericNegInf, nil
+			}
+			if (dec2.Form == apd.Infinite && dec2.Negative) || dec2.Sign() < 0 {
+				return *apd.New(0, 0), nil
+			}
+			return *apd.New(1, 0), nil
 		}
-		if d1.Equal(decimal.Zero) && d2.Cmp(decimal.Zero) == -1 {
-			return nil, errPowerZeroToNegative
+		if dec1.IsZero() {
+			if dec2.Sign() < 0 {
+				// includes neg inf
+				return nil, errPowerZeroToNegative
+			}
+			if dec2.Form == apd.Infinite {
+				return *apd.New(0, 0), nil
+			}
+			if dec2.Sign() > 0 {
+				d := *apd.New(0, 0)
+				_, _ = sql.DecimalCtx.Quantize(&d, &d, -16)
+				return d, nil
+			}
 		}
 		// decimal.Pow() does not handle the zero exponent properly, so we special case it
-		if d2.Equal(decimal.Zero) {
-			return numericOne, nil
+
+		if dec2.IsZero() || dec1.Cmp(numericOne) == 0 {
+			d := *apd.New(1, 0)
+			_, _ = sql.DecimalCtx.Quantize(&d, &d, -16)
+			return d, nil
 		}
-		// TODO: this doesn't handle non-integer exponents
-		return d1.Pow(d2), nil
+		// give enough precision that we can round it to 16 exp
+		_, err := sql.DecimalCtx.WithPrecision(17).Pow(&dec1, &dec1, &dec2)
+		if err != nil {
+			return nil, err
+		}
+		_, err = sql.DecimalCtx.Quantize(&dec1, &dec1, -16)
+		if err != nil {
+			return nil, err
+		}
+		return dec1, nil
 	},
 }

@@ -18,9 +18,9 @@ import (
 	"math"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
@@ -376,7 +376,25 @@ var interval_pl_timestamptz = framework.Function2{
 
 // numeric_add_callable is the callable logic for the numeric_add function.
 func numeric_add_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	return val1.(decimal.Decimal).Add(val2.(decimal.Decimal)), nil
+	num1 := val1.(apd.Decimal)
+	num2 := val2.(apd.Decimal)
+	if num1.Form == apd.NaN || num2.Form == apd.NaN ||
+		(num1.Form == apd.Infinite && num2.Form == apd.Infinite && num2.Negative) ||
+		(num2.Form == apd.Infinite && num1.Form == apd.Infinite && num1.Negative) {
+		return pgtypes.NumericNaN, nil
+	}
+	if num1.Form == apd.Infinite || num2.Form == apd.Infinite {
+		if num1.Negative || num2.Negative {
+			return pgtypes.NumericNegInf, nil
+		}
+		return pgtypes.NumericInf, nil
+	}
+
+	_, err := sql.DecimalCtx.Add(&num1, &num1, &num2)
+	if err != nil {
+		return nil, err
+	}
+	return num1, nil
 }
 
 // numeric_add represents the PostgreSQL function of the same name, taking the same parameters.

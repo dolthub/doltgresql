@@ -17,9 +17,9 @@ package cast
 import (
 	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -76,7 +76,12 @@ func float64Assignment() {
 		FromType: pgtypes.Float64,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return pgtypes.GetNumericValueWithTypmod(decimal.NewFromFloat(val.(float64)), targetType.GetAttTypMod())
+			d := new(apd.Decimal)
+			err := d.Scan(val.(float64))
+			if err != nil {
+				return nil, err
+			}
+			return pgtypes.GetNumericValueWithTypmod(*d, targetType.GetAttTypMod())
 		},
 	})
 }

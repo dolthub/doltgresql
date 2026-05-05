@@ -16,10 +16,11 @@ package functions
 
 import (
 	"math"
+	"strings"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -54,16 +55,34 @@ var ln_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
-		// TODO: add an actual ln for numerics rather than relying on float64
-		f, _ := val1.(decimal.Decimal).Float64()
-		if f == 0 {
+		dec := val1.(apd.Decimal)
+		if dec.Sign() == 0 {
 			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if f < 0 {
+		} else if dec.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
+		} else if dec.Form == apd.NaN || dec.Form == apd.Infinite {
+			return dec, nil
 		}
-		return decimal.NewFromFloat(math.Log(f)), nil
+
+		// TODO: calculate precision and scale accurately
+		s := dec.Text('f')
+		parts := strings.Split(s, ".")
+
+		exp := int32(-16)
+		if dec.Exponent < exp {
+			exp = dec.Exponent
+		}
+		p := uint32(len(parts[0]) + int(-exp))
+
+		c := sql.DecimalCtx.WithPrecision(p)
+		_, err := c.Ln(&dec, &dec)
+		if err != nil {
+			return nil, err
+		}
+		_, err = c.Quantize(&dec, &dec, exp)
+		if err != nil {
+			return nil, err
+		}
+		return dec, nil
 	},
 }
