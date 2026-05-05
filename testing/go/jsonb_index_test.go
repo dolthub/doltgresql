@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -68,12 +69,59 @@ var jsonbLexicalOrder = []string{
 	`true`,
 }
 
+// jsonbExpectedOutput is the JSONB-normalized text representation of each value in
+// jsonbLexicalOrder.  Keys in objects are sorted by length then lexicographically;
+// objects and arrays use a space after each ':' and ','.
+var jsonbExpectedOutput = []string{
+	`null`,
+	`-1`,
+	`0`,
+	`1`,
+	`2`,
+	`3.14`,
+	`42`,
+	`100`,
+	`9999`,
+	`"a"`,
+	`"ab"`,
+	`"abc"`,
+	`"b"`,
+	`"foo"`,
+	`"hello"`,
+	`"hello world"`,
+	`"longer string value"`,
+	`"z"`,
+	`{}`,
+	`{"a": 1}`,
+	`{"a": {"b": {"c": 1}}}`,
+	`{"aa": 1}`,
+	`{"b": 2}`,
+	`{"x": {"y": 1}}`,
+	`{"z": null}`,
+	`{"a": 1, "b": 2}`,
+	`{"name": "test", "value": 42}`,
+	`{"a": 1, "b": 2, "c": 3}`,
+	`[]`,
+	`[null]`,
+	`[1]`,
+	`[1, 2]`,
+	`[1, 2, 3]`,
+	`["a"]`,
+	`["a", "b", "c"]`,
+	`[[1, 2], [3, 4]]`,
+	`[false]`,
+	`[true]`,
+	`false`,
+	`true`,
+}
+
 // TestJsonBPairwiseLessThan walks jsonbLexicalOrder and asserts that every
 // consecutive pair satisfies the < operator: SELECT 'a'::jsonb < 'b'::jsonb = t.
-// A failure here means either the comparison order table above is wrong, or the
-// < operator does not implement a valid total order on those values.
+// It also inserts all values into an indexed JSONB column and verifies that
+// ORDER BY returns them in exactly the same order.
 func TestJsonBPairwiseLessThan(t *testing.T) {
-	assertions := make([]ScriptTestAssertion, 0, len(jsonbLexicalOrder)-1)
+	// 39 pairwise < assertions
+	assertions := make([]ScriptTestAssertion, 0, len(jsonbLexicalOrder))
 	for i := 0; i < len(jsonbLexicalOrder)-1; i++ {
 		a, b := jsonbLexicalOrder[i], jsonbLexicalOrder[i+1]
 		assertions = append(assertions, ScriptTestAssertion{
@@ -81,9 +129,31 @@ func TestJsonBPairwiseLessThan(t *testing.T) {
 			Expected: []sql.Row{{"t"}},
 		})
 	}
+
+	// ORDER BY assertion: index scan must return rows in the same order
+	orderByExpected := make([]sql.Row, len(jsonbExpectedOutput))
+	for i, v := range jsonbExpectedOutput {
+		orderByExpected[i] = sql.Row{v}
+	}
+	assertions = append(assertions, ScriptTestAssertion{
+		Query:    `SELECT val FROM jorder ORDER BY val`,
+		Expected: orderByExpected,
+	})
+
+	// Build the VALUES list for the INSERT
+	vals := make([]string, len(jsonbLexicalOrder))
+	for i, v := range jsonbLexicalOrder {
+		vals[i] = `('` + v + `')`
+	}
+
 	RunScriptsWithoutNormalization(t, []ScriptTest{
 		{
-			Name:       "JSONB pairwise less-than along lexical order",
+			Name: "JSONB pairwise less-than along lexical order",
+			SetUpScript: []string{
+				`CREATE TABLE jorder (val JSONB NOT NULL)`,
+				`CREATE INDEX jorder_val_idx ON jorder (val)`,
+				`INSERT INTO jorder (val) VALUES ` + strings.Join(vals, ", "),
+			},
 			Assertions: assertions,
 		},
 	})
