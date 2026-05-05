@@ -70,10 +70,8 @@ var jsonbLexicalOrder = []string{
 }
 
 // jsonbExpectedOutput is the JSONB-normalized text representation of each value in
-// jsonbLexicalOrder.  Keys in objects are sorted by length then lexicographically;
-// objects and arrays use a space after each ':' and ','.
+// jsonbLexicalOrder.
 var jsonbExpectedOutput = []string{
-	`null`,
 	`-1`,
 	`0`,
 	`1`,
@@ -113,6 +111,7 @@ var jsonbExpectedOutput = []string{
 	`[true]`,
 	`false`,
 	`true`,
+	`null`,
 }
 
 // TestJsonBPairwiseLessThan walks jsonbLexicalOrder and asserts that every
