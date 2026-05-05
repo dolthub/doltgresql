@@ -3850,6 +3850,27 @@ var enumTypeTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "btree index scan on enum column returns correct rows",
+		SetUpScript: []string{
+			`CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple')`,
+			`CREATE TABLE enumtest (col rainbow)`,
+			`INSERT INTO enumtest VALUES ('red'), ('orange'), ('yellow'), ('green')`,
+			`CREATE UNIQUE INDEX enumtest_btree ON enumtest USING btree (col)`,
+			// Force the planner to use the btree index rather than a sequential scan.
+			`SET enable_seqscan = off`,
+			`SET enable_bitmapscan = off`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: `SELECT * FROM enumtest WHERE col = 'orange'`, Expected: []sql.Row{{"orange"}}},
+			{
+				Query: `SELECT * FROM enumtest WHERE col > 'orange' ORDER BY col`,
+				// Enum values sort by their position in the type definition, not alphabetically.
+				Expected: []sql.Row{{"yellow"}, {"green"}},
+			},
+			{Query: `SELECT * FROM enumtest WHERE col < 'orange' ORDER BY col`, Expected: []sql.Row{{"red"}}},
+		},
+	},
+	{
 		Skip: true,
 		Name: "create type with existing array type name updates the name of the array type",
 		Assertions: []ScriptTestAssertion{
