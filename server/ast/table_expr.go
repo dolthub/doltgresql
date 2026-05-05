@@ -15,6 +15,8 @@
 package ast
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/errors"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -99,12 +101,55 @@ func nodeTableExpr(ctx *Context, node tree.TableExpr) (vitess.TableExpr, error) 
 			Exprs: vitess.TableExprs{tableExpr},
 		}, nil
 	case *tree.RowsFromExpr:
+		// Handle multi-argument UNNEST specially: UNNEST(arr1, arr2, ...)
+		// is syntactic sugar for ROWS FROM(unnest(arr1), unnest(arr2), ...)
+		if len(node.Items) == 1 {
+			if funcExpr, ok := node.Items[0].(*tree.FuncExpr); ok {
+				funcName := funcExpr.Func.String()
+				if strings.EqualFold(funcName, "unnest") && len(funcExpr.Exprs) > 1 {
+					// Expand multi-arg UNNEST into separate unnest calls
+					selectExprs := make(vitess.SelectExprs, len(funcExpr.Exprs))
+					for i, arg := range funcExpr.Exprs {
+						argExpr, err := nodeExpr(ctx, arg)
+						if err != nil {
+							return nil, err
+						}
+						selectExprs[i] = &vitess.AliasedExpr{
+							Expr: &vitess.FuncExpr{
+								Name:  vitess.NewColIdent("unnest"),
+								Exprs: vitess.SelectExprs{&vitess.AliasedExpr{Expr: argExpr}},
+							},
+						}
+					}
+					return &vitess.TableFuncExpr{
+						Exprs: selectExprs,
+					}, nil
+				}
+			}
+		}
+
+		// For explicit ROWS FROM with multiple functions, use TableFuncExpr (nameless)
+		// This handles: ROWS FROM(generate_series(1,3), generate_series(10,12))
+		if len(node.Items) > 1 {
+			selectExprs := make(vitess.SelectExprs, len(node.Items))
+			for i, item := range node.Items {
+				expr, err := nodeExpr(ctx, item)
+				if err != nil {
+					return nil, err
+				}
+				selectExprs[i] = &vitess.AliasedExpr{Expr: expr}
+			}
+			return &vitess.TableFuncExpr{
+				Exprs: selectExprs,
+			}, nil
+		}
+
+		// For single functions, use the original ValuesStatement approach
+		// which works with the existing table function infrastructure
 		exprs, err := nodeExprs(ctx, node.Items)
 		if err != nil {
 			return nil, err
 		}
-		//TODO: not sure if this is correct at all. I think we want to return one result per row, but maybe not.
-		// This needs to be tested to verify.
 		rows := make([]vitess.ValTuple, len(exprs))
 		for i := range exprs {
 			rows[i] = vitess.ValTuple{exprs[i]}

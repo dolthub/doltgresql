@@ -293,5 +293,27 @@ ON CONFLICT (id) do update set c1 = $4`,
 				},
 			},
 		},
+		{
+			Name: "insert from unnest",
+			SetUpScript: []string{
+				`CREATE TABLE "django_content_type" (id serial primary key, app_label varchar, model varchar)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `INSERT INTO "django_content_type" ("app_label", "model")
+SELECT * FROM UNNEST(('{debug_app,debug_app}')::varchar[],
+                     ('{debugmodel1,debugmodel2}')::varchar[])
+RETURNING "django_content_type"."id"`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query: `SELECT "app_label", "model" FROM "django_content_type" ORDER BY "id"`,
+					Expected: []sql.Row{
+						{"debug_app", "debugmodel1"},
+						{"debug_app", "debugmodel2"},
+					},
+				},
+			},
+		},
 	})
 }
