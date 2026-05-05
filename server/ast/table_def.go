@@ -61,6 +61,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 				return err
 			}
 			target.TableSpec.Constraints = append(target.TableSpec.Constraints, &vitess.ConstraintDefinition{
+				Name:    string(node.References.ConstraintName),
 				Details: fkDef,
 			})
 		}

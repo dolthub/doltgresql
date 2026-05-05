@@ -245,7 +245,10 @@ func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, table
 		if err != nil {
 			return nil, err
 		}
-		tableSpec.AddConstraint(&vitess.ConstraintDefinition{Details: constraintDef})
+		tableSpec.AddConstraint(&vitess.ConstraintDefinition{
+			Name:    string(node.ColumnDef.References.ConstraintName),
+			Details: constraintDef,
+		})
 	}
 
 	return &vitess.DDL{
