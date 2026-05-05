@@ -17,11 +17,8 @@ package pgcatalog
 import (
 	"io"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -29,6 +26,12 @@ import (
 
 // PgTablesName is a constant to the pg_tables name.
 const PgTablesName = "pg_tables"
+
+// pgTableRow stores the data needed for a row in pg_tables: the table data and the schema it exists in.
+type pgTableRow struct {
+	Table       sql.Table
+	TableSchema string
+}
 
 // InitPgTables handles registration of the pg_tables handler.
 func InitPgTables() {
@@ -46,7 +49,7 @@ func (p PgTablesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
+func (p PgTablesHandler) RowIter(ctx *sql.Context, _ sql.Partition) (sql.RowIter, error) {
 	// Use cached data from this process if it exists
 	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
@@ -54,13 +57,14 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql
 	}
 
 	if pgCatalogCache.tables == nil {
-		var tables []sql.Table
-		var tableSchemas []string
-		// TODO: This should include a few information_schema tables
+		var tables []pgTableRow
+		// TODO: This should include information_schema tables
+		// TODO: However, information schema is currently incorrect for Doltgres, so we exclude it.
 		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
-				tables = append(tables, table.Item)
-				tableSchemas = append(tableSchemas, schema.Item.SchemaName())
+				if schema.Item.SchemaName() != sql.InformationSchemaDatabaseName {
+					tables = append(tables, pgTableRow{table.Item, schema.Item.SchemaName()})
+				}
 				return true, nil
 			},
 		})
@@ -68,25 +72,11 @@ func (p PgTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql
 			return nil, err
 		}
 
-		if includeSystemTables {
-			_, root, err := core.GetRootFromContext(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			systemTables, err := resolve.GetGeneratedSystemTables(ctx, root)
-			if err != nil {
-				return nil, err
-			}
-			pgCatalogCache.systemTables = systemTables
-		}
-
 		pgCatalogCache.tables = tables
 	}
 
 	return &pgTablesRowIter{
-		userTables:       pgCatalogCache.tables,
-		systemTableNames: pgCatalogCache.systemTables,
+		tables: pgCatalogCache.tables,
 	}, nil
 }
 
@@ -112,11 +102,9 @@ var pgTablesSchema = sql.Schema{
 
 // pgTablesRowIter is the sql.RowIter for the pg_tables table.
 type pgTablesRowIter struct {
-	// userTable are the set of user-defined tables
-	userTables []sql.Table
-	// systemTableNames is the names of all system tables
-	systemTableNames []doltdb.TableName
-	// idx is the current index in the iteration through both slices
+	// tables are the set of tables and the name of the schema they belong in
+	tables []pgTableRow
+	// idx is the current index in the iteration through the above slice
 	idx int
 }
 
@@ -124,43 +112,27 @@ var _ sql.RowIter = (*pgTablesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	if iter.idx >= len(iter.userTables)+len(iter.systemTableNames) {
+	if iter.idx >= len(iter.tables) {
 		return nil, io.EOF
 	}
 	defer func() {
 		iter.idx++
 	}()
 
-	var tableName string
+	table := iter.tables[iter.idx].Table
+	schema := iter.tables[iter.idx].TableSchema
+	tableName := table.Name()
+
 	var hasIndexes bool
-	var schema string
-
-	if iter.idx < len(iter.userTables) {
-		table := iter.userTables[iter.idx]
-
-		switch table := table.(type) {
-		case sql.DatabaseSchemaTable:
-			schema = table.DatabaseSchema().SchemaName()
-		default:
-			schema = "information_schema"
+	if it, ok := table.(sql.IndexAddressable); ok {
+		idxs, err := it.GetIndexes(ctx)
+		if err != nil {
+			return nil, err
 		}
 
-		tableName = table.Name()
-
-		if it, ok := table.(sql.IndexAddressable); ok {
-			idxs, err := it.GetIndexes(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			if len(idxs) > 0 {
-				hasIndexes = true
-			}
+		if len(idxs) > 0 {
+			hasIndexes = true
 		}
-	} else {
-		tblName := iter.systemTableNames[iter.idx-len(iter.userTables)]
-		tableName = tblName.Name
-		schema = tblName.Schema
 	}
 
 	return sql.Row{

@@ -1,0 +1,7 @@
+# Doltgresql versions to test backward compatibility against.
+# Current HEAD must be able to read and write repos created by these older versions.
+# Format: one version tag per line, e.g. v0.8.0
+# Keep this list reasonably short; each entry downloads a binary and runs the full
+# test suite, so CI time grows linearly.
+v0.55.0
+v0.51.0

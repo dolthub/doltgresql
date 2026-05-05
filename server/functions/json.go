@@ -60,7 +60,10 @@ func json_in_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (an
 	var jsonVal any
 	err := json.Unmarshal(unsafe.Slice(unsafe.StringData(input), len(input)), &jsonVal)
 	if err != nil {
-		return nil, pgtypes.ErrInvalidSyntaxForType.New("json", input[:10]+"...")
+		if len(input) > 10 {
+			input = input[:10] + "..."
+		}
+		return nil, pgtypes.ErrInvalidSyntaxForType.New("json", input)
 	}
 	return types.JSONDocument{Val: jsonVal}, nil
 }

@@ -337,6 +337,8 @@ func GetSequencesCollectionFromContext(ctx *sql.Context, database string) (*sequ
 	}
 	if cv.seqs == nil {
 		cv.seqs = make(map[string]*sequences.Collection)
+	}
+	if cv.seqs[database] == nil {
 		_, root, err := getRootFromContextForDatabase(ctx, database)
 		if err != nil {
 			return nil, err
@@ -430,7 +432,7 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 			return err
 		}
 		newRoot = retRoot.(*RootValue)
-		cv.seqs = nil
+		delete(cv.seqs, db)
 	}
 
 	if cv.funcs != nil && cv.funcs.DiffersFrom(ctx, root) {

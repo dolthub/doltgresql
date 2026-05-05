@@ -102,7 +102,7 @@ func (sqlFunc SQLFunction) enforceInterfaceInheritance(error) {}
 func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner, args []any) (any, error) {
 	paramMap := make(map[string]*ParamTypAndValue)
 	for i, name := range f.ParameterNames {
-		formattedVar, err := f.ParameterTypes[i].FormatValue(args[i])
+		formattedVar, err := f.ParameterTypes[i].FormatValueWithContext(ctx, args[i])
 		if err != nil {
 			return nil, err
 		}

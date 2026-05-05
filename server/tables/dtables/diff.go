@@ -31,6 +31,9 @@ func getUnscopedDoltDiffSchema(dbName, tableName string) sql.Schema {
 		{Name: "message", Type: pgtypes.Text, Source: tableName, PrimaryKey: false, DatabaseSource: dbName},
 		{Name: "data_change", Type: pgtypes.Bool, Source: tableName, PrimaryKey: false, DatabaseSource: dbName},
 		{Name: "schema_change", Type: pgtypes.Bool, Source: tableName, PrimaryKey: false, DatabaseSource: dbName},
+		{Name: "author", Type: pgtypes.Text, Source: tableName, PrimaryKey: false, DatabaseSource: dbName},
+		{Name: "author_email", Type: pgtypes.Text, Source: tableName, PrimaryKey: false, DatabaseSource: dbName},
+		{Name: "author_date", Type: pgtypes.Timestamp, Source: tableName, PrimaryKey: false, DatabaseSource: dbName},
 	}
 }
 
