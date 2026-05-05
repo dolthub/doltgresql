@@ -89,12 +89,12 @@ func (db *Database) deserializeV0(reader *utils.Reader) error {
 	db.schemaPrivileges.deserialize(0, reader)
 	// Read the table privileges
 	db.tablePrivileges.deserialize(0, reader)
-	// Read the role chain
-	db.roleMembership.deserialize(0, reader)
-	// Read the routine privileges
-	db.routinePrivileges.deserialize(0, reader)
 	// Read the sequence privileges
 	db.sequencePrivileges.deserialize(0, reader)
+	// Read the routine privileges
+	db.routinePrivileges.deserialize(0, reader)
+	// Read the role membership
+	db.roleMembership.deserialize(0, reader)
 	return nil
 }
 
@@ -116,11 +116,11 @@ func (db *Database) deserializeV1(reader *utils.Reader) error {
 	db.schemaPrivileges.deserialize(1, reader)
 	// Read the table privileges
 	db.tablePrivileges.deserialize(1, reader)
-	// Read the role chain
-	db.roleMembership.deserialize(1, reader)
-	// Read the routine privileges
-	db.routinePrivileges.deserialize(1, reader)
 	// Read the sequence privileges
 	db.sequencePrivileges.deserialize(1, reader)
+	// Read the routine privileges
+	db.routinePrivileges.deserialize(1, reader)
+	// Read the role membership
+	db.roleMembership.deserialize(1, reader)
 	return nil
 }
