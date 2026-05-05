@@ -87,24 +87,24 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 			return int32(1), nil
 		}
 		bucket := new(apd.Decimal)
-		_, err := pgtypes.BaseContext.Sub(bucket, &high, &low)
+		_, err := sql.DecimalCtx.Sub(bucket, &high, &low)
 		if err != nil {
 			return nil, err
 		}
-		_, err = pgtypes.BaseContext.Quo(bucket, bucket, apd.New(int64(count), 0))
+		_, err = sql.DecimalCtx.Quo(bucket, bucket, apd.New(int64(count), 0))
 		if err != nil {
 			return nil, err
 		}
 		result := new(apd.Decimal)
-		_, err = pgtypes.BaseContext.Sub(result, &operand, &low)
+		_, err = sql.DecimalCtx.Sub(result, &operand, &low)
 		if err != nil {
 			return nil, err
 		}
-		_, err = pgtypes.BaseContext.Sub(result, result, bucket)
+		_, err = sql.DecimalCtx.Sub(result, result, bucket)
 		if err != nil {
 			return nil, err
 		}
-		_, err = pgtypes.BaseContext.Ceil(result, result)
+		_, err = sql.DecimalCtx.Ceil(result, result)
 		if err != nil {
 			return nil, err
 		}

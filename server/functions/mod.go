@@ -96,8 +96,7 @@ var mod_numeric_numeric = framework.Function2{
 		if num2.Form == apd.Infinite {
 			return *apd.New(0, 0), nil
 		}
-		c := apd.BaseContext.WithPrecision(1000000)
-		_, err := c.Rem(&num1, &num1, &num2)
+		_, err := sql.HighPrecisionCtx.Rem(&num1, &num1, &num2)
 		if err != nil {
 			return nil, err
 		}

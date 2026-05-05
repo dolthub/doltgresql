@@ -60,6 +60,8 @@ var ln_numeric = framework.Function1{
 			return nil, errors.Errorf("cannot take logarithm of zero")
 		} else if dec.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
+		} else if dec.Form == apd.NaN || dec.Form == apd.Infinite {
+			return dec, nil
 		}
 
 		// TODO: calculate precision and scale accurately
@@ -72,7 +74,7 @@ var ln_numeric = framework.Function1{
 		}
 		p := uint32(len(parts[0]) + int(-exp))
 
-		c := apd.BaseContext.WithPrecision(p)
+		c := sql.DecimalCtx.WithPrecision(p)
 		_, err := c.Ln(&dec, &dec)
 		if err != nil {
 			return nil, err

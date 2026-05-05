@@ -34,7 +34,7 @@ func initPower() {
 var (
 	// errPowerZeroToNegative is an error for raising zero to a negative power in the "power" functions.
 	errPowerZeroToNegative = errors.New("zero raised to a negative power is undefined")
-	// numericOne is equivalent to decimal.NewFromInt(1), but represented as a value for the sake of efficiency.
+	// numericOne is equivalent to apt.NewFromInt(1, 0), but represented as a value for the sake of efficiency.
 	numericOne = apd.New(1, 0)
 )
 
@@ -98,7 +98,7 @@ var power_numeric_numeric = framework.Function2{
 			}
 			if dec2.Sign() > 0 {
 				d := *apd.New(0, 0)
-				_, _ = pgtypes.BaseContext.Quantize(&d, &d, -16)
+				_, _ = sql.DecimalCtx.Quantize(&d, &d, -16)
 				return d, nil
 			}
 		}
@@ -106,15 +106,15 @@ var power_numeric_numeric = framework.Function2{
 
 		if dec2.IsZero() || dec1.Cmp(numericOne) == 0 {
 			d := *apd.New(1, 0)
-			_, _ = pgtypes.BaseContext.Quantize(&d, &d, -16)
+			_, _ = sql.DecimalCtx.Quantize(&d, &d, -16)
 			return d, nil
 		}
 		// give enough precision that we can round it to 16 exp
-		_, err := pgtypes.BaseContext.WithPrecision(17).Pow(&dec1, &dec1, &dec2)
+		_, err := sql.DecimalCtx.WithPrecision(17).Pow(&dec1, &dec1, &dec2)
 		if err != nil {
 			return nil, err
 		}
-		_, err = pgtypes.BaseContext.Quantize(&dec1, &dec1, -16)
+		_, err = sql.DecimalCtx.Quantize(&dec1, &dec1, -16)
 		if err != nil {
 			return nil, err
 		}

@@ -278,7 +278,7 @@ func numericFloor(val any) (apd.Decimal, error) {
 	if err != nil {
 		return apd.Decimal{}, err
 	}
-	_, err = pgtypes.BaseContext.Floor(dec, dec)
+	_, err = sql.DecimalCtx.Floor(dec, dec)
 	if err != nil {
 		return apd.Decimal{}, err
 	}

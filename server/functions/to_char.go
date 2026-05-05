@@ -138,7 +138,7 @@ var to_char_numeric_text = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		//timestamp := val1.(decimal.Decimal)
+		//timestamp := val1.(apd.Decimal)
 		//format := val2.(string)
 
 		return nil, errors.Errorf(`to_char(numeric,text) is not supported yet`)

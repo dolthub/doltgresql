@@ -242,7 +242,7 @@ var numeric_sub = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		num1 := val1.(apd.Decimal)
 		num2 := val2.(apd.Decimal)
-		_, err := pgtypes.BaseContext.Sub(&num1, &num1, &num2)
+		_, err := sql.DecimalCtx.Sub(&num1, &num1, &num2)
 		if err != nil {
 			return nil, err
 		}

@@ -302,7 +302,7 @@ func numeric(val any, setScale bool, scale int32) (apd.Decimal, error) {
 		return apd.Decimal{}, err
 	}
 	if setScale {
-		_, err = pgtypes.BaseContext.Quantize(dec, dec, -scale)
+		_, err = sql.DecimalCtx.Quantize(dec, dec, -scale)
 		if err != nil {
 			return apd.Decimal{}, err
 		}

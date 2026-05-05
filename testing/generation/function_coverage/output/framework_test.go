@@ -246,7 +246,7 @@ func Numeric(str string) pgtype.Numeric {
 	return numeric
 }
 
-// NumericToDecimal converts a pgtype.Numeric value to a decimal.Decimal value.
+// NumericToDecimal converts a pgtype.Numeric value to a apd.Decimal value.
 func NumericToDecimal(val pgtype.Numeric) apd.Decimal {
 	if val.NaN {
 		return pgtypes.NumericNaN
@@ -297,7 +297,7 @@ func CompareRows(t *testing.T, a sql.Row, b sql.Row) bool {
 			case pgtype.Numeric:
 				aDec := NumericToDecimal(aVal.(pgtype.Numeric))
 				bDec := NumericToDecimal(bVal.(pgtype.Numeric))
-				_, err := pgtypes.BaseContext.Sub(&aDec, &aDec, &bDec)
+				_, err := sql.DecimalCtx.Sub(&aDec, &aDec, &bDec)
 				if err != nil {
 					return false
 				}

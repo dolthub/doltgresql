@@ -230,7 +230,7 @@ var numeric_mul = framework.Function2{
 		if (num1.Form == apd.Infinite || num2.Form == apd.Infinite) && (num1.IsZero() || num2.IsZero()) {
 			return pgtypes.NumericNaN, nil
 		}
-		_, err := pgtypes.BaseContext.Mul(&num1, &num1, &num2)
+		_, err := sql.DecimalCtx.Mul(&num1, &num1, &num2)
 		if err != nil {
 			return nil, err
 		}

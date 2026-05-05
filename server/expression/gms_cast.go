@@ -25,7 +25,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/shopspring/decimal"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -123,11 +122,11 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		dec, ok := newVal.(decimal.Decimal)
+		dec, ok := newVal.(apd.Decimal)
 		if !ok {
-			return nil, errors.Errorf("GMSCast expected type `decimal.Decimal`, got `%T`", val)
+			return nil, errors.Errorf("GMSCast expected type `apd.Decimal`, got `%T`", val)
 		}
-		return *apd.New(dec.CoefficientInt64(), dec.Exponent()), nil
+		return dec, nil
 	case query.Type_FLOAT32:
 		newVal, _, err := types.Float32.Convert(ctx, val)
 		if err != nil {
@@ -151,11 +150,11 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		dec, ok := newVal.(decimal.Decimal)
+		dec, ok := newVal.(apd.Decimal)
 		if !ok {
-			return nil, errors.Errorf("GMSCast expected type `decimal.Decimal`, got `%T`", val)
+			return nil, errors.Errorf("GMSCast expected type `apd.Decimal`, got `%T`", val)
 		}
-		return *apd.New(dec.CoefficientInt64(), dec.Exponent()), nil
+		return dec, nil
 	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
 		if val, ok := val.(time.Time); ok {
 			return val, nil

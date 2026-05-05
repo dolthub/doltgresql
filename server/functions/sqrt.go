@@ -74,7 +74,7 @@ var sqrt_numeric = framework.Function1{
 			p += uint32(-exp)
 		}
 
-		c := apd.BaseContext.WithPrecision(p)
+		c := sql.DecimalCtx.WithPrecision(p)
 		_, err := c.Sqrt(&dec, &dec)
 		if err != nil {
 			return nil, err

@@ -69,7 +69,7 @@ var log_numeric = framework.Function1{
 		if dec.Exponent < 0 {
 			p += uint32(-dec.Exponent)
 		}
-		c := apd.BaseContext.WithPrecision(p)
+		c := sql.DecimalCtx.WithPrecision(p)
 		_, err := c.Log10(&dec, &dec)
 		if err != nil {
 			return nil, err
@@ -103,7 +103,7 @@ var log_numeric_numeric = framework.Function2{
 			exp = int32(minExp)
 		}
 		p := uint32(int32(math.Max(float64(len(partsNum[0])), float64(len(partsBase[0])))) + (-exp))
-		c := apd.BaseContext.WithPrecision(p)
+		c := sql.DecimalCtx.WithPrecision(p)
 
 		lnBase := new(apd.Decimal)
 		_, err := c.Ln(lnBase, &base)

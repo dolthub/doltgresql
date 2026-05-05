@@ -843,12 +843,6 @@ func NormalizeIntsAndFloats(v any) any {
 
 // Numeric creates a numeric value from a string.
 func Numeric(str string) pgtype.Numeric {
-	//// 250.0 != 250 and 42.90 != 42.9, so we trim all trailing fractional zeroes (and decimal if no fractional zeroes)
-	//// to ensure that the input strings are homogenized, which will give us comparable representations for the same value
-	//if idx := strings.Index(str, "."); idx != -1 {
-	//	str = strings.TrimRight(str, "0")
-	//}
-	//str = strings.TrimRight(str, ".")
 	numeric := pgtype.Numeric{}
 	if err := numeric.Scan(str); err != nil {
 		panic(err)

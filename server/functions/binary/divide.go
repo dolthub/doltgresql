@@ -284,39 +284,39 @@ var interval_div = framework.Function2{
 	Callable:   interval_div_callable,
 }
 
+// numeric_div_callable is the callable logic for the numeric_div function.
+func numeric_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	num1 := val1.(apd.Decimal)
+	num2 := val2.(apd.Decimal)
+	if num1.Form == apd.NaN || num2.Form == apd.NaN ||
+		(num1.Form == apd.Infinite && num2.Form == apd.Infinite) {
+		return pgtypes.NumericNaN, nil
+	}
+	if num2.IsZero() {
+		return nil, errors.Errorf("division by zero")
+	}
+	if num1.Form == apd.Infinite {
+		return num1, nil
+	}
+	if num2.Form == apd.Infinite {
+		return *apd.New(0, 0), nil
+	}
+	_, err := sql.HighPrecisionCtx.Quo(&num1, &num1, &num2)
+	if err != nil {
+		return nil, err
+	}
+	_, err = sql.DecimalCtx.Quantize(&num1, &num1, -16)
+	if err != nil {
+		return nil, err
+	}
+	return num1, nil
+}
+
 // numeric_div represents the PostgreSQL function of the same name, taking the same parameters.
 var numeric_div = framework.Function2{
 	Name:       "numeric_div",
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		num1 := val1.(apd.Decimal)
-		num2 := val2.(apd.Decimal)
-		if num1.Form == apd.NaN || num2.Form == apd.NaN ||
-			(num1.Form == apd.Infinite && num2.Form == apd.Infinite) {
-			return pgtypes.NumericNaN, nil
-		}
-		if num2.IsZero() {
-			return nil, errors.Errorf("division by zero")
-		}
-		if num1.Form == apd.Infinite {
-			return num1, nil
-		}
-		if num2.Form == apd.Infinite {
-			return *apd.New(0, 0), nil
-		}
-		// TODO: calculate precision and scale accurately
-		c := apd.BaseContext.WithPrecision(1000000)
-		_, err := c.QuoInteger(&num1, &num1, &num2)
-		if err != nil {
-			return nil, err
-		}
-		_, err = c.Quantize(&num1, &num1, -16)
-		if err != nil {
-			return nil, err
-		}
-
-		return num1, nil
-	},
+	Callable:   numeric_div_callable,
 }

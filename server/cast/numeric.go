@@ -17,8 +17,8 @@ package cast
 import (
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
-
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -37,13 +37,10 @@ func numericAssignment() {
 		ToType:   pgtypes.Int16,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(apd.Decimal)
-			if d.Cmp(pgtypes.NumericValueMinInt16) < 0 || d.Cmp(pgtypes.NumericValueMaxInt16) > 0 {
+			if d.Cmp(&pgtypes.NumericValueMinInt16) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt16) > 0 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "smallint out of range")
 			}
-			i, err := d.Int64()
-			if err != nil {
-				return nil, err
-			}
+			i := types.DecimalIntPart(d)
 			return int16(i), nil
 		},
 	})
@@ -52,13 +49,10 @@ func numericAssignment() {
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(apd.Decimal)
-			if d.Cmp(pgtypes.NumericValueMinInt32) < 0 || d.Cmp(pgtypes.NumericValueMaxInt32) > 0 {
+			if d.Cmp(&pgtypes.NumericValueMinInt32) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt32) > 0 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "integer out of range")
 			}
-			i, err := d.Int64()
-			if err != nil {
-				return nil, err
-			}
+			i := types.DecimalIntPart(d)
 			return int32(i), nil
 		},
 	})
@@ -67,14 +61,10 @@ func numericAssignment() {
 		ToType:   pgtypes.Int64,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
 			d := val.(apd.Decimal)
-			if d.Cmp(pgtypes.NumericValueMinInt64) < 0 || d.Cmp(pgtypes.NumericValueMaxInt64) > 0 {
+			if d.Cmp(&pgtypes.NumericValueMinInt64) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt64) > 0 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "bigint out of range")
 			}
-			i, err := d.Int64()
-			if err != nil {
-				return nil, err
-			}
-			return int64(i), nil
+			return types.DecimalIntPart(d), nil
 		},
 	})
 }

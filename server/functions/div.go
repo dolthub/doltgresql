@@ -50,9 +50,7 @@ var div_numeric = framework.Function2{
 		if num2.Form == apd.Infinite {
 			return *apd.New(0, 0), nil
 		}
-		// TODO: calculate precision and scale accurately
-		c := apd.BaseContext.WithPrecision(1000000)
-		_, err := c.QuoInteger(&num1, &num1, &num2)
+		_, err := sql.DecimalCtx.QuoInteger(&num1, &num1, &num2)
 		if err != nil {
 			return nil, err
 		}

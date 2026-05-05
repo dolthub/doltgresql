@@ -188,9 +188,8 @@ func numericGenerateSeries(start, stop, step apd.Decimal) (*pgtypes.SetReturning
 	}
 	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 		defer func() {
-			_, err := pgtypes.BaseContext.Add(&start, &start, &step)
+			_, err := sql.DecimalCtx.Add(&start, &start, &step)
 			if err != nil {
-				// TODO
 				panic(err)
 			}
 		}()
