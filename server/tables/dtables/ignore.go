@@ -60,7 +60,7 @@ func convertTupleToIgnoreBoolean(ctx context.Context, valueDesc *val.TupleDesc, 
 
 // getIgnoreTablePatternKey reads the pattern key from a tuple and returns it.
 func getIgnoreTablePatternKey(ctx context.Context, keyDesc *val.TupleDesc, keyTuple val.Tuple) (string, error) {
-	key, ok, err := keyDesc.GetStringAdaptiveValue(0, nil, keyTuple)
+	key, ok, err := keyDesc.GetStringAdaptiveValue(ctx, 0, nil, keyTuple)
 	if err != nil {
 		return "", err
 	}

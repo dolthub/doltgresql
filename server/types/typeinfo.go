@@ -70,7 +70,7 @@ func (t typeInfo) Encoding() val.Encoding {
 	case "bytea":
 		return val.BytesAdaptiveEnc
 	case "json", "jsonb":
-		return val.JSONAddrEnc
+		return val.JsonAdaptiveEnc
 	case "xid":
 		return val.Uint32Enc
 		// TODO: uuid is represented as a uuid.Uuid in doltgres, but dolt wants []byte for BytesAdaptiveEnc
