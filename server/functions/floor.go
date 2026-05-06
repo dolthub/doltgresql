@@ -49,9 +49,16 @@ var floor_numeric = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		dec := val.(apd.Decimal)
-		_, err := sql.DecimalCtx.Floor(&dec, &dec)
+		newDecimalCtx := *sql.DecimalCtx
+		newDecimalCtx.Rounding = apd.RoundFloor
+
+		_, err := newDecimalCtx.Floor(&dec, &dec)
 		if err != nil {
 			return nil, err
+		}
+		// floor(-0.1) returns -0, which is -1 in postgres because postgres does not support -0
+		if dec.IsZero() && dec.Negative {
+			return *apd.New(-1, 0), nil
 		}
 		return dec, nil
 	},

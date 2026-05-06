@@ -242,7 +242,11 @@ var numeric_sub = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		num1 := val1.(apd.Decimal)
 		num2 := val2.(apd.Decimal)
-		_, err := sql.DecimalCtx.Sub(&num1, &num1, &num2)
+		p := num1.NumDigits()
+		if p2 := num2.NumDigits(); p < p2 {
+			p = p2
+		}
+		_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Sub(&num1, &num1, &num2)
 		if err != nil {
 			return nil, err
 		}

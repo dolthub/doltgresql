@@ -48,7 +48,7 @@ var numeric_in = framework.Function3{
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		input := val1.(string)
 		typmod := val3.(int32)
-		dec, _, err := apd.NewFromString(input)
+		dec, _, err := apd.NewFromString(strings.TrimSpace(input))
 		if err != nil {
 			return nil, pgtypes.ErrInvalidSyntaxForType.New("numeric", input)
 		}
@@ -159,9 +159,6 @@ var numeric_recv = framework.Function3{
 		dec, _, err := sql.HighPrecisionCtx.NewFromString(sb.String())
 		if err != nil {
 			return nil, err
-		}
-		str := dec.Text('f')
-		if str == " " {
 		}
 		_, err = sql.HighPrecisionCtx.Quantize(dec, dec, int32(-dscale))
 		if err != nil {

@@ -17,6 +17,7 @@ package cast
 import (
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -118,11 +119,7 @@ func jsonbExplicit() {
 				if d.Cmp(&pgtypes.NumericValueMinInt16) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt16) > 0 {
 					return nil, errors.Errorf("smallint out of range")
 				}
-				i, err := d.Int64()
-				if err != nil {
-					return nil, err
-				}
-				return int16(i), nil
+				return int16(types.DecimalIntPart(d)), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
@@ -148,11 +145,7 @@ func jsonbExplicit() {
 				if d.Cmp(&pgtypes.NumericValueMinInt32) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt32) > 0 {
 					return nil, errors.Errorf("integer out of range")
 				}
-				i, err := d.Int64()
-				if err != nil {
-					return nil, err
-				}
-				return int32(i), nil
+				return int32(types.DecimalIntPart(d)), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
@@ -178,11 +171,7 @@ func jsonbExplicit() {
 				if d.Cmp(&pgtypes.NumericValueMinInt64) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt64) > 0 {
 					return nil, errors.Errorf("bigint out of range")
 				}
-				i, err := d.Int64()
-				if err != nil {
-					return nil, err
-				}
-				return int64(i), nil
+				return int64(types.DecimalIntPart(d)), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:

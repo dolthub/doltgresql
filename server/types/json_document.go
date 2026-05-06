@@ -421,7 +421,7 @@ func ConvertToJsonDocument(val interface{}) (JsonValue, error) {
 	case json.Number:
 		str := string(val)
 		// Strip trailing fractional zeros: "25.0"→{250,-1} and "25"→{25,0} differ in MarshalBinary, breaking GROUP BY hash equality.
-		if strings.IndexByte(str, '.') != -1 {
+		if strings.IndexByte(str, '.') != -1 && strings.IndexByte(str, 'e') == -1 {
 			// remove trailing 0s after '.'
 			str = strings.TrimRightFunc(str, func(r rune) bool {
 				return r == '0'

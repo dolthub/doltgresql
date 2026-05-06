@@ -16,7 +16,6 @@ package functions
 
 import (
 	"math"
-	"strings"
 
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
@@ -58,23 +57,17 @@ var sqrt_numeric = framework.Function1{
 			return nil, errors.Errorf("cannot take square root of a negative number")
 		}
 
+		exp := dec.Exponent
+		c := sql.DecimalCtx
+		nd := uint32(dec.NumDigits())
+		if nd > c.Precision {
+			c = c.WithPrecision(nd)
+		}
 		// TODO: calculate precision and scale accurately
-		s := dec.Text('f')
-		parts := strings.Split(s, ".")
-
-		exp := int32(-16)
-		whole := int32(len(parts[0]) / 2)
 		if dec.Exponent == 0 {
-			exp = whole - 16
-		} else if dec.Exponent < -16 {
-			exp = dec.Exponent
-		}
-		p := uint32(whole) + 1
-		if exp < 0 {
-			p += uint32(-exp)
+			exp = int32(nd/2) - 16
 		}
 
-		c := sql.DecimalCtx.WithPrecision(p)
 		_, err := c.Sqrt(&dec, &dec)
 		if err != nil {
 			return nil, err

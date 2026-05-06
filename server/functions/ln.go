@@ -64,22 +64,26 @@ var ln_numeric = framework.Function1{
 			return dec, nil
 		}
 
-		// TODO: calculate precision and scale accurately
-		s := dec.Text('f')
-		parts := strings.Split(s, ".")
-
-		exp := int32(-16)
-		if dec.Exponent < exp {
-			exp = dec.Exponent
+		exp := dec.Exponent
+		c := sql.DecimalCtx
+		if nd := uint32(dec.NumDigits()); nd > c.Precision {
+			c = c.WithPrecision(nd)
 		}
-		p := uint32(len(parts[0]) + int(-exp))
 
-		c := sql.DecimalCtx.WithPrecision(p)
 		_, err := c.Ln(&dec, &dec)
 		if err != nil {
 			return nil, err
 		}
-		_, err = c.Quantize(&dec, &dec, exp)
+
+		// TODO: calculate precision and scale accurately
+		if exp > -16 {
+			// use ln result
+			parts := strings.Split(dec.Text('f'), ".")
+			whole := int32(len(parts[0]) / 2)
+			exp = whole - 16
+		}
+
+		_, err = sql.HighPrecisionCtx.Quantize(&dec, &dec, exp)
 		if err != nil {
 			return nil, err
 		}
