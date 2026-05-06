@@ -64,10 +64,10 @@ var trunc_numeric_int64 = framework.Function2{
 	Return:     pgtypes.Numeric,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		dec := val1.(apd.Decimal)
-		places := val2.(int32)
-		_, err := sql.HighPrecisionCtx.Quantize(&dec, &dec, -places)
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, num any, places any) (any, error) {
+		dec := num.(apd.Decimal)
+		scale := places.(int32)
+		_, err := sql.HighPrecisionCtx.Quantize(&dec, &dec, -scale)
 		if err != nil {
 			return nil, err
 		}
