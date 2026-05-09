@@ -15,6 +15,7 @@
 package ast
 
 import (
+	"github.com/dolthub/doltgresql/postgres/parser/sessiondata"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -134,28 +135,13 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 			return nil, err
 		}
 
-		if ce, ok := expr.(*tree.CastExpr); ok && node.As == "" {
-			hasConst := false
-			_, _ = tree.SimpleVisit(expr, func(visitingExpr tree.Expr) (recurse bool, newExpr tree.Expr, err error) {
-				switch visitingExpr.(type) {
-				case tree.Constant:
-					hasConst = true
-					return false, visitingExpr, nil
+		if node.As == "" {
+			//TODO: Currently calling GetRenderColName on funcExpr panics.
+			if _, ok := expr.(*tree.FuncExpr); !ok {
+				colName, err := tree.GetRenderColName(sessiondata.EmptySearchPath, node)
+				if err == nil {
+					node.As = tree.UnrestrictedName(colName)
 				}
-				return true, visitingExpr, nil
-			})
-			if hasConst {
-				_, dt, err := nodeResolvableTypeReference(ctx, ce.Type, false)
-				if err != nil {
-					return nil, err
-				}
-				// constant value is not part of column name
-				// e.g. `1::INT2` should create column name as `int2`.
-				node.As = tree.UnrestrictedName(dt.Name())
-			} else {
-				// cast type is not part of column name
-				// e.g. `id::INT2` should create column name as `id`.
-				node.As = tree.UnrestrictedName(tree.AsString(ce.Expr))
 			}
 		}
 
