@@ -122,6 +122,19 @@ func NewUnresolvedDoltgresTypeFromID(idType id.Type) *DoltgresType {
 	}
 }
 
+// NewUnresolvedArrayDoltgresType returns an unresolved DoltgresType for an array of a user-defined element type.
+// TypCategory and Elem are pre-filled so that IsArrayType() returns true before full resolution from the type
+// collection. The array type ID follows the Postgres convention of "_" + element type name.
+func NewUnresolvedArrayDoltgresType(sch, elemName string) *DoltgresType {
+	return &DoltgresType{
+		ID:           id.NewType(sch, "_"+elemName),
+		IsUnresolved: true,
+		TypCategory:  TypeCategory_ArrayTypes,
+		Elem:         id.NewType(sch, elemName),
+		Array:        id.NullType,
+	}
+}
+
 // AnalyzeFuncName returns the name that would be displayed in pg_type for the `typanalyze` field.
 func (t *DoltgresType) AnalyzeFuncName() string {
 	return globalFunctionRegistry.GetString(t.AnalyzeFunc)
@@ -940,7 +953,11 @@ func (t *DoltgresType) ToArrayType() *DoltgresType {
 	}
 	arr, ok := IDToBuiltInDoltgresType[t.Array]
 	if !ok {
-		panic(fmt.Sprintf("cannot get array type from: %s", t.Name()))
+		if t.Array == id.NullType {
+			panic(fmt.Sprintf("cannot get array type from: %s", t.Name()))
+		}
+		// User-defined type: the array type is not in the built-in map, so build it from this base type.
+		return CreateArrayTypeFromBaseType(t)
 	}
 	newArr := *arr.WithAttTypMod(t.attTypMod)
 	newArr.InternalName = fmt.Sprintf("%s[]", t.String())

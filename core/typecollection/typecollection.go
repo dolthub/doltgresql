@@ -182,7 +182,28 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 		if !ok {
 			return nil, nil
 		}
-		tbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), name.TypeName())
+		typeName := name.TypeName()
+
+		// A name starting with "_" may be the implicit array type for a table's composite row type.
+		// PostgreSQL implicitly creates an array type for every user-defined type (including the
+		// composite type that is implicitly created for each table). Look up the element type by
+		// stripping the leading "_", and if a matching table exists, build the array type on the fly.
+		if strings.HasPrefix(typeName, "_") {
+			elemTbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), typeName[1:])
+			if err != nil {
+				return nil, err
+			}
+			if elemTbl != nil {
+				compositeType, err := pgs.tableToType(sqlCtx, elemTbl, schema)
+				if err != nil {
+					return nil, err
+				}
+				return pgtypes.CreateArrayTypeFromBaseType(compositeType), nil
+			}
+			return nil, nil
+		}
+
+		tbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), typeName)
 		if err != nil || tbl == nil {
 			return nil, err
 		}
