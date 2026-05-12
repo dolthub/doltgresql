@@ -1343,6 +1343,8 @@ func TestDoltReset(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"CALL DOLT_RESET('--hard') should reset the merge state after uncommitted merge", // problem with autocommit detection
 		"select * from dolt_status", // table_name column includes schema name
+		"SELECT pk, v FROM t AS OF STAGED ORDER BY pk", // AS OF STAGED requires quoting in Postgres
+		"SELECT pk FROM t AS OF STAGED ORDER BY pk",    // AS OF STAGED requires quoting in Postgres
 	})
 	denginetest.RunDoltResetTest(t, h)
 }
