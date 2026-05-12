@@ -53,7 +53,7 @@ var sign_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(apd.Decimal)
-		return *apd.New(int64(dec.Sign()), 0), nil
+		dec := val.(*apd.Decimal)
+		return apd.New(int64(dec.Sign()), 0), nil
 	},
 }

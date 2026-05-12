@@ -122,9 +122,9 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		dec, ok := newVal.(apd.Decimal)
+		dec, ok := newVal.(*apd.Decimal)
 		if !ok {
-			return nil, errors.Errorf("GMSCast expected type `apd.Decimal`, got `%T`", val)
+			return nil, errors.Errorf("GMSCast expected type `*apd.Decimal`, got `%T`", val)
 		}
 		return dec, nil
 	case query.Type_FLOAT32:
@@ -150,9 +150,9 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		dec, ok := newVal.(apd.Decimal)
+		dec, ok := newVal.(*apd.Decimal)
 		if !ok {
-			return nil, errors.Errorf("GMSCast expected type `apd.Decimal`, got `%T`", val)
+			return nil, errors.Errorf("GMSCast expected type `*apd.Decimal`, got `%T`", val)
 		}
 		return dec, nil
 	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:

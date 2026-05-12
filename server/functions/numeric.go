@@ -52,7 +52,7 @@ var numeric_in = framework.Function3{
 		if err != nil {
 			return nil, pgtypes.ErrInvalidSyntaxForType.New("numeric", input)
 		}
-		return pgtypes.GetNumericValueWithTypmod(*dec, typmod)
+		return pgtypes.GetNumericValueWithTypmod(dec, typmod)
 	},
 }
 
@@ -64,13 +64,13 @@ var numeric_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		typ := t[0]
-		dec := val.(apd.Decimal)
+		dec := val.(*apd.Decimal)
 		tm := typ.GetAttTypMod()
-		dec, err := pgtypes.GetNumericValueWithTypmod(dec, tm)
+		res, err := pgtypes.GetNumericValueWithTypmod(dec, tm)
 		if err != nil {
 			return nil, err
 		}
-		return dec.Text('f'), nil
+		return res.Text('f'), nil
 	},
 }
 
@@ -90,7 +90,7 @@ var numeric_recv = framework.Function3{
 			return nil, nil
 		}
 		reader := utils.NewWireReader(data)
-		var d apd.Decimal
+		var d *apd.Decimal
 
 		// 1. Read Header
 		ndigits := reader.ReadInt16()
@@ -125,7 +125,7 @@ var numeric_recv = framework.Function3{
 			digits[i] = reader.ReadInt16()
 		}
 
-		// 4. Convert base-10000 to string for apd.Decimal
+		// 4. Convert base-10000 to string for *apd.Decimal
 		// Each digit is exactly 4 characters wide (except potentially the first)
 		var sb strings.Builder
 		if sign == 16384 {
@@ -156,15 +156,13 @@ var numeric_recv = framework.Function3{
 				sb.WriteString("0000")
 			}
 		}
-		dec, _, err := sql.HighPrecisionCtx.NewFromString(sb.String())
+
+		dec, _, err := sql.DecimalHighPrecisionCtx.NewFromString(sb.String())
 		if err != nil {
 			return nil, err
 		}
-		_, err = sql.HighPrecisionCtx.Quantize(dec, dec, int32(-dscale))
-		if err != nil {
-			return nil, err
-		}
-		return *dec, nil
+
+		return sql.DecimalRound(dec, int32(dscale))
 	},
 }
 
@@ -175,7 +173,7 @@ var numeric_send = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		num := val.(apd.Decimal)
+		num := val.(*apd.Decimal)
 		typmod := t[0].GetAttTypMod()
 		writer := utils.NewWireWriter()
 		if num.Form == apd.Finite {
@@ -316,8 +314,8 @@ var numeric_cmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(apd.Decimal)
-		bb := val2.(apd.Decimal)
+		ab := val1.(*apd.Decimal)
+		bb := val2.(*apd.Decimal)
 		return int32(pgtypes.NumericCompare(ab, bb)), nil
 	},
 }

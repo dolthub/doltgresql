@@ -173,7 +173,7 @@ func typeSanitizerLiterals(ctx *sql.Context, gmsLiteral *expression.Literal) (sq
 		}
 		return pgexprs.NewRawLiteralFloat64(newVal.(float64)), transform.NewTree, nil
 	case query.Type_DECIMAL:
-		dec, ok := gmsLiteral.Value().(apd.Decimal)
+		dec, ok := gmsLiteral.Value().(*apd.Decimal)
 		if !ok {
 			return nil, transform.NewTree, errors.Errorf("SANITIZER: expected decimal type: %T", gmsLiteral.Value())
 		}

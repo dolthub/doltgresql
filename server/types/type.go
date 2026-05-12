@@ -328,8 +328,8 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 	case JsonDocument:
 		bb := v2.(JsonDocument)
 		return JsonValueCompare(ab.Value, bb.Value), nil
-	case apd.Decimal:
-		bb := v2.(apd.Decimal)
+	case *apd.Decimal:
+		bb := v2.(*apd.Decimal)
 		return NumericCompare(ab, bb), nil
 	case timeofday.TimeOfDay:
 		bb := v2.(timeofday.TimeOfDay)
@@ -1060,7 +1060,7 @@ func (t *DoltgresType) Zero() interface{} {
 		case "int8":
 			return int64(0)
 		case "numeric":
-			return *apd.New(0, 0)
+			return apd.New(0, 0)
 		case "oid", "regclass", "regproc", "regtype":
 			return id.Null
 		default:

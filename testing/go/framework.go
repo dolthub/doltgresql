@@ -777,7 +777,7 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 		} else if !val.Valid {
 			return nil
 		} else {
-			return *apd.New(val.Int.Int64(), val.Exp)
+			return apd.New(val.Int.Int64(), val.Exp)
 		}
 	case pgtype.Time:
 		// This value type is used for TIME type.

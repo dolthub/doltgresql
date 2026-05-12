@@ -112,8 +112,8 @@ var numeric_uminus = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		dec := val1.(apd.Decimal)
-		neg := dec.Neg(&dec)
-		return *neg, nil
+		dec := val1.(*apd.Decimal)
+		res := new(apd.Decimal)
+		return res.Neg(dec), nil
 	},
 }

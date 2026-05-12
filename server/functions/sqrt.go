@@ -52,30 +52,26 @@ var sqrt_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(apd.Decimal)
+		dec := val.(*apd.Decimal)
 		if dec.Sign() < 0 {
 			return nil, errors.Errorf("cannot take square root of a negative number")
 		}
 
-		exp := dec.Exponent
-		c := sql.DecimalCtx
-		nd := uint32(dec.NumDigits())
-		if nd > c.Precision {
-			c = c.WithPrecision(nd)
-		}
 		// TODO: calculate precision and scale accurately
-		if dec.Exponent == 0 {
-			exp = int32(nd/2) - 16
+		exp := dec.Exponent
+		p := dec.NumDigits()
+		if exp < 0 {
+			p += int64(-exp)
+		} else if exp == 0 {
+			exp = int32(p/2) - 16
+			p += 16
 		}
 
-		_, err := c.Sqrt(&dec, &dec)
+		res := new(apd.Decimal)
+		_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Sqrt(res, dec)
 		if err != nil {
 			return nil, err
 		}
-		_, err = c.Quantize(&dec, &dec, exp)
-		if err != nil {
-			return nil, err
-		}
-		return dec, nil
+		return sql.DecimalRound(res, -exp)
 	},
 }

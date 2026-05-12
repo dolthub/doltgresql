@@ -143,10 +143,10 @@ var generate_series_numeric_numeric = framework.Function2{
 	Strict:     true,
 	SRF:        true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		start := val1.(apd.Decimal)
-		stop := val2.(apd.Decimal)
+		start := val1.(*apd.Decimal)
+		stop := val2.(*apd.Decimal)
 		step := numericOne // by default
-		return numericGenerateSeries(start, stop, *step)
+		return numericGenerateSeries(start, stop, step)
 	},
 }
 
@@ -158,16 +158,16 @@ var generate_series_numeric_numeric_numeric = framework.Function3{
 	Strict:     true,
 	SRF:        true,
 	Callable: func(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		start := val1.(apd.Decimal)
-		stop := val2.(apd.Decimal)
-		step := val3.(apd.Decimal)
+		start := val1.(*apd.Decimal)
+		stop := val2.(*apd.Decimal)
+		step := val3.(*apd.Decimal)
 		return numericGenerateSeries(start, stop, step)
 	},
 }
 
 // numericGenerateSeries returns RowIter for generate_series function results for given numeric values.
 // This function checks for error of step being zero.
-func numericGenerateSeries(start, stop, step apd.Decimal) (*pgtypes.SetReturningFunctionRowIter, error) {
+func numericGenerateSeries(start, stop, step *apd.Decimal) (*pgtypes.SetReturningFunctionRowIter, error) {
 	if step.IsZero() {
 		return nil, errStepSizeZero
 	}
@@ -188,15 +188,17 @@ func numericGenerateSeries(start, stop, step apd.Decimal) (*pgtypes.SetReturning
 	}
 	return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
 		defer func() {
-			_, err := sql.DecimalCtx.Add(&start, &start, &step)
+
+			_, err := sql.DecimalCtx.Add(start, start, step)
 			if err != nil {
 				panic(err)
 			}
 		}()
-		if (step.Sign() > 0 && start.Cmp(&stop) > 0) || (step.Sign() < 0 && start.Cmp(&stop) < 0) {
+		if (step.Sign() > 0 && start.Cmp(stop) > 0) || (step.Sign() < 0 && start.Cmp(stop) < 0) {
 			return nil, io.EOF
 		}
-		return sql.Row{start}, nil
+		res := new(*start)
+		return sql.Row{res}, nil
 	}), nil
 }
 

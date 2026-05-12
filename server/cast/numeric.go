@@ -36,8 +36,8 @@ func numericAssignment() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Int16,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			d := val.(apd.Decimal)
-			if d.Cmp(&pgtypes.NumericValueMinInt16) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt16) > 0 {
+			d := val.(*apd.Decimal)
+			if d.Cmp(pgtypes.NumericValueMinInt16) < 0 || d.Cmp(pgtypes.NumericValueMaxInt16) > 0 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "smallint out of range")
 			}
 			i := types.DecimalIntPart(d)
@@ -48,8 +48,8 @@ func numericAssignment() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			d := val.(apd.Decimal)
-			if d.Cmp(&pgtypes.NumericValueMinInt32) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt32) > 0 {
+			d := val.(*apd.Decimal)
+			if d.Cmp(pgtypes.NumericValueMinInt32) < 0 || d.Cmp(pgtypes.NumericValueMaxInt32) > 0 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "integer out of range")
 			}
 			i := types.DecimalIntPart(d)
@@ -60,8 +60,8 @@ func numericAssignment() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Int64,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			d := val.(apd.Decimal)
-			if d.Cmp(&pgtypes.NumericValueMinInt64) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt64) > 0 {
+			d := val.(*apd.Decimal)
+			if d.Cmp(pgtypes.NumericValueMinInt64) < 0 || d.Cmp(pgtypes.NumericValueMaxInt64) > 0 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "bigint out of range")
 			}
 			return types.DecimalIntPart(d), nil
@@ -75,7 +75,7 @@ func numericImplicit() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Float32,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			d := val.(apd.Decimal)
+			d := val.(*apd.Decimal)
 			f, _ := d.Float64()
 			return float32(f), nil
 		},
@@ -84,7 +84,7 @@ func numericImplicit() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Float64,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			d := val.(apd.Decimal)
+			d := val.(*apd.Decimal)
 			f, _ := d.Float64()
 			return f, nil
 		},
@@ -93,7 +93,7 @@ func numericImplicit() {
 		FromType: pgtypes.Numeric,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return pgtypes.GetNumericValueWithTypmod(val.(apd.Decimal), targetType.GetAttTypMod())
+			return pgtypes.GetNumericValueWithTypmod(val.(*apd.Decimal), targetType.GetAttTypMod())
 		},
 	})
 }

@@ -32,7 +32,6 @@ import (
 
 // NewNumericLiteral returns a new *expression.Literal containing a NUMERIC value.
 func NewNumericLiteral(numericValue string) (*expression.Literal, error) {
-	//TODO: should use the input function of the type
 	d, err := pgtypes.GetNumericValueFromStringWithTypmod(numericValue, -1)
 	if err != nil {
 		return nil, err
@@ -107,8 +106,8 @@ func NewRawLiteralFloat64(val float64) *expression.Literal {
 	return expression.NewLiteral(val, pgtypes.Float64)
 }
 
-// NewRawLiteralNumeric returns a new *expression.Literal containing an apd.Decimal value.
-func NewRawLiteralNumeric(val apd.Decimal) *expression.Literal {
+// NewRawLiteralNumeric returns a new *expression.Literal containing an *apd.Decimal value.
+func NewRawLiteralNumeric(val *apd.Decimal) *expression.Literal {
 	return expression.NewLiteral(val, pgtypes.Numeric)
 }
 
@@ -176,7 +175,7 @@ func ToVitessLiteral(l *expression.Literal) *vitess.SQLVal {
 	case pgtypes.Int64.ID:
 		return vitess.NewIntVal([]byte(strconv.FormatInt(l.Value().(int64), 10)))
 	case pgtypes.Numeric.ID:
-		d := l.Value().(apd.Decimal)
+		d := l.Value().(*apd.Decimal)
 		return vitess.NewFloatVal([]byte(d.String()))
 	case pgtypes.Text.ID:
 		return vitess.NewStrVal([]byte(l.Value().(string)))

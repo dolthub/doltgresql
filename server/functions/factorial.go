@@ -44,6 +44,6 @@ var factorial_int64 = framework.Function1{
 		for i := int64(2); i <= n; i++ {
 			total *= i
 		}
-		return *apd.New(total, 0), nil
+		return apd.New(total, 0), nil
 	},
 }

@@ -252,7 +252,8 @@ func JsonValueSerialize(writer *utils.Writer, value JsonValue) {
 	case JsonValueNumber:
 		writer.Byte(byte(JsonValueType_Number))
 		// MarshalBinary cannot error, so we can safely ignore it
-		bytes, _ := Numeric.SerializationFunc(nil, Numeric, apd.Decimal(value))
+		v := apd.Decimal(value)
+		bytes, _ := Numeric.SerializationFunc(nil, Numeric, &v)
 		writer.ByteSlice(bytes)
 	case JsonValueBoolean:
 		writer.Byte(byte(JsonValueType_Boolean))
@@ -299,7 +300,7 @@ func JsonValueDeserialize(reader *utils.Reader) (_ JsonValue, err error) {
 		if d == nil {
 			d = apd.Decimal{}
 		}
-		return JsonValueNumber(d.(apd.Decimal)), err
+		return JsonValueNumber(*(d.(*apd.Decimal))), err
 	case JsonValueType_Boolean:
 		return JsonValueBoolean(reader.Bool()), nil
 	case JsonValueType_Null:

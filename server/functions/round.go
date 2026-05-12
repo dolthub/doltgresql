@@ -49,16 +49,13 @@ var round_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(apd.Decimal)
-		_, err := sql.DecimalCtx.Round(&dec, &dec)
+		dec := val.(*apd.Decimal)
+		res := new(apd.Decimal)
+		_, err := sql.DecimalHighPrecisionCtx.Round(res, dec)
 		if err != nil {
 			return nil, err
 		}
-		_, err = sql.DecimalCtx.Quantize(&dec, &dec, 0)
-		if err != nil {
-			return nil, err
-		}
-		return dec, nil
+		return sql.DecimalRound(res, 0)
 	},
 }
 
@@ -69,16 +66,13 @@ var round_numeric_int64 = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		dec := val1.(apd.Decimal)
+		dec := val1.(*apd.Decimal)
 		places := val2.(int64)
-		_, err := sql.HighPrecisionCtx.Round(&dec, &dec)
+		res := new(apd.Decimal)
+		_, err := sql.DecimalHighPrecisionCtx.Round(res, dec)
 		if err != nil {
 			return nil, err
 		}
-		_, err = sql.HighPrecisionCtx.Quantize(&dec, &dec, int32(-places))
-		if err != nil {
-			return nil, err
-		}
-		return dec, nil
+		return sql.DecimalRound(res, int32(places))
 	},
 }

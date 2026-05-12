@@ -62,7 +62,7 @@ func int16Implicit() {
 		FromType: pgtypes.Int16,
 		ToType:   pgtypes.Numeric,
 		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
-			return pgtypes.GetNumericValueWithTypmod(*apd.New(int64(val.(int16)), 0), targetType.GetAttTypMod())
+			return pgtypes.GetNumericValueWithTypmod(apd.New(int64(val.(int16)), 0), targetType.GetAttTypMod())
 		},
 	})
 	framework.MustAddImplicitTypeCast(framework.TypeCast{

@@ -286,8 +286,8 @@ var interval_div = framework.Function2{
 
 // numeric_div_callable is the callable logic for the numeric_div function.
 func numeric_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	num1 := val1.(apd.Decimal)
-	num2 := val2.(apd.Decimal)
+	num1 := val1.(*apd.Decimal)
+	num2 := val2.(*apd.Decimal)
 	if num1.Form == apd.NaN || num2.Form == apd.NaN ||
 		(num1.Form == apd.Infinite && num2.Form == apd.Infinite) {
 		return pgtypes.NumericNaN, nil
@@ -299,17 +299,15 @@ func numeric_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any
 		return num1, nil
 	}
 	if num2.Form == apd.Infinite {
-		return *apd.New(0, 0), nil
+		return apd.New(0, 0), nil
 	}
-	_, err := sql.HighPrecisionCtx.Quo(&num1, &num1, &num2)
+
+	res := new(apd.Decimal)
+	_, err := sql.DecimalHighPrecisionCtx.Quo(res, num1, num2)
 	if err != nil {
 		return nil, err
 	}
-	_, err = sql.DecimalCtx.Quantize(&num1, &num1, -16)
-	if err != nil {
-		return nil, err
-	}
-	return num1, nil
+	return sql.DecimalRound(res, 16)
 }
 
 // numeric_div represents the PostgreSQL function of the same name, taking the same parameters.

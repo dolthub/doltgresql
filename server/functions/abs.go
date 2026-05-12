@@ -83,8 +83,8 @@ var abs_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		dec := val1.(apd.Decimal)
-		abs := dec.Abs(&dec)
-		return *abs, nil
+		dec := val1.(*apd.Decimal)
+		res := new(apd.Decimal)
+		return res.Abs(dec), nil
 	},
 }

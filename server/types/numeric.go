@@ -32,9 +32,9 @@ var (
 	NumericValueMinInt16 = types.DecimalFromInt64(math.MinInt16) // NumericValueMinInt16 is the min Int16 value for NUMERIC types
 	NumericValueMinInt32 = types.DecimalFromInt64(math.MinInt32) // NumericValueMinInt32 is the min Int32 value for NUMERIC types
 	NumericValueMinInt64 = types.DecimalFromInt64(math.MinInt64) // NumericValueMinInt64 is the min Int64 value for NUMERIC types
-	NumericNaN           = apd.Decimal{Form: apd.NaN}
-	NumericInf           = apd.Decimal{Form: apd.Infinite}
-	NumericNegInf        = apd.Decimal{Form: apd.Infinite, Negative: true}
+	NumericNaN           = &apd.Decimal{Form: apd.NaN}
+	NumericInf           = &apd.Decimal{Form: apd.Infinite}
+	NumericNegInf        = &apd.Decimal{Form: apd.Infinite, Negative: true}
 )
 
 // Numeric is a precise and unbounded decimal value.
@@ -106,36 +106,36 @@ func GetPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
 
 // GetNumericValueWithTypmod returns either given numeric value or truncated or error
 // depending on the precision and scale decoded from given type modifier value.
-func GetNumericValueWithTypmod(val apd.Decimal, typmod int32) (apd.Decimal, error) {
+func GetNumericValueWithTypmod(val *apd.Decimal, typmod int32) (*apd.Decimal, error) {
 	if typmod == -1 {
 		return val, nil
 	}
 	res := new(apd.Decimal)
 	precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
-	_, err := sql.DecimalCtx.WithPrecision(uint32(precision)).Quantize(res, &val, -scale)
+	_, err := sql.DecimalCtx.WithPrecision(uint32(precision)).Quantize(res, val, -scale)
 	if err != nil {
-		return apd.Decimal{}, errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
+		return nil, errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
 	}
-	return *res, nil
+	return res, nil
 }
 
 // GetNumericValueFromStringWithTypmod returns either given numeric value or truncated or error
 // depending on the precision and scale decoded from given type modifier value.
-func GetNumericValueFromStringWithTypmod(val string, typmod int32) (apd.Decimal, error) {
-	dec, cond, err := sql.HighPrecisionCtx.NewFromString(val)
+func GetNumericValueFromStringWithTypmod(val string, typmod int32) (*apd.Decimal, error) {
+	dec, cond, err := sql.DecimalHighPrecisionCtx.NewFromString(val)
 	if err != nil {
-		return apd.Decimal{}, err
+		return nil, err
 	}
 	if cond.Inexact() || cond.Rounded() {
-		return apd.Decimal{}, errors.Errorf(`numeric precision was lost or truncated for %s`, val)
+		return nil, errors.Errorf(`numeric precision was lost or truncated for %s`, val)
 	}
-	return GetNumericValueWithTypmod(*dec, typmod)
+	return GetNumericValueWithTypmod(dec, typmod)
 }
 
 // serializeTypeNumeric handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeNumeric(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	d := val.(apd.Decimal)
+	d := val.(*apd.Decimal)
 	return d.MarshalText()
 }
 
@@ -145,13 +145,13 @@ func deserializeTypeNumeric(ctx *sql.Context, t *DoltgresType, data []byte) (any
 	if len(data) == 0 {
 		return nil, nil
 	}
-	retVal := *apd.New(0, 0)
+	retVal := apd.New(0, 0)
 	err := retVal.UnmarshalText(data)
 	return retVal, err
 }
 
-// NumericCompare compares two apd.Decimal values handling NaN separately.
-func NumericCompare(ab, bb apd.Decimal) int {
+// NumericCompare compares two *apd.Decimal values handling NaN separately.
+func NumericCompare(ab, bb *apd.Decimal) int {
 	if (ab.Form == apd.NaN && bb.Form == apd.NaN) ||
 		(ab.Form == apd.Infinite && bb.Form == apd.Infinite && ab.Negative == bb.Negative) {
 		return 0
@@ -162,5 +162,5 @@ func NumericCompare(ab, bb apd.Decimal) int {
 	if bb.Form == apd.NaN {
 		return -1
 	}
-	return ab.Cmp(&bb)
+	return ab.Cmp(bb)
 }

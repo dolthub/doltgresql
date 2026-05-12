@@ -71,23 +71,23 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 	Parameters: [4]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric, pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [5]*pgtypes.DoltgresType, operandInterface any, lowInterface any, highInterface any, countInterface any) (any, error) {
-		operand := operandInterface.(apd.Decimal)
-		low := lowInterface.(apd.Decimal)
-		high := highInterface.(apd.Decimal)
-		if low.Cmp(&high) == 0 {
+		operand := operandInterface.(*apd.Decimal)
+		low := lowInterface.(*apd.Decimal)
+		high := highInterface.(*apd.Decimal)
+		if low.Cmp(high) == 0 {
 			return nil, errors.Errorf("lower bound cannot equal upper bound")
 		}
 		count := countInterface.(int32)
 		if count <= 0 {
 			return nil, errors.Errorf("count must be greater than zero")
 		}
-		if operand.Cmp(&high) == 0 {
+		if operand.Cmp(high) == 0 {
 			return count + 1, nil
-		} else if operand.Cmp(&low) == 0 {
+		} else if operand.Cmp(low) == 0 {
 			return int32(1), nil
 		}
 		bucket := new(apd.Decimal)
-		_, err := sql.DecimalCtx.Sub(bucket, &high, &low)
+		_, err := sql.DecimalCtx.Sub(bucket, high, low)
 		if err != nil {
 			return nil, err
 		}
@@ -96,7 +96,7 @@ var width_bucket_numeric_numeric_numeric_int64 = framework.Function4{
 			return nil, err
 		}
 		result := new(apd.Decimal)
-		_, err = sql.DecimalCtx.Sub(result, &operand, &low)
+		_, err = sql.DecimalCtx.Sub(result, operand, low)
 		if err != nil {
 			return nil, err
 		}

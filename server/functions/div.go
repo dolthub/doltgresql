@@ -35,8 +35,8 @@ var div_numeric = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		num1 := val1.(apd.Decimal)
-		num2 := val2.(apd.Decimal)
+		num1 := val1.(*apd.Decimal)
+		num2 := val2.(*apd.Decimal)
 		if num1.Form == apd.NaN || num2.Form == apd.NaN ||
 			(num1.Form == apd.Infinite && num2.Form == apd.Infinite) {
 			return pgtypes.NumericNaN, nil
@@ -48,12 +48,13 @@ var div_numeric = framework.Function2{
 			return num1, nil
 		}
 		if num2.Form == apd.Infinite {
-			return *apd.New(0, 0), nil
+			return apd.New(0, 0), nil
 		}
-		_, err := sql.DecimalCtx.QuoInteger(&num1, &num1, &num2)
+		res := new(apd.Decimal)
+		_, err := sql.DecimalHighPrecisionCtx.QuoInteger(res, num1, num2)
 		if err != nil {
 			return nil, err
 		}
-		return num1, nil
+		return res, nil
 	},
 }

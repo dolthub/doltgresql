@@ -48,11 +48,12 @@ var exp_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(apd.Decimal)
-		_, err := sql.DecimalCtx.WithPrecision(32).Exp(&dec, &dec)
+		dec := val.(*apd.Decimal)
+		res := new(apd.Decimal)
+		_, err := sql.DecimalCtx.WithPrecision(32).Exp(res, dec)
 		if err != nil {
 			return nil, err
 		}
-		return dec, nil
+		return res, nil
 	},
 }

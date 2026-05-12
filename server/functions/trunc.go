@@ -49,12 +49,8 @@ var trunc_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(apd.Decimal)
-		_, err := sql.HighPrecisionCtx.Quantize(&dec, &dec, 0)
-		if err != nil {
-			return nil, err
-		}
-		return dec, nil
+		dec := val.(*apd.Decimal)
+		return sql.DecimalRound(dec, 0)
 	},
 }
 
@@ -65,12 +61,8 @@ var trunc_numeric_int64 = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, num any, places any) (any, error) {
-		dec := num.(apd.Decimal)
+		dec := num.(*apd.Decimal)
 		scale := places.(int32)
-		_, err := sql.HighPrecisionCtx.Quantize(&dec, &dec, -scale)
-		if err != nil {
-			return nil, err
-		}
-		return dec, nil
+		return sql.DecimalRound(dec, -scale)
 	},
 }

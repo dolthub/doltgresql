@@ -266,21 +266,21 @@ var date_part_text_interval = framework.Function2{
 	},
 }
 
-func numericFloor(val any) (apd.Decimal, error) {
+func numericFloor(val any) (*apd.Decimal, error) {
 	switch val.(type) {
 	case int64, float64:
 		// expects these types to Scan from
 	default:
-		return apd.Decimal{}, cerrors.Errorf("invalid type for numeric convert: %T", val)
+		return nil, cerrors.Errorf("invalid type for numeric convert: %T", val)
 	}
 	dec := new(apd.Decimal)
 	err := dec.Scan(val)
 	if err != nil {
-		return apd.Decimal{}, err
+		return nil, err
 	}
 	_, err = sql.DecimalCtx.Floor(dec, dec)
 	if err != nil {
-		return apd.Decimal{}, err
+		return nil, err
 	}
-	return *dec, nil
+	return dec, nil
 }

@@ -518,7 +518,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		}, nil
 	case *tree.DDecimal:
 		return vitess.InjectedExpr{
-			Expression: pgexprs.NewRawLiteralNumeric(node.Decimal)}, nil
+			Expression: pgexprs.NewRawLiteralNumeric(&node.Decimal)}, nil
 	case *tree.DEnum:
 		return nil, errors.Errorf("the statement is not yet supported")
 	case *tree.DFloat:

@@ -36,7 +36,7 @@ var min_scale_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		dec := val1.(apd.Decimal)
+		dec := val1.(*apd.Decimal)
 		if dec.Form == apd.NaN || dec.Form == apd.Infinite {
 			return nil, nil
 		}

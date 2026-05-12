@@ -61,8 +61,8 @@ var power_numeric_numeric = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		dec1 := val1.(apd.Decimal)
-		dec2 := val2.(apd.Decimal)
+		dec1 := val1.(*apd.Decimal)
+		dec2 := val2.(*apd.Decimal)
 		if dec1.Form == apd.NaN || dec2.Form == apd.NaN {
 			return pgtypes.NumericNaN, nil
 		}
@@ -84,40 +84,34 @@ var power_numeric_numeric = framework.Function2{
 				return pgtypes.NumericNegInf, nil
 			}
 			if (dec2.Form == apd.Infinite && dec2.Negative) || dec2.Sign() < 0 {
-				return *apd.New(0, 0), nil
+				return apd.New(0, 0), nil
 			}
-			return *apd.New(1, 0), nil
+			return apd.New(1, 0), nil
 		}
+
 		if dec1.IsZero() {
 			if dec2.Sign() < 0 {
 				// includes neg inf
 				return nil, errPowerZeroToNegative
 			}
 			if dec2.Form == apd.Infinite {
-				return *apd.New(0, 0), nil
+				return apd.New(0, 0), nil
 			}
 			if dec2.Sign() > 0 {
-				d := *apd.New(0, 0)
-				_, _ = sql.DecimalCtx.Quantize(&d, &d, -16)
-				return d, nil
+				return sql.DecimalRound(apd.New(0, 0), 16)
 			}
 		}
 		// decimal.Pow() does not handle the zero exponent properly, so we special case it
-
 		if dec2.IsZero() || dec1.Cmp(numericOne) == 0 {
-			d := *apd.New(1, 0)
-			_, _ = sql.DecimalCtx.Quantize(&d, &d, -16)
-			return d, nil
+			return sql.DecimalRound(apd.New(1, 0), 16)
 		}
+
 		// give enough precision that we can round it to 16 exp
-		_, err := sql.DecimalCtx.WithPrecision(17).Pow(&dec1, &dec1, &dec2)
+		res := new(apd.Decimal)
+		_, err := sql.DecimalCtx.WithPrecision(17).Pow(res, dec1, dec2)
 		if err != nil {
 			return nil, err
 		}
-		_, err = sql.DecimalCtx.Quantize(&dec1, &dec1, -16)
-		if err != nil {
-			return nil, err
-		}
-		return dec1, nil
+		return sql.DecimalRound(res, 16)
 	},
 }

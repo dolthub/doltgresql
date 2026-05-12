@@ -226,7 +226,7 @@ var extract_text_interval = framework.Function2{
 }
 
 // getFieldFromTimeVal returns the value for given field extracted from non-interval values.
-func getFieldFromTimeVal(field string, tVal time.Time) (apd.Decimal, error) {
+func getFieldFromTimeVal(field string, tVal time.Time) (*apd.Decimal, error) {
 	switch strings.ToLower(field) {
 	case "century", "centuries":
 		if year := tVal.Year(); year <= 0 {
@@ -285,27 +285,28 @@ func getFieldFromTimeVal(field string, tVal time.Time) (apd.Decimal, error) {
 	case "year", "years":
 		return numeric(int64(tVal.Year()), false, 0)
 	default:
-		return apd.Decimal{}, cerrors.Errorf("unknown field given: %s", field)
+		return nil, cerrors.Errorf("unknown field given: %s", field)
 	}
 }
 
-func numeric(val any, setScale bool, scale int32) (apd.Decimal, error) {
+func numeric(val any, setScale bool, scale int32) (*apd.Decimal, error) {
 	switch val.(type) {
 	case int64, float64:
 		// expects these types to Scan from
 	default:
-		return apd.Decimal{}, cerrors.Errorf("invalid type for numeric convert: %T", val)
+		return nil, cerrors.Errorf("invalid type for numeric convert: %T", val)
 	}
 	dec := new(apd.Decimal)
 	err := dec.Scan(val)
 	if err != nil {
-		return apd.Decimal{}, err
+		return nil, err
 	}
+
 	if setScale {
-		_, err = sql.DecimalCtx.Quantize(dec, dec, -scale)
+		dec, err = sql.DecimalRound(dec, scale)
 		if err != nil {
-			return apd.Decimal{}, err
+			return nil, err
 		}
 	}
-	return *dec, nil
+	return dec, nil
 }

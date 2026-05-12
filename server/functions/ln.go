@@ -55,7 +55,7 @@ var ln_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		dec := val1.(apd.Decimal)
+		dec := val1.(*apd.Decimal)
 		if dec.Sign() == 0 {
 			return nil, errors.Errorf("cannot take logarithm of zero")
 		} else if dec.Sign() < 0 {
@@ -64,29 +64,28 @@ var ln_numeric = framework.Function1{
 			return dec, nil
 		}
 
+		// TODO: calculate precision and scale accurately
 		exp := dec.Exponent
-		c := sql.DecimalCtx
-		if nd := uint32(dec.NumDigits()); nd > c.Precision {
-			c = c.WithPrecision(nd)
+		p := dec.NumDigits()
+		if exp < 0 {
+			p += int64(-exp)
+		} else if exp == 0 {
+			p += 16
 		}
 
-		_, err := c.Ln(&dec, &dec)
+		res := new(apd.Decimal)
+		_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Ln(res, dec)
 		if err != nil {
 			return nil, err
 		}
 
-		// TODO: calculate precision and scale accurately
 		if exp > -16 {
 			// use ln result
-			parts := strings.Split(dec.Text('f'), ".")
+			parts := strings.Split(res.Text('f'), ".")
 			whole := int32(len(parts[0]) / 2)
 			exp = whole - 16
 		}
 
-		_, err = sql.HighPrecisionCtx.Quantize(&dec, &dec, exp)
-		if err != nil {
-			return nil, err
-		}
-		return dec, nil
+		return sql.DecimalRound(res, -exp)
 	},
 }

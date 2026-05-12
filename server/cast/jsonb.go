@@ -116,10 +116,10 @@ func jsonbExplicit() {
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
 				d := apd.Decimal(value)
-				if d.Cmp(&pgtypes.NumericValueMinInt16) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt16) > 0 {
+				if d.Cmp(pgtypes.NumericValueMinInt16) < 0 || d.Cmp(pgtypes.NumericValueMaxInt16) > 0 {
 					return nil, errors.Errorf("smallint out of range")
 				}
-				return int16(types.DecimalIntPart(d)), nil
+				return int16(types.DecimalIntPart(&d)), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
@@ -142,10 +142,10 @@ func jsonbExplicit() {
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
 				d := apd.Decimal(value)
-				if d.Cmp(&pgtypes.NumericValueMinInt32) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt32) > 0 {
+				if d.Cmp(pgtypes.NumericValueMinInt32) < 0 || d.Cmp(pgtypes.NumericValueMaxInt32) > 0 {
 					return nil, errors.Errorf("integer out of range")
 				}
-				return int32(types.DecimalIntPart(d)), nil
+				return int32(types.DecimalIntPart(&d)), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
@@ -168,10 +168,10 @@ func jsonbExplicit() {
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
 				d := apd.Decimal(value)
-				if d.Cmp(&pgtypes.NumericValueMinInt64) < 0 || d.Cmp(&pgtypes.NumericValueMaxInt64) > 0 {
+				if d.Cmp(pgtypes.NumericValueMinInt64) < 0 || d.Cmp(pgtypes.NumericValueMaxInt64) > 0 {
 					return nil, errors.Errorf("bigint out of range")
 				}
-				return int64(types.DecimalIntPart(d)), nil
+				return int64(types.DecimalIntPart(&d)), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:

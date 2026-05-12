@@ -385,7 +385,7 @@ var numeric_lt = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Numeric.Compare(ctx, val1.(apd.Decimal), val2.(apd.Decimal))
+		res, err := pgtypes.Numeric.Compare(ctx, val1.(*apd.Decimal), val2.(*apd.Decimal))
 		return res == -1, err
 	},
 }

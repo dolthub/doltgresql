@@ -75,7 +75,7 @@ func float32Assignment() {
 			if err != nil {
 				return nil, err
 			}
-			return pgtypes.GetNumericValueWithTypmod(*d, targetType.GetAttTypMod())
+			return pgtypes.GetNumericValueWithTypmod(d, targetType.GetAttTypMod())
 		},
 	})
 }

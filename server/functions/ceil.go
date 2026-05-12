@@ -55,11 +55,15 @@ var ceil_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(apd.Decimal)
-		_, err := sql.DecimalCtx.Ceil(&dec, &dec)
+		dec := val.(*apd.Decimal)
+		if dec.Form != apd.Finite {
+			return dec, nil
+		}
+		res := new(apd.Decimal)
+		_, err := sql.DecimalCtx.Ceil(res, dec)
 		if err != nil {
 			return nil, err
 		}
-		return dec, nil
+		return res, nil
 	},
 }
