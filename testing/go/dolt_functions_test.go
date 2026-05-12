@@ -2200,6 +2200,11 @@ func TestDoltReset(t *testing.T) {
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status WHERE staged = 'f';",
+					// |--soft| moves only HEAD and leaves the staging area unchanged, so no items are unstaged.
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM dolt_status WHERE staged = 't';",
 					Expected: []sql.Row{{16}},
 				},
 			},
