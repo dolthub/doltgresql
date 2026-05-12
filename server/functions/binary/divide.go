@@ -15,6 +15,9 @@
 package binary
 
 import (
+	"math"
+	"strings"
+
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -303,11 +306,19 @@ func numeric_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any
 	}
 
 	res := new(apd.Decimal)
-	_, err := sql.DecimalHighPrecisionCtx.Quo(res, num1, num2)
+	// enough precision to scale to at most 16 decimal places
+	p := num1.NumDigits() + int64(math.Abs(float64(num1.Exponent))) + 16
+	_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Quo(res, num1, num2)
 	if err != nil {
 		return nil, err
 	}
-	return sql.DecimalRound(res, 16)
+
+	// the exponent value depends on the number of digits before decimal places.
+	parts := strings.Split(res.Text('f'), ".")
+	whole := (len(parts[0]) + 4 - 1) / 4
+	exp := int32(16 - (whole-1)*4)
+
+	return sql.DecimalRound(res, exp)
 }
 
 // numeric_div represents the PostgreSQL function of the same name, taking the same parameters.

@@ -390,13 +390,10 @@ func numeric_add_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any
 		return pgtypes.NumericInf, nil
 	}
 
-	p := num1.NumDigits()
-	if p2 := num2.NumDigits(); p < p2 {
-		p = p2
-	}
-
 	res := new(apd.Decimal)
-	_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Add(res, num1, num2)
+	p := uint32(math.Max(float64(num1.NumDigits()), float64(num2.NumDigits())+
+		math.Max(math.Abs(float64(num1.Exponent)), math.Abs(float64(num2.Exponent)))))
+	_, err := sql.DecimalCtx.WithPrecision(p).Add(res, num1, num2)
 	if err != nil {
 		return nil, err
 	}

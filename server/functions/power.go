@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -67,6 +68,7 @@ var power_numeric_numeric = framework.Function2{
 			return pgtypes.NumericNaN, nil
 		}
 		if dec1.Form == apd.Infinite && dec1.Negative {
+			// dec1 is -Infinity
 			even := dec2.Form == apd.Infinite && !dec2.Negative
 			if dec2.Form == apd.Finite {
 				i, err := dec2.Int64()
@@ -75,7 +77,6 @@ var power_numeric_numeric = framework.Function2{
 				}
 				even = i%2 == 0
 			}
-
 			if dec2.Sign() > 0 {
 				// +inf will return neginf == fix!!
 				if even {
@@ -87,9 +88,17 @@ var power_numeric_numeric = framework.Function2{
 				return apd.New(0, 0), nil
 			}
 			return apd.New(1, 0), nil
-		}
-
-		if dec1.IsZero() {
+		} else if dec1.Form == apd.Infinite {
+			// dec1 is +Infinity
+			d2Sign := dec2.Sign()
+			if dec2.Sign() < 0 {
+				return apd.New(0, 0), nil
+			} else if d2Sign == 0 {
+				return apd.New(1, 0), nil
+			}
+			return types.DecimalPosInf, nil
+		} else if dec1.IsZero() {
+			// dec1 is 0
 			if dec2.Sign() < 0 {
 				// includes neg inf
 				return nil, errPowerZeroToNegative

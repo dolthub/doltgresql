@@ -57,7 +57,7 @@ var sqrt_numeric = framework.Function1{
 			return nil, errors.Errorf("cannot take square root of a negative number")
 		}
 
-		// TODO: calculate precision and scale accurately
+		// calculate precision and scale
 		exp := dec.Exponent
 		p := dec.NumDigits()
 		if exp < 0 {

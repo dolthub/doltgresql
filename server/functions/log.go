@@ -64,7 +64,7 @@ var log_numeric = framework.Function1{
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
 		}
 
-		// TODO: calculate precision and scale accurately
+		// calculate precision and scale
 		p := uint32(17)
 		if dec.Exponent < 0 {
 			p += uint32(-dec.Exponent)

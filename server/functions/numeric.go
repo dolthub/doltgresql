@@ -178,7 +178,7 @@ var numeric_send = framework.Function1{
 		writer := utils.NewWireWriter()
 		if num.Form == apd.Finite {
 			// Short-circuit if this is the zero value
-			if num.IsZero() {
+			if num.IsZero() && num.Exponent == 0 {
 				writer.WriteBytes([]byte{0, 0, 0, 0, 0, 0, 0, 0})
 				return writer.BufferData(), nil
 			}

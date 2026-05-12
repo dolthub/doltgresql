@@ -231,7 +231,8 @@ var numeric_mul = framework.Function2{
 			return pgtypes.NumericNaN, nil
 		}
 		res := new(apd.Decimal)
-		_, err := sql.DecimalCtx.WithPrecision(uint32(num1.NumDigits()+num2.NumDigits())).Mul(res, num1, num2)
+		p := num1.NumDigits() + num2.NumDigits() + int64(math.Max(math.Abs(float64(num1.Exponent)), math.Abs(float64(num2.Exponent))))
+		_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Mul(res, num1, num2)
 		if err != nil {
 			return nil, err
 		}

@@ -64,12 +64,12 @@ var ln_numeric = framework.Function1{
 			return dec, nil
 		}
 
-		// TODO: calculate precision and scale accurately
+		// calculate precision and scale
 		exp := dec.Exponent
 		p := dec.NumDigits()
-		if exp < 0 {
+		if exp < -16 {
 			p += int64(-exp)
-		} else if exp == 0 {
+		} else {
 			p += 16
 		}
 
@@ -79,6 +79,7 @@ var ln_numeric = framework.Function1{
 			return nil, err
 		}
 
+		// calculate exponent
 		if exp > -16 {
 			// use ln result
 			parts := strings.Split(res.Text('f'), ".")

@@ -638,7 +638,6 @@ func TestFunctionsMath(t *testing.T) {
 					},
 				},
 				{
-					Skip:  true, //TODO: fix
 					Query: `select power('0'::numeric, '3'::numeric);`,
 					Expected: []sql.Row{
 						{Numeric("0.0000000000000000")},

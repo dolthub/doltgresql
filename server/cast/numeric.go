@@ -40,7 +40,7 @@ func numericAssignment() {
 			if d.Cmp(pgtypes.NumericValueMinInt16) < 0 || d.Cmp(pgtypes.NumericValueMaxInt16) > 0 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "smallint out of range")
 			}
-			i := types.DecimalIntPart(d)
+			i := types.DecimalRoundedIntPart(d)
 			return int16(i), nil
 		},
 	})
@@ -52,7 +52,7 @@ func numericAssignment() {
 			if d.Cmp(pgtypes.NumericValueMinInt32) < 0 || d.Cmp(pgtypes.NumericValueMaxInt32) > 0 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "integer out of range")
 			}
-			i := types.DecimalIntPart(d)
+			i := types.DecimalRoundedIntPart(d)
 			return int32(i), nil
 		},
 	})
@@ -64,7 +64,7 @@ func numericAssignment() {
 			if d.Cmp(pgtypes.NumericValueMinInt64) < 0 || d.Cmp(pgtypes.NumericValueMaxInt64) > 0 {
 				return nil, errors.Wrap(pgtypes.ErrCastOutOfRange, "bigint out of range")
 			}
-			return types.DecimalIntPart(d), nil
+			return types.DecimalRoundedIntPart(d), nil
 		},
 	})
 }

@@ -242,13 +242,10 @@ var numeric_sub = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		num1 := val1.(*apd.Decimal)
 		num2 := val2.(*apd.Decimal)
-		p := num1.NumDigits()
-		if p2 := num2.NumDigits(); p < p2 {
-			p = p2
-		}
 		res := new(apd.Decimal)
-		// TODO does this need precision??
-		_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Sub(res, num1, num2)
+		p := uint32(math.Max(float64(num1.NumDigits()), float64(num2.NumDigits())+
+			math.Max(math.Abs(float64(num1.Exponent)), math.Abs(float64(num2.Exponent)))))
+		_, err := sql.DecimalCtx.WithPrecision(p).Sub(res, num1, num2)
 		if err != nil {
 			return nil, err
 		}

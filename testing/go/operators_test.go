@@ -749,9 +749,20 @@ func TestOperators(t *testing.T) {
 					Expected: []sql.Row{{Numeric("4.0000000000000000")}},
 				},
 				{
-					Skip:     true, // TODO: fix scaling for division
+					Query:    `SELECT 444000804::numeric / 2::int2;`,
+					Expected: []sql.Row{{Numeric("222000402.00000000")}},
+				},
+				{
 					Query:    `SELECT 44400080::numeric / 2::int2;`,
 					Expected: []sql.Row{{Numeric("22200040.000000000000")}},
+				},
+				{
+					Query:    `SELECT 44400::numeric / 2::int2;`,
+					Expected: []sql.Row{{Numeric("22200.000000000000")}},
+				},
+				{
+					Query:    `SELECT 4440::numeric / 2::int2;`,
+					Expected: []sql.Row{{Numeric("2220.0000000000000000")}},
 				},
 				{
 					Query:    `SELECT 8::numeric / 2::int4;`,
