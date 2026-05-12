@@ -193,7 +193,8 @@ func jsonbExplicit() {
 			case pgtypes.JsonValueString:
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
-				return apd.Decimal(value), nil
+				v := apd.Decimal(value)
+				return &v, nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:

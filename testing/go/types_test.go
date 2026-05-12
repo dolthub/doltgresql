@@ -1972,6 +1972,10 @@ var typesTests = []ScriptTest{
 				Query:    "SELECT floor(-0.000001);",
 				Expected: []sql.Row{{Numeric("-1")}},
 			},
+			{
+				Query:    `select '12345'::jsonb::numeric;`,
+				Expected: []sql.Row{{Numeric("12345")}},
+			},
 		},
 	},
 	{
