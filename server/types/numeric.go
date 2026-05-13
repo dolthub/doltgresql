@@ -170,7 +170,7 @@ func deserializeTypeNumeric(ctx *sql.Context, t *DoltgresType, data []byte) (any
 // NumericCompare compares two *apd.Decimal values handling NaN separately.
 func NumericCompare(ab, bb *apd.Decimal) int {
 	if (ab.Form == apd.NaN && bb.Form == apd.NaN) ||
-			(ab.Form == apd.Infinite && bb.Form == apd.Infinite && ab.Negative == bb.Negative) {
+		(ab.Form == apd.Infinite && bb.Form == apd.Infinite && ab.Negative == bb.Negative) {
 		return 0
 	}
 	if ab.Form == apd.NaN {
