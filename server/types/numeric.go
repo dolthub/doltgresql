@@ -143,7 +143,11 @@ func serializeTypeNumeric(ctx *sql.Context, t *DoltgresType, val any) ([]byte, e
 	case decimal.Decimal:
 		return d.MarshalBinary()
 	case *apd.Decimal:
-		dec := decimal.NewFromBigInt(d.Coeff.MathBigInt(), d.Exponent)
+		bigInt := d.Coeff.MathBigInt()
+		if d.Negative {
+			bigInt.Neg(bigInt)
+		}
+		dec := decimal.NewFromBigInt(bigInt, d.Exponent)
 		return dec.MarshalBinary()
 	default:
 		return nil, errors.Errorf("cannot serialize value of type %T as numeric", val)
