@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
+	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
@@ -134,26 +135,42 @@ func GetNumericValueFromStringWithTypmod(val string, typmod int32) (*apd.Decimal
 
 // serializeTypeNumeric handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
+// Note: this function is only used for values serialized by older clients, which is why it uses a decimal.Decimal.
+// Newer clients will use Dolt's serialization, which uses apd.Decimal directly.
+// Deprecated.
 func serializeTypeNumeric(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	d := val.(*apd.Decimal)
-	return d.MarshalText()
+	switch d := val.(type) {
+	case decimal.Decimal:
+		return d.MarshalBinary()
+	case *apd.Decimal:
+		dec := decimal.NewFromBigInt(d.Coeff.MathBigInt(), d.Exponent)
+		return dec.MarshalBinary()
+	default:
+		return nil, errors.Errorf("cannot serialize value of type %T as numeric", val)
+	}
 }
 
 // deserializeTypeNumeric handles deserialization from the Dolt serialized format to our standard representation used by
 // expressions and nodes.
+// Note: this function is only used for values serialized by older clients, which is why it uses a decimal.Decimal.
+// Newer clients will use Dolt's serialization, which uses apd.Decimal directly.
+// Deprecated.
 func deserializeTypeNumeric(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
-	retVal := apd.New(0, 0)
-	err := retVal.UnmarshalText(data)
-	return retVal, err
+	retVal := decimal.NewFromInt(0)
+	err := retVal.UnmarshalBinary(data)
+	if err != nil {
+		return nil, err
+	}
+	return apd.New(retVal.CoefficientInt64(), retVal.Exponent()), nil
 }
 
 // NumericCompare compares two *apd.Decimal values handling NaN separately.
 func NumericCompare(ab, bb *apd.Decimal) int {
 	if (ab.Form == apd.NaN && bb.Form == apd.NaN) ||
-		(ab.Form == apd.Infinite && bb.Form == apd.Infinite && ab.Negative == bb.Negative) {
+			(ab.Form == apd.Infinite && bb.Form == apd.Infinite && ab.Negative == bb.Negative) {
 		return 0
 	}
 	if ab.Form == apd.NaN {
