@@ -1296,6 +1296,16 @@ var typesTests = []ScriptTest{
 					{"t"},
 				},
 			},
+			{
+				Query: `SELECT '1.3e100'::jsonb;`,
+				Expected: []sql.Row{
+					{"13000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"},
+				},
+			},
+			{
+				Query:    `select '12345.05'::jsonb::int2;`,
+				Expected: []sql.Row{{12345}},
+			},
 		},
 	},
 	{
@@ -1876,6 +1886,10 @@ var typesTests = []ScriptTest{
 			"CREATE TABLE t_numeric (id INTEGER primary key, v1 NUMERIC(5,2));",
 			"INSERT INTO t_numeric VALUES (1, 123.45), (2, 67.89), (3, 100.3);",
 			"CREATE TABLE fract_only (id int, val numeric(4,4));",
+			"CREATE TABLE num_data (id int4, val numeric(210,10));",
+			"INSERT INTO num_data VALUES (2, '-34338492.215397047');",
+			"CREATE TABLE ceil_floor_round (a numeric);",
+			"INSERT INTO ceil_floor_round VALUES ('-0.000001');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
@@ -1909,6 +1923,58 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "select 1.03::float4::numeric(2,2);",
 				ExpectedErr: `numeric field overflow`,
+			},
+			{
+				Query:    "SELECT 'NaN'::numeric;",
+				Expected: []sql.Row{{Numeric("NaN")}},
+			},
+			{
+				Query:    "SELECT 'nan'::numeric;",
+				Expected: []sql.Row{{Numeric("NaN")}},
+			},
+			{
+				Query:    "SELECT '-inf'::numeric;",
+				Expected: []sql.Row{{Numeric("-Infinity")}},
+			},
+			{
+				Query:    "SELECT '-infinity'::numeric;",
+				Expected: []sql.Row{{Numeric("-Infinity")}},
+			},
+			{
+				Query:    "SELECT 'inf'::numeric;",
+				Expected: []sql.Row{{Numeric("Infinity")}},
+			},
+			{
+				Query:    "SELECT 'infinity'::numeric;",
+				Expected: []sql.Row{{Numeric("Infinity")}},
+			},
+			{
+				Query:    "SELECT ' 123'::numeric;",
+				Expected: []sql.Row{{Numeric("123")}},
+			},
+			{
+				Query:    "SELECT t1.id, t2.id, round(t1.val * t2.val, 30) FROM num_data t1, num_data t2;",
+				Expected: []sql.Row{{2, 2, Numeric("1179132047626883.596862135856320209000000000000")}},
+			},
+			{
+				Query:    "select sqrt(1.000000000000004::numeric);",
+				Expected: []sql.Row{{Numeric("1.000000000000002")}},
+			},
+			{
+				Query:    "select ln(5.80397490724e5);",
+				Expected: []sql.Row{{Numeric("13.271468476626518")}},
+			},
+			{
+				Query:    "select 4770999999999999999999999999999999999999999999999999999999999999999999999999999999999999 * 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999;",
+				Expected: []sql.Row{{Numeric("47709999999999999999999999999999999999999999999999999999999999999999999999999999999999985229000000000000000000000000000000000000000000000000000000000000000000000000000000000001")}},
+			},
+			{
+				Query:    "SELECT floor(-0.000001);",
+				Expected: []sql.Row{{Numeric("-1")}},
+			},
+			{
+				Query:    `select '12345'::jsonb::numeric;`,
+				Expected: []sql.Row{{Numeric("12345")}},
 			},
 		},
 	},

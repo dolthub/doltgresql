@@ -15,10 +15,11 @@
 package cast
 
 import (
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -66,7 +67,8 @@ func jsonbExplicit() {
 			case pgtypes.JsonValueString:
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
-				f, _ := decimal.Decimal(value).Float64()
+				d := apd.Decimal(value)
+				f, _ := d.Float64()
 				return float32(f), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
@@ -89,7 +91,8 @@ func jsonbExplicit() {
 			case pgtypes.JsonValueString:
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
-				f, _ := decimal.Decimal(value).Float64()
+				d := apd.Decimal(value)
+				f, _ := d.Float64()
 				return f, nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
@@ -112,11 +115,11 @@ func jsonbExplicit() {
 			case pgtypes.JsonValueString:
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
-				d := decimal.Decimal(value)
-				if d.LessThan(pgtypes.NumericValueMinInt16) || d.GreaterThan(pgtypes.NumericValueMaxInt16) {
+				d := apd.Decimal(value)
+				if d.Cmp(pgtypes.NumericValueMinInt16) < 0 || d.Cmp(pgtypes.NumericValueMaxInt16) > 0 {
 					return nil, errors.Errorf("smallint out of range")
 				}
-				return int16(d.IntPart()), nil
+				return int16(types.DecimalRoundedIntPart(&d)), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
@@ -138,11 +141,11 @@ func jsonbExplicit() {
 			case pgtypes.JsonValueString:
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
-				d := decimal.Decimal(value)
-				if d.LessThan(pgtypes.NumericValueMinInt32) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
+				d := apd.Decimal(value)
+				if d.Cmp(pgtypes.NumericValueMinInt32) < 0 || d.Cmp(pgtypes.NumericValueMaxInt32) > 0 {
 					return nil, errors.Errorf("integer out of range")
 				}
-				return int32(d.IntPart()), nil
+				return int32(types.DecimalRoundedIntPart(&d)), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
@@ -164,11 +167,11 @@ func jsonbExplicit() {
 			case pgtypes.JsonValueString:
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
-				d := decimal.Decimal(value)
-				if d.LessThan(pgtypes.NumericValueMinInt64) || d.GreaterThan(pgtypes.NumericValueMaxInt64) {
+				d := apd.Decimal(value)
+				if d.Cmp(pgtypes.NumericValueMinInt64) < 0 || d.Cmp(pgtypes.NumericValueMaxInt64) > 0 {
 					return nil, errors.Errorf("bigint out of range")
 				}
-				return int64(d.IntPart()), nil
+				return int64(types.DecimalRoundedIntPart(&d)), nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:
@@ -190,7 +193,8 @@ func jsonbExplicit() {
 			case pgtypes.JsonValueString:
 				return nil, errors.Errorf("cannot cast jsonb string to type %s", targetType.String())
 			case pgtypes.JsonValueNumber:
-				return decimal.Decimal(value), nil
+				v := apd.Decimal(value)
+				return &v, nil
 			case pgtypes.JsonValueBoolean:
 				return nil, errors.Errorf("cannot cast jsonb boolean to type %s", targetType.String())
 			case pgtypes.JsonValueNull:

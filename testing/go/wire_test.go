@@ -2911,7 +2911,7 @@ func TestWireTypesSending(t *testing.T) {
 			Name: "NUMERIC returning text format",
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 NUMERIC, v2 NUMERIC(5,2), v3 NUMERIC(14,5));",
-				"INSERT INTO test VALUES (0, -0.1, NULL), (12357232.456786653224768755799, 235.67, 4278.009);",
+				"INSERT INTO test VALUES (0, -0.1, NULL), (12357232.456786653224768755799, 235.67, 4278.009), ('Infinity', 'NaN', 'NaN'), ('-Infinity', '0.05', '0.1045678');",
 			},
 			Assertions: []WireScriptTestAssertion{
 				{
@@ -2982,6 +2982,13 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
+								[]byte(`-Infinity`),
+								[]byte(`0.05`),
+								[]byte(`0.10457`),
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
 								[]byte(`0`),
 								[]byte(`-0.10`),
 								nil,
@@ -2994,7 +3001,15 @@ func TestWireTypesSending(t *testing.T) {
 								[]byte(`4278.00900`),
 							},
 						},
-						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`Infinity`),
+								[]byte(`NaN`),
+								[]byte(`NaN`),
+							},
+						},
+
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 4")},
 						&pgproto3.CloseComplete{},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
@@ -3005,7 +3020,7 @@ func TestWireTypesSending(t *testing.T) {
 			Name: "NUMERIC returning binary format",
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 NUMERIC, v2 NUMERIC(5,2), v3 NUMERIC(14,5));",
-				"INSERT INTO test VALUES (0, -0.1, NULL), (12357232.456786653224768755799, 235.67, 4278.009);",
+				"INSERT INTO test VALUES (0, -0.1, NULL), (12357232.456786653224768755799, 235.67, 4278.009), ('Infinity', 'NaN', 'NaN'), ('-Infinity', '0.05', '0.1045678');",
 			},
 			Assertions: []WireScriptTestAssertion{
 				{
@@ -3076,6 +3091,13 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
+								{0, 0, 0, 0, 240, 0, 0, 32},
+								{0, 1, 255, 255, 0, 0, 0, 2, 1, 244},
+								{0, 2, 255, 255, 0, 0, 0, 5, 4, 21, 27, 88},
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
 								{0, 0, 0, 0, 0, 0, 0, 0},
 								{0, 1, 255, 255, 64, 0, 0, 2, 3, 232},
 								nil,
@@ -3088,7 +3110,14 @@ func TestWireTypesSending(t *testing.T) {
 								{0, 2, 0, 0, 0, 0, 0, 5, 16, 182, 0, 90},
 							},
 						},
-						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 0, 0, 0, 208, 0, 0, 32},
+								{0, 0, 0, 0, 192, 0, 0, 0},
+								{0, 0, 0, 0, 192, 0, 0, 0},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 4")},
 						&pgproto3.CloseComplete{},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
