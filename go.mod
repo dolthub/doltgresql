@@ -6,10 +6,10 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20260512211612-add2b8cc21e8
+	github.com/dolthub/dolt/go v0.40.5-0.20260514021628-29c8b0a35aa9
 	github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20260512202859-bb7a7d4fe7ee
+	github.com/dolthub/go-mysql-server v0.20.1-0.20260513232454-bbbd50eb8e47
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20260505163811-77e5224be390
@@ -31,6 +31,7 @@ require (
 	github.com/pierrre/geohash v1.0.0
 	github.com/pkg/profile v1.5.0
 	github.com/sergi/go-diff v1.1.0
+	github.com/shopspring/decimal v1.4.0
 	github.com/sirupsen/logrus v1.8.3
 	github.com/stretchr/testify v1.11.1
 	github.com/twpayne/go-geom v1.3.6
@@ -170,7 +171,6 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.25.12 // indirect
-	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
 	github.com/sony/gobreaker v0.5.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
