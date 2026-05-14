@@ -6,10 +6,10 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20260511182609-ab34f8c300fb
+	github.com/dolthub/dolt/go v0.40.5-0.20260514021628-29c8b0a35aa9
 	github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20260507202550-43d6daf5958b
+	github.com/dolthub/go-mysql-server v0.20.1-0.20260513232454-bbbd50eb8e47
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20260505163811-77e5224be390
@@ -97,6 +97,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
+	github.com/cockroachdb/apd/v3 v3.2.3 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20190617123548-eb05cc24525f // indirect
 	github.com/cockroachdb/redact v1.0.6 // indirect
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
