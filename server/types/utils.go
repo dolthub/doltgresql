@@ -62,8 +62,23 @@ type TypeCollection interface {
 	GetType(context.Context, id.Type) (*DoltgresType, error)
 }
 
+// Cast is an interface from the core package, redeclared here to get around import cycles.
+type Cast interface {
+	Eval(ctx *sql.Context, val any, sourceType *DoltgresType, targetType *DoltgresType) (any, error)
+}
+
+// CastsCollection is an interface from the core package, redeclared here to get around import cycles.
+type CastsCollection interface {
+	GetExplicitCast(ctx context.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
+	GetAssignmentCast(ctx context.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
+	GetImplicitCast(ctx context.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
+}
+
 // GetTypesCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
 var GetTypesCollectionFromContext func(*sql.Context) (TypeCollection, error)
+
+// GetCastsCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
+var GetCastsCollectionFromContext func(*sql.Context) (CastsCollection, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.

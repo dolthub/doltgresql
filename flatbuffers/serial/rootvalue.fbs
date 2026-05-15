@@ -41,6 +41,8 @@ table RootValue {
   conflicts:[ubyte]; // Serialized AddressMap.
 
   procedures:[ubyte]; // Serialized AddressMap.
+
+  casts:[ubyte]; // Serialized AddressMap.
 }
 
 table DatabaseSchema {

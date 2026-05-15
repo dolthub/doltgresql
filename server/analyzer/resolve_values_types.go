@@ -202,7 +202,7 @@ func transformValuesNode(ctx *sql.Context, n sql.Node) (sql.Node, transform.Tree
 	// Find common type for each column
 	var newTuples [][]sql.Expression
 	for colIdx := 0; colIdx < numCols; colIdx++ {
-		commonType, requiresCasts, err := framework.FindCommonType(columnTypes[colIdx])
+		commonType, requiresCasts, err := framework.FindCommonType(ctx, columnTypes[colIdx])
 		if err != nil {
 			return nil, transform.NewTree, err
 		}

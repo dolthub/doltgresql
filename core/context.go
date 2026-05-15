@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/procedures"
@@ -44,6 +45,7 @@ type contextValues struct {
 	procs          *procedures.Collection
 	trigs          *triggers.Collection
 	exts           *extensions.Collection
+	casts          *casts.Collection
 	pgCatalogCache any
 }
 
@@ -396,6 +398,26 @@ func GetTypesCollectionFromContext(ctx *sql.Context) (*typecollection.TypeCollec
 	return cv.types, nil
 }
 
+// GetCastsCollectionFromContext returns the given casts collection from the context.
+// Will always return a collection if no error is returned.
+func GetCastsCollectionFromContext(ctx *sql.Context) (*casts.Collection, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cv.casts == nil {
+		_, root, err := GetRootFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		cv.casts, err = casts.LoadCasts(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return cv.casts, nil
+}
+
 // CloseContextRootFinalizer finalizes any changes persisted within the context by writing them to the working root.
 // This should ONLY be called by the ContextRootFinalizer node.
 func CloseContextRootFinalizer(ctx *sql.Context) error {
@@ -480,6 +502,8 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 		cv.types = nil
 	}
 
+	// TODO: need to be able to persist cv.casts without an empty collection updating the root (no value != empty value)
+
 	// Setting the session working root doesn't do a check to see if anything actually changed or not before marking that
 	// branch state dirty, and dolt only allows a single dirty working set per commit. So it's important here to only
 	// update the session root if something actually changed for that db.
@@ -553,6 +577,8 @@ func (cv *contextValues) clear(objID objinterface.RootObjectID) {
 		// We don't cache these
 	case objinterface.RootObjectID_Procedures:
 		cv.procs = nil
+	case objinterface.RootObjectID_Casts:
+		cv.casts = nil
 	default:
 		panic("unhandled context clear object ID")
 	}

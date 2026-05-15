@@ -27,6 +27,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -172,17 +173,23 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 	} else if err != nil {
 		return nil, err
 	}
+	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// The conversion to []text needs []any, not sql.Row
 	rowSlice := make([]any, len(row))
 	for i := range row {
-		fromType, err := typeForElement(row[i])
+		sourceType, err := typeForElement(row[i])
 		if err != nil {
 			return nil, err
 		}
-
-		castFn := framework.GetExplicitCast(fromType, pgtypes.Text)
-		textVal, err := castFn(ctx, row[i], pgtypes.Text)
+		cast, err := castsColl.GetExplicitCast(ctx, sourceType, pgtypes.Text)
+		if err != nil {
+			return nil, err
+		}
+		textVal, err := cast.Eval(ctx, row[i], sourceType, pgtypes.Text)
 		if err != nil {
 			return nil, err
 		}

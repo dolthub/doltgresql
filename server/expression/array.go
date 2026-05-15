@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -64,6 +65,10 @@ func (array *Array) Children() []sql.Expression {
 func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	resultTyp := array.coercedType.ArrayBaseType()
 	values := make([]any, len(array.children))
+	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for i, expr := range array.children {
 		val, err := expr.Eval(ctx, row)
 		if err != nil {
@@ -81,12 +86,15 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 
 		// We always cast the element, as there may be parameter restrictions in place
-		castFunc := framework.GetImplicitCast(doltgresType, resultTyp)
-		if castFunc == nil {
+		cast, err := castsColl.GetImplicitCast(ctx, doltgresType, resultTyp)
+		if err != nil {
+			return nil, err
+		}
+		if !cast.ID.IsValid() {
 			return nil, errors.Errorf("cannot find cast function from %s to %s", doltgresType.String(), resultTyp.String())
 		}
 
-		values[i], err = castFunc(ctx, val, resultTyp)
+		values[i], err = cast.Eval(ctx, val, doltgresType, resultTyp)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +180,7 @@ func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) 
 			childrenTypes = append(childrenTypes, childType)
 		}
 	}
-	targetType, _, err := framework.FindCommonType(childrenTypes)
+	targetType, _, err := framework.FindCommonType(ctx, childrenTypes)
 	if err != nil {
 		return nil, errors.Errorf("ARRAY %s", err.Error())
 	}
