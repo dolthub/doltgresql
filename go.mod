@@ -23,7 +23,7 @@ require (
 	github.com/jackc/pglogrepl v0.0.0-20240307033717-828fbfe908e9
 	github.com/jackc/pgtype v1.14.0
 	github.com/jackc/pgx/v4 v4.18.2
-	github.com/jackc/pgx/v5 v5.6.1-0.20240826124046-97d20ccfadaa
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/lib/pq v1.10.9
 	github.com/madflojo/testcerts v1.1.1
 	github.com/mitchellh/go-ps v1.0.0
