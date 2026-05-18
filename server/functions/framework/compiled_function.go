@@ -218,7 +218,7 @@ func (c *CompiledFunction) Type(ctx *sql.Context) sql.Type {
 		if rt.IsPolymorphicType() && len(c.originalTypes) > 0 {
 			rt = c.originalTypes[0]
 			if rt.IsArrayType() {
-				return rt.ArrayBaseType()
+				return rt.ArrayBaseTypeCtx(ctx)
 			}
 		}
 		return rt
@@ -303,7 +303,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 					// should be impossible, we check this at function compile time
 					return nil, cerrors.Errorf("variadic arguments must be array types, was %T", targetType)
 				}
-				targetType = targetType.ArrayBaseType()
+				targetType = targetType.ArrayBaseTypeCtx(ctx)
 			} else {
 				targetType = targetParamTypes[i]
 			}

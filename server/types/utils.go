@@ -69,9 +69,9 @@ type Cast interface {
 
 // CastsCollection is an interface from the core package, redeclared here to get around import cycles.
 type CastsCollection interface {
-	GetExplicitCast(ctx context.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
-	GetAssignmentCast(ctx context.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
-	GetImplicitCast(ctx context.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
+	GetExplicitCast(ctx *sql.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
+	GetAssignmentCast(ctx *sql.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
+	GetImplicitCast(ctx *sql.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
 }
 
 // GetTypesCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
@@ -145,7 +145,7 @@ func serializedStringCompare(v1 []byte, v2 []byte) int {
 // with an exception to BOOLEAN type. It returns "t" instead of "true".
 func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 	if t.IsArrayType() {
-		baseType := t.ArrayBaseType()
+		baseType := t.ArrayBaseTypeCtx(ctx)
 		return ArrToString(ctx, val.([]any), baseType, true)
 	} else if t.ID == Bool.ID {
 		if val.(bool) {
