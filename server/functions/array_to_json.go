@@ -18,10 +18,11 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/apd/v3"
-	"github.com/dolthub/doltgresql/server/functions/framework"
-	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/goccy/go-json"
+
+	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // initArrayToJson registers the functions to the catalog.
