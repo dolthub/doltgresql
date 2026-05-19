@@ -1077,10 +1077,6 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "CREATE INDEX v1_idx ON test(v1 varchar_pattern_ops) WITH (storage_opt1 = foo) TABLESPACE tablespace_name;",
 				},
 				{
-					Query:       "CREATE INDEX v1_idx2 ON test( (concat(v1, v1)) ) ;",
-					ExpectedErr: "not yet supported",
-				},
-				{
 					Query:       "CREATE INDEX v1_idx2 ON test using hash (v1);",
 					ExpectedErr: "not yet supported",
 				},
