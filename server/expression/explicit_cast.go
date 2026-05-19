@@ -120,7 +120,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		// during an error, so it's safe to use.
 		castToType := c.castToType
 		if c.castToType.IsArrayType() {
-			castToType = c.castToType.ArrayBaseType()
+			castToType = c.castToType.ArrayBaseTypeCtx(ctx)
 		}
 		// A nil result will be returned if there's a critical error, which we should never ignore.
 		if castToType.TypCategory != pgtypes.TypeCategory_StringTypes || castResult == nil {

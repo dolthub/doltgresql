@@ -273,6 +273,27 @@ func TestDomain(t *testing.T) {
 			},
 		},
 		{
+			Name: "domain array type column",
+			SetUpScript: []string{
+				`CREATE DOMAIN vc4 AS varchar(4);`,
+				`CREATE TABLE t (pk int primary key, v vc4[]);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO t VALUES (1, array['ab', 'cd']::vc4[]);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t VALUES (2, '{ef,gh}');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM t ORDER BY pk;`,
+					Expected: []sql.Row{{1, "{ab,cd}"}, {2, "{ef,gh}"}},
+				},
+			},
+		},
+		{
 			Name: "explicit cast to domain type",
 			SetUpScript: []string{
 				`CREATE DOMAIN year_not_null AS integer NOT NULL CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,

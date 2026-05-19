@@ -109,10 +109,8 @@ func (pgs *TypeCollection) DropType(ctx context.Context, names ...id.Type) (err 
 }
 
 // GetAllTypes returns a map containing all types in the collection, grouped by the schema they're contained in.
-// Each type array is also sorted by the type name. It includes built-in types, but does not include types referring to
-// a table's row type.
+// Each type array is also sorted by the type name. It includes built-in types.
 func (pgs *TypeCollection) GetAllTypes(ctx context.Context) (typeMap map[string][]*pgtypes.DoltgresType, schemaNames []string, totalCount int, err error) {
-	// TODO: this should probably get tables as well since tables create composite types matching their rows
 	schemaNamesMap := make(map[string]struct{})
 	typeMap = make(map[string][]*pgtypes.DoltgresType)
 	err = pgs.IterateTypes(ctx, func(t *pgtypes.DoltgresType) (stop bool, err error) {
@@ -177,12 +175,26 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 			return createAnonymousCompositeType(ctx, name)
 		}
 
-		// If it's not a built-in type or created type, then check if it's a composite table row type
+		// Table composite types are computed on the fly from the live table schema rather than
+		// stored as root objects (storing them would create a naming collision with the actual
+		// table in Dolt's diff layer, since both map to the same doltdb.TableName).
 		sqlCtx, ok := ctx.(*sql.Context)
 		if !ok {
 			return nil, nil
 		}
-		tbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), name.TypeName())
+		typeName := name.TypeName()
+
+		// A name starting with "_" may be the implicit array type for a table's composite row
+		// type. Resolve the element type first (which handles the table lookup), then wrap it.
+		if strings.HasPrefix(typeName, "_") {
+			elemType, err := pgs.GetType(ctx, id.NewType(name.SchemaName(), typeName[1:]))
+			if err != nil || elemType == nil {
+				return nil, err
+			}
+			return pgtypes.CreateArrayTypeFromBaseType(elemType), nil
+		}
+
+		tbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), typeName)
 		if err != nil || tbl == nil {
 			return nil, err
 		}
@@ -243,7 +255,7 @@ func (pgs *TypeCollection) HasType(ctx context.Context, name id.Type) bool {
 	if err == nil && ok {
 		return true
 	}
-	// If it's not a built-in type or created type, then check if it's a composite table row type
+	// Table composite types are not stored; check the table as a fallback.
 	sqlCtx, ok := ctx.(*sql.Context)
 	if !ok {
 		return false

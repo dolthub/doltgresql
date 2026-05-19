@@ -122,6 +122,19 @@ func NewUnresolvedDoltgresTypeFromID(idType id.Type) *DoltgresType {
 	}
 }
 
+// NewUnresolvedArrayDoltgresType returns an unresolved DoltgresType for an array of a user-defined element type.
+// TypCategory and Elem are pre-filled so that IsArrayType() returns true before full resolution from the type
+// collection. The array type ID follows the Postgres convention of "_" + element type name.
+func NewUnresolvedArrayDoltgresType(sch, elemName string) *DoltgresType {
+	return &DoltgresType{
+		ID:           id.NewType(sch, "_"+elemName),
+		IsUnresolved: true,
+		TypCategory:  TypeCategory_ArrayTypes,
+		Elem:         id.NewType(sch, elemName),
+		Array:        id.NullType,
+	}
+}
+
 // AnalyzeFuncName returns the name that would be displayed in pg_type for the `typanalyze` field.
 func (t *DoltgresType) AnalyzeFuncName() string {
 	return globalFunctionRegistry.GetString(t.AnalyzeFunc)
@@ -129,7 +142,17 @@ func (t *DoltgresType) AnalyzeFuncName() string {
 
 // ArrayBaseType returns a base type of given array type.
 // If this type is not an array type, it returns itself.
+// Prefer using ArrayBaseTypeCtx() instead.
 func (t *DoltgresType) ArrayBaseType() *DoltgresType {
+	// TODO: Remove this method and rename ArrayBaseTypeCtx(ctx)
+	//       to ArrayBaseType(ctx) when all callers are migrated.
+	return t.ArrayBaseTypeCtx(nil)
+}
+
+// ArrayBaseTypeCtx returns the base type of an array type, using the context to resolve user-defined element types
+// that aren't in the built-in type map.
+// If this type is not an array type, it returns itself.
+func (t *DoltgresType) ArrayBaseTypeCtx(ctx *sql.Context) *DoltgresType {
 	if !t.IsArrayType() {
 		return t
 	}
@@ -139,10 +162,21 @@ func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 
 	elem, ok = IDToBuiltInDoltgresType[t.Elem]
 	if !ok {
-		// Some array types have no declared element type for pg_catalog compatibilty, but still have a logical type
-		// we return for analysis
+		// Some array types have no declared element type for pg_catalog compatibility, but still have a logical type
+		// we return for analysis.
 		elem, ok = LogicalArrayElementTypes[t.ID]
 		if !ok {
+			if t.IsUnresolved && t.Elem != id.NullType {
+				return NewUnresolvedDoltgresType(t.Elem.SchemaName(), t.Elem.TypeName())
+			}
+			if ctx != nil && t.Elem != id.NullType && GetTypesCollectionFromContext != nil {
+				if typeColl, err := GetTypesCollectionFromContext(ctx); err == nil && typeColl != nil {
+					if elemType, err := typeColl.GetType(ctx, t.Elem); err == nil && elemType != nil {
+						newElem := *elemType.WithAttTypMod(t.attTypMod)
+						return &newElem
+					}
+				}
+			}
 			panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
 		}
 	}
@@ -351,7 +385,8 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		bb := v2.([]any)
 		minLength := utils.Min(len(ab), len(bb))
 		for i := 0; i < minLength; i++ {
-			res, err := t.ArrayBaseType().Compare(ctx, ab[i], bb[i])
+			sqlCtx, _ := ctx.(*sql.Context)
+			res, err := t.ArrayBaseTypeCtx(sqlCtx).Compare(ctx, ab[i], bb[i])
 			if err != nil {
 				return 0, err
 			}
@@ -592,6 +627,8 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 		}
 	} else if t.TypType == TypeType_Enum {
 		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.ID.AsId())
+	} else if t.IsCompositeType() {
+		return ParseCompositeLiteral(ctx, input, t)
 	} else {
 		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input)
 	}
@@ -918,7 +955,14 @@ func (t *DoltgresType) ToArrayType() *DoltgresType {
 	}
 	arr, ok := IDToBuiltInDoltgresType[t.Array]
 	if !ok {
-		panic(fmt.Sprintf("cannot get array type from: %s", t.Name()))
+		if t.Array == id.NullType {
+			// Unresolved or stub type: derive an unresolved array type using the Postgres naming convention.
+			// The caller (e.g. during plan-building before the analyzer resolves types) will re-invoke
+			// ToArrayType on the fully-resolved base type once the analyzer has run.
+			return NewUnresolvedArrayDoltgresType(t.ID.SchemaName(), t.ID.TypeName())
+		}
+		// User-defined type: the array type is not in the built-in map, so build it from this base type.
+		return CreateArrayTypeFromBaseType(t)
 	}
 	newArr := *arr.WithAttTypMod(t.attTypMod)
 	newArr.InternalName = fmt.Sprintf("%s[]", t.String())

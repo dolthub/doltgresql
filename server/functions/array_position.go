@@ -42,7 +42,7 @@ var array_position_anyarray_anyelement = framework.Function2{
 		array := val1.([]any)
 		searchElement := val2
 		arrayType := t[0]
-		baseType := arrayType.ArrayBaseType()
+		baseType := arrayType.ArrayBaseTypeCtx(ctx)
 
 		// Search for the element starting from position 1 (1-indexed)
 		for i, element := range array {
@@ -75,7 +75,7 @@ var array_position_anyarray_anyelement_int32 = framework.Function3{
 		searchElement := val2
 		start := val3.(int32)
 		arrayType := t[0]
-		baseType := arrayType.ArrayBaseType()
+		baseType := arrayType.ArrayBaseTypeCtx(ctx)
 
 		// Convert 1-indexed start position to 0-indexed
 		startIdx := int(start - 1)
@@ -116,7 +116,7 @@ var array_positions_anyarray_anyelement = framework.Function2{
 		array := val1.([]any)
 		searchElement := val2
 		arrayType := t[0]
-		baseType := arrayType.ArrayBaseType()
+		baseType := arrayType.ArrayBaseTypeCtx(ctx)
 		var positions []any
 
 		// Search for all occurrences of the element

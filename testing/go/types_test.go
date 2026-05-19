@@ -3913,6 +3913,27 @@ var enumTypeTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "enum array type column",
+		SetUpScript: []string{
+			`CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy');`,
+			`CREATE TABLE t (pk int primary key, v mood[]);`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `INSERT INTO t VALUES (1, array['sad', 'happy']::mood[]);`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `INSERT INTO t VALUES (2, '{ok,sad}');`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT * FROM t ORDER BY pk;`,
+				Expected: []sql.Row{{1, "{sad,happy}"}, {2, "{ok,sad}"}},
+			},
+		},
+	},
+	{
 		Skip: true,
 		Name: "create type with existing array type name updates the name of the array type",
 		Assertions: []ScriptTestAssertion{

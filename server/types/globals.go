@@ -203,6 +203,7 @@ func init() {
 		toInternal("any"):              Any,
 		toInternal("anyarray"):         AnyArray,
 		toInternal("anyelement"):       AnyElement,
+		toInternal("_anyelement"):      AnyArray,
 		toInternal("anyenum"):          AnyEnum,
 		toInternal("anynonarray"):      AnyNonArray,
 		toInternal("anyrange"):         Unknown,
