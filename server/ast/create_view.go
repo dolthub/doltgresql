@@ -49,7 +49,9 @@ func nodeCreateView(ctx *Context, node *tree.CreateView) (*vitess.DDL, error) {
 					return nil, errors.Errorf(`"ERROR:  syntax error at or near "%s"`, opt.Name)
 				}
 			case "security_barrier":
-				return nil, errors.Errorf("CREATE VIEW '%s' option is not yet supported", opt.Name)
+				if opt.Security {
+					return nil, errors.Errorf("CREATE VIEW '%s' = true option is not yet supported", opt.Name)
+				}
 			case "security_invoker":
 				if opt.Security {
 					sqlSecurity = "invoker"
