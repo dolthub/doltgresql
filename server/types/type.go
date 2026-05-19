@@ -627,6 +627,8 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 		}
 	} else if t.TypType == TypeType_Enum {
 		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.ID.AsId())
+	} else if t.IsCompositeType() {
+		return ParseCompositeLiteral(ctx, input, t)
 	} else {
 		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input)
 	}
@@ -954,7 +956,10 @@ func (t *DoltgresType) ToArrayType() *DoltgresType {
 	arr, ok := IDToBuiltInDoltgresType[t.Array]
 	if !ok {
 		if t.Array == id.NullType {
-			panic(fmt.Sprintf("cannot get array type from: %s", t.Name()))
+			// Unresolved or stub type: derive an unresolved array type using the Postgres naming convention.
+			// The caller (e.g. during plan-building before the analyzer resolves types) will re-invoke
+			// ToArrayType on the fully-resolved base type once the analyzer has run.
+			return NewUnresolvedArrayDoltgresType(t.ID.SchemaName(), t.ID.TypeName())
 		}
 		// User-defined type: the array type is not in the built-in map, so build it from this base type.
 		return CreateArrayTypeFromBaseType(t)

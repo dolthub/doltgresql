@@ -420,6 +420,14 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 					Query:    `CREATE FUNCTION aggf_trans(aggtype[],integer,integer,text) RETURNS aggtype[] AS 'select array_append($1,ROW($2,$3,$4)::aggtype)' LANGUAGE sql STRICT IMMUTABLE`,
 					Expected: []sql.Row{},
 				},
+				{
+					Query:    `SELECT aggf_trans(ARRAY[]::aggtype[], 1, 2, 'hello')`,
+					Expected: []sql.Row{{`{"(1,2,hello)"}`}},
+				},
+				{
+					Query:    `SELECT aggf_trans(ARRAY[ROW(1,2,'hello')::aggtype], 3, 4, 'world')`,
+					Expected: []sql.Row{{`{"(1,2,hello)","(3,4,world)"}`}},
+				},
 			},
 		},
 	})

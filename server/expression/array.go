@@ -23,6 +23,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -183,6 +184,19 @@ func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) 
 	targetType, _, err := framework.FindCommonType(ctx, childrenTypes)
 	if err != nil {
 		return nil, errors.Errorf("ARRAY %s", err.Error())
+	}
+	// If the common type is unresolved (e.g. a user-defined composite type seen before the analyzer runs),
+	// look it up from the type collection so that ToArrayType can find the array type ID.
+	if !targetType.IsResolvedType() {
+		schemaName := targetType.ID.SchemaName()
+		if schemaName == "" {
+			schemaName, _ = core.GetCurrentSchema(ctx)
+		}
+		if typeColl, tcErr := core.GetTypesCollectionFromContext(ctx); tcErr == nil && typeColl != nil {
+			if resolved, rErr := typeColl.GetType(ctx, id.NewType(schemaName, targetType.ID.TypeName())); rErr == nil && resolved != nil {
+				targetType = resolved
+			}
+		}
 	}
 	return targetType.ToArrayType(), nil
 }

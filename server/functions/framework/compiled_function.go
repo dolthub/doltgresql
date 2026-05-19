@@ -306,6 +306,13 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 				targetType = targetType.ArrayBaseTypeCtx(ctx)
 			} else {
 				targetType = targetParamTypes[i]
+				// When the declared parameter type is anyarray, the implicit cast from an
+				// unknown/text argument (via UseInOut) would target anyarray.IoInput which
+				// cannot be loaded as a QuickFunction. Resolve to the concrete array type
+				// (e.g. _aggtype) so the cast uses the real element-type I/O path instead.
+				if targetType.ID == pgtypes.AnyArray.ID {
+					targetType = c.resolvePolymorphicReturnType(targetParamTypes, exprTypes, targetType)
+				}
 			}
 
 			if c.overload.casts[i].ID.IsValid() {
