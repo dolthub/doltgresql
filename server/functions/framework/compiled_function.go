@@ -218,7 +218,7 @@ func (c *CompiledFunction) Type(ctx *sql.Context) sql.Type {
 		if rt.IsPolymorphicType() && len(c.originalTypes) > 0 {
 			rt = c.originalTypes[0]
 			if rt.IsArrayType() {
-				return rt.ArrayBaseType()
+				return rt.ArrayBaseTypeCtx(ctx)
 			}
 		}
 		return rt
@@ -303,9 +303,18 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 					// should be impossible, we check this at function compile time
 					return nil, cerrors.Errorf("variadic arguments must be array types, was %T", targetType)
 				}
-				targetType = targetType.ArrayBaseType()
+				targetType = targetType.ArrayBaseTypeCtx(ctx)
 			} else {
 				targetType = targetParamTypes[i]
+				// When the declared parameter type is anyarray, the implicit cast from an
+				// unknown/text argument (via UseInOut) would target anyarray.IoInput which
+				// cannot be loaded as a QuickFunction. Resolve to the concrete array type
+				// (e.g. _aggtype) so the cast uses the real element-type I/O path instead.
+				// TODO: If targetType.ID can be resolved to the concrete type earlier in
+				//       processing, then we don't need this check here anymore.
+				if targetType.ID == pgtypes.AnyArray.ID {
+					targetType = c.resolvePolymorphicReturnType(targetParamTypes, exprTypes, targetType)
+				}
 			}
 
 			if c.overload.casts[i].ID.IsValid() {

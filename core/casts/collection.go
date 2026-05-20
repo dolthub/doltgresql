@@ -75,7 +75,7 @@ func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree
 
 // GetExplicitCast returns the explicit type cast function that will cast the source type to the target type. Returns
 // a Cast with an invalid ID if such a cast is not valid.
-func (pgc *Collection) GetExplicitCast(ctx context.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
+func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
 	castID := id.NewCast(sourceType.ID, targetType.ID)
 	c, err := pgc.getCast(ctx, castID, sourceType, targetType, CastType_Explicit)
 	if err != nil {
@@ -123,7 +123,7 @@ func (pgc *Collection) GetExplicitCast(ctx context.Context, sourceType *pgtypes.
 
 // GetAssignmentCast returns the assignment type cast function that will cast the source type to the target type.
 // Returns a Cast with an invalid ID if such a cast is not valid.
-func (pgc *Collection) GetAssignmentCast(ctx context.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
+func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
 	castID := id.NewCast(sourceType.ID, targetType.ID)
 	c, err := pgc.getCast(ctx, castID, sourceType, targetType, CastType_Assignment)
 	if err != nil {
@@ -166,7 +166,7 @@ func (pgc *Collection) GetAssignmentCast(ctx context.Context, sourceType *pgtype
 
 // GetImplicitCast returns the implicit type cast function that will cast the source type to the target type. Returns a
 // Cast with an invalid ID if such a cast is not valid.
-func (pgc *Collection) GetImplicitCast(ctx context.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
+func (pgc *Collection) GetImplicitCast(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
 	castID := id.NewCast(sourceType.ID, targetType.ID)
 	c, err := pgc.getCast(ctx, castID, sourceType, targetType, CastType_Implicit)
 	if err != nil {
@@ -211,22 +211,26 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 		// If there isn't a direct mapping, then we need to check if the types are array variants.
 		// As long as the base types are convertable, the array variants are also convertable.
 		if sourceType != nil && targetType != nil && sourceType.IsArrayType() && targetType.IsArrayType() {
-			fromBaseType := sourceType.ArrayBaseType()
-			toBaseType := targetType.ArrayBaseType()
+			sqlCtx, ok := ctx.(*sql.Context)
+			if !ok {
+				return Cast{}, fmt.Errorf("non *sql.Context provided to Collection.getCast()")
+			}
+			fromBaseType := sourceType.ArrayBaseTypeCtx(sqlCtx)
+			toBaseType := targetType.ArrayBaseTypeCtx(sqlCtx)
 			var baseCast Cast
 			switch castType {
 			case CastType_Explicit:
-				baseCast, err = pgc.GetExplicitCast(ctx, fromBaseType, toBaseType)
+				baseCast, err = pgc.GetExplicitCast(sqlCtx, fromBaseType, toBaseType)
 				if err != nil {
 					return Cast{}, err
 				}
 			case CastType_Assignment:
-				baseCast, err = pgc.GetAssignmentCast(ctx, fromBaseType, toBaseType)
+				baseCast, err = pgc.GetAssignmentCast(sqlCtx, fromBaseType, toBaseType)
 				if err != nil {
 					return Cast{}, err
 				}
 			case CastType_Implicit:
-				baseCast, err = pgc.GetImplicitCast(ctx, fromBaseType, toBaseType)
+				baseCast, err = pgc.GetImplicitCast(sqlCtx, fromBaseType, toBaseType)
 				if err != nil {
 					return Cast{}, err
 				}
@@ -244,8 +248,8 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 						// Some errors are optional depending on the context, so we'll still process all values even
 						// after an error is received.
 						var nErr error
-						sourceBaseType := sourceType.ArrayBaseType()
-						targetBaseType := targetType.ArrayBaseType()
+						sourceBaseType := sourceType.ArrayBaseTypeCtx(ctx)
+						targetBaseType := targetType.ArrayBaseTypeCtx(ctx)
 						newVals[i], nErr = baseCast.Eval(ctx, oldVal, sourceBaseType, targetBaseType)
 						if nErr != nil && err == nil {
 							err = nErr
