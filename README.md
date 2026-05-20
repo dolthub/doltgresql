@@ -33,7 +33,7 @@ If you're excited about this project, you can also help speed it along in a few 
 
 # Full Documentation
 
-Doltgres has a [documentation website](https://docs.doltgres.com) with extensive documentation.
+Doltgres has a [documentation website](https://doltgres.com/docs) with extensive documentation.
 
 # Installation
 
@@ -188,12 +188,12 @@ getting_started=> select * from dolt.log;
 (2 rows)
 ```
 
-7. Continue with [Dolt Getting Started](https://docs.dolthub.com/introduction/getting-started/database#insert-some-data)
+7. Continue with [Dolt Getting Started](https://dolthub.com/docs/introduction/getting-started/database#insert-some-data)
    to test out more Doltgres versioning functionality.
 
 # Limitations and differences from Dolt
 
-- No [Git-style CLI](https://docs.dolthub.com/cli-reference/cli) for version control like in
+- No [Git-style CLI](https://dolthub.com/docs/cli-reference/cli) for version control like in
   [Dolt](https://github.com/dolthub/dolt), only a SQL interface.
 - Can't push to DoltHub or DoltLab, only custom remotes (such as on the file system or to S3).
 - Backup and replication are a work in progress.
@@ -205,7 +205,7 @@ getting_started=> select * from dolt.log;
 
 # Performance
 
-Dolt is [1.1X slower than MySQL](https://docs.dolthub.com/sql-reference/benchmarks/latency) as
+Dolt is [1.1X slower than MySQL](https://dolthub.com/docs/sql-reference/benchmarks/latency) as
 measured by a standard suite of Sysbench tests.
 
 We use these same Sysbench tests to benchmark DoltgreSQL and compare the results to PostgreSQL.
@@ -250,7 +250,7 @@ milliseconds.
 
 # Correctness
 
-Dolt is [100% compatible](https://docs.dolthub.com/sql-reference/benchmarks/correctness) with MySQL
+Dolt is [100% compatible](https://dolthub.com/docs/sql-reference/benchmarks/correctness) with MySQL
 based on a standard suite of correctness tests called `sqllogictest`.
 
 We use these same tests to measure the correctness of DoltgreSQL.
@@ -279,5 +279,5 @@ complete due to a timeout earlier in the run.
 Doltgres emulates a Postgres server, including parsing Postgres SQL into an Abstract Syntax Tree (AST). This AST is
 converted to a form that can be interpreted by the Dolt engine. Doltgres uses the same SQL engine and storage format as Dolt.
 
-[Dolt has a unique architecture](https://docs.dolthub.com/architecture/architecture) that allows for version control
+[Dolt has a unique architecture](https://dolthub.com/docs/architecture/architecture) that allows for version control
 features at OLTP database performance. Doltgres uses the same architecture.
