@@ -276,7 +276,7 @@ func pgIndexToRow(index *pgIndex) sql.Row {
 		[]any{},                // indcollation
 		[]any{},                // indclass
 		[]any{int16(0)},        // indoption
-		nil,            // indexprs
+		nil,                    // indexprs
 		indexPred(index.index), // indpred
 	}
 }
