@@ -264,7 +264,7 @@ func ParseCompositeLiteral(ctx *sql.Context, input string, compositeType *Doltgr
 		var fieldType *DoltgresType
 		if t, ok := IDToBuiltInDoltgresType[attr.TypeID]; ok {
 			fieldType = t
-		} else if GetTypesCollectionFromContext != nil {
+		} else {
 			if typColl, tcErr := GetTypesCollectionFromContext(ctx); tcErr == nil && typColl != nil {
 				if t, gErr := typColl.GetType(ctx, attr.TypeID); gErr == nil && t != nil {
 					fieldType = t

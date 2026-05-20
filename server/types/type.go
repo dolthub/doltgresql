@@ -169,7 +169,7 @@ func (t *DoltgresType) ArrayBaseTypeCtx(ctx *sql.Context) *DoltgresType {
 			if t.IsUnresolved && t.Elem != id.NullType {
 				return NewUnresolvedDoltgresType(t.Elem.SchemaName(), t.Elem.TypeName())
 			}
-			if ctx != nil && t.Elem != id.NullType && GetTypesCollectionFromContext != nil {
+			if ctx != nil && t.Elem != id.NullType {
 				if typeColl, err := GetTypesCollectionFromContext(ctx); err == nil && typeColl != nil {
 					if elemType, err := typeColl.GetType(ctx, t.Elem); err == nil && elemType != nil {
 						newElem := *elemType.WithAttTypMod(t.attTypMod)

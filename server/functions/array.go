@@ -47,7 +47,7 @@ var array_in = framework.Function3{
 		input := val1.(string)
 		baseTypeOid := val2.(id.Id)
 		baseType := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
-		if baseType == nil && pgtypes.GetTypesCollectionFromContext != nil {
+		if baseType == nil {
 			if typColl, err := pgtypes.GetTypesCollectionFromContext(ctx); err == nil && typColl != nil {
 				if t, err := typColl.GetType(ctx, id.Type(baseTypeOid)); err == nil {
 					baseType = t

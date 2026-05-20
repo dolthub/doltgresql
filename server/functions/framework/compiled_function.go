@@ -310,6 +310,8 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 				// unknown/text argument (via UseInOut) would target anyarray.IoInput which
 				// cannot be loaded as a QuickFunction. Resolve to the concrete array type
 				// (e.g. _aggtype) so the cast uses the real element-type I/O path instead.
+				// TODO: If targetType.ID can be resolved to the concrete type earlier in
+				//       processing, then we don't need this check here anymore.
 				if targetType.ID == pgtypes.AnyArray.ID {
 					targetType = c.resolvePolymorphicReturnType(targetParamTypes, exprTypes, targetType)
 				}
