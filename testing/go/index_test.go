@@ -1085,10 +1085,6 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: "not yet supported",
 				},
 				{
-					Query:       "CREATE INDEX v1_idx2 ON test(v1) WHERE v1 > 100;",
-					ExpectedErr: "not yet supported",
-				},
-				{
 					Query:       "CREATE INDEX v1_idx2 ON test(v1) INCLUDE (pk);",
 					ExpectedErr: "not yet supported",
 				},
@@ -1396,6 +1392,53 @@ func TestBasicIndexing(t *testing.T) {
 				{
 					Query:       "INSERT INTO items (title, metadata, updated_at) VALUES ('abc', '{}', '2026-11-12 03:04:05');",
 					ExpectedErr: "duplicate key value violates unique constraint",
+				},
+			},
+		},
+		{
+			Name: "partial index",
+			SetUpScript: []string{
+				"CREATE TABLE t (a INT, b INT);",
+				"INSERT INTO t VALUES (1, 1), (2, 2), (3, 3);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE INDEX idx_partial ON t (a) WHERE a > 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_partial';",
+					Expected: []sql.Row{{"CREATE INDEX idx_partial ON public.t USING btree (a) WHERE (t.a > 1)"}},
+				},
+				{
+					// TODO: is it correct way to display index predicate?
+					Query: "EXPLAIN SELECT * FROM t WHERE a > 0;",
+					Expected: []sql.Row{
+						{"IndexedTableAccess(t)"},
+						{" ├─ index: [t.a,t.a > 1]"},
+						{" ├─ filters: [{(0, ∞)}]"},
+						{" └─ columns: [a b]"},
+					},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (0, 0);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (5, 5);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE UNIQUE INDEX idx_uniq_partial ON t (a) WHERE a > 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (1, 99);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (3, 99);",
+					ExpectedErr: "duplicate unique key given",
 				},
 			},
 		},

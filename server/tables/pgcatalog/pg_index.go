@@ -276,9 +276,17 @@ func pgIndexToRow(index *pgIndex) sql.Row {
 		[]any{},                // indcollation
 		[]any{},                // indclass
 		[]any{int16(0)},        // indoption
-		nil,                    // indexprs
-		nil,                    // indpred
+		nil,            // indexprs
+		indexPred(index.index), // indpred
 	}
+}
+
+// indexPred returns the predicate expression string for partial indexes, or nil for full indexes.
+func indexPred(idx sql.Index) interface{} {
+	if pi, ok := idx.(sql.PartialIndex); ok && pi.Predicate() != "" {
+		return pi.Predicate()
+	}
+	return nil
 }
 
 // cachePgIndexes caches the pg_index data for the current database in the session.
