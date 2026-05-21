@@ -619,7 +619,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(ctx *sql.Context, fnOverloads
 				// Composite types (e.g. table row types) are compatible with the generic Record parameter.
 				overloadCasts[i] = casts.Cast{
 					ID:       id.NewCast(argTypes[i].ID, paramType.ID),
-					CastType: casts.CastType_Implicit,
+					CastType: casts.CastType_Explicit,
 					Function: id.NullFunction,
 					UseInOut: false,
 				}

@@ -90,7 +90,6 @@ func valueToJsonRaw(ctx *sql.Context, elemType *pgtypes.DoltgresType, val any) (
 	}
 	switch v := val.(type) {
 	case *apd.Decimal:
-		// decimal.Decimal marshals as a quoted string by default, but JSON requires an unquoted number.
 		return json.RawMessage(v.Text('f')), nil
 	case pgtypes.JsonDocument:
 		sb := strings.Builder{}
