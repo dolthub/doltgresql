@@ -119,8 +119,14 @@ func newCompiledFunctionInternal(
 			c.callResolved[i] = originalTypes[i]
 		} else if i < len(args) {
 			if d, ok := args[i].Type(ctx).(*pgtypes.DoltgresType); ok {
-				// `param` is a default type which does not have type modifier set
-				param = param.WithAttTypMod(d.GetAttTypMod())
+				if param.IsRecordType() && d.IsCompositeType() {
+					// Preserve the composite type's field info (CompositeAttrs) so that
+					// functions like row_to_json can access column names at call time.
+					param = d
+				} else {
+					// `param` is a default type which does not have type modifier set
+					param = param.WithAttTypMod(d.GetAttTypMod())
+				}
 			}
 			c.callResolved[i] = param
 		}
@@ -618,6 +624,14 @@ func (c *CompiledFunction) typeCompatibleOverloads(ctx *sql.Context, fnOverloads
 				}
 				polymorphicParameters = append(polymorphicParameters, paramType)
 				polymorphicTargets = append(polymorphicTargets, argTypes[i])
+			} else if paramType.IsRecordType() && argTypes[i].IsCompositeType() {
+				// Composite types (e.g. table row types) are compatible with the generic Record parameter.
+				overloadCasts[i] = casts.Cast{
+					ID:       id.NewCast(argTypes[i].ID, paramType.ID),
+					CastType: casts.CastType_Explicit,
+					Function: id.NullFunction,
+					UseInOut: false,
+				}
 			} else {
 				var err error
 				overloadCasts[i], err = castsColl.GetImplicitCast(ctx, argTypes[i], paramType)
@@ -834,7 +848,7 @@ func (c *CompiledFunction) analyzeParameters(ctx *sql.Context) (originalTypes []
 			originalTypes[i] = extendedType
 		} else {
 			// TODO: we need to remove GMS types from all of our expressions so that we can remove this
-			dt, err := pgtypes.FromGmsTypeToDoltgresType(param.Type(ctx))
+			dt, err := pgtypes.FromGmsTypeToDoltgresType(returnType)
 			if err != nil {
 				return nil, err
 			}
