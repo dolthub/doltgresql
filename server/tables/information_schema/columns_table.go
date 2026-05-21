@@ -204,6 +204,9 @@ func getRowsFromTable(ctx *sql.Context, db information_schema.DbWithNames, t sql
 
 	tblName := t.Name()
 	for i, col := range information_schema.SchemaForTable(t, db.Database, allColsWithDefaultValue) {
+		if col.HiddenSystem {
+			continue
+		}
 		r := getRowFromColumn(ctx, i, col, db.CatalogName, db.SchemaName, tblName)
 		if r != nil {
 			rows = append(rows, r)
