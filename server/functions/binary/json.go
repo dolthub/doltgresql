@@ -17,6 +17,7 @@ package binary
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -25,6 +26,18 @@ import (
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+// makeObjectKeyPath builds a MySQL JSON path that selects the given top-level
+// object key, quoting and escaping the key so any characters are allowed.
+func makeObjectKeyPath(key string) string {
+	return `$."` + strings.ReplaceAll(key, `"`, `\"`) + `"`
+}
+
+// makeArrayIndexPath builds a MySQL JSON path that selects the given top-level
+// array element by non-negative index.
+func makeArrayIndexPath(idx int) string {
+	return "$[" + strconv.Itoa(idx) + "]"
+}
 
 // These functions can be gathered using the following query from a Postgres 15 instance:
 // SELECT * FROM pg_operator o WHERE o.oprname = <OPERATOR> ORDER BY o.oprcode::varchar;
@@ -131,6 +144,21 @@ var jsonb_array_element = framework.Function2{
 		if !ok {
 			return nil, nil
 		}
+		idx := int(val2.(int32))
+		if idx >= 0 {
+			// Path lookup against a SearchableJSON wrapper (e.g. an indexed JSON
+			// document) avoids materializing the entire array.
+			result, err := types.LookupJSONValue(ctx, wrapper, makeArrayIndexPath(idx))
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				return nil, nil
+			}
+			return result, nil
+		}
+		// Negative indices count from the end. We need the array length to
+		// resolve the absolute index, so fall back to materializing the value.
 		v, err := wrapper.ToInterface(ctx)
 		if err != nil {
 			return nil, err
@@ -139,11 +167,8 @@ var jsonb_array_element = framework.Function2{
 		if !ok {
 			return nil, nil
 		}
-		idx := val2.(int32)
+		idx += len(array)
 		if idx < 0 {
-			idx += int32(len(array))
-		}
-		if int(idx) >= len(array) || idx < 0 {
 			return nil, nil
 		}
 		return types.JSONDocument{Val: array[idx]}, nil
@@ -188,23 +213,16 @@ var jsonb_object_field = framework.Function2{
 		if !ok {
 			return nil, nil
 		}
-
-		j, err := wrapper.ToInterface(ctx)
+		// Path lookup against a SearchableJSON wrapper (e.g. an indexed JSON
+		// document) avoids materializing the entire document.
+		result, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(val2.(string)))
 		if err != nil {
 			return nil, err
 		}
-
-		obj, ok := j.(map[string]any)
-		if !ok {
+		if result == nil {
 			return nil, nil
 		}
-
-		v, ok := obj[val2.(string)]
-		if !ok {
-			return nil, nil
-		}
-
-		return types.JSONDocument{Val: v}, nil
+		return result, nil
 	},
 }
 
@@ -320,46 +338,90 @@ var jsonb_extract_path = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		wrapper, ok := val1.(sql.JSONWrapper)
+		cur, ok := val1.(sql.JSONWrapper)
 		if !ok {
 			return nil, nil
 		}
-		value, err := wrapper.ToInterface(ctx)
-		if err != nil {
-			return nil, err
-		}
 		paths := val2.([]interface{})
 		for _, path := range paths {
+			if cur == nil {
+				return nil, nil
+			}
 			textPath, ok := path.(string)
 			if !ok {
 				return nil, nil
 			}
-			switch currentValue := value.(type) {
-			case map[string]interface{}:
-				v, ok := currentValue[textPath]
-				if !ok {
-					return nil, nil
-				}
-				value = v
-			case []interface{}:
-				idx, err := strconv.Atoi(textPath)
-				if err != nil {
-					// A bad parse means the path is not valid for this value
-					return nil, nil
-				}
-				if idx < 0 {
-					idx += len(currentValue)
-				}
-				if idx < 0 || idx >= len(currentValue) {
-					return nil, nil
-				}
-				value = currentValue[idx]
-			default:
+			next, err := extractOneJsonPathStep(ctx, cur, textPath)
+			if err != nil {
+				return nil, err
+			}
+			if next == nil {
 				return nil, nil
 			}
+			cur = next
 		}
-		return types.JSONDocument{Val: value}, nil
+		return cur, nil
 	},
+}
+
+// extractOneJsonPathStep performs a single Postgres-style extract step against
+// the given JSON wrapper. The text is treated as a key when the wrapper is an
+// object and as an integer index when the wrapper is an array. Returns nil if
+// the step cannot be resolved (missing key, out-of-range index, scalar
+// wrapper, or non-integer text on an array).
+func extractOneJsonPathStep(ctx *sql.Context, cur sql.JSONWrapper, textPath string) (sql.JSONWrapper, error) {
+	// Fast path: use the ComparableJSON.JsonType / SearchableJSON.Lookup
+	// interfaces to avoid materializing the entire document.
+	if comparable, ok := cur.(types.ComparableJSON); ok {
+		jt, err := comparable.JsonType(ctx)
+		if err != nil {
+			return nil, err
+		}
+		switch jt {
+		case "OBJECT":
+			return types.LookupJSONValue(ctx, cur, makeObjectKeyPath(textPath))
+		case "ARRAY":
+			idx, err := strconv.Atoi(textPath)
+			if err != nil {
+				return nil, nil
+			}
+			if idx >= 0 {
+				return types.LookupJSONValue(ctx, cur, makeArrayIndexPath(idx))
+			}
+			// Negative indices count from the end and require knowing the
+			// array length, so fall through to the materialized path below.
+		default:
+			return nil, nil
+		}
+	}
+	// Materialized fallback for wrappers that don't implement ComparableJSON,
+	// and for negative array indices on ones that do.
+	v, err := cur.ToInterface(ctx)
+	if err != nil {
+		return nil, err
+	}
+	switch currentValue := v.(type) {
+	case map[string]interface{}:
+		next, ok := currentValue[textPath]
+		if !ok {
+			return nil, nil
+		}
+		return types.JSONDocument{Val: next}, nil
+	case []interface{}:
+		idx, err := strconv.Atoi(textPath)
+		if err != nil {
+			return nil, nil
+		}
+		if idx < 0 {
+			idx += len(currentValue)
+		}
+		if idx < 0 || idx >= len(currentValue) {
+			return nil, nil
+		}
+		return types.JSONDocument{Val: currentValue[idx]}, nil
+	default:
+		return nil, nil
+	}
 }
 
 // json_extract_path_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -434,11 +496,22 @@ var jsonb_exists = framework.Function2{
 		if !ok {
 			return false, nil
 		}
+		key := val2.(string)
+		// Fast path: for an indexed JSON object, use Lookup to test for the
+		// key without materializing the document.
+		if isObj, err := jsonWrapperIsObject(ctx, wrapper); err != nil {
+			return nil, err
+		} else if isObj {
+			found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key))
+			if err != nil {
+				return nil, err
+			}
+			return found != nil, nil
+		}
 		value, err := wrapper.ToInterface(ctx)
 		if err != nil {
 			return nil, err
 		}
-		key := val2.(string)
 		switch v := value.(type) {
 		case map[string]interface{}:
 			_, ok := v[key]
@@ -458,6 +531,23 @@ var jsonb_exists = framework.Function2{
 	},
 }
 
+// jsonWrapperIsObject reports whether the JSON wrapper is a JSON object and
+// also implements types.ComparableJSON (so the type can be determined without
+// materializing the whole document). For wrappers that don't implement
+// ComparableJSON, it returns false so the caller can use its existing
+// materialization-based logic.
+func jsonWrapperIsObject(ctx *sql.Context, wrapper sql.JSONWrapper) (bool, error) {
+	comparable, ok := wrapper.(types.ComparableJSON)
+	if !ok {
+		return false, nil
+	}
+	jt, err := comparable.JsonType(ctx)
+	if err != nil {
+		return false, err
+	}
+	return jt == "OBJECT", nil
+}
+
 // jsonb_exists_any represents the PostgreSQL function of the same name, taking the same parameters.
 var jsonb_exists_any = framework.Function2{
 	Name:       "jsonb_exists_any",
@@ -469,11 +559,27 @@ var jsonb_exists_any = framework.Function2{
 		if !ok {
 			return false, nil
 		}
+		keys := val2.([]interface{})
+		// Fast path: for an indexed JSON object, test each key with Lookup
+		// instead of materializing the document.
+		if isObj, err := jsonWrapperIsObject(ctx, wrapper); err != nil {
+			return nil, err
+		} else if isObj {
+			for _, key := range keys {
+				found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key.(string)))
+				if err != nil {
+					return nil, err
+				}
+				if found != nil {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
 		value, err := wrapper.ToInterface(ctx)
 		if err != nil {
 			return nil, err
 		}
-		keys := val2.([]interface{})
 		switch v := value.(type) {
 		case map[string]interface{}:
 			for _, key := range keys {
@@ -515,11 +621,27 @@ var jsonb_exists_all = framework.Function2{
 		if !ok {
 			return false, nil
 		}
+		keys := val2.([]interface{})
+		// Fast path: for an indexed JSON object, test each key with Lookup
+		// instead of materializing the document.
+		if isObj, err := jsonWrapperIsObject(ctx, wrapper); err != nil {
+			return nil, err
+		} else if isObj {
+			for _, key := range keys {
+				found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key.(string)))
+				if err != nil {
+					return nil, err
+				}
+				if found == nil {
+					return false, nil
+				}
+			}
+			return true, nil
+		}
 		value, err := wrapper.ToInterface(ctx)
 		if err != nil {
 			return nil, err
 		}
-		keys := val2.([]interface{})
 		switch v := value.(type) {
 		case map[string]interface{}:
 			for _, key := range keys {
