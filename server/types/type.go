@@ -490,6 +490,9 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.(sql.JSONWrapper); ok {
 			return v, sql.InRange, nil
 		}
+		if _, ok := v.(string); ok {
+			return v, sql.InRange, nil
+		}
 	case "oid", "regclass", "regproc", "regtype":
 		if _, ok := v.(id.Id); ok {
 			return v, sql.InRange, nil
