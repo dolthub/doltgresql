@@ -17,7 +17,10 @@ cp ./sysbench-lua-scripts/*.lua ./
 
 go build -o doltgres.exe ../../cmd/doltgres/
 
-cat <<YAML > dolt-config.yaml
+values=("covering_index_scan_postgres" "index_join_postgres" "index_join_scan_postgres" "index_scan_postgres" "oltp_point_select" "oltp_read_only" "select_random_points" "select_random_ranges" "table_scan_postgres" "types_table_scan_postgres")
+for value in "${values[@]}"; do
+  SYSBENCH_TEST="$value"
+  cat <<YAML > dolt-config.yaml
 log_level: info
 
 behavior:
@@ -38,16 +41,12 @@ listener:
 data_dir: .
 YAML
 
-values=("covering_index_scan_postgres" "index_join_postgres" "index_join_scan_postgres" "index_scan_postgres" "oltp_point_select" "oltp_read_only" "select_random_points" "select_random_ranges" "table_scan_postgres" "types_table_scan_postgres")
-for value in "${values[@]}"; do
-  SYSBENCH_TEST="$value"
-
   rm -rf ./.dolt
   rm -rf ./postgres
   ./doltgres.exe -config="dolt-config.yaml" 2> prepare.log &
   SERVER_PID="$!"
 
-  sleep 2
+  sleep 1
   echo "----$SYSBENCH_TEST----"
   sysbench \
     --db-driver="pgsql" \
