@@ -16,10 +16,11 @@ package types
 
 import (
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/utils"
 	"github.com/dolthub/go-mysql-server/sql"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
+
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // JsonB is the deserialized and structured version of JSON that deals with JsonDocument.
