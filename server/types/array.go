@@ -80,13 +80,13 @@ var LogicalArrayElementTypes = map[id.Type]*DoltgresType{
 // serializeTypeArray handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeArray(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	return serializeArray(ctx, val.([]any), t.ArrayBaseType())
+	return serializeArray(ctx, val.([]any), t.ArrayBaseTypeCtx(ctx))
 }
 
 // deserializeTypeArray handles deserialization from the Dolt serialized format to our standard representation used by
 // expressions and nodes.
 func deserializeTypeArray(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
-	return deserializeArray(ctx, data, t.ArrayBaseType())
+	return deserializeArray(ctx, data, t.ArrayBaseTypeCtx(ctx))
 }
 
 // deserializeArray serializes an array of given base type.

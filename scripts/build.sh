@@ -12,8 +12,8 @@ script_dir=$(dirname "$0")
 cd $script_dir/..
 
 go_version=`go version | cut -d" " -f 3 | sed -e 's|go||' | sed -e 's|\.[0-9]$||'`
-os=`go version | cut -d" " -f 4 | sed "s|/.*||"`
-arch=`go version | cut -d" " -f 4 | sed "s|.*/||"`
+os=`go version | sed "s| (.*)||" | cut -d" " -f 4 | sed "s|/.*||"`
+arch=`go version | sed "s| (.*)||" | cut -d" " -f 4 | sed "s|.*/||"`
 
 echo "os is $os"
 echo "arch is $arch"

@@ -57,7 +57,7 @@ func (s Subscript) Type(ctx *sql.Context) sql.Type {
 	if !ok {
 		panic(fmt.Sprintf("unexpected type %T for subscript", s.Child.Type(ctx)))
 	}
-	return dt.ArrayBaseType()
+	return dt.ArrayBaseTypeCtx(ctx)
 }
 
 // IsNullable implements the sql.Expression interface.

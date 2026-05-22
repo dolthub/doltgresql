@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
@@ -38,7 +39,7 @@ import (
 var (
 	// globalCollections maps each ID to the collection.
 	globalCollections = []objinterface.Collection{
-		nil,
+		nil, // Corresponds to RootObjectID_None
 		&sequences.Collection{},
 		&typecollection.TypeCollection{},
 		&functions.Collection{},
@@ -46,6 +47,7 @@ var (
 		&extensions.Collection{},
 		&conflicts.Collection{},
 		&procedures.Collection{},
+		&casts.Collection{},
 	}
 )
 

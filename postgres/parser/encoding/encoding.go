@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/cockroachdb/apd/v2"
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"

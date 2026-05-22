@@ -111,12 +111,92 @@ func TestCoercion(t *testing.T) {
 					Expected: []sql.Row{{float64(1.2345671297673228e+19)}},
 				},
 				{
+					Query:    `SELECT abs('NaN'::numeric)`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT abs('Inf'::numeric)`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:    `SELECT abs('-infinity'::numeric)`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:    `SELECT abs('0'::numeric)`,
+					Expected: []sql.Row{{Numeric("0")}},
+				},
+				{
+					Query:    `SELECT abs('-0.50'::numeric)`,
+					Expected: []sql.Row{{Numeric("0.50")}},
+				},
+				{
 					Query:    `SELECT factorial('1')`,
 					Expected: []sql.Row{{Numeric("1")}},
 				},
 				{
 					Query:       `SELECT factorial('1.5')`,
 					ExpectedErr: "invalid input",
+				},
+				{
+					Query:    `SELECT ceil('NaN'::numeric)`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT ceil('Inf'::numeric)`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:    `SELECT ceil('-infinity'::numeric)`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT floor('NaN'::numeric)`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT floor('Inf'::numeric)`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:    `SELECT floor('-infinity'::numeric)`,
+					Expected: []sql.Row{{Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT ln('NaN'::numeric)`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT ln('Inf'::numeric)`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:       `SELECT ln('-infinity'::numeric)`,
+					ExpectedErr: `cannot take logarithm of a negative number`,
+				},
+				{
+					Query:    `SELECT log('NaN'::numeric)`,
+					Expected: []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:    `SELECT log('Inf'::numeric)`,
+					Expected: []sql.Row{{Numeric("Infinity")}},
+				},
+				{
+					Query:       `SELECT log('-infinity'::numeric)`,
+					ExpectedErr: `cannot take logarithm of a negative number`,
+				},
+				{
+					Query:    `SELECT min_scale('NaN'::numeric)`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT min_scale('Inf'::numeric)`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT min_scale('-infinity'::numeric)`,
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},

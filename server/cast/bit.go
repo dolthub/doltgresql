@@ -18,24 +18,27 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initBit handles all casts that are built-in. This comprises only the "From" types.
-func initBit() {
-	bitExplicit()
-	bitImplicit()
+// initBit handles all casts that are built-in. This comprises only the source types.
+func initBit(builtInCasts map[id.Cast]casts.Cast) {
+	bitExplicit(builtInCasts)
+	bitImplicit(builtInCasts)
 }
 
-// bitExplicit registers all explicit casts. This comprises only the "From" types.
-func bitExplicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bit,
-		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+// bitExplicit registers all explicit casts. This comprises only the source types.
+func bitExplicit(builtInCasts map[id.Cast]casts.Cast) {
+	bitToInt32 := id.NewCast(pgtypes.Bit.ID, pgtypes.Int32.ID)
+	builtInCasts[bitToInt32] = casts.Cast{
+		ID:       bitToInt32,
+		CastType: casts.CastType_Explicit,
+		Function: id.NullFunction,
+		BuiltIn: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			array, err := tree.ParseDBitArray(val.(string))
 			if err != nil {
 				return nil, err
@@ -45,11 +48,14 @@ func bitExplicit() {
 			}
 			return int32(array.AsInt64(32)), nil
 		},
-	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
-		FromType: pgtypes.Bit,
-		ToType:   pgtypes.Int64,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		UseInOut: false,
+	}
+	bitToInt64 := id.NewCast(pgtypes.Bit.ID, pgtypes.Int64.ID)
+	builtInCasts[bitToInt64] = casts.Cast{
+		ID:       bitToInt64,
+		CastType: casts.CastType_Explicit,
+		Function: id.NullFunction,
+		BuiltIn: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			array, err := tree.ParseDBitArray(val.(string))
 			if err != nil {
 				return nil, err
@@ -59,15 +65,16 @@ func bitExplicit() {
 			}
 			return array.AsInt64(64), nil
 		},
-	})
+		UseInOut: false,
+	}
 }
 
-// bitImplicit registers all implicit casts. This comprises only the "From" types.
-func bitImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// bitImplicit registers all implicit casts. This comprises only the source types.
+func bitImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Bit,
 		ToType:   pgtypes.Bit,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			input := val.(string)
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
@@ -80,10 +87,10 @@ func bitImplicit() {
 			return tree.AsStringWithFlags(array, tree.FmtPgwireText), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Bit,
 		ToType:   pgtypes.VarBit,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			input := val.(string)
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {

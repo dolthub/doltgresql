@@ -17,8 +17,8 @@ package functions
 import (
 	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -37,11 +37,8 @@ var trunc_float64 = framework.Function1{
 	Return:     pgtypes.Float64,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
-		return math.Trunc(val1.(float64)), nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		return math.Trunc(val.(float64)), nil
 	},
 }
 
@@ -51,11 +48,9 @@ var trunc_numeric = framework.Function1{
 	Return:     pgtypes.Numeric,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
-		return decimal.NewFromInt(val1.(decimal.Decimal).IntPart()), nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		dec := val.(*apd.Decimal)
+		return sql.DecimalRound(dec, 0)
 	},
 }
 
@@ -66,7 +61,8 @@ var trunc_numeric_int64 = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, num any, places any) (any, error) {
-		//TODO: test for negative values in places
-		return num.(decimal.Decimal).Truncate(places.(int32)), nil
+		dec := num.(*apd.Decimal)
+		scale := places.(int32)
+		return sql.DecimalRound(dec, -scale)
 	},
 }

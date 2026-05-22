@@ -16,12 +16,10 @@ package types
 
 import (
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/go-mysql-server/sql"
-	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
-	"github.com/shopspring/decimal"
-
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/utils"
+	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 )
 
 // JsonB is the deserialized and structured version of JSON that deals with JsonDocument.
@@ -126,8 +124,7 @@ func jsonValueToInterface(value JsonValue) any {
 	case JsonValueString:
 		return string(v)
 	case JsonValueNumber:
-		f, _ := decimal.Decimal(v).Float64()
-		return f
+		return v
 	case JsonValueBoolean:
 		return bool(v)
 	case JsonValueNull:

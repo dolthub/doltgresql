@@ -34,7 +34,7 @@ import (
 	"unicode"
 	"unsafe"
 
-	"github.com/cockroachdb/apd/v2"
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/lib/pq/oid"
 
@@ -563,7 +563,7 @@ func (d *DDecimal) IsComposite() bool {
 
 	// Check if d is divisible by 10.
 	var r big.Int
-	r.Rem(&d.Decimal.Coeff, bigTen)
+	r.Rem((&d.Decimal.Coeff).MathBigInt(), bigTen)
 	return r.Sign() == 0
 }
 

@@ -15,12 +15,14 @@
 package types
 
 import (
+	"bytes"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
-	"github.com/shopspring/decimal"
+	"github.com/goccy/go-json"
 
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -71,7 +73,7 @@ type JsonValueArray []JsonValue
 type JsonValueString string
 
 // JsonValueNumber represents a number.
-type JsonValueNumber decimal.Decimal
+type JsonValueNumber apd.Decimal
 
 // JsonValueBoolean represents a boolean value.
 type JsonValueBoolean bool
@@ -126,7 +128,8 @@ func JsonValueSerialize(writer *utils.Writer, value JsonValue) {
 	case JsonValueNumber:
 		writer.Byte(byte(JsonValueType_Number))
 		// MarshalBinary cannot error, so we can safely ignore it
-		bytes, _ := decimal.Decimal(value).MarshalBinary()
+		v := apd.Decimal(value)
+		bytes, _ := Numeric.SerializationFunc(nil, Numeric, &v)
 		writer.ByteSlice(bytes)
 	case JsonValueBoolean:
 		writer.Byte(byte(JsonValueType_Boolean))
@@ -166,9 +169,14 @@ func JsonValueDeserialize(reader *utils.Reader) (_ JsonValue, err error) {
 	case JsonValueType_String:
 		return JsonValueString(reader.String()), nil
 	case JsonValueType_Number:
-		d := decimal.Decimal{}
-		err = d.UnmarshalBinary(reader.ByteSlice())
-		return JsonValueNumber(d), err
+		d, err := Numeric.DeserializationFunc(nil, Numeric, reader.ByteSlice())
+		if err != nil {
+			return nil, err
+		}
+		if d == nil {
+			d = apd.Decimal{}
+		}
+		return JsonValueNumber(*(d.(*apd.Decimal))), err
 	case JsonValueType_Boolean:
 		return JsonValueBoolean(reader.Bool()), nil
 	case JsonValueType_Null:
@@ -176,6 +184,65 @@ func JsonValueDeserialize(reader *utils.Reader) (_ JsonValue, err error) {
 	default:
 		return nil, errors.Errorf("unknown json value type")
 	}
+}
+
+// JsonValueFormatter is the recursive formatter for JSON values.
+func JsonValueFormatter(sb *strings.Builder, value JsonValue) {
+	switch value := value.(type) {
+	case JsonValueObject:
+		sb.WriteRune('{')
+		for i, item := range value.Items {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteRune('"')
+			sb.WriteString(strings.ReplaceAll(item.Key, `"`, `\"`))
+			sb.WriteString(`": `)
+			JsonValueFormatter(sb, item.Value)
+		}
+		sb.WriteRune('}')
+	case JsonValueArray:
+		sb.WriteRune('[')
+		for i, item := range value {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			JsonValueFormatter(sb, item)
+		}
+		sb.WriteRune(']')
+	case JsonValueString:
+		sb.WriteRune('"')
+		sb.WriteString(strings.ReplaceAll(string(value), `"`, `\"`))
+		sb.WriteRune('"')
+	case JsonValueNumber:
+		d := apd.Decimal(value)
+		sb.WriteString(d.Text('f'))
+	case JsonValueBoolean:
+		if value {
+			sb.WriteString(`true`)
+		} else {
+			sb.WriteString(`false`)
+		}
+	case JsonValueNull:
+		sb.WriteString(`null`)
+	}
+}
+
+// UnmarshalToJsonDocument converts a JSON document byte slice into the actual JSON document.
+func UnmarshalToJsonDocument(val []byte) (JsonDocument, error) {
+	var decoded interface{}
+	decoder := json.NewDecoder(bytes.NewReader(val))
+	// UseNumber causes JSON numbers to be decoded as json.Number (string-backed) instead of
+	// float64, which ensures we preserve values and precision.
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return JsonDocument{}, err
+	}
+	jsonValue, err := ConvertToJsonDocument(decoded)
+	if err != nil {
+		return JsonDocument{}, err
+	}
+	return JsonDocument{Value: jsonValue}, nil
 }
 
 // ConvertToJsonDocument recursively constructs a valid JsonDocument based on the structures returned by the decoder.
@@ -228,9 +295,30 @@ func ConvertToJsonDocument(val interface{}) (JsonValue, error) {
 		// This is safe as we double backslashes before this step, so this will return it to its original input.
 		val = jsonDocumentStringUnicodeRegex.ReplaceAllString(val, `\u$1`)
 		return JsonValueString(val), nil
+	case json.Number:
+		str := string(val)
+		// Strip trailing fractional zeros: "25.0"→{250,-1} and "25"→{25,0} differ in MarshalBinary, breaking GROUP BY hash equality.
+		if strings.IndexByte(str, '.') != -1 && strings.IndexByte(str, 'e') == -1 {
+			// remove trailing 0s after '.'
+			str = strings.TrimRightFunc(str, func(r rune) bool {
+				return r == '0'
+			})
+			str = strings.TrimRight(str, ".")
+		}
+		d := new(apd.Decimal)
+		err = d.Scan(str)
+		if err != nil {
+			return nil, err
+		}
+		return JsonValueNumber(*d), nil
 	case float64:
 		// TODO: handle this as a proper numeric as float64 is not precise enough
-		return JsonValueNumber(decimal.NewFromFloat(val)), nil
+		d := new(apd.Decimal)
+		err = d.Scan(val)
+		if err != nil {
+			return nil, err
+		}
+		return JsonValueNumber(*d), nil
 	case bool:
 		return JsonValueBoolean(val), nil
 	case nil:

@@ -22,7 +22,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/rebase"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -89,7 +89,7 @@ func convertRowToRebasePlanStep(ctx context.Context, row sql.Row) (rebase.Rebase
 	}
 
 	return rebase.RebasePlanStep{
-		RebaseOrder: decimal.NewFromFloat32(order),
+		RebaseOrder: gmstypes.DecimalFromFloat32(order),
 		Action:      rebaseAction,
 		CommitHash:  commitHash,
 		CommitMsg:   commitMsg,

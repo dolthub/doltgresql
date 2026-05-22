@@ -89,6 +89,44 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				// See https://www.postgresql.org/docs/current/ddl-constraints.html#DDL-CONSTRAINTS-FK
+				Name: "inline column REFERENCES enforces a foreign key constraint",
+				SetUpScript: []string{
+					`CREATE TABLE parent (a INT PRIMARY KEY)`,
+					`CREATE TABLE child (id INT PRIMARY KEY, pid INT REFERENCES parent(a))`,
+					`INSERT INTO parent VALUES (1)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "INSERT INTO child VALUES (1, 1)",
+					},
+					{
+						Query:       "INSERT INTO child VALUES (2, 999)",
+						ExpectedErr: "Foreign key violation",
+					},
+				},
+			},
+			{
+				// See https://github.com/morenoh149/postgresDBSamples/blob/master/french-towns-communes-francaises/french-towns-communes-francaises.sql
+				Name: "inline column REFERENCES enforces constraints across a chain of related tables",
+				SetUpScript: []string{
+					`CREATE TABLE regions (id SERIAL UNIQUE NOT NULL, code VARCHAR(4) UNIQUE NOT NULL, name TEXT UNIQUE NOT NULL)`,
+					`CREATE TABLE departments (id SERIAL UNIQUE NOT NULL, code VARCHAR(4) UNIQUE NOT NULL, region VARCHAR(4) NOT NULL REFERENCES regions(code), name TEXT UNIQUE NOT NULL)`,
+					`CREATE TABLE towns (id SERIAL UNIQUE NOT NULL, code VARCHAR(10) NOT NULL, name TEXT NOT NULL, department VARCHAR(4) NOT NULL REFERENCES departments(code), UNIQUE (code, department))`,
+					`INSERT INTO regions VALUES (1, '01', 'Region1')`,
+					`INSERT INTO departments VALUES (1, 'D01', '01', 'Department1')`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "INSERT INTO towns VALUES (1, 'T01', 'Town1', 'D01')",
+					},
+					{
+						Query:       "INSERT INTO towns VALUES (2, 'T02', 'Town2', 'NOPE')",
+						ExpectedErr: "Foreign key violation",
+					},
+				},
+			},
+			{
 				Name: "text foreign key",
 				SetUpScript: []string{
 					`CREATE TABLE parent (a text PRIMARY KEY, b int)`,

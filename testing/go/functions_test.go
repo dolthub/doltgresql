@@ -420,6 +420,16 @@ func TestFunctionsMath(t *testing.T) {
 						{4.0},
 					},
 				},
+				{
+					Query:            `SELECT round('NaN'::numeric);`,
+					ExpectedColNames: []string{"round"},
+					Expected:         []sql.Row{{Numeric("NaN")}},
+				},
+				{
+					Query:            `SELECT 0::numeric::float8;`,
+					ExpectedColNames: []string{"float8"},
+					Expected:         []sql.Row{{0.0}},
+				},
 			},
 		},
 		{
@@ -584,6 +594,72 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:       `SELECT power(0::numeric, -1::numeric);`,
 					ExpectedErr: `zero raised to a negative power is undefined`,
+				},
+				{
+					Query: `select power('3'::numeric, '-1'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0.3333333333333333")},
+					},
+				},
+				{
+					Query: `select power('3'::numeric, '-3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0.0370370370370370")},
+					},
+				},
+				{
+					Query: `select power('Nan'::numeric, '-3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("NaN")},
+					},
+				},
+				{
+					Query: `select power('inf'::numeric, '-3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0")},
+					},
+				},
+				{
+					Query: `select power('-inf'::numeric, '-3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0")},
+					},
+				},
+				{
+					Query: `select power('-inf'::numeric, '3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("-Infinity")},
+					},
+				},
+				{
+					Query: `select power('-inf'::numeric, '4'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("Infinity")},
+					},
+				},
+				{
+					Query: `select power('0'::numeric, '3'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0.0000000000000000")},
+					},
+				},
+				{
+					Query: `select power('-inf'::numeric, '-inf'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("0")},
+					},
+				},
+				{
+					Query: `select power('-inf'::numeric, 'inf'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("Infinity")},
+					},
+				},
+				{
+					Query: `select power('-inf'::numeric, 'nan'::numeric);`,
+					Expected: []sql.Row{
+						{Numeric("NaN")},
+					},
 				},
 			},
 		},
@@ -1530,6 +1606,50 @@ func TestJsonFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "row_to_json anonymous row",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT row_to_json(row(1, 'foo'))`,
+					Expected: []sql.Row{{`{"f1":1,"f2":"foo"}`}},
+				},
+				{
+					Query:    `SELECT row_to_json(row(1, true, null))`,
+					Expected: []sql.Row{{`{"f1":1,"f2":true,"f3":null}`}},
+				},
+				{
+					Query:    `SELECT row_to_json(row(1, 2, 3), false)`,
+					Expected: []sql.Row{{`{"f1":1,"f2":2,"f3":3}`}},
+				},
+				{
+
+					Query:    `SELECT row_to_json(row(1, 2, 3), true)`,
+					Expected: []sql.Row{{`{"f1":1,` + "\n " + `"f2":2,` + "\n " + `"f3":3}`}},
+				},
+			},
+		},
+		{
+			Name: "row_to_json named columns",
+			SetUpScript: []string{
+				`CREATE TABLE rtj_test (id int4, name text)`,
+				`INSERT INTO rtj_test VALUES (1, 'Alice'), (2, 'Bob')`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT row_to_json(t) FROM rtj_test t ORDER BY id`,
+					Expected: []sql.Row{{`{"id":1,"name":"Alice"}`}, {`{"id":2,"name":"Bob"}`}},
+				},
+				{
+					Query:    `SELECT row_to_json(t.*) FROM rtj_test t ORDER BY id`,
+					Expected: []sql.Row{{`{"id":1,"name":"Alice"}`}, {`{"id":2,"name":"Bob"}`}},
+				},
+				{
+					Skip:     true, // TODO: table alias as type
+					Query:    `SELECT row_to_json(d.*) FROM (SELECT * FROM rtj_test) d ORDER BY id`,
+					Expected: []sql.Row{{`{"id":1,"name":"Alice"}`}, {`{"id":2,"name":"Bob"}`}},
+				},
+			},
+		},
 	})
 }
 
@@ -1560,6 +1680,45 @@ func TestArrayFunctions(t *testing.T) {
 					Skip:     true, // TODO: fix for this in gms breaks regression test
 					Query:    `select * from unnest(array[1,2,3]);`,
 					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+			},
+		},
+		{
+			Name:        "array_to_json",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_to_json(ARRAY[1, 2, 3])`,
+					Expected: []sql.Row{{"[1,2,3]"}},
+				},
+				{
+					Query:    `SELECT array_to_json(ARRAY[1.5, 2.5]::float8[])`,
+					Expected: []sql.Row{{"[1.5,2.5]"}},
+				},
+				{
+					Query:    `SELECT array_to_json(ARRAY[true, false])`,
+					Expected: []sql.Row{{"[true,false]"}},
+				},
+				{
+					Query:    `SELECT array_to_json(ARRAY['a', 'b', 'c'])`,
+					Expected: []sql.Row{{`["a","b","c"]`}},
+				},
+				{
+					Query:    `SELECT array_to_json(ARRAY[1, NULL, 3])`,
+					Expected: []sql.Row{{"[1,null,3]"}},
+				},
+				{
+					Skip:     true, // TODO: multidimensional array literals are not yet supported
+					Query:    `SELECT array_to_json('{{1,2},{3,4}}'::int[])`,
+					Expected: []sql.Row{{"[[1,2],[3,4]]"}},
+				},
+				{
+					Query:    `SELECT array_to_json(ARRAY[1, 2, 3], false);`,
+					Expected: []sql.Row{{"[1,2,3]"}},
+				},
+				{
+					Query:    `SELECT array_to_json(ARRAY[1, 2, 3], true)`,
+					Expected: []sql.Row{{"[1,\n 2,\n 3]"}},
 				},
 			},
 		},
@@ -3835,6 +3994,34 @@ func TestSetReturningFunctions(t *testing.T) {
 							{"2008-03-01 16:00:00"},
 							{"2008-03-01 06:00:00"},
 						},
+					},
+					{
+						Query:    `SELECT generate_series('1.2'::numeric,2.4)`,
+						Expected: []sql.Row{{Numeric("1.2")}, {Numeric("2.2")}},
+					},
+					{
+						Query:    `SELECT generate_series('1.2'::numeric,1.4,0.1)`,
+						Expected: []sql.Row{{Numeric("1.2")}, {Numeric("1.3")}, {Numeric("1.4")}},
+					},
+					{
+						Query:       `SELECT generate_series('Nan'::numeric,1.4,0.1)`,
+						ExpectedErr: `start value cannot be NaN`,
+					},
+					{
+						Query:       `SELECT generate_series('NaN'::numeric,1.4)`,
+						ExpectedErr: `start value cannot be NaN`,
+					},
+					{
+						Query:       `SELECT generate_series('1.2'::numeric,'Infinity',0.1)`,
+						ExpectedErr: `stop value cannot be infinity`,
+					},
+					{
+						Query:       `SELECT generate_series('1.2'::numeric,'-Infinity')`,
+						ExpectedErr: `stop value cannot be infinity`,
+					},
+					{
+						Query:       `SELECT generate_series('1.2'::numeric,1.4,'NAN')`,
+						ExpectedErr: `step value cannot be NaN`,
 					},
 				},
 			},

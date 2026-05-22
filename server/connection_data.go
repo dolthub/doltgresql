@@ -149,7 +149,7 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 				}
 			}
 			if existingOid, ok := types[e.Name]; ok {
-				err = checkCompatibleTypes(existingOid, typOid, e.Name)
+				err = checkCompatibleTypes(ctx, existingOid, typOid, e.Name)
 			}
 			types[e.Name] = typOid
 		case *pgexprs.ExplicitCast:
@@ -165,7 +165,7 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 					}
 				}
 				if existingOid, ok := types[bindVar.Name]; ok {
-					err = checkCompatibleTypes(existingOid, typOid, bindVar.Name)
+					err = checkCompatibleTypes(ctx, existingOid, typOid, bindVar.Name)
 				}
 				types[bindVar.Name] = typOid
 				return false
@@ -180,7 +180,7 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 					return false
 				}
 				if existingOid, ok := types[bindVar.Name]; ok {
-					err = checkCompatibleTypes(existingOid, typOid, bindVar.Name)
+					err = checkCompatibleTypes(ctx, existingOid, typOid, bindVar.Name)
 				}
 				types[bindVar.Name] = typOid
 				return false
@@ -225,11 +225,11 @@ func VitessTypeToObjectID(typ sql.Type) (uint32, error) {
 }
 
 // checkCompatibleTypes checks if multiple types for which a parameter are used are compatible.
-func checkCompatibleTypes(existingOid, newOid uint32, newName string) error {
+func checkCompatibleTypes(ctx *sql.Context, existingOid, newOid uint32, newName string) error {
 	var err error
 	existing := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(existingOid)))
 	newType := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(newOid)))
-	if _, _, err = framework.FindCommonType([]*pgtypes.DoltgresType{existing, newType}); err != nil {
+	if _, _, err = framework.FindCommonType(ctx, []*pgtypes.DoltgresType{existing, newType}); err != nil {
 		err = errors.Errorf("parameter %s is used for incompatible types: %s and %s", newName, existing.String(), newType.String())
 	}
 	return err

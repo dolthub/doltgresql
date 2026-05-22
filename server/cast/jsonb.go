@@ -17,18 +17,20 @@ package cast
 import (
 	"encoding/json"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initJsonB handles all casts that are built-in. This comprises only the "From" types.
-func initJsonB() {
-	jsonbExplicit()
-	jsonbAssignment()
+// initJsonB handles all casts that are built-in. This comprises only the source types.
+func initJsonB(builtInCasts map[id.Cast]casts.Cast) {
+	jsonbExplicit(builtInCasts)
+	jsonbAssignment(builtInCasts)
 }
 
 // jsonbGetInterface extracts the native Go value from a JSONB value (sql.JSONWrapper or string).
@@ -48,34 +50,36 @@ func jsonbGetInterface(ctx *sql.Context, val any) (any, error) {
 }
 
 // jsonbNumberToDecimal converts various numeric types from JSON deserialization to decimal.Decimal.
-func jsonbNumberToDecimal(v any) (decimal.Decimal, bool) {
+func jsonbNumberToDecimal(v any) (*apd.Decimal, bool) {
 	switch n := v.(type) {
 	case float64:
-		return decimal.NewFromFloat(n), true
+		d, _ := apd.New(0, 0).SetFloat64(n)
+		return d, true
 	case float32:
-		return decimal.NewFromFloat32(n), true
+		d, _ := apd.New(0, 0).SetFloat64(float64(n))
+		return d, true
 	case json.Number:
-		d, err := decimal.NewFromString(n.String())
+		d, _, err := apd.NewFromString(n.String())
 		if err != nil {
-			return decimal.Decimal{}, false
+			return nil, false
 		}
 		return d, true
 	case int64:
-		return decimal.NewFromInt(n), true
+		return apd.NewWithBigInt(apd.NewBigInt(n), 1), true
 	case int32:
-		return decimal.NewFromInt(int64(n)), true
-	case decimal.Decimal:
+		return apd.New(int64(n), 1), true
+	case *apd.Decimal:
 		return n, true
 	}
-	return decimal.Decimal{}, false
+	return nil, false
 }
 
-// jsonbExplicit registers all explicit casts. This comprises only the "From" types.
-func jsonbExplicit() {
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+// jsonbExplicit registers all explicit casts. This comprises only the source types.
+func jsonbExplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Bool,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			v, err := jsonbGetInterface(ctx, val)
 			if err != nil {
 				return nil, err
@@ -99,10 +103,10 @@ func jsonbExplicit() {
 			}
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Float32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			v, err := jsonbGetInterface(ctx, val)
 			if err != nil {
 				return nil, err
@@ -128,10 +132,10 @@ func jsonbExplicit() {
 			}
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Float64,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			v, err := jsonbGetInterface(ctx, val)
 			if err != nil {
 				return nil, err
@@ -157,10 +161,10 @@ func jsonbExplicit() {
 			}
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Int16,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			v, err := jsonbGetInterface(ctx, val)
 			if err != nil {
 				return nil, err
@@ -181,17 +185,19 @@ func jsonbExplicit() {
 				if !ok {
 					return nil, errors.Errorf("unexpected jsonb value type: %T", v)
 				}
-				if d.LessThan(pgtypes.NumericValueMinInt16) || d.GreaterThan(pgtypes.NumericValueMaxInt16) {
-					return nil, errors.Errorf("smallint out of range")
+				// TODO: range check the value fits in int16, return an error if not
+				i, err := d.Int64()
+				if err != nil {
+					return nil, err
 				}
-				return int16(d.IntPart()), nil
+				return int16(i), nil
 			}
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Int32,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			v, err := jsonbGetInterface(ctx, val)
 			if err != nil {
 				return nil, err
@@ -212,17 +218,19 @@ func jsonbExplicit() {
 				if !ok {
 					return nil, errors.Errorf("unexpected jsonb value type: %T", v)
 				}
-				if d.LessThan(pgtypes.NumericValueMinInt32) || d.GreaterThan(pgtypes.NumericValueMaxInt32) {
-					return nil, errors.Errorf("integer out of range")
+				// TODO: range check the value fits in int32, return an error if not
+				i, err := d.Int64()
+				if err != nil {
+					return nil, err
 				}
-				return int32(d.IntPart()), nil
+				return int32(i), nil
 			}
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Int64,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			v, err := jsonbGetInterface(ctx, val)
 			if err != nil {
 				return nil, err
@@ -243,17 +251,19 @@ func jsonbExplicit() {
 				if !ok {
 					return nil, errors.Errorf("unexpected jsonb value type: %T", v)
 				}
-				if d.LessThan(pgtypes.NumericValueMinInt64) || d.GreaterThan(pgtypes.NumericValueMaxInt64) {
-					return nil, errors.Errorf("bigint out of range")
+				// TODO: range check the value fits in int64, return an error if not
+				i, err := d.Int64()
+				if err != nil {
+					return nil, err
 				}
-				return int64(d.IntPart()), nil
+				return i, nil
 			}
 		},
 	})
-	framework.MustAddExplicitTypeCast(framework.TypeCast{
+	framework.MustAddExplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Numeric,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			v, err := jsonbGetInterface(ctx, val)
 			if err != nil {
 				return nil, err
@@ -280,12 +290,12 @@ func jsonbExplicit() {
 	})
 }
 
-// jsonbAssignment registers all assignment casts. This comprises only the "From" types.
-func jsonbAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// jsonbAssignment registers all assignment casts. This comprises only the source types.
+func jsonbAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.JsonB,
 		ToType:   pgtypes.Json,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return pgtypes.JsonB.IoOutput(ctx, val)
 		},
 	})

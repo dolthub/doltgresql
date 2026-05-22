@@ -62,8 +62,23 @@ type TypeCollection interface {
 	GetType(context.Context, id.Type) (*DoltgresType, error)
 }
 
+// Cast is an interface from the core package, redeclared here to get around import cycles.
+type Cast interface {
+	Eval(ctx *sql.Context, val any, sourceType *DoltgresType, targetType *DoltgresType) (any, error)
+}
+
+// CastsCollection is an interface from the core package, redeclared here to get around import cycles.
+type CastsCollection interface {
+	GetExplicitCast(ctx *sql.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
+	GetAssignmentCast(ctx *sql.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
+	GetImplicitCast(ctx *sql.Context, sourceType *DoltgresType, targetType *DoltgresType) (Cast, error)
+}
+
 // GetTypesCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
 var GetTypesCollectionFromContext func(*sql.Context) (TypeCollection, error)
+
+// GetCastsCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
+var GetCastsCollectionFromContext func(*sql.Context) (CastsCollection, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.
@@ -130,7 +145,7 @@ func serializedStringCompare(v1 []byte, v2 []byte) int {
 // with an exception to BOOLEAN type. It returns "t" instead of "true".
 func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 	if t.IsArrayType() {
-		baseType := t.ArrayBaseType()
+		baseType := t.ArrayBaseTypeCtx(ctx)
 		return ArrToString(ctx, val.([]any), baseType, true)
 	} else if t.ID == Bool.ID {
 		if val.(bool) {
@@ -220,6 +235,116 @@ func VectorToString(ctx *sql.Context, arr []any, baseType *DoltgresType) (string
 		}
 	}
 	return sb.String(), nil
+}
+
+// ParseCompositeLiteral parses a Postgres composite literal string like "(1,2,hello)" into a slice
+// of RecordValues using the field types from |compositeType|.
+func ParseCompositeLiteral(ctx *sql.Context, input string, compositeType *DoltgresType) ([]RecordValue, error) {
+	if len(input) < 2 || input[0] != '(' || input[len(input)-1] != ')' {
+		return nil, cerrors.Errorf(`malformed composite literal: "%s"`, input)
+	}
+	inner := input[1 : len(input)-1]
+
+	attrs := compositeType.CompositeAttrs
+	if len(attrs) == 0 {
+		return []RecordValue{}, nil
+	}
+
+	fieldStrs, err := parseCompositeLiteralFields(inner)
+	if err != nil {
+		return nil, err
+	}
+	if len(fieldStrs) != len(attrs) {
+		return nil, cerrors.Errorf("composite literal has %d fields but type %s has %d",
+			len(fieldStrs), compositeType.ID.TypeName(), len(attrs))
+	}
+
+	values := make([]RecordValue, len(attrs))
+	for i, attr := range attrs {
+		var fieldType *DoltgresType
+		if t, ok := IDToBuiltInDoltgresType[attr.TypeID]; ok {
+			fieldType = t
+		} else {
+			if typColl, tcErr := GetTypesCollectionFromContext(ctx); tcErr == nil && typColl != nil {
+				if t, gErr := typColl.GetType(ctx, attr.TypeID); gErr == nil && t != nil {
+					fieldType = t
+				}
+			}
+		}
+		if fieldType == nil {
+			return nil, cerrors.Errorf("cannot resolve field type %s for composite type %s",
+				attr.TypeID.TypeName(), compositeType.ID.TypeName())
+		}
+
+		if fieldStrs[i] == nil {
+			values[i] = RecordValue{Value: nil, Type: fieldType}
+		} else {
+			val, err := fieldType.IoInput(ctx, *fieldStrs[i])
+			if err != nil {
+				return nil, err
+			}
+			values[i] = RecordValue{Value: val, Type: fieldType}
+		}
+	}
+	return values, nil
+}
+
+// parseCompositeLiteralFields splits the inner part of a composite literal (with parens already
+// removed) into per-field string pointers. A nil pointer indicates a SQL NULL value.
+func parseCompositeLiteralFields(input string) ([]*string, error) {
+	if len(input) == 0 {
+		return []*string{}, nil
+	}
+	var fields []*string
+	i := 0
+	for {
+		if i >= len(input) {
+			fields = append(fields, nil)
+			break
+		}
+		if input[i] == '"' {
+			// Double-quoted field value
+			i++ // skip opening quote
+			var sb strings.Builder
+			for i < len(input) && input[i] != '"' {
+				if input[i] == '\\' && i+1 < len(input) {
+					i++
+					sb.WriteByte(input[i])
+				} else {
+					sb.WriteByte(input[i])
+				}
+				i++
+			}
+			if i >= len(input) {
+				return nil, cerrors.Errorf("unterminated quoted string in composite literal")
+			}
+			i++ // skip closing quote
+			s := sb.String()
+			fields = append(fields, &s)
+		} else {
+			// Unquoted field value — read until next comma
+			start := i
+			for i < len(input) && input[i] != ',' {
+				i++
+			}
+			fieldStr := input[start:i]
+			if fieldStr == "" || strings.EqualFold(fieldStr, "NULL") {
+				fields = append(fields, nil)
+			} else {
+				s := fieldStr
+				fields = append(fields, &s)
+			}
+		}
+
+		if i >= len(input) {
+			break
+		}
+		if input[i] != ',' {
+			return nil, cerrors.Errorf("expected ',' in composite literal, got '%c'", input[i])
+		}
+		i++ // skip comma
+	}
+	return fields, nil
 }
 
 // quoteString determines if |s| needs to be quoted, by looking for special characters like ' ' or ',',

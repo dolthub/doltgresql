@@ -226,6 +226,9 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "gsdnMartin_PIDAP.sql",
 		},
 		{
+			SetUpScript: []string{
+				`CREATE USER ssouser WITH SUPERUSER PASSWORD 'password';`,
+			},
 			Name:        "HalfCoke/blog_img",
 			SQLFilename: "HalfCoke_blog_img.sql",
 		},

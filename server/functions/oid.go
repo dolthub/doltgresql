@@ -17,6 +17,7 @@ package functions
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -50,7 +51,7 @@ var oidin = framework.Function1{
 			return id.Null, pgtypes.ErrInvalidSyntaxForType.New("oid", input)
 		}
 		// Note: This minimum is different (-4294967295) for Postgres 15.4 compiled by Visual C++
-		if iVal > pgtypes.MaxUint32 || iVal < pgtypes.MinInt32 {
+		if iVal > int64(math.MaxUint32) || iVal < int64(math.MinInt32) {
 			return id.Null, pgtypes.ErrValueIsOutOfRangeForType.New(input, "oid")
 		}
 		uVal := uint32(iVal)

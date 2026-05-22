@@ -49,6 +49,8 @@ const (
 	Null Id = ""
 	// NullAccessMethod is an empty, invalid ID. This is exactly equivalent to Null.
 	NullAccessMethod AccessMethod = ""
+	// NullCast is an empty, invalid ID. This is exactly equivalent to Null.
+	NullCast Cast = ""
 	// NullCheck is an empty, invalid ID. This is exactly equivalent to Null.
 	NullCheck Check = ""
 	// NullCollation is an empty, invalid ID. This is exactly equivalent to Null.

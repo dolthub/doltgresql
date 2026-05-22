@@ -107,7 +107,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				projections[i] = pgexprs.NewAssignmentCast(getField, fromColType, toColType)
 			}
 		}
-		insertInto = insertInto.WithSource(plan.NewProject(projections, insertInto.Source))
+		insertInto = insertInto.WithSource(plan.NewProject(ctx, projections, insertInto.Source))
 	}
 
 	// handle on conflict clause if present

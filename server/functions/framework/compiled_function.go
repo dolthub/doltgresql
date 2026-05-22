@@ -24,8 +24,11 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/procedures"
 	"gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/extensions/pg_extension"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -90,7 +93,7 @@ func newCompiledFunctionInternal(
 		return c
 	}
 	// Next we'll resolve the overload based on the parameters given.
-	overload, err := c.resolve(overloads, fnOverloads, originalTypes)
+	overload, err := c.resolve(ctx, overloads, fnOverloads, originalTypes)
 	if err != nil {
 		c.stashedErr = err
 		return c
@@ -116,8 +119,14 @@ func newCompiledFunctionInternal(
 			c.callResolved[i] = originalTypes[i]
 		} else if i < len(args) {
 			if d, ok := args[i].Type(ctx).(*pgtypes.DoltgresType); ok {
-				// `param` is a default type which does not have type modifier set
-				param = param.WithAttTypMod(d.GetAttTypMod())
+				if param.IsRecordType() && d.IsCompositeType() {
+					// Preserve the composite type's field info (CompositeAttrs) so that
+					// functions like row_to_json can access column names at call time.
+					param = d
+				} else {
+					// `param` is a default type which does not have type modifier set
+					param = param.WithAttTypMod(d.GetAttTypMod())
+				}
 			}
 			c.callResolved[i] = param
 		}
@@ -215,7 +224,7 @@ func (c *CompiledFunction) Type(ctx *sql.Context) sql.Type {
 		if rt.IsPolymorphicType() && len(c.originalTypes) > 0 {
 			rt = c.originalTypes[0]
 			if rt.IsArrayType() {
-				return rt.ArrayBaseType()
+				return rt.ArrayBaseTypeCtx(ctx)
 			}
 		}
 		return rt
@@ -300,13 +309,22 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 					// should be impossible, we check this at function compile time
 					return nil, cerrors.Errorf("variadic arguments must be array types, was %T", targetType)
 				}
-				targetType = targetType.ArrayBaseType()
+				targetType = targetType.ArrayBaseTypeCtx(ctx)
 			} else {
 				targetType = targetParamTypes[i]
+				// When the declared parameter type is anyarray, the implicit cast from an
+				// unknown/text argument (via UseInOut) would target anyarray.IoInput which
+				// cannot be loaded as a QuickFunction. Resolve to the concrete array type
+				// (e.g. _aggtype) so the cast uses the real element-type I/O path instead.
+				// TODO: If targetType.ID can be resolved to the concrete type earlier in
+				//       processing, then we don't need this check here anymore.
+				if targetType.ID == pgtypes.AnyArray.ID {
+					targetType = c.resolvePolymorphicReturnType(targetParamTypes, exprTypes, targetType)
+				}
 			}
 
-			if c.overload.casts[i] != nil {
-				args[i], err = c.overload.casts[i](ctx, arg, targetType)
+			if c.overload.casts[i].ID.IsValid() {
+				args[i], err = c.overload.casts[i].Eval(ctx, arg, exprTypes[i], targetType)
 				if err != nil {
 					return nil, err
 				}
@@ -465,7 +483,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 
 // resolve returns an overloadMatch that either matches the given parameters exactly, or is a viable match after casting.
 // Returns an invalid overloadMatch if a viable match is not found.
-func (c *CompiledFunction) resolve(overloads *Overloads, fnOverloads []Overload, argTypes []*pgtypes.DoltgresType) (overloadMatch, error) {
+func (c *CompiledFunction) resolve(ctx *sql.Context, overloads *Overloads, fnOverloads []Overload, argTypes []*pgtypes.DoltgresType) (overloadMatch, error) {
 	// First check for an exact match
 	exactMatch, found := overloads.ExactMatchForTypes(argTypes...)
 	if found {
@@ -481,15 +499,15 @@ func (c *CompiledFunction) resolve(overloads *Overloads, fnOverloads []Overload,
 	// There are no exact matches, so now we'll look through all overloads to determine the best match. This is
 	// much more work, but there's a performance penalty for runtime overload resolution in Postgres as well.
 	if c.IsOperator {
-		return c.resolveOperator(argTypes, overloads, fnOverloads)
+		return c.resolveOperator(ctx, argTypes, overloads, fnOverloads)
 	} else {
-		return c.resolveFunction(argTypes, fnOverloads)
+		return c.resolveFunction(ctx, argTypes, fnOverloads)
 	}
 }
 
 // resolveOperator resolves an operator according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-oper.html
-func (c *CompiledFunction) resolveOperator(argTypes []*pgtypes.DoltgresType, overloads *Overloads, fnOverloads []Overload) (overloadMatch, error) {
+func (c *CompiledFunction) resolveOperator(ctx *sql.Context, argTypes []*pgtypes.DoltgresType, overloads *Overloads, fnOverloads []Overload) (overloadMatch, error) {
 	// Binary operators treat unknown literals as the other type, so we'll account for that here to see if we can find
 	// an "exact" match.
 	if len(argTypes) == 2 {
@@ -497,12 +515,18 @@ func (c *CompiledFunction) resolveOperator(argTypes []*pgtypes.DoltgresType, ove
 		rightUnknownType := argTypes[1].ID == pgtypes.Unknown.ID
 		if (leftUnknownType && !rightUnknownType) || (!leftUnknownType && rightUnknownType) {
 			var typ *pgtypes.DoltgresType
-			casts := []pgtypes.TypeCastFunction{IdentityCast, IdentityCast}
+			identity := casts.Cast{
+				ID:       id.NewCast(argTypes[0].ID, argTypes[1].ID),
+				CastType: casts.CastType_Explicit,
+				Function: id.NullFunction,
+				UseInOut: false,
+			}
+			opCasts := []casts.Cast{identity, identity}
 			if leftUnknownType {
-				casts[0] = UnknownLiteralCast
+				opCasts[0].UseInOut = true
 				typ = argTypes[1]
 			} else {
-				casts[1] = UnknownLiteralCast
+				opCasts[1].UseInOut = true
 				typ = argTypes[0]
 			}
 			if exactMatch, ok := overloads.ExactMatchForTypes(typ, typ); ok {
@@ -513,20 +537,23 @@ func (c *CompiledFunction) resolveOperator(argTypes []*pgtypes.DoltgresType, ove
 						argTypes:   []*pgtypes.DoltgresType{typ, typ},
 						variadic:   -1,
 					},
-					casts: casts,
+					casts: opCasts,
 				}, nil
 			}
 		}
 	}
 	// From this point, the steps appear to be the same for functions and operators
-	return c.resolveFunction(argTypes, fnOverloads)
+	return c.resolveFunction(ctx, argTypes, fnOverloads)
 }
 
 // resolveFunction resolves a function according to the rules defined by Postgres.
 // https://www.postgresql.org/docs/15/typeconv-func.html
-func (c *CompiledFunction) resolveFunction(argTypes []*pgtypes.DoltgresType, overloads []Overload) (overloadMatch, error) {
+func (c *CompiledFunction) resolveFunction(ctx *sql.Context, argTypes []*pgtypes.DoltgresType, overloads []Overload) (overloadMatch, error) {
 	// First we'll discard all overloads that do not have implicitly-convertible param types
-	compatibleOverloads := c.typeCompatibleOverloads(overloads, argTypes)
+	compatibleOverloads, err := c.typeCompatibleOverloads(ctx, overloads, argTypes)
+	if err != nil {
+		return overloadMatch{}, err
+	}
 
 	// No compatible overloads available, return early
 	if len(compatibleOverloads) == 0 {
@@ -574,22 +601,44 @@ func (c *CompiledFunction) resolveFunction(argTypes []*pgtypes.DoltgresType, ove
 // typeCompatibleOverloads returns all overloads that have a matching number of params whose types can be
 // implicitly converted to the ones provided. This is the set of all possible overloads that could be used with the
 // param types provided.
-func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTypes []*pgtypes.DoltgresType) []overloadMatch {
+func (c *CompiledFunction) typeCompatibleOverloads(ctx *sql.Context, fnOverloads []Overload, argTypes []*pgtypes.DoltgresType) ([]overloadMatch, error) {
+	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var compatible []overloadMatch
 	for _, overload := range fnOverloads {
 		isConvertible := true
-		overloadCasts := make([]pgtypes.TypeCastFunction, len(argTypes))
+		overloadCasts := make([]casts.Cast, len(argTypes))
 		// Polymorphic parameters must be gathered so that we can later verify that they all have matching base types
 		var polymorphicParameters []*pgtypes.DoltgresType
 		var polymorphicTargets []*pgtypes.DoltgresType
 		for i := range argTypes {
 			paramType := overload.argTypes[i]
 			if paramType.IsValidForPolymorphicType(argTypes[i]) {
-				overloadCasts[i] = IdentityCast
+				overloadCasts[i] = casts.Cast{
+					ID:       id.NewCast(argTypes[i].ID, paramType.ID),
+					CastType: casts.CastType_Explicit,
+					Function: id.NullFunction,
+					UseInOut: false,
+				}
 				polymorphicParameters = append(polymorphicParameters, paramType)
 				polymorphicTargets = append(polymorphicTargets, argTypes[i])
+			} else if paramType.IsRecordType() && argTypes[i].IsCompositeType() {
+				// Composite types (e.g. table row types) are compatible with the generic Record parameter.
+				overloadCasts[i] = casts.Cast{
+					ID:       id.NewCast(argTypes[i].ID, paramType.ID),
+					CastType: casts.CastType_Explicit,
+					Function: id.NullFunction,
+					UseInOut: false,
+				}
 			} else {
-				if overloadCasts[i] = GetImplicitCast(argTypes[i], paramType); overloadCasts[i] == nil {
+				var err error
+				overloadCasts[i], err = castsColl.GetImplicitCast(ctx, argTypes[i], paramType)
+				if err != nil {
+					return nil, err
+				}
+				if !overloadCasts[i].ID.IsValid() {
 					isConvertible = false
 					break
 				}
@@ -600,7 +649,7 @@ func (c *CompiledFunction) typeCompatibleOverloads(fnOverloads []Overload, argTy
 			compatible = append(compatible, overloadMatch{params: overload, casts: overloadCasts})
 		}
 	}
-	return compatible
+	return compatible, nil
 }
 
 // closestTypeMatches returns the set of overload candidates that have the most exact type matches for the arg types
@@ -799,7 +848,7 @@ func (c *CompiledFunction) analyzeParameters(ctx *sql.Context) (originalTypes []
 			originalTypes[i] = extendedType
 		} else {
 			// TODO: we need to remove GMS types from all of our expressions so that we can remove this
-			dt, err := pgtypes.FromGmsTypeToDoltgresType(param.Type(ctx))
+			dt, err := pgtypes.FromGmsTypeToDoltgresType(returnType)
 			if err != nil {
 				return nil, err
 			}
@@ -836,6 +885,10 @@ func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr fun
 	}
 
 	if len(c.Arguments) < len(sqlFunc.ParameterTypes) {
+		castsColl, err := core.GetCastsCollectionFromContext(ctx)
+		if err != nil {
+			return err
+		}
 		for i, param := range sqlFunc.ParameterTypes {
 			if i < len(c.Arguments) {
 				if exprTypeId := c.Arguments[i].Type(ctx).(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && param.ID != exprTypeId {
@@ -849,7 +902,11 @@ func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr fun
 					return err
 				}
 				c.Arguments = append(c.Arguments, cdv)
-				c.overload.casts = append(c.overload.casts, GetImplicitCast(cdv.Type(ctx).(*pgtypes.DoltgresType), sqlFunc.ParameterTypes[i]))
+				implicitCast, err := castsColl.GetImplicitCast(ctx, cdv.Type(ctx).(*pgtypes.DoltgresType), sqlFunc.ParameterTypes[i])
+				if err != nil {
+					return err
+				}
+				c.overload.casts = append(c.overload.casts, implicitCast)
 			}
 		}
 	}
