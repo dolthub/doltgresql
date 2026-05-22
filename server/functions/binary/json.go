@@ -145,20 +145,32 @@ var jsonb_array_element = framework.Function2{
 			return nil, nil
 		}
 		idx := int(val2.(int32))
-		if idx >= 0 {
-			// Path lookup against a SearchableJSON wrapper (e.g. an indexed JSON
-			// document) avoids materializing the entire array.
-			result, err := types.LookupJSONValue(ctx, wrapper, makeArrayIndexPath(idx))
+		// Fast path: for a ComparableJSON wrapper backed by an indexed JSON
+		// array, use Lookup to fetch the element without materializing the
+		// entire array. Negative indices need the array length, so they fall
+		// through to the materialized path even on indexed values.
+		if comparable, ok := wrapper.(types.ComparableJSON); ok {
+			jt, err := comparable.JsonType(ctx)
 			if err != nil {
 				return nil, err
 			}
-			if result == nil {
+			if jt != "ARRAY" {
 				return nil, nil
 			}
-			return result, nil
+			if idx >= 0 {
+				result, err := types.LookupJSONValue(ctx, wrapper, makeArrayIndexPath(idx))
+				if err != nil {
+					return nil, err
+				}
+				if result == nil {
+					return nil, nil
+				}
+				return result, nil
+			}
 		}
-		// Negative indices count from the end. We need the array length to
-		// resolve the absolute index, so fall back to materializing the value.
+		// Materialized fallback: covers wrappers that don't implement
+		// ComparableJSON (e.g. literal jsonb values) and the negative-index
+		// case on ComparableJSON arrays.
 		v, err := wrapper.ToInterface(ctx)
 		if err != nil {
 			return nil, err
@@ -167,8 +179,10 @@ var jsonb_array_element = framework.Function2{
 		if !ok {
 			return nil, nil
 		}
-		idx += len(array)
 		if idx < 0 {
+			idx += len(array)
+		}
+		if idx < 0 || idx >= len(array) {
 			return nil, nil
 		}
 		return types.JSONDocument{Val: array[idx]}, nil
@@ -213,16 +227,39 @@ var jsonb_object_field = framework.Function2{
 		if !ok {
 			return nil, nil
 		}
-		// Path lookup against a SearchableJSON wrapper (e.g. an indexed JSON
-		// document) avoids materializing the entire document.
-		result, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(val2.(string)))
+		key := val2.(string)
+		// Fast path: for a ComparableJSON wrapper backed by an indexed JSON
+		// object, use Lookup to fetch the value without materializing the
+		// entire document.
+		if isObj, err := jsonWrapperIsObject(ctx, wrapper); err != nil {
+			return nil, err
+		} else if isObj {
+			result, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key))
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				return nil, nil
+			}
+			return result, nil
+		}
+		// Materialized fallback: covers wrappers that don't implement
+		// ComparableJSON (e.g. literal jsonb values), where the embedded
+		// jsonpath library has trouble with edge cases like keys that
+		// contain escaped quotes, or array operands with text paths.
+		v, err := wrapper.ToInterface(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if result == nil {
+		obj, ok := v.(map[string]any)
+		if !ok {
 			return nil, nil
 		}
-		return result, nil
+		val, ok := obj[key]
+		if !ok {
+			return nil, nil
+		}
+		return types.JSONDocument{Val: val}, nil
 	},
 }
 
