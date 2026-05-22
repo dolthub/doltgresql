@@ -1374,24 +1374,118 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
-		{ // https://github.com/dolthub/doltgresql/issues/2206
-			Name: "Index attributes",
-			Skip: true, // We were getting a syntax error previously, which is fixed, however we don't yet support expression index attributes
+		{
+			// TODO: MySQL allows duplicate index names on different tables, but Postgres requires
+			//       index names be unique. This test currently fails because GMS doesn't restrict
+			//       this. We should add a Postgres specific validation rule to enforce this.
+			Skip: true,
+			Name: "Index names must be unique",
 			SetUpScript: []string{
-				`CREATE TABLE IF NOT EXISTS items (id SERIAL PRIMARY KEY, title VARCHAR(100) NOT NULL, metadata JSON, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`,
+				"CREATE TABLE t1 (pk int PRIMARY KEY, v1 int);",
+				"CREATE TABLE t2 (pk int PRIMARY KEY, v1 int);",
+				"CREATE TABLE idx1 (pk int PRIMARY KEY, v1 int);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "CREATE UNIQUE INDEX IF NOT EXISTS idx_items_title_lower ON items(lower(title));",
+					Query:    "CREATE INDEX idx_same_name ON t1 (v1);",
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "INSERT INTO items (title, metadata, updated_at) VALUES ('ABC', '{}', '2026-10-10 01:02:03');",
+					Query:       "CREATE INDEX idx_same_name ON t2 (v1);",
+					ExpectedErr: `relation "idx_same_name" already exists`,
+				},
+				{
+					// Just like tables, indexes are relations, and share a global namespace
+					Query:       "CREATE INDEX idx1 ON t2 (v1);",
+					ExpectedErr: `relation "idx1" already exists`,
+				},
+			},
+		},
+		{
+			Name: "DROP INDEX",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
+				"CREATE INDEX v1_idx ON t (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "DROP INDEX v1_idx;",
 					Expected: []sql.Row{},
 				},
 				{
-					Query:       "INSERT INTO items (title, metadata, updated_at) VALUES ('abc', '{}', '2026-11-12 03:04:05');",
-					ExpectedErr: "duplicate key value violates unique constraint",
+					Query:       "DROP INDEX v1_idx;",
+					ExpectedErr: "unable to find index",
+				},
+				{
+					Query:       "DROP INDEX no_such_index;",
+					ExpectedErr: "unable to find index",
+				},
+			},
+		},
+		{
+			Name: "DROP INDEX IF EXISTS",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
+				"CREATE INDEX v1_idx ON t (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "DROP INDEX IF EXISTS v1_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP INDEX IF EXISTS v1_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP INDEX IF EXISTS no_such_index;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "DROP INDEX removes index from query plan",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
+				"INSERT INTO t VALUES (1, 10), (2, 20), (3, 30);",
+				"CREATE INDEX v1_idx ON t (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "EXPLAIN SELECT * FROM t WHERE v1 = 20;",
+					Expected: []sql.Row{
+						{"IndexedTableAccess(t)"},
+						{" ├─ index: [t.v1]"},
+						{" ├─ filters: [{[20, 20]}]"},
+						{" └─ columns: [pk v1]"},
+					},
+				},
+				{
+					Query:    "DROP INDEX v1_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "EXPLAIN SELECT * FROM t WHERE v1 = 20;",
+					Expected: []sql.Row{
+						{"Filter"},
+						{" ├─ t.v1 = 20"},
+						{" └─ Table"},
+						{"     ├─ name: t"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+			},
+		},
+		{
+			Name: "DROP INDEX is case-insensitive on index name",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
+				`CREATE INDEX "idx_Mixed" ON t (v1);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `DROP INDEX "IDX_MIXED";`,
+					Expected: []sql.Row{},
 				},
 			},
 		},
