@@ -581,3 +581,245 @@ func TestJsonLargeDocumentAccess(t *testing.T) {
 		},
 	})
 }
+
+// TestJsonbNumericCasts exercises the jsonb → numeric type casts in
+// server/cast/jsonb.go. The integer casts must round half-to-even (matching
+// Postgres' numeric → integer rules) and return an out-of-range error when
+// the rounded value doesn't fit in the destination type. The float casts
+// must reject values too large to represent as a finite value in the
+// destination floating-point type. The non-numeric jsonb cases (object,
+// array, string, boolean, null) must each error with a type-specific
+// message.
+func TestJsonbNumericCasts(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "jsonb -> int2: rounding, boundaries, and out-of-range",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '12345'::jsonb::int2;`,
+					Expected: []sql.Row{{int16(12345)}},
+				},
+				{
+					Query:    `SELECT '-12345'::jsonb::int2;`,
+					Expected: []sql.Row{{int16(-12345)}},
+				},
+				{
+					// Half-to-even rounding: 0.4 always rounds down.
+					Query:    `SELECT '12345.4'::jsonb::int2;`,
+					Expected: []sql.Row{{int16(12345)}},
+				},
+				{
+					// 12345.5 → 12346 (round half to even, 12346 is even).
+					Query:    `SELECT '12345.5'::jsonb::int2;`,
+					Expected: []sql.Row{{int16(12346)}},
+				},
+				{
+					// 12346.5 → 12346 (round half to even, 12346 is even).
+					Query:    `SELECT '12346.5'::jsonb::int2;`,
+					Expected: []sql.Row{{int16(12346)}},
+				},
+				{
+					// Boundary values that fit exactly.
+					Query:    `SELECT '32767'::jsonb::int2;`,
+					Expected: []sql.Row{{int16(32767)}},
+				},
+				{
+					Query:    `SELECT '-32768'::jsonb::int2;`,
+					Expected: []sql.Row{{int16(-32768)}},
+				},
+				{
+					// Fractional value that rounds down into range.
+					Query:    `SELECT '32767.4'::jsonb::int2;`,
+					Expected: []sql.Row{{int16(32767)}},
+				},
+				{
+					// One past the upper bound.
+					Query:       `SELECT '32768'::jsonb::int2;`,
+					ExpectedErr: "smallint out of range",
+				},
+				{
+					// 32767.5 rounds to 32768, which is out of range.
+					Query:       `SELECT '32767.5'::jsonb::int2;`,
+					ExpectedErr: "smallint out of range",
+				},
+				{
+					Query:       `SELECT '-32769'::jsonb::int2;`,
+					ExpectedErr: "smallint out of range",
+				},
+				{
+					// Values far outside the int16 range still produce a
+					// clean out-of-range error rather than an int64 overflow.
+					Query:       `SELECT '1e20'::jsonb::int2;`,
+					ExpectedErr: "smallint out of range",
+				},
+			},
+		},
+		{
+			Name: "jsonb -> int4: rounding, boundaries, and out-of-range",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '0'::jsonb::int4;`,
+					Expected: []sql.Row{{int32(0)}},
+				},
+				{
+					Query:    `SELECT '2147483647'::jsonb::int4;`,
+					Expected: []sql.Row{{int32(2147483647)}},
+				},
+				{
+					Query:    `SELECT '-2147483648'::jsonb::int4;`,
+					Expected: []sql.Row{{int32(-2147483648)}},
+				},
+				{
+					// Fractional that rounds down into range.
+					Query:    `SELECT '2147483647.4'::jsonb::int4;`,
+					Expected: []sql.Row{{int32(2147483647)}},
+				},
+				{
+					Query:       `SELECT '2147483648'::jsonb::int4;`,
+					ExpectedErr: "integer out of range",
+				},
+				{
+					Query:       `SELECT '-2147483649'::jsonb::int4;`,
+					ExpectedErr: "integer out of range",
+				},
+				{
+					Query:       `SELECT '1e20'::jsonb::int4;`,
+					ExpectedErr: "integer out of range",
+				},
+			},
+		},
+		{
+			Name: "jsonb -> int8: rounding, boundaries, and out-of-range",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '0'::jsonb::int8;`,
+					Expected: []sql.Row{{int64(0)}},
+				},
+				{
+					// 2^53 - 1: the largest integer that survives the
+					// round-trip through float64 that the jsonb parser
+					// currently performs on input.
+					Query:    `SELECT '9007199254740991'::jsonb::int8;`,
+					Expected: []sql.Row{{int64(9007199254740991)}},
+				},
+				{
+					Query:    `SELECT '-9007199254740991'::jsonb::int8;`,
+					Expected: []sql.Row{{int64(-9007199254740991)}},
+				},
+				{
+					// Large value that doesn't fit in int64 must error
+					// rather than silently truncating.
+					Query:       `SELECT '1e20'::jsonb::int8;`,
+					ExpectedErr: "bigint out of range",
+				},
+				{
+					Query:       `SELECT '-1e20'::jsonb::int8;`,
+					ExpectedErr: "bigint out of range",
+				},
+			},
+		},
+		{
+			Name: "jsonb -> float4: out-of-range",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '0'::jsonb::float4;`,
+					Expected: []sql.Row{{float32(0)}},
+				},
+				{
+					Query:    `SELECT '1.5'::jsonb::float4;`,
+					Expected: []sql.Row{{float32(1.5)}},
+				},
+				{
+					// Just inside float32 max (~3.4028235e38).
+					Query:    `SELECT '3.4e38'::jsonb::float4;`,
+					Expected: []sql.Row{{float32(3.4e38)}},
+				},
+				{
+					// Just outside float32 max.
+					Query:       `SELECT '3.5e38'::jsonb::float4;`,
+					ExpectedErr: "out of range",
+				},
+				{
+					Query:       `SELECT '-3.5e38'::jsonb::float4;`,
+					ExpectedErr: "out of range",
+				},
+				{
+					Query:       `SELECT '1e40'::jsonb::float4;`,
+					ExpectedErr: "out of range",
+				},
+			},
+		},
+		{
+			Name: "jsonb -> float8 round-trips finite values",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '0'::jsonb::float8;`,
+					Expected: []sql.Row{{float64(0)}},
+				},
+				{
+					Query:    `SELECT '1.5'::jsonb::float8;`,
+					Expected: []sql.Row{{float64(1.5)}},
+				},
+				{
+					// Larger value that still fits in float64.
+					Query:    `SELECT '1e300'::jsonb::float8;`,
+					Expected: []sql.Row{{float64(1e300)}},
+				},
+				// Out-of-range float8 values can't be tested via a jsonb
+				// literal: the jsonb parser itself rejects '1e400' because
+				// it cannot be represented in the float64 used for input
+				// parsing.
+			},
+		},
+		{
+			Name: "jsonb -> numeric: preserves precision",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '12345'::jsonb::numeric;`,
+					Expected: []sql.Row{{Numeric("12345")}},
+				},
+				{
+					Query:    `SELECT '12345.67'::jsonb::numeric;`,
+					Expected: []sql.Row{{Numeric("12345.67")}},
+				},
+				{
+					Query:    `SELECT '-12345.67'::jsonb::numeric;`,
+					Expected: []sql.Row{{Numeric("-12345.67")}},
+				},
+			},
+		},
+		{
+			Name: "jsonb non-numeric values reject numeric casts",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT '{}'::jsonb::int4;`,
+					ExpectedErr: "cannot cast jsonb object",
+				},
+				{
+					Query:       `SELECT '[]'::jsonb::int4;`,
+					ExpectedErr: "cannot cast jsonb array",
+				},
+				{
+					Query:       `SELECT '"42"'::jsonb::int4;`,
+					ExpectedErr: "cannot cast jsonb string",
+				},
+				{
+					Query:       `SELECT 'true'::jsonb::int4;`,
+					ExpectedErr: "cannot cast jsonb boolean",
+				},
+				{
+					Query:       `SELECT 'null'::jsonb::int4;`,
+					ExpectedErr: "cannot cast jsonb null",
+				},
+				{
+					Query:       `SELECT '{}'::jsonb::float4;`,
+					ExpectedErr: "cannot cast jsonb object",
+				},
+				{
+					Query:       `SELECT '[]'::jsonb::numeric;`,
+					ExpectedErr: "cannot cast jsonb array",
+				},
+			},
+		},
+	})
+}
