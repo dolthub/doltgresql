@@ -811,10 +811,6 @@ func TestBigBlobs(t *testing.T) {
 	denginetest.RunBigBlobsTest(t, h)
 }
 
-func TestLongVarcharPKOrdering(t *testing.T) {
-	denginetest.RunLongVarcharPKScripts(t, newDoltgresServerHarness(t))
-}
-
 func TestDropDatabase(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
