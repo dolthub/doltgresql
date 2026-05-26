@@ -41,9 +41,12 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 	switch columnType := typ.(type) {
 	case *tree.ArrayTypeReference:
 		if uon, ok := columnType.ElementType.(*tree.UnresolvedObjectName); ok {
-			return nodeResolvableTypeReference(ctx, uon, mayBeTrigger)
+			tn := uon.ToTableName()
+			columnTypeName = tn.Object() + "[]"
+			doltgresType = pgtypes.NewUnresolvedArrayDoltgresType(tn.Schema(), tn.Object())
+		} else {
+			return nil, nil, errors.Errorf("the given array type is not yet supported")
 		}
-		return nil, nil, errors.Errorf("the given array type is not yet supported")
 	case *tree.OIDTypeReference:
 		return nil, nil, errors.Errorf("referencing types by their OID is not yet supported")
 	case *tree.UnresolvedObjectName:
@@ -69,9 +72,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 					// currently the built-in types will be resolved, so it can retrieve its array type
 					doltgresType = baseResolvedType.ToArrayType()
 				} else {
-					// TODO: handle array type of non-built-in types
-					baseResolvedType.TypCategory = pgtypes.TypeCategory_ArrayTypes
-					doltgresType = baseResolvedType
+					// User-defined element type: build an unresolved array type with the proper structure.
+					doltgresType = pgtypes.NewUnresolvedArrayDoltgresType(baseResolvedType.ID.SchemaName(), baseResolvedType.ID.TypeName())
 				}
 			}
 		} else if columnType.Family() == types.GeometryFamily {

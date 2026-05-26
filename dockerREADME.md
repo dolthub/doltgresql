@@ -10,7 +10,7 @@ procedures.
 Git versions file, Doltgres versions tables. It's like Git and Postgres had a baby.
 
 [Join us on Discord](https://discord.com/invite/RFwfYpu) to say hi and
-ask questions, or [check out our roadmap](https://docs.dolthub.com/other/roadmap)
+ask questions, or [check out our roadmap](https://dolthub.com/docs/other/roadmap)
 to see what we're building next.
 
 ## What's it for?
