@@ -189,7 +189,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "boolean indexes",
-		Skip: true, // panic
 		SetUpScript: []string{
 			"create table t (b bool);",
 			"insert into t values (false);",
@@ -201,13 +200,13 @@ var typesTests = []ScriptTest{
 			{
 				Query: "select * from t where (b in (false));",
 				Expected: []sql.Row{
-					{0},
+					{"f"},
 				},
 			},
 			{
 				Query: "select * from t_idx where (b in (false));",
 				Expected: []sql.Row{
-					{0},
+					{"f"},
 				},
 			},
 		},
@@ -383,7 +382,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Bytea key",
-		Skip: true, // blob/text column 'id' used in key specification without a key length
 		SetUpScript: []string{
 			"CREATE TABLE t_bytea (id BYTEA primary key, v1 BYTEA);",
 			"INSERT INTO t_bytea VALUES (E'\\\\xCAFEBABE', E'\\\\xDEADBEEF'), ('\\xBADD00D5', '\\xC0FFEE');",
@@ -1119,13 +1117,19 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
-		Name:        "JSON key",
-		SetUpScript: []string{},
+		Name: "JSON key",
+		SetUpScript: []string{
+			"CREATE TABLE t_json (id JSON primary key, v1 JSON);",
+			"INSERT INTO t_json VALUES ('{\"key\": \"value\"}', '{\"key\": \"value\"}');",
+			"INSERT INTO t_json VALUES ('123', '123');",
+			"INSERT INTO t_json VALUES ('true', 'true');",
+		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:       "CREATE TABLE t_json (id JSON primary key, v1 JSON);",
-				ExpectedErr: "data type json has no default operator class for access method \"btree\"",
-				Skip:        true, // current error message is blob/text column 'id' used in key specification without a key length
+				Query: "SELECT * FROM t_json WHERE id = '{\"key\": \"value\"}' ORDER BY id;",
+				Expected: []sql.Row{
+					{`{"key": "value"}`, `{"key": "value"}`},
+				},
 			},
 		},
 	},
@@ -1774,15 +1778,20 @@ var typesTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query: "SELECT * FROM t_numeric;",
-				Skip:  true, // test setup problem, values are logically equivalent but don't match
 				Expected: []sql.Row{
 					{Numeric("123.45"), Numeric("67.89")},
-					{Numeric("67.89"), Numeric("100.3")},
+					{Numeric("67.89"), Numeric("100.30")},
+				},
+			},
+			{
+				Query: "SELECT * FROM t_numeric order by id",
+				Expected: []sql.Row{
+					{Numeric("67.89"), Numeric("100.30")},
+					{Numeric("123.45"), Numeric("67.89")},
 				},
 			},
 			{
 				Query: "SELECT * FROM t_numeric WHERE ID = 123.45 ORDER BY id;",
-				Skip:  true, // value not found
 				Expected: []sql.Row{
 					{Numeric("123.45"), Numeric("67.89")},
 				},
@@ -2692,7 +2701,6 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query: "SELECT * FROM t_text WHERE v1 = 'World';",
-				Skip:  true, // text indexes are broken
 				Expected: []sql.Row{
 					{2, "World"},
 				},
@@ -2763,14 +2771,12 @@ var typesTests = []ScriptTest{
 			},
 			{
 				Query:    `SELECT c1 from t2 order by c1;`,
-				Skip:     true, // ordering is broken due to text indexes being broken
 				Expected: []sql.Row{{"one"}, {"two"}},
 			},
 		},
 	},
 	{
 		Name: "Text key",
-		Skip: true, // text indexes are broken
 		SetUpScript: []string{
 			"CREATE TABLE t_text (id TEXT primary key, v1 TEXT);",
 			"INSERT INTO t_text VALUES ('Hello', 'World'), ('goodbye', 'cruel world');",
