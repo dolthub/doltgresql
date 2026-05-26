@@ -683,6 +683,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	eg.Go(func() (err error) {
 		defer pan2err(&err)
 		defer wg.Done()
+		defer close(resChan)
 		for {
 			if res == nil {
 				res = &Result{
@@ -708,7 +709,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 				}
 
 				if types.IsOkResult(row) {
-					if len(res.Rows) > 0 {
+					if res.RowsAffected > 0 {
 						panic("Got OkResult mixed with RowResult")
 					}
 					result := row[0].(types.OkResult)
