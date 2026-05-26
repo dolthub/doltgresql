@@ -177,7 +177,7 @@ func main() {
 				default:
 					panic("Unexpected prof flag: " + args[1])
 				}
-				args = args[1:]
+				args = args[2:]
 			default:
 				doneDebugFlags = true
 			}
