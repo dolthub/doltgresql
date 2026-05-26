@@ -17,8 +17,9 @@ package _go
 import (
 	"testing"
 
-	"github.com/dolthub/doltgresql/testing/go/testdata"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/testing/go/testdata"
 )
 
 func TestBasicIndexing(t *testing.T) {
