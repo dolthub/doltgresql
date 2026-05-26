@@ -621,13 +621,7 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, callback func(*sql.Context, *Result) error, resultFields []pgproto3.FieldDescription, formatCodes []int16) (*Result, bool, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForDefaultIter").End()
 
-	var r *Result
-	var processedAtLeastOneBatch bool
-
-	eg, ctx := ctx.NewErrgroup()
-
-	var rowChan = make(chan sql.Row, 512)
-
+	// TODO: use errguard.Go instead?
 	pan2err := func(err *error) {
 		if HandlePanics {
 			if recoveredPanic := recover(); recoveredPanic != nil {
@@ -642,8 +636,11 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	}
 
 	wg := sync.WaitGroup{}
-	wg.Add(2)
+	wg.Add(3)
+	eg, ctx := ctx.NewErrgroup()
+
 	// Read rows off the row iterator and send them to the row channel.
+	var rowChan = make(chan sql.Row, 512)
 	eg.Go(func() (err error) {
 		defer pan2err(&err)
 		defer wg.Done()
@@ -653,11 +650,11 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 			case <-ctx.Done():
 				return context.Cause(ctx)
 			default:
-				row, err := iter.Next(ctx)
-				if err == io.EOF {
+				row, iErr := iter.Next(ctx)
+				if iErr == io.EOF {
 					return nil
 				}
-				if err != nil {
+				if iErr != nil {
 					return err
 				}
 				select {
@@ -680,61 +677,88 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 	timer := time.NewTimer(waitTime)
 	defer timer.Stop()
 
-	// reads rows from the channel, converts them to wire format,
-	// and calls |callback| to give them to vitess.
+	// Drain rows from rowChan, convert to wire format, and send to resChan
+	var resChan = make(chan *Result, 4)
+	var res *Result
 	eg.Go(func() (err error) {
 		defer pan2err(&err)
 		defer wg.Done()
 		for {
-			if r == nil {
-				r = &Result{Fields: resultFields}
-			}
-			if r.RowsAffected == rowsBatch {
-				if err := callback(ctx, r); err != nil {
-					return err
+			if res == nil {
+				res = &Result{
+					Fields: resultFields,
+					Rows:   make([]Row, 0, rowsBatch),
 				}
-				r = nil
-				processedAtLeastOneBatch = true
-				continue
 			}
 
 			select {
 			case <-ctx.Done():
 				return context.Cause(ctx)
-			case row, ok := <-rowChan:
-				if !ok {
-					return nil
-				}
-				if types.IsOkResult(row) {
-					if len(r.Rows) > 0 {
-						panic("Got OkResult mixed with RowResult")
-					}
-					result := row[0].(types.OkResult)
-					r = &Result{
-						RowsAffected: result.RowsAffected,
-					}
-					continue
-				}
 
-				outputRow, err := rowToBytes(ctx, schema, row, formatCodes)
-				if err != nil {
-					return err
-				}
-
-				ctx.GetLogger().Tracef("spooling result row %s", outputRow)
-				r.Rows = append(r.Rows, Row{outputRow})
-				r.RowsAffected++
-				if !timer.Stop() {
-					<-timer.C
-				}
 			case <-timer.C:
 				if h.readTimeout != 0 {
 					// Cancel and return so Vitess can call the CloseConnection callback
 					ctx.GetLogger().Tracef("connection timeout")
 					return errors.Errorf("row read wait bigger than connection timeout")
 				}
+
+			case row, ok := <-rowChan:
+				if !ok {
+					return nil
+				}
+
+				if types.IsOkResult(row) {
+					if len(res.Rows) > 0 {
+						panic("Got OkResult mixed with RowResult")
+					}
+					result := row[0].(types.OkResult)
+					res.Fields = nil
+					res.Rows = nil
+					res.RowsAffected = result.RowsAffected
+					continue
+				}
+
+				outputRow, rErr := rowToBytes(ctx, schema, row, formatCodes)
+				if rErr != nil {
+					return rErr
+				}
+
+				ctx.GetLogger().Tracef("spooling result row %s", outputRow)
+				res.Rows = append(res.Rows, Row{outputRow})
+				res.RowsAffected++
+
+				if res.RowsAffected == rowsBatch {
+					select {
+					case <-ctx.Done():
+						return context.Cause(ctx)
+					case resChan <- res:
+						res = nil
+					}
+				}
 			}
 			timer.Reset(waitTime)
+		}
+	})
+
+	// Drain Result from resChan and call callback
+	var processedAtLeastOneBatch bool
+	eg.Go(func() (err error) {
+		defer pan2err(&err)
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return context.Cause(ctx)
+			case r, ok := <-resChan:
+				if !ok {
+					return nil
+				}
+				processedAtLeastOneBatch = true
+				cErr := callback(ctx, r)
+				if cErr != nil {
+					return cErr
+				}
+			}
 		}
 	})
 
@@ -755,7 +779,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 		return nil, false, err
 	}
 
-	return r, processedAtLeastOneBatch, nil
+	return res, processedAtLeastOneBatch, nil
 }
 
 func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16) ([][]byte, error) {
