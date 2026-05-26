@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -396,6 +397,60 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Bytea key with mixed short and long values",
+		SetUpScript: []string{
+			"CREATE TABLE t_bytea_keys (id BYTEA primary key, v1 INTEGER);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x11', 1);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x22" + strings.Repeat("78", 10500) + "', 2);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x33', 3);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x44" + strings.Repeat("79", 10500) + "', 4);",
+			"INSERT INTO t_bytea_keys VALUES ('\\x55', 5);",
+			"INSERT INTO t_bytea_keys VALUES ('\\xff', 6);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys ORDER BY id DESC;",
+				Expected: []sql.Row{{6}, {5}, {4}, {3}, {2}, {1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id = '\\x11';",
+				Expected: []sql.Row{{1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id = '\\xff';",
+				Expected: []sql.Row{{6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id = '\\x22" + strings.Repeat("78", 10500) + "';",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id = '\\x44" + strings.Repeat("79", 10500) + "';",
+				Expected: []sql.Row{{4}},
+			},
+			{
+				// Skipped: panics with "interface {} is *val.ByteArray, not []uint8" when comparing long BYTEA keys via < operator
+				Skip:     true,
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id < '\\x33'::bytea ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}},
+			},
+			{
+				// Skipped: panics with "interface {} is *val.ByteArray, not []uint8" when comparing long BYTEA keys via > operator
+				Skip:     true,
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id > '\\x44'::bytea ORDER BY id;",
+				Expected: []sql.Row{{4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_bytea_keys WHERE id > '\\x22'::bytea AND id < '\\x55'::bytea ORDER BY id;",
+				Expected: []sql.Row{{2}, {3}, {4}},
+			},
+		},
+	},
+	{
 		// https://github.com/dolthub/doltgresql/issues/2145
 		Name: "bpchar type",
 		Assertions: []ScriptTestAssertion{
@@ -708,6 +763,60 @@ var typesTests = []ScriptTest{
 					{1, "abcdefghij"},
 					{2, "klmnopqrst"},
 				},
+			},
+		},
+	},
+	{
+		Name: "Character varying key with mixed short and long values",
+		SetUpScript: []string{
+			"CREATE TABLE t_varchar_keys (id VARCHAR primary key, v1 INTEGER);",
+			"INSERT INTO t_varchar_keys VALUES ('aa', 1);",
+			"INSERT INTO t_varchar_keys VALUES ('bb' || repeat('x', 10500), 2);",
+			"INSERT INTO t_varchar_keys VALUES ('cc', 3);",
+			"INSERT INTO t_varchar_keys VALUES ('dd' || repeat('y', 10500), 4);",
+			"INSERT INTO t_varchar_keys VALUES ('ee', 5);",
+			"INSERT INTO t_varchar_keys VALUES ('zz', 6);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys ORDER BY id DESC;",
+				Expected: []sql.Row{{6}, {5}, {4}, {3}, {2}, {1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id = 'aa';",
+				Expected: []sql.Row{{1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id = 'zz';",
+				Expected: []sql.Row{{6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id = 'bb' || repeat('x', 10500);",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id = 'dd' || repeat('y', 10500);",
+				Expected: []sql.Row{{4}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id < 'cc' ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id > 'dd' ORDER BY id;",
+				Expected: []sql.Row{{4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_varchar_keys WHERE id > 'bb' AND id < 'ee' ORDER BY id;",
+				Expected: []sql.Row{{2}, {3}, {4}},
+			},
+			{
+				Query:    "SELECT v1, length(id) FROM t_varchar_keys WHERE v1 IN (1, 2, 4) ORDER BY v1;",
+				Expected: []sql.Row{{1, 2}, {2, 10502}, {4, 10502}},
 			},
 		},
 	},
@@ -2787,6 +2896,64 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"goodbye", "cruel world"},
 				},
+			},
+		},
+	},
+	{
+		Name: "Text key with mixed short and long values",
+		SetUpScript: []string{
+			"CREATE TABLE t_text_keys (id TEXT primary key, v1 INTEGER);",
+			"INSERT INTO t_text_keys VALUES ('aa', 1);",
+			"INSERT INTO t_text_keys VALUES ('bb' || repeat('x', 10500), 2);",
+			"INSERT INTO t_text_keys VALUES ('cc', 3);",
+			"INSERT INTO t_text_keys VALUES ('dd' || repeat('y', 10500), 4);",
+			"INSERT INTO t_text_keys VALUES ('ee', 5);",
+			"INSERT INTO t_text_keys VALUES ('zz', 6);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT v1 FROM t_text_keys ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys ORDER BY id DESC;",
+				Expected: []sql.Row{{6}, {5}, {4}, {3}, {2}, {1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id = 'aa';",
+				Expected: []sql.Row{{1}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id = 'zz';",
+				Expected: []sql.Row{{6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id = 'bb' || repeat('x', 10500);",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id = 'dd' || repeat('y', 10500);",
+				Expected: []sql.Row{{4}},
+			},
+			{
+				// Skipped: panics with "interface {} is *val.TextStorage, not string" when comparing long TEXT keys via < operator
+				Skip:     true,
+				Query:    "SELECT v1 FROM t_text_keys WHERE id < 'cc' ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}},
+			},
+			{
+				// Skipped: panics with "interface {} is *val.TextStorage, not string" when comparing long TEXT keys via > operator
+				Skip:     true,
+				Query:    "SELECT v1 FROM t_text_keys WHERE id > 'dd' ORDER BY id;",
+				Expected: []sql.Row{{4}, {5}, {6}},
+			},
+			{
+				Query:    "SELECT v1 FROM t_text_keys WHERE id > 'bb' AND id < 'ee' ORDER BY id;",
+				Expected: []sql.Row{{2}, {3}, {4}},
+			},
+			{
+				Query:    "SELECT v1, length(id) FROM t_text_keys WHERE v1 IN (1, 2, 4) ORDER BY v1;",
+				Expected: []sql.Row{{1, 2}, {2, 10502}, {4, 10502}},
 			},
 		},
 	},
