@@ -6,17 +6,6 @@ SYSBENCH_TEST="covering_index_scan_postgres"
 PPROF=0
 PORT=54171
 
-
-mkdir -p sbtest
-cd sbtest
-
-if [ ! -d "./sysbench-lua-scripts" ]; then
-  git clone https://github.com/dolthub/sysbench-lua-scripts.git
-fi
-cp ./sysbench-lua-scripts/*.lua ./
-
-go build -o doltgres.exe ../../../cmd/doltgres/
-
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pprof)
@@ -28,6 +17,16 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+mkdir -p sbtest
+cd sbtest
+
+if [ ! -d "./sysbench-lua-scripts" ]; then
+  git clone https://github.com/dolthub/sysbench-lua-scripts.git
+fi
+cp ./sysbench-lua-scripts/*.lua ./
+
+go build -o doltgres.exe ../../../cmd/doltgres/
 
 cat <<YAML > dolt-config.yaml
 log_level: info
