@@ -1027,23 +1027,23 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 		}
 		sess.ClearNotices()
 
+		// TODO: we should avoid flushing every single row every time
 		if returnsRow(query) {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute && !hasSentRowDescription {
 				hasSentRowDescription = true
-				if err := h.send(&pgproto3.RowDescription{
+				h.backend.Send(&pgproto3.RowDescription{
 					Fields: res.Fields,
-				}); err != nil {
-					return err
-				}
+				})
 			}
-
 			for _, row := range res.Rows {
-				if err := h.send(&pgproto3.DataRow{
+				h.backend.Send(&pgproto3.DataRow{
 					Values: row.val,
-				}); err != nil {
-					return err
-				}
+				})
+			}
+			err := h.backend.Flush()
+			if err != nil {
+				return err
 			}
 		}
 
