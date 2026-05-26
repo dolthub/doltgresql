@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/dolthub/doltgresql/testing/go/testdata"
-
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
@@ -1488,6 +1487,68 @@ func TestBasicIndexing(t *testing.T) {
 		{
 			Name: "partial index",
 			SetUpScript: []string{
+				`CREATE TABLE user_sessions (
+    session_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE UNIQUE INDEX idx_one_active_session_per_user ON user_sessions (user_id) WHERE is_active = TRUE;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_one_active_session_per_user';",
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_one_active_session_per_user ON public.user_sessions USING btree (user_id) WHERE (user_sessions.is_active = true)"}},
+				},
+				{
+					Query:    "INSERT INTO user_sessions (user_id, is_active) VALUES (42, true);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO user_sessions (user_id, is_active) VALUES (99, true);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO user_sessions (user_id, is_active) VALUES (42, true);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					// succeeds because is_active is false
+					Query:    "INSERT INTO user_sessions (user_id, is_active) VALUES (42, false);",
+					Expected: []sql.Row{},
+				},
+				{
+					// succeeds because is_active is false
+					Query:    "INSERT INTO user_sessions (user_id, is_active) VALUES (42, false);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM user_sessions;",
+					Expected: []sql.Row{{1, 42, "t"}, {2, 99, "t"}, {4, 42, "f"}, {5, 42, "f"}},
+				},
+				{
+					Query:    "SELECT * FROM user_sessions WHERE user_id = 42;",
+					Expected: []sql.Row{{1, 42, "t"}, {4, 42, "f"}, {5, 42, "f"}},
+				},
+				{
+					Query:    "SELECT is_active FROM user_sessions WHERE user_id = 42;",
+					Expected: []sql.Row{{"t"}, {"f"}, {"f"}},
+				},
+				{
+					Query:    "SELECT count(*) FROM user_sessions WHERE user_id = 42;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:       "UPDATE user_sessions SET is_active = true WHERE user_id = 42 AND is_active = false;",
+					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
+			Name: "partial index on keyless table",
+			SetUpScript: []string{
 				"CREATE TABLE t (a INT, b INT);",
 				"INSERT INTO t VALUES (1, 1), (2, 2), (3, 3);",
 			},
@@ -1501,13 +1562,22 @@ func TestBasicIndexing(t *testing.T) {
 					Expected: []sql.Row{{"CREATE INDEX idx_partial ON public.t USING btree (a) WHERE (t.a > 1)"}},
 				},
 				{
-					// TODO: is it correct way to display index predicate?
-					Query: "EXPLAIN SELECT * FROM t WHERE a > 0;",
+					Query: "EXPLAIN SELECT * FROM t WHERE a > 1;",
 					Expected: []sql.Row{
 						{"IndexedTableAccess(t)"},
 						{" ├─ index: [t.a,t.a > 1]"},
-						{" ├─ filters: [{(0, ∞)}]"},
+						{" ├─ filters: [{(1, ∞)}]"},
 						{" └─ columns: [a b]"},
+					},
+				},
+				{
+					Query: "EXPLAIN SELECT * FROM t WHERE a > 0;",
+					Expected: []sql.Row{
+						{"Filter"},
+						{" ├─ t.a > 0"},
+						{" └─ Table"},
+						{"     ├─ name: t"},
+						{"     └─ columns: [a b]"},
 					},
 				},
 				{
