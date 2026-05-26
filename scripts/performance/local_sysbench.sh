@@ -54,9 +54,9 @@ rm -rf ./.dolt
 rm -rf ./postgres
 ./doltgres.exe -config="dolt-config.yaml" 2> prepare.log &
 SERVER_PID="$!"
+sleep 1
 
-sleep 5
-echo "----$SYSBENCH_TEST----"
+echo "----$SYSBENCH_TEST----" 1> results.log
 sysbench \
   --db-driver="pgsql" \
   --pgsql-host="0.0.0.0" \
@@ -68,14 +68,14 @@ sysbench \
 
 kill -15 "$SERVER_PID"
 
-echo "----$SYSBENCH_TEST----" 1>> results.log
+
 if [ "$PPROF" -eq 1 ]; then
   ./doltgres.exe --prof cpu -config="dolt-config.yaml" 2> run.log &
 else
   ./doltgres.exe -config="dolt-config.yaml" 2> run.log &
 fi
 SERVER_PID="$!"
-sleep 5
+sleep 1
 
 sysbench \
   --db-driver="pgsql" \
