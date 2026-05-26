@@ -67,7 +67,6 @@ sysbench \
 
 kill -15 "$SERVER_PID"
 
-
 if [ "$PPROF" -eq 1 ]; then
   ./doltgres.exe --prof cpu -config="dolt-config.yaml" 2> run.log &
 else
@@ -90,4 +89,3 @@ sysbench \
 
 sleep 1
 kill -15 "$SERVER_PID"
-echo "----$SYSBENCH_TEST----" 1>> results.log
