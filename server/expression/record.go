@@ -72,9 +72,15 @@ func (t *RecordExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 			return nil, err
 		}
 
-		typ, ok := expr.Type(ctx).(*pgtypes.DoltgresType)
+		t := expr.Type(ctx)
+		typ, ok := t.(*pgtypes.DoltgresType)
 		if !ok {
-			return nil, fmt.Errorf("expected a DoltgresType, but got %T", expr.Type(ctx))
+			// TODO: it would be better if we had a doltgres type for NULL literals in these records
+			if typ, ok := t.(sql.NullType); ok && typ.IsNullType() {
+				typ = pgtypes.Unknown
+			} else {
+				return nil, fmt.Errorf("expected a DoltgresType, but got %T", t)
+			}
 		}
 		vals[i] = pgtypes.RecordValue{
 			Value: val,
