@@ -1258,13 +1258,23 @@ func formatNode(node sqlparser.SQLNode) string {
 func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode) {
 	switch node := node.(type) {
 	case sqlparser.ColIdent:
-		if strings.HasPrefix(node.String(), "@@") {
+		// MySQL `@var` and `@@var` references map to postgres' current_setting().
+		// All other identifiers go through tree.AutoQuoteIdent so that names
+		// containing special characters or matching a reserved keyword come out
+		// double-quoted (postgres' quoting style) rather than backticked
+		// (vitess' default formatID behavior).
+		switch {
+		case strings.HasPrefix(node.String(), "@@"):
 			buf.Myprintf("current_setting('.%s')", strings.TrimLeft(node.String(), "@"))
-		} else if strings.HasPrefix(node.String(), "@") {
+		case strings.HasPrefix(node.String(), "@"):
 			buf.Myprintf("current_setting('doltgres_enginetest.%s')", strings.TrimLeft(node.String(), "@"))
-		} else {
-			buf.Myprintf("%s", node.Lowered())
+		default:
+			buf.WriteString(AutoQuoteIdent(node.Lowered()))
 		}
+	case sqlparser.TableIdent:
+		// Same auto-quoting story as ColIdent; vitess' formatID would
+		// otherwise wrap special-character identifiers in backticks.
+		buf.WriteString(AutoQuoteIdent(node.String()))
 	case sqlparser.TableName:
 		// MySQL `db.tbl` → postgres `db.public.tbl`. MySQL has no schema
 		// concept, so we insert `public` (postgres' default schema) between
@@ -2172,6 +2182,40 @@ func TestBoolValSupport(t *testing.T) {
 	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
 }
 
+// TestAutoQuotedIdentifiers verifies that identifiers needing quoting come
+// out double-quoted in postgres-style
+func TestAutoQuotedIdentifiers(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input:    "SELECT * FROM `mydb/b2`.t",
+			expected: []string{`select * from "mydb/b2".public.t`},
+		},
+		{
+			input:    "INSERT INTO `mydb/b2`.t VALUES (1)",
+			expected: []string{`insert into "mydb/b2".public.t values (1)`},
+		},
+		{
+			input:    "USE `mydb/b2`",
+			expected: []string{`USE "mydb/b2"`},
+		},
+		{
+			input:    "SELECT `weird-col` FROM t",
+			expected: []string{`SELECT "weird-col" FROM t`},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
 // TestQualifiedNameConversion covers the MySQL→Postgres translation of
 // `db.tbl` → `db.public.tbl` (and column-qualified equivalents).
 func TestQualifiedNameConversion(t *testing.T) {
@@ -2416,4 +2460,12 @@ func TestBitTypeSupport(t *testing.T) {
 	require.NotEmpty(t, unionResult)
 	require.Len(t, unionResult, 1)
 	require.Contains(t, unionResult[0], "UNION")
+}
+
+// AutoQuoteIdent takes an identifier and returns it quoted if necessary
+func AutoQuoteIdent(name string) string {
+	n := tree.Name(name)
+	ctx := tree.NewFmtCtx(tree.FmtSimple)
+	ctx.FormatNode(&n)
+	return ctx.CloseAndGetString()
 }

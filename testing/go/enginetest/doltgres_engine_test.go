@@ -1154,16 +1154,14 @@ func TestDoltCheckout(t *testing.T) {
 		"read-only databases", // read-only not yet implemented in harness
 		"Checkout tables from commit",
 		"dolt_checkout with tracking branch and table with same name", // UseLocalFileSystem did not create remote dir
-		"dolt_checkout mixed with USE statements",                     // requires backtick `db/branch` qualifier syntax
-		"select * from `mydb/",                                        // backtick db/branch syntax not supported in postgres dialect
 	})
 	denginetest.RunDoltCheckoutTests(t, h)
 }
 
 func TestDoltBranch(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"Create branch from startpoint",  // missing SET @var syntax
-		"Join same table at two commits", // needs different branch-qualified DB syntax
+		"Create branch from startpoint", // missing SET @var syntax
+		"Join same table at two commits", // implicit cross-joins (no ON clause) unsupported in postgres
 	})
 
 	denginetest.RunDoltBranchTests(t, h)
