@@ -780,6 +780,20 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		return false, false, err
 	}
 
+	if copyState.copyFromStdinNode.TableName.Schema != "" {
+		originalSchema, err := sqlCtx.GetSessionVariable(sqlCtx, "search_path")
+		if err != nil {
+			return false, false, err
+		}
+		err = sqlCtx.SetSessionVariable(sqlCtx, "search_path", copyState.copyFromStdinNode.TableName.Schema)
+		if err != nil {
+			return false, false, err
+		}
+		defer func() {
+			_ = sqlCtx.SetSessionVariable(sqlCtx, "search_path", originalSchema)
+		}()
+	}
+
 	dataLoader := copyState.dataLoader
 	if dataLoader == nil {
 		copyFromStdinNode := copyState.copyFromStdinNode
