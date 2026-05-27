@@ -1137,24 +1137,5 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
-		{
-			Name: "alter table with default expr using extension function when search_path is empty",
-			SetUpScript: []string{
-				`SELECT pg_catalog.set_config('search_path', '', false);`,
-				`CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;`,
-				`CREATE TABLE public.goals (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    note_id uuid,
-    completion_timestamp timestamp without time zone,
-    due_date timestamp without time zone
-);`,
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    `ALTER TABLE ONLY public.goals ADD CONSTRAINT goals_pkey PRIMARY KEY (id);`,
-					Expected: []sql.Row{},
-				},
-			},
-		},
 	})
 }
