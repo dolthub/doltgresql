@@ -137,8 +137,73 @@ func transformRename(stmt *sqlparser.DDL) ([]string, bool) {
 }
 
 func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
-	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
 	table := stmt.Table
+	// REPLACE INTO has no postgres equivalent. The closest match is
+	// `INSERT ... ON CONFLICT (...) DO UPDATE SET col = <new value>`, which
+	// updates an existing row in place (vs. DELETE + INSERT) but produces the
+	// same end state. We use the literal values from the INSERT row as the
+	// right-hand side (rather than EXCLUDED.col references, which doltgres
+	// doesn't yet resolve back through its MySQL translation layer).
+	//
+	// Limitations:
+	//   - REPLACE without an explicit column list — we'd need schema knowledge
+	//     to enumerate the target columns. REPLACE ... SET form is parsed by
+	//     vitess with Columns populated, so it works.
+	//   - Multi-row REPLACE — a single SET clause can't refer to multiple
+	//     candidate rows. Single-row only for now.
+	if stmt.Action == sqlparser.ReplaceStr {
+		if len(stmt.Columns) == 0 {
+			return nil, false
+		}
+
+		// Pull a single row of values out of the parsed insert. Vitess wraps
+		// `VALUES (...)` and `SET col = ...` in the same shape.
+		var valTuple sqlparser.ValTuple
+		switch r := stmt.Rows.(type) {
+		case sqlparser.Values:
+			if len(r) != 1 {
+				return nil, false
+			}
+			valTuple = r[0]
+		case *sqlparser.AliasedValues:
+			if len(r.Values) != 1 {
+				return nil, false
+			}
+			valTuple = r.Values[0]
+		default:
+			return nil, false
+		}
+		if len(valTuple) != len(stmt.Columns) {
+			return nil, false
+		}
+
+		tableName := translateTableName(table)
+
+		colList := make(tree.NameList, len(stmt.Columns))
+		updateExprs := make(tree.UpdateExprs, len(stmt.Columns))
+		for i, col := range stmt.Columns {
+			name := tree.Name(col.String())
+			colList[i] = name
+			updateExprs[i] = &tree.UpdateExpr{
+				Names: tree.NameList{name},
+				Expr:  convertExpr(valTuple[i]),
+			}
+		}
+
+		insert := tree.Insert{
+			Table:   tableName,
+			Columns: colList,
+			Rows:    rowsForInsert(stmt.Rows),
+			OnConflict: &tree.OnConflict{
+				Columns: tree.NameList{tree.Name("fake")}, // placeholder; doltgres ignores the conflict-target list
+				Exprs:   updateExprs,
+			},
+			Returning: &tree.NoReturningClause{},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&insert).String()}, true
+	}
+
+	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
 	if len(stmt.OnDup) > 0 {
 		tableName := translateTableName(table)
 
@@ -1935,6 +2000,42 @@ func TestBoolValSupport(t *testing.T) {
 	require.Len(t, result, 1, "Should return exactly one converted statement")
 	require.Contains(t, result[0], "CREATE TABLE", "Result should contain CREATE TABLE")
 	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
+}
+
+// TestReplaceIntoConversion covers REPLACE INTO → INSERT ... ON CONFLICT
+// DO UPDATE SET col = EXCLUDED.col translation.
+func TestReplaceIntoConversion(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input: "REPLACE INTO mytable (i, s) VALUES (1, 'first row')",
+			expected: []string{
+				"INSERT INTO mytable(i, s) VALUES (1, 'first row') ON CONFLICT (fake) DO UPDATE SET i = 1, s = 'first row'",
+			},
+		},
+		{
+			input: "REPLACE INTO mytable SET i = 1, s = 'first row'",
+			expected: []string{
+				"INSERT INTO mytable(i, s) VALUES (1, 'first row') ON CONFLICT (fake) DO UPDATE SET i = 1, s = 'first row'",
+			},
+		},
+		{
+			input: "REPLACE INTO mytable (s, i) VALUES ('x', 999)",
+			expected: []string{
+				"INSERT INTO mytable(s, i) VALUES ('x', 999) ON CONFLICT (fake) DO UPDATE SET s = 'x', i = 999",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
 }
 
 // TestUpdateIgnoreConversion covers translating UPDATE IGNORE into an

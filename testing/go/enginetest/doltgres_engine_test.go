@@ -281,7 +281,7 @@ func TestInsertInto(t *testing.T) {
 func TestInsertIgnoreInto(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Test that INSERT IGNORE properly addresses data conversion", // postgres strict typing rejects MySQL coercions
-		"Insert Ignore works correctly with ON DUPLICATE UPDATE",     // ON DUPLICATE KEY mixed with IGNORE needs more work
+		"Insert Ignore works correctly with ON DUPLICATE UPDATE",     // postgres strict typing rejects MySQL coercions
 		"issue 8611: insert ignore on enum type column",              // enums not supported
 	})
 	defer h.Close()
@@ -325,8 +325,20 @@ func TestSpatialQueries(t *testing.T) {
 }
 
 func TestReplaceInto(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	// REPLACE INTO is rewritten to INSERT ... ON CONFLICT DO UPDATE in the
+	// converter. Two classes of test still fail:
+	//   - VALUES form with no column list (e.g. `REPLACE INTO t VALUES (...)`):
+	//     the converter needs the column list to build the SET clause and bails.
+	//   - Replacing a row with identical values: postgres/MySQL ON DUPLICATE KEY
+	//     UPDATE reports 0 rows affected when the update is a no-op, but MySQL
+	//     REPLACE INTO reports 2 (DELETE + INSERT). These are real semantic
+	//     differences; we'd need to override the rowcount to make them match.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"REPLACE INTO mytable VALUES (1, 'first row')",      // no-column REPLACE; bails to raw syntax
+		"REPLACE INTO mytable VALUES (1, 'new row same i')", // no-column REPLACE; bails to raw syntax
+		"REPLACE INTO mytable VALUES (999, 'x')",            // no-column REPLACE; bails to raw syntax
+		"REPLACE INTO mytable SET i = 1, s = 'first row'",   // no-op update reports 0 rows, expected 2
+	})
 	defer h.Close()
 	enginetest.TestReplaceInto(t, h)
 }
@@ -1047,13 +1059,13 @@ func TestViewsWithAsOf(t *testing.T) {
 
 func TestDoltMerge(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"dolt_preview_merge_conflicts_summary(",                                                                               // returns schema qualified table names
+		"dolt_preview_merge_conflicts_summary(", // returns schema qualified table names
 		"CALL DOLT_MERGE with schema conflicts can be correctly resolved using dolt_conflicts_resolve when autocommit is off", // alter table
-		"merge conflicts prevent new branch creation",                                                                         // different error message
-		"Drop and add primary key on two branches converges to same schema",                                                   // alter table
+		"merge conflicts prevent new branch creation",                       // different error message
+		"Drop and add primary key on two branches converges to same schema", // alter table
 		"insert two tables with the same name and different schema",
-		"dropping constraint from one branch drops from both", // alter table (also catches the no-checkout variant)
-		"merge with new triggers defined",                     // triggers
+		"dropping constraint from one branch drops from both",                                                            // alter table (also catches the no-checkout variant)
+		"merge with new triggers defined",                                                                                // triggers
 		"try to merge a nullable field into a non-null column",                                                           // alter table
 		"merge fulltext with renamed table",                                                                              // alter table
 		"select * from dolt_status",                                                                                      // table_name column includes schema name,
@@ -1677,14 +1689,8 @@ func TestTimeQueries(t *testing.T) {
 }
 
 func TestUpdateIgnore(t *testing.T) {
-	// The converter rewrites UPDATE IGNORE as INSERT ... ON CONFLICT DO NOTHING,
-	// which handles the "skip on conflict" semantics for cases where every
-	// candidate row would conflict. Scripts that mix conflict-skipped and
-	// successfully-updated rows would need a DELETE + re-INSERT pattern; those
-	// stay skipped. Same for type-coercion scripts (Postgres rejects what MySQL
-	// silently coerces).
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"UPDATE IGNORE with primary keys and indexes", // mixes conflicts with successful updates
+		"UPDATE IGNORE with primary keys and indexes", // ignore semantics are different
 		"UPDATE IGNORE with type conversions",         // postgres strict typing rejects MySQL coercions
 	})
 	defer h.Close()
