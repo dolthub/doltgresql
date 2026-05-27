@@ -26,6 +26,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/typecollection"
+	"github.com/dolthub/doltgresql/server/tables"
 	"github.com/dolthub/doltgresql/server/types"
 )
 
@@ -129,6 +130,8 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 	if err != nil {
 		return err
 	}
+	// TODO: Consider overriding Provider.Database() to always wrap the returned db
+	currentDatabase = tables.WrapSqlDatabase(currentDatabase)
 
 	// Then we'll iterate over everything that is contained within a schema
 	if currentSchemaDatabase, ok := currentDatabase.(sql.SchemaDatabase); ok && callbacks.iteratesOverSchemas() {
@@ -482,6 +485,7 @@ func RunCallback(ctx *sql.Context, internalID id.Id, callbacks Callbacks) error 
 	if err != nil {
 		return err
 	}
+	currentDatabase = tables.WrapSqlDatabase(currentDatabase)
 
 	if currentSchemaDatabase, ok := currentDatabase.(sql.SchemaDatabase); ok {
 		schemas, err := currentSchemaDatabase.AllSchemas(ctx)

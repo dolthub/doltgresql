@@ -140,12 +140,12 @@ func (pgs *Collection) HasSequence(ctx context.Context, name id.Sequence) bool {
 func (pgs *Collection) CreateSequence(ctx context.Context, seq *Sequence) error {
 	// Ensure that the sequence does not already exist
 	if _, ok := pgs.accessedMap[seq.Id]; ok {
-		return errors.Errorf(`relation "%s" already exists`, seq.Id)
+		return errors.Errorf(`relation "%s" already exists`, seq.Id.SequenceName())
 	}
 	if ok, err := pgs.underlyingMap.Has(ctx, string(seq.Id)); err != nil {
 		return err
 	} else if ok {
-		return errors.Errorf(`relation "%s" already exists`, seq.Id)
+		return errors.Errorf(`relation "%s" already exists`, seq.Id.SequenceName())
 	}
 	// Add it to our cache, which will be emptied when we do anything permanent
 	pgs.accessedMap[seq.Id] = seq

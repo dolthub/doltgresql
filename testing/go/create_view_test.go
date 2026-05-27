@@ -277,4 +277,31 @@ var createViewStmts = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "View names must be unique across all relation types",
+		SetUpScript: []string{
+			"CREATE TABLE tbl1 (pk int PRIMARY KEY, v1 int);",
+			"CREATE SEQUENCE seq1;",
+			"CREATE VIEW existing_view AS SELECT pk FROM tbl1;",
+			"CREATE INDEX idx1 ON tbl1 (v1);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:       "CREATE VIEW tbl1 AS SELECT pk FROM tbl1;",
+				ExpectedErr: `relation "tbl1" already exists`,
+			},
+			{
+				Query:       "CREATE VIEW seq1 AS SELECT pk FROM tbl1;",
+				ExpectedErr: `relation "seq1" already exists`,
+			},
+			{
+				Query:       "CREATE VIEW existing_view AS SELECT pk FROM tbl1;",
+				ExpectedErr: `relation "existing_view" already exists`,
+			},
+			{
+				Query:       "CREATE VIEW idx1 AS SELECT pk FROM tbl1;",
+				ExpectedErr: `relation "idx1" already exists`,
+			},
+		},
+	},
 }
