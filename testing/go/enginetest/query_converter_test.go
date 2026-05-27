@@ -2182,6 +2182,92 @@ func TestBoolValSupport(t *testing.T) {
 	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
 }
 
+// TestTranslateMysqlShowCreateTable covers the harness-side rewrite that
+// turns the MySQL-format CREATE TABLE text in the test fixtures into the
+// doltgres/postgres dialect, so SHOW CREATE TABLE assertions compare apples
+// to apples.
+func TestTranslateMysqlShowCreateTable(t *testing.T) {
+	type test struct {
+		name     string
+		input    string
+		expected string
+	}
+	tests := []test{
+		{
+			name: "basic types and PRIMARY KEY",
+			input: "CREATE TABLE `a` (\n" +
+				"  `pk` int NOT NULL,\n" +
+				"  `c1` int,\n" +
+				"  PRIMARY KEY (`pk`)\n" +
+				") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
+			expected: "CREATE TABLE \"a\" (\n" +
+				"  \"pk\" integer NOT NULL,\n" +
+				"  \"c1\" integer,\n" +
+				"  PRIMARY KEY (\"pk\")\n" +
+				")",
+		},
+		{
+			name: "non-unique KEY dropped; UNIQUE KEY becomes CONSTRAINT",
+			input: "CREATE TABLE `tbl` (\n" +
+				"  `a` int NOT NULL,\n" +
+				"  PRIMARY KEY (`a`),\n" +
+				"  KEY `tbl_bc` (`b`,`c`),\n" +
+				"  UNIQUE KEY `tbl_c` (`c`)\n" +
+				") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
+			expected: "CREATE TABLE \"tbl\" (\n" +
+				"  \"a\" integer NOT NULL,\n" +
+				"  PRIMARY KEY (\"a\"),\n" +
+				"  CONSTRAINT \"tbl_c\" UNIQUE (\"c\")\n" +
+				")",
+		},
+		{
+			name: "DEFAULT CURRENT_TIMESTAMP and doubled parens",
+			input: "CREATE TABLE `t` (\n" +
+				"  `a` int DEFAULT CURRENT_TIMESTAMP,\n" +
+				"  `b` int NOT NULL DEFAULT ((7 + 11))\n" +
+				") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
+			expected: "CREATE TABLE \"t\" (\n" +
+				"  \"a\" integer DEFAULT (now()),\n" +
+				"  \"b\" integer NOT NULL DEFAULT (7 + 11)\n" +
+				")",
+		},
+		{
+			name: "type-name substitutions",
+			input: "CREATE TABLE `types` (\n" +
+				"  `a` tinyint,\n" +
+				"  `b` smallint,\n" +
+				"  `c` mediumint,\n" +
+				"  `d` bigint,\n" +
+				"  `e` float,\n" +
+				"  `f` double,\n" +
+				"  `g` decimal(10,2),\n" +
+				"  `h` blob,\n" +
+				"  `i` datetime,\n" +
+				"  `j` char(5)\n" +
+				") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
+			expected: "CREATE TABLE \"types\" (\n" +
+				"  \"a\" smallint,\n" +
+				"  \"b\" smallint,\n" +
+				"  \"c\" integer,\n" +
+				"  \"d\" bigint,\n" +
+				"  \"e\" real,\n" +
+				"  \"f\" double precision,\n" +
+				"  \"g\" numeric,\n" +
+				"  \"h\" bytea,\n" +
+				"  \"i\" timestamp,\n" +
+				"  \"j\" bpchar(5)\n" +
+				")",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := translateMysqlShowCreateTable(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
 // TestAutoQuotedIdentifiers verifies that identifiers needing quoting come
 // out double-quoted in postgres-style
 func TestAutoQuotedIdentifiers(t *testing.T) {

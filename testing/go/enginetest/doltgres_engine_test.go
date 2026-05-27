@@ -396,7 +396,6 @@ func TestUpdateErrors(t *testing.T) {
 func TestDeleteFrom(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"DELETE FROM mytable ORDER BY i DESC LIMIT 1 OFFSET 1;", // offset is unsupported syntax
-		"DELETE FROM mytable WHERE (i,s) = (1, 'first row');",   // type error, needs investigation
 		"with t (n) as (select (1) from dual) delete from mytable where i in (select n from t)",
 		"with recursive t (n) as (select (1) from dual union all select n + 1 from t where n < 2) delete from mytable where i in (select n from t)",
 	})
@@ -508,19 +507,19 @@ func TestScripts(t *testing.T) {
 			"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
 			"    )\n" +
 			"SELECT * FROM ladder;", // syntax error
-		"CREATE TABLE SELECT Queries",   // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
-		"db1.``.i > 0",                  // Multi-db Aliasing: MySQL-only empty-backtick ref
-		"join db2.t2 order by",          // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
-		"join db2.t2 group by",          // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
-		"join db2.t1 b order by a.i",    // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+		"CREATE TABLE SELECT Queries", // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
+		"db1.``.i > 0",                // Multi-db Aliasing: MySQL-only empty-backtick ref
+		"join db2.t2 order by",        // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+		"join db2.t2 group by",        // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+		"join db2.t1 b order by a.i",  // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
 		// "Simple Update Join test that manipulates two tables",
 		// "Partial indexes are used and return the expected result",
 		// "Multiple indexes on the same columns in a different order",
 		"Ensure proper DECIMAL support (found by fuzzer)", // unsupported type: SET
 		// "Ensure scale is not rounded when inserting to DECIMAL type through float64",
-		"Show create table with various keys and constraints",                                                     // error in harness query converter
-		"show create table with duplicate primary key",                                                            // error in harness query converter
-		"recreate primary key rebuilds secondary indexes",                                                         // currently no way to drop primary key in doltgres
+		"Show create table with various keys and constraints", // FK adds explicit ON DELETE/UPDATE RESTRICT; CHECK constraints leak backticks; timestamp(6) loses precision
+		"show create table with duplicate primary key",        // auto-generated constraint names differ
+		"recreate primary key rebuilds secondary indexes",     // currently no way to drop primary key in doltgres
 		"Handle hex number to binary conversion",                                                                  // ERROR: can't convert 0x7ED0599B to decimal: exponent is not numeric
 		"join index lookups do not handle filters",                                                                // need a different join syntax (no ON clause not supported in postgres)
 		"arithmetic bit operations on int, float and decimal types",                                               // the power operator is not yet supported
@@ -528,9 +527,9 @@ func TestScripts(t *testing.T) {
 		"identical expressions over different windows should produce different results",                           // ERROR: integer: unhandled type: float64
 		"windows without ORDER BY should be treated as RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", // ERROR: integer: unhandled type: float64
 		"division and int division operation on negative, small and big value for decimal type column of table",   // numeric keys broken
-		"update columns with default", // broken, see repro in update_test.go
-		"select count(*) from t where (f in (null, cast(0.8 as float)));", // incorrect result, needs a fix
-		"update with left join with some missing rows",                    // need to translate update joins
+		"update columns with default",                                                                             // broken, see repro in update_test.go
+		"select count(*) from t where (f in (null, cast(0.8 as float)));",                                         // incorrect result, needs a fix
+		"update with left join with some missing rows",                                                            // need to translate update joins
 		"preserve now()",          // harness error
 		"binary type primary key", // ERROR: blob/text column 'b' used in key specification without a key length
 		"varbinary primary key",   // ERROR: blob/text column 'b' used in key specification without a key length
@@ -1047,8 +1046,14 @@ func TestDescribeTableAsOf(t *testing.T) {
 }
 
 func TestShowCreateTable(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// These scripts call dolt_commit_hash_out(@Commit1, ...). Passing a
+		// user variable to dolt_commit_hash_out via the converter's
+		// current_setting() shim hits an unrelated unsupported-operator
+		// path. Unskip once that lands.
+		"Show create table as of",
+		"Show create table as of with FKs",
+	})
 	denginetest.RunShowCreateTableTests(t, h)
 }
 
@@ -1160,7 +1165,7 @@ func TestDoltCheckout(t *testing.T) {
 
 func TestDoltBranch(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"Create branch from startpoint", // missing SET @var syntax
+		"Create branch from startpoint",  // missing SET @var syntax
 		"Join same table at two commits", // implicit cross-joins (no ON clause) unsupported in postgres
 	})
 

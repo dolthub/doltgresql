@@ -411,6 +411,7 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	switch true {
 	case convertExpectedResultsForDoltProcedures(t, q, widenedExpected, widenedRows):
 	case convertCountStarDoltLog(t, q, widenedExpected, widenedRows):
+	case convertShowCreateTableExpected(t, q, widenedExpected):
 	// widenedExpected modified in place
 	default:
 		// The expected results that need widening before checking against actual results.
@@ -446,6 +447,136 @@ func convertCountStarDoltLog(t *testing.T, q string, expected []sql.Row, rows []
 	}
 
 	return false
+}
+
+// showCreateTableQueryRegex matches `SHOW CREATE TABLE`, optionally prefixed
+// with whitespace and possibly continuation tokens. The match is anchored at
+// the start of the query and is case-insensitive.
+var showCreateTableQueryRegex = regexp.MustCompile(`(?i)^\s*show\s+create\s+table\b`)
+
+// convertShowCreateTableExpected rewrites the MySQL-style CREATE TABLE
+// text in the expected rows of a SHOW CREATE TABLE assertion into the
+// doltgres/postgres dialect, so the test framework can compare it directly
+// against what the server emits. The rewrite is intentionally textual: the
+// expected values in the test queries are hand-authored MySQL strings, and
+// re-parsing/re-emitting them through a tree formatter would lose the
+// formatting (newlines, indentation) the tests check.
+//
+// Translations performed:
+//   - Backtick-quoted identifiers become double-quoted ones.
+//   - MySQL type names become their postgres equivalents (int → integer,
+//     tinyint/smallint → smallint, mediumint → integer, blob → bytea,
+//     datetime → timestamp, char(N) → bpchar(N), double → double precision,
+//     decimal(N,M) → numeric, float → real).
+//   - The MySQL `KEY name (cols)` (non-unique secondary index) line is
+//     dropped — postgres represents these as separate CREATE INDEX
+//     statements outside the table body.
+//   - `UNIQUE KEY name (cols)` becomes `CONSTRAINT "name" UNIQUE ("cols")`.
+//   - The trailing `) ENGINE=InnoDB DEFAULT CHARSET=… COLLATE=…` clause
+//     becomes a bare `)`.
+//   - The MySQL `DEFAULT CURRENT_TIMESTAMP` form becomes `DEFAULT (now())`.
+//   - Doubled parentheses around a DEFAULT expression `((expr))` become
+//     `(expr)` (MySQL's `((7 + 11))` vs postgres' `(7 + 11)`).
+//   - A trailing comma left dangling after we drop a KEY clause is removed.
+func convertShowCreateTableExpected(t *testing.T, q string, expected []sql.Row) bool {
+	if !showCreateTableQueryRegex.MatchString(q) {
+		return false
+	}
+	for i := range expected {
+		// We expect rows of shape (table_name, create_statement).
+		if len(expected[i]) < 2 {
+			continue
+		}
+		s, ok := expected[i][1].(string)
+		if !ok {
+			continue
+		}
+		expected[i][1] = translateMysqlShowCreateTable(s)
+	}
+	return true
+}
+
+// reEngineSuffix matches the `) ENGINE=… COLLATE=…` tail.
+var reEngineSuffix = regexp.MustCompile(`\)\s+ENGINE=[^\n]*$`)
+
+// reUniqueKey matches `UNIQUE KEY \`name\` (cols)` lines emitted by MySQL.
+var reUniqueKey = regexp.MustCompile("(?m)^(\\s*)UNIQUE KEY `([^`]+)` \\(([^)]+)\\)")
+
+// reKeyLine matches a non-unique `KEY \`name\` (cols)` line.
+var reKeyLine = regexp.MustCompile("(?m)^\\s*KEY `[^`]+` \\([^)]+\\),?\n")
+
+// reDoubleParenDefault matches a DEFAULT clause wrapped in two layers of
+// parentheses, like `DEFAULT ((7 + 11))`.
+var reDoubleParenDefault = regexp.MustCompile(`DEFAULT \(\(([^()]+)\)\)`)
+
+// reBacktickIdent matches a backtick-quoted MySQL identifier — we replace
+// these with double-quoted postgres identifiers.
+var reBacktickIdent = regexp.MustCompile("`([^`]*)`")
+
+// mysqlToPostgresTypes lists the MySQL → postgres type-name substitutions
+// applied to the SHOW CREATE TABLE body. Order matters: we want the longer
+// names matched first so e.g. `mediumint` doesn't get mangled by the rule
+// for `int`.
+var mysqlToPostgresTypes = []struct {
+	re   *regexp.Regexp
+	repl string
+}{
+	// Composite/multi-word types first.
+	{regexp.MustCompile(`(?i)\bdouble\b`), "double precision"},
+	{regexp.MustCompile(`(?i)\bdecimal\(\d+,\d+\)`), "numeric"},
+	{regexp.MustCompile(`(?i)\bdecimal\(\d+\)`), "numeric"},
+	{regexp.MustCompile(`(?i)\bdecimal\b`), "numeric"},
+	// Integer family.
+	{regexp.MustCompile(`(?i)\btinyint\b`), "smallint"},
+	{regexp.MustCompile(`(?i)\bmediumint\b`), "integer"},
+	{regexp.MustCompile(`(?i)\bbigint\b`), "bigint"},
+	{regexp.MustCompile(`(?i)\bsmallint\b`), "smallint"},
+	{regexp.MustCompile(`(?i)\bint\b`), "integer"},
+	// Floating point.
+	{regexp.MustCompile(`(?i)\bfloat\b`), "real"},
+	// Strings / bytes.
+	{regexp.MustCompile(`(?i)\btinyblob\b`), "bytea"},
+	{regexp.MustCompile(`(?i)\bmediumblob\b`), "bytea"},
+	{regexp.MustCompile(`(?i)\blongblob\b`), "bytea"},
+	{regexp.MustCompile(`(?i)\bblob\b`), "bytea"},
+	{regexp.MustCompile(`(?i)\btinytext\b`), "text"},
+	{regexp.MustCompile(`(?i)\bmediumtext\b`), "text"},
+	{regexp.MustCompile(`(?i)\blongtext\b`), "text"},
+	{regexp.MustCompile(`(?i)\bchar\((\d+)\)`), "bpchar($1)"},
+	// Date/time.
+	{regexp.MustCompile(`(?i)\bdatetime\b`), "timestamp"},
+}
+
+func translateMysqlShowCreateTable(s string) string {
+	// 1. Drop the MySQL ENGINE / CHARSET / COLLATE suffix.
+	s = reEngineSuffix.ReplaceAllString(s, ")")
+
+	// 2. Strip non-unique KEY lines entirely; postgres represents these
+	//    as separate CREATE INDEX statements.
+	s = reKeyLine.ReplaceAllString(s, "")
+
+	// 3. Convert UNIQUE KEY clauses to CONSTRAINT ... UNIQUE form.
+	s = reUniqueKey.ReplaceAllString(s, "${1}CONSTRAINT `${2}` UNIQUE (${3})")
+
+	// 4. Apply type-name substitutions before we lose backticks (the regexes
+	//    use word boundaries that don't care about backticks).
+	for _, sub := range mysqlToPostgresTypes {
+		s = sub.re.ReplaceAllString(s, sub.repl)
+	}
+
+	// 5. DEFAULT CURRENT_TIMESTAMP → DEFAULT (now()) and unwrap doubled parens.
+	s = strings.ReplaceAll(s, "DEFAULT CURRENT_TIMESTAMP", "DEFAULT (now())")
+	s = reDoubleParenDefault.ReplaceAllString(s, "DEFAULT ($1)")
+
+	// 6. Backticks → double quotes.
+	s = reBacktickIdent.ReplaceAllString(s, `"$1"`)
+
+	// 7. If we dropped a KEY line in the middle of the table body, we may
+	//    have left a stranded trailing comma on the line above the closing
+	//    parenthesis. Trim it.
+	s = regexp.MustCompile(`,(\s*\n\s*\))`).ReplaceAllString(s, "$1")
+
+	return s
 }
 
 func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schema, actual []sql.Row, isNilOrEmptySchema bool) {
