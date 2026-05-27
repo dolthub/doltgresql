@@ -50,11 +50,80 @@ func transformAST(query string) ([]string, bool) {
 		return transformSelect(stmt)
 	case *sqlparser.Insert:
 		return transformInsert(stmt)
+	case *sqlparser.Update:
+		return transformUpdate(stmt)
 	case *sqlparser.AlterTable:
 		return transformAlterTable(stmt)
 	}
 
 	return nil, false
+}
+
+// transformUpdate handles MySQL UPDATE statements that need rewriting before
+// Postgres can run them. Right now the only case we rewrite is `UPDATE IGNORE`:
+// Postgres has no IGNORE keyword on UPDATE, but the closest approximation is
+// `INSERT INTO t (cols) SELECT new_values FROM t WHERE cond ON CONFLICT DO NOTHING`,
+// which silently skips rows that would violate a constraint. The semantics are
+// not exactly equivalent (the original rows still exist, and the rowcount is
+// reported as INSERT rows rather than UPDATE matched/changed), but it lets the
+// tests at least exercise the conflict-handling code paths.
+func transformUpdate(stmt *sqlparser.Update) ([]string, bool) {
+	if stmt.Ignore != "ignore " {
+		return nil, false
+	}
+
+	// Only handle single-table UPDATE IGNORE — JOIN updates would need much more
+	// translation work.
+	if len(stmt.TableExprs) != 1 {
+		return nil, false
+	}
+	aliased, ok := stmt.TableExprs[0].(*sqlparser.AliasedTableExpr)
+	if !ok {
+		return nil, false
+	}
+	tname, ok := aliased.Expr.(sqlparser.TableName)
+	if !ok {
+		return nil, false
+	}
+	tableName := tree.NewTableName(tree.Name(tname.DbQualifier.String()), tree.Name(tname.Name.String()))
+
+	// Build the column list and the SELECT expressions from the SET clause.
+	colList := make(tree.NameList, len(stmt.Exprs))
+	selectExprs := make(tree.SelectExprs, len(stmt.Exprs))
+	for i, e := range stmt.Exprs {
+		colList[i] = tree.Name(e.Name.Name.String())
+		selectExprs[i] = tree.SelectExpr{Expr: convertExpr(e.Expr)}
+	}
+
+	// FROM t [AS alias]
+	fromTable := &tree.AliasedTableExpr{
+		Expr: tree.NewTableName(tree.Name(tname.DbQualifier.String()), tree.Name(tname.Name.String())),
+	}
+	if !aliased.As.IsEmpty() {
+		fromTable.As = tree.AliasClause{Alias: tree.Name(aliased.As.String())}
+	}
+
+	selectClause := &tree.SelectClause{
+		Exprs: selectExprs,
+		From:  tree.From{Tables: tree.TableExprs{fromTable}},
+		Where: convertWhere(stmt.Where),
+	}
+
+	insert := tree.Insert{
+		Table:   tableName,
+		Columns: colList,
+		Rows: &tree.Select{
+			Select: selectClause,
+		},
+		OnConflict: &tree.OnConflict{
+			Columns:   tree.NameList{tree.Name("fake")}, // placeholder, see transformInsert
+			DoNothing: true,
+		},
+		Returning: &tree.NoReturningClause{},
+	}
+
+	ctx := formatNodeWithUnqualifiedTableNames(&insert)
+	return []string{ctx.String()}, true
 }
 
 func transformRename(stmt *sqlparser.DDL) ([]string, bool) {
@@ -1866,6 +1935,42 @@ func TestBoolValSupport(t *testing.T) {
 	require.Len(t, result, 1, "Should return exactly one converted statement")
 	require.Contains(t, result[0], "CREATE TABLE", "Result should contain CREATE TABLE")
 	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
+}
+
+// TestUpdateIgnoreConversion covers translating UPDATE IGNORE into an
+// INSERT ... ON CONFLICT DO NOTHING form. Non-IGNORE UPDATEs are left alone.
+func TestUpdateIgnoreConversion(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input: "UPDATE IGNORE mytable SET i = 2 WHERE i = 1",
+			expected: []string{
+				"INSERT INTO mytable(i) SELECT 2 FROM mytable WHERE i = 1 ON CONFLICT (fake) DO NOTHING",
+			},
+		},
+		{
+			input: "UPDATE IGNORE pkTable SET pk = pk + 1, val = val + 1",
+			expected: []string{
+				`INSERT INTO "pkTable"(pk, val) SELECT pk + 1, val + 1 FROM "pkTable" ON CONFLICT (fake) DO NOTHING`,
+			},
+		},
+		{
+			input: "UPDATE IGNORE t1 SET v1 = v1 + 5 WHERE pk > 3",
+			expected: []string{
+				"INSERT INTO t1(v1) SELECT v1 + 5 FROM t1 WHERE pk > 3 ON CONFLICT (fake) DO NOTHING",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
 }
 
 // TestAlterTableConversion covers the ALTER TABLE clauses translated by

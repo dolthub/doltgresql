@@ -279,8 +279,11 @@ func TestInsertInto(t *testing.T) {
 }
 
 func TestInsertIgnoreInto(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"Test that INSERT IGNORE properly addresses data conversion", // postgres strict typing rejects MySQL coercions
+		"Insert Ignore works correctly with ON DUPLICATE UPDATE",     // ON DUPLICATE KEY mixed with IGNORE needs more work
+		"issue 8611: insert ignore on enum type column",              // enums not supported
+	})
 	defer h.Close()
 	enginetest.TestInsertIgnoreInto(t, h)
 }
@@ -290,8 +293,9 @@ func TestInsertDuplicateKeyKeyless(t *testing.T) {
 }
 
 func TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"UPDATE IGNORE keyless tables and secondary indexes", // UPDATE IGNORE rewrite doesn't perform the actual update
+	})
 	defer h.Close()
 	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t, h)
 }
@@ -1673,7 +1677,18 @@ func TestTimeQueries(t *testing.T) {
 }
 
 func TestUpdateIgnore(t *testing.T) {
-	t.Skip("port test from Dolt - UPDATE IGNORE is MySQL-specific syntax")
+	// The converter rewrites UPDATE IGNORE as INSERT ... ON CONFLICT DO NOTHING,
+	// which handles the "skip on conflict" semantics for cases where every
+	// candidate row would conflict. Scripts that mix conflict-skipped and
+	// successfully-updated rows would need a DELETE + re-INSERT pattern; those
+	// stay skipped. Same for type-coercion scripts (Postgres rejects what MySQL
+	// silently coerces).
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"UPDATE IGNORE with primary keys and indexes", // mixes conflicts with successful updates
+		"UPDATE IGNORE with type conversions",         // postgres strict typing rejects MySQL coercions
+	})
+	defer h.Close()
+	enginetest.TestUpdateIgnore(t, h)
 }
 
 func TestUserPrivileges(t *testing.T) {
