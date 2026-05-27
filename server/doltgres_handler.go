@@ -655,7 +655,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 					return nil
 				}
 				if iErr != nil {
-					return err
+					return iErr
 				}
 				select {
 				case rowChan <- row:
