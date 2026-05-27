@@ -522,7 +522,7 @@ func TestScripts(t *testing.T) {
 		"filter pushdown through join uppercase name",             // syntax error (join without on)
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
 		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
-		"update join with update trigger", // update join syntax not supported (also catches with-trigger variants by substring)
+		"update join with update trigger",                         // update join syntax not supported (also catches with-trigger variants by substring)
 		"WITH RECURSIVE\n" +
 			"    rt (foo) AS (\n" +
 			"        SELECT 1 as foo\n" +
@@ -547,17 +547,17 @@ func TestScripts(t *testing.T) {
 		"show create table with duplicate primary key",                                                            // error in harness query converter
 		"recreate primary key rebuilds secondary indexes",                                                         // currently no way to drop primary key in doltgres
 		"Handle hex number to binary conversion",                                                                  // ERROR: can't convert 0x7ED0599B to decimal: exponent is not numeric
-		"join index lookups do not handle filters",                  // need a different join syntax (no ON clause not supported in postgres)
-		"arithmetic bit operations on int, float and decimal types", // the power operator is not yet supported
+		"join index lookups do not handle filters",                                                                // need a different join syntax (no ON clause not supported in postgres)
+		"arithmetic bit operations on int, float and decimal types",                                               // the power operator is not yet supported
 		"INSERT IGNORE throws an error when json is badly formatted",                                              // error messages don't match
 		"identical expressions over different windows should produce different results",                           // ERROR: integer: unhandled type: float64
 		"windows without ORDER BY should be treated as RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", // ERROR: integer: unhandled type: float64
 		"division and int division operation on negative, small and big value for decimal type column of table",   // numeric keys broken
-		"Multi-db Aliasing",                                               // need harness support for qualified table names
-		"update columns with default",                                     // broken, see repro in update_test.go
+		"Multi-db Aliasing",           // need harness support for qualified table names
+		"update columns with default", // broken, see repro in update_test.go
 		"select count(*) from t where (f in (null, cast(0.8 as float)));", // incorrect result, needs a fix
 		"update with left join with some missing rows",                    // need to translate update joins
-		"preserve now()",                                                  // harness error
+		"preserve now()",          // harness error
 		"binary type primary key", // ERROR: blob/text column 'b' used in key specification without a key length
 		"varbinary primary key",   // ERROR: blob/text column 'b' used in key specification without a key length
 		"insert into t1 (a, b) values ('1234567890', '12345')",                // different error message
@@ -568,9 +568,9 @@ func TestScripts(t *testing.T) {
 		"validate_password_strength and validate_password.number_count",       // unsupported
 		"validate_password_strength and validate_password.mixed_case_count",   // unsupported
 		"validate_password_strength and validate_password.special_char_count", // unsupported
-		"coalesce with system types",                             // unsupported
-		"histogram bucket merging error for implementor buckets", // unsupported "with recursive" syntax
-		"varchar primary key",                                    // literal values longer than the key length returns incorrect results for some queries
+		"coalesce with system types",                                          // unsupported
+		"histogram bucket merging error for implementor buckets",              // unsupported "with recursive" syntax
+		"varchar primary key",                                                 // literal values longer than the key length returns incorrect results for some queries
 	})
 	defer h.Close()
 	enginetest.TestScripts(t, h)
@@ -1191,7 +1191,7 @@ func TestDoltMerge(t *testing.T) {
 		"insert two tables with the same name and different schema",
 		"merge with new triggers defined",                                                                 // triggers
 		"add multiple columns, then set and unset a value. No conflicts expected.",                        // alter table
-		"dropping constraint from one branch drops from both", // alter table (catches the no-checkout variant by substring)
+		"dropping constraint from one branch drops from both",                                             // alter table (catches the no-checkout variant by substring)
 		"merge constraint with valid data on different branches",                                          // alter table
 		"resolving a deleted and modified row handles constraint checks",                                  // alter table
 		"resolving a modified/modified row still checks nullness constraint",                              // alter table
@@ -1201,8 +1201,8 @@ func TestDoltMerge(t *testing.T) {
 		"try to merge a nullable field into a non-null column",                                                           // alter table
 		"merge fulltext with renamed table",                                                                              // alter table
 		"merge when schemas are equal, but column tags are different",                                                    // alter table
-		"merge with float column default",        // alter table (also catches "merge with float 1.23 column default")
-		"merge with decimal 1.23 column default", // alter table
+		"merge with float column default",                                                                                // alter table (also catches "merge with float 1.23 column default")
+		"merge with decimal 1.23 column default",                                                                         // alter table
 		"merge with different types",                                                                                     // alter table
 		"select * from dolt_status",                                                                                      // table_name column includes schema name,
 		"dolt_merge() (3way) works with no auto increment overlap",                                                       // sequencing doesn't work globally after merge, need to decide product behavior
@@ -1261,9 +1261,9 @@ func TestDoltAutoIncrementPrepared(t *testing.T) {
 
 func TestDoltConflictsTableNameTable(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"dolt_preview_merge_conflicts_summary(",  // returns schema qualified table names
-		"Provides a dolt_conflicts_id",           // relies on user vars
-		"Updating our cols after schema change",  // alter table
+		"dolt_preview_merge_conflicts_summary(", // returns schema qualified table names
+		"Provides a dolt_conflicts_id",          // relies on user vars
+		"Updating our cols after schema change", // alter table
 	})
 	denginetest.RunDoltConflictsTableNameTableTests(t, h)
 }
@@ -1279,9 +1279,9 @@ func TestKeylessDoltMergeCVsAndConflicts(t *testing.T) {
 // eventually this will be part of TestDoltMerge
 func TestDoltMergeArtifacts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"conflicts of different schemas can't coexist",                                            // alter table
-		"violations with an older commit hash are overwritten if the value is the same",           // nothing to commit?
-		"right adds a unique key constraint and resolves existing violations.",                    // alter table
+		"conflicts of different schemas can't coexist",                                          // alter table
+		"violations with an older commit hash are overwritten if the value is the same",         // nothing to commit?
+		"right adds a unique key constraint and resolves existing violations.",                  // alter table
 		"unique key violation should be thrown even if a PK column is used in the unique index", // alter table ADD UNIQUE syntax
 		"regression test for bad column ordering in schema",                                     // enum not supported in test harness
 		"schema conflicts return an error when autocommit is enabled",                           // problems detecting autocommit for business logic
@@ -1926,9 +1926,6 @@ func TestCreateDatabaseErrorCleansUp(t *testing.T) {
 func TestStatsAutoRefreshConcurrency(t *testing.T) {
 	t.Skip("port test from Dolt")
 }
-
-// The following tests have been added in dolt's dolt_engine_test.go but have not been ported to doltgresql yet.
-// They are added here as stubs with t.Skip() so the test inventory stays in sync.
 
 func TestAdaptiveEncoding(t *testing.T) {
 	t.Skip("adaptive encoding is a dolt-internal storage feature; not applicable to doltgresql")
