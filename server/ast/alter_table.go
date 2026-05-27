@@ -164,6 +164,8 @@ func nodeAlterTableCmds(
 			// is unsupported and ignored
 		case *tree.AlterTableRowLevelSecurity:
 			// is unsupported and ignored
+		case *tree.AlterTableReplicaIdentity:
+			// is unsupported and ignored
 		default:
 			return nil, nil, errors.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
