@@ -72,6 +72,24 @@ func toJSONWrapper(ctx *sql.Context, val any) (sql.JSONWrapper, error) {
 	switch v := val.(type) {
 	case sql.JSONWrapper:
 		return v, nil
+	case sql.StringWrapper:
+		s, err := v.Unwrap(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		doc, err := pgtypes.JsonB.IoInput(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		if doc == nil {
+			return nil, nil
+		}
+		w, ok := doc.(sql.JSONWrapper)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type from IoInput: %T", doc)
+		}
+		return w, nil
 	case string:
 		doc, err := pgtypes.JsonB.IoInput(ctx, v)
 		if err != nil {
@@ -113,7 +131,6 @@ var json_array_element = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Json, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		// TODO: make a bespoke implementation that preserves whitespace
 		newVal, err := toJSONWrapper(ctx, val1)
 		if err != nil {
 			return nil, err
@@ -122,7 +139,7 @@ var json_array_element = framework.Function2{
 			return nil, nil
 		}
 		var unusedTypes [3]*pgtypes.DoltgresType
-		retVal, err := jsonb_array_element.Callable(ctx, unusedTypes, newVal, val2)
+		retVal, err := jsonb_array_element_callable(ctx, unusedTypes, newVal, val2)
 		if err != nil {
 			return nil, err
 		}
@@ -139,54 +156,56 @@ var jsonb_array_element = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		wrapper, ok := val1.(sql.JSONWrapper)
-		if !ok {
-			return nil, nil
-		}
-		idx := int(val2.(int32))
-		// Fast path: for a ComparableJSON wrapper backed by an indexed JSON
-		// array, use Lookup to fetch the element without materializing the
-		// entire array. Negative indices need the array length, so they fall
-		// through to the materialized path even on indexed values.
-		if comparable, ok := wrapper.(types.ComparableJSON); ok {
-			jt, err := comparable.JsonType(ctx)
-			if err != nil {
-				return nil, err
-			}
-			if jt != "ARRAY" {
-				return nil, nil
-			}
-			if idx >= 0 {
-				result, err := types.LookupJSONValue(ctx, wrapper, makeArrayIndexPath(idx))
-				if err != nil {
-					return nil, err
-				}
-				if result == nil {
-					return nil, nil
-				}
-				return result, nil
-			}
-		}
-		// Materialized fallback: covers wrappers that don't implement
-		// ComparableJSON (e.g. literal jsonb values) and the negative-index
-		// case on ComparableJSON arrays.
-		v, err := wrapper.ToInterface(ctx)
+	Callable:   jsonb_array_element_callable,
+}
+
+func jsonb_array_element_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	wrapper, ok := val1.(sql.JSONWrapper)
+	if !ok {
+		return nil, nil
+	}
+	idx := int(val2.(int32))
+	// Fast path: for a ComparableJSON wrapper backed by an indexed JSON
+	// array, use Lookup to fetch the element without materializing the
+	// entire array. Negative indices need the array length, so they fall
+	// through to the materialized path even on indexed values.
+	if comparable, ok := wrapper.(types.ComparableJSON); ok {
+		jt, err := comparable.JsonType(ctx)
 		if err != nil {
 			return nil, err
 		}
-		array, ok := v.([]interface{})
-		if !ok {
+		if jt != "ARRAY" {
 			return nil, nil
 		}
-		if idx < 0 {
-			idx += len(array)
+		if idx >= 0 {
+			result, err := types.LookupJSONValue(ctx, wrapper, makeArrayIndexPath(idx))
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				return nil, nil
+			}
+			return result, nil
 		}
-		if idx < 0 || idx >= len(array) {
-			return nil, nil
-		}
-		return types.JSONDocument{Val: array[idx]}, nil
-	},
+	}
+	// Materialized fallback: covers wrappers that don't implement
+	// ComparableJSON (e.g. literal jsonb values) and the negative-index
+	// case on ComparableJSON arrays.
+	v, err := wrapper.ToInterface(ctx)
+	if err != nil {
+		return nil, err
+	}
+	array, ok := v.([]interface{})
+	if !ok {
+		return nil, nil
+	}
+	if idx < 0 {
+		idx += len(array)
+	}
+	if idx < 0 || idx >= len(array) {
+		return nil, nil
+	}
+	return types.JSONDocument{Val: array[idx]}, nil
 }
 
 // json_object_field represents the PostgreSQL function of the same name, taking the same parameters.

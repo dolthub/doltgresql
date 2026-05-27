@@ -36,6 +36,12 @@ func jsonAssignment(builtInCasts map[id.Cast]casts.Cast) {
 		ToType:   pgtypes.JsonB,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			switch v := val.(type) {
+			case sql.StringWrapper:
+				result, err := v.Unwrap(ctx)
+				if err != nil {
+					return nil, err
+				}
+				return targetType.IoInput(ctx, result)
 			case string:
 				return targetType.IoInput(ctx, v)
 			case sql.JSONWrapper:
