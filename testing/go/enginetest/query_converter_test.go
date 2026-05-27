@@ -374,6 +374,10 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 	case *sqlparser.SQLVal:
 		return convertSQLVal(val)
 	case *sqlparser.ColName:
+		// Handle qualified column names like t.col
+		if !val.Qualifier.Name.IsEmpty() {
+			return tree.NewUnresolvedName(val.Qualifier.Name.String(), val.Name.String())
+		}
 		return tree.NewUnresolvedName(val.Name.String())
 	case *sqlparser.FuncExpr:
 		return convertFuncExpr(val)
@@ -383,10 +387,28 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 		return convertBinaryExpr(val)
 	case *sqlparser.ComparisonExpr:
 		return convertComparisonExpr(val)
+	case *sqlparser.AndExpr:
+		return &tree.AndExpr{
+			Left:  convertExpr(val.Left),
+			Right: convertExpr(val.Right),
+		}
+	case *sqlparser.OrExpr:
+		return &tree.OrExpr{
+			Left:  convertExpr(val.Left),
+			Right: convertExpr(val.Right),
+		}
+	case *sqlparser.NotExpr:
+		return &tree.NotExpr{
+			Expr: convertExpr(val.Expr),
+		}
+	case *sqlparser.IsExpr:
+		return convertIsExpr(val)
+	case *sqlparser.UnaryExpr:
+		return convertUnaryExpr(val)
 	case *sqlparser.Subquery:
 		return convertSubquery(val)
 	case *sqlparser.ParenExpr:
-		return convertExpr(val.Expr)
+		return &tree.ParenExpr{Expr: convertExpr(val.Expr)}
 	case sqlparser.ValTuple:
 		return convertValTuple(val)
 	case *sqlparser.NullVal:
@@ -396,6 +418,46 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 		return &boolVal
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertIsExpr(val *sqlparser.IsExpr) tree.Expr {
+	inner := convertExpr(val.Expr)
+	switch val.Operator {
+	case sqlparser.IsNullStr:
+		return &tree.IsNullExpr{Expr: inner}
+	case sqlparser.IsNotNullStr:
+		return &tree.IsNotNullExpr{Expr: inner}
+	case sqlparser.IsTrueStr:
+		boolVal := tree.DBool(true)
+		return &tree.ComparisonExpr{Operator: tree.IsNotDistinctFrom, Left: inner, Right: &boolVal}
+	case sqlparser.IsNotTrueStr:
+		boolVal := tree.DBool(true)
+		return &tree.ComparisonExpr{Operator: tree.IsDistinctFrom, Left: inner, Right: &boolVal}
+	case sqlparser.IsFalseStr:
+		boolVal := tree.DBool(false)
+		return &tree.ComparisonExpr{Operator: tree.IsNotDistinctFrom, Left: inner, Right: &boolVal}
+	case sqlparser.IsNotFalseStr:
+		boolVal := tree.DBool(false)
+		return &tree.ComparisonExpr{Operator: tree.IsDistinctFrom, Left: inner, Right: &boolVal}
+	default:
+		panic(fmt.Sprintf("unhandled IS operator: %s", val.Operator))
+	}
+}
+
+func convertUnaryExpr(val *sqlparser.UnaryExpr) tree.Expr {
+	switch val.Operator {
+	case sqlparser.UMinusStr:
+		return &tree.UnaryExpr{Operator: tree.UnaryMinus, Expr: convertExpr(val.Expr)}
+	case sqlparser.UPlusStr:
+		// Unary plus is a no-op in both MySQL and Postgres
+		return convertExpr(val.Expr)
+	case sqlparser.TildaStr:
+		return &tree.UnaryExpr{Operator: tree.UnaryComplement, Expr: convertExpr(val.Expr)}
+	case sqlparser.BangStr:
+		return &tree.NotExpr{Expr: convertExpr(val.Expr)}
+	default:
+		panic(fmt.Sprintf("unhandled unary operator: %s", val.Operator))
 	}
 }
 
@@ -433,6 +495,9 @@ func convertComparisonExpr(val *sqlparser.ComparisonExpr) tree.Expr {
 		op = tree.GE
 	case sqlparser.NotEqualStr:
 		op = tree.NE
+	case sqlparser.NullSafeEqualStr:
+		// MySQL's <=> is null-safe equality; Postgres equivalent is IS NOT DISTINCT FROM
+		op = tree.IsNotDistinctFrom
 	case sqlparser.InStr:
 		op = tree.In
 	case sqlparser.NotInStr:
@@ -474,6 +539,8 @@ func convertBinaryExpr(val *sqlparser.BinaryExpr) tree.Expr {
 		op = tree.Mult
 	case sqlparser.DivStr:
 		op = tree.Div
+	case sqlparser.IntDivStr:
+		op = tree.FloorDiv
 	case sqlparser.ModStr:
 		op = tree.Mod
 	case sqlparser.ShiftLeftStr:
@@ -1591,6 +1658,30 @@ func TestBoolValSupport(t *testing.T) {
 	require.Len(t, result, 1, "Should return exactly one converted statement")
 	require.Contains(t, result[0], "CREATE TABLE", "Result should contain CREATE TABLE")
 	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
+}
+
+// TestExpressionConversionRobustness ensures convertExpr handles common
+// MySQL expression kinds (AND/OR/NOT/IS NULL/IS NOT NULL/unary +-/qualified
+// column references) without panicking. Previously any of these would crash
+// the converter with "unhandled type" when the test framework tried to
+// re-emit the parsed expression in postgres form.
+func TestExpressionConversionRobustness(t *testing.T) {
+	queries := []string{
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = -a",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = NOT b",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b IS NULL",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b IS NOT NULL",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b AND b",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b OR b",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b DIV 2",
+	}
+
+	for _, q := range queries {
+		t.Run(q, func(t *testing.T) {
+			result := convertQuery(q)
+			require.NotEmpty(t, result)
+		})
+	}
 }
 
 // TestBitTypeSupport tests BIT type conversion for dolt#9641 compatibility
