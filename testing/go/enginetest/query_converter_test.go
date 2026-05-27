@@ -52,10 +52,22 @@ func transformAST(query string) ([]string, bool) {
 		return transformInsert(stmt)
 	case *sqlparser.Update:
 		return transformUpdate(stmt)
+	case *sqlparser.Delete:
+		return transformDelete(stmt)
 	case *sqlparser.AlterTable:
 		return transformAlterTable(stmt)
 	}
 
+	return nil, false
+}
+
+// transformDelete rewrites DELETE statements that reference a `db.tbl`
+// qualifier so the qualifier becomes postgres' `db.public.tbl`. We don't
+// attempt any other DELETE rewriting today.
+func transformDelete(stmt *sqlparser.Delete) ([]string, bool) {
+	if containsQualifiedTableName(stmt) {
+		return []string{formatNode(stmt)}, true
+	}
 	return nil, false
 }
 
@@ -68,7 +80,13 @@ func transformAST(query string) ([]string, bool) {
 // reported as INSERT rows rather than UPDATE matched/changed), but it lets the
 // tests at least exercise the conflict-handling code paths.
 func transformUpdate(stmt *sqlparser.Update) ([]string, bool) {
+	// Reformat plain UPDATEs that reference a `db.tbl` so the qualifier gets
+	// rewritten to postgres' `db.public.tbl`. UPDATE IGNORE goes through the
+	// INSERT … ON CONFLICT translation below regardless.
 	if stmt.Ignore != "ignore " {
+		if containsQualifiedTableName(stmt) {
+			return []string{formatNode(stmt)}, true
+		}
 		return nil, false
 	}
 
@@ -85,7 +103,7 @@ func transformUpdate(stmt *sqlparser.Update) ([]string, bool) {
 	if !ok {
 		return nil, false
 	}
-	tableName := tree.NewTableName(tree.Name(tname.DbQualifier.String()), tree.Name(tname.Name.String()))
+	tableName := translateTableName(tname)
 
 	// Build the column list and the SELECT expressions from the SET clause.
 	colList := make(tree.NameList, len(stmt.Exprs))
@@ -97,7 +115,7 @@ func transformUpdate(stmt *sqlparser.Update) ([]string, bool) {
 
 	// FROM t [AS alias]
 	fromTable := &tree.AliasedTableExpr{
-		Expr: tree.NewTableName(tree.Name(tname.DbQualifier.String()), tree.Name(tname.Name.String())),
+		Expr: translateTableName(tname),
 	}
 	if !aliased.As.IsEmpty() {
 		fromTable.As = tree.AliasClause{Alias: tree.Name(aliased.As.String())}
@@ -233,7 +251,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		ctx := formatNodeWithUnqualifiedTableNames(&insert)
 		return []string{ctx.String()}, true
 	} else if stmt.Ignore == "ignore " {
-		tableName := tree.NewTableName(tree.Name(table.DbQualifier.String()), tree.Name(table.Name.String()))
+		tableName := translateTableName(table)
 
 		var colList tree.NameList
 		if len(stmt.Columns) > 0 {
@@ -262,19 +280,73 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		return []string{ctx.String()}, true
 	}
 
+	// Plain INSERTs still need the qualified-name rewrite when they reference
+	// a `db.tbl` target so the table gets the postgres `db.public.tbl` form.
+	if containsQualifiedTableName(stmt) {
+		return []string{formatNode(stmt)}, true
+	}
+
 	return nil, false
 }
 
+// translateTableName converts a vitess MySQL TableName into a postgres TableName.
+// MySQL `db.tbl` maps to postgres `db.public.tbl`; bare `tbl` stays bare.
+// We mark the catalog/schema as "explicit" only when the source had a db
+// qualifier so the format callback in formatNodeWithUnqualifiedTableNames can
+// strip the prefix for unqualified names.
+//
+// Known schema names (`information_schema`, `pg_catalog`, etc.) are not
+// translated: MySQL exposes them as if they were databases, but postgres
+// exposes them as schemas, and the same `<schema>.<tbl>` form works in both.
 func translateTableName(table sqlparser.TableName) *tree.TableName {
-	return tree.NewTableName(tree.Name(table.DbQualifier.String()), tree.Name(table.Name.String()))
+	if table.DbQualifier.IsEmpty() {
+		// Unqualified: just the table name; let the formatter omit the prefix.
+		return tree.NewUnqualifiedTableName(tree.Name(table.Name.String()))
+	}
+	if isWellKnownSchema(table.DbQualifier.String()) {
+		// `schema.tbl` in postgres terms — encode the qualifier as the schema,
+		// not the catalog. ExplicitSchema/ExplicitCatalog handling differs in
+		// the format callback below.
+		tn := tree.MakeTableNameWithSchema(
+			"",
+			tree.Name(table.DbQualifier.String()),
+			tree.Name(table.Name.String()),
+		)
+		return &tn
+	}
+	tn := tree.MakeTableNameWithSchema(
+		tree.Name(table.DbQualifier.String()),
+		"public",
+		tree.Name(table.Name.String()),
+	)
+	return &tn
+}
+
+// isWellKnownSchema returns true if the given identifier is a postgres-style
+// schema (rather than a user database). When MySQL writes `information_schema.t`
+// the user intent is the system schema; postgres exposes it under the same name.
+func isWellKnownSchema(name string) bool {
+	switch strings.ToLower(name) {
+	case "information_schema", "pg_catalog", "performance_schema", "mysql", "sys":
+		return true
+	}
+	return false
 }
 
 func TableNameToUnresolvedObjectName(table sqlparser.TableName) *tree.UnresolvedObjectName {
-	if !table.DbQualifier.IsEmpty() {
-		panic(fmt.Sprintf("unhandled case: db qualifier present %v", table))
+	if table.DbQualifier.IsEmpty() {
+		name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Name.String(), "", ""}, 0)
+		if err != nil {
+			panic(err)
+		}
+		return name
 	}
-
-	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Name.String(), "", ""}, 0)
+	// MySQL db.tbl → postgres db.public.tbl (3 parts).
+	name, err := tree.NewUnresolvedObjectName(3, [3]string{
+		table.Name.String(),
+		"public",
+		table.DbQualifier.String(),
+	}, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -415,7 +487,7 @@ func convertTableExpr(table sqlparser.TableExpr) tree.TableExpr {
 		switch tableExpr := table.Expr.(type) {
 		case sqlparser.TableName:
 			return &tree.AliasedTableExpr{
-				Expr: tree.NewTableName(tree.Name(tableExpr.DbQualifier.String()), tree.Name(tableExpr.Name.String())),
+				Expr: translateTableName(tableExpr),
 				As: tree.AliasClause{
 					Alias: tree.Name(table.As.String()),
 				},
@@ -508,7 +580,29 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 	case *sqlparser.SQLVal:
 		return convertSQLVal(val)
 	case *sqlparser.ColName:
-		// Handle qualified column names like t.col
+		// Translate MySQL column references into postgres equivalents.
+		// MySQL uses a single qualifier for the database; postgres uses two
+		// (catalog + schema), with `public` as the conventional default
+		// schema when MySQL only gave a db name.
+		//   `col`                        -> col
+		//   `tbl.col`                    -> tbl.col
+		//   `db.tbl.col`                 -> db.public.tbl.col
+		//   `information_schema.tbl.col` -> information_schema.tbl.col
+		if !val.Qualifier.DbQualifier.IsEmpty() {
+			if isWellKnownSchema(val.Qualifier.DbQualifier.String()) {
+				return tree.NewUnresolvedName(
+					val.Qualifier.DbQualifier.String(),
+					val.Qualifier.Name.String(),
+					val.Name.String(),
+				)
+			}
+			return tree.NewUnresolvedName(
+				val.Qualifier.DbQualifier.String(),
+				"public",
+				val.Qualifier.Name.String(),
+				val.Name.String(),
+			)
+		}
 		if !val.Qualifier.Name.IsEmpty() {
 			return tree.NewUnresolvedName(val.Qualifier.Name.String(), val.Name.String())
 		}
@@ -876,7 +970,7 @@ func convertConstraintAlter(statement *sqlparser.DDL) ([]string, bool) {
 	case "add":
 		// One constraint per ADD clause in the MySQL parse tree.
 		c := statement.TableSpec.Constraints[0]
-		tableName := tree.MakeTableNameWithSchema("", "", tree.Name(statement.Table.Name.String()))
+		tableName := *translateTableName(statement.Table)
 		switch d := c.Details.(type) {
 		case *sqlparser.ForeignKeyDefinition:
 			return []string{createForeignKeyStatement(tableName, d)}, true
@@ -936,7 +1030,7 @@ func convertConstraintAlter(statement *sqlparser.DDL) ([]string, bool) {
 func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
 	switch statement.IndexSpec.Action {
 	case "drop":
-		tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
+		tableName := translateTableName(statement.Table)
 		indexName := statement.IndexSpec.ToName.String()
 		if statement.IndexSpec.Type == "primary" {
 			indexName = "PRIMARY"
@@ -1004,14 +1098,14 @@ func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
 		}
 		createIndex := tree.CreateIndex{
 			Name:    tree.Name(statement.IndexSpec.ToName.String()),
-			Table:   tree.MakeTableNameWithSchema("", "", tree.Name(statement.Table.Name.String())),
+			Table:   *translateTableName(statement.Table),
 			Unique:  statement.IndexSpec.Type == "unique",
 			Columns: cols,
 		}
 		return []string{formatNodeWithUnqualifiedTableNames(&createIndex).String()}, true
 
 	case "rename":
-		tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
+		tableName := translateTableName(statement.Table)
 		from := statement.IndexSpec.FromName.String()
 		to := statement.IndexSpec.ToName.String()
 		renameIndex := tree.RenameIndex{
@@ -1039,7 +1133,35 @@ func transformSelect(stmt *sqlparser.Select) ([]string, bool) {
 
 func shouldRewriteSelect(stmt *sqlparser.Select) bool {
 	return containsUserVars(stmt) ||
-		containsBinaryConversion(stmt)
+		containsBinaryConversion(stmt) ||
+		containsQualifiedTableName(stmt)
+}
+
+// containsQualifiedTableName reports whether the given node references a
+// MySQL `db.tbl` identifier whose qualifier is a real user database (not a
+// well-known postgres schema). Such queries need to be re-formatted so the
+// converter can insert the postgres `public` schema between catalog and
+// table. Queries that only reference `information_schema` etc. are left
+// untouched.
+func containsQualifiedTableName(stmt sqlparser.SQLNode) bool {
+	found := false
+	walker := func(node sqlparser.SQLNode) (bool, error) {
+		switch n := node.(type) {
+		case sqlparser.TableName:
+			if !n.DbQualifier.IsEmpty() && !isWellKnownSchema(n.DbQualifier.String()) {
+				found = true
+				return false, nil
+			}
+		case *sqlparser.ColName:
+			if !n.Qualifier.DbQualifier.IsEmpty() && !isWellKnownSchema(n.Qualifier.DbQualifier.String()) {
+				found = true
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	sqlparser.Walk(walker, stmt)
+	return found
 }
 
 func containsBinaryConversion(stmt *sqlparser.Select) bool {
@@ -1143,6 +1265,33 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 		} else {
 			buf.Myprintf("%s", node.Lowered())
 		}
+	case sqlparser.TableName:
+		// MySQL `db.tbl` → postgres `db.public.tbl`. MySQL has no schema
+		// concept, so we insert `public` (postgres' default schema) between
+		// the catalog and table when a database qualifier is present —
+		// except for well-known schemas like `information_schema`, where the
+		// MySQL qualifier already lines up with a postgres schema.
+		switch {
+		case node.DbQualifier.IsEmpty():
+			buf.Myprintf("%v", node.Name)
+		case isWellKnownSchema(node.DbQualifier.String()):
+			buf.Myprintf("%v.%v", node.DbQualifier, node.Name)
+		default:
+			buf.Myprintf("%v.public.%v", node.DbQualifier, node.Name)
+		}
+	case *sqlparser.ColName:
+		// Same translation for qualified column references: `db.tbl.col` →
+		// `db.public.tbl.col`, leaving `information_schema.tbl.col` alone.
+		switch {
+		case node.Qualifier.DbQualifier.IsEmpty() && node.Qualifier.Name.IsEmpty():
+			buf.Myprintf("%v", node.Name)
+		case node.Qualifier.DbQualifier.IsEmpty():
+			buf.Myprintf("%v.%v", node.Qualifier.Name, node.Name)
+		case isWellKnownSchema(node.Qualifier.DbQualifier.String()):
+			buf.Myprintf("%v.%v.%v", node.Qualifier.DbQualifier, node.Qualifier.Name, node.Name)
+		default:
+			buf.Myprintf("%v.public.%v.%v", node.Qualifier.DbQualifier, node.Qualifier.Name, node.Name)
+		}
 	case *sqlparser.UnaryExpr:
 		if node.Operator == "binary " {
 			buf.Myprintf("%v::text::bytea", node.Expr)
@@ -1216,7 +1365,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 
 	createTable := tree.CreateTable{
 		IfNotExists: stmt.IfNotExists,
-		Table:       tree.MakeTableNameWithSchema("", "", tree.Name(stmt.Table.Name.String())), // TODO: qualified names
+		Table:       *translateTableName(stmt.Table),
 	}
 
 	var queries []string
@@ -1278,7 +1427,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 
 			createIndex := tree.CreateIndex{
 				Name:    tree.Name(index.Info.Name.String()),
-				Table:   tree.MakeTableNameWithSchema("", "", tree.Name(stmt.Table.Name.String())), // TODO: qualified
+				Table:   *translateTableName(stmt.Table),
 				Unique:  index.Info.Unique,
 				Columns: make(tree.IndexElemList, len(index.Fields)),
 			}
@@ -1355,7 +1504,7 @@ func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefi
 	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
 		ConstraintDef: &tree.ForeignKeyConstraintTableDef{
 			FromCols: fromCols,
-			Table:    tree.MakeTableName(tree.Name(""), tree.Name(c.ReferencedTable.Name.String())),
+			Table:    *translateTableName(c.ReferencedTable),
 			ToCols:   toCols,
 			Actions: tree.ReferenceActions{
 				Delete: onDelete,
@@ -1399,10 +1548,31 @@ func translateRefAction(action sqlparser.ReferenceAction) tree.RefAction {
 	}
 }
 
-// The default formatter always qualifies table names with db name and schema name, which we don't want in most cases
+// formatNodeWithUnqualifiedTableNames formats a node and, by default, prints
+// table names unqualified. The default postgres formatter always emits the
+// fully-qualified `catalog.schema.table` form, which is too noisy when we
+// haven't actually been given a qualifier. We do, however, want to preserve
+// qualifiers when the source MySQL query had one — see translateTableName for
+// the rules.
 func formatNodeWithUnqualifiedTableNames(n tree.NodeFormatter) *tree.FmtCtx {
 	ctx := tree.NewFmtCtx(tree.FmtSimple)
 	ctx.SetReformatTableNames(func(ctx *tree.FmtCtx, tn *tree.TableName) {
+		switch {
+		case tn.ExplicitCatalog && tn.CatalogName != "":
+			ctx.FormatNode(&tn.CatalogName)
+			ctx.WriteByte('.')
+			schema := tn.SchemaName
+			if schema == "" {
+				schema = "public"
+			}
+			ctx.FormatNode(&schema)
+			ctx.WriteByte('.')
+		case tn.ExplicitSchema && tn.SchemaName != "":
+			// Schema-only qualifier (e.g. `information_schema.tbl`); the catalog
+			// is left implicit so postgres uses the current database.
+			ctx.FormatNode(&tn.SchemaName)
+			ctx.WriteByte('.')
+		}
 		ctx.FormatNode(&tn.ObjectName)
 	})
 	ctx.FormatNode(n)
@@ -2000,6 +2170,53 @@ func TestBoolValSupport(t *testing.T) {
 	require.Len(t, result, 1, "Should return exactly one converted statement")
 	require.Contains(t, result[0], "CREATE TABLE", "Result should contain CREATE TABLE")
 	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
+}
+
+// TestQualifiedNameConversion covers the MySQL→Postgres translation of
+// `db.tbl` → `db.public.tbl` (and column-qualified equivalents).
+func TestQualifiedNameConversion(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input:    "CREATE TABLE test.x (pk int primary key)",
+			expected: []string{"CREATE TABLE test.public.x (pk INTEGER NOT NULL PRIMARY KEY)"},
+		},
+		{
+			input:    "INSERT INTO test.x VALUES (1, 2) on duplicate key update a = 5",
+			expected: []string{"INSERT INTO test.public.x VALUES (1, 2) ON CONFLICT (fake) DO UPDATE SET a = 5"},
+		},
+		{
+			input:    "SELECT pk FROM test.x",
+			expected: []string{"select pk from test.public.x"},
+		},
+		{
+			input:    "SELECT db1.t1.i FROM db1.t1 WHERE db1.t1.i > 0",
+			expected: []string{"select db1.public.t1.i from db1.public.t1 where db1.public.t1.i > 0"},
+		},
+		{
+			input:    "DELETE FROM test.x WHERE pk = 2",
+			expected: []string{"delete from test.public.x where pk = 2"},
+		},
+		{
+			input:    "UPDATE test.x SET pk = 300 WHERE pk = 3",
+			expected: []string{"update test.public.x set pk = 300 where pk = 3"},
+		},
+		// Unqualified queries should pass through untouched by the qualified-name path.
+		{
+			input:    "CREATE TABLE x (pk int primary key)",
+			expected: []string{"CREATE TABLE x (pk INTEGER NOT NULL PRIMARY KEY)"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
 }
 
 // TestReplaceIntoConversion covers REPLACE INTO → INSERT ... ON CONFLICT

@@ -231,7 +231,6 @@ func commitScripts(dbs []string) []setup.SetupScript {
 var skippedSetupWords = []string{
 	"typestable",     // lots of work to do
 	"datetime_table", // invalid timestamp format
-	"foo.othertable", // ERROR: database schema not found: foo (errno 1105)
 	"analyze table",  // unsupported syntax
 }
 

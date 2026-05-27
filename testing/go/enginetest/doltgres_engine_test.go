@@ -508,8 +508,11 @@ func TestScripts(t *testing.T) {
 			"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
 			"    )\n" +
 			"SELECT * FROM ladder;", // syntax error
-		"CrossDB Queries",             // needs harness work to properly qualify the names
-		"CREATE TABLE SELECT Queries", // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
+		"CREATE TABLE SELECT Queries",   // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
+		"db1.``.i > 0",                  // Multi-db Aliasing: MySQL-only empty-backtick ref
+		"join db2.t2 order by",          // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+		"join db2.t2 group by",          // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+		"join db2.t1 b order by a.i",    // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
 		// "Simple Update Join test that manipulates two tables",
 		// "Partial indexes are used and return the expected result",
 		// "Multiple indexes on the same columns in a different order",
@@ -525,7 +528,6 @@ func TestScripts(t *testing.T) {
 		"identical expressions over different windows should produce different results",                           // ERROR: integer: unhandled type: float64
 		"windows without ORDER BY should be treated as RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", // ERROR: integer: unhandled type: float64
 		"division and int division operation on negative, small and big value for decimal type column of table",   // numeric keys broken
-		"Multi-db Aliasing",           // need harness support for qualified table names
 		"update columns with default", // broken, see repro in update_test.go
 		"select count(*) from t where (f in (null, cast(0.8 as float)));", // incorrect result, needs a fix
 		"update with left join with some missing rows",                    // need to translate update joins
@@ -1147,12 +1149,13 @@ func TestDoltGC(t *testing.T) {
 
 func TestDoltCheckout(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"dolt_checkout and base name resolution", // needs db-qualified table names
 		"branch last checked out is deleted",
 		"Using non-existent refs",
 		"read-only databases", // read-only not yet implemented in harness
 		"Checkout tables from commit",
 		"dolt_checkout with tracking branch and table with same name", // UseLocalFileSystem did not create remote dir
+		"dolt_checkout mixed with USE statements",                     // requires backtick `db/branch` qualifier syntax
+		"select * from `mydb/",                                        // backtick db/branch syntax not supported in postgres dialect
 	})
 	denginetest.RunDoltCheckoutTests(t, h)
 }
