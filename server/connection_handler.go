@@ -1027,7 +1027,6 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 		}
 		sess.ClearNotices()
 
-		// TODO: we should avoid flushing every single row every time
 		if returnsRow(query) {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute && !hasSentRowDescription {
@@ -1036,6 +1035,7 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 					Fields: res.Fields,
 				})
 			}
+			// res.Rows should be length rowsBatch = 128
 			for _, row := range res.Rows {
 				h.backend.Send(&pgproto3.DataRow{
 					Values: row.val,
