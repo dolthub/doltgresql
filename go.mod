@@ -6,10 +6,10 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20260521214928-b2274926e0dc
+	github.com/dolthub/dolt/go v0.40.5-0.20260527174422-b8887ac5092f
 	github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20260521203635-622656d89ca9
+	github.com/dolthub/go-mysql-server v0.20.1-0.20260527162314-8764587064e4
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20260521165014-2fdb4300ae8d
@@ -104,7 +104,7 @@ require (
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 // indirect
 	github.com/dolthub/dolt-mcp v0.3.4 // indirect
-	github.com/dolthub/fslock v0.0.3 // indirect
+	github.com/dolthub/fslock v0.0.4 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20260412212219-49724d547866 // indirect
 	github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 // indirect
 	github.com/dolthub/ishell v0.0.0-20260414231531-5f031e3e9037 // indirect
@@ -142,6 +142,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgproto3/v2 v2.3.3 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d // indirect
 	github.com/kch42/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
