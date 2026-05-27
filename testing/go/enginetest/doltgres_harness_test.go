@@ -36,7 +36,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
-	"github.com/dolthub/vitess/go/sqltypes"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/jackc/pgx/v5"
@@ -91,6 +90,9 @@ func (d *DoltgresHarness) WithConfigureStats(configureStats bool) denginetest.Do
 }
 
 func (d *DoltgresHarness) NewHarness(t *testing.T) denginetest.DoltEnginetestHarness {
+	// Each harness owns a server on a single fixed port, so we must shut down the
+	// previous one before standing up its replacement to avoid a port conflict.
+	d.Close()
 	h := newDoltgresServerHarness(t).(*DoltgresHarness)
 	h.skippedQueries = d.skippedQueries
 	h.setupData = d.setupData
@@ -897,7 +899,7 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 		case uint32(oid.T_bytea):
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
-			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.MustCreateBinary(sqltypes.Binary, 100), Nullable: true})
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongBlob, Nullable: true})
 		case uint32(oid.T_json):
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
@@ -905,7 +907,7 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 		case uint32(oid.T_unknown): // TODO: this should not be returned
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
-			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.MustCreateBinary(sqltypes.Binary, 100), Nullable: true})
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongBlob, Nullable: true})
 		default:
 			return nil, nil, errors.Errorf("Unhandled OID %d", field.DataTypeOID)
 		}

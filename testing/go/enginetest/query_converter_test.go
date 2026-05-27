@@ -605,95 +605,290 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 	switch statement.Action {
 	case "alter":
 		if statement.ColumnAction != "" {
-			switch statement.ColumnAction {
-			case "modify":
-				if len(statement.TableSpec.Columns) != 1 {
-					return nil, false
-				}
-
-				stmts := make([]string, 0)
-
-				col := statement.TableSpec.Columns[0]
-				tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
-				if err != nil {
-					panic(err)
-				}
-
-				newType := convertTypeDef(col.Type)
-				alter := tree.AlterTable{
-					Table: tableName,
-					Cmds: []tree.AlterTableCmd{
-						&tree.AlterTableAlterColumnType{
-							Column: tree.Name(col.Name.String()),
-							ToType: newType,
-						},
-					},
-				}
-
-				ctx := formatNodeWithUnqualifiedTableNames(&alter)
-				stmts = append(stmts, ctx.String())
-
-				// constraints
-				if col.Type.NotNull {
-					alter.Cmds = []tree.AlterTableCmd{
-						&tree.AlterTableSetNotNull{
-							Column: tree.Name(col.Name.String()),
-						},
-					}
-					ctx = formatNodeWithUnqualifiedTableNames(&alter)
-					stmts = append(stmts, ctx.String())
-				} else {
-					alter.Cmds = []tree.AlterTableCmd{
-						&tree.AlterTableDropNotNull{
-							Column: tree.Name(col.Name.String()),
-						},
-					}
-					ctx = formatNodeWithUnqualifiedTableNames(&alter)
-					stmts = append(stmts, ctx.String())
-				}
-
-				// rename
-				if statement.Column.String() != col.Name.String() {
-					alter.Cmds = []tree.AlterTableCmd{
-						&tree.AlterTableRenameColumn{
-							Column:  tree.Name(statement.Column.String()),
-							NewName: tree.Name(col.Name.String()),
-						},
-					}
-					ctx = formatNodeWithUnqualifiedTableNames(&alter)
-					stmts = append(stmts, ctx.String())
-				}
-
-				return stmts, true
-			default:
-				return nil, false
-			}
+			return convertColumnAlter(statement)
+		}
+		if statement.ConstraintAction != "" {
+			return convertConstraintAlter(statement)
 		}
 		if statement.IndexSpec != nil {
-			switch statement.IndexSpec.Action {
-			case "drop":
-				tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
-				indexName := statement.IndexSpec.ToName.String()
-				if statement.IndexSpec.Type == "primary" {
-					indexName = "PRIMARY"
-				}
-				dropIndex := tree.DropIndex{
-					IndexList: tree.TableIndexNames{
-						{
-							Table: *tableName,
-							Index: tree.UnrestrictedName(indexName),
-						},
-					},
-				}
+			return convertIndexAlter(statement)
+		}
+		return nil, false
+	case "rename":
+		// ALTER TABLE ... RENAME TO ...  (table rename within an ALTER TABLE)
+		if len(statement.FromTables) == 1 && len(statement.ToTables) == 1 {
+			rename := &tree.RenameTable{
+				Name:    TableNameToUnresolvedObjectName(statement.FromTables[0]),
+				NewName: TableNameToUnresolvedObjectName(statement.ToTables[0]),
+			}
+			return []string{formatNodeWithUnqualifiedTableNames(rename).String()}, true
+		}
+		return nil, false
+	default:
+		return nil, false
+	}
+}
 
-				ctx := formatNodeWithUnqualifiedTableNames(&dropIndex)
-				return []string{ctx.String()}, true
-			default:
+// convertColumnAlter handles ALTER TABLE ADD/DROP/MODIFY/CHANGE/RENAME COLUMN clauses.
+func convertColumnAlter(statement *sqlparser.DDL) ([]string, bool) {
+	tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+	if err != nil {
+		panic(err)
+	}
+
+	switch statement.ColumnAction {
+	case "add":
+		if statement.TableSpec == nil || len(statement.TableSpec.Columns) != 1 {
+			return nil, false
+		}
+		col := statement.TableSpec.Columns[0]
+		// AUTO_INCREMENT in ADD COLUMN would require us to emit a CREATE SEQUENCE
+		// statement too; skip for now to avoid silently producing a column without
+		// a working default.
+		if col.Type.Autoincrement {
+			return nil, false
+		}
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableAddColumn{
+					IfNotExists: statement.IfNotExists,
+					ColumnDef:   columnDefFromMySQL(col, ""),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	case "drop":
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableDropColumn{
+					IfExists: statement.IfExists,
+					Column:   tree.Name(statement.Column.String()),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	case "rename":
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableRenameColumn{
+					Column:  tree.Name(statement.Column.String()),
+					NewName: tree.Name(statement.ToColumn.String()),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	case "modify", "change":
+		if statement.TableSpec == nil || len(statement.TableSpec.Columns) != 1 {
+			return nil, false
+		}
+		col := statement.TableSpec.Columns[0]
+		stmts := make([]string, 0)
+
+		newType := convertTypeDef(col.Type)
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableAlterColumnType{
+					Column: tree.Name(col.Name.String()),
+					ToType: newType,
+				},
+			},
+		}
+		stmts = append(stmts, formatNodeWithUnqualifiedTableNames(&alter).String())
+
+		if col.Type.NotNull {
+			alter.Cmds = []tree.AlterTableCmd{
+				&tree.AlterTableSetNotNull{Column: tree.Name(col.Name.String())},
+			}
+		} else {
+			alter.Cmds = []tree.AlterTableCmd{
+				&tree.AlterTableDropNotNull{Column: tree.Name(col.Name.String())},
+			}
+		}
+		stmts = append(stmts, formatNodeWithUnqualifiedTableNames(&alter).String())
+
+		// CHANGE may also rename the column.
+		if statement.Column.String() != "" && statement.Column.String() != col.Name.String() {
+			alter.Cmds = []tree.AlterTableCmd{
+				&tree.AlterTableRenameColumn{
+					Column:  tree.Name(statement.Column.String()),
+					NewName: tree.Name(col.Name.String()),
+				},
+			}
+			stmts = append(stmts, formatNodeWithUnqualifiedTableNames(&alter).String())
+		}
+
+		return stmts, true
+
+	default:
+		return nil, false
+	}
+}
+
+// convertConstraintAlter handles ALTER TABLE ADD/DROP/RENAME CONSTRAINT clauses,
+// covering foreign keys and check constraints.
+func convertConstraintAlter(statement *sqlparser.DDL) ([]string, bool) {
+	if statement.TableSpec == nil || len(statement.TableSpec.Constraints) == 0 {
+		return nil, false
+	}
+
+	switch statement.ConstraintAction {
+	case "add":
+		// One constraint per ADD clause in the MySQL parse tree.
+		c := statement.TableSpec.Constraints[0]
+		tableName := tree.MakeTableNameWithSchema("", "", tree.Name(statement.Table.Name.String()))
+		switch d := c.Details.(type) {
+		case *sqlparser.ForeignKeyDefinition:
+			return []string{createForeignKeyStatement(tableName, d)}, true
+		case *sqlparser.CheckConstraintDefinition:
+			return []string{createCheckConstraintStatement(tableName, d)}, true
+		default:
+			return nil, false
+		}
+
+	case "drop":
+		// MySQL has separate DROP FOREIGN KEY / DROP CHECK syntax; postgres uses
+		// generic DROP CONSTRAINT regardless of constraint kind.
+		c := statement.TableSpec.Constraints[0]
+		tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+		if err != nil {
+			panic(err)
+		}
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableDropConstraint{
+					Constraint: tree.Name(c.Name),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	case "rename":
+		// MySQL: ALTER TABLE t RENAME [CONSTRAINT] foo TO bar. Vitess models this
+		// by stashing the two names in TableSpec.Constraints (first = old, second = new).
+		if len(statement.TableSpec.Constraints) < 2 {
+			return nil, false
+		}
+		tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+		if err != nil {
+			panic(err)
+		}
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableRenameConstraint{
+					Constraint: tree.Name(statement.TableSpec.Constraints[0].Name),
+					NewName:    tree.Name(statement.TableSpec.Constraints[1].Name),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	default:
+		return nil, false
+	}
+}
+
+// convertIndexAlter handles ALTER TABLE ADD/DROP/RENAME INDEX clauses.
+// Postgres expresses CREATE INDEX as a top-level statement (not an ALTER TABLE
+// command), so we emit a CREATE INDEX statement when adding.
+func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
+	switch statement.IndexSpec.Action {
+	case "drop":
+		tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
+		indexName := statement.IndexSpec.ToName.String()
+		if statement.IndexSpec.Type == "primary" {
+			indexName = "PRIMARY"
+		}
+		dropIndex := tree.DropIndex{
+			IndexList: tree.TableIndexNames{
+				{
+					Table: *tableName,
+					Index: tree.UnrestrictedName(indexName),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&dropIndex).String()}, true
+
+	case "create":
+		// Bail out for index kinds the converter can't faithfully translate yet:
+		// MySQL prefix-key syntax (col(N)) and expression-only fields (functional
+		// indexes like `((LOWER(name)))`). Without bailing, we'd emit a
+		// malformed CreateIndex tree that panics on Format.
+		for _, f := range statement.IndexSpec.Fields {
+			if f.Length != nil || f.Column.IsEmpty() {
 				return nil, false
 			}
 		}
 
-		return nil, false
+		// MySQL's ALTER TABLE ... ADD INDEX/UNIQUE/PRIMARY KEY. The PRIMARY KEY
+		// variant has no postgres ALTER form that survives the existing harness
+		// (Doltgres has no DROP PRIMARY KEY either), so leave it alone.
+		if statement.IndexSpec.Type == "primary" {
+			tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+			if err != nil {
+				panic(err)
+			}
+			cols := make(tree.IndexElemList, len(statement.IndexSpec.Fields))
+			for i, f := range statement.IndexSpec.Fields {
+				cols[i] = tree.IndexElem{Column: tree.Name(f.Column.String())}
+			}
+			alter := tree.AlterTable{
+				Table: tableName,
+				Cmds: []tree.AlterTableCmd{
+					&tree.AlterTableAddConstraint{
+						ConstraintDef: &tree.UniqueConstraintTableDef{
+							PrimaryKey: true,
+							IndexTableDef: tree.IndexTableDef{
+								Columns: cols,
+							},
+						},
+					},
+				},
+			}
+			return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+		}
+
+		// Skip fulltext/spatial/vector — Postgres has no direct equivalent.
+		if statement.IndexSpec.Type == "fulltext" || statement.IndexSpec.Type == "spatial" || statement.IndexSpec.Type == "vector" {
+			return nil, false
+		}
+
+		cols := make(tree.IndexElemList, len(statement.IndexSpec.Fields))
+		for i, f := range statement.IndexSpec.Fields {
+			cols[i] = tree.IndexElem{
+				Column:    tree.Name(f.Column.String()),
+				Direction: tree.Ascending,
+			}
+		}
+		createIndex := tree.CreateIndex{
+			Name:    tree.Name(statement.IndexSpec.ToName.String()),
+			Table:   tree.MakeTableNameWithSchema("", "", tree.Name(statement.Table.Name.String())),
+			Unique:  statement.IndexSpec.Type == "unique",
+			Columns: cols,
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&createIndex).String()}, true
+
+	case "rename":
+		tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
+		from := statement.IndexSpec.FromName.String()
+		to := statement.IndexSpec.ToName.String()
+		renameIndex := tree.RenameIndex{
+			Index: &tree.TableIndexName{
+				Table: *tableName,
+				Index: tree.UnrestrictedName(from),
+			},
+			NewName: tree.UnrestrictedName(to),
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&renameIndex).String()}, true
+
 	default:
 		return nil, false
 	}
@@ -835,6 +1030,51 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 
 var sequenceNum int
 
+// columnDefFromMySQL converts a parsed MySQL column definition into a Postgres
+// ColumnTableDef. The optional sequenceName argument is used as the source for
+// AUTO_INCREMENT columns; passing "" means callers don't want auto-increment
+// handled (e.g. ALTER TABLE ADD COLUMN where we don't currently emit a
+// CREATE SEQUENCE alongside).
+func columnDefFromMySQL(col *sqlparser.ColumnDefinition, sequenceName string) *tree.ColumnTableDef {
+	defVal := convertExpr(col.Type.Default)
+
+	if col.Type.Autoincrement && sequenceName != "" {
+		defVal = &tree.FuncExpr{
+			Func: tree.WrapFunction("nextval"),
+			Exprs: []tree.Expr{
+				tree.NewStrVal(sequenceName),
+			},
+		}
+	}
+
+	return &tree.ColumnTableDef{
+		Name:      tree.Name(col.Name.String()),
+		Type:      convertTypeDef(col.Type),
+		Collation: "", // TODO
+		Nullable: struct {
+			Nullability    tree.Nullability
+			ConstraintName tree.Name
+		}{
+			Nullability: convertNullability(col.Type),
+		},
+		PrimaryKey: struct {
+			IsPrimaryKey bool
+		}{
+			IsPrimaryKey: col.Type.KeyOpt == 1, // TODO: unexported const
+		},
+		Unique:               col.Type.KeyOpt == 3, // TODO: unexported const
+		UniqueConstraintName: "",                   // TODO
+		DefaultExpr: struct {
+			Expr           tree.Expr
+			ConstraintName tree.Name
+		}{
+			Expr:           defVal,
+			ConstraintName: "", // TODO
+		},
+		CheckExprs: nil, // TODO
+	}
+}
+
 func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	if stmt.TableSpec == nil {
 		return nil, false
@@ -848,44 +1088,12 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	var queries []string
 	var autoIncColumn string
 	for _, col := range stmt.TableSpec.Columns {
-		defVal := convertExpr(col.Type.Default)
-
+		seqName := ""
 		if col.Type.Autoincrement {
 			autoIncColumn = col.Name.String()
-			defVal = &tree.FuncExpr{
-				Func: tree.WrapFunction("nextval"),
-				Exprs: []tree.Expr{
-					tree.NewStrVal(fmt.Sprintf("seq_%d", sequenceNum)),
-				},
-			}
+			seqName = fmt.Sprintf("seq_%d", sequenceNum)
 		}
-
-		createTable.Defs = append(createTable.Defs, &tree.ColumnTableDef{
-			Name:      tree.Name(col.Name.String()),
-			Type:      convertTypeDef(col.Type),
-			Collation: "", // TODO
-			Nullable: struct {
-				Nullability    tree.Nullability
-				ConstraintName tree.Name
-			}{
-				Nullability: convertNullability(col.Type),
-			},
-			PrimaryKey: struct {
-				IsPrimaryKey bool
-			}{
-				IsPrimaryKey: col.Type.KeyOpt == 1, // TODO: unexported const
-			},
-			Unique:               col.Type.KeyOpt == 3, // TODO: unexported const
-			UniqueConstraintName: "",                   // TODO
-			DefaultExpr: struct {
-				Expr           tree.Expr
-				ConstraintName tree.Name
-			}{
-				Expr:           defVal,
-				ConstraintName: "", // TODO
-			},
-			CheckExprs: nil, // TODO
-		})
+		createTable.Defs = append(createTable.Defs, columnDefFromMySQL(col, seqName))
 	}
 
 	// convert any primary key indexes
@@ -1658,6 +1866,85 @@ func TestBoolValSupport(t *testing.T) {
 	require.Len(t, result, 1, "Should return exactly one converted statement")
 	require.Contains(t, result[0], "CREATE TABLE", "Result should contain CREATE TABLE")
 	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
+}
+
+// TestAlterTableConversion covers the ALTER TABLE clauses translated by
+// convertColumnAlter / convertConstraintAlter / convertIndexAlter.
+func TestAlterTableConversion(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input:    "ALTER TABLE foo ADD COLUMN c int",
+			expected: []string{"ALTER TABLE foo ADD COLUMN c INTEGER NULL"},
+		},
+		{
+			input:    "ALTER TABLE foo ADD COLUMN c int NOT NULL DEFAULT 7",
+			expected: []string{"ALTER TABLE foo ADD COLUMN c INTEGER NOT NULL DEFAULT 7"},
+		},
+		{
+			input:    "ALTER TABLE foo DROP COLUMN c",
+			expected: []string{"ALTER TABLE foo DROP COLUMN c"},
+		},
+		{
+			input:    "ALTER TABLE foo RENAME COLUMN c TO d",
+			expected: []string{"ALTER TABLE foo RENAME COLUMN c TO d"},
+		},
+		{
+			input: "ALTER TABLE foo MODIFY COLUMN c bigint NOT NULL",
+			expected: []string{
+				"ALTER TABLE foo ALTER COLUMN c SET DATA TYPE BIGINT",
+				"ALTER TABLE foo ALTER COLUMN c SET NOT NULL",
+			},
+		},
+		{
+			input: "ALTER TABLE foo CHANGE COLUMN c d bigint",
+			expected: []string{
+				"ALTER TABLE foo ALTER COLUMN d SET DATA TYPE BIGINT",
+				"ALTER TABLE foo ALTER COLUMN d DROP NOT NULL",
+				"ALTER TABLE foo RENAME COLUMN c TO d",
+			},
+		},
+		{
+			input:    "ALTER TABLE foo RENAME TO bar",
+			expected: []string{"ALTER TABLE foo RENAME TO bar"},
+		},
+		{
+			input:    "ALTER TABLE foo DROP CONSTRAINT my_check",
+			expected: []string{"ALTER TABLE foo DROP CONSTRAINT my_check"},
+		},
+		{
+			input:    "ALTER TABLE foo DROP FOREIGN KEY my_fk",
+			expected: []string{"ALTER TABLE foo DROP CONSTRAINT my_fk"},
+		},
+		{
+			input: "ALTER TABLE foo ADD CONSTRAINT my_fk FOREIGN KEY (a) REFERENCES bar(b)",
+			expected: []string{
+				"ALTER TABLE foo ADD FOREIGN KEY (a) REFERENCES bar (b) ON DELETE RESTRICT ON UPDATE RESTRICT",
+			},
+		},
+		{
+			input:    "ALTER TABLE foo ADD INDEX my_idx (a, b)",
+			expected: []string{"CREATE INDEX my_idx ON foo ( a ASC, b ASC ) NULLS NOT DISTINCT "},
+		},
+		{
+			input:    "ALTER TABLE foo ADD UNIQUE my_uq (a)",
+			expected: []string{"CREATE UNIQUE INDEX my_uq ON foo ( a ASC ) NULLS NOT DISTINCT "},
+		},
+		{
+			input:    "ALTER TABLE foo DROP INDEX my_idx",
+			expected: []string{"DROP INDEX foo@my_idx"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
 }
 
 // TestExpressionConversionRobustness ensures convertExpr handles common
