@@ -15,6 +15,7 @@
 package tables
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
@@ -31,7 +32,7 @@ type PgDatabase struct {
 
 var _ sql.DatabaseSchema = &PgDatabase{}
 var _ sql.SchemaDatabase = &PgDatabase{}
-var _ sql.RelationNameValidator = &PgDatabase{}
+var _ sql.SchemaObjectNameValidator = &PgDatabase{}
 
 // PgReadOnlyDatabase is the read-only variant of PgDatabase, used for revision databases
 // such as "postgres/main" returned by sqle.DoltDatabaseProvider for detached-HEAD sessions.
@@ -128,8 +129,63 @@ func (d *PgReadOnlyDatabase) GetSchema(ctx *sql.Context, schemaName string) (sql
 	return applySchemaWrap(schemaName, schema), true, nil
 }
 
-// DoesRelationExist implements the sql.RelationNameValidator interface
-func (d *PgDatabase) DoesRelationExist(ctx *sql.Context, name string) (exists bool, relationType string, err error) {
+// ValidateNewIndexName implements the sql.SchemaObjectNameValidator interface
+func (d *PgDatabase) ValidateNewIndexName(ctx *sql.Context, newIndexName string) (bool, error) {
+	// TODO: Do we need to pass in the schema as well? It won't always be the current schema, right? But that
+	//       will be encoded in the database already, right?
+	exists, relationType, err := d.doesRelationExist(ctx, newIndexName)
+	if err != nil {
+		return false, err
+	}
+
+	if !exists {
+		return false, nil
+	}
+
+	return relationType == "index", fmt.Errorf(`relation "%s" already exists`, newIndexName)
+}
+
+func (d *PgDatabase) ValidateNewSequenceName(ctx *sql.Context, newSequenceName string) (bool, error) {
+	exists, relationType, err := d.doesRelationExist(ctx, newSequenceName)
+	if err != nil {
+		return false, err
+	}
+
+	if !exists {
+		return false, nil
+	}
+
+	return relationType == "sequence", fmt.Errorf(`relation "%s" already exists`, newSequenceName)
+}
+
+func (d *PgDatabase) ValidateNewViewName(ctx *sql.Context, newViewName string) (bool, error) {
+	exists, relationType, err := d.doesRelationExist(ctx, newViewName)
+	if err != nil {
+		return false, err
+	}
+
+	if !exists {
+		return false, nil
+	}
+
+	return relationType == "view", fmt.Errorf(`relation "%s" already exists`, newViewName)
+}
+
+func (d *PgDatabase) ValidateNewTableName(ctx *sql.Context, newTableName string) (bool, error) {
+	exists, relationType, err := d.doesRelationExist(ctx, newTableName)
+	if err != nil {
+		return false, err
+	}
+
+	if !exists {
+		return false, nil
+	}
+
+	return relationType == "table", fmt.Errorf(`relation "%s" already exists`, newTableName)
+}
+
+// doesRelationExist implements the sql.SchemaObjectNameValidator interface
+func (d *PgDatabase) doesRelationExist(ctx *sql.Context, name string) (exists bool, relationType string, err error) {
 	lowerName := strings.ToLower(name)
 
 	// Resolve the effective schema: when the database was obtained without a schema qualifier

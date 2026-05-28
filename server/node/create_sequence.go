@@ -98,19 +98,13 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			if schemaDb, found, dbErr := pgDb.GetSchema(ctx, schema); dbErr != nil {
 				return nil, dbErr
 			} else if found {
-				if v, ok := schemaDb.(sql.RelationNameValidator); ok {
-					exists, relationType, dbErr := v.DoesRelationExist(ctx, c.sequence.Id.SequenceName())
-					if dbErr != nil {
-						return nil, dbErr
-					}
-
-					if exists {
-						if c.ifNotExists && relationType == "sequence" {
+				if v, ok := schemaDb.(sql.SchemaObjectNameValidator); ok {
+					alreadyExists, err := v.ValidateNewSequenceName(ctx, c.sequence.Id.SequenceName())
+					if err != nil {
+						if alreadyExists && c.ifNotExists {
 							return sql.RowsToRowIter(), nil
-						} else {
-							return nil, fmt.Errorf(`relation "%s" already exists as a %s`,
-								c.sequence.Id.SequenceName(), relationType)
 						}
+						return nil, err
 					}
 				}
 			} else if !found {
