@@ -1205,19 +1205,10 @@ func containsUserVars(stmt *sqlparser.Select) bool {
 		}
 		return true, nil
 	}
-
-	for _, sel := range stmt.SelectExprs {
-		sqlparser.Walk(detectUserVar, sel)
-	}
-
-	if foundUserVar {
-		return true
-	}
-
-	if stmt.Where != nil {
-		sqlparser.Walk(detectUserVar, stmt.Where)
-	}
-
+	// Walk the whole statement so user variables get detected anywhere they
+	// appear — SELECT expressions, WHERE, GROUP BY, ORDER BY, and crucially
+	// FROM ... AS OF expressions (e.g. `FROM tbl AS OF @rev1`).
+	sqlparser.Walk(detectUserVar, stmt)
 	return foundUserVar
 }
 

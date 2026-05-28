@@ -167,9 +167,17 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 			if !runQuery {
 				t.Log("Skipping setup query: ", s)
 				continue
-			} else {
-				t.Log("Running setup query: ", s)
 			}
+			// Honor per-test skip patterns during setup too. This lets a
+			// test that needs most of a setup script but not one particular
+			// query (e.g. a CREATE VIEW that uses MySQL-only syntax) skip
+			// just that query via WithSkippedQueries rather than rebuilding
+			// the entire setup.
+			if d.SkipQueryTest(sanitized) {
+				t.Log("Skipping setup query (per-test skip): ", s)
+				continue
+			}
+			t.Log("Running setup query: ", s)
 			_, rowIter, _, err := queryEngine.Query(ctx, sanitized)
 			if err != nil {
 				return nil, err

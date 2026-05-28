@@ -185,8 +185,21 @@ func TestAutoIncrementTrackerLockMode(t *testing.T) {
 }
 
 func TestVersionedQueries(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// MySQL-only `cast(... as signed)` syntax — postgres uses `cast(... as integer)`.
+		// These views aren't referenced by the assertions, so dropping them from
+		// setup is harmless.
+		"cast(RIGHT(s, 1) as signed)",
+		// AS OF tests on these complex views; they depend on views we can't create.
+		"myview4", "myview5",
+		// SHOW CREATE TABLE AS OF — doltgres doesn't yet expose the AS OF clause
+		// to SHOW CREATE TABLE (it errors with "at or near 'as'").
+		"SHOW CREATE TABLE myhistorytable as of",
+		// SHOW TABLES AS OF and DESCRIBE AS OF likewise unsupported.
+		"SHOW TABLES AS OF",
+		"SHOW TABLES FROM mydb AS OF",
+		"DESCRIBE myhistorytable AS OF",
+	})
 	defer h.Close()
 
 	denginetest.RunVersionedQueriesTest(t, h)
