@@ -82,9 +82,9 @@ func (t typeInfo) Encoding() val.Encoding {
 			return val.StringAdaptiveEnc
 		}
 		return val.StringEnc
-	case "name", "char":
+	case "name", "char", "bpchar":
 		return val.StringEnc
-	case "bpchar", "text":
+	case "text":
 		return val.StringAdaptiveEnc
 	default:
 		switch t.Type.MaxSerializedWidth() {
