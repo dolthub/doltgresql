@@ -1313,6 +1313,15 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				// This varies from postgres in regression testing, but something about the harness makes
+				// it hard to repro. might need a wire test.
+				Skip:  true,
+				Query: `SELECT '"\u0000"'::json`,
+				Expected: []sql.Row{
+					{"\u0000"},
+				},
+			},
+			{
 				Query: `SELECT null::json;`,
 				Expected: []sql.Row{
 					{nil},
@@ -3259,8 +3268,8 @@ var typesTests = []ScriptTest{
 			"create table t_uuid2 (id int primary key, v1 uuid, v2 uuid);",
 			"create index on t_uuid2(v1, v2);",
 			"insert into t_uuid2 values " +
-				"(1, 'f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), " +
-				"(2, 'dcf783c8-49c2-44b4-8b90-34ad8c52ea1e', 'f99802e8-0018-4913-806c-bcad5d246d46');",
+					"(1, 'f47ac10b58cc4372a567-0e02b2c3d479', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), " +
+					"(2, 'dcf783c8-49c2-44b4-8b90-34ad8c52ea1e', 'f99802e8-0018-4913-806c-bcad5d246d46');",
 		},
 		Assertions: []ScriptTestAssertion{
 			{
