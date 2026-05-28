@@ -127,7 +127,11 @@ func getIndexDef(index sql.Index, schema string) string {
 	}
 	colsStr := strings.Join(cols, ", ")
 
-	return fmt.Sprintf("CREATE%s INDEX %s ON %s.%s USING %s (%s)", unique, name, schema, index.Table(), using, colsStr)
+	def := fmt.Sprintf("CREATE%s INDEX %s ON %s.%s USING %s (%s)", unique, name, schema, index.Table(), using, colsStr)
+	if pi, ok := index.(sql.PartialIndex); ok && pi.Predicate() != "" {
+		def += " WHERE (" + pi.Predicate() + ")"
+	}
+	return def
 }
 
 // Close implements the interface sql.RowIter.

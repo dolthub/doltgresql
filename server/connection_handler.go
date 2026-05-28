@@ -1031,19 +1031,19 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute && !hasSentRowDescription {
 				hasSentRowDescription = true
-				if err := h.send(&pgproto3.RowDescription{
+				h.backend.Send(&pgproto3.RowDescription{
 					Fields: res.Fields,
-				}); err != nil {
-					return err
-				}
+				})
 			}
-
+			// res.Rows should be length rowsBatch = 128
 			for _, row := range res.Rows {
-				if err := h.send(&pgproto3.DataRow{
+				h.backend.Send(&pgproto3.DataRow{
 					Values: row.val,
-				}); err != nil {
-					return err
-				}
+				})
+			}
+			err := h.backend.Flush()
+			if err != nil {
+				return err
 			}
 		}
 

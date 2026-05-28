@@ -15,8 +15,10 @@
 package functions
 
 import (
-	"github.com/cockroachdb/errors"
+	"fmt"
+	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -39,17 +41,45 @@ var pg_get_indexdef_oid = framework.Function1{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		oidVal := val.(id.Id)
+		result := ""
 		err := RunCallback(ctx, oidVal, Callbacks{
 			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
-				// TODO: make `create index` statement
+				result = buildIndexDef(index.Item, schema.Item.SchemaName())
 				return false, nil
 			},
 		})
 		if err != nil {
 			return "", err
 		}
-		return "", nil
+		return result, nil
 	},
+}
+
+// buildIndexDef generates a CREATE INDEX DDL statement for the given index.
+func buildIndexDef(index sql.Index, schemaName string) string {
+	name := index.ID()
+	using := strings.ToLower(index.IndexType())
+	unique := ""
+	if index.IsUnique() {
+		unique = " UNIQUE"
+	}
+
+	cols := make([]string, len(index.Expressions()))
+	for i, expr := range index.Expressions() {
+		split := strings.Split(expr, ".")
+		if len(split) > 1 {
+			cols[i] = split[1]
+		} else {
+			cols[i] = expr
+		}
+	}
+	colsStr := strings.Join(cols, ", ")
+
+	def := fmt.Sprintf("CREATE%s INDEX %s ON %s.%s USING %s (%s)", unique, name, schemaName, index.Table(), using, colsStr)
+	if pi, ok := index.(sql.PartialIndex); ok && pi.Predicate() != "" {
+		def += " WHERE (" + pi.Predicate() + ")"
+	}
+	return def
 }
 
 // pg_get_indexdef_oid_integer_bool represents the PostgreSQL system catalog information function.
