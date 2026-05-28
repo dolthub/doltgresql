@@ -942,7 +942,6 @@ func (root *RootValue) withStorage(st storage.RootStorage) *RootValue {
 		vrw:   root.vrw,
 		ns:    root.ns,
 		st:    st,
-		hash:  hash.Hash{},
 		colls: root.colls, // TODO: bad?
 	}
 }
