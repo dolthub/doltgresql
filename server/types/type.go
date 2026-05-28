@@ -231,6 +231,8 @@ func (t *DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Co
 
 // Compare implements the types.ExtendedType interface.
 func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface{}) (int, error) {
+	// TODO: for some large types, we could do this much faster by doing it chunk-by-chunk, rather than eagerly loading
+	//  the full value into memory
 	var err error
 	v1, err = sql.UnwrapAny(ctx, v1)
 	if err != nil {
@@ -665,7 +667,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 // Or it can be pseudo category with name 'anyarray'.
 func (t *DoltgresType) IsArrayType() bool {
 	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType && t.Array == id.NullType) ||
-		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
+			(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 
 // IsArrayCategory returns true if the type is of 'array' category.
