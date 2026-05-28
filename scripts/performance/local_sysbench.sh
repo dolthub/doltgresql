@@ -63,6 +63,11 @@ sysbench \
   --pgsql-user="postgres" \
   --pgsql-password="password" \
   --pgsql-db="postgres" \
+  --db-ps-mode=disable \
+  --table-size=10000 \
+  --percentile=50 \
+  --rand-type=uniform \
+  --rand-seed=1 \
   "$SYSBENCH_TEST" prepare
 
 kill -15 "$SERVER_PID"
@@ -83,8 +88,12 @@ sysbench \
   --pgsql-password="password" \
   --pgsql-db="postgres" \
   --db-ps-mode=disable \
-  --time=120 \
+  --table-size=10000 \
+  --percentile=50 \
+  --rand-type=uniform \
+  --rand-seed=1 \
   --report-interval=1 \
+  --time=120 \
   "$SYSBENCH_TEST" run 1>> results.log
 
 sleep 1
