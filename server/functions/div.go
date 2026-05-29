@@ -50,8 +50,17 @@ var div_numeric = framework.Function2{
 		if num2.Form == apd.Infinite {
 			return apd.New(0, 0), nil
 		}
+
+		p := num1.NumDigits()
+		if num1.Exponent > 0 {
+			p += int64(num1.Exponent)
+		}
+		if num2.Exponent < 0 {
+			p += int64(-num2.Exponent)
+		}
+
 		res := new(apd.Decimal)
-		_, err := sql.DecimalHighPrecisionCtx.QuoInteger(res, num1, num2)
+		_, err := sql.DecimalCtx.WithPrecision(uint32(p)).QuoInteger(res, num1, num2)
 		if err != nil {
 			return nil, err
 		}

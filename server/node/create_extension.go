@@ -98,6 +98,23 @@ func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 	if err != nil {
 		return nil, err
 	}
+	// save the current search_path
+	originalSchema, err := ctx.GetSessionVariable(ctx, "search_path")
+	if err != nil {
+		return nil, err
+	}
+
+	if c.SchemaName != "" {
+		defer func() {
+			_ = ctx.SetSessionVariable(ctx, "search_path", originalSchema)
+		}()
+
+		spErr := ctx.SetSessionVariable(ctx, "search_path", c.SchemaName)
+		if spErr != nil {
+			return nil, spErr
+		}
+	}
+
 	for _, sqlFile := range sqlFiles {
 		// Remove echo PSQL control statements
 		for {
@@ -136,6 +153,7 @@ func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 			}
 		}
 	}
+
 	namespace := id.NullNamespace
 	if len(ext.Control.Schema) > 0 {
 		namespace = id.NewNamespace(ext.Control.Schema)

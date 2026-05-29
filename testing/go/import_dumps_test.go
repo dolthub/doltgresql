@@ -296,6 +296,11 @@ func TestImportingDumps(t *testing.T) {
 			SQLFilename: "kentyler_conversationalaiapi.sql",
 		},
 		{
+			SetUpScript: []string{
+				`CREATE USER recruiter;`,
+				`CREATE USER job_seeker;`,
+				`CREATE USER employer;`,
+			},
 			Name:        "kepinskw/db-jobportal",
 			SQLFilename: "kepinskw_db-jobportal.sql",
 		},
@@ -409,6 +414,13 @@ func TestImportingDumps(t *testing.T) {
 		{
 			SetUpScript: []string{
 				`CREATE USER supabase_admin WITH SUPERUSER PASSWORD 'password';`,
+				`CREATE USER anon;`,
+				`CREATE USER authenticated;`,
+				`CREATE USER service_role;`,
+				`CREATE USER supabase_auth_admin;`,
+				`CREATE USER dashboard_user;`,
+				`CREATE USER readonly;`,
+				`CREATE USER partner_token_terminal;`,
 			},
 			Name:        "roboflow/scavenger-hunt",
 			SQLFilename: "roboflow_scavenger-hunt.sql",
@@ -458,6 +470,15 @@ func TestImportingDumps(t *testing.T) {
 		{
 			SetUpScript: []string{
 				`CREATE USER testnet WITH SUPERUSER PASSWORD 'password';`,
+				`CREATE USER cloudsqladmin WITH SUPERUSER PASSWORD 'password';`,
+				`CREATE USER cloudsqlsuperuser WITH SUPERUSER PASSWORD 'password';`,
+				`CREATE USER explorer;`,
+				`CREATE USER wallet;`,
+				`CREATE USER jupyter;`,
+				`CREATE USER robertyan;`,
+				`CREATE USER public_readonly;`,
+				`CREATE USER readonly;`,
+				`CREATE USER partner_token_terminal;`,
 			},
 			Name:        "theophoric/prisma-near-indexer",
 			SQLFilename: "theophoric_prisma-near-indexer.sql",
