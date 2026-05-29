@@ -64,15 +64,6 @@ func New(hour, min, sec, micro int) TimeOfDay {
 	return FromInt(int64((hours + minutes + seconds + micros) / time.Microsecond))
 }
 
-func (t TimeOfDay) oldString() string {
-	micros := t.Microsecond()
-	if micros > 0 {
-		s := fmt.Sprintf("%02d:%02d:%02d.%06d", t.Hour(), t.Minute(), t.Second(), micros)
-		return strings.TrimRight(s, "0")
-	}
-	return fmt.Sprintf("%02d:%02d:%02d", t.Hour(), t.Minute(), t.Second())
-}
-
 func (t TimeOfDay) String() string {
 	dest := make([]byte, 0, 15) // longest possible result is len("12:34:56.123456") = 15
 	h, m, s, ms := t.Hour(), t.Minute(), t.Second(), t.Microsecond()
