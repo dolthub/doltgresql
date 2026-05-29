@@ -1359,16 +1359,32 @@ ORDER BY 1,2;`,
 					ExpectedErr: `relation "tbl1" already exists`,
 				},
 				{
+					Query:    "CREATE SEQUENCE IF NOT EXISTS tbl1;",
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       "CREATE SEQUENCE existing_seq;",
 					ExpectedErr: `relation "existing_seq" already exists`,
+				},
+				{
+					Query:    "CREATE SEQUENCE IF NOT EXISTS existing_seq;",
+					Expected: []sql.Row{},
 				},
 				{
 					Query:       "CREATE SEQUENCE view1;",
 					ExpectedErr: `relation "view1" already exists`,
 				},
 				{
+					Query:    "CREATE SEQUENCE IF NOT EXISTS view1;",
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       "CREATE SEQUENCE idx1;",
 					ExpectedErr: `relation "idx1" already exists`,
+				},
+				{
+					Query:    "CREATE SEQUENCE IF NOT EXISTS idx1;",
+					Expected: []sql.Row{},
 				},
 			},
 		},

@@ -431,6 +431,49 @@ func TestCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Table names must be unique across all relation types",
+			SetUpScript: []string{
+				"CREATE TABLE existing_tbl (pk int PRIMARY KEY, v1 int);",
+				"CREATE SEQUENCE seq1;",
+				"CREATE VIEW view1 AS SELECT pk FROM existing_tbl;",
+				"CREATE INDEX idx1 ON existing_tbl (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE TABLE existing_tbl (c1 int);",
+					ExpectedErr: `relation "existing_tbl" already exists`,
+				},
+				{
+					Query:    "CREATE TABLE IF NOT EXISTS existing_tbl (c1 int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE TABLE seq1 (c1 int);",
+					ExpectedErr: `relation "seq1" already exists`,
+				},
+				{
+					Query:    "CREATE TABLE IF NOT EXISTS seq1 (c1 int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE TABLE view1 (c1 int);",
+					ExpectedErr: `relation "view1" already exists`,
+				},
+				{
+					Query:    "CREATE TABLE IF NOT EXISTS view1 (c1 int);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE TABLE idx1 (c1 int);",
+					ExpectedErr: `relation "idx1" already exists`,
+				},
+				{
+					Query:    "CREATE TABLE IF NOT EXISTS idx1 (c1 int);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
 

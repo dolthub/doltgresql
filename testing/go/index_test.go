@@ -1371,7 +1371,7 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
-			Name: "Index names must be unique",
+			Name: "Index names must be unique across all relation types",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int PRIMARY KEY, v1 int);",
 				"CREATE TABLE t2 (pk int PRIMARY KEY, v1 int);",
@@ -1386,20 +1386,40 @@ func TestBasicIndexing(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Query:    "CREATE INDEX IF NOT EXISTS idx_unique ON t1 (v1);",
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       "CREATE INDEX idx_unique ON t2 (v1);",
 					ExpectedErr: `relation "idx_unique" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS idx_unique ON t2 (v1);",
+					Expected: []sql.Row{},
 				},
 				{
 					Query:       "CREATE INDEX tbl1 ON t2 (v1);",
 					ExpectedErr: `relation "tbl1" already exists`,
 				},
 				{
+					Query:    "CREATE INDEX IF NOT EXISTS tbl1 ON t2 (v1);",
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       "CREATE INDEX seq1 ON t2 (v1);",
 					ExpectedErr: `relation "seq1" already exists`,
 				},
 				{
+					Query:    "CREATE INDEX IF NOT EXISTS seq1 ON t2 (v1);",
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       "CREATE INDEX view1 ON t2 (v1);",
 					ExpectedErr: `relation "view1" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS view1 ON t2 (v1);",
+					Expected: []sql.Row{},
 				},
 			},
 		},

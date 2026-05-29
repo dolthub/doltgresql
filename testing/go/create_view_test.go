@@ -291,16 +291,32 @@ var createViewStmts = []ScriptTest{
 				ExpectedErr: `relation "tbl1" already exists`,
 			},
 			{
+				Query:       "CREATE OR REPLACE VIEW tbl1 AS SELECT pk FROM tbl1;",
+				ExpectedErr: `"tbl1" is not a view`,
+			},
+			{
 				Query:       "CREATE VIEW seq1 AS SELECT pk FROM tbl1;",
 				ExpectedErr: `relation "seq1" already exists`,
+			},
+			{
+				Query:       "CREATE OR REPLACE VIEW seq1 AS SELECT pk FROM tbl1;",
+				ExpectedErr: `"seq1" is not a view`,
 			},
 			{
 				Query:       "CREATE VIEW existing_view AS SELECT pk FROM tbl1;",
 				ExpectedErr: `relation "existing_view" already exists`,
 			},
 			{
+				Query:    "CREATE OR REPLACE VIEW existing_view AS SELECT pk FROM tbl1;",
+				Expected: []sql.Row{},
+			},
+			{
 				Query:       "CREATE VIEW idx1 AS SELECT pk FROM tbl1;",
 				ExpectedErr: `relation "idx1" already exists`,
+			},
+			{
+				Query:       "CREATE OR REPLACE VIEW idx1 AS SELECT pk FROM tbl1;",
+				ExpectedErr: `"idx1" is not a view`,
 			},
 		},
 	},
