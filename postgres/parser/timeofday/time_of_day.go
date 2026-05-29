@@ -26,11 +26,11 @@ package timeofday
 
 import (
 	"fmt"
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"math/rand"
 	"strings"
 	"time"
-
-	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"unsafe"
 )
 
 // TimeOfDay represents a time of day (no date), stored as microseconds since
@@ -64,13 +64,39 @@ func New(hour, min, sec, micro int) TimeOfDay {
 	return FromInt(int64((hours + minutes + seconds + micros) / time.Microsecond))
 }
 
-func (t TimeOfDay) String() string {
+func (t TimeOfDay) oldString() string {
 	micros := t.Microsecond()
 	if micros > 0 {
 		s := fmt.Sprintf("%02d:%02d:%02d.%06d", t.Hour(), t.Minute(), t.Second(), micros)
 		return strings.TrimRight(s, "0")
 	}
 	return fmt.Sprintf("%02d:%02d:%02d", t.Hour(), t.Minute(), t.Second())
+}
+
+func (t TimeOfDay) String() string {
+	dest := make([]byte, 0, 15) // longest possible result is len("12:34:56.123456") = 15
+	h, m, s, ms := t.Hour(), t.Minute(), t.Second(), t.Microsecond()
+	dest = append(dest,
+		48+byte(h/10), 48+byte(h%10), ':',
+		48+byte(m/10), 48+byte(m%10), ':',
+		48+byte(s/10), 48+byte(s%10))
+	if ms > 0 {
+		dest = append(dest, '.')
+		cmp := 100_000
+		for cmp > 0 {
+			dest = append(dest, 48+byte(ms/cmp))
+			ms %= cmp
+			cmp /= 10
+		}
+		// trim trailing 0s
+		for i := len(dest) - 1; i >= 0; i-- {
+			if dest[i] != '0' {
+				dest = dest[:i+1]
+				break
+			}
+		}
+	}
+	return unsafe.String(unsafe.SliceData(dest), len(dest))
 }
 
 // FromInt constructs a TimeOfDay from an int64, representing microseconds since
