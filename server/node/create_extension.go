@@ -105,6 +105,10 @@ func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 	}
 
 	if c.SchemaName != "" {
+		defer func() {
+			_ = ctx.SetSessionVariable(ctx, "search_path", originalSchema)
+		}()
+
 		spErr := ctx.SetSessionVariable(ctx, "search_path", c.SchemaName)
 		if spErr != nil {
 			return nil, spErr
@@ -150,10 +154,6 @@ func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 		}
 	}
 
-	err = ctx.SetSessionVariable(ctx, "search_path", originalSchema)
-	if err != nil {
-		return nil, err
-	}
 	namespace := id.NullNamespace
 	if len(ext.Control.Schema) > 0 {
 		namespace = id.NewNamespace(ext.Control.Schema)
