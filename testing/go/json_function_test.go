@@ -60,6 +60,18 @@ func makeLargeJSONArray(numElems int) string {
 	return b.String()
 }
 
+// makeLargeJSONObjectWithNumericKeys builds a JSONB object large enough to be
+// stored as an indexed document, whose "nums" key maps to a nested object with
+// numeric string keys. It exercises the extract-path fast path's fallback: a
+// numeric path element is first guessed as an array index, which an object
+// rejects, so resolution must fall back to treating it as an object key.
+func makeLargeJSONObjectWithNumericKeys() string {
+	padding := makeLargeJSONObject(100)
+	// Splice a numeric-keyed sub-object onto the front of the padding object,
+	// dropping the padding's leading '{'.
+	return `{"nums":{"0":"zero","1":"one","2":"two"},` + padding[1:]
+}
+
 // TestJsonObjectField exercises the `->` operator with a text right-hand side
 // against both jsonb and json values (jsonb_object_field / json_object_field),
 // plus the `->>` text-returning variants. The optimization path uses
@@ -262,33 +274,26 @@ func TestJsonExtractPath(t *testing.T) {
 			Name: "jsonb_extract_path follows mixed key/index paths",
 			Assertions: []ScriptTestAssertion{
 				{
-					// Single key step.
 					Query:    `SELECT '{"a":{"b":{"c":1}}}'::jsonb #> '{a,b,c}';`,
 					Expected: []sql.Row{{`1`}},
 				},
 				{
-					// Mixed object key + array index path.
 					Query:    `SELECT '{"a":[10,20,30]}'::jsonb #> '{a,1}';`,
 					Expected: []sql.Row{{`20`}},
 				},
 				{
-					// Negative array index at the leaf falls back to the
-					// materialized walk path.
 					Query:    `SELECT '{"a":[10,20,30]}'::jsonb #> '{a,-1}';`,
 					Expected: []sql.Row{{`30`}},
 				},
 				{
-					// A non-integer text on an array level returns NULL.
 					Query:    `SELECT '{"a":[10,20]}'::jsonb #> '{a,not-an-int}';`,
 					Expected: []sql.Row{{nil}},
 				},
 				{
-					// Missing key at an intermediate step returns NULL.
 					Query:    `SELECT '{"a":{"b":1}}'::jsonb #> '{a,missing,c}';`,
 					Expected: []sql.Row{{nil}},
 				},
 				{
-					// Descending into a scalar returns NULL.
 					Query:    `SELECT '{"a":1}'::jsonb #> '{a,b}';`,
 					Expected: []sql.Row{{nil}},
 				},
@@ -576,6 +581,41 @@ func TestJsonLargeDocumentAccess(t *testing.T) {
 					// jsonb_extract_path into a nested array element.
 					Query:    `SELECT doc #>> '{42, payload, 3}' FROM bigarr WHERE id = 1;`,
 					Expected: []sql.Row{{`d`}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_extract_path on large stored object with numeric keys (>4 KB)",
+			SetUpScript: []string{
+				`CREATE TABLE numkeys (id INT PRIMARY KEY, doc JSONB)`,
+				`INSERT INTO numkeys (id, doc) VALUES (1, '` + makeLargeJSONObjectWithNumericKeys() + `'::jsonb)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT length(doc::text) > 4096 FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					// A numeric path element on an object is first guessed as an
+					// array index ([0]), which the indexed lookup rejects, so it
+					// must fall back to the object key "0".
+					Query:    `SELECT doc #>> '{nums, 0}' FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{`zero`}},
+				},
+				{
+					Query:    `SELECT doc #>> '{nums, 2}' FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{`two`}},
+				},
+				{
+					// Missing numeric key returns SQL NULL after the fallback.
+					Query:    `SELECT doc #> '{nums, 5}' FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// A genuine object key + array index path through the same
+					// large document still resolves on the single-lookup path.
+					Query:    `SELECT doc #>> '{k_0001, tags, 0}' FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{`tag-a`}},
 				},
 			},
 		},
