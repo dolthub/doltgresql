@@ -25,12 +25,11 @@
 package timeofday
 
 import (
-	"fmt"
-	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"math/rand"
-	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/dolthub/doltgresql/postgres/parser/duration"
 )
 
 // TimeOfDay represents a time of day (no date), stored as microseconds since
@@ -68,14 +67,14 @@ func (t TimeOfDay) String() string {
 	dest := make([]byte, 0, 15) // longest possible result is len("12:34:56.123456") = 15
 	h, m, s, ms := t.Hour(), t.Minute(), t.Second(), t.Microsecond()
 	dest = append(dest,
-		48+byte(h/10), 48+byte(h%10), ':',
-		48+byte(m/10), 48+byte(m%10), ':',
-		48+byte(s/10), 48+byte(s%10))
+		'0'+byte(h/10), '0'+byte(h%10), ':',
+		'0'+byte(m/10), '0'+byte(m%10), ':',
+		'0'+byte(s/10), '0'+byte(s%10))
 	if ms > 0 {
 		dest = append(dest, '.')
 		cmp := 100_000
 		for cmp > 0 {
-			dest = append(dest, 48+byte(ms/cmp))
+			dest = append(dest, '0'+byte(ms/cmp))
 			ms %= cmp
 			cmp /= 10
 		}
