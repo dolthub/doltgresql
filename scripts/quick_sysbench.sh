@@ -75,6 +75,11 @@ YAML
     --pgsql-user="postgres" \
     --pgsql-password="password" \
     --pgsql-db="postgres" \
+    --db-ps-mode=disable \
+    --table-size=10000 \
+    --percentile=50 \
+    --rand-type=uniform \
+    --rand-seed=1 \
     "$SYSBENCH_TEST" prepare
 
   kill -15 "$SERVER_PID"
@@ -91,8 +96,12 @@ YAML
     --pgsql-user="postgres" \
     --pgsql-password="password" \
     --pgsql-db="postgres" \
-    --time=15 \
     --db-ps-mode=disable \
+    --table-size=10000 \
+    --percentile=50 \
+    --rand-type=uniform \
+    --rand-seed=1 \
+    --time=15 \
     "$SYSBENCH_TEST" run 1>> results.log
 
   sleep 1
