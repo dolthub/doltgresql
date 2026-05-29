@@ -130,58 +130,80 @@ func (d *PgReadOnlyDatabase) GetSchema(ctx *sql.Context, schemaName string) (sql
 }
 
 // ValidateNewIndexName implements the sql.SchemaObjectNameValidator interface
-func (d *PgDatabase) ValidateNewIndexName(ctx *sql.Context, newIndexName string) (bool, error) {
-	// TODO: Do we need to pass in the schema as well? It won't always be the current schema, right? But that
-	//       will be encoded in the database already, right?
-	exists, relationType, err := d.doesRelationExist(ctx, newIndexName)
+func (d *PgDatabase) ValidateNewIndexName(ctx *sql.Context, newIndexName string, skipIfExists bool) (nameAlreadyUsed bool, err error) {
+	nameAlreadyUsed, _, err = d.doesRelationExist(ctx, newIndexName)
 	if err != nil {
 		return false, err
 	}
 
-	if !exists {
+	if !nameAlreadyUsed {
 		return false, nil
 	}
 
-	return relationType == "index", fmt.Errorf(`relation "%s" already exists`, newIndexName)
+	if skipIfExists {
+		return true, nil
+	}
+
+	return nameAlreadyUsed, fmt.Errorf(`relation "%s" already exists`, newIndexName)
 }
 
-func (d *PgDatabase) ValidateNewSequenceName(ctx *sql.Context, newSequenceName string) (bool, error) {
-	exists, relationType, err := d.doesRelationExist(ctx, newSequenceName)
+// ValidateNewSequenceName implements the sql.SchemaObjectNameValidator interface
+func (d *PgDatabase) ValidateNewSequenceName(ctx *sql.Context, newSequenceName string, skipIfExists bool) (nameAlreadyUsed bool, err error) {
+	nameAlreadyUsed, _, err = d.doesRelationExist(ctx, newSequenceName)
 	if err != nil {
 		return false, err
 	}
 
-	if !exists {
+	if !nameAlreadyUsed {
 		return false, nil
 	}
 
-	return relationType == "sequence", fmt.Errorf(`relation "%s" already exists`, newSequenceName)
+	if skipIfExists {
+		return true, nil
+	}
+
+	return nameAlreadyUsed, fmt.Errorf(`relation "%s" already exists`, newSequenceName)
 }
 
-func (d *PgDatabase) ValidateNewViewName(ctx *sql.Context, newViewName string) (bool, error) {
-	exists, relationType, err := d.doesRelationExist(ctx, newViewName)
+// ValidateNewViewName implements the sql.SchemaObjectNameValidator interface
+func (d *PgDatabase) ValidateNewViewName(ctx *sql.Context, newViewName string, replaceAllowed bool) error {
+	relationExists, relationType, err := d.doesRelationExist(ctx, newViewName)
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	if !exists {
-		return false, nil
+	if !relationExists {
+		return nil
 	}
 
-	return relationType == "view", fmt.Errorf(`relation "%s" already exists`, newViewName)
+	// When REPLACE is used, Postgres sends a different error message
+	if replaceAllowed {
+		if relationType == "view" {
+			return nil
+		} else {
+			return fmt.Errorf(`"%s" is not a view`, newViewName)
+		}
+	}
+
+	return fmt.Errorf(`relation "%s" already exists`, newViewName)
 }
 
-func (d *PgDatabase) ValidateNewTableName(ctx *sql.Context, newTableName string) (bool, error) {
-	exists, relationType, err := d.doesRelationExist(ctx, newTableName)
+// ValidateNewTableName implements the sql.SchemaObjectNameValidator interface
+func (d *PgDatabase) ValidateNewTableName(ctx *sql.Context, newTableName string, skipIfExists bool) (nameAlreadyUsed bool, err error) {
+	relationExists, _, err := d.doesRelationExist(ctx, newTableName)
 	if err != nil {
 		return false, err
 	}
 
-	if !exists {
+	if !relationExists {
 		return false, nil
 	}
 
-	return relationType == "table", fmt.Errorf(`relation "%s" already exists`, newTableName)
+	if skipIfExists {
+		return true, nil
+	}
+
+	return true, fmt.Errorf(`relation "%s" already exists`, newTableName)
 }
 
 // doesRelationExist implements the sql.SchemaObjectNameValidator interface

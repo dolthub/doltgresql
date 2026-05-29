@@ -99,12 +99,11 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 				return nil, dbErr
 			} else if found {
 				if v, ok := schemaDb.(sql.SchemaObjectNameValidator); ok {
-					alreadyExists, err := v.ValidateNewSequenceName(ctx, c.sequence.Id.SequenceName())
+					nameAlreadyUsed, err := v.ValidateNewSequenceName(ctx, c.sequence.Id.SequenceName(), c.ifNotExists)
 					if err != nil {
-						if alreadyExists && c.ifNotExists {
-							return sql.RowsToRowIter(), nil
-						}
 						return nil, err
+					} else if nameAlreadyUsed && c.ifNotExists {
+						return sql.RowsToRowIter(), nil
 					}
 				}
 			} else if !found {
