@@ -939,9 +939,8 @@ func (root *RootValue) putTable(ctx context.Context, tName doltdb.TableName, ref
 // withStorage returns a new root value with the given storage.
 func (root *RootValue) withStorage(st storage.RootStorage) *RootValue {
 	return &RootValue{
-		vrw:   root.vrw,
-		ns:    root.ns,
-		st:    st,
-		colls: root.colls, // TODO: bad?
+		vrw: root.vrw,
+		ns:  root.ns,
+		st:  st,
 	}
 }
