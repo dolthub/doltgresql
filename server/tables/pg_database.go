@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -45,14 +46,7 @@ var _ sql.DatabaseSchema = &PgReadOnlyDatabase{}
 var _ sql.SchemaDatabase = &PgReadOnlyDatabase{}
 
 // WrapSqleDatabase creates a PgDatabase from a sqle.Database.
-// SchemaWrap is set on the embedded database so that internal sqle.Database methods
-// (e.g. checkForPgCatalogTable) that call db.GetSchema directly use the same wrapping
-// logic as PgDatabase.GetSchema. Without this, those internal calls would return raw
-// sqle.Database objects that cannot serve virtual tables.
 func WrapSqleDatabase(db sqle.Database) *PgDatabase {
-	db.SchemaWrap = func(requestedName string, sdb sqle.Database) sql.DatabaseSchema {
-		return applySchemaWrap(requestedName, sdb)
-	}
 	return &PgDatabase{db}
 }
 
@@ -61,9 +55,6 @@ func WrapSqleDatabase(db sqle.Database) *PgDatabase {
 // assertion does not match it; this function handles both cases.
 func WrapSqlDatabase(db sql.Database) sql.Database {
 	if rodb, ok := db.(sqle.ReadOnlyDatabase); ok {
-		rodb.Database.SchemaWrap = func(requestedName string, sdb sqle.Database) sql.DatabaseSchema {
-			return applySchemaWrap(requestedName, sdb)
-		}
 		return &PgReadOnlyDatabase{rodb}
 	}
 	if sdb, ok := db.(sqle.Database); ok {
@@ -108,6 +99,47 @@ func (d *PgDatabase) GetSchema(ctx *sql.Context, schemaName string) (sql.Databas
 	return applySchemaWrap(schemaName, schema), true, nil
 }
 
+// GetTableInsensitive overrides sqle.Database.GetTableInsensitive to check the pg_catalog
+// virtual schema before falling back to user tables.
+func (d *PgDatabase) GetTableInsensitive(ctx *sql.Context, tblName string) (sql.Table, bool, error) {
+	if resolve.UseSearchPath && d.Database.Schema() == "" && strings.HasPrefix(strings.ToLower(tblName), "pg_") {
+		sdb, found, err := d.GetSchema(ctx, "pg_catalog")
+		if err != nil {
+			return nil, false, err
+		}
+		if found {
+			tbl, foundTbl, err := sdb.GetTableInsensitive(ctx, tblName)
+			if err != nil {
+				return nil, false, err
+			}
+			if foundTbl {
+				return tbl, true, nil
+			}
+		}
+	}
+	return d.Database.GetTableInsensitive(ctx, tblName)
+}
+
+// DropTable overrides sqle.Database.DropTable to prevent dropping virtual pg_catalog tables.
+func (d *PgDatabase) DropTable(ctx *sql.Context, tableName string) error {
+	if resolve.UseSearchPath && d.Database.Schema() == "" && strings.HasPrefix(strings.ToLower(tableName), "pg_") {
+		sdb, found, err := d.GetSchema(ctx, "pg_catalog")
+		if err != nil {
+			return err
+		}
+		if found {
+			_, foundTbl, err := sdb.GetTableInsensitive(ctx, tableName)
+			if err != nil {
+				return err
+			}
+			if foundTbl {
+				return sql.ErrDropTableNotSupported.New("pg_catalog")
+			}
+		}
+	}
+	return d.Database.DropTable(ctx, tableName)
+}
+
 // AllSchemas overrides sqle.ReadOnlyDatabase.AllSchemas to apply Doltgres schema wrapping.
 func (d *PgReadOnlyDatabase) AllSchemas(ctx *sql.Context) ([]sql.DatabaseSchema, error) {
 	schemas, err := d.ReadOnlyDatabase.AllSchemas(ctx)
@@ -127,6 +159,27 @@ func (d *PgReadOnlyDatabase) GetSchema(ctx *sql.Context, schemaName string) (sql
 		return schema, ok, err
 	}
 	return applySchemaWrap(schemaName, schema), true, nil
+}
+
+// GetTableInsensitive overrides sqle.Database.GetTableInsensitive to check the pg_catalog
+// virtual schema before falling back to user tables.
+func (d *PgReadOnlyDatabase) GetTableInsensitive(ctx *sql.Context, tblName string) (sql.Table, bool, error) {
+	if resolve.UseSearchPath && d.ReadOnlyDatabase.Schema() == "" && strings.HasPrefix(strings.ToLower(tblName), "pg_") {
+		sdb, found, err := d.GetSchema(ctx, "pg_catalog")
+		if err != nil {
+			return nil, false, err
+		}
+		if found {
+			tbl, foundTbl, err := sdb.GetTableInsensitive(ctx, tblName)
+			if err != nil {
+				return nil, false, err
+			}
+			if foundTbl {
+				return tbl, true, nil
+			}
+		}
+	}
+	return d.ReadOnlyDatabase.GetTableInsensitive(ctx, tblName)
 }
 
 // ValidateNewIndexName implements the sql.SchemaObjectNameValidator interface
