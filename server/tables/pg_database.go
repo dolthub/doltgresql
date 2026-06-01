@@ -259,7 +259,9 @@ func (d *PgDatabase) ValidateNewTableName(ctx *sql.Context, newTableName string,
 	return true, fmt.Errorf(`relation "%s" already exists`, newTableName)
 }
 
-// doesRelationExist implements the sql.SchemaObjectNameValidator interface
+// doesRelationExist tests if a relation with the specified |name| exists in this database. If any relation with that
+// name exists, this function returns true for |exists|, the relation type (e.g. index, view, table, sequence) for
+// |relationType|. If any problems are encountered looking up a relation, an error is returned in |err|.
 func (d *PgDatabase) doesRelationExist(ctx *sql.Context, name string) (exists bool, relationType string, err error) {
 	lowerName := strings.ToLower(name)
 
