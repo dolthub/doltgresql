@@ -1371,29 +1371,55 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
-			// TODO: MySQL allows duplicate index names on different tables, but Postgres requires
-			//       index names be unique. This test currently fails because GMS doesn't restrict
-			//       this. We should add a Postgres specific validation rule to enforce this.
-			Skip: true,
-			Name: "Index names must be unique",
+			Name: "Index names must be unique across all relation types",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int PRIMARY KEY, v1 int);",
 				"CREATE TABLE t2 (pk int PRIMARY KEY, v1 int);",
-				"CREATE TABLE idx1 (pk int PRIMARY KEY, v1 int);",
+				"CREATE TABLE tbl1 (pk int PRIMARY KEY, v1 int);",
+				"CREATE SEQUENCE seq1;",
+				"CREATE VIEW view1 AS SELECT pk FROM t1;",
+				"CREATE INDEX idx1 ON t1 (v1);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "CREATE INDEX idx_same_name ON t1 (v1);",
+					Query:    "CREATE INDEX idx_unique ON t1 (v1);",
 					Expected: []sql.Row{},
 				},
 				{
-					Query:       "CREATE INDEX idx_same_name ON t2 (v1);",
-					ExpectedErr: `relation "idx_same_name" already exists`,
+					Query:    "CREATE INDEX IF NOT EXISTS idx_unique ON t1 (v1);",
+					Expected: []sql.Row{},
 				},
 				{
-					// Just like tables, indexes are relations, and share a global namespace
-					Query:       "CREATE INDEX idx1 ON t2 (v1);",
-					ExpectedErr: `relation "idx1" already exists`,
+					Query:       "CREATE INDEX idx_unique ON t2 (v1);",
+					ExpectedErr: `relation "idx_unique" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS idx_unique ON t2 (v1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE INDEX tbl1 ON t2 (v1);",
+					ExpectedErr: `relation "tbl1" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS tbl1 ON t2 (v1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE INDEX seq1 ON t2 (v1);",
+					ExpectedErr: `relation "seq1" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS seq1 ON t2 (v1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE INDEX view1 ON t2 (v1);",
+					ExpectedErr: `relation "view1" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS view1 ON t2 (v1);",
+					Expected: []sql.Row{},
 				},
 			},
 		},

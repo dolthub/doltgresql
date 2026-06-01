@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/dolthub/doltgresql/core/sequences"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -82,17 +84,32 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	// The sequence won't have the schema filled in, so we have to do that now
 	c.sequence.Id = id.NewSequence(schema, c.sequence.Id.SequenceName())
 
-	// Check that the sequence name is free
-	relationType, err := core.GetRelationType(ctx, schema, c.sequence.Id.SequenceName())
+	// Check that the sequence name is free across all relation types (tables, sequences, views, indexes).
+	// GetSqlDatabaseFromContext returns a plain sqle.Database (not a PgDatabase), so we wrap it
+	// with tables.WrapSqleDatabase before calling GetSchema so that ValidateNewRelationName is available.
+	// TODO: Consider always wrapping the returned db from GetSqlDatabaseFromContext()
+	rawDb, err := core.GetSqlDatabaseFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	if relationType != core.RelationType_DoesNotExist && c.ifNotExists {
-		if c.ifNotExists {
-			// TODO: issue a notice
-			return sql.RowsToRowIter(), nil
+	if rawDb != nil {
+		if sdb, ok := rawDb.(sqle.Database); ok {
+			pgDb := tables.WrapSqleDatabase(sdb)
+			if schemaDb, found, dbErr := pgDb.GetSchema(ctx, schema); dbErr != nil {
+				return nil, dbErr
+			} else if found {
+				if v, ok := schemaDb.(sql.SchemaObjectNameValidator); ok {
+					nameAlreadyUsed, err := v.ValidateNewSequenceName(ctx, c.sequence.Id.SequenceName(), c.ifNotExists)
+					if err != nil {
+						return nil, err
+					} else if nameAlreadyUsed && c.ifNotExists {
+						return sql.RowsToRowIter(), nil
+					}
+				}
+			} else if !found {
+				return nil, fmt.Errorf(`schema "%s" not found`, schema)
+			}
 		}
-		return nil, errors.Errorf(`relation "%s" already exists`, c.sequence.Id)
 	}
 	// Check that the OWNED BY is valid, if it exists
 	var table sql.Table
@@ -101,7 +118,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if c.sequence.OwnerTable.IsValid() {
 		// The table will only have its name set, so we need to fill in the schema as well
 		c.sequence.OwnerTable = id.NewTable(schema, c.sequence.OwnerTable.TableName())
-		relationType, err = core.GetRelationType(ctx, schema, c.sequence.OwnerTable.TableName())
+		relationType, err := core.GetRelationType(ctx, schema, c.sequence.OwnerTable.TableName())
 		if err != nil {
 			return nil, err
 		}

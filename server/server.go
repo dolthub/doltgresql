@@ -170,6 +170,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		Controller:              controller,
 		DoltEnv:                 dEnv,
 		ProtocolListenerFactory: protocolListenerFactory,
+		ProviderFactory:         DoltgresProviderFactory{},
 	})
 	go controller.Start(newCtx)
 
