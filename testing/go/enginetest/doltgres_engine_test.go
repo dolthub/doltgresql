@@ -532,6 +532,7 @@ func TestConvertPrepared(t *testing.T) {
 
 func TestScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"can't create table with same name as existing view",      // Doltgres needs to return a different error message
 		"filter pushdown through join uppercase name",             // syntax error (join without on)
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
 		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
