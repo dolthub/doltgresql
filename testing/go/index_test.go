@@ -1629,5 +1629,56 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "index naming: unnamed index uses table_col_idx convention",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk INT PRIMARY KEY, a INT, b INT);",
+				"CREATE INDEX ON t1 (a);",
+				"CREATE TABLE t2 (pk INT PRIMARY KEY, a INT);",
+				"CREATE UNIQUE INDEX ON t2 (a);",
+				"CREATE TABLE t3 (pk INT PRIMARY KEY, a INT UNIQUE);",
+				"CREATE TABLE t4 (pk INT PRIMARY KEY, a INT, b INT);",
+				"CREATE INDEX ON t4 (a, b);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't1' AND indexname <> 't1_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t1_a_idx"}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't2' AND indexname <> 't2_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t2_a_key"}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't3' AND indexname <> 't3_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t3_a_key"}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't4' AND indexname <> 't4_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t4_a_b_idx"}},
+				},
+			},
+		},
+		{
+			Name: "index naming: collision appends numeric suffix",
+			SetUpScript: []string{
+				"CREATE TABLE t5 (pk INT PRIMARY KEY, a INT);",
+				"CREATE INDEX t5_a_idx ON t5 (a);",
+				"CREATE INDEX ON t5 (a);",
+				"CREATE TABLE t6_a_idx (pk INT PRIMARY KEY);",
+				"CREATE TABLE t6 (pk INT PRIMARY KEY, a INT);",
+				"CREATE INDEX ON t6 (a);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't5' AND indexname NOT IN ('t5_pkey', 't5_a_idx') ORDER BY indexname;",
+					Expected: []sql.Row{{"t5_a_idx1"}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't6' AND indexname <> 't6_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t6_a_idx1"}},
+				},
+			},
+		},
 	})
 }
