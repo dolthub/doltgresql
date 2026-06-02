@@ -161,7 +161,7 @@ var array_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
 		arrType := t[0]
-		baseType := arrType.ArrayBaseTypeCtx(ctx)
+		baseType := arrType.ArrayBaseType()
 		return pgtypes.ArrToString(ctx, val.([]any), baseType, false)
 	},
 }
@@ -312,7 +312,7 @@ var btarraycmp = framework.Function2{
 		bb := val2.([]any)
 		minLength := utils.Min(len(ab), len(bb))
 		for i := 0; i < minLength; i++ {
-			res, err := at.ArrayBaseTypeCtx(ctx).Compare(ctx, ab[i], bb[i])
+			res, err := at.ArrayBaseType().Compare(ctx, ab[i], bb[i])
 			if err != nil {
 				return 0, err
 			}

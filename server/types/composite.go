@@ -23,7 +23,10 @@ import (
 )
 
 // NewCompositeType creates new instance of composite DoltgresType.
-func NewCompositeType(_ context.Context, relID id.Id, arrayID, typeID id.Type, attrs []CompositeAttribute) *DoltgresType {
+func NewCompositeType(_ context.Context, relID id.Id, arrayType *DoltgresType, typeID id.Type, attrs []CompositeAttribute) *DoltgresType {
+	if arrayType == nil {
+		arrayType = internalNullType
+	}
 	return &DoltgresType{
 		ID:                  typeID,
 		TypLength:           -1,
@@ -35,8 +38,8 @@ func NewCompositeType(_ context.Context, relID id.Id, arrayID, typeID id.Type, a
 		Delimiter:           ",",
 		RelID:               relID,
 		SubscriptFunc:       toFuncID("-"),
-		Elem:                id.NullType,
-		Array:               arrayID,
+		Elem:                internalNullType,
+		Array:               arrayType,
 		InputFunc:           toFuncID("record_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
 		OutputFunc:          toFuncID("record_out", toInternal("record")),
 		ReceiveFunc:         toFuncID("record_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
@@ -47,7 +50,7 @@ func NewCompositeType(_ context.Context, relID id.Id, arrayID, typeID id.Type, a
 		Align:               TypeAlignment_Double,
 		Storage:             TypeStorage_Extended,
 		NotNull:             false,
-		BaseTypeID:          id.NullType,
+		BaseTypeType:        internalNullType,
 		TypMod:              -1,
 		NDims:               0,
 		TypCollation:        id.NullCollation,
@@ -68,17 +71,17 @@ func NewCompositeType(_ context.Context, relID id.Id, arrayID, typeID id.Type, a
 type CompositeAttribute struct {
 	RelID     id.Id // ID of the relation it belongs to
 	Name      string
-	TypeID    id.Type // ID of DoltgresType
-	Num       int16   // 1-based number of the column in relation
+	Type      *DoltgresType // ID of DoltgresType
+	Num       int16         // 1-based number of the column in relation
 	Collation string
 }
 
 // NewCompositeAttribute creates new instance of composite type attribute. `num` is 1-based rather than 0-based.
-func NewCompositeAttribute(ctx *sql.Context, relID id.Id, name string, typeID id.Type, num int16, collation string) CompositeAttribute {
+func NewCompositeAttribute(ctx *sql.Context, relID id.Id, name string, typ *DoltgresType, num int16, collation string) CompositeAttribute {
 	return CompositeAttribute{
 		RelID:     relID,
 		Name:      name,
-		TypeID:    typeID,
+		Type:      typ,
 		Num:       num,
 		Collation: collation,
 	}

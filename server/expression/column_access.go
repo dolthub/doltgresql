@@ -112,9 +112,7 @@ func (expr *ColumnAccess) Type(ctx *sql.Context) sql.Type {
 	if expr.child == nil {
 		return nil
 	}
-	// We're technically returning a different type here since an unresolved type is not the same as a resolved one.
-	// However, for many early analyzer steps, we only check the ID, so this at least lets us get past those cases.
-	return pgtypes.NewUnresolvedDoltgresTypeFromID(expr.child.Type(ctx).(*pgtypes.DoltgresType).CompositeAttrs[expr.colNameIdx].TypeID)
+	return expr.child.Type(ctx).(*pgtypes.DoltgresType).CompositeAttrs[expr.colNameIdx].Type
 }
 
 // WithChildren implements the sql.Expression interface.

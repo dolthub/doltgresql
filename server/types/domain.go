@@ -28,7 +28,8 @@ var ErrDomainDoesNotAllowNullValues = errors.NewKind(`domain %s does not allow n
 // ErrDomainValueViolatesCheckConstraint is returned when given value violates a domain check.
 var ErrDomainValueViolatesCheckConstraint = errors.NewKind(`value for domain %s violates check constraint "%s"`)
 
-// NewDomainType creates new instance of domain DoltgresType.
+// NewDomainType creates new instance of domain DoltgresType. The `Array` field is created in an unresolved state, and
+// should be resolved immediately after creation.
 func NewDomainType(
 	ctx *sql.Context,
 	asType *DoltgresType,
@@ -48,8 +49,8 @@ func NewDomainType(
 		Delimiter:           ",",
 		RelID:               id.Null,
 		SubscriptFunc:       toFuncID("-"),
-		Elem:                id.NullType,
-		Array:               arrayID,
+		Elem:                internalNullType,
+		Array:               NewUnresolvedDoltgresTypeFromID(arrayID),
 		InputFunc:           toFuncID("domain_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
 		OutputFunc:          asType.OutputFunc,
 		ReceiveFunc:         toFuncID("domain_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
@@ -60,7 +61,7 @@ func NewDomainType(
 		Align:               asType.Align,
 		Storage:             asType.Storage,
 		NotNull:             notNull,
-		BaseTypeID:          asType.ID,
+		BaseTypeType:        asType,
 		TypMod:              -1,
 		NDims:               0,
 		TypCollation:        id.NullCollation,
@@ -78,7 +79,9 @@ func NewDomainType(
 // deserializeTypeDomain handles deserialization from the Dolt serialized format to our standard representation used by
 // expressions and nodes.
 func deserializeTypeDomain(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
-	typeColl, err := GetTypesCollectionFromContext(ctx)
+	return t.BaseTypeType.DeserializeValue(ctx, data)
+	// TODO: DELETE ME UNDERNEATH
+	/*typeColl, err := GetTypesCollectionFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -89,5 +92,5 @@ func deserializeTypeDomain(ctx *sql.Context, t *DoltgresType, data []byte) (any,
 	if baseType == nil {
 		return nil, ErrTypeDoesNotExist.New(t.BaseTypeID.TypeName())
 	}
-	return baseType.DeserializeValue(ctx, data)
+	return baseType.DeserializeValue(ctx, data)*/
 }

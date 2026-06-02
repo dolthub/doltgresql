@@ -60,6 +60,8 @@ var ErrCannotDropArrayType = errors.NewKind(`cannot drop type %s because type %s
 // TypeCollection is an interface from the core package, redeclared here to get around import cycles.
 type TypeCollection interface {
 	GetType(context.Context, id.Type) (*DoltgresType, error)
+	ResolveType(ctx context.Context, name id.Type) (*DoltgresType, error)
+	WithCachedType(typeToCache *DoltgresType, f func())
 }
 
 // Cast is an interface from the core package, redeclared here to get around import cycles.
@@ -145,7 +147,7 @@ func serializedStringCompare(v1 []byte, v2 []byte) int {
 // with an exception to BOOLEAN type. It returns "t" instead of "true".
 func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 	if t.IsArrayType() {
-		baseType := t.ArrayBaseTypeCtx(ctx)
+		baseType := t.ArrayBaseType()
 		return ArrToString(ctx, val.([]any), baseType, true)
 	} else if t.ID == Bool.ID {
 		if val.(bool) {
@@ -261,29 +263,14 @@ func ParseCompositeLiteral(ctx *sql.Context, input string, compositeType *Doltgr
 
 	values := make([]RecordValue, len(attrs))
 	for i, attr := range attrs {
-		var fieldType *DoltgresType
-		if t, ok := IDToBuiltInDoltgresType[attr.TypeID]; ok {
-			fieldType = t
-		} else {
-			if typColl, tcErr := GetTypesCollectionFromContext(ctx); tcErr == nil && typColl != nil {
-				if t, gErr := typColl.GetType(ctx, attr.TypeID); gErr == nil && t != nil {
-					fieldType = t
-				}
-			}
-		}
-		if fieldType == nil {
-			return nil, cerrors.Errorf("cannot resolve field type %s for composite type %s",
-				attr.TypeID.TypeName(), compositeType.ID.TypeName())
-		}
-
 		if fieldStrs[i] == nil {
-			values[i] = RecordValue{Value: nil, Type: fieldType}
+			values[i] = RecordValue{Value: nil, Type: attr.Type}
 		} else {
-			val, err := fieldType.IoInput(ctx, *fieldStrs[i])
+			val, err := attr.Type.IoInput(ctx, *fieldStrs[i])
 			if err != nil {
 				return nil, err
 			}
-			values[i] = RecordValue{Value: val, Type: fieldType}
+			values[i] = RecordValue{Value: val, Type: attr.Type}
 		}
 	}
 	return values, nil
