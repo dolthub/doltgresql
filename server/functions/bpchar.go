@@ -17,10 +17,11 @@ package functions
 import (
 	"bytes"
 	"fmt"
-	"github.com/cockroachdb/errors"
-	"github.com/dolthub/go-mysql-server/sql"
 	"strconv"
 	"strings"
+
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
