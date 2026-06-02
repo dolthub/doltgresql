@@ -39,13 +39,13 @@ var internal_in = framework.Function1{
 }
 
 // internal_out represents the PostgreSQL function of internal type IO output.
-var internal_out = framework.Function1{
+var internal_out = framework.Function2{
 	Name:       "internal_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO
-		return string(val.([]byte)), nil
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
+		dest = append(dest.([]byte), val.([]byte)...)
+		return dest, nil
 	},
 }

@@ -57,12 +57,12 @@ var numeric_in = framework.Function3{
 }
 
 // numeric_out represents the PostgreSQL function of numeric type IO output.
-var numeric_out = framework.Function1{
+var numeric_out = framework.Function2{
 	Name:       "numeric_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
 		typ := t[0]
 		dec := val.(*apd.Decimal)
 		tm := typ.GetAttTypMod()
@@ -70,7 +70,7 @@ var numeric_out = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		return res.Text('f'), nil
+		return res.Append(dest.([]byte), 'f'), nil
 	},
 }
 

@@ -56,13 +56,13 @@ var int2in = framework.Function1{
 }
 
 // int2out represents the PostgreSQL function of int2 type IO output.
-var int2out = framework.Function1{
+var int2out = framework.Function2{
 	Name:       "int2out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int16},
+	Parameters: [2]*pgtypes.DoltgresType{nil, pgtypes.Int16},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return strconv.FormatInt(int64(val.(int16)), 10), nil
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
+		return strconv.AppendInt(dest.([]byte), int64(val.(int16)), 10), nil
 	},
 }
 

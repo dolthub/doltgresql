@@ -92,12 +92,12 @@ var regtypein = framework.Function1{
 }
 
 // regtypeout represents the PostgreSQL function of regtype type IO output.
-var regtypeout = framework.Function1{
+var regtypeout = framework.Function2{
 	Name:       "regtypeout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Regtype},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Regtype},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
 		internalID := val.(id.Id)
 		if internalID.Section() == id.Section_OID {
 			return internalID.Segment(0), nil

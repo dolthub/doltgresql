@@ -53,16 +53,13 @@ var int8in = framework.Function1{
 }
 
 // int8out represents the PostgreSQL function of int8 type IO output.
-var int8out = framework.Function1{
+var int8out = framework.Function2{
 	Name:       "int8out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
+	Parameters: [2]*pgtypes.DoltgresType{nil, pgtypes.Int64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		if val == nil {
-			return nil, nil
-		}
-		return strconv.FormatInt(val.(int64), 10), nil
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
+		return strconv.AppendInt(dest.([]byte), val.(int64), 10), nil
 	},
 }
 

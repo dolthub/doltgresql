@@ -62,12 +62,12 @@ var timestamptz_in = framework.Function3{
 }
 
 // timestamptz_out represents the PostgreSQL function of timestamptz type IO output.
-var timestamptz_out = framework.Function1{
+var timestamptz_out = framework.Function2{
 	Name:       "timestamptz_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.TimestampTZ},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimestampTZ},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
 		serverLoc, err := GetServerLocation(ctx)
 		if err != nil {
 			return "", err
@@ -75,7 +75,9 @@ var timestamptz_out = framework.Function1{
 		t := val.(time.Time).In(serverLoc)
 
 		// Format timestamp with BC support and timezone
-		return FormatDateTimeWithBC(t, getLayoutStringFormat(ctx, false), true), nil
+		strVal := FormatDateTimeWithBC(t, getLayoutStringFormat(ctx, false), true)
+		dest = append(dest.([]byte), strVal...)
+		return dest, nil
 	},
 }
 

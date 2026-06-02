@@ -65,13 +65,13 @@ var time_in = framework.Function3{
 }
 
 // time_out represents the PostgreSQL function of time type IO output.
-var time_out = framework.Function1{
+var time_out = framework.Function2{
 	Name:       "time_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Time},
+	Parameters: [2]*pgtypes.DoltgresType{nil, pgtypes.Time},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(timeofday.TimeOfDay).String(), nil
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
+		return val.(timeofday.TimeOfDay).AppendBytes(dest.([]byte)), nil
 	},
 }
 

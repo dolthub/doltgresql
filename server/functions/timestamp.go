@@ -67,6 +67,7 @@ var timestamp_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		t := val.(time.Time)
+		// TODO: getLayoutStringFormat is expensive. We should cache it as it stays the same throughout a single query.
 		return FormatDateTimeWithBC(t, getLayoutStringFormat(ctx, false), false), nil
 	},
 }

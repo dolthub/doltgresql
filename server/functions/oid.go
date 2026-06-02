@@ -16,7 +16,6 @@ package functions
 
 import (
 	"cmp"
-	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -63,13 +62,14 @@ var oidin = framework.Function1{
 }
 
 // oidout represents the PostgreSQL function of oid type IO output.
-var oidout = framework.Function1{
+var oidout = framework.Function2{
 	Name:       "oidout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Oid},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return fmt.Sprintf("%d", id.Cache().ToOID(val.(id.Id))), nil
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
+		dest = strconv.AppendInt(dest.([]byte), int64(id.Cache().ToOID(val.(id.Id))), 10)
+		return dest, nil
 	},
 }
 

@@ -58,12 +58,12 @@ var varcharin = framework.Function3{
 }
 
 // varcharout represents the PostgreSQL function of varchar type IO output.
-var varcharout = framework.Function1{
+var varcharout = framework.Function2{
 	Name:       "varcharout",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.VarChar},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.VarChar},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
 		v, ok, err := sql.Unwrap[string](ctx, val)
 		if err != nil {
 			return nil, err
@@ -74,7 +74,7 @@ var varcharout = framework.Function1{
 		typ := t[0]
 		tm := typ.GetAttTypMod()
 		if tm != -1 {
-			str, _ := truncateString(v, pgtypes.GetCharLengthFromTypmod(tm))
+			str, _ := appendString(v, dest.([]byte), pgtypes.GetCharLengthFromTypmod(tm))
 			return str, nil
 		} else {
 			return v, nil

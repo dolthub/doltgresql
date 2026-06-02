@@ -52,13 +52,13 @@ var float8in = framework.Function1{
 }
 
 // float8out represents the PostgreSQL function of float8 type IO output.
-var float8out = framework.Function1{
+var float8out = framework.Function2{
 	Name:       "float8out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float64},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Float64},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return strconv.FormatFloat(val.(float64), 'f', -1, 64), nil
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
+		return strconv.AppendFloat(dest.([]byte), val.(float64), 'f', -1, 64), nil
 	},
 }
 

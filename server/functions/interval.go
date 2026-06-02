@@ -56,13 +56,14 @@ var interval_in = framework.Function3{
 }
 
 // interval_out represents the PostgreSQL function of interval type IO output.
-var interval_out = framework.Function1{
+var interval_out = framework.Function2{
 	Name:       "interval_out",
 	Return:     pgtypes.Cstring,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Interval},
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Interval},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(duration.Duration).String(), nil
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val, dest any) (any, error) {
+		dest = append(dest.([]byte), val.(duration.Duration).String()...) // TODO: add duration.AppendFormat()
+		return dest, nil
 	},
 }
 
