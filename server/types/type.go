@@ -638,6 +638,7 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	var o any
 	var err error
+	// TODO: this assumes we are always using QuickFunction1
 	if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
 		send := globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
 		resolvedTypes := send.ResolvedTypes()
@@ -655,6 +656,24 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 		return "", errors.Errorf("unexpected type for io output, expected string, got %T", val)
 	}
 	return os, err
+}
+
+// IoOutputBytes appends the given type value to dest
+func (t *DoltgresType) IoOutputBytes(ctx *sql.Context, val any, dest []byte) ([]byte, error) {
+	var o any
+	var err error
+	if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
+		send := globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
+		resolvedTypes := send.ResolvedTypes()
+		resolvedTypes[0] = t
+		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(ctx, val, dest)
+	} else {
+		o, err = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc).CallVariadic(ctx, val, dest)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return o.([]byte), err
 }
 
 // IsArrayType returns true if the type is of 'array' type.

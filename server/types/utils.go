@@ -157,6 +157,23 @@ func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 	return t.IoOutput(ctx, val)
 }
 
+func sqlBytes(ctx *sql.Context, t *DoltgresType, val any, dest []byte) ([]byte, error) {
+	if t.ID == Bool.ID {
+		if val.(bool) {
+			dest[0] = 't'
+		} else {
+			dest[0] = 'f'
+		}
+		return dest, nil
+	}
+
+	if t.IsArrayType() {
+		// TODO
+	}
+
+	return t.IoOutputBytes(ctx, val, dest)
+}
+
 // ArrToString is used for array_out function. |trimBool| parameter allows replacing
 // boolean result of "true" to "t" if the function is `Type.SQL()`.
 func ArrToString(ctx *sql.Context, arr []any, baseType *DoltgresType, trimBool bool) (string, error) {
