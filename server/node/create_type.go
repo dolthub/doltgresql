@@ -135,9 +135,9 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		relID := id.Null
 		attrs := make([]types.CompositeAttribute, len(c.AsTypes))
 		for i, a := range c.AsTypes {
-			attrs[i] = types.NewCompositeAttribute(ctx, relID, a.AttrName, a.Typ.ID, int16(i+1), a.Collation)
+			attrs[i] = types.NewCompositeAttribute(ctx, relID, a.AttrName, a.Typ, int16(i+1), a.Collation)
 		}
-		newType = types.NewCompositeType(ctx, relID, arrayID, typeID, attrs)
+		newType = types.NewCompositeType(ctx, relID, &types.DoltgresType{ID: arrayID, IsUnresolved: true}, typeID, attrs)
 	default:
 		return nil, errors.Errorf("create type as %s is not supported", c.typType)
 	}
@@ -154,6 +154,7 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		if err != nil {
 			return nil, err
 		}
+		newType.Array = arrayType
 	}
 
 	return sql.RowsToRowIter(), nil

@@ -62,6 +62,7 @@ func newTestTypeCollection(t *testing.T, ns tree.NodeStore) *TypeCollection {
 	require.NoError(t, err)
 	return &TypeCollection{
 		accessedMap:   map[id.Type]*pgtypes.DoltgresType{},
+		initCache:     map[id.Type]*pgtypes.DoltgresType{},
 		underlyingMap: addrMap,
 		ns:            ns,
 	}

@@ -185,7 +185,7 @@ func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.Do
 	attrs := make([]pgtypes.CompositeAttribute, len(fieldTypes))
 	for i, fieldType := range fieldTypes {
 		attrs[i] = pgtypes.NewCompositeAttribute(nil, id.Null, fieldType.Name.String(),
-			id.NewType("", fieldType.Type.SQLString()), int16(i), "")
+			pgtypes.NewUnresolvedDoltgresTypeFromID(id.NewType("", fieldType.Type.SQLString())), int16(i), "")
 	}
 
 	typeIdString := "table("
@@ -195,14 +195,14 @@ func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.Do
 		}
 		typeIdString += attr.Name
 		typeIdString += ":"
-		typeIdString += attr.TypeID.TypeName()
+		typeIdString += attr.Type.ID.TypeName()
 	}
 	typeIdString += ")"
 
 	// NOTE: there is no schema needed, since these types are anonymous and can't be directly referenced
 	typeId := id.NewType("", typeIdString)
 
-	return pgtypes.NewCompositeType(context.Background(), id.Null, id.NullType, typeId, attrs)
+	return pgtypes.NewCompositeType(context.Background(), id.Null, nil, typeId, attrs)
 }
 
 // handleLanguageSQLAs handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE

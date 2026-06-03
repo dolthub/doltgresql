@@ -527,7 +527,7 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, formatCodes []int
 				tableAttributeNumber = 0
 			}
 			if doltgresType.TypType == pgtypes.TypeType_Domain {
-				oid = id.Cache().ToOID(doltgresType.BaseTypeID.AsId())
+				oid = id.Cache().ToOID(doltgresType.BaseTypeType.ID.AsId())
 			} else {
 				oid = id.Cache().ToOID(doltgresType.ID.AsId())
 			}
