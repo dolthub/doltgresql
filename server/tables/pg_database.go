@@ -34,6 +34,7 @@ type PgDatabase struct {
 var _ sql.DatabaseSchema = &PgDatabase{}
 var _ sql.SchemaDatabase = &PgDatabase{}
 var _ sql.SchemaObjectNameValidator = &PgDatabase{}
+var _ sql.IndexNameGenerator = &PgDatabase{}
 
 // PgReadOnlyDatabase is the read-only variant of PgDatabase, used for revision databases
 // such as "postgres/main" returned by sqle.DoltDatabaseProvider for detached-HEAD sessions.
@@ -257,6 +258,41 @@ func (d *PgDatabase) ValidateNewTableName(ctx *sql.Context, newTableName string,
 	}
 
 	return true, fmt.Errorf(`relation "%s" already exists`, newTableName)
+}
+
+// GenerateIndexName implements the sql.IndexNameGenerator interface with PostgreSQL-compatible naming conventions:
+//   - UNIQUE indexes:   <table>_<col1>[_col2...]_key
+//   - All other indexes: <table>_<col1>[_col2...]_idx
+//
+// Collisions are resolved by appending a numeric suffix (1, 2, …) to the base name.
+// The collision check uses doesRelationExist so that any schema-level relation — table,
+// view, sequence, or another index — blocks a candidate name, matching PostgreSQL's
+// behavior where all relations in a schema share one namespace.
+func (d *PgDatabase) GenerateIndexName(ctx *sql.Context, tableName string, idxDef sql.IndexDef, _ sql.Table) (string, error) {
+	colPart := strings.Join(idxDef.ColumnNames(), "_")
+	suffix := "_idx"
+	if idxDef.IsUnique() {
+		suffix = "_key"
+	}
+	base := tableName + "_" + colPart + suffix
+
+	exists, _, err := d.doesRelationExist(ctx, base)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return base, nil
+	}
+	for i := 1; ; i++ {
+		candidate := fmt.Sprintf("%s%d", base, i)
+		exists, _, err = d.doesRelationExist(ctx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return candidate, nil
+		}
+	}
 }
 
 // doesRelationExist tests if a relation with the specified |name| exists in this database. If any relation with that

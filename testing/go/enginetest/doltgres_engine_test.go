@@ -1342,6 +1342,7 @@ func TestDoltMergeArtifacts(t *testing.T) {
 		"schema conflicts return an error when autocommit is enabled",                             // problems detecting autocommit for business logic
 		"Multiple foreign key violations for a given row not supported",                           // foreign keys
 		"divergent type change causes schema conflict",                                            // alter table
+		"merge error lists all constraint violations when table has multiple violations",          // index names differ under PG naming
 	})
 	denginetest.RunDoltMergeArtifacts(t, h)
 }
