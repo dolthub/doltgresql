@@ -1278,5 +1278,47 @@ ORDER BY schema_name, table_name;`,
 				},
 			},
 		},
+		{
+			Name: "ALTER TABLE with MATCH FULL on foreign key",
+			SetUpScript: []string{
+				`CREATE TABLE attmp2 (a int primary key);`,
+				`CREATE TABLE attmp3 (a int, b int);`,
+				`INSERT INTO attmp2 values (1),(2),(3),(4);`,
+				`INSERT INTO attmp3 values (1,10),(1,20),(5,50);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// fails to add constraint due to invalid source columns
+					// TODO: error message should be `column "c" referenced in foreign key constraint does not exist`
+					Query:       `ALTER TABLE attmp3 add constraint attmpconstr foreign key(c) references attmp2(a) match full;`,
+					ExpectedErr: `table "attmp3" does not have column "c"`,
+				},
+				{
+					// fails to add constraint due to invalid destination columns explicitly given
+					// TODO: error message should be `column "b" referenced in foreign key constraint does not exist`
+					Query:       `ALTER TABLE attmp3 add constraint attmpconstr foreign key(a) references attmp2(b) match full;`,
+					ExpectedErr: `table "attmp2" does not have column "b"`,
+				},
+				{
+					// fails to add constraint due to invalid data
+					// TODO: error message should be `Key (a)=(5) is not present in table "attmp2"`
+					Query:       `ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2(a) match full;`,
+					ExpectedErr: "Foreign key violation on fk: `attmpconstr`, table: `attmp3`, referenced table: `attmp2`, key: `[5]`",
+				},
+				{
+					// delete failing row
+					Query:    `DELETE FROM attmp3 where a=5;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 (a) match full;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 drop constraint attmpconstr;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }

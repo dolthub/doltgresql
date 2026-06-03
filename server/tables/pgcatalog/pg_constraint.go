@@ -76,6 +76,15 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context, partition sql.Partition) 
 	}, nil
 }
 
+func getFKMatchType(matchType sql.ForeignKeyMatchType) string {
+	switch matchType {
+	case sql.ForeignKeyMatchType_Full:
+		return "f"
+	default:
+		return "s"
+	}
+}
+
 func getFKAction(action sql.ForeignKeyReferentialAction) string {
 	switch action {
 	case sql.ForeignKeyReferentialAction_NoAction:
@@ -461,7 +470,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				tableRefOid:     tableOIDs[schema.OID.AsId()][foreignKey.Item.ParentTable],
 				fkUpdateType:    getFKAction(foreignKey.Item.OnUpdate),
 				fkDeleteType:    getFKAction(foreignKey.Item.OnDelete),
-				fkMatchType:     "s",
+				fkMatchType:     getFKMatchType(foreignKey.Item.MatchType),
 				conKey:          conKey,
 				conFkey:         conFkey,
 				typeOid:         id.Id(id.NewOID(0)),
