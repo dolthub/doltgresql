@@ -15,10 +15,12 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +45,38 @@ func (p PgDefaultAclHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgDefaultAclHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_default_acl row iter
-	return emptyRowIter()
+	var rows []sql.Row
+	auth.LockRead(func() {
+		entries := auth.GetAllDefaultPrivileges()
+		for oid, entry := range entries {
+			// Build the aclitem array: each element is "grantee=privs/grantor"
+			var aclItems []interface{}
+			for _, granteeValue := range entry.Grantees {
+				granteeName := auth.GetRoleName(granteeValue.Grantee)
+				for priv, grantedMap := range granteeValue.Privileges {
+					for grantedPriv, withGrantOption := range grantedMap {
+						grantorName := auth.GetRoleName(grantedPriv.GrantedBy)
+						privStr := string(priv)
+						if withGrantOption {
+							privStr += "*"
+						}
+						aclItems = append(aclItems, fmt.Sprintf("%s=%s/%s", granteeName, privStr, grantorName))
+					}
+				}
+			}
+			// Namespace OID: 0 means any schema; non-zero would need a real OID lookup
+			namespaceOid := uint32(0)
+			_ = namespaceOid
+			rows = append(rows, sql.Row{
+				uint32(oid + 1), // oid (synthetic, 1-based index)
+				uint32(entry.Key.OwnerRole),
+				uint32(0), // defaclnamespace: 0 = any schema (schema OID lookup not yet implemented)
+				auth.DefaultPrivilegeObjTypeChar(entry.Key.ObjectType),
+				aclItems,
+			})
+		}
+	})
+	return sql.RowsToRowIter(rows...), nil
 }
 
 // Schema implements the interface tables.Handler.

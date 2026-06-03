@@ -92,13 +92,13 @@ var _ AlterIndexCmd = &AlterIndexSetTablespace{}
 
 // AlterIndexAttachPartition represents an ALTER INDEX ... ATTACH PARTITION statement.
 type AlterIndexAttachPartition struct {
-	Index UnrestrictedName
+	Index *UnresolvedObjectName
 }
 
 // Format implements the NodeFormatter interface.
 func (node *AlterIndexAttachPartition) Format(ctx *FmtCtx) {
 	ctx.WriteString(" ATTACH PARTITION ")
-	ctx.FormatNode(&node.Index)
+	node.Index.Format(ctx)
 }
 
 // AlterIndexExtension represents an ALTER INDEX ... [NO] DEPENDS ON EXTENSION statement.

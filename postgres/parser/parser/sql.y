@@ -2026,9 +2026,9 @@ alter_oneindex_stmt:
   {
     $$.val = &tree.AlterIndex{Index: $5.tableIndexName(), IfExists: true, Cmd: $6.alterIndexCmd()}
   }
-| ALTER INDEX table_index_name ATTACH PARTITION index_name
+| ALTER INDEX table_index_name ATTACH PARTITION db_object_name
   {
-    $$.val = &tree.AlterIndex{Index: $3.tableIndexName(), Cmd: &tree.AlterIndexAttachPartition{Index: tree.UnrestrictedName($6)}}
+    $$.val = &tree.AlterIndex{Index: $3.tableIndexName(), Cmd: &tree.AlterIndexAttachPartition{Index: $6.unresolvedObjectName()}}
   }
 | ALTER INDEX table_index_name opt_no DEPENDS ON EXTENSION name
   {
@@ -2128,9 +2128,9 @@ alter_table_action:
     }
   }
   // ALTER TABLE <name> ADD CONSTRAINT ... USING INDEX
-| ADD CONSTRAINT constraint_name unique_or_primary USING INDEX index_name opt_deferrable_mode opt_initially
+| ADD CONSTRAINT constraint_name unique_or_primary USING INDEX db_object_name opt_deferrable_mode opt_initially
   {
-    $$.val = tree.AlterTableConstraintUsingIndex{Constraint: tree.Name($3), IsUnique: $4.bool(), Index: tree.Name($7), Deferrable: $8.deferrableMode(), Initially: $9.initiallyMode()}
+    $$.val = tree.AlterTableConstraintUsingIndex{Constraint: tree.Name($3), IsUnique: $4.bool(), Index: $7.unresolvedObjectName(), Deferrable: $8.deferrableMode(), Initially: $9.initiallyMode()}
   }
   // ALTER TABLE <name> ALTER CONSTRAINT ...
 | ALTER CONSTRAINT constraint_name opt_deferrable_mode opt_initially

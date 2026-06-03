@@ -15,12 +15,61 @@
 package ast
 
 import (
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/privilege"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/auth"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeAlterDefaultPrivileges handles *tree.AlterDefaultPrivileges nodes.
 func nodeAlterDefaultPrivileges(ctx *Context, node *tree.AlterDefaultPrivileges) (vitess.Statement, error) {
-	return NotYetSupportedError("ALTER DEFAULT PRIVILEGES statement is not yet supported")
+	if node == nil {
+		return nil, nil
+	}
+
+	objType, err := convertDefaultPrivilegeObjectType(node.Target.TargetType)
+	if err != nil {
+		return nil, err
+	}
+
+	privileges, err := convertPrivilegeKinds(objType, node.Privileges)
+	if err != nil {
+		return nil, err
+	}
+
+	return vitess.InjectedStatement{
+		Statement: &pgnodes.AlterDefaultPrivileges{
+			OwnerRoles:  node.TargetRoles,
+			Schemas:     node.Target.InSchema,
+			ObjectType:  objType,
+			Privileges:  privileges,
+			Grantees:    node.Grantees,
+			Grant:       node.Grant,
+			GrantOption: node.GrantOption,
+			Cascade:     node.DropBehavior == tree.DropCascade,
+		},
+		Children: nil,
+	}, nil
+}
+
+// convertDefaultPrivilegeObjectType converts a privilege.ObjectType to an auth.PrivilegeObject for use in default
+// privileges. Only the object types valid for ALTER DEFAULT PRIVILEGES are accepted.
+func convertDefaultPrivilegeObjectType(objType privilege.ObjectType) (auth.PrivilegeObject, error) {
+	switch objType {
+	case privilege.Table:
+		return auth.PrivilegeObject_TABLE, nil
+	case privilege.Sequence:
+		return auth.PrivilegeObject_SEQUENCE, nil
+	case privilege.Function, privilege.Procedure, privilege.Routine:
+		return auth.PrivilegeObject_FUNCTION, nil
+	case privilege.Schema:
+		return auth.PrivilegeObject_SCHEMA, nil
+	case privilege.Type:
+		return auth.PrivilegeObject_TYPE, nil
+	default:
+		return 0, errors.Errorf("object type %q is not supported in ALTER DEFAULT PRIVILEGES", string(objType))
+	}
 }
