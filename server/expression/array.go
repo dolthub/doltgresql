@@ -64,7 +64,7 @@ func (array *Array) Children() []sql.Expression {
 
 // Eval implements the sql.Expression interface.
 func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
-	resultTyp := array.coercedType.ArrayBaseTypeCtx(ctx)
+	resultTyp := array.coercedType.ArrayBaseType()
 	values := make([]any, len(array.children))
 	castsColl, err := core.GetCastsCollectionFromContext(ctx)
 	if err != nil {

@@ -50,8 +50,13 @@ var round_numeric = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		dec := val.(*apd.Decimal)
+		p := dec.NumDigits()
+		if dec.Exponent > 0 {
+			p += int64(dec.Exponent)
+		}
+
 		res := new(apd.Decimal)
-		_, err := sql.DecimalHighPrecisionCtx.Round(res, dec)
+		_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Round(res, dec)
 		if err != nil {
 			return nil, err
 		}
@@ -68,8 +73,14 @@ var round_numeric_int64 = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		dec := val1.(*apd.Decimal)
 		places := val2.(int64)
+
+		p := dec.NumDigits()
+		if dec.Exponent > 0 {
+			p += int64(dec.Exponent)
+		}
+
 		res := new(apd.Decimal)
-		_, err := sql.DecimalHighPrecisionCtx.Round(res, dec)
+		_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Round(res, dec)
 		if err != nil {
 			return nil, err
 		}

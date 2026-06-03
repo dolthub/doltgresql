@@ -27,9 +27,10 @@ func nodeCreateExtension(ctx *Context, node *tree.CreateExtension) (vitess.State
 	if len(node.Schema) > 0 {
 		if node.Schema == "pg_catalog" && node.Name == "plpgsql" {
 			return nil, nil
-		} else {
-			return NotYetSupportedError("SCHEMA is not yet supported")
+		} else if node.Schema != "public" {
+			return NotYetSupportedError("non public SCHEMA is not yet supported")
 		}
+		// TODO filter out extensions we support
 	}
 	if len(node.Version) > 0 {
 		return NotYetSupportedError("VERSION is not yet supported")

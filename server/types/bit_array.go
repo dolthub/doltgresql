@@ -14,5 +14,5 @@
 
 package types
 
-// BitArray is the array variant of VarBit.
+// BitArray is the array variant of Bit.
 var BitArray = CreateArrayTypeFromBaseType(Bit)

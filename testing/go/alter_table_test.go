@@ -611,6 +611,41 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Rename table must not collide with other relation types",
+			SetUpScript: []string{
+				"CREATE TABLE src_tbl (pk int PRIMARY KEY, v1 int);",
+				"CREATE TABLE other_tbl (pk int PRIMARY KEY, v1 int);",
+				"CREATE SEQUENCE seq1;",
+				"CREATE VIEW view1 AS SELECT pk FROM src_tbl;",
+				"CREATE INDEX idx1 ON src_tbl (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER TABLE src_tbl RENAME TO other_tbl;",
+					ExpectedErr: `relation "other_tbl" already exists`,
+				},
+				{
+					Query:       "ALTER TABLE src_tbl RENAME TO seq1;",
+					ExpectedErr: `relation "seq1" already exists`,
+				},
+				{
+					Query:       "ALTER TABLE src_tbl RENAME TO view1;",
+					ExpectedErr: `relation "view1" already exists`,
+				},
+				{
+					Query:       "ALTER TABLE src_tbl RENAME TO idx1;",
+					ExpectedErr: `relation "idx1" already exists`,
+				},
+				{
+					Query: "ALTER TABLE src_tbl RENAME TO new_name;",
+				},
+				{
+					Query:    "SELECT pk FROM new_name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: "alter table owner",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (a INT, b INT);",

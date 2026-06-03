@@ -45,11 +45,12 @@ var DoltgresFeatureVersion = doltdb.DoltFeatureVersion + 0
 
 // RootValue is Doltgres' implementation of doltdb.RootValue.
 type RootValue struct {
-	vrw  types.ValueReadWriter
-	ns   tree.NodeStore
-	st   storage.RootStorage
-	fkc  *doltdb.ForeignKeyCollection // cache the first load
-	hash hash.Hash                    // cache the first load
+	vrw   types.ValueReadWriter
+	ns    tree.NodeStore
+	st    storage.RootStorage
+	fkc   *doltdb.ForeignKeyCollection // cache the first load
+	hash  hash.Hash                    // cache the first load
+	colls []objinterface.Collection    // cache the first load
 }
 
 var _ doltdb.RootValue = (*RootValue)(nil)
@@ -443,11 +444,13 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string, inc
 		return nil, err
 	}
 	if includeRootObjects {
-		colls, err := rootobject.LoadAllCollections(ctx, root)
-		if err != nil {
-			return nil, err
+		if root.colls == nil {
+			root.colls, err = rootobject.LoadAllCollections(ctx, root)
+			if err != nil {
+				return nil, err
+			}
 		}
-		for _, coll := range colls {
+		for _, coll := range root.colls {
 			err = coll.IterIDs(ctx, func(identifier id.Id) (stop bool, err error) {
 				tName := coll.IDToTableName(identifier)
 				if tName.Schema == schemaName {
@@ -935,5 +938,9 @@ func (root *RootValue) putTable(ctx context.Context, tName doltdb.TableName, ref
 
 // withStorage returns a new root value with the given storage.
 func (root *RootValue) withStorage(st storage.RootStorage) *RootValue {
-	return &RootValue{root.vrw, root.ns, st, nil, hash.Hash{}}
+	return &RootValue{
+		vrw: root.vrw,
+		ns:  root.ns,
+		st:  st,
+	}
 }
