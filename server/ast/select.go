@@ -15,6 +15,7 @@
 package ast
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -178,6 +179,11 @@ func inputExpressionForSelectExpr(node tree.SelectExpr) string {
 	return inputExpression
 }
 
+// unknownColSentinelPrefix is used by nodeSelectExprs to mark unaliased string literals with a
+// unique per-position alias so GMS can distinguish them in its alias scope map. schemaToFieldDescriptions
+// translates any name with this prefix back to Postgres's ?column? placeholder on output.
+const unknownColSentinelPrefix = "__?column?__"
+
 // nodeSelectExprs handles tree.SelectExprs nodes.
 func nodeSelectExprs(ctx *Context, node tree.SelectExprs) (vitess.SelectExprs, error) {
 	if len(node) == 0 {
@@ -186,6 +192,13 @@ func nodeSelectExprs(ctx *Context, node tree.SelectExprs) (vitess.SelectExprs, e
 	selectExprs := make(vitess.SelectExprs, len(node))
 	for i := range node {
 		var err error
+		// Unaliased string literals use Postgres's ?column? placeholder as the column name.
+		// We use a unique indexed sentinel rather than "?column?" directly to avoid GMS's alias
+		// scope map conflating multiple unnamed columns in the same SELECT clause; the handler
+		// translates the sentinel back to "?column?" on the wire.
+		if _, isStrVal := node[i].Expr.(*tree.StrVal); isStrVal && node[i].As == "" {
+			node[i].As = tree.UnrestrictedName(fmt.Sprintf("%s%d", unknownColSentinelPrefix, i))
+		}
 		selectExprs[i], err = nodeSelectExpr(ctx, node[i])
 		if err != nil {
 			return nil, err
