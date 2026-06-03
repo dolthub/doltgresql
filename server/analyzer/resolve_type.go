@@ -183,20 +183,6 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				return nil, transform.NewTree, err
 			}
 			return expr.WithType(newType), transform.NewTree, nil
-		case *pgexprs.ExplicitCast:
-			if rt, ok := expr.Type(ctx).(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {
-				dt, err := resolveType(ctx, db, rt)
-				if err != nil {
-					return nil, transform.NewTree, err
-				}
-				if !dt.IsDefined {
-					return nil, transform.NewTree, pgtypes.ErrTypeIsOnlyAShell.New(dt.Name())
-				} else {
-					return expr.WithCastToType(dt), transform.NewTree, nil
-				}
-			} else {
-				return expr, transform.SameTree, nil
-			}
 		default:
 			// TODO: add expressions that use unresolved types like domain
 			return expr, transform.SameTree, nil

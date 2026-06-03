@@ -34,7 +34,7 @@ func init() {
 
 // SerializeType is able to serialize the given extended type into a byte slice. All extended types will be defined
 // by DoltgreSQL.
-func SerializeType(extendedType sql.ExtendedType) ([]byte, error) {
+func SerializeType(ctx *sql.Context, extendedType sql.ExtendedType) ([]byte, error) {
 	if doltgresType, ok := extendedType.(*DoltgresType); ok {
 		if doltgresType.IsUnresolved {
 			return nil, errors.Errorf(`attempted to serialize the unresolved type: %s`, doltgresType.Name())
@@ -46,12 +46,13 @@ func SerializeType(extendedType sql.ExtendedType) ([]byte, error) {
 
 // DeserializeType is able to deserialize the given serialized type into an appropriate extended type. All extended
 // types will be defined by DoltgreSQL.
-func DeserializeType(serializedType []byte) (sql.ExtendedType, error) {
+func DeserializeType(ctx *sql.Context, serializedType []byte) (sql.ExtendedType, error) {
 	if len(serializedType) == 0 {
 		return nil, errors.Errorf("deserializing empty type data")
 	}
 
 	typ := &DoltgresType{}
+	var typeColl TypeCollection
 	reader := utils.NewReader(serializedType)
 	version := reader.VariableUint()
 	if version != 0 {
@@ -68,8 +69,8 @@ func DeserializeType(serializedType []byte) (sql.ExtendedType, error) {
 	typ.Delimiter = reader.String()
 	typ.RelID = reader.Id()
 	typ.SubscriptFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
-	typ.Elem = id.Type(reader.Id())
-	typ.Array = id.Type(reader.Id())
+	typ.Elem = prefillTypeDuringDeserialization(id.Type(reader.Id()))
+	typ.Array = prefillTypeDuringDeserialization(id.Type(reader.Id()))
 	typ.InputFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
 	typ.OutputFunc = globalFunctionRegistry.InternalToRegistryID(id.Function(reader.Id()))
 	receiveFunc := id.Function(reader.Id())
@@ -82,7 +83,7 @@ func DeserializeType(serializedType []byte) (sql.ExtendedType, error) {
 	typ.Align = TypeAlignment(reader.String())
 	typ.Storage = TypeStorage(reader.String())
 	typ.NotNull = reader.Bool()
-	typ.BaseTypeID = id.Type(reader.Id())
+	typ.BaseTypeType = prefillTypeDuringDeserialization(id.Type(reader.Id()))
 	typ.TypMod = reader.Int32()
 	typ.NDims = reader.Int32()
 	typ.TypCollation = id.Collation(reader.Id())
@@ -123,13 +124,13 @@ func DeserializeType(serializedType []byte) (sql.ExtendedType, error) {
 		for k := uint64(0); k < numOfCompAttrs; k++ {
 			relID := reader.Id()
 			name := reader.String()
-			typeID := reader.Id()
+			attrType := prefillTypeDuringDeserialization(id.Type(reader.Id()))
 			num := reader.Int16()
 			collation := reader.String()
 			typ.CompositeAttrs[k] = CompositeAttribute{
 				RelID:     relID,
 				Name:      name,
-				TypeID:    id.Type(typeID),
+				Type:      attrType,
 				Num:       num,
 				Collation: collation,
 			}
@@ -147,6 +148,28 @@ func DeserializeType(serializedType []byte) (sql.ExtendedType, error) {
 	if f, ok := idToInternalDeserializationFunc[receiveFunc]; ok {
 		typ.DeserializationFunc = f
 	}
+
+	// Resolve all of the potentially unresolved types
+	var err error
+	typ.Elem, typeColl, err = recursiveDeserializeType(ctx, typ, typeColl, typ.Elem)
+	if err != nil {
+		return nil, err
+	}
+	typ.Array, typeColl, err = recursiveDeserializeType(ctx, typ, typeColl, typ.Array)
+	if err != nil {
+		return nil, err
+	}
+	typ.BaseTypeType, typeColl, err = recursiveDeserializeType(ctx, typ, typeColl, typ.BaseTypeType)
+	if err != nil {
+		return nil, err
+	}
+	for i := range typ.CompositeAttrs {
+		typ.CompositeAttrs[i].Type, typeColl, err = recursiveDeserializeType(ctx, typ, typeColl, typ.CompositeAttrs[i].Type)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Return the deserialized object
 	return typ, nil
 }
@@ -166,8 +189,8 @@ func (t *DoltgresType) Serialize() []byte {
 	writer.String(t.Delimiter)
 	writer.Id(t.RelID)
 	writer.Id(globalFunctionRegistry.GetInternalID(t.SubscriptFunc).AsId())
-	writer.Id(t.Elem.AsId())
-	writer.Id(t.Array.AsId())
+	writer.Id(t.Elem.ID.AsId())
+	writer.Id(t.Array.ID.AsId())
 	writer.Id(globalFunctionRegistry.GetInternalID(t.InputFunc).AsId())
 	writer.Id(globalFunctionRegistry.GetInternalID(t.OutputFunc).AsId())
 	writer.Id(globalFunctionRegistry.GetInternalID(t.ReceiveFunc).AsId())
@@ -178,7 +201,7 @@ func (t *DoltgresType) Serialize() []byte {
 	writer.String(string(t.Align))
 	writer.String(string(t.Storage))
 	writer.Bool(t.NotNull)
-	writer.Id(t.BaseTypeID.AsId())
+	writer.Id(t.BaseTypeType.ID.AsId())
 	writer.Int32(t.TypMod)
 	writer.Int32(t.NDims)
 	writer.Id(t.TypCollation.AsId())
@@ -210,11 +233,50 @@ func (t *DoltgresType) Serialize() []byte {
 		for _, l := range t.CompositeAttrs {
 			writer.Id(l.RelID)
 			writer.String(l.Name)
-			writer.Id(l.TypeID.AsId())
+			writer.Id(l.Type.ID.AsId())
 			writer.Int16(l.Num)
 			writer.String(l.Collation)
 		}
 	}
 	writer.String(t.InternalName)
 	return writer.Data()
+}
+
+// prefillTypeDuringDeserialization attempts to return a suitable type if it's one that relies strictly on built-in
+// types.
+func prefillTypeDuringDeserialization(target id.Type) *DoltgresType {
+	if target == id.NullType {
+		return internalNullType
+	}
+	if builtin, ok := IDToBuiltInDoltgresType[target]; ok {
+		return builtin
+	}
+	return NewUnresolvedDoltgresTypeFromID(target)
+}
+
+// recursiveDeserializeType handles recursive type initialization by caching the type-in-progress and returning the
+// target type. This also takes a TypeCollection so that it may be reused if multiple calls are made without having to
+// fetch it at each instance.
+func recursiveDeserializeType(ctx *sql.Context, typ *DoltgresType, typeColl TypeCollection, target *DoltgresType) (*DoltgresType, TypeCollection, error) {
+	if !target.IsUnresolved {
+		return target, typeColl, nil
+	}
+	var recursedType *DoltgresType
+	var err error
+	if typeColl == nil {
+		typeColl, err = GetTypesCollectionFromContext(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	typeColl.WithCachedType(typ, func() {
+		t, nErr := typeColl.GetType(ctx, target.ID)
+		recursedType = t
+		err = nErr
+	})
+	// `GetType` returns a nil type if it cannot be found, so we want to error in that case
+	if err == nil && recursedType == nil {
+		return target, typeColl, errors.Errorf("unable to resolve type `%s` during deserialization", target.ID.TypeName())
+	}
+	return recursedType, typeColl, err
 }

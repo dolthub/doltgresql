@@ -210,24 +210,25 @@ func (it *InTuple) WithChildren(ctx *sql.Context, children ...sql.Expression) (s
 				break
 			}
 			arrayLiterals[i] = expression.NewLiteral(nil, rightType)
-			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_in_comparison", staticLiteral, arrayLiterals[i])
-			if compFuncs[i] == nil {
+			compFunc := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_in_comparison", staticLiteral, arrayLiterals[i])
+			if compFunc == nil {
 				return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
-			cid := compFuncs[i].Type(ctx).(*pgtypes.DoltgresType).ID
+			cid := compFunc.Type(ctx).(*pgtypes.DoltgresType).ID
 			if cid != pgtypes.Bool.ID {
 				// Prepared statement binding values will need explicit casting to appropriate type
 				ec := NewAssignmentCast(arrayLiterals[i], pgtypes.Unknown, staticLiteral.Type(ctx).(*pgtypes.DoltgresType))
-				compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_in_comparison", staticLiteral, ec)
-				if compFuncs[i] == nil {
+				compFunc = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_in_comparison", staticLiteral, ec)
+				if compFunc == nil || compFunc.StashedError() != nil {
 					return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 				}
-				cid = compFuncs[i].Type(ctx).(*pgtypes.DoltgresType).ID
+				cid = compFunc.Type(ctx).(*pgtypes.DoltgresType).ID
 				if cid != pgtypes.Bool.ID {
 					// This should never happen, but this is just to be safe
 					return nil, errors.Errorf("%T: found equality comparison that does not return a bool", it)
 				}
 			}
+			compFuncs[i] = compFunc
 		}
 		if allValidChildren {
 			return &InTuple{
