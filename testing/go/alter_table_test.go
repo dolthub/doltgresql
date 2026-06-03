@@ -1172,5 +1172,111 @@ func TestAlterTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ALTER TABLE with NOT VALID clauses on foreign key constraint",
+			SetUpScript: []string{
+				`CREATE TABLE attmp2 (a int primary key);`,
+				`CREATE TABLE attmp3 (a int, b int);`,
+				`INSERT INTO attmp2 values (1),(2),(3),(4);`,
+				`INSERT INTO attmp3 values (1,10),(1,20),(5,50);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO attmp3 values (5,50);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Skip:     true, // TODO: if no column defined, load all to compare (for attmp2)
+					Query:    `ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 NOT VALID;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// equivalent query as above
+					Query:    `ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 (a) NOT VALID;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: error message should be `Key (a)=(5) is not present in table "attmp2"`
+					Query:       `ALTER TABLE attmp3 validate constraint attmpconstr;`,
+					ExpectedErr: `Foreign key violation`,
+				},
+				{
+					Query:    `DELETE FROM attmp3 where a=5;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 validate constraint attmpconstr;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 validate constraint attmpconstr;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT 
+    con.conname AS constraint_name,
+    cl_child.relname AS child_table,
+    (SELECT array_agg(attname) FROM pg_attribute WHERE attrelid = con.conrelid AND attnum = ANY(con.conkey)) AS child_columns,
+    cl_parent.relname AS parent_table,
+    (SELECT array_agg(attname) FROM pg_attribute WHERE attrelid = con.confrelid AND attnum = ANY(con.confkey)) AS parent_columns
+FROM pg_catalog.pg_constraint con
+JOIN pg_catalog.pg_class cl_child ON con.conrelid = cl_child.oid
+JOIN pg_catalog.pg_class cl_parent ON con.confrelid = cl_parent.oid
+WHERE con.contype = 'f';`,
+					Expected: []sql.Row{{"attmpconstr", "attmp3", "{a}", "attmp2", "{a}"}},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE with NOT VALID clauses on check constraint",
+			SetUpScript: []string{
+				`CREATE TABLE attmp2 (a int primary key);`,
+				`CREATE TABLE attmp3 (a int, b int);`,
+				`INSERT INTO attmp2 values (1),(2),(3),(4);`,
+				`INSERT INTO attmp3 values (1,10),(1,20);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: error message should be `check constraint "b_greater_than_ten" of relation "attmp3" is violated by some row`
+					Query:       `ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10);`,
+					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+				},
+				{
+					Query:    `ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10) NOT VALID;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: error message should be `check constraint "b_greater_than_ten" of relation "attmp3" is violated by some row`
+					Query:       `ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten;`,
+					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+				},
+				{
+					Query:    `DELETE FROM attmp3 WHERE NOT b > 10;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT                                                              
+    ns.nspname AS schema_name,
+    cl.relname AS table_name,
+    con.conname AS constraint_name,
+    pg_get_constraintdef(con.oid) AS constraint_definition
+FROM pg_catalog.pg_constraint con
+JOIN pg_catalog.pg_class cl ON con.conrelid = cl.oid
+JOIN pg_catalog.pg_namespace ns ON cl.relnamespace = ns.oid
+WHERE con.contype = 'c'
+ORDER BY schema_name, table_name;`,
+					// TODO: the check should `CHECK ((b > 10))`
+					Expected: []sql.Row{{"public", "attmp3", "b_greater_than_ten", `b_greater_than_ten CHECK "b" > 10 ENFORCED`}},
+				},
+			},
+		},
 	})
 }
