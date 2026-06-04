@@ -16,7 +16,6 @@ package server
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -70,7 +69,7 @@ var _ sqle.ProviderFactory = DoltgresProviderFactory{}
 
 // NewProvider overrides DoltProviderFactory.NewProvider to wrap the created provider in
 // DoltgresDatabaseProvider before returning it.
-func (f DoltgresProviderFactory) NewProvider(defaultBranch string, fs filesys.Filesys, databases []dsess.SqlDatabase, locations []filesys.Filesys, overrides sql.EngineOverrides) (sql.DatabaseProvider, error) {
+func (f DoltgresProviderFactory) NewProvider(defaultBranch string, fs filesys.Filesys, databases []sqle.SqlDatabase, locations []filesys.Filesys, overrides sql.EngineOverrides) (sql.DatabaseProvider, error) {
 	inner, err := f.DoltProviderFactory.NewProvider(defaultBranch, fs, databases, locations, overrides)
 	if err != nil {
 		return nil, err
