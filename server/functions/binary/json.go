@@ -457,10 +457,20 @@ func extractJsonPathBySingleLookup(ctx *sql.Context, doc sql.JSONWrapper, paths 
 	sb.WriteString("$")
 	ambiguous := false
 	for _, path := range paths {
-		textPath, ok := path.(string)
-		if !ok {
-			return nil, false, errors.Errorf("expected string path element: %v", path)
+		var textPath string
+		switch path := path.(type) {
+		case string:
+			textPath = path
+		case sql.StringWrapper:
+			var err error
+			textPath, err = path.Unwrap(ctx)
+			if err != nil {
+				return nil, false, err
+			}
+		case nil:
+			return nil, true, nil
 		}
+
 		if idx, err := strconv.Atoi(textPath); err == nil {
 			// An integer element could be an array index or a numeric object
 			// key (or a negative index), so the lookup result isn't conclusive.

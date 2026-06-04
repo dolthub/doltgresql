@@ -91,6 +91,10 @@ func TestJsonObjectField(t *testing.T) {
 					Expected: []sql.Row{{`"two"`}},
 				},
 				{
+					Query:    `SELECT '{"a":1,"b":"two"}'::jsonb -> null;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
 					Query:    `SELECT '{"nested":{"x":[1,2,3]}}'::jsonb -> 'nested';`,
 					Expected: []sql.Row{{`{"x": [1, 2, 3]}`}},
 				},
