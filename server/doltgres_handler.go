@@ -47,7 +47,6 @@ import (
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
-	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -182,25 +181,18 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 		logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
 		return nil, nil, sql.CastSQLError(err)
 	}
+	// Always attempt analysis to get correct column names for Describe(statement) responses.
+	// When bind variables are present the analyzer may fail or produce an inaccurate schema;
+	// in that case we fall back to the unanalyzed node rather than propagating the error —
+	// the real analysis with bound values happens later during Bind/Execute.
+	//
+	// Importantly, we return the pre-analysis node regardless of whether analysis succeeded.
+	// The analyzed plan is used only for schema/column-name determination; the unanalyzed node
+	// must be returned so that the caller can still find BindVar expressions via
+	// extractBindVarTypes (the analyzer replaces them with typed expressions).
 	analyzed := node
-	// We do not analyze expressions with bind variables, since that step comes later and analysis will return invalid results
-	hasBindVars := false
-	pgtransform.InspectNodeExprs(sqlCtx, node, func(sqlCtx *sql.Context, expr sql.Expression) bool {
-		if _, ok := expr.(*expression.BindVar); ok {
-			hasBindVars = true
-			return true
-		}
-		return false
-	})
-	if !hasBindVars {
-		analyzed, err = h.e.Analyzer.Analyze(sqlCtx, node, nil, nil)
-		if err != nil {
-			if printErrorStackTraces {
-				fmt.Printf("unable to prepare query: %+v\n", err)
-			}
-			logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
-			return nil, nil, sql.CastSQLError(err)
-		}
+	if attemptedAnalysis, analyzeErr := h.e.Analyzer.Analyze(sqlCtx, node, nil, nil); analyzeErr == nil {
+		analyzed = attemptedAnalysis
 	}
 
 	var fields []pgproto3.FieldDescription
@@ -219,7 +211,9 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			return nil, nil, err
 		}
 	}
-	return analyzed, fields, nil
+	// Return the pre-analysis node so callers can still find BindVar expressions.
+	// The analyzed plan was only needed to determine column names for the fields above.
+	return node, fields, nil
 }
 
 // ComQuery implements the Handler interface.

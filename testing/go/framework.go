@@ -490,6 +490,11 @@ func newTestDatabaseConnection(t *testing.T, ctx context.Context, database, host
 	config.OnNotice = func(conn *pgconn.PgConn, notice *pgconn.Notice) {
 		receivedNotices = append(receivedNotices, notice)
 	}
+	// pgx v5.9.1+ skips Describe(portal) on statement-cache hits, so stale field descriptions
+	// from before a DDL change (e.g. DROP COLUMN) cause a field-count/value-count mismatch and
+	// panic in rows.Values(). DescribeExec re-describes every query, keeping schema info fresh.
+	// It also preserves binary wire format (needed for record type decoding).
+	config.DefaultQueryExecMode = pgx.QueryExecModeDescribeExec
 
 	conn, err := pgx.ConnectConfig(ctx, config)
 	require.NoError(t, err)
