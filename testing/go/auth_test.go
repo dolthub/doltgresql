@@ -38,6 +38,280 @@ var (
 	authTestCreateBasicUser = fmt.Sprintf("create user if not exists '%s' with password '%s'", authTestBasicUser, authTestBasicPass)
 )
 
+func TestAlterDefaultPrivileges(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "ALTER DEFAULT PRIVILEGES nonexistent role and grantee returns error",
+			SetUpScript: []string{
+				"CREATE ROLE ownerrole2;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER DEFAULT PRIVILEGES FOR ROLE no_such_role GRANT SELECT ON TABLES TO postgres;",
+					ExpectedErr: `role "no_such_role" does not exist`,
+				},
+				{
+					Query:       "ALTER DEFAULT PRIVILEGES FOR ROLE ownerrole2 GRANT SELECT ON TABLES TO no_such_grantee;",
+					ExpectedErr: `role "no_such_grantee" does not exist`,
+				},
+			},
+		},
+		{
+			Name: `ALTER DEFAULT PRIVILEGES`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER readonly_user PASSWORD 'a';`,
+				`GRANT USAGE ON SCHEMA public TO readonly_user;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE test (pk INT4 PRIMARY KEY);`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `readonly_user`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR USER auth_test_super IN SCHEMA public GRANT SELECT ON TABLES TO readonly_user;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `readonly_user`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE TABLE another_table (pk INT4 PRIMARY KEY);`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM another_table;`,
+					Username: `readonly_user`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `create table user_table (i int);`,
+					Username:    `readonly_user`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR USER auth_test_super IN SCHEMA public REVOKE SELECT ON TABLES FROM readonly_user;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `readonly_user`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+			},
+		},
+		{
+			Name: `ALTER DEFAULT PRIVILEGES applies to new sequences`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER seq_reader PASSWORD 'a';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE SEQUENCE old_seq START WITH 1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT nextval('old_seq');`,
+					Username:    `seq_reader`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR USER auth_test_super IN SCHEMA public GRANT USAGE ON SEQUENCES TO seq_reader;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT nextval('old_seq');`,
+					Username:    `seq_reader`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE SEQUENCE new_seq START WITH 10;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT nextval('new_seq');`,
+					Username: `seq_reader`,
+					Password: `a`,
+					Expected: []sql.Row{{10}},
+				},
+			},
+		},
+		{
+			Name: `ALTER DEFAULT PRIVILEGES applies to new functions`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER func_reader PASSWORD 'a';`,
+				`GRANT USAGE ON SCHEMA public TO func_reader;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION old_func() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT old_func();`,
+					Username:    `func_reader`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR USER auth_test_super IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO func_reader;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT old_func();`,
+					Username:    `func_reader`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE FUNCTION new_func() RETURNS int AS $$ BEGIN RETURN 42; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT new_func();`,
+					Username: `func_reader`,
+					Password: `a`,
+					Expected: []sql.Row{{42}},
+				},
+			},
+		},
+		{
+			Name: `ALTER DEFAULT PRIVILEGES FOR ROLE`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`create user another_super with superuser password 'another';`,
+				`CREATE USER user1 PASSWORD 'a';`,
+				`CREATE TABLE test (pk INT4 PRIMARY KEY);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					// It only applies to tables created after this command is executed.
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super IN SCHEMA public GRANT SELECT ON TABLES TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM test;`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE TABLE new_table (pk INT4 PRIMARY KEY);`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM new_table;`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE TABLE by_another (pk INT4 PRIMARY KEY);`,
+					Username: `another_super`,
+					Password: `another`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM by_another;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					// cannot select from tables created by `another` user
+					Query:       `SELECT * FROM by_another;`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:       `INSERT INTO test VALUES (1), (5), (6);`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					// It only applies to tables created after this command is executed.
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super IN SCHEMA public GRANT INSERT ON TABLES TO user1;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO test VALUES (1), (5), (6);`,
+					Username:    `user1`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `CREATE TABLE different_test (pk INT4 PRIMARY KEY);`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO different_test VALUES (1), (5), (6);`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM different_test;`,
+					Username: `user1`,
+					Password: `a`,
+					Expected: []sql.Row{{1}, {5}, {6}},
+				},
+			},
+		},
+	})
+}
+
 func TestAuthTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
