@@ -191,29 +191,29 @@ const (
 )
 
 func getLayoutStringFormat(ctx *sql.Context, dateOnly bool) string {
-	layout := getDateStyleOutputFormat(ctx)
-	switch layout {
-	case DateStyleISO:
-		if dateOnly {
-			return dateStyleFormatDateOnly_ISO
-		}
-		return dateStyleFormat_ISO
-	case DateStyleSQL:
-		if dateOnly {
-			return dateStyleFormatDateOnly_SQL
-		}
-		return dateStyleFormat_SQL
-	case DateStylePostgres:
-		if dateOnly {
-			return dateStyleFormatDateOnly_Postgres
-		}
-		return dateStyleFormat_Postgres
-	case DateStyleGerman:
-		if dateOnly {
-			return dateStyleFormatDateOnly_German
-		}
-		return dateStyleFormat_German
-	}
+	//layout := getDateStyleOutputFormat(ctx)
+	//switch layout {
+	//case DateStyleISO:
+	//	if dateOnly {
+	//		return dateStyleFormatDateOnly_ISO
+	//	}
+	//	return dateStyleFormat_ISO
+	//case DateStyleSQL:
+	//	if dateOnly {
+	//		return dateStyleFormatDateOnly_SQL
+	//	}
+	//	return dateStyleFormat_SQL
+	//case DateStylePostgres:
+	//	if dateOnly {
+	//		return dateStyleFormatDateOnly_Postgres
+	//	}
+	//	return dateStyleFormat_Postgres
+	//case DateStyleGerman:
+	//	if dateOnly {
+	//		return dateStyleFormatDateOnly_German
+	//	}
+	//	return dateStyleFormat_German
+	//}
 	// shouldn't happen but return default
 	if dateOnly {
 		return dateStyleFormatDateOnly_ISO
