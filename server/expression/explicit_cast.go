@@ -120,7 +120,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		// during an error, so it's safe to use.
 		castToType := c.castToType
 		if c.castToType.IsArrayType() {
-			castToType = c.castToType.ArrayBaseTypeCtx(ctx)
+			castToType = c.castToType.ArrayBaseType()
 		}
 		// A nil result will be returned if there's a critical error, which we should never ignore.
 		if castToType.TypCategory != pgtypes.TypeCategory_StringTypes || castResult == nil {
@@ -195,6 +195,24 @@ func (c *ExplicitCast) WithResolvedChildren(ctx context.Context, children []any)
 	resolvedExpression, ok := children[0].(sql.Expression)
 	if !ok {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[0])
+	}
+	if !c.castToType.IsResolvedType() {
+		sqlCtx, ok := ctx.(*sql.Context)
+		if !ok {
+			return nil, errors.Errorf("%T requires a SQL context for type resolution", c)
+		}
+		typeColl, err := core.GetTypesCollectionFromContext(sqlCtx)
+		if err != nil {
+			return nil, err
+		}
+		resolvedType, err := typeColl.ResolveType(sqlCtx, c.castToType.ID)
+		if err != nil {
+			return nil, err
+		}
+		c.castToType = resolvedType
+	}
+	if !c.castToType.IsDefined {
+		return nil, pgtypes.ErrTypeIsOnlyAShell.New(c.castToType.Name())
 	}
 	return &ExplicitCast{
 		sqlChild:       resolvedExpression,

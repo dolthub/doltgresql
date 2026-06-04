@@ -27,7 +27,8 @@ import (
 // ErrInvalidInputValueForEnum is returned when the input value does not match given enum type's labels.
 var ErrInvalidInputValueForEnum = srcdErrors.NewKind(`invalid input value for enum %s: "%s"`)
 
-// NewEnumType creates new instance of enum DoltgresType.
+// NewEnumType creates new instance of enum DoltgresType. The `Array` field is created in an unresolved state, and
+// should be resolved immediately after creation.
 func NewEnumType(ctx *sql.Context, arrayID, typeID id.Type, labels map[string]EnumLabel) *DoltgresType {
 	return &DoltgresType{
 		ID:                  typeID,
@@ -40,8 +41,8 @@ func NewEnumType(ctx *sql.Context, arrayID, typeID id.Type, labels map[string]En
 		Delimiter:           ",",
 		RelID:               id.Null,
 		SubscriptFunc:       toFuncID("-"),
-		Elem:                id.NullType,
-		Array:               arrayID,
+		Elem:                internalNullType,
+		Array:               NewUnresolvedDoltgresTypeFromID(arrayID),
 		InputFunc:           toFuncID("enum_in", toInternal("cstring"), toInternal("oid")),
 		OutputFunc:          toFuncID("enum_out", toInternal("anyenum")),
 		ReceiveFunc:         toFuncID("enum_recv", toInternal("internal"), toInternal("oid")),
@@ -52,7 +53,7 @@ func NewEnumType(ctx *sql.Context, arrayID, typeID id.Type, labels map[string]En
 		Align:               TypeAlignment_Int,
 		Storage:             TypeStorage_Plain,
 		NotNull:             false,
-		BaseTypeID:          id.NullType,
+		BaseTypeType:        internalNullType,
 		TypMod:              -1,
 		NDims:               0,
 		TypCollation:        id.NullCollation,

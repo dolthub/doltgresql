@@ -508,7 +508,7 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 	// branch state dirty, and dolt only allows a single dirty working set per commit. So it's important here to only
 	// update the session root if something actually changed for that db.
 	if err, rootChanged := rootValueChanged(newRoot, root); rootChanged {
-		if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), newRoot); err != nil {
+		if err = session.SetWorkingRoot(ctx, db, newRoot); err != nil {
 			// TODO: We need a way to see if the session has a writeable working root
 			// (new interface method on session probably), and avoid setting it if so
 			if errors.Is(err, doltdb.ErrOperationNotSupportedInDetachedHead) {

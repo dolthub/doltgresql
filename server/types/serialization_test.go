@@ -17,6 +17,7 @@ package types
 import (
 	"testing"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +26,7 @@ func TestSerializationConsistency(t *testing.T) {
 	for _, typ := range GetAllBuitInTypes() {
 		t.Run(typ.Name(), func(t *testing.T) {
 			serializedType := typ.Serialize()
-			dt, err := DeserializeType(serializedType)
+			dt, err := DeserializeType(sql.NewEmptyContext(), serializedType)
 			require.NoError(t, err)
 			dgt := dt.(*DoltgresType)
 			// require.Equal: Function equality cannot be determined and will always fail.

@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,15 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tables
+package types
 
-import (
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-
-	"github.com/dolthub/doltgresql/core"
-)
-
-// Init handles initialization of all Postgres-specific and Doltgres-specific tables.
+// Init initializes this package.
 func Init() {
-	doltdb.IsValidIdentifier = core.IsValidPostgresIdentifier
+	internalNullType.Array = internalNullType
+	internalNullType.Elem = internalNullType
+	internalNullType.BaseTypeType = internalNullType
 }

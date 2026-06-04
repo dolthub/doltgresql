@@ -224,7 +224,7 @@ func (c *CompiledFunction) Type(ctx *sql.Context) sql.Type {
 		if rt.IsPolymorphicType() && len(c.originalTypes) > 0 {
 			rt = c.originalTypes[0]
 			if rt.IsArrayType() {
-				return rt.ArrayBaseTypeCtx(ctx)
+				return rt.ArrayBaseType()
 			}
 		}
 		return rt
@@ -309,7 +309,7 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 					// should be impossible, we check this at function compile time
 					return nil, cerrors.Errorf("variadic arguments must be array types, was %T", targetType)
 				}
-				targetType = targetType.ArrayBaseTypeCtx(ctx)
+				targetType = targetType.ArrayBaseType()
 			} else {
 				targetType = targetParamTypes[i]
 				// When the declared parameter type is anyarray, the implicit cast from an
@@ -866,7 +866,7 @@ func (*CompiledFunction) specificFuncImpl() {}
 func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) *pgtypes.DoltgresType {
 	if isSRF {
 		// TODO: need support for used defined types
-		if typ, ok := pgtypes.IDToBuiltInDoltgresType[t.Elem]; ok {
+		if typ, ok := pgtypes.IDToBuiltInDoltgresType[t.Elem.ID]; ok {
 			return typ
 		}
 	}

@@ -1345,5 +1345,48 @@ ORDER BY 1,2;`,
 				},
 			},
 		},
+		{
+			Name: "Sequence names must be unique across all relation types",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int PRIMARY KEY, v1 int);",
+				"CREATE SEQUENCE existing_seq;",
+				"CREATE VIEW view1 AS SELECT pk FROM tbl1;",
+				"CREATE INDEX idx1 ON tbl1 (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE SEQUENCE tbl1;",
+					ExpectedErr: `relation "tbl1" already exists`,
+				},
+				{
+					Query:    "CREATE SEQUENCE IF NOT EXISTS tbl1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE SEQUENCE existing_seq;",
+					ExpectedErr: `relation "existing_seq" already exists`,
+				},
+				{
+					Query:    "CREATE SEQUENCE IF NOT EXISTS existing_seq;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE SEQUENCE view1;",
+					ExpectedErr: `relation "view1" already exists`,
+				},
+				{
+					Query:    "CREATE SEQUENCE IF NOT EXISTS view1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE SEQUENCE idx1;",
+					ExpectedErr: `relation "idx1" already exists`,
+				},
+				{
+					Query:    "CREATE SEQUENCE IF NOT EXISTS idx1;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }

@@ -32,8 +32,8 @@ var Row = &DoltgresType{
 	Delimiter:     ",",
 	RelID:         id.Null,
 	SubscriptFunc: toFuncID("-"),
-	Elem:          id.NullType,
-	Array:         id.NullType,
+	Elem:          internalNullType,
+	Array:         internalNullType,
 	InputFunc:     toFuncID("_"),
 	OutputFunc:    toFuncID("_"),
 	ReceiveFunc:   toFuncID("-"),
@@ -44,7 +44,7 @@ var Row = &DoltgresType{
 	Align:         TypeAlignment_Double,
 	Storage:       TypeStorage_Extended,
 	NotNull:       false,
-	BaseTypeID:    id.NullType,
+	BaseTypeType:  internalNullType,
 	TypMod:        -1,
 	NDims:         0,
 	TypCollation:  id.NullCollation,
@@ -61,7 +61,7 @@ var Row = &DoltgresType{
 // the type is array type before used.
 func RowTypeWithReturnType(baseType *DoltgresType) *DoltgresType {
 	rt := *Row
-	rt.Elem = baseType.ID
+	rt.Elem = baseType
 	rt.InputFunc = baseType.InputFunc
 	rt.OutputFunc = baseType.OutputFunc
 	return &rt
