@@ -61,7 +61,7 @@ func (*TypeCollection) HandleMerge(ctx context.Context, mro merge.MergeRootObjec
 	mergedType := *ourType
 	switch theirType.TypType {
 	case pgtypes.TypeType_Domain:
-		if ourType.BaseTypeID != theirType.BaseTypeID {
+		if ourType.BaseTypeType.ID != theirType.BaseTypeType.ID {
 			// TODO: we can extend on this in the future (e.g.: maybe uses preferred type?)
 			return nil, nil, errors.Errorf(`base types of domain type "%s" do not match`, theirType.ID.TypeName())
 		}
@@ -130,6 +130,7 @@ func LoadTypes(ctx context.Context, root objinterface.RootValue) (*TypeCollectio
 	}
 	return &TypeCollection{
 		accessedMap:   make(map[id.Type]*pgtypes.DoltgresType),
+		initCache:     make(map[id.Type]*pgtypes.DoltgresType),
 		underlyingMap: m,
 		ns:            root.NodeStore(),
 	}, nil
@@ -155,6 +156,7 @@ func (*TypeCollection) ResolveNameFromObjects(ctx context.Context, name doltdb.T
 	}
 	tempCollection := TypeCollection{
 		accessedMap:   accessedMap,
+		initCache:     make(map[id.Type]*pgtypes.DoltgresType),
 		underlyingMap: addressMap,
 		ns:            ns,
 	}

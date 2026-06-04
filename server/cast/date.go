@@ -19,28 +19,30 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initDate handles all casts that are built-in. This comprises only the "From" types.
-func initDate() {
-	dateImplicit()
+// initDate handles all casts that are built-in. This comprises only the source types.
+func initDate(builtInCasts map[id.Cast]casts.Cast) {
+	dateImplicit(builtInCasts)
 }
 
-// dateImplicit registers all implicit casts. This comprises only the "From" types.
-func dateImplicit() {
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+// dateImplicit registers all implicit casts. This comprises only the source types.
+func dateImplicit(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Date,
 		ToType:   pgtypes.Timestamp,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(time.Time), nil
 		},
 	})
-	framework.MustAddImplicitTypeCast(framework.TypeCast{
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Date,
 		ToType:   pgtypes.TimestampTZ,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val.(time.Time), nil
 		},
 	})

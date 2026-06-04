@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/rootobject"
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/auth"
@@ -35,6 +36,7 @@ import (
 	"github.com/dolthub/doltgresql/server/tables/dtables"
 	"github.com/dolthub/doltgresql/server/tables/information_schema"
 	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
@@ -47,13 +49,15 @@ func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 		core.Init()
 		rootobject.Init()
 		auth.Init(dEnv, cfg)
+		pgtypes.Init()
 		analyzer.Init()
 		config.Init()
 		binary.Init()
 		unary.Init()
 		functions.Init()
 		aggregate.Init()
-		cast.Init()
+		builtInCasts := casts.Init()
+		cast.Init(builtInCasts)
 		framework.Initialize()
 		servercfg.DefaultUnixSocketFilePath = cfgdetails.DefaultPostgresUnixSocketFilePath
 		tables.Init()

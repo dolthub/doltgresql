@@ -17,9 +17,9 @@ package _go
 import (
 	"testing"
 
-	"github.com/dolthub/doltgresql/testing/go/testdata"
-
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/testing/go/testdata"
 )
 
 func TestBasicIndexing(t *testing.T) {
@@ -1077,15 +1077,7 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "CREATE INDEX v1_idx ON test(v1 varchar_pattern_ops) WITH (storage_opt1 = foo) TABLESPACE tablespace_name;",
 				},
 				{
-					Query:       "CREATE INDEX v1_idx2 ON test( (concat(v1, v1)) ) ;",
-					ExpectedErr: "not yet supported",
-				},
-				{
 					Query:       "CREATE INDEX v1_idx2 ON test using hash (v1);",
-					ExpectedErr: "not yet supported",
-				},
-				{
-					Query:       "CREATE INDEX v1_idx2 ON test(v1) WHERE v1 > 100;",
 					ExpectedErr: "not yet supported",
 				},
 				{
@@ -1378,24 +1370,313 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
-		{ // https://github.com/dolthub/doltgresql/issues/2206
-			Name: "Index attributes",
-			Skip: true, // We were getting a syntax error previously, which is fixed, however we don't yet support expression index attributes
+		{
+			Name: "Index names must be unique across all relation types",
 			SetUpScript: []string{
-				`CREATE TABLE IF NOT EXISTS items (id SERIAL PRIMARY KEY, title VARCHAR(100) NOT NULL, metadata JSON, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);`,
+				"CREATE TABLE t1 (pk int PRIMARY KEY, v1 int);",
+				"CREATE TABLE t2 (pk int PRIMARY KEY, v1 int);",
+				"CREATE TABLE tbl1 (pk int PRIMARY KEY, v1 int);",
+				"CREATE SEQUENCE seq1;",
+				"CREATE VIEW view1 AS SELECT pk FROM t1;",
+				"CREATE INDEX idx1 ON t1 (v1);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    "CREATE UNIQUE INDEX IF NOT EXISTS idx_items_title_lower ON items(lower(title));",
+					Query:    "CREATE INDEX idx_unique ON t1 (v1);",
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "INSERT INTO items (title, metadata, updated_at) VALUES ('ABC', '{}', '2026-10-10 01:02:03');",
+					Query:    "CREATE INDEX IF NOT EXISTS idx_unique ON t1 (v1);",
 					Expected: []sql.Row{},
 				},
 				{
-					Query:       "INSERT INTO items (title, metadata, updated_at) VALUES ('abc', '{}', '2026-11-12 03:04:05');",
-					ExpectedErr: "duplicate key value violates unique constraint",
+					Query:       "CREATE INDEX idx_unique ON t2 (v1);",
+					ExpectedErr: `relation "idx_unique" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS idx_unique ON t2 (v1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE INDEX tbl1 ON t2 (v1);",
+					ExpectedErr: `relation "tbl1" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS tbl1 ON t2 (v1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE INDEX seq1 ON t2 (v1);",
+					ExpectedErr: `relation "seq1" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS seq1 ON t2 (v1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "CREATE INDEX view1 ON t2 (v1);",
+					ExpectedErr: `relation "view1" already exists`,
+				},
+				{
+					Query:    "CREATE INDEX IF NOT EXISTS view1 ON t2 (v1);",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "DROP INDEX",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
+				"CREATE INDEX v1_idx ON t (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "DROP INDEX v1_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "DROP INDEX v1_idx;",
+					ExpectedErr: "unable to find index",
+				},
+				{
+					Query:       "DROP INDEX no_such_index;",
+					ExpectedErr: "unable to find index",
+				},
+			},
+		},
+		{
+			Name: "DROP INDEX IF EXISTS",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
+				"CREATE INDEX v1_idx ON t (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "DROP INDEX IF EXISTS v1_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP INDEX IF EXISTS v1_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DROP INDEX IF EXISTS no_such_index;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "DROP INDEX removes index from query plan",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
+				"INSERT INTO t VALUES (1, 10), (2, 20), (3, 30);",
+				"CREATE INDEX v1_idx ON t (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "EXPLAIN SELECT * FROM t WHERE v1 = 20;",
+					Expected: []sql.Row{
+						{"IndexedTableAccess(t)"},
+						{" ├─ index: [t.v1]"},
+						{" ├─ filters: [{[20, 20]}]"},
+						{" └─ columns: [pk v1]"},
+					},
+				},
+				{
+					Query:    "DROP INDEX v1_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "EXPLAIN SELECT * FROM t WHERE v1 = 20;",
+					Expected: []sql.Row{
+						{"Filter"},
+						{" ├─ t.v1 = 20"},
+						{" └─ Table"},
+						{"     ├─ name: t"},
+						{"     └─ columns: [pk v1]"},
+					},
+				},
+			},
+		},
+		{
+			Name: "DROP INDEX is case-insensitive on index name",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
+				`CREATE INDEX "idx_Mixed" ON t (v1);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `DROP INDEX "IDX_MIXED";`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "partial index",
+			SetUpScript: []string{
+				`CREATE TABLE user_sessions (
+    session_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE UNIQUE INDEX idx_one_active_session_per_user ON user_sessions (user_id) WHERE is_active = TRUE;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_one_active_session_per_user';",
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_one_active_session_per_user ON public.user_sessions USING btree (user_id) WHERE (user_sessions.is_active = true)"}},
+				},
+				{
+					Query:    "INSERT INTO user_sessions (user_id, is_active) VALUES (42, true);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO user_sessions (user_id, is_active) VALUES (99, true);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO user_sessions (user_id, is_active) VALUES (42, true);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					// succeeds because is_active is false
+					Query:    "INSERT INTO user_sessions (user_id, is_active) VALUES (42, false);",
+					Expected: []sql.Row{},
+				},
+				{
+					// succeeds because is_active is false
+					Query:    "INSERT INTO user_sessions (user_id, is_active) VALUES (42, false);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM user_sessions;",
+					Expected: []sql.Row{{1, 42, "t"}, {2, 99, "t"}, {4, 42, "f"}, {5, 42, "f"}},
+				},
+				{
+					Query:    "SELECT * FROM user_sessions WHERE user_id = 42;",
+					Expected: []sql.Row{{1, 42, "t"}, {4, 42, "f"}, {5, 42, "f"}},
+				},
+				{
+					Query:    "SELECT is_active FROM user_sessions WHERE user_id = 42;",
+					Expected: []sql.Row{{"t"}, {"f"}, {"f"}},
+				},
+				{
+					Query:    "SELECT count(*) FROM user_sessions WHERE user_id = 42;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:       "UPDATE user_sessions SET is_active = true WHERE user_id = 42 AND is_active = false;",
+					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
+			Name: "partial index on keyless table",
+			SetUpScript: []string{
+				"CREATE TABLE t (a INT, b INT);",
+				"INSERT INTO t VALUES (1, 1), (2, 2), (3, 3);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE INDEX idx_partial ON t (a) WHERE a > 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_partial';",
+					Expected: []sql.Row{{"CREATE INDEX idx_partial ON public.t USING btree (a) WHERE (t.a > 1)"}},
+				},
+				{
+					Query: "EXPLAIN SELECT * FROM t WHERE a > 1;",
+					Expected: []sql.Row{
+						{"IndexedTableAccess(t)"},
+						{" ├─ index: [t.a,t.a > 1]"},
+						{" ├─ filters: [{(1, ∞)}]"},
+						{" └─ columns: [a b]"},
+					},
+				},
+				{
+					Query: "EXPLAIN SELECT * FROM t WHERE a > 0;",
+					Expected: []sql.Row{
+						{"Filter"},
+						{" ├─ t.a > 0"},
+						{" └─ Table"},
+						{"     ├─ name: t"},
+						{"     └─ columns: [a b]"},
+					},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (0, 0);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (5, 5);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE UNIQUE INDEX idx_uniq_partial ON t (a) WHERE a > 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (1, 99);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (3, 99);",
+					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
+			Name: "index naming: unnamed index uses table_col_idx convention",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk INT PRIMARY KEY, a INT, b INT);",
+				"CREATE INDEX ON t1 (a);",
+				"CREATE TABLE t2 (pk INT PRIMARY KEY, a INT);",
+				"CREATE UNIQUE INDEX ON t2 (a);",
+				"CREATE TABLE t3 (pk INT PRIMARY KEY, a INT UNIQUE);",
+				"CREATE TABLE t4 (pk INT PRIMARY KEY, a INT, b INT);",
+				"CREATE INDEX ON t4 (a, b);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't1' AND indexname <> 't1_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t1_a_idx"}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't2' AND indexname <> 't2_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t2_a_key"}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't3' AND indexname <> 't3_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t3_a_key"}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't4' AND indexname <> 't4_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t4_a_b_idx"}},
+				},
+			},
+		},
+		{
+			Name: "index naming: collision appends numeric suffix",
+			SetUpScript: []string{
+				"CREATE TABLE t5 (pk INT PRIMARY KEY, a INT);",
+				"CREATE INDEX t5_a_idx ON t5 (a);",
+				"CREATE INDEX ON t5 (a);",
+				"CREATE TABLE t6_a_idx (pk INT PRIMARY KEY);",
+				"CREATE TABLE t6 (pk INT PRIMARY KEY, a INT);",
+				"CREATE INDEX ON t6 (a);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't5' AND indexname NOT IN ('t5_pkey', 't5_a_idx') ORDER BY indexname;",
+					Expected: []sql.Row{{"t5_a_idx1"}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't6' AND indexname <> 't6_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"t6_a_idx1"}},
 				},
 			},
 		},

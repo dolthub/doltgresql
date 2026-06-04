@@ -4,15 +4,15 @@ go 1.26.2
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
-	github.com/cockroachdb/apd/v2 v2.0.3-0.20200518165714-d020e156310a
+	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20260430172110-36fcc634f302
+	github.com/dolthub/dolt/go v0.40.5-0.20260603172609-0adf0e2d0069
 	github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20260427172105-a0b357da2f1d
+	github.com/dolthub/go-mysql-server v0.20.1-0.20260603165028-b60521c3724e
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
-	github.com/dolthub/vitess v0.0.0-20260424215137-ec6bd432b0be
+	github.com/dolthub/vitess v0.0.0-20260528164423-e3f9fa81284c
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
 	github.com/gogo/protobuf v1.3.2
@@ -70,7 +70,7 @@ require (
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.5+incompatible // indirect
 	github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
-	github.com/apache/thrift v0.13.1-0.20201008052519-daf620915714 // indirect
+	github.com/apache/thrift v0.23.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.5 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.29.8 // indirect
@@ -104,7 +104,7 @@ require (
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 // indirect
 	github.com/dolthub/dolt-mcp v0.3.4 // indirect
-	github.com/dolthub/fslock v0.0.3 // indirect
+	github.com/dolthub/fslock v0.0.4 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20260412212219-49724d547866 // indirect
 	github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 // indirect
 	github.com/dolthub/ishell v0.0.0-20260414231531-5f031e3e9037 // indirect

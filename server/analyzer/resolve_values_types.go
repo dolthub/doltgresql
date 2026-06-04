@@ -113,7 +113,7 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 		// MIN now returns numeric, so GroupBy produces numeric. But the
 		// Project's GetField still says int4 because its tableId=GroupBy,
 		// which wasn't in transformedVDTs. At runtime this causes a panic
-		// because the actual value is decimal.Decimal but the type says int32.
+		// because the actual value is *apd.Decimal but the type says int32.
 		//
 		// This pass catches those: for each GetField, check if its type
 		// disagrees with what the child node actually produces.
@@ -202,7 +202,7 @@ func transformValuesNode(ctx *sql.Context, n sql.Node) (sql.Node, transform.Tree
 	// Find common type for each column
 	var newTuples [][]sql.Expression
 	for colIdx := 0; colIdx < numCols; colIdx++ {
-		commonType, requiresCasts, err := framework.FindCommonType(columnTypes[colIdx])
+		commonType, requiresCasts, err := framework.FindCommonType(ctx, columnTypes[colIdx])
 		if err != nil {
 			return nil, transform.NewTree, err
 		}

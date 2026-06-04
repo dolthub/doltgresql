@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/schema/typeinfo"
 	"github.com/dolthub/dolt/go/store/val"
@@ -30,7 +31,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
@@ -56,10 +56,10 @@ type DoltgresType struct {
 	IsDefined   bool
 	Delimiter   string
 
-	RelID         id.Id // for Composite types
+	RelID         id.Id // references the parent table relation for Composite types
 	SubscriptFunc uint32
-	Elem          id.Type
-	Array         id.Type
+	Elem          *DoltgresType
+	Array         *DoltgresType
 	InputFunc     uint32 // for deserializing a text representation
 	OutputFunc    uint32 // for serializing a text representation
 	ReceiveFunc   uint32 // for deserializing a binary representation
@@ -70,10 +70,10 @@ type DoltgresType struct {
 	Align         TypeAlignment
 	Storage       TypeStorage
 
-	NotNull      bool    // for Domain types
-	BaseTypeID   id.Type // for Domain types
-	TypMod       int32   // for Domain types
-	NDims        int32   // for Domain types
+	NotNull      bool          // for Domain types
+	BaseTypeType *DoltgresType // for Domain types
+	TypMod       int32         // for Domain types
+	NDims        int32         // for Domain types
 	TypCollation id.Collation
 	DefaulBin    string // for Domain types
 	Default      string
@@ -94,6 +94,10 @@ type DoltgresType struct {
 	SerializationFunc   internalSerializationFunc
 	DeserializationFunc internalDeserializationFunc
 }
+
+// internalNullType represents a type with a null ID, effectively stating that the field in the parent DoltgresType is
+// empty. This type is considered resolved.
+var internalNullType = &DoltgresType{ID: id.NullType, IsUnresolved: false}
 
 // internalSerializationFunc is the function definition for internal type serialization
 type internalSerializationFunc func(*sql.Context, *DoltgresType, any) ([]byte, error)
@@ -118,7 +122,24 @@ func NewUnresolvedDoltgresType(sch, name string) *DoltgresType {
 func NewUnresolvedDoltgresTypeFromID(idType id.Type) *DoltgresType {
 	return &DoltgresType{
 		ID:           idType,
+		Elem:         internalNullType,
+		Array:        internalNullType,
+		BaseTypeType: internalNullType,
 		IsUnresolved: true,
+	}
+}
+
+// NewUnresolvedArrayDoltgresType returns an unresolved DoltgresType for an array of a user-defined element type.
+// TypCategory and Elem are pre-filled so that IsArrayType() returns true before full resolution from the type
+// collection. The array type ID follows the Postgres convention of "_" + element type name.
+func NewUnresolvedArrayDoltgresType(sch, elemName string) *DoltgresType {
+	return &DoltgresType{
+		ID:           id.NewType(sch, "_"+elemName),
+		IsUnresolved: true,
+		TypCategory:  TypeCategory_ArrayTypes,
+		Elem:         &DoltgresType{ID: id.NewType(sch, elemName), IsUnresolved: true},
+		Array:        internalNullType,
+		BaseTypeType: internalNullType,
 	}
 }
 
@@ -127,47 +148,26 @@ func (t *DoltgresType) AnalyzeFuncName() string {
 	return globalFunctionRegistry.GetString(t.AnalyzeFunc)
 }
 
-// ArrayBaseType returns a base type of given array type.
-// If this type is not an array type, it returns itself.
+// ArrayBaseType returns the base type of an array type.
 func (t *DoltgresType) ArrayBaseType() *DoltgresType {
 	if !t.IsArrayType() {
 		return t
 	}
-
-	var elem *DoltgresType
-	var ok bool
-
-	elem, ok = IDToBuiltInDoltgresType[t.Elem]
-	if !ok {
-		// Some array types have no declared element type for pg_catalog compatibilty, but still have a logical type
-		// we return for analysis
-		elem, ok = LogicalArrayElementTypes[t.ID]
-		if !ok {
-			panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
-		}
+	// Some array types have no declared element type for pg_catalog compatibility, but still have a logical type
+	// we return for analysis.
+	if t.ID == AnyArray.ID {
+		return AnyElement
 	}
-
-	newElem := *elem.WithAttTypMod(t.attTypMod)
-	return &newElem
+	return t.Elem.WithAttTypMod(t.attTypMod)
 }
 
 // BaseType returns a base type of given array or vector type.
 // If this type does not have base type, it returns itself.
 func (t *DoltgresType) BaseType() *DoltgresType {
-	if t.Elem == id.NullType {
+	if t.Elem.ID == id.NullType {
 		return t
 	}
-
-	var elem *DoltgresType
-	var ok bool
-
-	elem, ok = IDToBuiltInDoltgresType[t.Elem]
-	if !ok {
-		panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
-	}
-
-	newElem := *elem.WithAttTypMod(t.attTypMod)
-	return &newElem
+	return t.Elem.WithAttTypMod(t.attTypMod)
 }
 
 // CharacterSet implements the sql.StringType interface.
@@ -217,7 +217,12 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 
 	if t.TypType == TypeType_Enum {
 		// TODO: temporary solution to getting the enum type (which has label info) into the 'enum_cmp' function
-		qf := globalFunctionRegistry.GetFunction(ctx.(*sql.Context), t.CompareFunc)
+		// ctx is not guaranteed to be a *sql.Context when called from index comparator goroutines.
+		sqlCtx, ok := ctx.(*sql.Context)
+		if !ok {
+			sqlCtx = sql.NewEmptyContext()
+		}
+		qf := globalFunctionRegistry.GetFunction(sqlCtx, t.CompareFunc)
 		resTypes := qf.ResolvedTypes()
 		newFunc := qf.WithResolvedTypes([]*DoltgresType{t, t, resTypes[len(resTypes)-1]})
 		i, err := newFunc.(QuickFunction).CallVariadic(nil, v1, v2)
@@ -226,7 +231,12 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		}
 		return int(i.(int32)), nil
 	} else if t == Oidvector {
-		i, err := globalFunctionRegistry.GetFunction(ctx.(*sql.Context), t.CompareFunc).CallVariadic(nil, v1, v2)
+		// ctx is not guaranteed to be a *sql.Context when called from index comparator goroutines.
+		sqlCtx, ok := ctx.(*sql.Context)
+		if !ok {
+			sqlCtx = sql.NewEmptyContext()
+		}
+		i, err := globalFunctionRegistry.GetFunction(sqlCtx, t.CompareFunc).CallVariadic(nil, v1, v2)
 		if err != nil {
 			return 0, err
 		}
@@ -318,9 +328,9 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 	case JsonDocument:
 		bb := v2.(JsonDocument)
 		return JsonValueCompare(ab.Value, bb.Value), nil
-	case decimal.Decimal:
-		bb := v2.(decimal.Decimal)
-		return ab.Cmp(bb), nil
+	case *apd.Decimal:
+		bb := v2.(*apd.Decimal)
+		return NumericCompare(ab, bb), nil
 	case timeofday.TimeOfDay:
 		bb := v2.(timeofday.TimeOfDay)
 		return ab.Compare(bb), nil
@@ -471,17 +481,9 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	return nil, sql.InRange, ErrUnhandledType.New(t.String(), v)
 }
 
-// GetImplicitCast is a reference to the implicit cast logic in the functions/framework package, which we can't use
-// here due to import cycles
-var GetImplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
-
-// GetAssignmentCast is a reference to the assignment cast logic in the functions/framework package, which we can't use
-// here due to import cycles
-var GetAssignmentCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
-
-// GetExplicitCast is a reference to the explicit cast logic in the functions/framework package, which we can't use
-// here due to import cycles
-var GetExplicitCast func(fromType *DoltgresType, toType *DoltgresType) TypeCastFunction
+// GetAssignmentCast is a reference to the assignment cast logic in the core package, which we can't use here due to
+// import cycles
+var GetAssignmentCast func(ctx *sql.Context, fromType *DoltgresType, toType *DoltgresType) (Cast, error)
 
 // ConvertToType implements the types.ExtendedType interface.
 func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
@@ -490,8 +492,11 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
-	castFn := GetAssignmentCast(dt, t)
-	if castFn == nil {
+	cast, err := GetAssignmentCast(ctx, dt, t)
+	if err != nil {
+		return nil, sql.InRange, err
+	}
+	if cast == nil {
 		// In the case that we have an unknown type string literal, we attempt to parse it with the target type's
 		// input function
 		// TODO: this is probably not the best place to perform this conversion, it would probably be better as an
@@ -513,7 +518,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		return nil, sql.InRange, errors.Errorf("no assignment cast from %s to %s", dt.Name(), t.Name())
 	}
 
-	castResult, err := castFn(ctx, val, t)
+	castResult, err := cast.Eval(ctx, val, dt, t)
 	if err != nil && errors.Is(err, ErrCastOutOfRange) {
 		// TODO: this could be either an overflow or an underflow, we should distinguish
 		return castResult, sql.Overflow, nil
@@ -526,16 +531,12 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 
 // DomainUnderlyingBaseType returns an underlying base type of this domain type.
 // It can be a nested domain type, so it recursively searches for a valid base type.
+// It is not valid to call this on a non-domain type.
 func (t *DoltgresType) DomainUnderlyingBaseType() *DoltgresType {
-	// TODO: handle user-defined type
-	bt, ok := IDToBuiltInDoltgresType[t.BaseTypeID]
-	if !ok {
-		panic(fmt.Sprintf("unable to get DoltgresType from ID: %s", t.BaseTypeID.AsId().String()))
-	}
-	if bt.TypType == TypeType_Domain {
-		return bt.DomainUnderlyingBaseType()
+	if t.BaseTypeType.TypType == TypeType_Domain {
+		return t.BaseTypeType.DomainUnderlyingBaseType()
 	} else {
-		return bt
+		return t.BaseTypeType
 	}
 }
 
@@ -578,15 +579,17 @@ func (t *DoltgresType) InputFuncName() string {
 // IoInput converts input string value to given type value.
 func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if t.TypType == TypeType_Domain {
-		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.BaseTypeID.AsId(), t.attTypMod)
+		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.BaseTypeType.ID.AsId(), t.attTypMod)
 	} else if t.ModInFunc != 0 || t.IsArrayType() {
-		if t.Elem != id.NullType {
-			return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.Elem.AsId(), t.attTypMod)
+		if t.Elem.ID != id.NullType {
+			return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.Elem.ID.AsId(), t.attTypMod)
 		} else {
 			return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.ID.AsId(), t.attTypMod)
 		}
 	} else if t.TypType == TypeType_Enum {
 		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.ID.AsId())
+	} else if t.IsCompositeType() {
+		return ParseCompositeLiteral(ctx, input, t)
 	} else {
 		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input)
 	}
@@ -619,7 +622,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 // It can be array category with empty its array attribute NULL and element attribute NOT NULL.
 // Or it can be pseudo category with name 'anyarray'.
 func (t *DoltgresType) IsArrayType() bool {
-	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType && t.Array == id.NullType) ||
+	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem.ID != id.NullType && t.Array.ID == id.NullType) ||
 		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 
@@ -664,7 +667,7 @@ func (t *DoltgresType) IsPolymorphicType() bool {
 // IsResolvedType whether the type is resolved and has complete information.
 // This is used to resolve types during analyzing when non-built-in type is used.
 func (t *DoltgresType) IsResolvedType() bool {
-	return !t.IsUnresolved
+	return t != nil && !t.IsUnresolved
 }
 
 // IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
@@ -911,13 +914,34 @@ func (t *DoltgresType) ToArrayType() *DoltgresType {
 	if t.IsArrayType() {
 		return t
 	}
-	arr, ok := IDToBuiltInDoltgresType[t.Array]
+	if t.Array.IsResolvedType() {
+		arr := t.Array.WithAttTypMod(t.attTypMod)
+		arr.InternalName = fmt.Sprintf("%s[]", t.String())
+		return arr
+	}
+	if t.Array.ID == id.NullType {
+		// Unresolved or stub type: derive an unresolved array type using the Postgres naming convention.
+		// The caller (e.g. during plan-building before the analyzer resolves types) will re-invoke
+		// ToArrayType on the fully-resolved base type once the analyzer has run.
+		return NewUnresolvedArrayDoltgresType(t.ID.SchemaName(), t.ID.TypeName())
+	}
+	// User-defined type: the array type is not in the built-in map, so build it from this base type.
+	return CreateArrayTypeFromBaseType(t)
+	// TODO: delete the commented out code below, only exists for referencing
+	/*arr, ok := IDToBuiltInDoltgresType[t.Array]
 	if !ok {
-		panic(fmt.Sprintf("cannot get array type from: %s", t.Name()))
+		if t.Array.ID == id.NullType {
+			// Unresolved or stub type: derive an unresolved array type using the Postgres naming convention.
+			// The caller (e.g. during plan-building before the analyzer resolves types) will re-invoke
+			// ToArrayType on the fully-resolved base type once the analyzer has run.
+			return NewUnresolvedArrayDoltgresType(t.ID.SchemaName(), t.ID.TypeName())
+		}
+		// User-defined type: the array type is not in the built-in map, so build it from this base type.
+		return CreateArrayTypeFromBaseType(t)
 	}
 	newArr := *arr.WithAttTypMod(t.attTypMod)
 	newArr.InternalName = fmt.Sprintf("%s[]", t.String())
-	return &newArr
+	return &newArr*/
 }
 
 // Type implements the types.ExtendedType interface.
@@ -1050,7 +1074,7 @@ func (t *DoltgresType) Zero() interface{} {
 		case "int8":
 			return int64(0)
 		case "numeric":
-			return decimal.Zero
+			return apd.New(0, 0)
 		case "oid", "regclass", "regproc", "regtype":
 			return id.Null
 		default:
@@ -1120,10 +1144,10 @@ func (t *DoltgresType) CallSend(ctx *sql.Context, val any) ([]byte, error) {
 // CallReceive is a way to call the `receive` function for this type.
 func (t *DoltgresType) CallReceive(ctx *sql.Context, val []byte) (any, error) {
 	if t.TypType == TypeType_Domain {
-		return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.BaseTypeID.AsId(), t.attTypMod)
+		return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.BaseTypeType.ID.AsId(), t.attTypMod)
 	} else if t.ModInFunc != 0 || t.IsArrayType() {
-		if t.Elem != id.NullType {
-			return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.Elem.AsId(), t.attTypMod)
+		if t.Elem.ID != id.NullType {
+			return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.Elem.ID.AsId(), t.attTypMod)
 		} else {
 			return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.ID.AsId(), t.attTypMod)
 		}
@@ -1165,4 +1189,4 @@ func (t *DoltgresType) TypeInfo() typeinfo.TypeInfo {
 
 // TypeCastFunction is a function that takes a value of a particular kind of type, and returns it as another kind of type.
 // The targetType given should match the "To" type used to obtain the cast.
-type TypeCastFunction func(ctx *sql.Context, val any, targetType *DoltgresType) (any, error)
+type TypeCastFunction func(ctx *sql.Context, val any, sourceType *DoltgresType, targetType *DoltgresType) (any, error)

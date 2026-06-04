@@ -47,6 +47,16 @@ var array_in = framework.Function3{
 		input := val1.(string)
 		baseTypeOid := val2.(id.Id)
 		baseType := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
+		if baseType == nil {
+			if typColl, err := pgtypes.GetTypesCollectionFromContext(ctx); err == nil && typColl != nil {
+				if t, err := typColl.GetType(ctx, id.Type(baseTypeOid)); err == nil {
+					baseType = t
+				}
+			}
+		}
+		if baseType == nil {
+			return nil, errors.Errorf("unknown array element type: %s", string(baseTypeOid))
+		}
 		typmod := val3.(int32)
 		baseType = baseType.WithAttTypMod(typmod)
 		if len(input) < 2 || input[0] != '{' || input[len(input)-1] != '}' {

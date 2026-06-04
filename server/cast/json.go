@@ -17,21 +17,24 @@ package cast
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/core/id"
+
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initJson handles all casts that are built-in. This comprises only the "From" types.
-func initJson() {
-	jsonAssignment()
+// initJson handles all casts that are built-in. This comprises only the source types.
+func initJson(builtInCasts map[id.Cast]casts.Cast) {
+	jsonAssignment(builtInCasts)
 }
 
-// jsonAssignment registers all assignment casts. This comprises only the "From" types.
-func jsonAssignment() {
-	framework.MustAddAssignmentTypeCast(framework.TypeCast{
+// jsonAssignment registers all assignment casts. This comprises only the source types.
+func jsonAssignment(builtInCasts map[id.Cast]casts.Cast) {
+	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Json,
 		ToType:   pgtypes.JsonB,
-		Function: func(ctx *sql.Context, val any, targetType *pgtypes.DoltgresType) (any, error) {
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return targetType.IoInput(ctx, val.(string))
 		},
 	})

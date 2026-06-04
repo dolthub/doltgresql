@@ -15,28 +15,27 @@
 package types
 
 import (
-	"strings"
+	"math"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/core/id"
 )
 
-const (
-	MaxUint32 = 4294967295  // MaxUint32 is the largest possible value of Uint32
-	MinInt32  = -2147483648 // MinInt32 is the smallest possible value of Int32
-)
-
 var (
-	NumericValueMaxInt16  = decimal.NewFromInt(32767)                // NumericValueMaxInt16 is the max Int16 value for NUMERIC types
-	NumericValueMaxInt32  = decimal.NewFromInt(2147483647)           // NumericValueMaxInt32 is the max Int32 value for NUMERIC types
-	NumericValueMaxInt64  = decimal.NewFromInt(9223372036854775807)  // NumericValueMaxInt64 is the max Int64 value for NUMERIC types
-	NumericValueMinInt16  = decimal.NewFromInt(-32768)               // NumericValueMinInt16 is the min Int16 value for NUMERIC types
-	NumericValueMinInt32  = decimal.NewFromInt(MinInt32)             // NumericValueMinInt32 is the min Int32 value for NUMERIC types
-	NumericValueMinInt64  = decimal.NewFromInt(-9223372036854775808) // NumericValueMinInt64 is the min Int64 value for NUMERIC types
-	NumericValueMaxUint32 = decimal.NewFromInt(MaxUint32)            // NumericValueMaxUint32 is the max Uint32 value for NUMERIC types
+	NumericValueMaxInt16 = types.DecimalFromInt64(math.MaxInt16) // NumericValueMaxInt16 is the max Int16 value for NUMERIC types
+	NumericValueMaxInt32 = types.DecimalFromInt64(math.MaxInt32) // NumericValueMaxInt32 is the max Int32 value for NUMERIC types
+	NumericValueMaxInt64 = types.DecimalFromInt64(math.MaxInt64) // NumericValueMaxInt64 is the max Int64 value for NUMERIC types
+	NumericValueMinInt16 = types.DecimalFromInt64(math.MinInt16) // NumericValueMinInt16 is the min Int16 value for NUMERIC types
+	NumericValueMinInt32 = types.DecimalFromInt64(math.MinInt32) // NumericValueMinInt32 is the min Int32 value for NUMERIC types
+	NumericValueMinInt64 = types.DecimalFromInt64(math.MinInt64) // NumericValueMinInt64 is the min Int64 value for NUMERIC types
+	NumericNaN           = &apd.Decimal{Form: apd.NaN}
+	NumericInf           = &apd.Decimal{Form: apd.Infinite}
+	NumericNegInf        = &apd.Decimal{Form: apd.Infinite, Negative: true}
 )
 
 // Numeric is a precise and unbounded decimal value.
@@ -51,8 +50,8 @@ var Numeric = &DoltgresType{
 	Delimiter:           ",",
 	RelID:               id.Null,
 	SubscriptFunc:       toFuncID("-"),
-	Elem:                id.NullType,
-	Array:               toInternal("_numeric"),
+	Elem:                internalNullType,
+	Array:               internalNullType,
 	InputFunc:           toFuncID("numeric_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
 	OutputFunc:          toFuncID("numeric_out", toInternal("numeric")),
 	ReceiveFunc:         toFuncID("numeric_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
@@ -63,7 +62,7 @@ var Numeric = &DoltgresType{
 	Align:               TypeAlignment_Int,
 	Storage:             TypeStorage_Main,
 	NotNull:             false,
-	BaseTypeID:          id.NullType,
+	BaseTypeType:        internalNullType,
 	TypMod:              -1,
 	NDims:               0,
 	TypCollation:        id.NullCollation,
@@ -108,33 +107,81 @@ func GetPrecisionAndScaleFromTypmod(typmod int32) (int32, int32) {
 
 // GetNumericValueWithTypmod returns either given numeric value or truncated or error
 // depending on the precision and scale decoded from given type modifier value.
-func GetNumericValueWithTypmod(val decimal.Decimal, typmod int32) (decimal.Decimal, error) {
+func GetNumericValueWithTypmod(val *apd.Decimal, typmod int32) (*apd.Decimal, error) {
 	if typmod == -1 {
 		return val, nil
 	}
+	res := new(apd.Decimal)
 	precision, scale := GetPrecisionAndScaleFromTypmod(typmod)
-	str := val.StringFixed(scale)
-	parts := strings.Split(str, ".")
-	if int32(len(parts[0])) > precision-scale && val.IntPart() != 0 {
-		// TODO: split error message to ERROR and DETAIL
-		return decimal.Decimal{}, errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
+	_, err := sql.DecimalCtx.WithPrecision(uint32(precision)).Quantize(res, val, -scale)
+	if err != nil {
+		return nil, errors.Errorf("numeric field overflow - A field with precision %v, scale %v must round to an absolute value less than 10^%v", precision, scale, precision-scale)
 	}
-	return decimal.NewFromString(str)
+	return res, nil
+}
+
+// GetNumericValueFromStringWithTypmod returns either given numeric value or truncated or error
+// depending on the precision and scale decoded from given type modifier value.
+func GetNumericValueFromStringWithTypmod(val string, typmod int32) (*apd.Decimal, error) {
+	dec, cond, err := sql.DecimalHighPrecisionCtx.NewFromString(val)
+	if err != nil {
+		return nil, err
+	}
+	if cond.Inexact() || cond.Rounded() {
+		return nil, errors.Errorf(`numeric precision was lost or truncated for %s`, val)
+	}
+	return GetNumericValueWithTypmod(dec, typmod)
 }
 
 // serializeTypeNumeric handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
+// Note: this function is only used for values serialized by older clients, which is why it uses a decimal.Decimal.
+// Newer clients will use Dolt's serialization, which uses apd.Decimal directly.
+// Deprecated.
 func serializeTypeNumeric(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	return val.(decimal.Decimal).MarshalBinary()
+	switch d := val.(type) {
+	case decimal.Decimal:
+		return d.MarshalBinary()
+	case *apd.Decimal:
+		bigInt := d.Coeff.MathBigInt()
+		if d.Negative {
+			bigInt.Neg(bigInt)
+		}
+		dec := decimal.NewFromBigInt(bigInt, d.Exponent)
+		return dec.MarshalBinary()
+	default:
+		return nil, errors.Errorf("cannot serialize value of type %T as numeric", val)
+	}
 }
 
 // deserializeTypeNumeric handles deserialization from the Dolt serialized format to our standard representation used by
 // expressions and nodes.
+// Note: this function is only used for values serialized by older clients, which is why it uses a decimal.Decimal.
+// Newer clients will use Dolt's serialization, which uses apd.Decimal directly.
+// Deprecated.
 func deserializeTypeNumeric(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
 	retVal := decimal.NewFromInt(0)
 	err := retVal.UnmarshalBinary(data)
-	return retVal, err
+	if err != nil {
+		return nil, err
+	}
+	return apd.New(retVal.CoefficientInt64(), retVal.Exponent()), nil
+}
+
+// NumericCompare compares two *apd.Decimal values handling NaN separately.
+func NumericCompare(ab, bb *apd.Decimal) int {
+	if (ab.Form == apd.NaN && bb.Form == apd.NaN) ||
+		(ab.Form == apd.Infinite && bb.Form == apd.Infinite && ab.Negative == bb.Negative) {
+		return 0
+	}
+	if ab.Form == apd.NaN {
+		return 1
+	}
+	if bb.Form == apd.NaN {
+		return -1
+	}
+	return ab.Cmp(bb)
 }

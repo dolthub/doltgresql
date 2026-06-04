@@ -532,6 +532,7 @@ func TestConvertPrepared(t *testing.T) {
 
 func TestScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"can't create table with same name as existing view",      // Doltgres needs to return a different error message
 		"filter pushdown through join uppercase name",             // syntax error (join without on)
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
 		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
@@ -790,6 +791,12 @@ func TestIndexes(t *testing.T) {
 	harness := newDoltgresServerHarness(t)
 	defer harness.Close()
 	enginetest.TestIndexes(t, harness)
+}
+
+func TestIndexedExpressions(t *testing.T) {
+	harness := newDoltgresServerHarness(t)
+	defer harness.Close()
+	enginetest.TestIndexedExpressions(t, harness)
 }
 
 func TestIndexPrefix(t *testing.T) {
@@ -1335,6 +1342,7 @@ func TestDoltMergeArtifacts(t *testing.T) {
 		"schema conflicts return an error when autocommit is enabled",                             // problems detecting autocommit for business logic
 		"Multiple foreign key violations for a given row not supported",                           // foreign keys
 		"divergent type change causes schema conflict",                                            // alter table
+		"merge error lists all constraint violations when table has multiple violations",          // index names differ under PG naming
 	})
 	denginetest.RunDoltMergeArtifacts(t, h)
 }
@@ -1342,7 +1350,9 @@ func TestDoltMergeArtifacts(t *testing.T) {
 func TestDoltReset(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"CALL DOLT_RESET('--hard') should reset the merge state after uncommitted merge", // problem with autocommit detection
-		"select * from dolt_status", // table_name column includes schema name
+		"select * from dolt_status",                    // table_name column includes schema name
+		"SELECT pk, v FROM t AS OF STAGED ORDER BY pk", // AS OF STAGED requires quoting in Postgres
+		"SELECT pk FROM t AS OF STAGED ORDER BY pk",    // AS OF STAGED requires quoting in Postgres
 	})
 	denginetest.RunDoltResetTest(t, h)
 }

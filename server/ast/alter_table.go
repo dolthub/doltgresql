@@ -164,6 +164,8 @@ func nodeAlterTableCmds(
 			// is unsupported and ignored
 		case *tree.AlterTableRowLevelSecurity:
 			// is unsupported and ignored
+		case *tree.AlterTableReplicaIdentity:
+			// is unsupported and ignored
 		default:
 			return nil, nil, errors.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
@@ -245,7 +247,10 @@ func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, table
 		if err != nil {
 			return nil, err
 		}
-		tableSpec.AddConstraint(&vitess.ConstraintDefinition{Details: constraintDef})
+		tableSpec.AddConstraint(&vitess.ConstraintDefinition{
+			Name:    string(node.ColumnDef.References.ConstraintName),
+			Details: constraintDef,
+		})
 	}
 
 	return &vitess.DDL{

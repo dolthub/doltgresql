@@ -16,11 +16,11 @@ package typecollection
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sort"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
@@ -29,6 +29,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	parsertypes "github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -42,6 +43,7 @@ const anonymousCompositeSuffix = ")"
 // TypeCollection is a collection of all types (both built-in and user defined).
 type TypeCollection struct {
 	accessedMap   map[id.Type]*pgtypes.DoltgresType
+	initCache     map[id.Type]*pgtypes.DoltgresType // This is only used by the function `WithCachedType`
 	underlyingMap prolly.AddressMap
 	ns            tree.NodeStore
 }
@@ -109,10 +111,8 @@ func (pgs *TypeCollection) DropType(ctx context.Context, names ...id.Type) (err 
 }
 
 // GetAllTypes returns a map containing all types in the collection, grouped by the schema they're contained in.
-// Each type array is also sorted by the type name. It includes built-in types, but does not include types referring to
-// a table's row type.
+// Each type array is also sorted by the type name. It includes built-in types.
 func (pgs *TypeCollection) GetAllTypes(ctx context.Context) (typeMap map[string][]*pgtypes.DoltgresType, schemaNames []string, totalCount int, err error) {
-	// TODO: this should probably get tables as well since tables create composite types matching their rows
 	schemaNamesMap := make(map[string]struct{})
 	typeMap = make(map[string][]*pgtypes.DoltgresType)
 	err = pgs.IterateTypes(ctx, func(t *pgtypes.DoltgresType) (stop bool, err error) {
@@ -166,6 +166,13 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 	if t, ok := pgs.accessedMap[name]; ok {
 		return t, nil
 	}
+	if t, ok := pgs.initCache[name]; ok {
+		return t, nil
+	}
+	sqlCtx, ok := ctx.(*sql.Context)
+	if !ok {
+		return nil, errors.New("type collection requires a SQL context")
+	}
 	// The initial load is from the internal map
 	h, err := pgs.underlyingMap.Get(ctx, string(name))
 	if err != nil {
@@ -174,15 +181,25 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 	if h.IsEmpty() {
 		// If this is an anonymous composite type, create it dynamically
 		if isAnonymousCompositeType(name) {
-			return createAnonymousCompositeType(ctx, name)
+			return pgs.createAnonymousCompositeType(sqlCtx, name)
 		}
 
-		// If it's not a built-in type or created type, then check if it's a composite table row type
-		sqlCtx, ok := ctx.(*sql.Context)
-		if !ok {
-			return nil, nil
+		// Table composite types are computed on the fly from the live table schema rather than
+		// stored as root objects (storing them would create a naming collision with the actual
+		// table in Dolt's diff layer, since both map to the same doltdb.TableName).
+		typeName := name.TypeName()
+
+		// A name starting with "_" may be the implicit array type for a table's composite row
+		// type. Resolve the element type first (which handles the table lookup), then wrap it.
+		if strings.HasPrefix(typeName, "_") {
+			elemType, err := pgs.GetType(ctx, id.NewType(name.SchemaName(), typeName[1:]))
+			if err != nil || elemType == nil {
+				return nil, err
+			}
+			return pgtypes.CreateArrayTypeFromBaseType(elemType), nil
 		}
-		tbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), name.TypeName())
+
+		tbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), typeName)
 		if err != nil || tbl == nil {
 			return nil, err
 		}
@@ -192,13 +209,48 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 	if err != nil {
 		return nil, err
 	}
-	t, err := pgtypes.DeserializeType(data)
+	t, err := pgtypes.DeserializeType(sqlCtx, data)
 	if err != nil {
 		return nil, err
 	}
 	pgt := t.(*pgtypes.DoltgresType)
 	pgs.accessedMap[pgt.ID] = pgt
+
 	return pgt, nil
+}
+
+// ResolveType returns the type given if there's an exact match, or the closest matching type if the exact ID cannot be
+// found. In general, this should only be used in cases where we are not sure of the schema name, as this is
+// significantly slower than GetType. Returns an error if the type cannot be resolved, unlike GetType which returns a
+// nil if the type is not found.
+func (pgs *TypeCollection) ResolveType(ctx context.Context, name id.Type) (*pgtypes.DoltgresType, error) {
+	if t, err := pgs.GetType(ctx, name); err != nil {
+		return nil, err
+	} else if t != nil && t.IsResolvedType() {
+		return t, nil
+	}
+	resolvedId, err := pgs.resolveName(ctx, name.SchemaName(), name.TypeName())
+	if err != nil {
+		return nil, err
+	}
+	t, err := pgs.GetType(ctx, resolvedId)
+	if err != nil {
+		return nil, err
+	}
+	if !t.IsResolvedType() {
+		return nil, errors.Errorf("unable to resolve type `%s`", name.TypeName())
+	}
+	return t, nil
+}
+
+// WithCachedType executes the given function while caching the given type, which allows for recursive type
+// initialization to reference unfinished types.
+func (pgs *TypeCollection) WithCachedType(typeToCache *pgtypes.DoltgresType, f func()) {
+	pgs.initCache[typeToCache.ID] = typeToCache
+	defer func() {
+		delete(pgs.initCache, typeToCache.ID)
+	}()
+	f()
 }
 
 // isAnonymousCompositeType return true if |returnType| represents an anonymous composite return type
@@ -211,7 +263,7 @@ func isAnonymousCompositeType(returnType id.Type) bool {
 
 // createAnonymousCompositeType creates a new DoltgresType for the anonymous composite return type for a function,
 // as represented by |returnType|.
-func createAnonymousCompositeType(ctx context.Context, returnType id.Type) (*pgtypes.DoltgresType, error) {
+func (pgs *TypeCollection) createAnonymousCompositeType(ctx *sql.Context, returnType id.Type) (*pgtypes.DoltgresType, error) {
 	typeName := returnType.TypeName()
 	attributeTypes := typeName[len(anonymousCompositePrefix) : len(typeName)-len(anonymousCompositeSuffix)]
 	attributeTypesSlice := strings.Split(attributeTypes, ",")
@@ -220,13 +272,37 @@ func createAnonymousCompositeType(ctx context.Context, returnType id.Type) (*pgt
 	for i, attributeNameAndType := range attributeTypesSlice {
 		split := strings.Split(attributeNameAndType, ":")
 		if len(split) != 2 {
-			return nil, fmt.Errorf("unexpected anonymous composite type attribute syntax: %s", attributeNameAndType)
+			return nil, errors.Errorf("unexpected anonymous composite type attribute syntax: %s", attributeNameAndType)
 		}
-
-		typeId := id.NewType("", split[1])
-		attrs[i] = pgtypes.NewCompositeAttribute(nil, id.Null, split[0], typeId, int16(i), "")
+		// Attribute names may be standard SQL names such as "SMALLINT", so we have to normalize such names
+		attributeName := split[1]
+		var attributeType *pgtypes.DoltgresType
+		var err error
+		if parserT, ok, _ := parsertypes.TypeForNonKeywordTypeName(strings.ToLower(attributeName)); ok {
+			typeId := id.Cache().ToInternal(uint32(parserT.Oid()))
+			if typeId.IsValid() && typeId.Section() == id.Section_Type {
+				attributeType, err = pgs.ResolveType(ctx, id.Type(typeId))
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		if !attributeType.IsResolvedType() {
+			// We check if a schema is present by the existence of a "."
+			schemaName := ""
+			if strings.Contains(attributeName, ".") {
+				typeSplit := strings.SplitN(attributeName, ".", 2)
+				schemaName = typeSplit[0]
+				attributeName = typeSplit[1]
+			}
+			attributeType, err = pgs.ResolveType(ctx, id.NewType(schemaName, attributeName))
+			if err != nil {
+				return nil, err
+			}
+		}
+		attrs[i] = pgtypes.NewCompositeAttribute(ctx, id.Null, split[0], attributeType, int16(i), "")
 	}
-	return pgtypes.NewCompositeType(ctx, id.Null, id.NullType, returnType, attrs), nil
+	return pgtypes.NewCompositeType(ctx, id.Null, nil, returnType, attrs), nil
 }
 
 // HasType checks if a type exists with given schema and type name.
@@ -243,7 +319,7 @@ func (pgs *TypeCollection) HasType(ctx context.Context, name id.Type) bool {
 	if err == nil && ok {
 		return true
 	}
-	// If it's not a built-in type or created type, then check if it's a composite table row type
+	// Table composite types are not stored; check the table as a fallback.
 	sqlCtx, ok := ctx.(*sql.Context)
 	if !ok {
 		return false
@@ -269,7 +345,20 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 				continue
 			}
 			if resolvedID.IsValid() {
-				return id.NullType, fmt.Errorf("`%s.%s` is ambiguous, matches `%s.%s` and `%s.%s`",
+				return id.NullType, errors.Errorf("`%s.%s` is ambiguous, matches `%s.%s` and `%s.%s`",
+					schemaName, typeName, typ.ID.SchemaName(), typ.ID.TypeName(), resolvedID.SchemaName(), resolvedID.TypeName())
+			}
+			resolvedID = typ.ID
+		}
+	}
+	// Iterate over the initialization cache in case this is during a type initialization loop
+	for _, typ := range pgs.initCache {
+		if strings.EqualFold(typeName, typ.ID.TypeName()) {
+			if len(schemaName) > 0 && !strings.EqualFold(schemaName, typ.ID.SchemaName()) {
+				continue
+			}
+			if resolvedID.IsValid() {
+				return id.NullType, errors.Errorf("`%s.%s` is ambiguous, matches `%s.%s` and `%s.%s`",
 					schemaName, typeName, typ.ID.SchemaName(), typ.ID.TypeName(), resolvedID.SchemaName(), resolvedID.TypeName())
 			}
 			resolvedID = typ.ID
@@ -298,7 +387,7 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 				return nil
 			}
 			if resolvedID.IsValid() {
-				return fmt.Errorf("`%s.%s` is ambiguous, matches `%s.%s` and `%s.%s`",
+				return errors.Errorf("`%s.%s` is ambiguous, matches `%s.%s` and `%s.%s`",
 					schemaName, typeName, typeID.SchemaName(), typeID.TypeName(), resolvedID.SchemaName(), resolvedID.TypeName())
 			}
 			resolvedID = typeID
@@ -322,6 +411,10 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 		}
 	}
 
+	sqlCtx, ok := ctx.(*sql.Context)
+	if !ok {
+		return errors.New("type collection requires a SQL context")
+	}
 	// We write the cache so that we only need to worry about the underlying map
 	if err := pgs.writeCache(ctx); err != nil {
 		return err
@@ -331,7 +424,7 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 		if err != nil {
 			return err
 		}
-		t, err := pgtypes.DeserializeType(data)
+		t, err := pgtypes.DeserializeType(sqlCtx, data)
 		if err != nil {
 			return err
 		}
@@ -351,6 +444,7 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 func (pgs *TypeCollection) Clone(ctx context.Context) *TypeCollection {
 	newCollection := &TypeCollection{
 		accessedMap:   make(map[id.Type]*pgtypes.DoltgresType),
+		initCache:     make(map[id.Type]*pgtypes.DoltgresType),
 		underlyingMap: pgs.underlyingMap,
 		ns:            pgs.ns,
 	}
@@ -457,7 +551,7 @@ func (*TypeCollection) getTable(ctx *sql.Context, schema string, tblName string)
 
 // tableToType handles type creation related to a table's composite row type.
 // https://www.postgresql.org/docs/15/sql-createtable.html
-func (*TypeCollection) tableToType(ctx *sql.Context, tbl sql.Table, schema string) (*pgtypes.DoltgresType, error) {
+func (pgs *TypeCollection) tableToType(ctx *sql.Context, tbl sql.Table, schema string) (*pgtypes.DoltgresType, error) {
 	tblName := tbl.Name()
 	tblSch := tbl.Schema(ctx)
 	typeID := id.NewType(schema, tblName)
@@ -471,9 +565,11 @@ func (*TypeCollection) tableToType(ctx *sql.Context, tbl sql.Table, schema strin
 			// TODO: perhaps we should use a better error message stating that it uses a non-Doltgres type?
 			return nil, pgtypes.ErrTypeDoesNotExist.New(tblName)
 		}
-		attrs[i] = pgtypes.NewCompositeAttribute(ctx, relID, col.Name, colType.ID, int16(i+1), collation)
+		attrs[i] = pgtypes.NewCompositeAttribute(ctx, relID, col.Name, colType, int16(i+1), collation)
 	}
-	return pgtypes.NewCompositeType(ctx, relID, arrayID, typeID, attrs), nil
+	tableType := pgtypes.NewCompositeType(ctx, relID, pgtypes.NewUnresolvedDoltgresTypeFromID(arrayID), typeID, attrs)
+	_ = pgtypes.CreateArrayTypeFromBaseType(tableType) // This sets the tableType's `Array` field as well
+	return tableType, nil
 }
 
 // GetSqlTableFromContext is a forward declaration to get around import cycles

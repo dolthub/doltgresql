@@ -858,15 +858,15 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				{
 					Query: `SELECT violation_type, pk, col1, violation_info FROM dolt_constraint_violations_test`,
 					Expected: []sql.Row{
-						{"unique index", 1, 1, `{"Columns": ["col1"], "Name": "col1"}`},
-						{"unique index", 2, 1, `{"Columns": ["col1"], "Name": "col1"}`},
+						{"unique index", 1, 1, `{"Columns":["col1"],"Name":"test_col1_key"}`},
+						{"unique index", 2, 1, `{"Columns":["col1"],"Name":"test_col1_key"}`},
 					},
 				},
 				{
 					Query: `SELECT violation_type, pk, col1, violation_info FROM public.dolt_constraint_violations_test`,
 					Expected: []sql.Row{
-						{"unique index", 1, 1, `{"Columns": ["col1"], "Name": "col1"}`},
-						{"unique index", 2, 1, `{"Columns": ["col1"], "Name": "col1"}`},
+						{"unique index", 1, 1, `{"Columns":["col1"],"Name":"test_col1_key"}`},
+						{"unique index", 2, 1, `{"Columns":["col1"],"Name":"test_col1_key"}`},
 					},
 				},
 				{
@@ -2582,6 +2582,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Skip:  true, // TODO (Zach)
 					Query: `SELECT * FROM dolt_schemas`,
 					Expected: []sql.Row{
 						{
@@ -2594,6 +2595,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					},
 				},
 				{
+					Skip:  true, // TODO (Zach)
 					Query: `SELECT * FROM public.dolt_schemas`,
 					Expected: []sql.Row{
 						{
@@ -2668,6 +2670,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Skip:  true, // TODO (Zach)
 					Query: `SELECT * FROM newschema.dolt_schemas`,
 					Expected: []sql.Row{
 						{

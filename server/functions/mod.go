@@ -15,10 +15,11 @@
 package functions
 
 import (
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -81,9 +82,26 @@ var mod_numeric_numeric = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		if val2.(decimal.Decimal).Cmp(decimal.Zero) == 0 {
+		num1 := val1.(*apd.Decimal)
+		num2 := val2.(*apd.Decimal)
+		if num1.Form == apd.NaN || num2.Form == apd.NaN ||
+			(num1.Form == apd.Infinite && num2.Form == apd.Infinite) {
+			return pgtypes.NumericNaN, nil
+		}
+		if num2.IsZero() {
 			return nil, errors.Errorf("division by zero")
 		}
-		return val1.(decimal.Decimal).Mod(val2.(decimal.Decimal)), nil
+		if num1.Form == apd.Infinite {
+			return num1, nil
+		}
+		if num2.Form == apd.Infinite {
+			return apd.New(0, 0), nil
+		}
+
+		res, err := types.DecimalMod(num1, num2)
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
 	},
 }

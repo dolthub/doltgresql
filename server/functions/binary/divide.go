@@ -15,10 +15,12 @@
 package binary
 
 import (
-	"github.com/cockroachdb/errors"
+	"math"
+	"strings"
 
+	"github.com/cockroachdb/apd/v3"
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -287,10 +289,36 @@ var interval_div = framework.Function2{
 
 // numeric_div_callable is the callable logic for the numeric_div function.
 func numeric_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	if val2.(decimal.Decimal).Equal(decimal.Zero) {
+	num1 := val1.(*apd.Decimal)
+	num2 := val2.(*apd.Decimal)
+	if num1.Form == apd.NaN || num2.Form == apd.NaN ||
+		(num1.Form == apd.Infinite && num2.Form == apd.Infinite) {
+		return pgtypes.NumericNaN, nil
+	}
+	if num2.IsZero() {
 		return nil, errors.Errorf("division by zero")
 	}
-	return val1.(decimal.Decimal).Div(val2.(decimal.Decimal)), nil
+	if num1.Form == apd.Infinite {
+		return num1, nil
+	}
+	if num2.Form == apd.Infinite {
+		return apd.New(0, 0), nil
+	}
+
+	res := new(apd.Decimal)
+	// enough precision to scale to at most 16 decimal places
+	p := num1.NumDigits() + int64(math.Abs(float64(num1.Exponent))) + 16
+	_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Quo(res, num1, num2)
+	if err != nil {
+		return nil, err
+	}
+
+	// the exponent value depends on the number of digits before decimal places.
+	parts := strings.Split(res.Text('f'), ".")
+	whole := (len(parts[0]) + 4 - 1) / 4
+	exp := int32(16 - (whole-1)*4)
+
+	return sql.DecimalRound(res, exp)
 }
 
 // numeric_div represents the PostgreSQL function of the same name, taking the same parameters.

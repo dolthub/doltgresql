@@ -7825,11 +7825,11 @@ opt_create_table_on_commit:
   {
     $$.val = tree.CreateTableOnCommitPreserveRows
   }
-| ON COMMIT DELETE ROWS error
+| ON COMMIT DELETE ROWS
   {
     $$.val = tree.CreateTableOnCommitDeleteRows
   }
-| ON COMMIT DROP error
+| ON COMMIT DROP
   {
     $$.val = tree.CreateTableOnCommitDrop
   }

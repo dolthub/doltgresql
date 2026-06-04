@@ -25,14 +25,21 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 )
 
-// CreateArrayTypeFromBaseType create array type from given type.
+// CreateArrayTypeFromBaseType create array type from given type. This also sets the `Array` on the given base type if
+// it has not already been set.
 func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 	align := TypeAlignment_Int
 	if baseType.Align == TypeAlignment_Double {
 		align = TypeAlignment_Double
 	}
-	return &DoltgresType{
-		ID:                  baseType.Array,
+	var arrayID id.Type
+	if baseType.Array == nil || baseType.Array == internalNullType || baseType.Array.ID == id.NullType {
+		arrayID = id.NewType(baseType.ID.SchemaName(), "_"+baseType.ID.TypeName())
+	} else {
+		arrayID = baseType.Array.ID
+	}
+	arrayType := &DoltgresType{
+		ID:                  arrayID,
 		TypLength:           int16(-1),
 		PassedByVal:         false,
 		TypType:             TypeType_Base,
@@ -42,8 +49,8 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 		Delimiter:           ",",
 		RelID:               id.Null,
 		SubscriptFunc:       toFuncID("array_subscript_handler", toInternal("internal")),
-		Elem:                baseType.ID,
-		Array:               id.NullType,
+		Elem:                baseType,
+		Array:               internalNullType,
 		InputFunc:           toFuncID("array_in", toInternal("cstring"), toInternal("oid"), toInternal("int4")),
 		OutputFunc:          toFuncID("array_out", toInternal("anyarray")),
 		ReceiveFunc:         toFuncID("array_recv", toInternal("internal"), toInternal("oid"), toInternal("int4")),
@@ -54,7 +61,7 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 		Align:               align,
 		Storage:             TypeStorage_Extended,
 		NotNull:             false,
-		BaseTypeID:          id.NullType,
+		BaseTypeType:        internalNullType,
 		TypMod:              -1,
 		NDims:               0,
 		TypCollation:        baseType.TypCollation,
@@ -68,13 +75,10 @@ func CreateArrayTypeFromBaseType(baseType *DoltgresType) *DoltgresType {
 		SerializationFunc:   serializeTypeArray,
 		DeserializationFunc: deserializeTypeArray,
 	}
-}
-
-// LogicalArrayElementTypes is a map of array element types for particular array types where the logical type varies
-// from the declared type, as needed. Some types that have a NULL element for pg_catalog compatibility have a logical
-// type that we need during analysis for function calls.
-var LogicalArrayElementTypes = map[id.Type]*DoltgresType{
-	toInternal("anyarray"): AnyElement,
+	if baseType.Array == nil || baseType.Array == internalNullType || baseType.Array.ID == id.NullType {
+		baseType.Array = arrayType
+	}
+	return arrayType
 }
 
 // serializeTypeArray handles serialization from the standard representation to our serialized representation that is

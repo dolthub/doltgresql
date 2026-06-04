@@ -354,10 +354,11 @@ func anyExpressionWithChildren(ctx *sql.Context, anyExpr *AnyExpr) (sql.Expressi
 		staticLiteral := expression.NewLiteral(nil, leftType)
 		arrayLiteral := expression.NewLiteral(nil, rightType)
 		compFunc := framework.GetBinaryFunction(op).Compile(ctx, "internal_any_comparison", staticLiteral, arrayLiteral)
-		if compFunc == nil {
+		if compFunc == nil || compFunc.StashedError() != nil {
 			return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 		}
-		if compFunc.Type(ctx).(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
+		compFuncType := compFunc.Type(ctx)
+		if compFuncType.(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
 			// This should never happen, but this is just to be safe
 			return nil, errors.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
 		}

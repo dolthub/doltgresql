@@ -16,10 +16,11 @@ package functions
 
 import (
 	"math"
+	"strings"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/shopspring/decimal"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -54,16 +55,38 @@ var ln_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		if val1 == nil {
-			return nil, nil
-		}
-		// TODO: add an actual ln for numerics rather than relying on float64
-		f, _ := val1.(decimal.Decimal).Float64()
-		if f == 0 {
+		dec := val1.(*apd.Decimal)
+		if dec.Sign() == 0 {
 			return nil, errors.Errorf("cannot take logarithm of zero")
-		} else if f < 0 {
+		} else if dec.Sign() < 0 {
 			return nil, errors.Errorf("cannot take logarithm of a negative number")
+		} else if dec.Form == apd.NaN || dec.Form == apd.Infinite {
+			return dec, nil
 		}
-		return decimal.NewFromFloat(math.Log(f)), nil
+
+		// calculate precision and scale
+		exp := dec.Exponent
+		p := dec.NumDigits()
+		if exp < -16 {
+			p += int64(-exp)
+		} else {
+			p += 16
+		}
+
+		res := new(apd.Decimal)
+		_, err := sql.DecimalCtx.WithPrecision(uint32(p)).Ln(res, dec)
+		if err != nil {
+			return nil, err
+		}
+
+		// calculate exponent
+		if exp > -16 {
+			// use ln result
+			parts := strings.Split(res.Text('f'), ".")
+			whole := int32(len(parts[0]) / 2)
+			exp = whole - 16
+		}
+
+		return sql.DecimalRound(res, -exp)
 	},
 }
