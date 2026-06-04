@@ -1153,6 +1153,14 @@ func TestAuthTests(t *testing.T) {
 // Each time a new Dolt procedure is introduced in a ScriptTest, it's grouped into a set of related procedures. Each set
 // is separated by a new line.
 func TestAuthDoltProcedures(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
+	authTestFireUrl := func(path string) string {
+		return "file://" + filepath.ToSlash(filepath.Join(tempDir, path))
+	}
 	RunScripts(t, []ScriptTest{
 		{
 			UseLocalFileSystem: true,
@@ -1395,6 +1403,11 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestSkipAsSuper("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
 
 				authTestAssertAsSuper("select dolt_backup('remove', 'bak1');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak2', '%s');", authTestFireUrl("bak2")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_backup('sync', 'bak2');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('restore', '%s', 'restored_db');", authTestFireUrl("bak2")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("drop database restored_db;", []sql.Row{}, ""),
+				authTestAssertAsSuper("select dolt_backup('remove', 'bak2');", []sql.Row{{"{0}"}}, ""),
 				authTestAssertAsSuper(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
 
 				authTestAssertAsSuper("select dolt_fetch('origin', 'main');", []sql.Row{{"{0}"}}, ""),
@@ -1504,6 +1517,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestSkipAssertAsBasic("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
 
 				authTestAssertAsBasic("select dolt_backup('remove', 'bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				authTestAssertAsBasic("select dolt_backup('sync', 'bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
+				authTestAssertAsBasic(fmt.Sprintf("select dolt_backup('restore', '%s', 'restored_db');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 				authTestAssertAsBasic(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				authTestAssertAsBasic("select dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
@@ -1604,10 +1619,4 @@ func authTestGrantBasic(object string, privileges ...string) ScriptTestAssertion
 		Query:    fmt.Sprintf("GRANT %s ON %s TO %s", strings.Join(privileges, ","), object, authTestBasicUser),
 		Expected: []sql.Row{},
 	}
-}
-
-// authTestFireUrl returns a file:// URL path for a temp file.
-func authTestFireUrl(path string) string {
-	path = filepath.Join(os.TempDir(), path)
-	return "file://" + filepath.ToSlash(filepath.Clean(path))
 }
