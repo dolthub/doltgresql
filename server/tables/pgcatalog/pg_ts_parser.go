@@ -47,7 +47,7 @@ func (p PgTsParserHandler) RowIter(ctx *sql.Context, partition sql.Partition) (s
 	return emptyRowIter()
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgTsParserHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgTsParserSchema,

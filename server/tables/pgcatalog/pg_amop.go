@@ -47,7 +47,7 @@ func (p PgAmopHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.R
 	return emptyRowIter()
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgAmopHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgAmopSchema,
