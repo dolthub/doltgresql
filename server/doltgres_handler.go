@@ -44,6 +44,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
@@ -515,8 +516,8 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, formatCodes []int
 		var err error
 		colName := c.Name
 		// Translate the internal sentinel aliases set by nodeSelectExprs for unaliased string
-		// literals back to Postgres's ?column? placeholder. See ast.unknownColSentinelPrefix.
-		if strings.HasPrefix(colName, "__?column?__") {
+		// literals back to Postgres's ?column? placeholder.
+		if strings.HasPrefix(colName, ast.UnknownColSentinelPrefix) {
 			colName = "?column?"
 		}
 		dataTypeSize := int16(c.Type.MaxTextResponseByteLength(ctx))
