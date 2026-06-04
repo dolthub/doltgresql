@@ -339,6 +339,100 @@ func TestJsonExtractPath(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "jsonb_extract_path with multi-element text-array paths",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> ARRAY['a','b'];`,
+					Expected: []sql.Row{{`42`}},
+				},
+				{
+					// A deeper path mixing object keys and an array index.
+					Query:    `SELECT '{"a":{"b":{"c":[10,20]}}}'::jsonb #> ARRAY['a','b','c','1'];`,
+					Expected: []sql.Row{{`20`}},
+				},
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #>> ARRAY['a','b'];`,
+					Expected: []sql.Row{{`42`}},
+				},
+				{
+					// The string 'NULL' is an ordinary key, distinct from a SQL
+					// NULL element: both the ARRAY['NULL'] form and the quoted
+					// '{"NULL"}' literal select the key named "NULL".
+					Query:    `SELECT '{"NULL":7}'::jsonb #> ARRAY['NULL'];`,
+					Expected: []sql.Row{{`7`}},
+				},
+				{
+					Query:    `SELECT '{"NULL":7}'::jsonb #> '{"NULL"}';`,
+					Expected: []sql.Row{{`7`}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_extract_path returns NULL for NULL path elements",
+			Assertions: []ScriptTestAssertion{
+				{
+					// NULL as the trailing element.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> ARRAY['a',NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// NULL as the leading element.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> ARRAY[NULL,'b'];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// NULL element in the middle of an otherwise valid path.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> ARRAY['a',NULL,'b'];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// Unquoted NULL in the '{...}' literal is a SQL NULL element.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> '{a,NULL,b}';`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// A single unquoted NULL element, even when a key named
+					// "NULL" exists, still yields NULL.
+					Query:    `SELECT '{"NULL":7}'::jsonb #> '{NULL}';`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// The text-returning #>> variant behaves the same way.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #>> ARRAY['a',NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// A NULL array operand (vs. a NULL element) is NULL via the
+					// function being strict.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> NULL::text[];`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
+			// The json (non-binary) variants resolve through json_extract_path /
+			// json_extract_path_text and must match the jsonb behavior above.
+			Name: "json_extract_path with text-array paths and NULL elements",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::json #> ARRAY['a','b'];`,
+					Expected: []sql.Row{{`42`}},
+				},
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::json #>> ARRAY['a','b'];`,
+					Expected: []sql.Row{{`42`}},
+				},
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::json #> ARRAY['a',NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::json #>> ARRAY[NULL,'b'];`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
 	})
 }
 
