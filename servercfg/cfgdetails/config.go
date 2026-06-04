@@ -190,6 +190,38 @@ type DoltgresConfig struct {
 	GoldenMysqlConn *string                    `yaml:"golden_mysql_conn,omitempty" minver:"0.7.4"`
 
 	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"0.7.4"`
+
+	// ClusterConfig mirrors Dolt's cluster replication configuration. Cluster
+	// replication is not yet implemented in Doltgres; this is accepted so that
+	// cluster config files parse (the integration tests for cluster
+	// replication are ported but skipped until the feature lands). The shape
+	// mirrors Dolt's ClusterYAMLConfig.
+	ClusterCfg *DoltgresClusterConfig `yaml:"cluster,omitempty" minver:"TBD"`
+}
+
+// DoltgresClusterConfig mirrors Dolt's cluster replication configuration so
+// that ported cluster config files parse under UnmarshalStrict. These fields
+// are accepted but not yet wired into the server.
+type DoltgresClusterConfig struct {
+	StandbyRemotes []DoltgresStandbyRemoteConfig    `yaml:"standby_remotes"`
+	BootstrapRole  string                           `yaml:"bootstrap_role"`
+	BootstrapEpoch int                              `yaml:"bootstrap_epoch"`
+	RemotesAPI     DoltgresClusterRemotesAPIConfig  `yaml:"remotesapi"`
+}
+
+type DoltgresStandbyRemoteConfig struct {
+	Name              string `yaml:"name"`
+	RemoteURLTemplate string `yaml:"remote_url_template"`
+}
+
+type DoltgresClusterRemotesAPIConfig struct {
+	Addr       string   `yaml:"address"`
+	Port       int      `yaml:"port"`
+	TLSKey     string   `yaml:"tls_key"`
+	TLSCert    string   `yaml:"tls_cert"`
+	TLSCA      string   `yaml:"tls_ca"`
+	URLMatches []string `yaml:"server_name_urls"`
+	DNSMatches []string `yaml:"server_name_dns"`
 }
 
 var _ doltservercfg.ServerConfig = (*DoltgresConfig)(nil)
