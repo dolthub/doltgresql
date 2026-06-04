@@ -23,6 +23,12 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
+// UnknownColSentinelPrefix is prepended to the index position of unaliased string literals in a
+// SELECT clause. This gives GMS a unique per-position alias so its alias scope map can distinguish
+// multiple unnamed columns in the same SELECT. schemaToFieldDescriptions in doltgres_handler.go
+// strips this prefix and returns Postgres's "?column?" placeholder on the wire.
+const UnknownColSentinelPrefix = "__?column?__"
+
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 	ctx := NewContext(postgresStmt)
