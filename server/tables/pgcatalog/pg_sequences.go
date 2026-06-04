@@ -43,25 +43,25 @@ func (p PgSequencesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgSequencesHandler) RowIter(ctx *sql.Context, _ sql.Partition) (sql.RowIter, error) {
-	pgCatalogCache, err := getPgCatalogCache(ctx)
+	cache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if pgCatalogCache.sequences == nil {
-		err = cachePgSequences(ctx, pgCatalogCache)
+	if cache.sequences == nil {
+		err = cachePgSequences(ctx, cache)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &pgSequencesRowIter{
-		sequences: pgCatalogCache.sequences,
+		sequences: cache.sequences,
 		idx:       0,
 	}, nil
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgSequencesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgSequencesSchema,
@@ -113,7 +113,7 @@ func (iter *pgSequencesRowIter) Next(_ *sql.Context) (sql.Row, error) {
 	return sql.Row{
 		schemaName,                     // schemaname
 		sequence.Id.SequenceName(),     // sequencename
-		nil,                            // TODO sequenceowner
+		nil,                            // sequenceowner
 		sequence.DataTypeID.TypeName(), // data_type
 		sequence.Start,                 // start_value
 		sequence.Minimum,               // min_value
@@ -121,7 +121,7 @@ func (iter *pgSequencesRowIter) Next(_ *sql.Context) (sql.Row, error) {
 		sequence.Increment,             // increment_by
 		sequence.Cycle,                 // cycle
 		sequence.Cache,                 // cache_size
-		lastValue,                      // TODO last_value
+		lastValue,                      // last_value
 	}, nil
 }
 

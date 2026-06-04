@@ -2916,13 +2916,23 @@ func TestPgSequences(t *testing.T) {
 		{
 			Name: "table with serial column",
 			SetUpScript: []string{
-				"CREATE TABLE test (id serial)",
+				"CREATE TABLE test (id serial, e text)",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "SELECT sequencename, data_type, start_value, max_value FROM pg_sequences",
+					Query: "SELECT sequencename, data_type, start_value, max_value, last_value FROM pg_sequences",
 					Expected: []sql.Row{
-						{"test_id_seq", "int4", int64(1), int64(2147483647)},
+						{"test_id_seq", "int4", int64(1), int64(2147483647), nil},
+					},
+				},
+				{
+					Query:    "INSERT INTO test (e) VALUES ('1'), ('a');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT sequencename, last_value FROM pg_sequences",
+					Expected: []sql.Row{
+						{"test_id_seq", 2},
 					},
 				},
 			},
@@ -2936,15 +2946,23 @@ func TestPgSequences(t *testing.T) {
 				"CREATE SEQUENCE seq3",
 				"CREATE SEQUENCE seq4",
 				"select setval('seq3', 2, false), setval('seq4', 2, true)",
+				"CREATE SEQUENCE seq5 START 1 INCREMENT 3;",
+				"select nextval('seq5')",
+				"select nextval('seq5')",
+				"CREATE SEQUENCE seq6 as integer start 10 minvalue 5 maxvalue 11 increment 2 cycle;",
+				"select nextval('seq6')",
+				"select nextval('seq6')",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "SELECT sequencename, last_value FROM pg_sequences",
+					Query: "SELECT sequencename, last_value FROM pg_sequences ORDER BY sequencename",
 					Expected: []sql.Row{
 						{"seq1", nil},
 						{"seq2", 1},
 						{"seq3", nil},
 						{"seq4", 2},
+						{"seq5", 4},
+						{"seq6", 5},
 					},
 				},
 			},
