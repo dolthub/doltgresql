@@ -30,13 +30,26 @@ import (
 // makeObjectKeyPath builds a JSON path that selects the given top-level
 // object key, quoting and escaping the key so any characters are allowed.
 func makeObjectKeyPath(key string) string {
-	return `$."` + strings.ReplaceAll(key, `"`, `\"`) + `"`
+	return "$" + objectKeyPathSegment(key)
+}
+
+// objectKeyPathSegment builds a single object-key step (e.g. `."key"`), quoting
+// and escaping the key so any characters are allowed. Used both on its own and
+// when composing a multi-step JSON path.
+func objectKeyPathSegment(key string) string {
+	return `."` + strings.ReplaceAll(key, `"`, `\"`) + `"`
 }
 
 // makeArrayIndexPath builds a JSON path that selects the given top-level
 // array element by non-negative index.
 func makeArrayIndexPath(idx int) string {
-	return "$[" + strconv.Itoa(idx) + "]"
+	return "$" + arrayIndexPathSegment(idx)
+}
+
+// arrayIndexPathSegment builds a single array-index step (e.g. `[3]`). Used both
+// on its own and when composing a multi-step JSON path.
+func arrayIndexPathSegment(idx int) string {
+	return "[" + strconv.Itoa(idx) + "]"
 }
 
 // These functions can be gathered using the following query from a Postgres 15 instance:
@@ -397,12 +410,24 @@ var jsonb_extract_path = framework.Function2{
 }
 
 func jsonb_extract_path_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	// TODO: we could do this faster by creating a new single path and fetching it via sql.SearchableJSON.Lookup
 	cur, ok := val1.(sql.JSONWrapper)
 	if !ok {
 		return nil, nil
 	}
 	paths := val2.([]interface{})
+
+	// Fast path: for an indexed JSON document, build a single JSON path spanning
+	// every step and resolve it in one traversal via SearchableJSON.Lookup,
+	if _, ok := cur.(types.SearchableJSON); ok && len(paths) > 0 {
+		result, authoritative, err := extractJsonPathBySingleLookup(ctx, cur, paths)
+		if err != nil {
+			return nil, err
+		}
+		if authoritative {
+			return result, nil
+		}
+	}
+
 	for _, path := range paths {
 		if cur == nil {
 			return nil, nil
@@ -421,6 +446,51 @@ func jsonb_extract_path_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, v
 		cur = next
 	}
 	return cur, nil
+}
+
+// extractJsonPathBySingleLookup resolves returns the path in a JSON document by building a JSON path expression
+// from the text slice provided.
+// For numeric values, there's ambiguity as to whether they should be interpreted as array indices or object keys,
+// so a nil result in that case is not authoritative and the caller should fall back to the step-by-step walk.
+func extractJsonPathBySingleLookup(ctx *sql.Context, doc sql.JSONWrapper, paths []interface{}) (sql.JSONWrapper, bool, error) {
+	var sb strings.Builder
+	sb.WriteString("$")
+	ambiguous := false
+	for _, path := range paths {
+		textPath, ok := path.(string)
+		if !ok {
+			return nil, false, errors.Errorf("expected string path element: %v", path)
+		}
+		if idx, err := strconv.Atoi(textPath); err == nil {
+			// An integer element could be an array index or a numeric object
+			// key (or a negative index), so the lookup result isn't conclusive.
+			ambiguous = true
+			if idx >= 0 {
+				sb.WriteString(arrayIndexPathSegment(idx))
+				continue
+			}
+		}
+		sb.WriteString(objectKeyPathSegment(textPath))
+	}
+	result, err := types.LookupJSONValue(ctx, doc, sb.String())
+	if err != nil {
+		return nil, false, err
+	}
+
+	if result != nil {
+		// A non-nil result could still be semantically NULL
+		i, err := result.ToInterface(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		if ia, ok := i.([]interface{}); ok && len(ia) == 0 {
+			return nil, !ambiguous, nil
+		}
+
+		return result, true, nil
+	}
+
+	return nil, !ambiguous, nil
 }
 
 // extractOneJsonPathStep performs a single Postgres-style extract step against
@@ -499,7 +569,7 @@ var json_extract_path_text = framework.Function2{
 			return nil, nil
 		}
 		var unusedTypes [3]*pgtypes.DoltgresType
-		return jsonb_extract_path_text.Callable(ctx, unusedTypes, newVal, val2)
+		return jsonb_extract_path_text_callable(ctx, unusedTypes, newVal, val2)
 	},
 }
 
@@ -509,17 +579,19 @@ var jsonb_extract_path_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		elem, err := jsonb_extract_path_callable(ctx, dt, val1, val2)
-		if err != nil || elem == nil {
-			return nil, err
-		}
-		wrapper, ok := elem.(sql.JSONWrapper)
-		if !ok {
-			return nil, nil
-		}
-		return jsonWrapperElementToText(ctx, wrapper)
-	},
+	Callable:   jsonb_extract_path_text_callable,
+}
+
+func jsonb_extract_path_text_callable(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	elem, err := jsonb_extract_path_callable(ctx, dt, val1, val2)
+	if err != nil || elem == nil {
+		return nil, err
+	}
+	wrapper, ok := elem.(sql.JSONWrapper)
+	if !ok {
+		return nil, nil
+	}
+	return jsonWrapperElementToText(ctx, wrapper)
 }
 
 // jsonb_contains represents the PostgreSQL function of the same name, taking the same parameters.
