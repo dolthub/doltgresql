@@ -16,6 +16,7 @@ package expression
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -30,6 +31,7 @@ type ArrayAgg struct {
 	selectExprs []sql.Expression
 	orderBy     sql.SortFields
 	id          sql.ColumnId
+	Distinct    bool
 }
 
 var _ sql.Aggregation = (*ArrayAgg)(nil)
@@ -147,6 +149,7 @@ func (a *ArrayAgg) Window() *sql.WindowDefinition {
 func (a *ArrayAgg) NewBuffer(ctx *sql.Context) (sql.AggregationBuffer, error) {
 	return &arrayAggBuffer{
 		elements: make([]sql.Row, 0),
+		seen:     make(map[string]struct{}),
 		a:        a,
 	}, nil
 }
@@ -154,6 +157,7 @@ func (a *ArrayAgg) NewBuffer(ctx *sql.Context) (sql.AggregationBuffer, error) {
 // arrayAggBuffer is the buffer used to accumulate values for the array_agg aggregation function.
 type arrayAggBuffer struct {
 	elements []sql.Row
+	seen     map[string]struct{}
 	a        *ArrayAgg
 }
 
@@ -195,7 +199,14 @@ func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
 		return err
 	}
 
-	// TODO: unwrap values as necessary
+	if a.a.Distinct {
+		key := fmt.Sprintf("%v", evalRow[0])
+		if _, exists := a.seen[key]; exists {
+			return nil
+		}
+		a.seen[key] = struct{}{}
+	}
+
 	// Append the current value to the end of the row. We want to preserve the row's original structure
 	// for sort ordering in the final step.
 	a.elements = append(a.elements, append(row, evalRow[0]))

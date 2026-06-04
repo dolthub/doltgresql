@@ -371,6 +371,56 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array_agg with DISTINCT",
+			SetUpScript: []string{
+				`CREATE TABLE test_items (
+					id INT PRIMARY KEY,
+					category TEXT NOT NULL,
+					name TEXT NOT NULL
+				);`,
+				`INSERT INTO test_items (id, category, name) VALUES
+					(1, 'A', 'foo'),
+					(2, 'A', 'bar'),
+					(3, 'B', 'baz'),
+					(4, 'A', 'foo');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Order is non-deterministic without ORDER BY; value reflects insertion-order of first occurrences
+					Query: `SELECT array_agg(DISTINCT name) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{foo,bar,baz}"},
+					},
+				},
+				{
+					// https://github.com/dolthub/doltgresql/issues/2334
+					Query: `SELECT array_agg(DISTINCT name ORDER BY name ASC) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{bar,baz,foo}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(DISTINCT name ORDER BY name DESC) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{foo,baz,bar}"},
+					},
+				},
+				{
+					Query: `SELECT category, array_agg(DISTINCT name ORDER BY name ASC) FROM test_items GROUP BY category ORDER BY category;`,
+					Expected: []sql.Row{
+						{"A", "{bar,foo}"},
+						{"B", "{baz}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(DISTINCT category ORDER BY category) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{A,B}"},
+					},
+				},
+			},
+		},
 	})
 }
 
