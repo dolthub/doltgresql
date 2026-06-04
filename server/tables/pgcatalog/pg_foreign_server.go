@@ -47,7 +47,7 @@ func (p PgForeignServerHandler) RowIter(ctx *sql.Context, partition sql.Partitio
 	return emptyRowIter()
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgForeignServerHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgForeignServerSchema,

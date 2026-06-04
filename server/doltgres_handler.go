@@ -24,6 +24,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"runtime/trace"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,9 +44,9 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
-	pgtransform "github.com/dolthub/doltgresql/server/transform"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -180,25 +181,18 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 		logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
 		return nil, nil, sql.CastSQLError(err)
 	}
+	// Always attempt analysis to get correct column names for Describe(statement) responses.
+	// When bind variables are present the analyzer may fail or produce an inaccurate schema;
+	// in that case we fall back to the unanalyzed node rather than propagating the error —
+	// the real analysis with bound values happens later during Bind/Execute.
+	//
+	// Importantly, we return the pre-analysis node regardless of whether analysis succeeded.
+	// The analyzed plan is used only for schema/column-name determination; the unanalyzed node
+	// must be returned so that the caller can still find BindVar expressions via
+	// extractBindVarTypes (the analyzer replaces them with typed expressions).
 	analyzed := node
-	// We do not analyze expressions with bind variables, since that step comes later and analysis will return invalid results
-	hasBindVars := false
-	pgtransform.InspectNodeExprs(sqlCtx, node, func(sqlCtx *sql.Context, expr sql.Expression) bool {
-		if _, ok := expr.(*expression.BindVar); ok {
-			hasBindVars = true
-			return true
-		}
-		return false
-	})
-	if !hasBindVars {
-		analyzed, err = h.e.Analyzer.Analyze(sqlCtx, node, nil, nil)
-		if err != nil {
-			if printErrorStackTraces {
-				fmt.Printf("unable to prepare query: %+v\n", err)
-			}
-			logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
-			return nil, nil, sql.CastSQLError(err)
-		}
+	if attemptedAnalysis, analyzeErr := h.e.Analyzer.Analyze(sqlCtx, node, nil, nil); analyzeErr == nil {
+		analyzed = attemptedAnalysis
 	}
 
 	var fields []pgproto3.FieldDescription
@@ -217,7 +211,9 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			return nil, nil, err
 		}
 	}
-	return analyzed, fields, nil
+	// Return the pre-analysis node so callers can still find BindVar expressions.
+	// The analyzed plan was only needed to determine column names for the fields above.
+	return node, fields, nil
 }
 
 // ComQuery implements the Handler interface.
@@ -513,17 +509,21 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, formatCodes []int
 
 		var err error
 		colName := c.Name
+		// Translate the internal sentinel aliases set by nodeSelectExprs for unaliased string
+		// literals back to Postgres's ?column? placeholder.
+		if strings.HasPrefix(colName, ast.UnknownColSentinelPrefix) {
+			colName = "?column?"
+		}
 		dataTypeSize := int16(c.Type.MaxTextResponseByteLength(ctx))
 		tableAttributeNumber := uint16(i + 1) // TODO: this should be based on the actual table field index, not the return schema
 		if doltgresType, ok := c.Type.(*pgtypes.DoltgresType); ok {
 			if doltgresType.ID == pgtypes.Unknown.ID {
-				// It appears that the `unknown` type is always converted to `text` on output since they're binary
-				// coercible. There are other assumptions that we can make as well, as no function or column will return
-				// the `unknown` type, so we can infer that this is a raw value being returned as-is from the query,
-				// such as `SELECT 'foo';`
+				// The `unknown` type is always converted to `text` on output since they're binary coercible.
+				// No function or column returns `unknown`, so this is always a raw string literal from the query.
+				// Column naming (alias vs ?column?) is handled in nodeSelectExprs; preserve whatever name
+				// was set there.
 				doltgresType = pgtypes.Text
 				dataTypeSize = int16(doltgresType.MaxTextResponseByteLength(ctx))
-				colName = "?column?"
 				tableAttributeNumber = 0
 			}
 			if doltgresType.TypType == pgtypes.TypeType_Domain {

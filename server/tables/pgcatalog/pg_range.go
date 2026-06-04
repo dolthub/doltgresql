@@ -47,7 +47,7 @@ func (p PgRangeHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.
 	return emptyRowIter()
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgRangeHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgRangeSchema,
