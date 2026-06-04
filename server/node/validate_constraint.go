@@ -143,7 +143,7 @@ func (v *ValidateConstraint) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 		}
 		for _, check := range checks {
 			if strings.EqualFold(check.Name, v.constraintName) {
-				return v.validateCheckConstraint(ctx, db, tblNode, check)
+				return v.validateCheckConstraint(ctx, tblNode, check)
 			}
 		}
 	}
@@ -151,7 +151,8 @@ func (v *ValidateConstraint) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	return nil, errors.Errorf(`constraint "%s" of relation "%s" does not exist`, v.constraintName, v.tableName)
 }
 
-func (v *ValidateConstraint) validateCheckConstraint(ctx *sql.Context, db sql.Database, tblNode sql.Table, check sql.CheckDefinition) (sql.RowIter, error) {
+// validateCheckConstraint validates check constraints if on its |IsNotValid| field is TRUE.
+func (v *ValidateConstraint) validateCheckConstraint(ctx *sql.Context, tblNode sql.Table, check sql.CheckDefinition) (sql.RowIter, error) {
 	if !check.IsNotValid {
 		return sql.RowsToRowIter(), nil
 	}
@@ -202,6 +203,7 @@ func (v *ValidateConstraint) validateCheckConstraint(ctx *sql.Context, db sql.Da
 	return sql.RowsToRowIter(), nil
 }
 
+// validateForeignKey validates foreign key constraints if on its |IsNotValid| field is TRUE.
 func (v *ValidateConstraint) validateForeignKey(ctx *sql.Context, db sql.Database, fkTbl sql.ForeignKeyTable, fkDef sql.ForeignKeyConstraint) (sql.RowIter, error) {
 	if !fkDef.IsNotValid {
 		return sql.RowsToRowIter(), nil
