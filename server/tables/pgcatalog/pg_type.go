@@ -235,7 +235,7 @@ func (p PgTypeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgTyp
 	return gte, hasLowerBound, lt, hasUpperBound
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgTypeHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgTypeSchema,

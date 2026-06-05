@@ -1230,11 +1230,11 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb < '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb < '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'and'::name < 'then'::name;`,
@@ -1578,11 +1578,11 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb > '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb > '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'and'::name > 'then'::name;`,
@@ -2006,7 +2006,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb <= '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb <= '{"a":1}'::jsonb;`,
@@ -2014,7 +2014,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb <= '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT 'and'::name <= 'then'::name;`,
@@ -2502,7 +2502,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb >= '{"b":2}'::jsonb;`,
-					Expected: []sql.Row{{"f"}},
+					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb >= '{"a":1}'::jsonb;`,
@@ -2510,7 +2510,7 @@ func TestOperators(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb >= '{"a":1}'::jsonb;`,
-					Expected: []sql.Row{{"t"}},
+					Expected: []sql.Row{{"f"}},
 				},
 				{
 					Query:    `SELECT 'and'::name >= 'then'::name;`,

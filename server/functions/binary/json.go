@@ -15,14 +15,42 @@
 package binary
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
+
+// makeObjectKeyPath builds a JSON path that selects the given top-level
+// object key, quoting and escaping the key so any characters are allowed.
+func makeObjectKeyPath(key string) string {
+	return "$" + objectKeyPathSegment(key)
+}
+
+// objectKeyPathSegment builds a single object-key step (e.g. `."key"`), quoting
+// and escaping the key so any characters are allowed. Used both on its own and
+// when composing a multi-step JSON path.
+func objectKeyPathSegment(key string) string {
+	return `."` + strings.ReplaceAll(key, `"`, `\"`) + `"`
+}
+
+// makeArrayIndexPath builds a JSON path that selects the given top-level
+// array element by non-negative index.
+func makeArrayIndexPath(idx int) string {
+	return "$" + arrayIndexPathSegment(idx)
+}
+
+// arrayIndexPathSegment builds a single array-index step (e.g. `[3]`). Used both
+// on its own and when composing a multi-step JSON path.
+func arrayIndexPathSegment(idx int) string {
+	return "[" + strconv.Itoa(idx) + "]"
+}
 
 // These functions can be gathered using the following query from a Postgres 15 instance:
 // SELECT * FROM pg_operator o WHERE o.oprname = <OPERATOR> ORDER BY o.oprcode::varchar;
@@ -52,6 +80,63 @@ func initJSON() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryMinus, jsonb_delete_int32)
 }
 
+// toJSONWrapper converts a JSON value (either string or sql.JSONWrapper) to a sql.JSONWrapper.
+func toJSONWrapper(ctx *sql.Context, val any) (sql.JSONWrapper, error) {
+	switch v := val.(type) {
+	case sql.JSONWrapper:
+		return v, nil
+	case sql.StringWrapper:
+		s, err := v.Unwrap(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		doc, err := pgtypes.JsonB.IoInput(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		if doc == nil {
+			return nil, nil
+		}
+		w, ok := doc.(sql.JSONWrapper)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type from IoInput: %T", doc)
+		}
+		return w, nil
+	case string:
+		doc, err := pgtypes.JsonB.IoInput(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		if doc == nil {
+			return nil, nil
+		}
+		w, ok := doc.(sql.JSONWrapper)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type from IoInput: %T", doc)
+		}
+		return w, nil
+	default:
+		return nil, fmt.Errorf("unexpected type for JSON operation: %T", val)
+	}
+}
+
+// jsonWrapperElementToText converts a JSON element (sql.JSONWrapper) to its text representation.
+// For string values, it returns the raw string without quotes. For other types, it returns the JSON representation.
+func jsonWrapperElementToText(ctx *sql.Context, wrapper sql.JSONWrapper) (string, error) {
+	v, err := wrapper.ToInterface(ctx)
+	if err != nil {
+		return "", err
+	}
+	if v == nil {
+		return "", nil
+	}
+	if s, ok := v.(string); ok {
+		return s, nil
+	}
+	return types.JSONDocument{Val: v}.JSONString()
+}
+
 // json_array_element represents the PostgreSQL function of the same name, taking the same parameters.
 var json_array_element = framework.Function2{
 	Name:       "json_array_element",
@@ -59,18 +144,20 @@ var json_array_element = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Json, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
+		newVal, err := toJSONWrapper(ctx, val1)
 		if err != nil {
 			return nil, err
 		}
+		if newVal == nil {
+			return nil, nil
+		}
 		var unusedTypes [3]*pgtypes.DoltgresType
-		retVal, err := jsonb_array_element.Callable(ctx, unusedTypes, newVal, val2)
+		retVal, err := jsonb_array_element_callable(ctx, unusedTypes, newVal, val2)
 		if err != nil {
 			return nil, err
 		}
 		if retVal == nil {
-			return "", nil
+			return nil, nil
 		}
 		return pgtypes.JsonB.IoOutput(ctx, retVal)
 	},
@@ -82,20 +169,56 @@ var jsonb_array_element = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		array, ok := val1.(pgtypes.JsonDocument).Value.(pgtypes.JsonValueArray)
-		if !ok {
+	Callable:   jsonb_array_element_callable,
+}
+
+func jsonb_array_element_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	wrapper, ok := val1.(sql.JSONWrapper)
+	if !ok {
+		return nil, nil
+	}
+	idx := int(val2.(int32))
+	// Fast path: for a ComparableJSON wrapper backed by an indexed JSON
+	// array, use Lookup to fetch the element without materializing the
+	// entire array. Negative indices need the array length, so they fall
+	// through to the materialized path even on indexed values.
+	if comparable, ok := wrapper.(types.ComparableJSON); ok {
+		jt, err := comparable.JsonType(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if jt != "ARRAY" {
 			return nil, nil
 		}
-		idx := val2.(int32)
-		if idx < 0 {
-			idx += int32(len(array))
+		if idx >= 0 {
+			result, err := types.LookupJSONValue(ctx, wrapper, makeArrayIndexPath(idx))
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				return nil, nil
+			}
+			return result, nil
 		}
-		if int(idx) >= len(array) {
-			return nil, nil
-		}
-		return pgtypes.JsonDocument{Value: array[idx]}, nil
-	},
+	}
+	// Materialized fallback: covers wrappers that don't implement
+	// ComparableJSON (e.g. literal jsonb values) and the negative-index
+	// case on ComparableJSON arrays.
+	v, err := wrapper.ToInterface(ctx)
+	if err != nil {
+		return nil, err
+	}
+	array, ok := v.([]interface{})
+	if !ok {
+		return nil, nil
+	}
+	if idx < 0 {
+		idx += len(array)
+	}
+	if idx < 0 || idx >= len(array) {
+		return nil, nil
+	}
+	return types.JSONDocument{Val: array[idx]}, nil
 }
 
 // json_object_field represents the PostgreSQL function of the same name, taking the same parameters.
@@ -106,9 +229,12 @@ var json_object_field = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
+		newVal, err := toJSONWrapper(ctx, val1)
 		if err != nil {
 			return nil, err
+		}
+		if newVal == nil {
+			return nil, nil
 		}
 		var unusedTypes [3]*pgtypes.DoltgresType
 		retVal, err := jsonb_object_field.Callable(ctx, unusedTypes, newVal, val2)
@@ -116,7 +242,7 @@ var json_object_field = framework.Function2{
 			return nil, err
 		}
 		if retVal == nil {
-			return "", nil
+			return nil, nil
 		}
 		return pgtypes.JsonB.IoOutput(ctx, retVal)
 	},
@@ -129,15 +255,43 @@ var jsonb_object_field = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		object, ok := val1.(pgtypes.JsonDocument).Value.(pgtypes.JsonValueObject)
+		wrapper, ok := val1.(sql.JSONWrapper)
 		if !ok {
 			return nil, nil
 		}
-		idx, ok := object.Index[val2.(string)]
+		key := val2.(string)
+		// Fast path: for a ComparableJSON wrapper backed by an indexed JSON
+		// object, use Lookup to fetch the value without materializing the
+		// entire document.
+		if isObj, err := isComparableJsonObject(ctx, wrapper); err != nil {
+			return nil, err
+		} else if isObj {
+			result, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key))
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				return nil, nil
+			}
+			return result, nil
+		}
+		// Materialized fallback: covers wrappers that don't implement
+		// ComparableJSON (e.g. literal jsonb values), where the embedded
+		// jsonpath library has trouble with edge cases like keys that
+		// contain escaped quotes, or array operands with text paths.
+		v, err := wrapper.ToInterface(ctx)
+		if err != nil {
+			return nil, err
+		}
+		obj, ok := v.(map[string]any)
 		if !ok {
 			return nil, nil
 		}
-		return pgtypes.JsonDocument{Value: object.Items[idx].Value}, nil
+		val, ok := obj[key]
+		if !ok {
+			return nil, nil
+		}
+		return types.JSONDocument{Val: val}, nil
 	},
 }
 
@@ -149,9 +303,12 @@ var json_array_element_text = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
+		newVal, err := toJSONWrapper(ctx, val1)
 		if err != nil {
 			return nil, err
+		}
+		if newVal == nil {
+			return nil, nil
 		}
 		var unusedTypes [3]*pgtypes.DoltgresType
 		return jsonb_array_element_text.Callable(ctx, unusedTypes, newVal, val2)
@@ -165,16 +322,15 @@ var jsonb_array_element_text = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		doc, err := jsonb_array_element.Callable(ctx, dt, val1, val2)
-		if err != nil || doc == nil {
+		elem, err := jsonb_array_element_callable(ctx, dt, val1, val2)
+		if err != nil || elem == nil {
 			return nil, err
 		}
-		switch value := doc.(pgtypes.JsonDocument).Value.(type) {
-		case pgtypes.JsonValueString:
-			return string(value), nil
-		default:
-			return pgtypes.JsonB.IoOutput(ctx, pgtypes.JsonDocument{Value: value})
+		wrapper, ok := elem.(sql.JSONWrapper)
+		if !ok {
+			return nil, nil
 		}
+		return jsonWrapperElementToText(ctx, wrapper)
 	},
 }
 
@@ -186,32 +342,34 @@ var json_object_field_text = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
+		newVal, err := toJSONWrapper(ctx, val1)
 		if err != nil {
 			return nil, err
+		}
+		if newVal == nil {
+			return nil, nil
 		}
 		var unusedTypes [3]*pgtypes.DoltgresType
 		return jsonb_object_field_text.Callable(ctx, unusedTypes, newVal, val2)
 	},
 }
 
-// jsonb_object_field_tex_jsonb represents the PostgreSQL function of the same name, taking the same parameters.
+// jsonb_object_field_text represents the PostgreSQL function of the same name, taking the same parameters.
 var jsonb_object_field_text = framework.Function2{
 	Name:       "jsonb_object_field_text",
 	Return:     pgtypes.Text,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		doc, err := jsonb_object_field.Callable(ctx, dt, val1, val2)
-		if err != nil || doc == nil {
+		elem, err := jsonb_object_field.Callable(ctx, dt, val1, val2)
+		if err != nil || elem == nil {
 			return nil, err
 		}
-		switch value := doc.(pgtypes.JsonDocument).Value.(type) {
-		case pgtypes.JsonValueString:
-			return string(value), nil
-		default:
-			return pgtypes.JsonB.IoOutput(ctx, pgtypes.JsonDocument{Value: value})
+		wrapper, ok := elem.(sql.JSONWrapper)
+		if !ok {
+			return nil, nil
 		}
+		return jsonWrapperElementToText(ctx, wrapper)
 	},
 }
 
@@ -223,17 +381,20 @@ var json_extract_path = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
+		newVal, err := toJSONWrapper(ctx, val1)
 		if err != nil {
 			return nil, err
 		}
+		if newVal == nil {
+			return nil, nil
+		}
 		var unusedTypes [3]*pgtypes.DoltgresType
-		retVal, err := jsonb_extract_path.Callable(ctx, unusedTypes, newVal, val2)
+		retVal, err := jsonb_extract_path_callable(ctx, unusedTypes, newVal, val2)
 		if err != nil {
 			return nil, err
 		}
 		if retVal == nil {
-			return "", nil
+			return nil, nil
 		}
 		return pgtypes.JsonB.IoOutput(ctx, retVal)
 	},
@@ -245,34 +406,161 @@ var jsonb_extract_path = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		value := val1.(pgtypes.JsonDocument).Value
-		paths := val2.([]interface{})
-		for _, path := range paths {
-			textPath, ok := path.(string)
-			if !ok {
-				return nil, nil
+	Callable:   jsonb_extract_path_callable,
+}
+
+func jsonb_extract_path_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	cur, ok := val1.(sql.JSONWrapper)
+	if !ok {
+		return nil, nil
+	}
+	paths := val2.([]interface{})
+
+	// Fast path: for an indexed JSON document, build a single JSON path spanning
+	// every step and resolve it in one traversal via SearchableJSON.Lookup,
+	if _, ok := cur.(types.SearchableJSON); ok && len(paths) > 0 {
+		result, authoritative, err := extractJsonPathBySingleLookup(ctx, cur, paths)
+		if err != nil {
+			return nil, err
+		}
+		if authoritative {
+			return result, nil
+		}
+	}
+
+	for _, path := range paths {
+		if cur == nil {
+			return nil, nil
+		}
+		textPath, ok := path.(string)
+		if !ok {
+			return nil, nil
+		}
+		next, err := extractOneJsonPathStep(ctx, cur, textPath)
+		if err != nil {
+			return nil, err
+		}
+		if next == nil {
+			return nil, nil
+		}
+		cur = next
+	}
+	return cur, nil
+}
+
+// extractJsonPathBySingleLookup resolves returns the path in a JSON document by building a JSON path expression
+// from the text slice provided.
+// For numeric values, there's ambiguity as to whether they should be interpreted as array indices or object keys,
+// so a nil result in that case is not authoritative and the caller should fall back to the step-by-step walk.
+func extractJsonPathBySingleLookup(ctx *sql.Context, doc sql.JSONWrapper, paths []interface{}) (sql.JSONWrapper, bool, error) {
+	var sb strings.Builder
+	sb.WriteString("$")
+	ambiguous := false
+	for _, path := range paths {
+		var textPath string
+		switch path := path.(type) {
+		case string:
+			textPath = path
+		case sql.StringWrapper:
+			var err error
+			textPath, err = path.Unwrap(ctx)
+			if err != nil {
+				return nil, false, err
 			}
-			switch currentValue := value.(type) {
-			case pgtypes.JsonValueObject:
-				idx, ok := currentValue.Index[textPath]
-				if !ok {
-					return nil, nil
-				}
-				value = currentValue.Items[idx].Value
-			case pgtypes.JsonValueArray:
-				idx, err := strconv.Atoi(textPath)
-				if err != nil {
-					// We don't return the error here, a bad parse is treated as an object key which isn't valid
-					return nil, nil
-				}
-				value = currentValue[idx]
-			default:
-				return nil, nil
+		case nil:
+			return nil, true, nil
+		}
+
+		if idx, err := strconv.Atoi(textPath); err == nil {
+			// An integer element could be an array index or a numeric object
+			// key (or a negative index), so the lookup result isn't conclusive.
+			ambiguous = true
+			if idx >= 0 {
+				sb.WriteString(arrayIndexPathSegment(idx))
+				continue
 			}
 		}
-		return pgtypes.JsonDocument{Value: value}, nil
-	},
+		sb.WriteString(objectKeyPathSegment(textPath))
+	}
+	result, err := types.LookupJSONValue(ctx, doc, sb.String())
+	if err != nil {
+		return nil, false, err
+	}
+
+	if result != nil {
+		// A non-nil result could still be semantically NULL
+		i, err := result.ToInterface(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		if ia, ok := i.([]interface{}); ok && len(ia) == 0 {
+			return nil, !ambiguous, nil
+		}
+
+		return result, true, nil
+	}
+
+	return nil, !ambiguous, nil
+}
+
+// extractOneJsonPathStep performs a single Postgres-style extract step against
+// the given JSON wrapper. The text is treated as a key when the wrapper is an
+// object and as an integer index when the wrapper is an array. Returns nil if
+// the step cannot be resolved (missing key, out-of-range index, scalar
+// wrapper, or non-integer text on an array).
+func extractOneJsonPathStep(ctx *sql.Context, cur sql.JSONWrapper, textPath string) (sql.JSONWrapper, error) {
+	// Fast path: use the ComparableJSON.JsonType / SearchableJSON.Lookup
+	// interfaces to avoid materializing the entire document.
+	if comparable, ok := cur.(types.ComparableJSON); ok {
+		jt, err := comparable.JsonType(ctx)
+		if err != nil {
+			return nil, err
+		}
+		switch jt {
+		case "OBJECT":
+			return types.LookupJSONValue(ctx, cur, makeObjectKeyPath(textPath))
+		case "ARRAY":
+			idx, err := strconv.Atoi(textPath)
+			if err != nil {
+				return nil, nil
+			}
+			if idx >= 0 {
+				return types.LookupJSONValue(ctx, cur, makeArrayIndexPath(idx))
+			}
+			// Negative indices count from the end and require knowing the
+			// array length, so fall through to the materialized path below.
+		default:
+			return nil, nil
+		}
+	}
+	// Materialized fallback for wrappers that don't implement ComparableJSON,
+	// and for negative array indices on ones that do.
+	v, err := cur.ToInterface(ctx)
+	if err != nil {
+		return nil, err
+	}
+	switch currentValue := v.(type) {
+	case map[string]interface{}:
+		next, ok := currentValue[textPath]
+		if !ok {
+			return nil, nil
+		}
+		return types.JSONDocument{Val: next}, nil
+	case []interface{}:
+		idx, err := strconv.Atoi(textPath)
+		if err != nil {
+			return nil, nil
+		}
+		if idx < 0 {
+			idx += len(currentValue)
+		}
+		if idx < 0 || idx >= len(currentValue) {
+			return nil, nil
+		}
+		return types.JSONDocument{Val: currentValue[idx]}, nil
+	default:
+		return nil, nil
+	}
 }
 
 // json_extract_path_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -283,12 +571,15 @@ var json_extract_path_text = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		// TODO: make a bespoke implementation that preserves whitespace
-		newVal, err := pgtypes.JsonB.IoInput(ctx, val1.(string))
+		newVal, err := toJSONWrapper(ctx, val1)
 		if err != nil {
 			return nil, err
 		}
+		if newVal == nil {
+			return nil, nil
+		}
 		var unusedTypes [3]*pgtypes.DoltgresType
-		return jsonb_extract_path_text.Callable(ctx, unusedTypes, newVal, val2)
+		return jsonb_extract_path_text_callable(ctx, unusedTypes, newVal, val2)
 	},
 }
 
@@ -298,18 +589,19 @@ var jsonb_extract_path_text = framework.Function2{
 	Return:     pgtypes.Text,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		doc, err := jsonb_extract_path.Callable(ctx, dt, val1, val2)
-		if err != nil || doc == nil {
-			return nil, err
-		}
-		switch value := doc.(pgtypes.JsonDocument).Value.(type) {
-		case pgtypes.JsonValueString:
-			return string(value), nil
-		default:
-			return pgtypes.JsonB.IoOutput(ctx, pgtypes.JsonDocument{Value: value})
-		}
-	},
+	Callable:   jsonb_extract_path_text_callable,
+}
+
+func jsonb_extract_path_text_callable(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	elem, err := jsonb_extract_path_callable(ctx, dt, val1, val2)
+	if err != nil || elem == nil {
+		return nil, err
+	}
+	wrapper, ok := elem.(sql.JSONWrapper)
+	if !ok {
+		return nil, nil
+	}
+	return jsonWrapperElementToText(ctx, wrapper)
 }
 
 // jsonb_contains represents the PostgreSQL function of the same name, taking the same parameters.
@@ -341,25 +633,57 @@ var jsonb_exists = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		switch value := val1.(pgtypes.JsonDocument).Value.(type) {
-		case pgtypes.JsonValueObject:
-			_, ok := value.Index[val2.(string)]
+		wrapper, ok := val1.(sql.JSONWrapper)
+		if !ok {
+			return false, nil
+		}
+		key := val2.(string)
+		// Fast path: for an indexed JSON object, use Lookup to test for the
+		// key without materializing the document.
+		if isObj, err := isComparableJsonObject(ctx, wrapper); err != nil {
+			return nil, err
+		} else if isObj {
+			found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key))
+			if err != nil {
+				return nil, err
+			}
+			return found != nil, nil
+		}
+		value, err := wrapper.ToInterface(ctx)
+		if err != nil {
+			return nil, err
+		}
+		switch v := value.(type) {
+		case map[string]interface{}:
+			_, ok := v[key]
 			return ok, nil
-		case pgtypes.JsonValueArray:
-			str := val2.(string)
-			for _, arrayItem := range value {
-				itemStr, ok := arrayItem.(pgtypes.JsonValueString)
-				if ok && str == string(itemStr) {
+		case []interface{}:
+			for _, item := range v {
+				if s, ok := item.(string); ok && s == key {
 					return true, nil
 				}
 			}
 			return false, nil
-		case pgtypes.JsonValueString:
-			return string(value) == val2.(string), nil
+		case string:
+			return v == key, nil
 		default:
 			return false, nil
 		}
 	},
+}
+
+// isComparableJsonObject reports whether the JSON wrapper is a JSON object and
+// also implements types.ComparableJSON
+func isComparableJsonObject(ctx *sql.Context, wrapper sql.JSONWrapper) (bool, error) {
+	comparable, ok := wrapper.(types.ComparableJSON)
+	if !ok {
+		return false, nil
+	}
+	jt, err := comparable.JsonType(ctx)
+	if err != nil {
+		return false, err
+	}
+	return jt == "OBJECT", nil
 }
 
 // jsonb_exists_any represents the PostgreSQL function of the same name, taking the same parameters.
@@ -369,29 +693,51 @@ var jsonb_exists_any = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		wrapper, ok := val1.(sql.JSONWrapper)
+		if !ok {
+			return false, nil
+		}
 		keys := val2.([]interface{})
-		switch value := val1.(pgtypes.JsonDocument).Value.(type) {
-		case pgtypes.JsonValueObject:
+		// Fast path: for an indexed JSON object, test each key with Lookup
+		// instead of materializing the document.
+		if isObj, err := isComparableJsonObject(ctx, wrapper); err != nil {
+			return nil, err
+		} else if isObj {
 			for _, key := range keys {
-				if _, ok := value.Index[key.(string)]; ok {
+				found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key.(string)))
+				if err != nil {
+					return nil, err
+				}
+				if found != nil {
 					return true, nil
 				}
 			}
 			return false, nil
-		case pgtypes.JsonValueArray:
-			// Inefficient but good enough for now
+		}
+		value, err := wrapper.ToInterface(ctx)
+		if err != nil {
+			return nil, err
+		}
+		switch v := value.(type) {
+		case map[string]interface{}:
 			for _, key := range keys {
-				for _, arrayItem := range value {
-					itemStr, ok := arrayItem.(pgtypes.JsonValueString)
-					if ok && string(itemStr) == key.(string) {
+				if _, ok := v[key.(string)]; ok {
+					return true, nil
+				}
+			}
+			return false, nil
+		case []interface{}:
+			for _, key := range keys {
+				for _, item := range v {
+					if s, ok := item.(string); ok && s == key.(string) {
 						return true, nil
 					}
 				}
 			}
 			return false, nil
-		case pgtypes.JsonValueString:
+		case string:
 			for _, key := range keys {
-				if string(value) == key.(string) {
+				if v == key.(string) {
 					return true, nil
 				}
 			}
@@ -409,22 +755,44 @@ var jsonb_exists_all = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.TextArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		wrapper, ok := val1.(sql.JSONWrapper)
+		if !ok {
+			return false, nil
+		}
 		keys := val2.([]interface{})
-		switch value := val1.(pgtypes.JsonDocument).Value.(type) {
-		case pgtypes.JsonValueObject:
+		// Fast path: for an indexed JSON object, test each key with Lookup
+		// instead of materializing the document.
+		if isObj, err := isComparableJsonObject(ctx, wrapper); err != nil {
+			return nil, err
+		} else if isObj {
 			for _, key := range keys {
-				if _, ok := value.Index[key.(string)]; !ok {
+				found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key.(string)))
+				if err != nil {
+					return nil, err
+				}
+				if found == nil {
 					return false, nil
 				}
 			}
 			return true, nil
-		case pgtypes.JsonValueArray:
-			// Inefficient but good enough for now
+		}
+		value, err := wrapper.ToInterface(ctx)
+		if err != nil {
+			return nil, err
+		}
+		switch v := value.(type) {
+		case map[string]interface{}:
+			for _, key := range keys {
+				if _, ok := v[key.(string)]; !ok {
+					return false, nil
+				}
+			}
+			return true, nil
+		case []interface{}:
 			for _, key := range keys {
 				found := false
-				for _, arrayItem := range value {
-					itemStr, ok := arrayItem.(pgtypes.JsonValueString)
-					if ok && string(itemStr) == key.(string) {
+				for _, item := range v {
+					if s, ok := item.(string); ok && s == key.(string) {
 						found = true
 						break
 					}
@@ -434,9 +802,9 @@ var jsonb_exists_all = framework.Function2{
 				}
 			}
 			return true, nil
-		case pgtypes.JsonValueString:
+		case string:
 			for _, key := range keys {
-				if string(value) != key.(string) {
+				if v != key.(string) {
 					return false, nil
 				}
 			}

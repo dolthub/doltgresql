@@ -197,6 +197,8 @@ func (t *DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Co
 
 // Compare implements the types.ExtendedType interface.
 func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface{}) (int, error) {
+	// TODO: for some large types, we could do this much faster by doing it chunk-by-chunk, rather than eagerly loading
+	//  the full value into memory
 	var err error
 	v1, err = sql.UnwrapAny(ctx, v1)
 	if err != nil {
@@ -325,9 +327,9 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 	case duration.Duration:
 		bb := v2.(duration.Duration)
 		return ab.Compare(bb), nil
-	case JsonDocument:
-		bb := v2.(JsonDocument)
-		return JsonValueCompare(ab.Value, bb.Value), nil
+	case sql.JSONWrapper:
+		res, err := types.CompareJSON(ctx, ab, v2)
+		return res, err
 	case *apd.Decimal:
 		bb := v2.(*apd.Decimal)
 		return NumericCompare(ab, bb), nil
@@ -415,7 +417,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.([]byte); ok {
 			return v, sql.InRange, nil
 		}
-	case "bpchar", "char", "json", "name", "text", "unknown", "varchar":
+	case "bpchar", "char", "name", "text", "unknown", "varchar":
 		_, ok, err := sql.Unwrap[string](ctx, v)
 		if err != nil {
 			return nil, sql.InRange, err
@@ -451,8 +453,11 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.(duration.Duration); ok {
 			return v, sql.InRange, nil
 		}
-	case "jsonb":
-		if _, ok := v.(JsonDocument); ok {
+	case "jsonb", "json":
+		if _, ok := v.(sql.JSONWrapper); ok {
+			return v, sql.InRange, nil
+		}
+		if _, ok := v.(string); ok {
 			return v, sql.InRange, nil
 		}
 	case "oid", "regclass", "regproc", "regtype":

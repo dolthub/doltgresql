@@ -64,7 +64,7 @@ func (p PgIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sq
 	}, nil
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgIndexesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgIndexesSchema,
