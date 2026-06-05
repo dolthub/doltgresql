@@ -206,6 +206,38 @@ func TestRecords(t *testing.T) {
 					Query:    "SELECT ROW(1, '2') = ROW(1, 2::TEXT);",
 					Expected: []sql.Row{{"t"}},
 				},
+				{
+					Query:    "SELECT ROW(1, 1) = ROW(1, 1);",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 1) != ROW(1, 1);",
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 1) < ROW(1, 1);",
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 1) <= ROW(1, 1);",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 1) > ROW(1, 1);",
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 1) = ROW(1, 1);",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 2, null, 4) = ROW(null, 2, 3, 5);",
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    "SELECT ROW(1, 2, null, 4) != ROW(null, 2, 3, 5);",
+					Expected: []sql.Row{{"t"}},
+				},
 			},
 		},
 		{
