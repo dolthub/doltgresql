@@ -203,10 +203,10 @@ type DoltgresConfig struct {
 // that ported cluster config files parse under UnmarshalStrict. These fields
 // are accepted but not yet wired into the server.
 type DoltgresClusterConfig struct {
-	StandbyRemotes []DoltgresStandbyRemoteConfig    `yaml:"standby_remotes"`
-	BootstrapRole  string                           `yaml:"bootstrap_role"`
-	BootstrapEpoch int                              `yaml:"bootstrap_epoch"`
-	RemotesAPI     DoltgresClusterRemotesAPIConfig  `yaml:"remotesapi"`
+	StandbyRemotes []DoltgresStandbyRemoteConfig   `yaml:"standby_remotes"`
+	BootstrapRole  string                          `yaml:"bootstrap_role"`
+	BootstrapEpoch int                             `yaml:"bootstrap_epoch"`
+	RemotesAPI     DoltgresClusterRemotesAPIConfig `yaml:"remotesapi"`
 }
 
 type DoltgresStandbyRemoteConfig struct {

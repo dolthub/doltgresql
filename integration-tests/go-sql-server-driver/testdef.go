@@ -17,7 +17,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -25,13 +27,11 @@ import (
 	"text/template"
 	"time"
 
-	"database/sql"
-	"io"
-
-	driver "github.com/dolthub/doltgresql/integration-tests/go-sql-server-driver/driver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v3"
+
+	driver "github.com/dolthub/doltgresql/integration-tests/go-sql-server-driver/driver"
 )
 
 var GlobalPorts GlobalDynamicResources

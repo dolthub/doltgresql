@@ -17,8 +17,9 @@ package main
 import (
 	"testing"
 
-	driver "github.com/dolthub/doltgresql/integration-tests/go-sql-server-driver/driver"
 	"github.com/stretchr/testify/require"
+
+	driver "github.com/dolthub/doltgresql/integration-tests/go-sql-server-driver/driver"
 )
 
 // newPorts returns a DynamicResources bound to the global port pool for use in
