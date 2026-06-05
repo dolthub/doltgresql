@@ -1692,6 +1692,10 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{"[1,2,3]"}},
 				},
 				{
+					Query:    `SELECT array_to_json(ARRAY [jsonb '{"a":1}', jsonb '{"b":[2,3]}']);`,
+					Expected: []sql.Row{{`[{"a":1},{"b":[2,3]}]`}},
+				},
+				{
 					Query:    `SELECT array_to_json(ARRAY[1.5, 2.5]::float8[])`,
 					Expected: []sql.Row{{"[1.5,2.5]"}},
 				},

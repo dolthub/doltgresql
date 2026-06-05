@@ -19,6 +19,7 @@ import (
 
 	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/goccy/go-json"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -95,6 +96,14 @@ func valueToJsonRaw(ctx *sql.Context, elemType *pgtypes.DoltgresType, val any) (
 		sb := strings.Builder{}
 		pgtypes.JsonValueFormatter(&sb, v.Value)
 		return json.RawMessage(sb.String()), nil
+	case types.JSONDocument:
+		return json.Marshal(v.Val)
+	case sql.JSONWrapper:
+		jsonVal, err := v.ToInterface(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(jsonVal)
 	case []any:
 		return arrayToJsonRaw(ctx, elemType, v)
 	case string:
