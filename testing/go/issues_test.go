@@ -461,6 +461,55 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #2807",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT (1, 1) = (999, 999);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (1, 1) <> (999, 999);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1, 1) < (999, 999);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1, 1) <= (999, 999);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1, 1) > (999, 999);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (1, 1) >= (999, 999);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (1, 1) <= (1, 1);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1, 1) >= (1, 1);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (NULL, 1) = (NULL, 2);`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT (NULL, 1) <> (NULL, 2);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT (1, NULL) < (1, 2);`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
 	})
 }
 

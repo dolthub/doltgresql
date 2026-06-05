@@ -29,90 +29,89 @@ import (
 //
 // More info on rules for comparing records:
 // https://www.postgresql.org/docs/current/functions-comparisons.html#ROW-WISE-COMPARISON
-func CompareRecords(ctx *sql.Context, op framework.Operator, v1 interface{}, v2 interface{}) (res any, err error) {
+func CompareRecords(ctx *sql.Context, op framework.Operator, v1 interface{}, v2 interface{}) (result any, err error) {
 	leftRecord, rightRecord, err := checkRecordArgs(v1, v2)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: This can be a hot path when filtering a large table against a tuple, for example.
-	//  We can reduce branching by splitting each case into their individual functions, which will also make the code
-	//  more readable. A downside would be a ton of repeated code.
-	var hasNull bool
-	var leftLiteral, rightLiteral expression.Literal
 	for i := 0; i < len(leftRecord); i++ {
-		// NULL values are by definition not comparable
+		typ1 := leftRecord[i].Type
+		typ2 := rightRecord[i].Type
+
+		// NULL values are by definition not comparable, so they need special handling depending
+		// on what type of comparison we're performing.
 		if leftRecord[i].Value == nil || rightRecord[i].Value == nil {
 			switch op {
-			case framework.Operator_BinaryEqual, framework.Operator_BinaryNotEqual:
-				hasNull = true
-				continue
-			default:
+			case framework.Operator_BinaryLessThan, framework.Operator_BinaryGreaterThan,
+				framework.Operator_BinaryLessOrEqual, framework.Operator_BinaryGreaterOrEqual:
+				// The first non-equal field determines row ordering. A NULL at that
+				// position makes the comparison unknown.
 				return nil, nil
 			}
+
+			// Equality and inequality can still be determined if a later non-NULL
+			// field pair is unequal.
+			continue
 		}
-		leftLiteral.Val = leftRecord[i].Value
-		leftLiteral.Typ = leftRecord[i].Type
-		rightLiteral.Val = rightRecord[i].Value
-		rightLiteral.Typ = rightRecord[i].Type
+
+		leftLiteral := expression.NewLiteral(leftRecord[i].Value, typ1)
+		rightLiteral := expression.NewLiteral(rightRecord[i].Value, typ2)
+
+		equal, err := callComparisonFunction(ctx, framework.Operator_BinaryEqual, leftLiteral, rightLiteral)
+		if err != nil {
+			return false, err
+		}
+		if equal == true {
+			continue
+		}
 
 		switch op {
 		case framework.Operator_BinaryEqual:
-			res, err = callComparisonFunction(ctx, framework.Operator_BinaryEqual, &leftLiteral, &rightLiteral)
-			if err != nil {
-				return false, err
-			}
-			if res == false {
-				return false, nil
-			}
+			return false, nil
 		case framework.Operator_BinaryNotEqual:
-			res, err = callComparisonFunction(ctx, framework.Operator_BinaryNotEqual, &leftLiteral, &rightLiteral)
-			if err != nil {
+			return true, nil
+		case framework.Operator_BinaryLessThan, framework.Operator_BinaryLessOrEqual:
+			if res, err := callComparisonFunction(ctx, framework.Operator_BinaryLessThan, leftLiteral, rightLiteral); err != nil {
 				return false, err
+			} else {
+				return res, nil
 			}
-			if res == true {
-				return true, nil
-			}
-		// Records are compared by evaluating each field in order of significance, so if the fields are equal, we need
-		// to compare the next field.
-		case framework.Operator_BinaryLessThan, framework.Operator_BinaryLessOrEqual,
-			framework.Operator_BinaryGreaterThan, framework.Operator_BinaryGreaterOrEqual:
-			switch op {
-			case framework.Operator_BinaryLessThan, framework.Operator_BinaryLessOrEqual:
-				res, err = callComparisonFunction(ctx, framework.Operator_BinaryLessThan, &leftLiteral, &rightLiteral)
-			default:
-				res, err = callComparisonFunction(ctx, framework.Operator_BinaryGreaterThan, &leftLiteral, &rightLiteral)
-			}
-			if err != nil {
+		case framework.Operator_BinaryGreaterThan, framework.Operator_BinaryGreaterOrEqual:
+			if res, err := callComparisonFunction(ctx, framework.Operator_BinaryGreaterThan, leftLiteral, rightLiteral); err != nil {
 				return false, err
-			}
-			if res == true {
-				return true, nil
-			}
-			// If equals fields are equal, move onto the next field, else return false
-			res, err = callComparisonFunction(ctx, framework.Operator_BinaryEqual, &leftLiteral, &rightLiteral)
-			if err != nil {
-				return false, err
-			}
-			if res == false {
-				return false, nil
+			} else {
+				return res, nil
 			}
 		default:
 			return false, fmt.Errorf("unsupported binary operator: %s", op)
 		}
 	}
 
-	if hasNull {
+	// If no non-NULL field pair determined the result and at least one field
+	// pair is NULL, the comparison is unknown.
+	if recordsContainNull(leftRecord, rightRecord) {
 		return nil, nil
 	}
 
-	// Every field is equal
 	switch op {
 	case framework.Operator_BinaryEqual, framework.Operator_BinaryLessOrEqual, framework.Operator_BinaryGreaterOrEqual:
 		return true, nil
-	default:
+	case framework.Operator_BinaryNotEqual, framework.Operator_BinaryLessThan, framework.Operator_BinaryGreaterThan:
 		return false, nil
+	default:
+		return false, fmt.Errorf("unsupported binary operator: %s", op)
 	}
+}
+
+// recordsContainNull returns whether either record has a NULL value in any field.
+func recordsContainNull(leftRecord, rightRecord []pgtypes.RecordValue) bool {
+	for i := 0; i < len(leftRecord); i++ {
+		if leftRecord[i].Value == nil || rightRecord[i].Value == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // checkRecordArgs asserts that |v1| and |v2| are both []pgtypes.RecordValue, and that they have the same number of
@@ -140,5 +139,9 @@ func callComparisonFunction(ctx *sql.Context, op framework.Operator, leftLiteral
 	intermediateFunction := framework.GetBinaryFunction(op)
 	compiledFunction := intermediateFunction.Compile(
 		ctx, "_internal_record_comparison_function", leftLiteral, rightLiteral)
+	if compiledFunction == nil {
+		return nil, fmt.Errorf("could not find comparison function for operator %s and types %s, %s",
+			op, leftLiteral.Type(ctx).String(), rightLiteral.Type(ctx).String())
+	}
 	return compiledFunction.Eval(ctx, nil)
 }
