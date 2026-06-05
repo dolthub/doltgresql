@@ -102,13 +102,13 @@ func TestSingleQuery(t *testing.T) {
 		Expected: []sql.Row{
 			{"mytable",
 				"CREATE TABLE `mytable` (\n" +
-						"  `i` bigint NOT NULL,\n" +
-						"  `s` varchar(20) NOT NULL COMMENT 'column s',\n" +
-						"  PRIMARY KEY (`i`),\n" +
-						"  KEY `idx_si` (`s`,`i`),\n" +
-						"  KEY `mytable_i_s` (`i`,`s`),\n" +
-						"  UNIQUE KEY `mytable_s` (`s`)\n" +
-						") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"},
+					"  `i` bigint NOT NULL,\n" +
+					"  `s` varchar(20) NOT NULL COMMENT 'column s',\n" +
+					"  PRIMARY KEY (`i`),\n" +
+					"  KEY `idx_si` (`s`,`i`),\n" +
+					"  KEY `mytable_i_s` (`i`,`s`),\n" +
+					"  UNIQUE KEY `mytable_s` (`s`)\n" +
+					") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"},
 		},
 	}
 
@@ -509,18 +509,18 @@ func TestScripts(t *testing.T) {
 		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
 		"update join with update trigger",                         // update join syntax not supported (also catches with-trigger variants by substring)
 		"WITH RECURSIVE\n" +
-				"    rt (foo) AS (\n" +
-				"        SELECT 1 as foo\n" +
-				"        UNION ALL\n" +
-				"        SELECT foo + 1 as foo FROM rt WHERE foo < 5\n" +
-				"    ),\n" +
-				"        ladder (depth, foo) AS (\n" +
-				"        SELECT 1 as depth, NULL as foo from rt\n" +
-				"        UNION ALL\n" +
-				"        SELECT ladder.depth + 1 as depth, rt.foo\n" +
-				"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
-				"    )\n" +
-				"SELECT * FROM ladder;", // syntax error
+			"    rt (foo) AS (\n" +
+			"        SELECT 1 as foo\n" +
+			"        UNION ALL\n" +
+			"        SELECT foo + 1 as foo FROM rt WHERE foo < 5\n" +
+			"    ),\n" +
+			"        ladder (depth, foo) AS (\n" +
+			"        SELECT 1 as depth, NULL as foo from rt\n" +
+			"        UNION ALL\n" +
+			"        SELECT ladder.depth + 1 as depth, rt.foo\n" +
+			"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
+			"    )\n" +
+			"SELECT * FROM ladder;", // syntax error
 		"CREATE TABLE SELECT Queries", // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
 		"db1.``.i > 0",                // Multi-db Aliasing: MySQL-only empty-backtick ref
 		"join db2.t2 order by",        // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
