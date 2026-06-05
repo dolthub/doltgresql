@@ -140,5 +140,9 @@ func callComparisonFunction(ctx *sql.Context, op framework.Operator, leftLiteral
 	intermediateFunction := framework.GetBinaryFunction(op)
 	compiledFunction := intermediateFunction.Compile(
 		ctx, "_internal_record_comparison_function", leftLiteral, rightLiteral)
+	if compiledFunction == nil {
+		return nil, fmt.Errorf("could not find comparison function for operator %s and types %s, %s",
+			op, leftLiteral.Type(ctx).String(), rightLiteral.Type(ctx).String())
+	}
 	return compiledFunction.Eval(ctx, nil)
 }
