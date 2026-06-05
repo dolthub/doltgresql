@@ -42,12 +42,26 @@ func (p PgSequencesHandler) Name() string {
 }
 
 // RowIter implements the interface tables.Handler.
-func (p PgSequencesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_sequences row iter
-	return emptyRowIter()
+func (p PgSequencesHandler) RowIter(ctx *sql.Context, _ sql.Partition) (sql.RowIter, error) {
+	cache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if cache.sequences == nil {
+		err = cachePgSequences(ctx, cache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pgSequencesRowIter{
+		sequences: cache.sequences,
+		idx:       0,
+	}, nil
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgSequencesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgSequencesSchema,
@@ -72,16 +86,46 @@ var pgSequencesSchema = sql.Schema{
 
 // pgSequencesRowIter is the sql.RowIter for the pg_sequences table.
 type pgSequencesRowIter struct {
+	sequences []*pgSequence
+	idx       int
 }
 
 var _ sql.RowIter = (*pgSequencesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
-func (iter *pgSequencesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+func (iter *pgSequencesRowIter) Next(_ *sql.Context) (sql.Row, error) {
+	if iter.idx >= len(iter.sequences) {
+		return nil, io.EOF
+	}
+	sequence := iter.sequences[iter.idx].sequence
+	schemaName := iter.sequences[iter.idx].schema
+	iter.idx++
+
+	var lastValue interface{}
+	if sequence.HasBeenCalled {
+		if sequence.IsAtEnd {
+			lastValue = sequence.Current
+		} else {
+			lastValue = sequence.Current - sequence.Increment
+		}
+	}
+
+	return sql.Row{
+		schemaName,                     // schemaname
+		sequence.Id.SequenceName(),     // sequencename
+		nil,                            // sequenceowner
+		sequence.DataTypeID.TypeName(), // data_type
+		sequence.Start,                 // start_value
+		sequence.Minimum,               // min_value
+		sequence.Maximum,               // max_value
+		sequence.Increment,             // increment_by
+		sequence.Cycle,                 // cycle
+		sequence.Cache,                 // cache_size
+		lastValue,                      // last_value
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
-func (iter *pgSequencesRowIter) Close(ctx *sql.Context) error {
+func (iter *pgSequencesRowIter) Close(_ *sql.Context) error {
 	return nil
 }

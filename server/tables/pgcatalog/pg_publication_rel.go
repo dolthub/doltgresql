@@ -47,7 +47,7 @@ func (p PgPublicationRelHandler) RowIter(ctx *sql.Context, partition sql.Partiti
 	return emptyRowIter()
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgPublicationRelHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgPublicationRelSchema,

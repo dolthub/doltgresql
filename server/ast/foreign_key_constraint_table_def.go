@@ -23,15 +23,16 @@ import (
 )
 
 // nodeForeignKeyConstraintTableDef handles *tree.ForeignKeyConstraintTableDef nodes.
-func nodeForeignKeyConstraintTableDef(ctx *Context, node *tree.ForeignKeyConstraintTableDef) (*vitess.ForeignKeyDefinition, error) {
+func nodeForeignKeyConstraintTableDef(ctx *Context, node *tree.ForeignKeyConstraintTableDef, notValid bool) (*vitess.ForeignKeyDefinition, error) {
 	if node == nil {
 		return nil, nil
 	}
+	var matchType vitess.ForeignKeyMatchType
 	switch node.Match {
 	case tree.MatchSimple:
-		// This is the default behavior
+		matchType = vitess.MatchSimple
 	case tree.MatchFull:
-		return nil, errors.Errorf("MATCH FULL is not yet supported")
+		matchType = vitess.MatchFull
 	case tree.MatchPartial:
 		return nil, errors.Errorf("MATCH PARTIAL is not yet supported")
 	default:
@@ -78,5 +79,7 @@ func nodeForeignKeyConstraintTableDef(ctx *Context, node *tree.ForeignKeyConstra
 		ReferencedColumns: toCols,
 		OnDelete:          refActions[0],
 		OnUpdate:          refActions[1],
+		NotValid:          notValid,
+		MatchType:         matchType,
 	}, nil
 }

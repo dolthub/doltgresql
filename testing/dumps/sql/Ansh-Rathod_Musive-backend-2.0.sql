@@ -31,7 +31,7 @@ create table public."Tracks"(
   PRIMARY KEY(id)
 );
 
-alter table songs
+alter table if exists songs
 add constraint user_id_fk FOREIGN KEY (user_id) REFERENCES artists(id)
 match full on update CASCADE on delete CASCADE;
 

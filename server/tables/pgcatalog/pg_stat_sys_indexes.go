@@ -47,7 +47,7 @@ func (p PgStatSysIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partiti
 	return emptyRowIter()
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgStatSysIndexesHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgStatSysIndexesSchema,

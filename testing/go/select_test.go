@@ -196,5 +196,39 @@ func TestSelect(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/2576
+			Name: "String literal alias preserved in column name",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT 42 as z, 'bob' as bob;",
+					Expected:         []sql.Row{{42, "bob"}},
+					ExpectedColNames: []string{"z", "bob"},
+				},
+				{
+					Query:            "SELECT 'hello';",
+					Expected:         []sql.Row{{"hello"}},
+					ExpectedColNames: []string{"?column?"},
+				},
+				{
+					Query:            "SELECT 'a', 'b';",
+					Expected:         []sql.Row{{"a", "b"}},
+					ExpectedColNames: []string{"?column?", "?column?"},
+				},
+				{
+					Query: `select 'select 1 as ones', 'select x.y, x.y*2 as double from generate_series(1,4) as x(y)'
+union all
+select 'drop table gexec_test', NULL
+union all
+select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'`,
+					Expected: []sql.Row{
+						{"select 1 as ones", "select x.y, x.y*2 as double from generate_series(1,4) as x(y)"},
+						{"drop table gexec_test", nil},
+						{"drop table gexec_test", "select '2000-01-01'::date as party_over"},
+					},
+					ExpectedColNames: []string{"?column?", "?column?"},
+				},
+			},
+		},
 	})
 }

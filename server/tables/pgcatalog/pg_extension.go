@@ -47,7 +47,7 @@ func (p PgExtensionHandler) RowIter(ctx *sql.Context, partition sql.Partition) (
 	return emptyRowIter()
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgExtensionHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgExtensionSchema,
