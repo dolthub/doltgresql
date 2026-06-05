@@ -67,13 +67,15 @@ func init() {
 // server. All of our doltgres binary invocations are done through DoltUser.
 //
 // For our purposes, it does the following:
-// * owns a tmpdir, to which it sets DOLT_ROOT_PATH when invoking doltgres.
-// * writes some initial dolt global config (user.name, user.email,
-//   metrics.disabled = true) into that root path. Doltgres has no `config`
-//   CLI command, so unlike Dolt we write the config file directly.
 //
-// * can create repo stores, which will be a tmpdir to store a data-dir
-//   containing one or more databases.
+//   - owns a tmpdir, to which it sets DOLT_ROOT_PATH when invoking doltgres.
+//
+//   - writes some initial dolt global config (user.name, user.email,
+//     metrics.disabled = true) into that root path. Doltgres has no `config`
+//     CLI command, so unlike Dolt we write the config file directly.
+//
+//   - can create repo stores, which will be a tmpdir to store a data-dir
+//     containing one or more databases.
 type DoltUser struct {
 	tmpdir string
 }
