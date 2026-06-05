@@ -421,6 +421,26 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array_agg with DISTINCT and composite types",
+			SetUpScript: []string{
+				`CREATE TYPE point_t AS (x INT, y INT);`,
+				`CREATE TABLE points (id INT PRIMARY KEY, p point_t);`,
+				`INSERT INTO points VALUES
+					(1, ROW(1, 2)),
+					(2, ROW(3, 4)),
+					(3, ROW(1, 2)),
+					(4, ROW(5, 6));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT array_agg(DISTINCT p ORDER BY p) FROM points;`,
+					Expected: []sql.Row{
+						{`{"(1,2)","(3,4)","(5,6)"}`},
+					},
+				},
+			},
+		},
 	})
 }
 

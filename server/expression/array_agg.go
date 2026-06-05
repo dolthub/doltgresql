@@ -16,7 +16,6 @@ package expression
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -200,7 +199,11 @@ func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
 	}
 
 	if a.a.Distinct {
-		key := fmt.Sprintf("%v", evalRow[0])
+		exprType := a.a.selectExprs[0].Type(ctx).(*types.DoltgresType)
+		key, err := exprType.IoOutput(ctx, evalRow[0])
+		if err != nil {
+			return err
+		}
 		if _, exists := a.seen[key]; exists {
 			return nil
 		}
