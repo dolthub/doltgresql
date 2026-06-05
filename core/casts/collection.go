@@ -215,8 +215,8 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 			if !ok {
 				return Cast{}, fmt.Errorf("non *sql.Context provided to Collection.getCast()")
 			}
-			fromBaseType := sourceType.ArrayBaseTypeCtx(sqlCtx)
-			toBaseType := targetType.ArrayBaseTypeCtx(sqlCtx)
+			fromBaseType := sourceType.ArrayBaseType()
+			toBaseType := targetType.ArrayBaseType()
 			var baseCast Cast
 			switch castType {
 			case CastType_Explicit:
@@ -248,8 +248,8 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 						// Some errors are optional depending on the context, so we'll still process all values even
 						// after an error is received.
 						var nErr error
-						sourceBaseType := sourceType.ArrayBaseTypeCtx(ctx)
-						targetBaseType := targetType.ArrayBaseTypeCtx(ctx)
+						sourceBaseType := sourceType.ArrayBaseType()
+						targetBaseType := targetType.ArrayBaseType()
 						newVals[i], nErr = baseCast.Eval(ctx, oldVal, sourceBaseType, targetBaseType)
 						if nErr != nil && err == nil {
 							err = nErr
@@ -327,7 +327,7 @@ func (pgc *Collection) getRecordCast(sourceType *pgtypes.DoltgresType, targetTyp
 				UseInOut: false,
 			}
 		} else {
-			evalFunc := func(ctx *sql.Context, val any, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (any, error) {
+			evalFunc := func(ctx *sql.Context, val any, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (_ any, err error) {
 				vals, ok := val.([]pgtypes.RecordValue)
 				if !ok {
 					return nil, errors.New("casting input error from record type")
@@ -338,20 +338,13 @@ func (pgc *Collection) getRecordCast(sourceType *pgtypes.DoltgresType, targetTyp
 					//   Input has too many columns.
 					return nil, errors.Errorf("cannot cast type %s to %s", sourceType.Name(), targetType.Name())
 				}
-				typeCollection, err := pgtypes.GetTypesCollectionFromContext(ctx)
-				if err != nil {
-					return nil, err
-				}
 				outputVals := make([]pgtypes.RecordValue, len(vals))
 				for i := range vals {
 					valType, ok := vals[i].Type.(*pgtypes.DoltgresType)
 					if !ok {
 						return nil, errors.New("cannot cast record containing GMS type")
 					}
-					outputType, err := typeCollection.GetType(ctx, targetType.CompositeAttrs[i].TypeID)
-					if err != nil {
-						return nil, err
-					}
+					outputType := targetType.CompositeAttrs[i].Type
 					outputVals[i].Type = outputType
 					if vals[i].Value != nil {
 						var positionCast Cast

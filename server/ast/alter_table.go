@@ -22,6 +22,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -43,6 +44,16 @@ func nodeAlterTable(ctx *Context, node *tree.AlterTable) (vitess.Statement, erro
 		cmd, ok := node.Cmds[0].(*tree.AlterTableComputed)
 		if ok {
 			return nodeAlterTableComputed(ctx, treeTableName, cmd)
+		}
+		if vcmd, ok := node.Cmds[0].(*tree.AlterTableValidateConstraint); ok {
+			return vitess.InjectedStatement{
+				Statement: pgnodes.NewValidateConstraint(
+					tableName.SchemaQualifier.String(),
+					tableName.Name.String(),
+					bareIdentifier(vcmd.Constraint),
+				),
+				Children: nil,
+			}, nil
 		}
 	}
 	statements, noOps, err := nodeAlterTableCmds(ctx, node.Cmds, tableName, node.IfExists)
@@ -164,6 +175,8 @@ func nodeAlterTableCmds(
 			// is unsupported and ignored
 		case *tree.AlterTableRowLevelSecurity:
 			// is unsupported and ignored
+		case *tree.AlterTableReplicaIdentity:
+			// is unsupported and ignored
 		default:
 			return nil, nil, errors.Errorf("ALTER TABLE with unsupported command type %T", cmd)
 		}
@@ -182,18 +195,20 @@ func nodeAlterTableAddConstraint(
 	tableName vitess.TableName,
 	ifExists bool) (*vitess.DDL, error) {
 
-	if node.ValidationBehavior == tree.ValidationSkip {
-		// currently only allowed for foreign key and CHECK constraints
-		return nil, errors.Errorf("NOT VALID is not supported yet")
+	notValid := node.ValidationBehavior == tree.ValidationSkip
+	if notValid {
+		if _, ok := node.ConstraintDef.(*tree.UniqueConstraintTableDef); ok {
+			return nil, errors.Errorf("NOT VALID is not applicable to UNIQUE or PRIMARY KEY constraints")
+		}
 	}
 
 	switch constraintDef := node.ConstraintDef.(type) {
 	case *tree.CheckConstraintTableDef:
-		return nodeCheckConstraintTableDef(ctx, constraintDef, tableName, ifExists)
+		return nodeCheckConstraintTableDef(ctx, constraintDef, tableName, ifExists, notValid)
 	case *tree.UniqueConstraintTableDef:
 		return nodeUniqueConstraintTableDef(ctx, constraintDef, tableName, ifExists)
 	case *tree.ForeignKeyConstraintTableDef:
-		foreignKeyDefinition, err := nodeForeignKeyConstraintTableDef(ctx, constraintDef)
+		foreignKeyDefinition, err := nodeForeignKeyConstraintTableDef(ctx, constraintDef, notValid)
 		if err != nil {
 			return nil, err
 		}

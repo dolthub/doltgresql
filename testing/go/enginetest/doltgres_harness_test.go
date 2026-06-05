@@ -902,7 +902,17 @@ func (d *DoltgresQueryEngine) getConnection() (*pgx.Conn, error) {
 		return d.conn, nil
 	}
 
-	db, err := pgx.Connect(context.Background(), doltgresNoDbDsn)
+	config, err := pgx.ParseConfig(doltgresNoDbDsn)
+	if err != nil {
+		return nil, err
+	}
+	// pgx v5.9.1+ builds scan plans from the client's requested result format codes rather
+	// than the server's RowDescription. Our server uses ForceTextWireFormat which sends text
+	// regardless of what the client requests, so we must match that here by telling pgx not
+	// to request binary format. Simple protocol never sends binary result format codes.
+	config.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	db, err := pgx.ConnectConfig(context.Background(), config)
 	if err != nil {
 		return nil, err
 	}

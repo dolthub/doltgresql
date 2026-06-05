@@ -163,6 +163,7 @@ func main() {
 				if _, err := os.Stat(profilingOptions.Path); errors.Is(err, os.ErrNotExist) {
 					panic(errors.Errorf("profile path does not exist: %s", profilingOptions.Path))
 				}
+				args = args[2:]
 			case profFlag:
 				switch args[1] {
 				case cpuProf:
@@ -176,11 +177,10 @@ func main() {
 				default:
 					panic("Unexpected prof flag: " + args[1])
 				}
+				args = args[2:]
 			default:
 				doneDebugFlags = true
 			}
-
-			args = args[2:]
 		}
 
 		if profilingOptions.HasOptions() {

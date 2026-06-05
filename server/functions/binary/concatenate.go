@@ -139,6 +139,8 @@ var byteacat = framework.Function2{
 
 // jsonb_concat_callable is the callable logic for the jsonb_concat function.
 func jsonb_concat_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Interface any, val2Interface any) (any, error) {
+	// TODO: for two IndexedJsonDocuments, we could get much faster results on large documents by merging the underlying
+	//  JSON trees instead of loading them into memory. This would require a new method on sql.MutableJSON
 	wrapper1, ok1 := val1Interface.(sql.JSONWrapper)
 	wrapper2, ok2 := val2Interface.(sql.JSONWrapper)
 	if !ok1 || !ok2 {

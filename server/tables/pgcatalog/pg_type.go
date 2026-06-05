@@ -235,7 +235,7 @@ func (p PgTypeHandler) getIndexScanRange(rng sql.Range, index sql.Index) (*pgTyp
 	return gte, hasLowerBound, lt, hasUpperBound
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgTypeHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgTypeSchema,
@@ -368,33 +368,33 @@ func pgTypeToRow(nextType *pgType) sql.Row {
 		nextType.name,
 		nextType.schemaOid,
 		id.Null,
-		nextType.typ.TypLength,           // typlen
-		nextType.typ.PassedByVal,         // typbyval
-		string(nextType.typ.TypType),     // typtype
-		string(nextType.typ.TypCategory), // typcategory
-		nextType.typ.IsPreferred,         // typispreferred
-		nextType.typ.IsDefined,           // typisdefined
-		nextType.typ.Delimiter,           // typdelim
-		nextType.typ.RelID,               // typrelid
-		nextType.typ.SubscriptFuncName(), // typsubscript
-		nextType.typ.Elem.AsId(),         // typelem
-		nextType.typ.Array.AsId(),        // typarray
-		nextType.typ.InputFuncName(),     // typinput
-		nextType.typ.OutputFuncName(),    // typoutput
-		nextType.typ.ReceiveFuncName(),   // typreceive
-		nextType.typ.SendFuncName(),      // typsend
-		nextType.typ.ModInFuncName(),     // typmodin
-		nextType.typ.ModOutFuncName(),    // typmodout
-		nextType.typ.AnalyzeFuncName(),   // typanalyze
-		string(nextType.typ.Align),       // typalign
-		string(nextType.typ.Storage),     // typstorage
-		nextType.typ.NotNull,             // typnotnull
-		nextType.typ.BaseTypeID.AsId(),   // typbasetype
-		nextType.typ.TypMod,              // typtypmod
-		nextType.typ.NDims,               // typndims
-		nextType.typ.TypCollation.AsId(), // typcollation
-		nextType.typ.DefaulBin,           // typdefaultbin
-		nextType.typ.Default,             // typdefault
-		typAcl,                           // typacl
+		nextType.typ.TypLength,              // typlen
+		nextType.typ.PassedByVal,            // typbyval
+		string(nextType.typ.TypType),        // typtype
+		string(nextType.typ.TypCategory),    // typcategory
+		nextType.typ.IsPreferred,            // typispreferred
+		nextType.typ.IsDefined,              // typisdefined
+		nextType.typ.Delimiter,              // typdelim
+		nextType.typ.RelID,                  // typrelid
+		nextType.typ.SubscriptFuncName(),    // typsubscript
+		nextType.typ.Elem.ID.AsId(),         // typelem
+		nextType.typ.Array.ID.AsId(),        // typarray
+		nextType.typ.InputFuncName(),        // typinput
+		nextType.typ.OutputFuncName(),       // typoutput
+		nextType.typ.ReceiveFuncName(),      // typreceive
+		nextType.typ.SendFuncName(),         // typsend
+		nextType.typ.ModInFuncName(),        // typmodin
+		nextType.typ.ModOutFuncName(),       // typmodout
+		nextType.typ.AnalyzeFuncName(),      // typanalyze
+		string(nextType.typ.Align),          // typalign
+		string(nextType.typ.Storage),        // typstorage
+		nextType.typ.NotNull,                // typnotnull
+		nextType.typ.BaseTypeType.ID.AsId(), // typbasetype
+		nextType.typ.TypMod,                 // typtypmod
+		nextType.typ.NDims,                  // typndims
+		nextType.typ.TypCollation.AsId(),    // typcollation
+		nextType.typ.DefaulBin,              // typdefaultbin
+		nextType.typ.Default,                // typdefault
+		typAcl,                              // typacl
 	}
 }

@@ -47,7 +47,7 @@ func (p PgForeignDataWrapperHandler) RowIter(ctx *sql.Context, partition sql.Par
 	return emptyRowIter()
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgForeignDataWrapperHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgForeignDataWrapperSchema,

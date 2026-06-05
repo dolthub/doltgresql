@@ -76,6 +76,15 @@ func (p PgConstraintHandler) RowIter(ctx *sql.Context, partition sql.Partition) 
 	}, nil
 }
 
+func getFKMatchType(matchType sql.ForeignKeyMatchType) string {
+	switch matchType {
+	case sql.ForeignKeyMatchType_Full:
+		return "f"
+	default:
+		return "s"
+	}
+}
+
 func getFKAction(action sql.ForeignKeyReferentialAction) string {
 	switch action {
 	case sql.ForeignKeyReferentialAction_NoAction:
@@ -417,6 +426,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				tableOid:        table.OID.AsId(),
 				tableOidNative:  id.Cache().ToOID(table.OID.AsId()),
 				typeOid:         id.Id(id.NewOID(0)),
+				convalidated:    !check.Item.IsNotValid,
 			}
 			oidIdx.Add(constraint)
 			relidTypNameIdx.Add(constraint)
@@ -460,10 +470,11 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				tableRefOid:     tableOIDs[schema.OID.AsId()][foreignKey.Item.ParentTable],
 				fkUpdateType:    getFKAction(foreignKey.Item.OnUpdate),
 				fkDeleteType:    getFKAction(foreignKey.Item.OnDelete),
-				fkMatchType:     "s",
+				fkMatchType:     getFKMatchType(foreignKey.Item.MatchType),
 				conKey:          conKey,
 				conFkey:         conFkey,
 				typeOid:         id.Id(id.NewOID(0)),
+				convalidated:    !foreignKey.Item.IsNotValid,
 			}
 			oidIdx.Add(constraint)
 			relidTypNameIdx.Add(constraint)
@@ -501,6 +512,7 @@ func cachePgConstraints(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error 
 				idxOid:          index.OID.AsId(),
 				conKey:          conKey,
 				typeOid:         id.Id(id.NewOID(0)),
+				convalidated:    true,
 			}
 			oidIdx.Add(constraint)
 			relidTypNameIdx.Add(constraint)
@@ -625,6 +637,7 @@ type pgConstraint struct {
 	fkMatchType     string // f = full, p = partial, s = simple
 	conKey          []any
 	conFkey         []any
+	convalidated    bool
 }
 
 // pgConstraintTableScanIter is the sql.RowIter for the pg_constraint table.
@@ -674,7 +687,7 @@ func pgConstraintToRow(constraint *pgConstraint) sql.Row {
 		constraint.conType,      // contype
 		false,                   // condeferrable
 		false,                   // condeferred
-		true,                    // convalidated
+		constraint.convalidated, // convalidated
 		constraint.tableOid,     // conrelid
 		constraint.typeOid,      // contypid
 		constraint.idxOid,       // conindid

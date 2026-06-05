@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -433,20 +434,27 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{{4}},
 			},
 			{
-				// Skipped: panics with "interface {} is *val.ByteArray, not []uint8" when comparing long BYTEA keys via < operator
-				Skip:     true,
 				Query:    "SELECT v1 FROM t_bytea_keys WHERE id < '\\x33'::bytea ORDER BY id;",
 				Expected: []sql.Row{{1}, {2}},
 			},
 			{
-				// Skipped: panics with "interface {} is *val.ByteArray, not []uint8" when comparing long BYTEA keys via > operator
-				Skip:     true,
 				Query:    "SELECT v1 FROM t_bytea_keys WHERE id > '\\x44'::bytea ORDER BY id;",
 				Expected: []sql.Row{{4}, {5}, {6}},
 			},
 			{
 				Query:    "SELECT v1 FROM t_bytea_keys WHERE id > '\\x22'::bytea AND id < '\\x55'::bytea ORDER BY id;",
 				Expected: []sql.Row{{2}, {3}, {4}},
+			},
+			{
+				Query: "select id from t_bytea_keys order by id",
+				Expected: []sql.Row{
+					{[]uint8{0x11}},
+					{append([]uint8{0x22}, bytes.Repeat([]byte{0x78}, 10500)...)},
+					{[]uint8{0x33}},
+					{append([]uint8{0x44}, bytes.Repeat([]byte{0x79}, 10500)...)},
+					{[]uint8{0x55}},
+					{[]uint8{0xff}},
+				},
 			},
 		},
 	},
@@ -1302,6 +1310,15 @@ var typesTests = []ScriptTest{
 				Query: `SELECT '"hi"'::json;`,
 				Expected: []sql.Row{
 					{`"hi"`},
+				},
+			},
+			{
+				// This varies from postgres in regression testing, but something about the harness makes
+				// it hard to repro. might need a wire test.
+				Skip:  true,
+				Query: `SELECT '"\u0000"'::json`,
+				Expected: []sql.Row{
+					{"\u0000"},
 				},
 			},
 			{
@@ -2936,14 +2953,10 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{{4}},
 			},
 			{
-				// Skipped: panics with "interface {} is *val.TextStorage, not string" when comparing long TEXT keys via < operator
-				Skip:     true,
 				Query:    "SELECT v1 FROM t_text_keys WHERE id < 'cc' ORDER BY id;",
 				Expected: []sql.Row{{1}, {2}},
 			},
 			{
-				// Skipped: panics with "interface {} is *val.TextStorage, not string" when comparing long TEXT keys via > operator
-				Skip:     true,
 				Query:    "SELECT v1 FROM t_text_keys WHERE id > 'dd' ORDER BY id;",
 				Expected: []sql.Row{{4}, {5}, {6}},
 			},
@@ -2954,6 +2967,17 @@ var typesTests = []ScriptTest{
 			{
 				Query:    "SELECT v1, length(id) FROM t_text_keys WHERE v1 IN (1, 2, 4) ORDER BY v1;",
 				Expected: []sql.Row{{1, 2}, {2, 10502}, {4, 10502}},
+			},
+			{
+				Query: "select id from t_text_keys order by id;",
+				Expected: []sql.Row{
+					{"aa"},
+					{"bb" + strings.Repeat("x", 10500)},
+					{"cc"},
+					{"dd" + strings.Repeat("y", 10500)},
+					{"ee"},
+					{"zz"},
+				},
 			},
 		},
 	},

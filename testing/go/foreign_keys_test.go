@@ -1157,7 +1157,7 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query: "select violation_type, c, d, violation_info from dolt_constraint_violations_child order by 1",
 						Expected: []sql.Row{
-							{"foreign key", 3, 3, "{\"Columns\":[\"d\"],\"ForeignKey\":\"fk\",\"Index\":\"fk\",\"OnDelete\":\"RESTRICT\",\"OnUpdate\":\"RESTRICT\",\"ReferencedColumns\":[\"b\"],\"ReferencedIndex\":\"b\",\"ReferencedTable\":\"parent\",\"Table\":\"child\"}"},
+							{"foreign key", 3, 3, "{\"Columns\":[\"d\"],\"ForeignKey\":\"fk\",\"Index\":\"fk\",\"OnDelete\":\"RESTRICT\",\"OnUpdate\":\"RESTRICT\",\"ReferencedColumns\":[\"b\"],\"ReferencedIndex\":\"parent_b_key\",\"ReferencedTable\":\"parent\",\"Table\":\"child\"}"},
 						},
 					},
 				},

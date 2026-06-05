@@ -290,7 +290,7 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 	}
 	return h.send(&pgproto3.BackendKeyData{
 		ProcessID: processID,
-		SecretKey: 0, // TODO: this should represent an ID that can uniquely identify this connection, so that CancelRequest will work
+		SecretKey: make([]byte, 4), // TODO: this should represent an ID that can uniquely identify this connection, so that CancelRequest will work
 	})
 }
 
@@ -780,6 +780,20 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		return false, false, err
 	}
 
+	if copyState.copyFromStdinNode.TableName.Schema != "" {
+		originalSchema, err := sqlCtx.GetSessionVariable(sqlCtx, "search_path")
+		if err != nil {
+			return false, false, err
+		}
+		err = sqlCtx.SetSessionVariable(sqlCtx, "search_path", copyState.copyFromStdinNode.TableName.Schema)
+		if err != nil {
+			return false, false, err
+		}
+		defer func() {
+			_ = sqlCtx.SetSessionVariable(sqlCtx, "search_path", originalSchema)
+		}()
+	}
+
 	dataLoader := copyState.dataLoader
 	if dataLoader == nil {
 		copyFromStdinNode := copyState.copyFromStdinNode
@@ -1031,19 +1045,19 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
 			if !isExecute && !hasSentRowDescription {
 				hasSentRowDescription = true
-				if err := h.send(&pgproto3.RowDescription{
+				h.backend.Send(&pgproto3.RowDescription{
 					Fields: res.Fields,
-				}); err != nil {
-					return err
-				}
+				})
 			}
-
+			// res.Rows should be length rowsBatch = 128
 			for _, row := range res.Rows {
-				if err := h.send(&pgproto3.DataRow{
+				h.backend.Send(&pgproto3.DataRow{
 					Values: row.val,
-				}); err != nil {
-					return err
-				}
+				})
+			}
+			err := h.backend.Flush()
+			if err != nil {
+				return err
 			}
 		}
 

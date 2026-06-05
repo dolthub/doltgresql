@@ -611,6 +611,41 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Rename table must not collide with other relation types",
+			SetUpScript: []string{
+				"CREATE TABLE src_tbl (pk int PRIMARY KEY, v1 int);",
+				"CREATE TABLE other_tbl (pk int PRIMARY KEY, v1 int);",
+				"CREATE SEQUENCE seq1;",
+				"CREATE VIEW view1 AS SELECT pk FROM src_tbl;",
+				"CREATE INDEX idx1 ON src_tbl (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER TABLE src_tbl RENAME TO other_tbl;",
+					ExpectedErr: `relation "other_tbl" already exists`,
+				},
+				{
+					Query:       "ALTER TABLE src_tbl RENAME TO seq1;",
+					ExpectedErr: `relation "seq1" already exists`,
+				},
+				{
+					Query:       "ALTER TABLE src_tbl RENAME TO view1;",
+					ExpectedErr: `relation "view1" already exists`,
+				},
+				{
+					Query:       "ALTER TABLE src_tbl RENAME TO idx1;",
+					ExpectedErr: `relation "idx1" already exists`,
+				},
+				{
+					Query: "ALTER TABLE src_tbl RENAME TO new_name;",
+				},
+				{
+					Query:    "SELECT pk FROM new_name;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: "alter table owner",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (a INT, b INT);",
@@ -1133,6 +1168,210 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query: `ALTER TABLE ONLY public.boards
     ADD CONSTRAINT fk_project_id FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE with NOT VALID clauses on foreign key constraint",
+			SetUpScript: []string{
+				`CREATE TABLE attmp2 (a int primary key);`,
+				`CREATE TABLE attmp3 (a int, b int);`,
+				`INSERT INTO attmp2 values (1),(2),(3),(4);`,
+				`INSERT INTO attmp3 values (1,10),(1,20),(3, 22),(5,50);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// fails to add constraint due to invalid source columns
+					// TODO: error message should be `column "c" referenced in foreign key constraint does not exist`
+					Query:       `ALTER TABLE attmp3 add constraint attmpconstr foreign key(c) references attmp2(a);`,
+					ExpectedErr: `table "attmp3" does not have column "c"`,
+				},
+				{
+					// fails to add constraint due to invalid destination columns explicitly given
+					// TODO: error message should be `column "b" referenced in foreign key constraint does not exist`
+					Query:       `ALTER TABLE attmp3 add constraint attmpconstr foreign key(a) references attmp2(b);`,
+					ExpectedErr: `table "attmp2" does not have column "b"`,
+				},
+				{
+					// fails to add constraint due to invalid data
+					// TODO: error message should be `Key (a)=(5) is not present in table "attmp2"`
+					Query:       `ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2(a);`,
+					ExpectedErr: "Foreign key violation on fk: `attmpconstr`, table: `attmp3`, referenced table: `attmp2`, key: `[5]`",
+				},
+				{
+					Skip:     true, // TODO: if no column defined, load all to compare (for attmp2)
+					Query:    `ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 NOT VALID;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// equivalent query as above
+					Query:    `ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2 (a) NOT VALID;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: error message should be `Key (a)=(5) is not present in table "attmp2"`
+					Query:       `ALTER TABLE attmp3 validate constraint attmpconstr;`,
+					ExpectedErr: `Foreign key violation`,
+				},
+				{
+					Query:    `DELETE FROM attmp3 where a=5;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 validate constraint attmpconstr;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 validate constraint attmpconstr;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO attmp3 VALUES (6, 5);`,
+					ExpectedErr: `Foreign key violation`,
+				},
+				{
+					Query:    `INSERT INTO attmp2 VALUES (6);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO attmp3 VALUES (6, 5);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `UPDATE attmp3 SET a=7 where b=22;`,
+					ExpectedErr: `Foreign key violation`,
+				},
+				{
+					Query:    `UPDATE attmp3 SET a=2 where b=22;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT 
+    con.conname AS constraint_name,
+    cl_child.relname AS child_table,
+    (SELECT array_agg(attname) FROM pg_attribute WHERE attrelid = con.conrelid AND attnum = ANY(con.conkey)) AS child_columns,
+    cl_parent.relname AS parent_table,
+    (SELECT array_agg(attname) FROM pg_attribute WHERE attrelid = con.confrelid AND attnum = ANY(con.confkey)) AS parent_columns
+FROM pg_catalog.pg_constraint con
+JOIN pg_catalog.pg_class cl_child ON con.conrelid = cl_child.oid
+JOIN pg_catalog.pg_class cl_parent ON con.confrelid = cl_parent.oid
+WHERE con.contype = 'f';`,
+					Expected: []sql.Row{{"attmpconstr", "attmp3", "{a}", "attmp2", "{a}"}},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE with NOT VALID clauses on check constraint",
+			SetUpScript: []string{
+				`CREATE TABLE attmp3 (a int, b int);`,
+				`INSERT INTO attmp3 values (1,10),(1,20),(3,22);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: error message should be `check constraint "b_greater_than_ten" of relation "attmp3" is violated by some row`
+					Query:       `ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10);`,
+					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+				},
+				{
+					Query:    `ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10) NOT VALID;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: error message should be `check constraint "b_greater_than_ten" of relation "attmp3" is violated by some row`
+					Query:       `ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten;`,
+					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+				},
+				{
+					Query:    `DELETE FROM attmp3 WHERE NOT b > 10;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO attmp3 VALUES (5, 9);`,
+					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+				},
+				{
+					Query:    `INSERT INTO attmp3 VALUES (6, 11);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `UPDATE attmp3 SET b=7 where a=3;`,
+					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+				},
+				{
+					Query:    `UPDATE attmp3 SET b=77 where a=3;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: `SELECT                                                              
+    ns.nspname AS schema_name,
+    cl.relname AS table_name,
+    con.conname AS constraint_name,
+    pg_get_constraintdef(con.oid) AS constraint_definition
+FROM pg_catalog.pg_constraint con
+JOIN pg_catalog.pg_class cl ON con.conrelid = cl.oid
+JOIN pg_catalog.pg_namespace ns ON cl.relnamespace = ns.oid
+WHERE con.contype = 'c'
+ORDER BY schema_name, table_name;`,
+					// TODO: the check should `CHECK ((b > 10))`
+					Expected: []sql.Row{{"public", "attmp3", "b_greater_than_ten", `b_greater_than_ten CHECK "b" > 10 ENFORCED`}},
+				},
+			},
+		},
+		{
+			Name: "ALTER TABLE with MATCH FULL on foreign key",
+			SetUpScript: []string{
+				`CREATE TABLE parent_table (parent_id INT, sub_id INT, name TEXT, PRIMARY KEY (parent_id, sub_id));`,
+				`CREATE TABLE child_table (child_id INT PRIMARY KEY, parent_id INT, sub_id INT, description TEXT);`,
+				`INSERT INTO parent_table (parent_id, sub_id, name) VALUES (1, 10, 'Parent Alpha'), (2, 20, 'Parent Beta'), (2, 40, 'Parent 1');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ALTER TABLE child_table add constraint constr FOREIGN KEY (parent_id, sub_id) REFERENCES parent_table(parent_id, sub_id) MATCH FULL;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO child_table (child_id, parent_id, sub_id, description) VALUES (101, 1, 10, 'Valid reference');`,
+					Expected: []sql.Row{},
+				},
+				{
+					// both NULLs are accepted
+					Query:    `INSERT INTO child_table (child_id, parent_id, sub_id, description) VALUES (102, NULL, NULL, 'Completely unlinked row');`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: error message should be `insert or update on table "child_table" violates foreign key constraint "constr"`
+					// TODO: DETAILS has more specific error message of why it failed `Key (parent_id, sub_id)=(2, 30) is not present in table "parent_table"`
+					Query:       `INSERT INTO child_table (child_id, parent_id, sub_id, description) VALUES (105, 2, 30, NULL);`,
+					ExpectedErr: `Foreign key violation`,
+				},
+				{
+					// non-foreign key column NULL is accepted
+					Query:    `INSERT INTO child_table (child_id, parent_id, sub_id, description) VALUES (105, 2, 20, NULL);`,
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: error message should be `insert or update on table "child_table" violates foreign key constraint "constr"`
+					// TODO: DETAILS has more specific error message of why it failed `MATCH FULL does not allow mixing of null and nonnull key values.`
+					Query:       `INSERT INTO child_table (child_id, parent_id, sub_id, description) VALUES (103, 1, NULL, 'Partial null mix');`,
+					ExpectedErr: `Foreign key violation`,
+				},
+				{
+					// TODO: error message should be `insert or update on table "child_table" violates foreign key constraint "constr"`
+					// TODO: DETAILS has more specific error message of why it failed `MATCH FULL does not allow mixing of null and nonnull key values.`
+					Query:       `UPDATE child_table SET sub_id = NULL where parent_id = 2;`,
+					ExpectedErr: `Foreign key violation`,
+				},
+				{
+					Query:    `UPDATE child_table SET sub_id = 40 where parent_id = 2;`,
 					Expected: []sql.Row{},
 				},
 			},

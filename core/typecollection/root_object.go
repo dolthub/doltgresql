@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -29,7 +30,8 @@ import (
 
 // DeserializeRootObject implements the interface objinterface.Collection.
 func (pgs *TypeCollection) DeserializeRootObject(ctx context.Context, data []byte) (objinterface.RootObject, error) {
-	t, err := pgtypes.DeserializeType(data)
+	sqlCtx, _ := ctx.(*sql.Context)
+	t, err := pgtypes.DeserializeType(sqlCtx, data)
 	if err != nil {
 		return nil, err
 	}
@@ -94,6 +96,7 @@ func (pgs *TypeCollection) IDToTableName(identifier id.Id) doltdb.TableName {
 // do not iterate built-in types. In all other situations, we should use IterateTypes.
 func (pgs *TypeCollection) IterAll(ctx context.Context, callback func(rootObj objinterface.RootObject) (stop bool, err error)) error {
 	// We write the cache so that we only need to worry about the underlying map
+	sqlCtx, _ := ctx.(*sql.Context)
 	if err := pgs.writeCache(ctx); err != nil {
 		return err
 	}
@@ -102,7 +105,7 @@ func (pgs *TypeCollection) IterAll(ctx context.Context, callback func(rootObj ob
 		if err != nil {
 			return err
 		}
-		t, err := pgtypes.DeserializeType(data)
+		t, err := pgtypes.DeserializeType(sqlCtx, data)
 		if err != nil {
 			return err
 		}

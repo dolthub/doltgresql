@@ -60,6 +60,18 @@ func makeLargeJSONArray(numElems int) string {
 	return b.String()
 }
 
+// makeLargeJSONObjectWithNumericKeys builds a JSONB object large enough to be
+// stored as an indexed document, whose "nums" key maps to a nested object with
+// numeric string keys. It exercises the extract-path fast path's fallback: a
+// numeric path element is first guessed as an array index, which an object
+// rejects, so resolution must fall back to treating it as an object key.
+func makeLargeJSONObjectWithNumericKeys() string {
+	padding := makeLargeJSONObject(100)
+	// Splice a numeric-keyed sub-object onto the front of the padding object,
+	// dropping the padding's leading '{'.
+	return `{"nums":{"0":"zero","1":"one","2":"two"},` + padding[1:]
+}
+
 // TestJsonObjectField exercises the `->` operator with a text right-hand side
 // against both jsonb and json values (jsonb_object_field / json_object_field),
 // plus the `->>` text-returning variants. The optimization path uses
@@ -77,6 +89,10 @@ func TestJsonObjectField(t *testing.T) {
 				{
 					Query:    `SELECT '{"a":1,"b":"two"}'::jsonb -> 'b';`,
 					Expected: []sql.Row{{`"two"`}},
+				},
+				{
+					Query:    `SELECT '{"a":1,"b":"two"}'::jsonb -> null;`,
+					Expected: []sql.Row{{nil}},
 				},
 				{
 					Query:    `SELECT '{"nested":{"x":[1,2,3]}}'::jsonb -> 'nested';`,
@@ -262,33 +278,26 @@ func TestJsonExtractPath(t *testing.T) {
 			Name: "jsonb_extract_path follows mixed key/index paths",
 			Assertions: []ScriptTestAssertion{
 				{
-					// Single key step.
 					Query:    `SELECT '{"a":{"b":{"c":1}}}'::jsonb #> '{a,b,c}';`,
 					Expected: []sql.Row{{`1`}},
 				},
 				{
-					// Mixed object key + array index path.
 					Query:    `SELECT '{"a":[10,20,30]}'::jsonb #> '{a,1}';`,
 					Expected: []sql.Row{{`20`}},
 				},
 				{
-					// Negative array index at the leaf falls back to the
-					// materialized walk path.
 					Query:    `SELECT '{"a":[10,20,30]}'::jsonb #> '{a,-1}';`,
 					Expected: []sql.Row{{`30`}},
 				},
 				{
-					// A non-integer text on an array level returns NULL.
 					Query:    `SELECT '{"a":[10,20]}'::jsonb #> '{a,not-an-int}';`,
 					Expected: []sql.Row{{nil}},
 				},
 				{
-					// Missing key at an intermediate step returns NULL.
 					Query:    `SELECT '{"a":{"b":1}}'::jsonb #> '{a,missing,c}';`,
 					Expected: []sql.Row{{nil}},
 				},
 				{
-					// Descending into a scalar returns NULL.
 					Query:    `SELECT '{"a":1}'::jsonb #> '{a,b}';`,
 					Expected: []sql.Row{{nil}},
 				},
@@ -326,6 +335,100 @@ func TestJsonExtractPath(t *testing.T) {
 				},
 				{
 					Query:    `SELECT '{"a":1}'::json #> '{missing}';`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_extract_path with multi-element text-array paths",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> ARRAY['a','b'];`,
+					Expected: []sql.Row{{`42`}},
+				},
+				{
+					// A deeper path mixing object keys and an array index.
+					Query:    `SELECT '{"a":{"b":{"c":[10,20]}}}'::jsonb #> ARRAY['a','b','c','1'];`,
+					Expected: []sql.Row{{`20`}},
+				},
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #>> ARRAY['a','b'];`,
+					Expected: []sql.Row{{`42`}},
+				},
+				{
+					// The string 'NULL' is an ordinary key, distinct from a SQL
+					// NULL element: both the ARRAY['NULL'] form and the quoted
+					// '{"NULL"}' literal select the key named "NULL".
+					Query:    `SELECT '{"NULL":7}'::jsonb #> ARRAY['NULL'];`,
+					Expected: []sql.Row{{`7`}},
+				},
+				{
+					Query:    `SELECT '{"NULL":7}'::jsonb #> '{"NULL"}';`,
+					Expected: []sql.Row{{`7`}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_extract_path returns NULL for NULL path elements",
+			Assertions: []ScriptTestAssertion{
+				{
+					// NULL as the trailing element.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> ARRAY['a',NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// NULL as the leading element.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> ARRAY[NULL,'b'];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// NULL element in the middle of an otherwise valid path.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> ARRAY['a',NULL,'b'];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// Unquoted NULL in the '{...}' literal is a SQL NULL element.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> '{a,NULL,b}';`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// A single unquoted NULL element, even when a key named
+					// "NULL" exists, still yields NULL.
+					Query:    `SELECT '{"NULL":7}'::jsonb #> '{NULL}';`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// The text-returning #>> variant behaves the same way.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #>> ARRAY['a',NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// A NULL array operand (vs. a NULL element) is NULL via the
+					// function being strict.
+					Query:    `SELECT '{"a":{"b":42}}'::jsonb #> NULL::text[];`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
+			// The json (non-binary) variants resolve through json_extract_path /
+			// json_extract_path_text and must match the jsonb behavior above.
+			Name: "json_extract_path with text-array paths and NULL elements",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::json #> ARRAY['a','b'];`,
+					Expected: []sql.Row{{`42`}},
+				},
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::json #>> ARRAY['a','b'];`,
+					Expected: []sql.Row{{`42`}},
+				},
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::json #> ARRAY['a',NULL];`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT '{"a":{"b":42}}'::json #>> ARRAY[NULL,'b'];`,
 					Expected: []sql.Row{{nil}},
 				},
 			},
@@ -576,6 +679,41 @@ func TestJsonLargeDocumentAccess(t *testing.T) {
 					// jsonb_extract_path into a nested array element.
 					Query:    `SELECT doc #>> '{42, payload, 3}' FROM bigarr WHERE id = 1;`,
 					Expected: []sql.Row{{`d`}},
+				},
+			},
+		},
+		{
+			Name: "jsonb_extract_path on large stored object with numeric keys (>4 KB)",
+			SetUpScript: []string{
+				`CREATE TABLE numkeys (id INT PRIMARY KEY, doc JSONB)`,
+				`INSERT INTO numkeys (id, doc) VALUES (1, '` + makeLargeJSONObjectWithNumericKeys() + `'::jsonb)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT length(doc::text) > 4096 FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					// A numeric path element on an object is first guessed as an
+					// array index ([0]), which the indexed lookup rejects, so it
+					// must fall back to the object key "0".
+					Query:    `SELECT doc #>> '{nums, 0}' FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{`zero`}},
+				},
+				{
+					Query:    `SELECT doc #>> '{nums, 2}' FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{`two`}},
+				},
+				{
+					// Missing numeric key returns SQL NULL after the fallback.
+					Query:    `SELECT doc #> '{nums, 5}' FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// A genuine object key + array index path through the same
+					// large document still resolves on the single-lookup path.
+					Query:    `SELECT doc #>> '{k_0001, tags, 0}' FROM numkeys WHERE id = 1;`,
+					Expected: []sql.Row{{`tag-a`}},
 				},
 			},
 		},

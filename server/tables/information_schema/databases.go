@@ -30,10 +30,11 @@ func allDatabasesWithNames(ctx *sql.Context, cat sql.Catalog, privCheck bool) ([
 
 	allDbs := cat.AllDatabases(ctx)
 	for _, db := range allDbs {
-		if privCheck {
-			if privDatabase, ok := db.(mysql_db.PrivilegedDatabase); ok {
-				db = privDatabase.Unwrap()
-			}
+		// Always unwrap PrivilegedDatabase to reach the underlying SchemaDatabase implementation.
+		// PrivilegedDatabase does not implement sql.SchemaDatabase; unwrapping is required for
+		// schema iteration regardless of privilege-check mode.
+		if privDatabase, ok := db.(mysql_db.PrivilegedDatabase); ok {
+			db = privDatabase.Unwrap()
 		}
 
 		sdb, ok := db.(sql.SchemaDatabase)

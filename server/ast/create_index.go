@@ -34,9 +34,6 @@ func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, 
 	if node.Using != "" && strings.ToLower(node.Using) != "btree" {
 		return nil, errors.Errorf("index method %s is not yet supported", node.Using)
 	}
-	if node.Predicate != nil {
-		return nil, errors.Errorf("WHERE is not yet supported")
-	}
 	indexDef, err := nodeIndexTableDef(ctx, &tree.IndexTableDef{
 		Name:        node.Name,
 		Columns:     node.Columns,
@@ -53,6 +50,13 @@ func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, 
 	if node.Unique {
 		indexType = vitess.UniqueStr
 	}
+	var predicate vitess.Expr
+	if node.Predicate != nil {
+		predicate, err = nodeExpr(ctx, node.Predicate)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &vitess.AlterTable{
 		Table: tableName,
 		Statements: []*vitess.DDL{
@@ -61,12 +65,13 @@ func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, 
 				Table:       tableName,
 				IfNotExists: node.IfNotExists,
 				IndexSpec: &vitess.IndexSpec{
-					Action:   vitess.CreateStr,
-					FromName: indexDef.Info.Name,
-					ToName:   indexDef.Info.Name,
-					Type:     indexType,
-					Fields:   indexDef.Fields,
-					Options:  indexDef.Options,
+					Action:    vitess.CreateStr,
+					FromName:  indexDef.Info.Name,
+					ToName:    indexDef.Info.Name,
+					Type:      indexType,
+					Fields:    indexDef.Fields,
+					Options:   indexDef.Options,
+					Predicate: predicate,
 				},
 			},
 		},

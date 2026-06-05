@@ -113,7 +113,7 @@ var bpchareq = framework.Function2{
 
 // byteaeq_callable is the callable logic for the byteaeq function.
 func byteaeq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.Bytea.Compare(ctx, val1.([]byte), val2.([]byte))
+	res, err := pgtypes.Bytea.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 

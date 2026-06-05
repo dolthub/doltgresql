@@ -26,14 +26,14 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/server/types"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // CreateDomain handles the CREATE DOMAIN statement.
 type CreateDomain struct {
 	SchemaName           string
 	Name                 string
-	AsType               *types.DoltgresType
+	AsType               *pgtypes.DoltgresType
 	Collation            string
 	HasDefault           bool
 	DefaultExpr          sql.Expression
@@ -77,7 +77,7 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	arrayID := id.NewType(schema, "_"+c.Name)
 
 	if collection.HasType(ctx, internalID) {
-		return nil, types.ErrTypeAlreadyExists.New(c.Name)
+		return nil, pgtypes.ErrTypeAlreadyExists.New(c.Name)
 	}
 
 	var defExpr string
@@ -100,18 +100,19 @@ func (c *CreateDomain) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 		}
 	}
 
-	newType := types.NewDomainType(ctx, c.AsType, defExpr, c.IsNotNull, checkDefs, arrayID, internalID)
+	newType := pgtypes.NewDomainType(ctx, c.AsType, defExpr, c.IsNotNull, checkDefs, arrayID, internalID)
 	err = collection.CreateType(ctx, newType)
 	if err != nil {
 		return nil, err
 	}
 
 	// create array type of this type
-	arrayType := types.CreateArrayTypeFromBaseType(newType)
+	arrayType := pgtypes.CreateArrayTypeFromBaseType(newType)
 	err = collection.CreateType(ctx, arrayType)
 	if err != nil {
 		return nil, err
 	}
+	newType.Array = arrayType
 
 	return sql.RowsToRowIter(), nil
 }
@@ -176,6 +177,24 @@ func (c *CreateDomain) WithResolvedChildren(ctx context.Context, children []any)
 			Enforced: true,
 		})
 	}
+	if !c.AsType.IsResolvedType() {
+		sqlCtx, ok := ctx.(*sql.Context)
+		if !ok {
+			return nil, errors.Errorf("%T requires a SQL context for type resolution", c)
+		}
+		typeColl, err := core.GetTypesCollectionFromContext(sqlCtx)
+		if err != nil {
+			return nil, err
+		}
+		resolvedType, err := typeColl.ResolveType(sqlCtx, c.AsType.ID)
+		if err != nil {
+			return nil, err
+		}
+		c.AsType = resolvedType
+	}
+	if !c.AsType.IsDefined {
+		return nil, pgtypes.ErrTypeIsOnlyAShell.New(c.AsType.Name())
+	}
 	return &CreateDomain{
 		SchemaName:           c.SchemaName,
 		Name:                 c.Name,
@@ -193,7 +212,7 @@ func (c *CreateDomain) WithResolvedChildren(ctx context.Context, children []any)
 // It is a placeholder column reference later
 // used for column defined as the domain type.
 type DomainColumn struct {
-	Typ *types.DoltgresType
+	Typ *pgtypes.DoltgresType
 }
 
 var _ vitess.Injectable = (*DomainColumn)(nil)
@@ -212,7 +231,7 @@ func (d *DomainColumn) String() string {
 // Type implements the interface sql.Expression.
 func (d *DomainColumn) Type(ctx *sql.Context) sql.Type {
 	if d.Typ.IsEmptyType() {
-		return types.Unknown
+		return pgtypes.Unknown
 	}
 	return d.Typ
 }

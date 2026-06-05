@@ -30,7 +30,7 @@ type FunctionProvider struct{}
 var _ sql.FunctionProvider = (*FunctionProvider)(nil)
 
 // Function implements the interface sql.FunctionProvider.
-func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Function, bool) {
+func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql.Function, bool) {
 	// TODO: this should be configurable from within Dolt, rather than set on an external variable
 	if !core.IsContextValid(ctx) {
 		return nil, false
@@ -50,11 +50,14 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, name string) (sql.Functio
 		return nil, false
 	}
 	if len(overloads) == 0 {
-		currentSchema, err := core.GetCurrentSchema(ctx)
-		if err != nil {
-			return nil, false
+		if schema == "" {
+			currentSchema, err := core.GetCurrentSchema(ctx)
+			if err != nil {
+				return nil, false
+			}
+			schema = currentSchema
 		}
-		funcName = id.NewFunction(currentSchema, name)
+		funcName = id.NewFunction(schema, name)
 		overloads, err = funcCollection.GetFunctionOverloads(ctx, funcName)
 		if err != nil {
 			return nil, false

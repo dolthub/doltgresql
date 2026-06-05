@@ -109,7 +109,7 @@ var byteagt = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Bytea.Compare(ctx, val1.([]byte), val2.([]byte))
+		res, err := pgtypes.Bytea.Compare(ctx, val1, val2)
 		return res == 1, err
 	},
 }
@@ -433,7 +433,7 @@ var text_gt = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.Text.Compare(ctx, val1, val2)
 		return res == 1, err
 	},
 }

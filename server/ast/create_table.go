@@ -31,8 +31,12 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 	if len(node.StorageParams) > 0 {
 		return nil, errors.Errorf("storage parameters are not yet supported")
 	}
-	if node.OnCommit != tree.CreateTableOnCommitUnset {
-		return nil, errors.Errorf("ON COMMIT is not yet supported")
+	// TODO: support tree.CreateTableOnCommitDrop and tree.CreateTableOnCommitDeleteRows
+	switch node.OnCommit {
+	case tree.CreateTableOnCommitDrop:
+		// is unsupported and ignored
+	case tree.CreateTableOnCommitDeleteRows:
+		// is unsupported and ignored
 	}
 	tableName, err := nodeTableName(ctx, &node.Table)
 	if err != nil {

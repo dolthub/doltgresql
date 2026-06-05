@@ -36,6 +36,7 @@ import (
 	"github.com/dolthub/doltgresql/server/tables/dtables"
 	"github.com/dolthub/doltgresql/server/tables/information_schema"
 	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
@@ -48,6 +49,7 @@ func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 		core.Init()
 		rootobject.Init()
 		auth.Init(dEnv, cfg)
+		pgtypes.Init()
 		analyzer.Init()
 		config.Init()
 		binary.Init()

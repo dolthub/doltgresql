@@ -78,5 +78,45 @@ func TestCreateExtension(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "create extension uuid-ossp after setting search_path to empty",
+			SetUpScript: []string{
+				`SELECT pg_catalog.set_config('search_path', '', false);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT uuid_nil();",
+					// TODO: error message should be "function uuid_nil() does not exist"
+					ExpectedErr: `function: 'uuid_nil' not found`,
+				},
+				{
+					Query:    "SELECT public.uuid_nil();",
+					Expected: []sql.Row{{"00000000-0000-0000-0000-000000000000"}},
+				},
+			},
+		},
+		{
+			Name: "alter table with default expr using extension function when search_path is empty",
+			SetUpScript: []string{
+				`SELECT pg_catalog.set_config('search_path', '', false);`,
+				`CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;`,
+				`CREATE TABLE public.goals (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    note_id uuid,
+    completion_timestamp timestamp without time zone,
+    due_date timestamp without time zone
+);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ALTER TABLE ONLY public.goals ADD CONSTRAINT goals_pkey PRIMARY KEY (id);`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }

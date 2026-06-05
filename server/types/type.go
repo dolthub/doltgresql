@@ -56,10 +56,10 @@ type DoltgresType struct {
 	IsDefined   bool
 	Delimiter   string
 
-	RelID         id.Id // for Composite types
+	RelID         id.Id // references the parent table relation for Composite types
 	SubscriptFunc uint32
-	Elem          id.Type
-	Array         id.Type
+	Elem          *DoltgresType
+	Array         *DoltgresType
 	InputFunc     uint32 // for deserializing a text representation
 	OutputFunc    uint32 // for serializing a text representation
 	ReceiveFunc   uint32 // for deserializing a binary representation
@@ -70,10 +70,10 @@ type DoltgresType struct {
 	Align         TypeAlignment
 	Storage       TypeStorage
 
-	NotNull      bool    // for Domain types
-	BaseTypeID   id.Type // for Domain types
-	TypMod       int32   // for Domain types
-	NDims        int32   // for Domain types
+	NotNull      bool          // for Domain types
+	BaseTypeType *DoltgresType // for Domain types
+	TypMod       int32         // for Domain types
+	NDims        int32         // for Domain types
 	TypCollation id.Collation
 	DefaulBin    string // for Domain types
 	Default      string
@@ -94,6 +94,10 @@ type DoltgresType struct {
 	SerializationFunc   internalSerializationFunc
 	DeserializationFunc internalDeserializationFunc
 }
+
+// internalNullType represents a type with a null ID, effectively stating that the field in the parent DoltgresType is
+// empty. This type is considered resolved.
+var internalNullType = &DoltgresType{ID: id.NullType, IsUnresolved: false}
 
 // internalSerializationFunc is the function definition for internal type serialization
 type internalSerializationFunc func(*sql.Context, *DoltgresType, any) ([]byte, error)
@@ -118,6 +122,9 @@ func NewUnresolvedDoltgresType(sch, name string) *DoltgresType {
 func NewUnresolvedDoltgresTypeFromID(idType id.Type) *DoltgresType {
 	return &DoltgresType{
 		ID:           idType,
+		Elem:         internalNullType,
+		Array:        internalNullType,
+		BaseTypeType: internalNullType,
 		IsUnresolved: true,
 	}
 }
@@ -130,8 +137,9 @@ func NewUnresolvedArrayDoltgresType(sch, elemName string) *DoltgresType {
 		ID:           id.NewType(sch, "_"+elemName),
 		IsUnresolved: true,
 		TypCategory:  TypeCategory_ArrayTypes,
-		Elem:         id.NewType(sch, elemName),
-		Array:        id.NullType,
+		Elem:         &DoltgresType{ID: id.NewType(sch, elemName), IsUnresolved: true},
+		Array:        internalNullType,
+		BaseTypeType: internalNullType,
 	}
 }
 
@@ -140,68 +148,26 @@ func (t *DoltgresType) AnalyzeFuncName() string {
 	return globalFunctionRegistry.GetString(t.AnalyzeFunc)
 }
 
-// ArrayBaseType returns a base type of given array type.
-// If this type is not an array type, it returns itself.
-// Prefer using ArrayBaseTypeCtx() instead.
+// ArrayBaseType returns the base type of an array type.
 func (t *DoltgresType) ArrayBaseType() *DoltgresType {
-	// TODO: Remove this method and rename ArrayBaseTypeCtx(ctx)
-	//       to ArrayBaseType(ctx) when all callers are migrated.
-	return t.ArrayBaseTypeCtx(nil)
-}
-
-// ArrayBaseTypeCtx returns the base type of an array type, using the context to resolve user-defined element types
-// that aren't in the built-in type map.
-// If this type is not an array type, it returns itself.
-func (t *DoltgresType) ArrayBaseTypeCtx(ctx *sql.Context) *DoltgresType {
 	if !t.IsArrayType() {
 		return t
 	}
-
-	var elem *DoltgresType
-	var ok bool
-
-	elem, ok = IDToBuiltInDoltgresType[t.Elem]
-	if !ok {
-		// Some array types have no declared element type for pg_catalog compatibility, but still have a logical type
-		// we return for analysis.
-		elem, ok = LogicalArrayElementTypes[t.ID]
-		if !ok {
-			if t.IsUnresolved && t.Elem != id.NullType {
-				return NewUnresolvedDoltgresType(t.Elem.SchemaName(), t.Elem.TypeName())
-			}
-			if ctx != nil && t.Elem != id.NullType {
-				if typeColl, err := GetTypesCollectionFromContext(ctx); err == nil && typeColl != nil {
-					if elemType, err := typeColl.GetType(ctx, t.Elem); err == nil && elemType != nil {
-						newElem := *elemType.WithAttTypMod(t.attTypMod)
-						return &newElem
-					}
-				}
-			}
-			panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
-		}
+	// Some array types have no declared element type for pg_catalog compatibility, but still have a logical type
+	// we return for analysis.
+	if t.ID == AnyArray.ID {
+		return AnyElement
 	}
-
-	newElem := *elem.WithAttTypMod(t.attTypMod)
-	return &newElem
+	return t.Elem.WithAttTypMod(t.attTypMod)
 }
 
 // BaseType returns a base type of given array or vector type.
 // If this type does not have base type, it returns itself.
 func (t *DoltgresType) BaseType() *DoltgresType {
-	if t.Elem == id.NullType {
+	if t.Elem.ID == id.NullType {
 		return t
 	}
-
-	var elem *DoltgresType
-	var ok bool
-
-	elem, ok = IDToBuiltInDoltgresType[t.Elem]
-	if !ok {
-		panic(fmt.Sprintf("cannot get base type from: %s", t.Name()))
-	}
-
-	newElem := *elem.WithAttTypMod(t.attTypMod)
-	return &newElem
+	return t.Elem.WithAttTypMod(t.attTypMod)
 }
 
 // CharacterSet implements the sql.StringType interface.
@@ -231,6 +197,8 @@ func (t *DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Co
 
 // Compare implements the types.ExtendedType interface.
 func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface{}) (int, error) {
+	// TODO: for some large types, we could do this much faster by doing it chunk-by-chunk, rather than eagerly loading
+	//  the full value into memory
 	var err error
 	v1, err = sql.UnwrapAny(ctx, v1)
 	if err != nil {
@@ -385,8 +353,7 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		bb := v2.([]any)
 		minLength := utils.Min(len(ab), len(bb))
 		for i := 0; i < minLength; i++ {
-			sqlCtx, _ := ctx.(*sql.Context)
-			res, err := t.ArrayBaseTypeCtx(sqlCtx).Compare(ctx, ab[i], bb[i])
+			res, err := t.ArrayBaseType().Compare(ctx, ab[i], bb[i])
 			if err != nil {
 				return 0, err
 			}
@@ -569,16 +536,12 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 
 // DomainUnderlyingBaseType returns an underlying base type of this domain type.
 // It can be a nested domain type, so it recursively searches for a valid base type.
+// It is not valid to call this on a non-domain type.
 func (t *DoltgresType) DomainUnderlyingBaseType() *DoltgresType {
-	// TODO: handle user-defined type
-	bt, ok := IDToBuiltInDoltgresType[t.BaseTypeID]
-	if !ok {
-		panic(fmt.Sprintf("unable to get DoltgresType from ID: %s", t.BaseTypeID.AsId().String()))
-	}
-	if bt.TypType == TypeType_Domain {
-		return bt.DomainUnderlyingBaseType()
+	if t.BaseTypeType.TypType == TypeType_Domain {
+		return t.BaseTypeType.DomainUnderlyingBaseType()
 	} else {
-		return bt
+		return t.BaseTypeType
 	}
 }
 
@@ -621,10 +584,10 @@ func (t *DoltgresType) InputFuncName() string {
 // IoInput converts input string value to given type value.
 func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 	if t.TypType == TypeType_Domain {
-		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.BaseTypeID.AsId(), t.attTypMod)
+		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.BaseTypeType.ID.AsId(), t.attTypMod)
 	} else if t.ModInFunc != 0 || t.IsArrayType() {
-		if t.Elem != id.NullType {
-			return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.Elem.AsId(), t.attTypMod)
+		if t.Elem.ID != id.NullType {
+			return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.Elem.ID.AsId(), t.attTypMod)
 		} else {
 			return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input, t.ID.AsId(), t.attTypMod)
 		}
@@ -664,7 +627,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 // It can be array category with empty its array attribute NULL and element attribute NOT NULL.
 // Or it can be pseudo category with name 'anyarray'.
 func (t *DoltgresType) IsArrayType() bool {
-	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem != id.NullType && t.Array == id.NullType) ||
+	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem.ID != id.NullType && t.Array.ID == id.NullType) ||
 		(t.TypCategory == TypeCategory_PseudoTypes && t.ID.TypeName() == "anyarray")
 }
 
@@ -709,7 +672,7 @@ func (t *DoltgresType) IsPolymorphicType() bool {
 // IsResolvedType whether the type is resolved and has complete information.
 // This is used to resolve types during analyzing when non-built-in type is used.
 func (t *DoltgresType) IsResolvedType() bool {
-	return !t.IsUnresolved
+	return t != nil && !t.IsUnresolved
 }
 
 // IsValidForPolymorphicType returns whether the given type is valid for the calling polymorphic type.
@@ -956,9 +919,23 @@ func (t *DoltgresType) ToArrayType() *DoltgresType {
 	if t.IsArrayType() {
 		return t
 	}
-	arr, ok := IDToBuiltInDoltgresType[t.Array]
+	if t.Array.IsResolvedType() {
+		arr := t.Array.WithAttTypMod(t.attTypMod)
+		arr.InternalName = fmt.Sprintf("%s[]", t.String())
+		return arr
+	}
+	if t.Array.ID == id.NullType {
+		// Unresolved or stub type: derive an unresolved array type using the Postgres naming convention.
+		// The caller (e.g. during plan-building before the analyzer resolves types) will re-invoke
+		// ToArrayType on the fully-resolved base type once the analyzer has run.
+		return NewUnresolvedArrayDoltgresType(t.ID.SchemaName(), t.ID.TypeName())
+	}
+	// User-defined type: the array type is not in the built-in map, so build it from this base type.
+	return CreateArrayTypeFromBaseType(t)
+	// TODO: delete the commented out code below, only exists for referencing
+	/*arr, ok := IDToBuiltInDoltgresType[t.Array]
 	if !ok {
-		if t.Array == id.NullType {
+		if t.Array.ID == id.NullType {
 			// Unresolved or stub type: derive an unresolved array type using the Postgres naming convention.
 			// The caller (e.g. during plan-building before the analyzer resolves types) will re-invoke
 			// ToArrayType on the fully-resolved base type once the analyzer has run.
@@ -969,7 +946,7 @@ func (t *DoltgresType) ToArrayType() *DoltgresType {
 	}
 	newArr := *arr.WithAttTypMod(t.attTypMod)
 	newArr.InternalName = fmt.Sprintf("%s[]", t.String())
-	return &newArr
+	return &newArr*/
 }
 
 // Type implements the types.ExtendedType interface.
@@ -1172,10 +1149,10 @@ func (t *DoltgresType) CallSend(ctx *sql.Context, val any) ([]byte, error) {
 // CallReceive is a way to call the `receive` function for this type.
 func (t *DoltgresType) CallReceive(ctx *sql.Context, val []byte) (any, error) {
 	if t.TypType == TypeType_Domain {
-		return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.BaseTypeID.AsId(), t.attTypMod)
+		return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.BaseTypeType.ID.AsId(), t.attTypMod)
 	} else if t.ModInFunc != 0 || t.IsArrayType() {
-		if t.Elem != id.NullType {
-			return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.Elem.AsId(), t.attTypMod)
+		if t.Elem.ID != id.NullType {
+			return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.Elem.ID.AsId(), t.attTypMod)
 		} else {
 			return globalFunctionRegistry.GetFunction(ctx, t.ReceiveFunc).CallVariadic(ctx, val, t.ID.AsId(), t.attTypMod)
 		}

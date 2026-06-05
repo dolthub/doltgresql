@@ -70,7 +70,11 @@ func newRootValue(ctx context.Context, vrw types.ValueReadWriter, ns tree.NodeSt
 		}
 	}
 
-	return &RootValue{vrw, ns, st, nil, hash.Hash{}}, nil
+	return &RootValue{
+		vrw: vrw,
+		ns:  ns,
+		st:  st,
+	}, nil
 }
 
 // rootValueHumanReadableStringAtIndentationLevel is Doltgres' implementation of

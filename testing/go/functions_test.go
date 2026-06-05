@@ -1692,6 +1692,10 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{"[1,2,3]"}},
 				},
 				{
+					Query:    `SELECT array_to_json(ARRAY [jsonb '{"a":1}', jsonb '{"b":[2,3]}']);`,
+					Expected: []sql.Row{{`[{"a":1},{"b":[2,3]}]`}},
+				},
+				{
 					Query:    `SELECT array_to_json(ARRAY[1.5, 2.5]::float8[])`,
 					Expected: []sql.Row{{"[1.5,2.5]"}},
 				},
@@ -1896,7 +1900,7 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 						{1539973141, "test_seq", "testschema"},
 						{1952237395, "test_table", "testschema"},
 						{3508950454, "test_table_pkey", "testschema"},
-						{521883837, "v1", "testschema"},
+						{2590613415, "test_table_v1_key", "testschema"},
 					},
 				},
 				{
