@@ -70,7 +70,7 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
-		fkDef, err := nodeForeignKeyConstraintTableDef(ctx, node)
+		fkDef, err := nodeForeignKeyConstraintTableDef(ctx, node, false)
 		if err != nil {
 			return err
 		}
@@ -149,7 +149,7 @@ func nodeForeignKeyDefinitionFromColumnTableDef(ctx *Context, fromColumn tree.Na
 		Match:    references.Match,
 	}
 
-	return nodeForeignKeyConstraintTableDef(ctx, fkConstraintTableDef)
+	return nodeForeignKeyConstraintTableDef(ctx, fkConstraintTableDef, false)
 }
 
 // assignTableDefs handles tree.TableDefs nodes for *vitess.DDL targets. This also sorts table defs by whether they're
