@@ -541,7 +541,7 @@ var record_le = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Record, pgtypes.Record},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		return compare.CompareRecords(ctx, framework.Operator_BinaryLessThan, val1, val2)
+		return compare.CompareRecords(ctx, framework.Operator_BinaryLessOrEqual, val1, val2)
 	},
 }
 
