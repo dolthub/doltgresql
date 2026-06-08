@@ -148,7 +148,6 @@ func (a *ArrayAgg) Window() *sql.WindowDefinition {
 func (a *ArrayAgg) NewBuffer(ctx *sql.Context) (sql.AggregationBuffer, error) {
 	return &arrayAggBuffer{
 		elements: make([]sql.Row, 0),
-		seen:     make(map[string]struct{}),
 		a:        a,
 	}, nil
 }
@@ -156,7 +155,8 @@ func (a *ArrayAgg) NewBuffer(ctx *sql.Context) (sql.AggregationBuffer, error) {
 // arrayAggBuffer is the buffer used to accumulate values for the array_agg aggregation function.
 type arrayAggBuffer struct {
 	elements []sql.Row
-	seen     map[string]struct{}
+	seen     []interface{} // sorted, non-NULL distinct values for binary search
+	seenNull bool
 	a        *ArrayAgg
 }
 
@@ -199,15 +199,33 @@ func (a *arrayAggBuffer) Update(ctx *sql.Context, row sql.Row) error {
 	}
 
 	if a.a.Distinct {
-		exprType := a.a.selectExprs[0].Type(ctx).(*types.DoltgresType)
-		key, err := exprType.IoOutput(ctx, evalRow[0])
-		if err != nil {
-			return err
+		val := evalRow[0]
+		if val == nil {
+			if a.seenNull {
+				return nil
+			}
+			a.seenNull = true
+		} else {
+			exprType := a.a.selectExprs[0].Type(ctx).(*types.DoltgresType)
+			lo, hi := 0, len(a.seen)
+			for lo < hi {
+				mid := (lo + hi) / 2
+				cmp, err := exprType.Compare(ctx, val, a.seen[mid])
+				if err != nil {
+					return err
+				}
+				if cmp == 0 {
+					return nil
+				} else if cmp < 0 {
+					hi = mid
+				} else {
+					lo = mid + 1
+				}
+			}
+			a.seen = append(a.seen, nil)
+			copy(a.seen[lo+1:], a.seen[lo:])
+			a.seen[lo] = val
 		}
-		if _, exists := a.seen[key]; exists {
-			return nil
-		}
-		a.seen[key] = struct{}{}
 	}
 
 	// Append the current value to the end of the row. We want to preserve the row's original structure

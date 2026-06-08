@@ -441,6 +441,51 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array_agg with DISTINCT handles NULL values",
+			SetUpScript: []string{
+				"CREATE TABLE t (v text);",
+				"INSERT INTO t VALUES (NULL), (NULL), ('x');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT array_agg(DISTINCT v ORDER BY v NULLS FIRST)::text FROM t;",
+					Expected: []sql.Row{
+						{"{NULL,x}"},
+					},
+				},
+				{
+					Query: "SELECT array_agg(DISTINCT v)::text FROM (VALUES (NULL::text), (NULL::text)) AS vals(v);",
+					Expected: []sql.Row{
+						{"{NULL}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "array_agg DISTINCT dedups semantically equal numerics",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT array_agg(DISTINCT v ORDER BY v)::text FROM (VALUES (1.0::numeric), (1.00::numeric)) AS vals(v);",
+					Expected: []sql.Row{
+						{"{1.0}"},
+					},
+				},
+				{
+					Query: `
+				SELECT array_agg(DISTINCT v ORDER BY v)::text
+				FROM (
+					VALUES
+						(1::numeric),
+						(1.000000::numeric)
+				) AS vals(v);
+			`,
+					Expected: []sql.Row{
+						{"{1}"},
+					},
+				},
+			},
+		},
 	})
 }
 
