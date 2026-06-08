@@ -25,10 +25,9 @@
 package timeofday
 
 import (
-	"fmt"
 	"math/rand"
-	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
 )
@@ -65,12 +64,29 @@ func New(hour, min, sec, micro int) TimeOfDay {
 }
 
 func (t TimeOfDay) String() string {
-	micros := t.Microsecond()
-	if micros > 0 {
-		s := fmt.Sprintf("%02d:%02d:%02d.%06d", t.Hour(), t.Minute(), t.Second(), micros)
-		return strings.TrimRight(s, "0")
+	dest := make([]byte, 0, 15) // longest possible result is len("12:34:56.123456") = 15
+	h, m, s, ms := t.Hour(), t.Minute(), t.Second(), t.Microsecond()
+	dest = append(dest,
+		'0'+byte(h/10), '0'+byte(h%10), ':',
+		'0'+byte(m/10), '0'+byte(m%10), ':',
+		'0'+byte(s/10), '0'+byte(s%10))
+	if ms > 0 {
+		dest = append(dest, '.')
+		cmp := 100_000
+		for cmp > 0 {
+			dest = append(dest, '0'+byte(ms/cmp))
+			ms %= cmp
+			cmp /= 10
+		}
+		// trim trailing 0s
+		for i := len(dest) - 1; i >= 0; i-- {
+			if dest[i] != '0' {
+				dest = dest[:i+1]
+				break
+			}
+		}
 	}
-	return fmt.Sprintf("%02d:%02d:%02d", t.Hour(), t.Minute(), t.Second())
+	return unsafe.String(unsafe.SliceData(dest), len(dest))
 }
 
 // FromInt constructs a TimeOfDay from an int64, representing microseconds since

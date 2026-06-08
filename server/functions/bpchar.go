@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -173,17 +172,14 @@ var bpcharcmp = framework.Function2{
 // truncateString returns a string that has been truncated to the given length. Uses the rune count rather than the
 // byte count. Returns the input string if it's smaller than the length. Also returns the rune count of the string.
 func truncateString(val string, runeLimit int32) (string, int32) {
-	runeLength := int32(utf8.RuneCountInString(val))
-	if runeLength > runeLimit {
-		// TODO: figure out if there's a faster way to truncate based on rune count
-		startString := val
-		for i := int32(0); i < runeLimit; i++ {
-			_, size := utf8.DecodeRuneInString(val)
-			val = val[size:]
+	var n int32
+	for pos := range val {
+		if n >= runeLimit {
+			return val[:pos], n
 		}
-		return startString[:len(startString)-len(val)], runeLength
+		n++
 	}
-	return val, runeLength
+	return val, n
 }
 
 func getTypModFromStringArr(typName string, inputArr []any) (int32, error) {

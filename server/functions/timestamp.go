@@ -155,6 +155,7 @@ const (
 
 // getDateStyleOutputFormat returns the format layout for date/time values defined in the 'DateStyle' configuration parameter.
 func getDateStyleOutputFormat(ctx *sql.Context) string {
+	// TODO: this is expensive, we should only do this once for each query
 	format := DateStyleISO // default
 	if ctx == nil {
 		return format
