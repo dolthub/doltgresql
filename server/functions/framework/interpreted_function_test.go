@@ -35,7 +35,7 @@ import (
 func TestApplyBindings_RendersRegclassVariableThroughSessionContext(t *testing.T) {
 	t.Parallel()
 	functions.Init()
-	framework.Initialize()
+	framework.Initialize(nil)
 	ctx := sql.NewEmptyContext()
 	stack := plpgsql.NewInterpreterStack(nil)
 	stack.NewVariableWithValue("rel", pgtypes.Regclass, id.NewOID(1259).AsId())

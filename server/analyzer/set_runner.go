@@ -12,22 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package casts
+package analyzer
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/analyzer"
+	"github.com/dolthub/go-mysql-server/sql/plan"
+	"github.com/dolthub/go-mysql-server/sql/transform"
 
-	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core"
 )
 
-// Init initializes this package.
-func Init(
-	getRunnerFromCtx func(ctx *sql.Context) (sql.StatementRunner, error),
-	getIsStrictFromFunc func(f sql.Expression) bool,
-	provider sql.FunctionProvider,
-) map[id.Cast]Cast {
-	functionProvider = provider
-	getRunnerFromContext = getRunnerFromCtx
-	getIsStrictFromFunction = getIsStrictFromFunc
-	return builtInCasts
+// SetRunner sets the StatementRunner in the context.
+func SetRunner(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+	return node, transform.SameTree, core.SetRunnerOnContext(ctx, a.Runner)
 }

@@ -30,6 +30,7 @@ import (
 // AfterTableRename handles updating various columns using the table type, alongside other validation that's unique
 // to Doltgres.
 func AfterTableRename(ctx *sql.Context, runner sql.StatementRunner, nodeInterface sql.Node) error {
+	// TODO: handle casts using table names
 	n, ok := nodeInterface.(*plan.RenameTable)
 	if !ok {
 		return errors.Errorf("RENAME TABLE post-hook expected `*plan.RenameTable` but received `%T`", nodeInterface)

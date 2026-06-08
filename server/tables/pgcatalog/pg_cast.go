@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,11 +45,25 @@ func (p PgCastHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgCastHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_cast row iter
-	return emptyRowIter()
+	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var allCasts []casts.Cast
+	err = castsColl.IterateCasts(ctx, func(c casts.Cast) (stop bool, err error) {
+		allCasts = append(allCasts, c)
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pgCastRowIter{
+		allCasts: allCasts,
+		idx:      0,
+	}, nil
 }
 
-// Schema implements the interface tables.Handler.
+// PkSchema implements the interface tables.Handler.
 func (p PgCastHandler) PkSchema() sql.PrimaryKeySchema {
 	return sql.PrimaryKeySchema{
 		Schema:     pgCastSchema,
@@ -67,13 +83,44 @@ var pgCastSchema = sql.Schema{
 
 // pgCastRowIter is the sql.RowIter for the pg_cast table.
 type pgCastRowIter struct {
+	allCasts []casts.Cast
+	idx      int
 }
 
 var _ sql.RowIter = (*pgCastRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgCastRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.allCasts) {
+		return nil, io.EOF
+	}
+	cast := iter.allCasts[iter.idx]
+	iter.idx++
+	var castContext string
+	switch cast.CastType {
+	case casts.CastType_Explicit:
+		castContext = "e"
+	case casts.CastType_Assignment:
+		castContext = "a"
+	case casts.CastType_Implicit:
+		castContext = "i"
+	}
+	var castMethod string
+	if cast.Function.IsValid() || cast.BuiltIn != nil {
+		castMethod = "f"
+	} else if cast.UseInOut {
+		castMethod = "i"
+	} else {
+		castMethod = "b"
+	}
+	return sql.Row{
+		cast.ID.AsId(),
+		cast.ID.SourceType().AsId(),
+		cast.ID.TargetType().AsId(),
+		cast.Function.AsId(),
+		castContext,
+		castMethod,
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

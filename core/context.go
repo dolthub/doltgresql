@@ -40,13 +40,15 @@ import (
 type contextValues struct {
 	seqs map[string]*sequences.Collection
 	// TODO: all these collection fields need to be mapped by database name as seqs above
-	types          *typecollection.TypeCollection
-	funcs          *functions.Collection
-	procs          *procedures.Collection
-	trigs          *triggers.Collection
-	exts           *extensions.Collection
-	casts          *casts.Collection
+	types *typecollection.TypeCollection
+	funcs *functions.Collection
+	procs *procedures.Collection
+	trigs *triggers.Collection
+	exts  *extensions.Collection
+	casts *casts.Collection
+
 	pgCatalogCache any
+	runner         sql.StatementRunner
 }
 
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
@@ -71,7 +73,14 @@ func getContextValues(ctx *sql.Context) (*contextValues, error) {
 func ClearContextValues(ctx *sql.Context) {
 	sess := dsess.DSessFromSess(ctx.Session)
 	if sess.DoltgresSessObj != nil {
-		sess.DoltgresSessObj = &contextValues{}
+		// We want to persist the runner between clears since it's static
+		var runner sql.StatementRunner
+		if cv, ok := sess.DoltgresSessObj.(*contextValues); ok {
+			runner = cv.runner
+		}
+		sess.DoltgresSessObj = &contextValues{
+			runner: runner,
+		}
 	}
 }
 
@@ -133,6 +142,28 @@ func SetPgCatalogCache(ctx *sql.Context, pgCatalogCache any) error {
 	}
 	cv.pgCatalogCache = pgCatalogCache
 	return nil
+}
+
+// SetRunnerOnContext sets the given runner within the context values.
+func SetRunnerOnContext(ctx *sql.Context, runner sql.StatementRunner) error {
+	if runner == nil {
+		return nil
+	}
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.runner = runner
+	return nil
+}
+
+// GetRunnerFromContext returns the sql.StatementRunner from within the context.
+func GetRunnerFromContext(ctx *sql.Context) (sql.StatementRunner, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return cv.runner, nil
 }
 
 // GetDoltTableFromContext returns the Dolt table from the context. Returns nil if no table was found.
@@ -441,6 +472,8 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 	return nil
 }
 
+// updateSessionRootForDatabase updates the root for all changes made to root object collections within the context
+// values.
 func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues) error {
 	session, root, err := getRootFromContextForDatabase(ctx, db)
 	if err != nil {
@@ -546,6 +579,7 @@ func rootValueChanged(newRoot *RootValue, root *RootValue) (error, bool) {
 	return nil, true
 }
 
+// databasesInContext returns all databases found within the context values.
 func databasesInContext(ctx *sql.Context, cv *contextValues) []string {
 	dbs := make(map[string]struct{})
 	if cv.seqs != nil {
@@ -553,7 +587,10 @@ func databasesInContext(ctx *sql.Context, cv *contextValues) []string {
 			dbs[db] = struct{}{}
 		}
 	}
-	dbs[ctx.GetCurrentDatabase()] = struct{}{}
+	currentDb := ctx.GetCurrentDatabase()
+	if len(currentDb) > 0 {
+		dbs[currentDb] = struct{}{}
+	}
 
 	return slices.Sorted(maps.Keys(dbs))
 }

@@ -248,6 +248,14 @@ func (c *CompiledFunction) IsNonDeterministic() bool {
 	return true
 }
 
+// IsStrict returns whether this function has the STRICT property regarding nulls.
+func (c *CompiledFunction) IsStrict() bool {
+	if c.overload.Valid() {
+		return c.overload.Function().IsStrict()
+	}
+	return false
+}
+
 // IsSRF returns whether this function is a set returning function.
 func (c *CompiledFunction) IsSRF() bool {
 	if c.overload.Valid() {

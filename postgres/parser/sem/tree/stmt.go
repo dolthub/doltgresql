@@ -465,6 +465,12 @@ func (*CreateAggregate) StatementType() StatementType { return DDL }
 func (*CreateAggregate) StatementTag() string { return "CREATE AGGREGATE" }
 
 // StatementType implements the Statement interface.
+func (*CreateCast) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateCast) StatementTag() string { return "CREATE CAST" }
+
+// StatementType implements the Statement interface.
 func (*CreateChangefeed) StatementType() StatementType { return Rows }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -621,6 +627,12 @@ func (*DropAggregate) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*DropAggregate) StatementTag() string { return "DROP AGGREGATE" }
+
+// StatementType implements the Statement interface.
+func (*DropCast) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropCast) StatementTag() string { return "DROP CAST" }
 
 // StatementType implements the Statement interface.
 func (*DropDatabase) StatementType() StatementType { return DDL }
@@ -1217,6 +1229,7 @@ func (n *Comment) String() string                   { return AsString(n) }
 func (n *CommitTransaction) String() string         { return AsString(n) }
 func (n *CopyFrom) String() string                  { return AsString(n) }
 func (n *CreateAggregate) String() string           { return AsString(n) }
+func (n *CreateCast) String() string                { return AsString(n) }
 func (n *CreateChangefeed) String() string          { return AsString(n) }
 func (n *CreateDatabase) String() string            { return AsString(n) }
 func (n *CreateDomain) String() string              { return AsString(n) }
@@ -1237,6 +1250,7 @@ func (n *CreateView) String() string                { return AsString(n) }
 func (n *Deallocate) String() string                { return AsString(n) }
 func (n *Delete) String() string                    { return AsString(n) }
 func (n *DropAggregate) String() string             { return AsString(n) }
+func (n *DropCast) String() string                  { return AsString(n) }
 func (n *DropDatabase) String() string              { return AsString(n) }
 func (n *DropDomain) String() string                { return AsString(n) }
 func (n *DropExtension) String() string             { return AsString(n) }

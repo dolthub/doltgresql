@@ -22,7 +22,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -97,7 +99,7 @@ func RegisterAggregateFunction(f AggregateFunctionInterface) {
 
 // Initialize handles the initialization of the catalog by overwriting the built-in GMS functions, since they do not
 // apply to PostgreSQL (and functions of the same name often have different behavior).
-func Initialize() {
+func Initialize(astConvert func(parser.Statement) (sqlparser.Statement, error)) {
 	// This should only be called once. We don't use sync.Once since we also want to panic if someone attempts to
 	// register a function after initialization.
 	if initializedFunctions {
@@ -105,6 +107,7 @@ func Initialize() {
 	}
 	initializedFunctions = true
 
+	convertToVitess = astConvert
 	pgtypes.LoadFunctionFromCatalog = getQuickFunctionForTypes
 	analyzer.ExternalFunctionProvider = &FunctionProvider{}
 	replaceGmsBuiltIns()

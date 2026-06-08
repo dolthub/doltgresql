@@ -18,21 +18,21 @@ import "testing"
 
 func TestCreateCast(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type )"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type , argument_type )"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name AS ASSIGNMENT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type ) AS ASSIGNMENT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type , argument_type ) AS ASSIGNMENT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name AS IMPLICIT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type ) AS IMPLICIT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type , argument_type ) AS IMPLICIT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITHOUT FUNCTION"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITHOUT FUNCTION AS ASSIGNMENT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITHOUT FUNCTION AS IMPLICIT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH INOUT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH INOUT AS ASSIGNMENT"),
-		Unimplemented("CREATE CAST ( source_type AS target_type ) WITH INOUT AS IMPLICIT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type )"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type , argument_type )"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name AS ASSIGNMENT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type ) AS ASSIGNMENT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type , argument_type ) AS ASSIGNMENT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name AS IMPLICIT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type ) AS IMPLICIT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH FUNCTION function_name ( argument_type , argument_type ) AS IMPLICIT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITHOUT FUNCTION"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITHOUT FUNCTION AS ASSIGNMENT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITHOUT FUNCTION AS IMPLICIT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH INOUT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH INOUT AS ASSIGNMENT"),
+		Converts("CREATE CAST ( source_type AS target_type ) WITH INOUT AS IMPLICIT"),
 	}
 	RunTests(t, tests)
 }

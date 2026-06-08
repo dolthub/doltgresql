@@ -483,8 +483,8 @@ func TestPgCast(t *testing.T) {
 			Name: "pg_cast",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_cast";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT COUNT(*) FROM "pg_catalog"."pg_cast";`,
+					Expected: []sql.Row{{117}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_cast";`,
@@ -495,8 +495,8 @@ func TestPgCast(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT oid FROM PG_catalog.pg_CAST ORDER BY oid;",
-					Expected: []sql.Row{},
+					Query:    "SELECT COUNT(*) FROM PG_catalog.pg_CAST ORDER BY oid;",
+					Expected: []sql.Row{{117}},
 				},
 			},
 		},

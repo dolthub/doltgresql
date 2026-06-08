@@ -175,6 +175,7 @@ func (te *TriggerExecution) loadTriggerFunction(ctx *sql.Context, trigger trigge
 		Variadic:           function.Variadic,
 		IsNonDeterministic: function.IsNonDeterministic,
 		Strict:             function.Strict,
+		SRF:                false,
 		Statements:         function.Operations,
 	}, nil
 }
