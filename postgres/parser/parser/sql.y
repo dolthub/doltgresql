@@ -13177,11 +13177,10 @@ func_application:
   {
     $$.val = &tree.FuncExpr{Func: $1.resolvableFuncRefFromName(), Type: tree.AllFuncType, Exprs: $4.exprs(), OrderBy: $5.orderBy(), AggType: tree.GeneralAgg}
   }
-// TODO(ridwanmsharif): Once DISTINCT is supported by window aggregates,
-// allow ordering to be specified below.
-| func_name '(' DISTINCT expr_list ')'
+// Note: DISTINCT with ORDER BY is supported for regular aggregates but not window aggregates.
+| func_name '(' DISTINCT expr_list opt_sort_clause ')'
   {
-    $$.val = &tree.FuncExpr{Func: $1.resolvableFuncRefFromName(), Type: tree.DistinctFuncType, Exprs: $4.exprs()}
+    $$.val = &tree.FuncExpr{Func: $1.resolvableFuncRefFromName(), Type: tree.DistinctFuncType, Exprs: $4.exprs(), OrderBy: $5.orderBy(), AggType: tree.GeneralAgg}
   }
 | func_name '(' '*' ')'
   {

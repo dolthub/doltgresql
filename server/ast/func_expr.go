@@ -115,7 +115,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 
 		return &vitess.OrderedInjectedExpr{
 			InjectedExpr: vitess.InjectedExpr{
-				Expression:         &pgexprs.ArrayAgg{},
+				Expression:         &pgexprs.ArrayAgg{Distinct: distinct},
 				SelectExprChildren: exprs,
 				Auth:               vitess.AuthInformation{},
 			},

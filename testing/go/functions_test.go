@@ -371,6 +371,121 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "array_agg with DISTINCT",
+			SetUpScript: []string{
+				`CREATE TABLE test_items (
+					id INT PRIMARY KEY,
+					category TEXT NOT NULL,
+					name TEXT NOT NULL
+				);`,
+				`INSERT INTO test_items (id, category, name) VALUES
+					(1, 'A', 'foo'),
+					(2, 'A', 'bar'),
+					(3, 'B', 'baz'),
+					(4, 'A', 'foo');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Order is non-deterministic without ORDER BY; value reflects insertion-order of first occurrences
+					Query: `SELECT array_agg(DISTINCT name) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{foo,bar,baz}"},
+					},
+				},
+				{
+					// https://github.com/dolthub/doltgresql/issues/2334
+					Query: `SELECT array_agg(DISTINCT name ORDER BY name ASC) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{bar,baz,foo}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(DISTINCT name ORDER BY name DESC) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{foo,baz,bar}"},
+					},
+				},
+				{
+					Query: `SELECT category, array_agg(DISTINCT name ORDER BY name ASC) FROM test_items GROUP BY category ORDER BY category;`,
+					Expected: []sql.Row{
+						{"A", "{bar,foo}"},
+						{"B", "{baz}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(DISTINCT category ORDER BY category) FROM test_items;`,
+					Expected: []sql.Row{
+						{"{A,B}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "array_agg with DISTINCT and composite types",
+			SetUpScript: []string{
+				`CREATE TYPE point_t AS (x INT, y INT);`,
+				`CREATE TABLE points (id INT PRIMARY KEY, p point_t);`,
+				`INSERT INTO points VALUES
+					(1, ROW(1, 2)),
+					(2, ROW(3, 4)),
+					(3, ROW(1, 2)),
+					(4, ROW(5, 6));`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT array_agg(DISTINCT p ORDER BY p) FROM points;`,
+					Expected: []sql.Row{
+						{`{"(1,2)","(3,4)","(5,6)"}`},
+					},
+				},
+			},
+		},
+		{
+			Name: "array_agg with DISTINCT handles NULL values",
+			SetUpScript: []string{
+				"CREATE TABLE t (v text);",
+				"INSERT INTO t VALUES (NULL), (NULL), ('x');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT array_agg(DISTINCT v ORDER BY v NULLS FIRST)::text FROM t;",
+					Expected: []sql.Row{
+						{"{NULL,x}"},
+					},
+				},
+				{
+					Query: "SELECT array_agg(DISTINCT v)::text FROM (VALUES (NULL::text), (NULL::text)) AS vals(v);",
+					Expected: []sql.Row{
+						{"{NULL}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "array_agg DISTINCT dedups semantically equal numerics",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT array_agg(DISTINCT v ORDER BY v)::text FROM (VALUES (1.0::numeric), (1.00::numeric)) AS vals(v);",
+					Expected: []sql.Row{
+						{"{1.0}"},
+					},
+				},
+				{
+					Query: `
+				SELECT array_agg(DISTINCT v ORDER BY v)::text
+				FROM (
+					VALUES
+						(1::numeric),
+						(1.000000::numeric)
+				) AS vals(v);
+			`,
+					Expected: []sql.Row{
+						{"{1}"},
+					},
+				},
+			},
+		},
 	})
 }
 
