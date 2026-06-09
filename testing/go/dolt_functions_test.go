@@ -3046,6 +3046,28 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt_patch works with JSONB columns",
+			SetUpScript: []string{
+				"CREATE TABLE repro (pk int primary key, data jsonb);",
+				"INSERT INTO repro VALUES (1, '{\"text\": \"hello\"}');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT statement_order, table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 'repro')",
+					Expected: []sql.Row{
+						{Numeric("1"), "public.repro", "schema", "CREATE TABLE \"repro\" (\n  \"pk\" integer NOT NULL,\n  \"data\" jsonb,\n  PRIMARY KEY (\"pk\")\n);"},
+						{Numeric("2"), "public.repro", "data", "INSERT INTO \"repro\" (\"pk\",\"data\") VALUES (1,'{\\\"text\\\": \\\"hello\\\"}');"},
+					},
+				},
+				{
+					Query: "SELECT diff_type, from_pk, to_pk FROM dolt_diff('HEAD', 'WORKING', 'repro')",
+					Expected: []sql.Row{
+						{"added", nil, 1},
+					},
+				},
+			},
+		},
+		{
 			Name: "DOLT_PREVIEW_MERGE_CONFLICTS basic functionality",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk int primary key, c1 int);",
