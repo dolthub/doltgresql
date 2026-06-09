@@ -461,6 +461,19 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #2160",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT, v VARCHAR);",
+				"INSERT INTO t VALUES (1, 'true');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT * FROM t WHERE v = true;`,
+					ExpectedErr: "operator does not exist: varchar = bool",
+				},
+			},
+		},
 	})
 }
 
