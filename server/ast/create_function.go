@@ -167,7 +167,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 			parsedBody,
 			sqlDef,
 			sqlDefParsedStmts,
-			node.ReturnsSetOf,
+			node.ReturnsSetOf || node.ReturnsTable,
 		),
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_CREATE,
@@ -222,8 +222,9 @@ func convertSQLStmts(stmts parser.Statements, params []pgnodes.RoutineParam) (st
 	paramMap := make(map[string]*framework.ParamTypAndValue, len(params))
 	for i, param := range params {
 		tv := &framework.ParamTypAndValue{
-			Typ:    param.Type,
-			StrVal: "", // must be empty string
+			Typ:        param.Type,
+			Val:        nil,
+			FromCreate: true,
 		}
 		// placeholder name is empty
 		if param.Name == "\"\"" {

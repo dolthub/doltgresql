@@ -18,12 +18,12 @@ import "testing"
 
 func TestDropCast(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("DROP CAST ( source_type AS target_type )"),
-		Unimplemented("DROP CAST IF EXISTS ( source_type AS target_type )"),
-		Unimplemented("DROP CAST ( source_type AS target_type ) CASCADE"),
-		Unimplemented("DROP CAST IF EXISTS ( source_type AS target_type ) CASCADE"),
-		Unimplemented("DROP CAST ( source_type AS target_type ) RESTRICT"),
-		Unimplemented("DROP CAST IF EXISTS ( source_type AS target_type ) RESTRICT"),
+		Converts("DROP CAST ( source_type AS target_type )"),
+		Converts("DROP CAST IF EXISTS ( source_type AS target_type )"),
+		Converts("DROP CAST ( source_type AS target_type ) CASCADE"),
+		Converts("DROP CAST IF EXISTS ( source_type AS target_type ) CASCADE"),
+		Converts("DROP CAST ( source_type AS target_type ) RESTRICT"),
+		Converts("DROP CAST IF EXISTS ( source_type AS target_type ) RESTRICT"),
 	}
 	RunTests(t, tests)
 }

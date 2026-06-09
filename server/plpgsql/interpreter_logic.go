@@ -323,6 +323,9 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				}
 			}
 			val, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, iFunc.GetReturn(), operation.SecondaryData)
+			if err != nil {
+				return nil, err
+			}
 
 			// If this is a set returning function, then we need to return a RowIter and wrap
 			// the composite value in a sql.Row.
@@ -330,7 +333,6 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return sql.RowsToRowIter(sql.Row{val}), nil
 			}
 			return val, err
-
 		case OpCode_ForQueryInit:
 			schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
@@ -358,7 +360,6 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return nil, err
 			}
 			stack.BufferReturnQueryResults(records)
-
 		case OpCode_ScopeBegin:
 			stack.PushScope()
 		case OpCode_ScopeEnd:

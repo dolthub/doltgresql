@@ -90,6 +90,28 @@ func (node *DropAggregate) Format(ctx *FmtCtx) {
 	}
 }
 
+// DropCast represents a DROP CAST statement.
+type DropCast struct {
+	Source   ResolvableTypeReference
+	Target   ResolvableTypeReference
+	IfExists bool
+}
+
+var _ Statement = &DropCast{}
+
+// Format implements the NodeFormatter interface.
+func (node *DropCast) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP CAST ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	ctx.WriteString("(")
+	ctx.WriteString(node.Source.SQLString())
+	ctx.WriteString(" AS ")
+	ctx.WriteString(node.Target.SQLString())
+	ctx.WriteString(")")
+}
+
 var _ Statement = &DropDatabase{}
 
 // DropDatabase represents a DROP DATABASE statement.

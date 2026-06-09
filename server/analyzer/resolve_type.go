@@ -65,19 +65,54 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				col.Type = dt
 			}
 			return node, same, nil
-		case *pgnodes.CreateFunction:
-			retType, err := resolveType(ctx, db, n.ReturnType)
-			if err != nil {
-				return nil, transform.NewTree, err
-			}
-			for i := range n.Parameters {
-				n.Parameters[i].Type, err = resolveType(ctx, db, n.Parameters[i].Type)
+		case *pgnodes.CreateCast:
+			if !n.Source.IsResolvedType() {
+				source, err := resolveType(ctx, db, n.Source)
 				if err != nil {
 					return nil, transform.NewTree, err
 				}
+				same = transform.NewTree
+				n.Source = source
 			}
-			n.ReturnType = retType
-			return node, transform.NewTree, nil
+			if !n.Target.IsResolvedType() {
+				target, err := resolveType(ctx, db, n.Target)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				n.Target = target
+			}
+			for i, param := range n.FuncParams {
+				if !param.Type.IsResolvedType() {
+					target, err := resolveType(ctx, db, param.Type)
+					if err != nil {
+						return nil, transform.NewTree, err
+					}
+					same = transform.NewTree
+					n.FuncParams[i].Type = target
+				}
+			}
+			return node, same, nil
+		case *pgnodes.CreateFunction:
+			if !n.ReturnType.IsResolvedType() {
+				retType, err := resolveType(ctx, db, n.ReturnType)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				n.ReturnType = retType
+			}
+			for i, param := range n.Parameters {
+				if !param.Type.IsResolvedType() {
+					paramType, err := resolveType(ctx, db, param.Type)
+					if err != nil {
+						return nil, transform.NewTree, err
+					}
+					same = transform.NewTree
+					n.Parameters[i].Type = paramType
+				}
+			}
+			return node, same, nil
 		case *pgnodes.CreateProcedure:
 			for i := range n.Parameters {
 				var err error
@@ -112,6 +147,24 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				if resolvedDefault || resolvedGenerated || resolvedOnUpdate {
 					same = transform.NewTree
 				}
+			}
+			return node, same, nil
+		case *pgnodes.DropCast:
+			if !n.Source.IsResolvedType() {
+				source, err := resolveType(ctx, db, n.Source)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				n.Source = source
+			}
+			if !n.Target.IsResolvedType() {
+				target, err := resolveType(ctx, db, n.Target)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				n.Target = target
 			}
 			return node, same, nil
 		case *pgnodes.DropFunction:
@@ -183,6 +236,17 @@ func ResolveTypeForExprs(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				return nil, transform.NewTree, err
 			}
 			return expr.WithType(newType), transform.NewTree, nil
+		case *pgnodes.FunctionColumn:
+			if expr.Typ.IsResolvedType() {
+				// The type has already been resolved
+				return expr, transform.SameTree, nil
+			}
+			newType, err := resolveType(ctx, db, expr.Typ)
+			if err != nil {
+				return nil, transform.NewTree, err
+			}
+			expr.Typ = newType
+			return expr, transform.NewTree, nil
 		default:
 			// TODO: add expressions that use unresolved types like domain
 			return expr, transform.SameTree, nil
@@ -202,21 +266,21 @@ func resolveType(ctx *sql.Context, db sql.Database, typ *pgtypes.DoltgresType) (
 
 	// schema name can be empty
 	schema, _ := core.GetSchemaName(ctx, db, typ.ID.SchemaName())
-	resolvedTyp, _ := typs.GetType(ctx, id.NewType(schema, typ.ID.TypeName()))
-	if resolvedTyp == nil {
+	resolvedType, _ := typs.GetType(ctx, id.NewType(schema, typ.ID.TypeName()))
+	if resolvedType == nil {
 		// If a blank schema is provided, then we'll also try the pg_catalog, since a type is most likely to be there
 		if typ.ID.SchemaName() == "" {
-			resolvedTyp, err = typs.GetType(ctx, id.NewType("pg_catalog", typ.ID.TypeName()))
+			resolvedType, err = typs.GetType(ctx, id.NewType("pg_catalog", typ.ID.TypeName()))
 			if err != nil {
 				return nil, err
 			}
-			if resolvedTyp != nil && (typ.ID.TypeName() == "unknown" || resolvedTyp.ID != pgtypes.Unknown.ID) {
-				return resolvedTyp, nil
+			if resolvedType != nil && (typ.ID.TypeName() == "unknown" || resolvedType.ID != pgtypes.Unknown.ID) {
+				return resolvedType, nil
 			}
 		}
 		return nil, pgtypes.ErrTypeDoesNotExist.New(typ.Name())
 	}
-	return resolvedTyp, nil
+	return resolvedType, nil
 }
 
 // resolveDefaultColumnType resolves the OutType of a *sql.ColumnDefaultValue if it's not nil (and not already resolved).

@@ -39,6 +39,7 @@ type InterpretedFunction struct {
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
+	SRF                bool
 	Statements         []plpgsql.InterpreterOperation
 }
 
@@ -87,12 +88,7 @@ func (iFunc InterpretedFunction) IsStrict() bool {
 
 // IsSRF implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) IsSRF() bool {
-	switch iFunc.ReturnType.TypCategory {
-	case pgtypes.TypeCategory_CompositeTypes:
-		return true
-	default:
-		return false
-	}
+	return iFunc.SRF
 }
 
 // NonDeterministic implements the interface FunctionInterface.
@@ -220,7 +216,7 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 			}
 			if enforceType {
 				switch variable.Type.TypCategory {
-				case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_DateTimeTypes, pgtypes.TypeCategory_StringTypes, pgtypes.TypeCategory_UserDefinedTypes:
+				case pgtypes.TypeCategory_ArrayTypes, pgtypes.TypeCategory_CompositeTypes, pgtypes.TypeCategory_DateTimeTypes, pgtypes.TypeCategory_StringTypes, pgtypes.TypeCategory_UserDefinedTypes:
 					formattedVar = pq.QuoteLiteral(formattedVar)
 				}
 			}
@@ -228,7 +224,11 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 			formattedVar = "NULL"
 		}
 		if enforceType {
-			newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`((%s)::%s)`, formattedVar, variable.Type.String()), 1)
+			if variable.Type.TypCategory == pgtypes.TypeCategory_CompositeTypes {
+				newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`(%s::%s)`, formattedVar, variable.Type.String()), 1)
+			} else {
+				newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`((%s)::%s)`, formattedVar, variable.Type.String()), 1)
+			}
 		} else {
 			newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
 		}

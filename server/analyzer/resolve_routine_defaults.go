@@ -109,6 +109,7 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 					Variadic:           false,
 					IsNonDeterministic: true,
 					Strict:             false,
+					SRF:                false,
 					Statements:         overload.Operations,
 				}); err != nil {
 					return nil, transform.SameTree, err

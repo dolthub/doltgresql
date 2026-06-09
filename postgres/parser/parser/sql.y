@@ -147,6 +147,9 @@ func (u *sqlSymUnion) newTableIndexNames() tree.TableIndexNames {
 func (u *sqlSymUnion) nameList() tree.NameList {
     return u.val.(tree.NameList)
 }
+func (u *sqlSymUnion) createCastScope() tree.CreateCastScope {
+    return u.val.(tree.CreateCastScope)
+}
 func (u *sqlSymUnion) unresolvedName() *tree.UnresolvedName {
     return u.val.(*tree.UnresolvedName)
 }
@@ -709,7 +712,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACCESS ACTION ADD ADMIN AFTER AGGREGATE
 %token <str> ALIGNMENT ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
-%token <str> ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTO AUTOMATIC
+%token <str> ASSIGNMENT ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTO AUTOMATIC
 
 %token <str> BACKUP BACKUPS BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> FORMAT CSV HEADER
@@ -748,7 +751,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> HANDLER HASH HAVING HIGH HISTOGRAM HOUR HYPOTHETICAL
 
 %token <str> ICU_LOCALE ICU_RULES IDENTITY
-%token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMMUTABLE IMPORT
+%token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMPLICIT IMMUTABLE IMPORT
 %token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
 %token <str> INET_CONTAINS_OR_EQUALS INDEX INDEX_CLEANUP INDEXES INHERIT INHERITS INITCOND INJECT INLINE INPUT INTERLEAVE INITIALLY
 %token <str> INNER INOUT INSERT INSTEAD INT INTEGER INTERNALLENGTH
@@ -915,6 +918,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> copy_from_stmt
 
 %type <tree.Statement> create_stmt
+%type <tree.Statement> create_cast_stmt
 %type <tree.Statement> create_changefeed_stmt
 %type <tree.Statement> create_ddl_stmt
 %type <tree.Statement> create_ddl_stmt_schema_element
@@ -950,6 +954,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> discard_stmt
 
 %type <tree.Statement> drop_stmt
+%type <tree.Statement> drop_cast_stmt
 %type <tree.Statement> drop_ddl_stmt
 %type <tree.Statement> drop_database_stmt
 %type <tree.Statement> drop_index_stmt
@@ -1103,6 +1108,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.CreateAggOption> create_agg_old_syntax_option create_agg_common_option create_agg_parallel_option
 %type <[]tree.CreateAggOption> create_agg_args_only_option_list create_agg_order_by_args_option_list create_agg_old_syntax_option_list
 %type <[]tree.AggregateToDrop> drop_aggregates
+%type <tree.CreateCastScope> create_cast_scope_opt
 
 %type <tree.DatabaseOption> opt_database_options
 %type <[]tree.DatabaseOption> opt_database_options_list opt_database_with_options
@@ -4038,7 +4044,7 @@ comment_text:
 // %Text:
 // CREATE DATABASE, CREATE TABLE, CREATE INDEX, CREATE TABLE AS,
 // CREATE USER, CREATE VIEW, CREATE SEQUENCE, CREATE STATISTICS,
-// CREATE ROLE, CREATE TYPE
+// CREATE ROLE, CREATE TYPE, CREATE CAST
 create_stmt:
   create_role_stmt     // EXTEND WITH HELP: CREATE ROLE
 | create_ddl_stmt      // help texts in sub-rule
@@ -4049,12 +4055,12 @@ create_stmt:
 | create_extension_stmt // EXTEND WITH HELP: CREATE EXTENSION
 | create_language_stmt  // EXTEND WITH HELP: CREATE LANGUAGE
 | create_aggregate_stmt // EXTEND WITH HELP: CREATE AGGREGATE
+| create_cast_stmt      // EXTEND WITH HELP: CREATE CAST
 | create_unsupported   {}
 | CREATE error         // SHOW HELP: CREATE
 
 create_unsupported:
-  CREATE CAST error { return unimplemented(sqllex, "create cast") }
-| CREATE CONVERSION error { return unimplemented(sqllex, "create conversion") }
+  CREATE CONVERSION error { return unimplemented(sqllex, "create conversion") }
 | CREATE DEFAULT CONVERSION error { return unimplemented(sqllex, "create def conv") }
 | CREATE FOREIGN TABLE error { return unimplemented(sqllex, "create foreign table") }
 | CREATE OPERATOR error { return unimplemented(sqllex, "create operator") }
@@ -4179,6 +4185,62 @@ create_agg_parallel_option:
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeParallel, Parallel: tree.ParallelRestricted} }
 | PARALLEL '=' UNSAFE
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeParallel, Parallel: tree.ParallelSafe} }
+
+// %Help: CREATE CAST - define a new cast
+// %Category: DDL
+// %Text: CREATE CAST (source_type AS target_type) WITH FUNCTION function_name [ (argument_type [, ...]) ] [ AS ASSIGNMENT | AS IMPLICIT ]
+//        CREATE CAST (source_type AS target_type) WITHOUT FUNCTION [ AS ASSIGNMENT | AS IMPLICIT ]
+//        CREATE CAST (source_type AS target_type) WITH INOUT [ AS ASSIGNMENT | AS IMPLICIT ]
+// %SeeAlso: WEBDOCS/sql-createcast.html
+create_cast_stmt:
+  CREATE CAST '(' typename AS typename ')' WITH FUNCTION routine_name opt_routine_arg_with_default_list create_cast_scope_opt
+  {
+    $$.val = &tree.CreateCast{
+      Source:   $4.typeReference(),
+      Target:   $6.typeReference(),
+      Scope:    $12.createCastScope(),
+      Type:     tree.CreateCastType_WithFunction,
+      FuncName: $10.unresolvedObjectName(),
+      FuncArgs: $11.routineArgs(),
+    }
+  }
+| CREATE CAST '(' typename AS typename ')' WITHOUT FUNCTION create_cast_scope_opt
+  {
+    $$.val = &tree.CreateCast{
+      Source:   $4.typeReference(),
+      Target:   $6.typeReference(),
+      Scope:    $10.createCastScope(),
+      Type:     tree.CreateCastType_WithoutFunction,
+      FuncName: nil,
+      FuncArgs: nil,
+    }
+  }
+| CREATE CAST '(' typename AS typename ')' WITH INOUT create_cast_scope_opt
+  {
+    $$.val = &tree.CreateCast{
+      Source:   $4.typeReference(),
+      Target:   $6.typeReference(),
+      Scope:    $10.createCastScope(),
+      Type:     tree.CreateCastType_Inout,
+      FuncName: nil,
+      FuncArgs: nil,
+    }
+  }
+| CREATE CAST error // SHOW HELP: CREATE CAST
+
+create_cast_scope_opt:
+  /* EMPTY */
+  {
+    $$.val = tree.CreateCastScope_Explicit
+  }
+| AS ASSIGNMENT
+  {
+    $$.val = tree.CreateCastScope_Assignment
+  }
+| AS IMPLICIT
+  {
+    $$.val = tree.CreateCastScope_Implicit
+  }
 
 create_domain_stmt:
   CREATE DOMAIN type_name opt_as typename opt_collate opt_arg_default opt_domain_constraint_list
@@ -4671,8 +4733,7 @@ opt_procedural:
   }
 
 drop_unsupported:
-  DROP CAST error { return unimplemented(sqllex, "drop cast") }
-| DROP COLLATION error { return unimplemented(sqllex, "drop collation") }
+  DROP COLLATION error { return unimplemented(sqllex, "drop collation") }
 | DROP CONVERSION error { return unimplemented(sqllex, "drop conversion") }
 | DROP FOREIGN TABLE error { return unimplemented(sqllex, "drop foreign table") }
 | DROP FOREIGN DATA error { return unimplemented(sqllex, "drop fdw") }
@@ -4969,23 +5030,24 @@ discard_stmt:
 // %Help: DROP
 // %Category: Group
 // %Text:
-// DROP DATABASE, DROP INDEX, DROP TABLE, DROP VIEW, DROP SEQUENCE,
+// DROP CAST, DROP DATABASE, DROP INDEX, DROP TABLE, DROP VIEW, DROP SEQUENCE,
 // DROP USER, DROP ROLE, DROP TYPE
 drop_stmt:
-  drop_ddl_stmt      // help texts in sub-rule
-| drop_role_stmt     // EXTEND WITH HELP: DROP ROLE
-| drop_schedule_stmt // EXTEND WITH HELP: DROP SCHEDULES
-| drop_function_stmt // EXTEND WITH HELP: DROP FUNCTION
+  drop_ddl_stmt       // help texts in sub-rule
+| drop_role_stmt      // EXTEND WITH HELP: DROP ROLE
+| drop_schedule_stmt  // EXTEND WITH HELP: DROP SCHEDULES
+| drop_function_stmt  // EXTEND WITH HELP: DROP FUNCTION
 | drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
-| drop_domain_stmt   // EXTEND WITH HELP: DROP DOMAIN
+| drop_domain_stmt    // EXTEND WITH HELP: DROP DOMAIN
 | drop_extension_stmt // EXTEND WITH HELP: DROP EXTENSION
-| drop_language_stmt // EXTEND WITH HELP: DROP LANGUAGE
+| drop_language_stmt  // EXTEND WITH HELP: DROP LANGUAGE
 | drop_aggregate_stmt // EXTEND WITH HELP: DROP AGGREGATE
 | drop_unsupported   {}
 | DROP error         // SHOW HELP: DROP
 
 drop_ddl_stmt:
   drop_database_stmt // EXTEND WITH HELP: DROP DATABASE
+| drop_cast_stmt     // EXTEND WITH HELP: DROP CAST
 | drop_index_stmt    // EXTEND WITH HELP: DROP INDEX
 | drop_table_stmt    // EXTEND WITH HELP: DROP TABLE
 | drop_trigger_stmt  // EXTEND WITH HELP: DROP TRIGGER
@@ -4993,6 +5055,23 @@ drop_ddl_stmt:
 | drop_sequence_stmt // EXTEND WITH HELP: DROP SEQUENCE
 | drop_schema_stmt   // EXTEND WITH HELP: DROP SCHEMA
 | drop_type_stmt     // EXTEND WITH HELP: DROP TYPE
+
+// %Help: DROP CAST - remove a cast
+// %Category: DDL
+// %Text: DROP CAST [ IF EXISTS ] (source_type AS target_type) [ CASCADE | RESTRICT ]
+// %SeeAlso: WEBDOCS/sql-dropcast.html
+drop_cast_stmt:
+  DROP CAST '(' typename AS typename ')' opt_drop_behavior
+  {
+    // Drop behavior is ignored and only exists as it's mandated by the SQL standard
+    $$.val = &tree.DropCast{Source: $4.typeReference(), Target: $6.typeReference(), IfExists: false}
+  }
+| DROP CAST IF EXISTS '(' typename AS typename ')' opt_drop_behavior
+  {
+    // Drop behavior is ignored and only exists as it's mandated by the SQL standard
+    $$.val = &tree.DropCast{Source: $6.typeReference(), Target: $8.typeReference(), IfExists: true}
+  }
+| DROP CAST error // SHOW HELP: DROP VIEW
 
 // %Help: DROP VIEW - remove a view
 // %Category: DDL
@@ -14725,6 +14804,7 @@ unreserved_keyword:
 | ALLOW_CONNECTIONS
 | ALTER
 | ALWAYS
+| ASSIGNMENT
 | AT
 | ATOMIC
 | ATTACH
@@ -14873,6 +14953,7 @@ unreserved_keyword:
 | IGNORE_FOREIGN_KEYS
 | IMMEDIATE
 | IMMUTABLE
+| IMPLICIT
 | IMPORT
 | INCLUDE
 | INCLUDING

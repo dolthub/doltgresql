@@ -20,8 +20,10 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -112,7 +114,11 @@ func (expr *ColumnAccess) Type(ctx *sql.Context) sql.Type {
 	if expr.child == nil {
 		return nil
 	}
-	return expr.child.Type(ctx).(*pgtypes.DoltgresType).CompositeAttrs[expr.colNameIdx].Type
+	typ, ok := expr.child.Type(ctx).(*pgtypes.DoltgresType)
+	if !ok {
+		return pgtypes.Unknown
+	}
+	return typ.CompositeAttrs[expr.colNameIdx].Type
 }
 
 // WithChildren implements the sql.Expression interface.
@@ -120,18 +126,41 @@ func (expr *ColumnAccess) WithChildren(ctx *sql.Context, children ...sql.Express
 	if len(children) != 1 {
 		return nil, sql.ErrInvalidChildrenNumber.New(expr, len(children), 1)
 	}
-	childType := children[0].Type(ctx)
+	child := children[0]
+	childType := child.Type(ctx)
 	doltgresType, ok := childType.(*pgtypes.DoltgresType)
 	if !ok {
+		if _, ok := child.(*expression.BindVar); ok {
+			return &ColumnAccess{
+				colName:    expr.colName,
+				colNameIdx: expr.colNameIdx,
+				colTyp:     expr.colTyp,
+				child:      child,
+			}, nil
+		}
 		return nil, errors.New("column access is only valid for Doltgres types")
+	}
+	if !doltgresType.IsResolvedType() {
+		typeColl, err := core.GetTypesCollectionFromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		resolvedType, err := typeColl.ResolveType(ctx, doltgresType.ID)
+		if err != nil {
+			return nil, err
+		}
+		doltgresType = resolvedType
+	}
+	if !doltgresType.IsDefined {
+		return nil, pgtypes.ErrTypeIsOnlyAShell.New(doltgresType.Name())
 	}
 	if !doltgresType.IsCompositeType() {
 		if len(expr.colName) > 0 {
 			return nil, errors.Errorf("column notation .%s applied to type %s, which is not a composite type",
-				expr.colName, children[0].Type(ctx).String())
+				expr.colName, child.Type(ctx).String())
 		} else {
 			return nil, errors.Errorf("column notation .@%d applied to type %s, which is not a composite type",
-				expr.colNameIdx+1, children[0].Type(ctx).String())
+				expr.colNameIdx+1, child.Type(ctx).String())
 		}
 	}
 	var idx int
@@ -150,15 +179,15 @@ func (expr *ColumnAccess) WithChildren(ctx *sql.Context, children ...sql.Express
 	} else {
 		if expr.colNameIdx < 0 || expr.colNameIdx >= len(doltgresType.CompositeAttrs) {
 			return nil, errors.Errorf("column notation .@%d applied to type %s is out of bounds",
-				expr.colNameIdx+1, children[0].Type(ctx).String())
+				expr.colNameIdx+1, child.Type(ctx).String())
 		}
 		idx = expr.colNameIdx
 	}
 	return &ColumnAccess{
 		colName:    expr.colName,
 		colNameIdx: idx,
-		colTyp:     expr.colTyp,
-		child:      children[0],
+		colTyp:     doltgresType.CompositeAttrs[idx].Type,
+		child:      child,
 	}, nil
 }
 

@@ -86,17 +86,6 @@ func cachePgTypes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	nameIdx := NewUniqueInMemIndexStorage[*pgType](lessTypeName)
 	oidIdx := NewUniqueInMemIndexStorage[*pgType](lessTypeOid)
 
-	schemasToOid := make(map[string]id.Namespace)
-	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
-		Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
-			schemasToOid[schema.Item.SchemaName()] = schema.OID
-			return true, nil
-		},
-	})
-	if err != nil {
-		return err
-	}
-
 	allTypes := pgtypes.GetAllBuitInTypes()
 	typeColl, err := core.GetTypesCollectionFromContext(ctx)
 	if err != nil {
@@ -112,6 +101,30 @@ func cachePgTypes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				allTypes = append(allTypes, userTypes[schema]...)
 			}
 		}
+	}
+
+	schemasToOid := make(map[string]id.Namespace)
+	err = functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		Schema: func(ctx *sql.Context, schema functions.ItemSchema) (cont bool, err error) {
+			schemasToOid[schema.Item.SchemaName()] = schema.OID
+			return true, nil
+		},
+		Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
+			// Tables create an accompanying composite type, so we must represent those here as well since they're not stored
+			if table.OID.SchemaName() != "information_schema" && table.OID.SchemaName() != PgCatalogName {
+				typ, err := typeColl.GetType(ctx, id.NewType(table.OID.SchemaName(), table.OID.TableName()))
+				if err == nil && typ != nil {
+					allTypes = append(allTypes, typ)
+					if typ.Array.ID.IsValid() {
+						allTypes = append(allTypes, typ.Array)
+					}
+				}
+			}
+			return true, nil
+		},
+	})
+	if err != nil {
+		return err
 	}
 
 	for _, typ := range allTypes {

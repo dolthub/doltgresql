@@ -118,6 +118,7 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 				Variadic:           overload.Variadic,
 				IsNonDeterministic: overload.IsNonDeterministic,
 				Strict:             overload.Strict,
+				SRF:                overload.SetOf,
 				Statements:         overload.Operations,
 			}); err != nil {
 				return nil, false

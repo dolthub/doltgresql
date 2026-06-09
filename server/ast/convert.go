@@ -93,6 +93,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeCopyFrom(ctx, stmt)
 	case *tree.CreateAggregate:
 		return nodeCreateAggregate(ctx, stmt)
+	case *tree.CreateCast:
+		return nodeCreateCast(ctx, stmt)
 	case *tree.CreateChangefeed:
 		return nodeCreateChangefeed(ctx, stmt)
 	case *tree.CreateDatabase:
@@ -133,6 +135,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDiscard(ctx, stmt)
 	case *tree.DropAggregate:
 		return nodeDropAggregate(ctx, stmt)
+	case *tree.DropCast:
+		return nodeDropCast(ctx, stmt)
 	case *tree.DropDatabase:
 		return nodeDropDatabase(ctx, stmt)
 	case *tree.DropDomain:

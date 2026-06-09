@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
@@ -102,17 +103,14 @@ func (sqlFunc SQLFunction) enforceInterfaceInheritance(error) {}
 func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner, args []any) (any, error) {
 	paramMap := make(map[string]*ParamTypAndValue)
 	for i, name := range f.ParameterNames {
-		formattedVar, err := f.ParameterTypes[i].FormatValueWithContext(ctx, args[i])
-		if err != nil {
-			return nil, err
-		}
 		if name == "" {
-			// sanity check
+			// This allows for positional references such as $1, $2, etc.
 			name = fmt.Sprintf("$%d", i+1)
 		}
 		paramMap[name] = &ParamTypAndValue{
-			Typ:    f.ParameterTypes[i],
-			StrVal: formattedVar,
+			Typ:        f.ParameterTypes[i],
+			Val:        args[i],
+			FromCreate: false,
 		}
 	}
 
@@ -133,8 +131,12 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			if err != nil {
 				return nil, err
 			}
+			convertedAST, err := convertToVitess(parsed)
+			if err != nil {
+				return nil, err
+			}
 			res, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
-				sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), nil, nil, nil)
+				sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), convertedAST, nil, nil)
 				if err != nil {
 					return nil, err
 				}
@@ -169,9 +171,13 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 	if err != nil {
 		return nil, err
 	}
+	convertedAST, err := convertToVitess(parsed)
+	if err != nil {
+		return nil, err
+	}
 	// stmt.AST is updated at this point with FunctionColumn
 	return sql.RunInterpreted(ctx, func(subCtx *sql.Context) (any, error) {
-		sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), nil, nil, nil)
+		sch, rowIter, _, err := runner.QueryWithBindings(ctx, parsed.AST.String(), convertedAST, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -205,8 +211,9 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 // ParamTypAndValue contains the parameter type and
 // string value of argument if applicable
 type ParamTypAndValue struct {
-	Typ    *pgtypes.DoltgresType
-	StrVal string
+	Typ        *pgtypes.DoltgresType
+	Val        any
+	FromCreate bool
 }
 
 // ReplaceFunctionColumn parses and replaces UnresolvedName and Placeholder expressions
@@ -275,19 +282,21 @@ func ReplaceUnresolvedToFunctionColumn(paramMap map[string]*ParamTypAndValue, ex
 			name := fmt.Sprintf("$%d", v.Idx+1)
 			if tv, ok := paramMap[name]; ok {
 				return false, tree.FunctionColumn{
-					Name:   name,
-					Typ:    tv.Typ,
-					Idx:    uint16(v.Idx),
-					StrVal: tv.StrVal,
+					Name:       name,
+					Typ:        tv.Typ,
+					Idx:        uint16(v.Idx),
+					FromCreate: tv.FromCreate,
+					Val:        tv.Val,
 				}, nil
 			}
 		case *tree.UnresolvedName:
 			name := v.String()
 			if tv, ok := paramMap[name]; ok {
 				return false, tree.FunctionColumn{
-					Name:   name,
-					Typ:    tv.Typ,
-					StrVal: tv.StrVal,
+					Name:       name,
+					Typ:        tv.Typ,
+					FromCreate: tv.FromCreate,
+					Val:        tv.Val,
 				}, nil
 			}
 		}
@@ -318,3 +327,6 @@ func rowIterToRecord(ctx *sql.Context, rowIter sql.RowIter, sch sql.Schema) (sql
 	}
 	return sql.RowsToRowIter(newRows...), nil
 }
+
+// convertToVitess is set by init and is used to avoid import cycles
+var convertToVitess func(postgresStmt parser.Statement) (sqlparser.Statement, error)

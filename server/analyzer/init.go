@@ -51,6 +51,7 @@ const (
 	ruleId_ValidateCreateFunction                                        // validateCreateFunction
 	ruleId_ResolveValuesTypes                                            // resolveValuesTypes
 	ruleId_ResolveProcedureDefaults                                      // resolveProcedureDefaults
+	ruleId_SetRunner                                                     // setRunner
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -66,6 +67,7 @@ func Init() {
 		// ResolveType rule must run in this batch in addition to OnceBeforeDefault batch
 		// because of custom batch set optimization in GMS skipping OnceBeforeDefault batch for some nodes.
 		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
+		analyzer.Rule{Id: ruleId_SetRunner, Apply: SetRunner},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		analyzer.Rule{Id: ruleId_ResolveValuesTypes, Apply: ResolveValuesTypes},
 		analyzer.Rule{Id: ruleId_GenerateForeignKeyName, Apply: generateForeignKeyName},

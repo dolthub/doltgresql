@@ -14,7 +14,11 @@
 
 package id
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // AccessMethod is an Id wrapper for access methods. This wrapper must not be returned to the client.
 type AccessMethod Id
@@ -322,6 +326,19 @@ func (id ForeignKey) SchemaName() string {
 // TableName returns the name of the table that the foreign key belongs to.
 func (id ForeignKey) TableName() string {
 	return Id(id).Segment(1)
+}
+
+// DisplayString returns the function ID as a suitable display name.
+// For example, the output will generally look like: "func_name(param1, param2)"
+func (id Function) DisplayString() string {
+	if !id.IsValid() {
+		return ""
+	}
+	params := make([]string, id.ParameterCount())
+	for i, paramID := range id.Parameters() {
+		params[i] = paramID.TypeName()
+	}
+	return fmt.Sprintf("%s(%s)", id.FunctionName(), strings.Join(params, ", "))
 }
 
 // FunctionName returns the function's name.

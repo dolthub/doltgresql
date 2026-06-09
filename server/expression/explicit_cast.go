@@ -91,12 +91,6 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 		sourceType = gmsCast.DoltgresType(ctx)
 	}
-	if val == nil {
-		if c.castToType.TypType == pgtypes.TypeType_Domain && !c.domainNullable {
-			return nil, pgtypes.ErrDomainDoesNotAllowNullValues.New(c.castToType.Name())
-		}
-		return nil, nil
-	}
 
 	baseCastToType := checkForDomainType(c.castToType)
 	castsColl, err := core.GetCastsCollectionFromContext(ctx)
@@ -112,6 +106,14 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			"EXPLICIT CAST: cast from `%s` to `%s` does not exist: %s",
 			sourceType.String(), c.castToType.String(), c.sqlChild.String(),
 		)
+	}
+	if val == nil {
+		if c.castToType.TypType == pgtypes.TypeType_Domain && !c.domainNullable {
+			return nil, pgtypes.ErrDomainDoesNotAllowNullValues.New(c.castToType.Name())
+		}
+		if !cast.Function.IsValid() {
+			return nil, nil
+		}
 	}
 	castResult, err := cast.Eval(ctx, val, sourceType, c.castToType)
 	if err != nil {
