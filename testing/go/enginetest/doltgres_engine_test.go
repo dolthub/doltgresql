@@ -1259,6 +1259,7 @@ func TestDoltMerge(t *testing.T) {
 		"dolt_merge() with a gap in an auto increment key",                                                               // unsupported insert statements (need to call next_val, not insert NULL)
 		"Merge does not panic when FK is dropped and re-added on one branch and child has composite PK with mixed types", // different foreign key syntax
 		"three-way merge of table with vector index",                                                                     // MySQL VECTOR type has no Postgres equivalent
+		"dolt_conflicts_resolve keeps vector index consistent with resolved rows",                                        // MySQL VECTOR type has no Postgres equivalent
 	})
 	denginetest.RunDoltMergeTests(t, h)
 }
