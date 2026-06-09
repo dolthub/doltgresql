@@ -31,27 +31,15 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/dtestutils"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
+	"github.com/dolthub/dolt/go/libraries/doltcore/schema/typeinfo"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/config"
 )
 
-var skipPrepared bool
-
-// SkipPreparedsCount is used by the "ci-check-repo CI workflow
-// as a reminder to consider prepareds when adding a new
-// enginetest suite.
-const SkipPreparedsCount = 83
-
-const skipPreparedFlag = "DOLT_SKIP_PREPARED_ENGINETESTS"
-
 func init() {
 	sqle.MinRowsPerPartition = 8
 	sqle.MaxRowsPerPartition = 1024
-
-	if v := os.Getenv(skipPreparedFlag); v != "" {
-		skipPrepared = true
-	}
 }
 
 func TestQueries(t *testing.T) {
@@ -197,8 +185,21 @@ func TestAutoIncrementTrackerLockMode(t *testing.T) {
 }
 
 func TestVersionedQueries(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// MySQL-only `cast(... as signed)` syntax — postgres uses `cast(... as integer)`.
+		// These views aren't referenced by the assertions, so dropping them from
+		// setup is harmless.
+		"cast(RIGHT(s, 1) as signed)",
+		// AS OF tests on these complex views; they depend on views we can't create.
+		"myview4", "myview5",
+		// SHOW CREATE TABLE AS OF — doltgres doesn't yet expose the AS OF clause
+		// to SHOW CREATE TABLE (it errors with "at or near 'as'").
+		"SHOW CREATE TABLE myhistorytable as of",
+		// SHOW TABLES AS OF and DESCRIBE AS OF likewise unsupported.
+		"SHOW TABLES AS OF",
+		"SHOW TABLES FROM mydb AS OF",
+		"DESCRIBE myhistorytable AS OF",
+	})
 	defer h.Close()
 
 	denginetest.RunVersionedQueriesTest(t, h)
@@ -207,11 +208,6 @@ func TestVersionedQueries(t *testing.T) {
 func TestAnsiQuotesSqlMode(t *testing.T) {
 	t.Skip()
 	enginetest.TestAnsiQuotesSqlMode(t, newDoltgresServerHarness(t))
-}
-
-func TestAnsiQuotesSqlModePrepared(t *testing.T) {
-	t.Skip()
-	enginetest.TestAnsiQuotesSqlModePrepared(t, newDoltgresServerHarness(t))
 }
 
 // Tests of choosing the correct execution plan independent of result correctness. Mostly useful for confirming that
@@ -242,7 +238,6 @@ func TestBranchPlans(t *testing.T) {
 }
 
 func TestQueryErrors(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestQueryErrors(t, h)
@@ -256,9 +251,7 @@ func TestInfoSchema(t *testing.T) {
 
 func TestColumnAliases(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"SELECT s as coL1, SUM(i) coL2 FROM mytable group by 1 order by 2",      // incorrect result
 		"SELECT s as Date, SUM(i) TimeStamp FROM mytable group by 1 order by 2", // ERROR: at or near "timestamp": syntax error
-		"select \"foo\" as dummy, (select dummy)",                               // Unhandled OID 705
 		"SELECT 1 as a, (select a) as b from dual",                              // table not found: dual
 	})
 	defer h.Close()
@@ -284,18 +277,14 @@ func TestAmbiguousColumnResolution(t *testing.T) {
 
 func TestInsertInto(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		`insert into keyless (c0, c1) select a.c0, a.c1 from (select 1, 1) as a(c0, c1) join keyless on a.c0 = keyless.c0`,                        // missing result element, needs investigation
-		`INSERT INTO mytable (i,s) SELECT i * 2, concat(s,s) from mytable order by 1 desc limit 1`,                                                // invalid type: bigint
 		"with t (i,f) as (select 4,'fourth row' from dual) insert into mytable select i,f from t",                                                 // WITH unsupported syntax
 		"with recursive t (i,f) as (select 4,4 from dual union all select i + 1, i + 1 from t where i < 5) insert into mytable select i,f from t", // WITH unsupported syntax
 		"issue 6675: on duplicate rearranged getfield indexes from select source",                                                                 // panic
-		"issue 4857: insert cte column alias with table alias qualify panic",                                                                      // WITH unsupported syntax
 		"Insert on duplicate key references table in subquery",                                                                                    // bad translation?
 		"Insert on duplicate key references table in aliased subquery",                                                                            // bad translation?
 		"Insert on duplicate key references table in cte",                                                                                         // CTE not supported
 		"insert on duplicate key with incorrect row alias",                                                                                        // column "c" could not be found in any table in scope
 		"insert on duplicate key update errors",                                                                                                   // failing
-		"Insert on duplicate key references table in subquery with join",                                                                          // untranslated
 		"INSERT INTO ... SELECT with TEXT types",                                                                                                  // typecasts needed
 	})
 	defer h.Close()
@@ -303,32 +292,25 @@ func TestInsertInto(t *testing.T) {
 }
 
 func TestInsertIgnoreInto(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"Test that INSERT IGNORE properly addresses data conversion", // postgres strict typing rejects MySQL coercions
+		"Insert Ignore works correctly with ON DUPLICATE UPDATE",     // postgres strict typing rejects MySQL coercions
+		"issue 8611: insert ignore on enum type column",              // enums not supported
+	})
 	defer h.Close()
 	enginetest.TestInsertIgnoreInto(t, h)
 }
 
 func TestInsertDuplicateKeyKeyless(t *testing.T) {
-	t.Skip()
 	enginetest.TestInsertDuplicateKeyKeyless(t, newDoltgresServerHarness(t))
 }
 
-func TestInsertDuplicateKeyKeylessPrepared(t *testing.T) {
-	t.Skip()
-	enginetest.TestInsertDuplicateKeyKeylessPrepared(t, newDoltgresServerHarness(t))
-}
-
 func TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"UPDATE IGNORE keyless tables and secondary indexes", // UPDATE IGNORE rewrite doesn't perform the actual update
+	})
 	defer h.Close()
 	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t, h)
-}
-
-func TestIgnoreIntoWithDuplicateUniqueKeyKeylessPrepared(t *testing.T) {
-	t.Skip()
-	enginetest.TestIgnoreIntoWithDuplicateUniqueKeyKeylessPrepared(t, newDoltgresServerHarness(t))
 }
 
 func TestInsertIntoErrors(t *testing.T) {
@@ -356,14 +338,25 @@ func TestSpatialQueries(t *testing.T) {
 }
 
 func TestReplaceInto(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	// REPLACE INTO is rewritten to INSERT ... ON CONFLICT DO UPDATE in the
+	// converter. Two classes of test still fail:
+	//   - VALUES form with no column list (e.g. `REPLACE INTO t VALUES (...)`):
+	//     the converter needs the column list to build the SET clause and bails.
+	//   - Replacing a row with identical values: postgres/MySQL ON DUPLICATE KEY
+	//     UPDATE reports 0 rows affected when the update is a no-op, but MySQL
+	//     REPLACE INTO reports 2 (DELETE + INSERT). These are real semantic
+	//     differences; we'd need to override the rowcount to make them match.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"REPLACE INTO mytable VALUES (1, 'first row')",      // no-column REPLACE; bails to raw syntax
+		"REPLACE INTO mytable VALUES (1, 'new row same i')", // no-column REPLACE; bails to raw syntax
+		"REPLACE INTO mytable VALUES (999, 'x')",            // no-column REPLACE; bails to raw syntax
+		"REPLACE INTO mytable SET i = 1, s = 'first row'",   // no-op update reports 0 rows, expected 2
+	})
 	defer h.Close()
 	enginetest.TestReplaceInto(t, h)
 }
 
 func TestReplaceIntoErrors(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestReplaceIntoErrors(t, h)
@@ -376,12 +369,9 @@ func TestUpdate(t *testing.T) {
 		// TODO: Postgres supports update joins but with a very different syntax, and some join types are not supported
 		`UPDATE one_pk INNER JOIN two_pk on one_pk.pk = two_pk.pk1 SET two_pk.c1 = two_pk.c1 + 1`,
 		"UPDATE mytable INNER JOIN one_pk ON mytable.i = one_pk.c5 SET mytable.i = mytable.i * 10",
-		`UPDATE one_pk INNER JOIN two_pk on one_pk.pk = two_pk.pk1 SET two_pk.c1 = two_pk.c1 + 1 WHERE one_pk.c5 < 10`,
 		`UPDATE one_pk INNER JOIN two_pk on one_pk.pk = two_pk.pk1 INNER JOIN othertable on othertable.i2 = two_pk.pk2 SET one_pk.c1 = one_pk.c1 + 1`,
 		`UPDATE one_pk INNER JOIN (SELECT * FROM two_pk order by pk1, pk2) as t2 on one_pk.pk = t2.pk1 SET one_pk.c1 = t2.c1 + 1 where one_pk.pk < 1`,
 		`UPDATE one_pk INNER JOIN two_pk on one_pk.pk = two_pk.pk1 SET one_pk.c1 = one_pk.c1 + 1`,
-		`UPDATE one_pk INNER JOIN two_pk on one_pk.pk = two_pk.pk1 SET one_pk.c1 = one_pk.c1 + 1, one_pk.c2 = one_pk.c2 + 1 ORDER BY one_pk.pk`,
-		`UPDATE one_pk INNER JOIN two_pk on one_pk.pk = two_pk.pk1 SET one_pk.c1 = one_pk.c1 + 1, two_pk.c1 = two_pk.c2 + 1`,
 		`update mytable h join mytable on h.i = mytable.i and h.s <> mytable.s set h.i = mytable.i+1;`,
 		`UPDATE othertable CROSS JOIN tabletest set othertable.i2 = othertable.i2 * 10`,                                                                                              // cross join
 		`UPDATE tabletest cross join tabletest as t2 set tabletest.i = tabletest.i * 10`,                                                                                             // cross join
@@ -409,7 +399,6 @@ func TestUpdate(t *testing.T) {
 
 func TestUpdateErrors(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		`UPDATE keyless INNER JOIN one_pk on keyless.c0 = one_pk.pk SET keyless.c0 = keyless.c0 + 1`,
 		"try updating string that is too long",  // works but error message doesn't match
 		"UPDATE mytable SET s = 'hi' LIMIT -1;", // unsupported syntax
 	})
@@ -420,7 +409,6 @@ func TestUpdateErrors(t *testing.T) {
 func TestDeleteFrom(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"DELETE FROM mytable ORDER BY i DESC LIMIT 1 OFFSET 1;", // offset is unsupported syntax
-		"DELETE FROM mytable WHERE (i,s) = (1, 'first row');",   // type error, needs investigation
 		"with t (n) as (select (1) from dual) delete from mytable where i in (select n from t)",
 		"with recursive t (n) as (select (1) from dual union all select n + 1 from t where n < 2) delete from mytable where i in (select n from t)",
 	})
@@ -489,19 +477,9 @@ func TestSpatialScripts(t *testing.T) {
 	enginetest.TestSpatialScripts(t, h)
 }
 
-func TestSpatialScriptsPrepared(t *testing.T) {
-	t.Skip()
-	enginetest.TestSpatialScriptsPrepared(t, newDoltgresServerHarness(t))
-}
-
 func TestSpatialIndexScripts(t *testing.T) {
 	t.Skip()
 	enginetest.TestSpatialIndexScripts(t, newDoltgresServerHarness(t))
-}
-
-func TestSpatialIndexScriptsPrepared(t *testing.T) {
-	t.Skip()
-	enginetest.TestSpatialIndexScriptsPrepared(t, newDoltgresServerHarness(t))
 }
 
 func TestSpatialIndexPlans(t *testing.T) {
@@ -523,26 +501,13 @@ func TestConvert(t *testing.T) {
 	enginetest.TestConvertPrepared(t, h)
 }
 
-func TestConvertPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestConvertPrepared(t, h)
-}
-
 func TestScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"can't create table with same name as existing view",      // Doltgres needs to return a different error message
 		"filter pushdown through join uppercase name",             // syntax error (join without on)
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
 		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
-		"update join with update trigger different value",         // update join syntax not supported
-		"update join with update trigger same value",              // update join syntax not supported
-		"update join with update trigger",                         // update join syntax not supported
-		"update join with update trigger if condition",            // update join syntax not supported
-		"missing indexes",                       // unsupported test harness setup
-		"table x intersect table y order by i;", // type coercion rules for unions among different schemas need to change for this to work, mysql is much more lenient
-		"table x intersect table y order by 1;", // type coercion rules for unions among different schemas need to change for this to work, mysql is much more lenient
+		"update join with update trigger",                         // update join syntax not supported (also catches with-trigger variants by substring)
 		"WITH RECURSIVE\n" +
 			"    rt (foo) AS (\n" +
 			"        SELECT 1 as foo\n" +
@@ -556,41 +521,29 @@ func TestScripts(t *testing.T) {
 			"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
 			"    )\n" +
 			"SELECT * FROM ladder;", // syntax error
-		"with recursive cte as ((select * from xy order by y asc limit 1 offset 1) union (select * from xy order by y asc limit 1 offset 2)) select * from cte", // invalid type: bigint
-		"CrossDB Queries", // needs harness work to properly qualify the names
-		"SELECT rand(10) FROM tab1 GROUP BY tab1.col1", // different rand() behavior
-		"Nested Subquery projections (NTC)",            // ERROR: blob/text column 'id' used in key specification without a key length
-		"CREATE TABLE SELECT Queries",                  // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
+		"CREATE TABLE SELECT Queries", // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
+		"db1.``.i > 0",                // Multi-db Aliasing: MySQL-only empty-backtick ref
+		"join db2.t2 order by",        // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+		"join db2.t2 group by",        // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+		"join db2.t1 b order by a.i",  // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
 		// "Simple Update Join test that manipulates two tables",
 		// "Partial indexes are used and return the expected result",
 		// "Multiple indexes on the same columns in a different order",
 		"Ensure proper DECIMAL support (found by fuzzer)", // unsupported type: SET
 		// "Ensure scale is not rounded when inserting to DECIMAL type through float64",
-		"Show create table with various keys and constraints",                                                     // error in harness query converter
-		"show create table with duplicate primary key",                                                            // error in harness query converter
+		"Show create table with various keys and constraints",                                                     // FK adds explicit ON DELETE/UPDATE RESTRICT; CHECK constraints leak backticks; timestamp(6) loses precision
+		"show create table with duplicate primary key",                                                            // auto-generated constraint names differ
 		"recreate primary key rebuilds secondary indexes",                                                         // currently no way to drop primary key in doltgres
 		"Handle hex number to binary conversion",                                                                  // ERROR: can't convert 0x7ED0599B to decimal: exponent is not numeric
 		"join index lookups do not handle filters",                                                                // need a different join syntax (no ON clause not supported in postgres)
-		"select count(*) from numbers group by val having count(*) < val;",                                        // ERROR: unable to find field with index 1 in row of 1 columns
-		"using having and group by clauses in subquery ",                                                          // lots of index errors, something very broken
-		"can't create view with same name as existing table",                                                      // error message wrong
 		"arithmetic bit operations on int, float and decimal types",                                               // the power operator is not yet supported
 		"INSERT IGNORE throws an error when json is badly formatted",                                              // error messages don't match
 		"identical expressions over different windows should produce different results",                           // ERROR: integer: unhandled type: float64
 		"windows without ORDER BY should be treated as RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", // ERROR: integer: unhandled type: float64
-		"decimal literals should be parsed correctly",                                                             // ERROR: text: unhandled type: decimal.Decimal (error in harness)
 		"division and int division operation on negative, small and big value for decimal type column of table",   // numeric keys broken
-		"different cases of function name should result in the same outcome",                                      // ERROR: blob/text column 'b' used in key specification without a key length
-		"Multi-db Aliasing",                                                                  // need harness support for qualified table names
-		"update columns with default",                                                        // broken, see repro in update_test.go
-		"select * from t0 where i > 0.1 or i >= 0.1 order by i;",                             // incorrect result, needs a fix
-		"int secondary index with float filter",                                              // panic
-		"select count(*) from t where (f in (null, cast(0.8 as float)));",                    // incorrect result, needs a fix
-		"update with left join with some missing rows",                                       // need to translate update joins
-		"SELECT - col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING NOT + + col2 <= - col0;", // incorrect result
-		"SELECT -col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING NOT col2 <= - col0;",      // incorrect result
-		"SELECT -col2 AS col0 FROM tab2 GROUP BY col0, col2 HAVING col2 > -col0;",            // incorrect result
-		"select col2-100 as col0 from tab2 group by col0 having col0 > 0;",                   // incorrect result
+		"update columns with default",                                                                             // broken, see repro in update_test.go
+		"select count(*) from t where (f in (null, cast(0.8 as float)));",                                         // incorrect result, needs a fix
+		"update with left join with some missing rows",                                                            // need to translate update joins
 		"preserve now()",          // harness error
 		"binary type primary key", // ERROR: blob/text column 'b' used in key specification without a key length
 		"varbinary primary key",   // ERROR: blob/text column 'b' used in key specification without a key length
@@ -602,15 +555,10 @@ func TestScripts(t *testing.T) {
 		"validate_password_strength and validate_password.number_count",       // unsupported
 		"validate_password_strength and validate_password.mixed_case_count",   // unsupported
 		"validate_password_strength and validate_password.special_char_count", // unsupported
-		"preserve enums through alter statements",                             // enum types unsupported
 		"coalesce with system types",                                          // unsupported
-		"multi enum return types",                                             // enum types unsupported
-		"enum cast to int and string",                                         // enum types unsupported
-		"select * from vt where v = cast('def' as char(6));",                  // incorrect result
-		"select * from vt where v < cast('def' as char(6));",                  // incorrect result
-		"select * from vt where v >= cast('def' as char(6));",                 // incorrect result
 		"histogram bucket merging error for implementor buckets",              // unsupported "with recursive" syntax
 		"varchar primary key",                                                 // literal values longer than the key length returns incorrect results for some queries
+		"can't create view with same name as existing table",                  // different error message
 	})
 	defer h.Close()
 	enginetest.TestScripts(t, h)
@@ -637,13 +585,6 @@ func TestJoinQueries(t *testing.T) {
 	enginetest.TestJoinQueries(t, h)
 }
 
-func TestJoinQueriesPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestJoinQueriesPrepared(t, h)
-}
-
 // TestJSONTableQueries runs the canonical test queries against a single threaded index enabled harness.
 func TestJSONTableQueries(t *testing.T) {
 	t.Skip()
@@ -652,28 +593,12 @@ func TestJSONTableQueries(t *testing.T) {
 	enginetest.TestJSONTableQueries(t, h)
 }
 
-// TestJSONTableQueriesPrepared runs the canonical test queries against a single threaded index enabled harness.
-func TestJSONTableQueriesPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestJSONTableQueriesPrepared(t, h)
-}
-
 // TestJSONTableScripts runs the canonical test queries against a single threaded index enabled harness.
 func TestJSONTableScripts(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestJSONTableScripts(t, h)
-}
-
-// TestJSONTableScriptsPrepared runs the canonical test queries against a single threaded index enabled harness.
-func TestJSONTableScriptsPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestJSONTableScriptsPrepared(t, h)
 }
 
 func TestUserAuthentication(t *testing.T) {
@@ -710,12 +635,6 @@ func TestBranchDdl(t *testing.T) {
 	denginetest.RunBranchDdlTest(t, h)
 }
 
-func TestBranchDdlPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunBranchDdlTestPrepared(t, h)
-}
-
 func TestPkOrdinalsDDL(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
@@ -724,7 +643,6 @@ func TestPkOrdinalsDDL(t *testing.T) {
 }
 
 func TestPkOrdinalsDML(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestPkOrdinalsDML(t, h)
@@ -845,12 +763,6 @@ func TestForeignKeyBranches(t *testing.T) {
 	denginetest.RunForeignKeyBranchesTest(t, h)
 }
 
-func TestForeignKeyBranchesPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunForeignKeyBranchesPreparedTest(t, h)
-}
-
 func TestFulltextIndexes(t *testing.T) {
 	t.Skip()
 	if runtime.GOOS == "windows" && os.Getenv("CI") != "" {
@@ -897,7 +809,6 @@ func TestDropCheckConstraints(t *testing.T) {
 }
 
 func TestReadOnly(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestReadOnly(t, h, false /* testStoredProcedures */)
@@ -914,12 +825,6 @@ func TestBranchViews(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunBranchViewsTest(t, h)
-}
-
-func TestBranchViewsPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunBranchViewsPreparedTest(t, h)
 }
 
 func TestVersionedViews(t *testing.T) {
@@ -957,28 +862,24 @@ func TestNamedWindows(t *testing.T) {
 }
 
 func TestNaturalJoin(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNaturalJoin(t, h)
 }
 
 func TestNaturalJoinEqual(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNaturalJoinEqual(t, h)
 }
 
 func TestNaturalJoinDisjoint(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNaturalJoinEqual(t, h)
 }
 
 func TestInnerNestedInNaturalJoins(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestInnerNestedInNaturalJoins(t, h)
@@ -1017,14 +918,6 @@ func TestVariableErrors(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestVariableErrors(t, h)
-}
-
-func TestLoadDataPrepared(t *testing.T) {
-	t.Skip("feature not supported")
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestLoadDataPrepared(t, h)
 }
 
 func TestLoadData(t *testing.T) {
@@ -1086,12 +979,6 @@ func TestDoltStoredProcedures(t *testing.T) {
 	denginetest.RunDoltStoredProceduresTest(t, h)
 }
 
-func TestDoltStoredProceduresPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunDoltStoredProceduresPreparedTest(t, h)
-}
-
 func TestEvents(t *testing.T) {
 	t.Skip()
 	doltHarness := newDoltgresServerHarness(t)
@@ -1117,12 +1004,6 @@ func TestTransactions(t *testing.T) {
 	denginetest.RunTransactionTests(t, h, false)
 }
 
-func TestTransactionsPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunTransactionTests(t, h, true)
-}
-
 func TestBranchTransactions(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
@@ -1135,14 +1016,7 @@ func TestMultiDbTransactions(t *testing.T) {
 	denginetest.RunMultiDbTransactionsTest(t, h)
 }
 
-func TestMultiDbTransactionsPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunMultiDbTransactionsPreparedTest(t, h)
-}
-
 func TestConcurrentTransactions(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestConcurrentTransactions(t, h)
@@ -1166,12 +1040,6 @@ func TestDoltRevisionDbScripts(t *testing.T) {
 	denginetest.RunDoltRevisionDbScriptsTest(t, h)
 }
 
-func TestDoltRevisionDbScriptsPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunDoltRevisionDbScriptsPreparedTest(t, h)
-}
-
 func TestDoltDdlScripts(t *testing.T) {
 	t.Skip()
 	harness := newDoltgresServerHarness(t)
@@ -1193,15 +1061,15 @@ func TestDescribeTableAsOf(t *testing.T) {
 }
 
 func TestShowCreateTable(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// These scripts call dolt_commit_hash_out(@Commit1, ...). Passing a
+		// user variable to dolt_commit_hash_out via the converter's
+		// current_setting() shim hits an unrelated unsupported-operator
+		// path. Unskip once that lands.
+		"Show create table as of",
+		"Show create table as of with FKs",
+	})
 	denginetest.RunShowCreateTableTests(t, h)
-}
-
-func TestShowCreateTablePrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunShowCreateTablePreparedTests(t, h)
 }
 
 func TestViewsWithAsOf(t *testing.T) {
@@ -1211,48 +1079,17 @@ func TestViewsWithAsOf(t *testing.T) {
 	enginetest.TestScript(t, h, denginetest.ViewsWithAsOfScriptTest)
 }
 
-func TestViewsWithAsOfPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestScriptPrepared(t, h, denginetest.ViewsWithAsOfScriptTest)
-}
-
 func TestDoltMerge(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"dolt_preview_merge_conflicts_summary(",                                                                               // returns schema qualified table names
-		"dolt_preview_merge_conflicts(",                                                                                       // table not found: test
-		"keyless table merge with constraint violation on duplicate rows",                                                     // alter table
-		"CALL DOLT_MERGE without conflicts correctly works with autocommit off with commit flag",                              // datetime support
-		"CALL DOLT_MERGE without conflicts correctly works with autocommit off and no commit flag",                            // datetime support
-		"CALL DOLT_MERGE with conflicts can be correctly resolved when autocommit is off",                                     // datetime support
+		"dolt_preview_merge_conflicts_summary(", // returns schema qualified table names
 		"CALL DOLT_MERGE with schema conflicts can be correctly resolved using dolt_conflicts_resolve when autocommit is off", // alter table
-		"merge conflicts prevent new branch creation",                                                                         // different error message
-		"select message from dolt_log where date ",                                                                            // datetime support
-		"DOLT_MERGE(--abort) clears staged",
-		"CALL DOLT_MERGE complains when a merge overrides local changes",
-		"Drop and add primary key on two branches converges to same schema",  // alter table
-		"Constraint violations are persisted",                                // foreign key support
-		"left adds a unique key constraint and resolves existing violations", // alter table
+		"merge conflicts prevent new branch creation",                       // different error message
+		"Drop and add primary key on two branches converges to same schema", // alter table
 		"insert two tables with the same name and different schema",
-		"merge with new triggers defined",                                                                 // triggers
-		"add multiple columns, then set and unset a value. No conflicts expected.",                        // alter table
-		"dropping constraint from one branch drops from both",                                             // alter table
-		"dropping constraint from one branch drops from both, no checkout",                                // alter table
-		"merge constraint with valid data on different branches",                                          // alter table
-		"resolving a deleted and modified row handles constraint checks",                                  // alter table
-		"resolving a modified/modified row still checks nullness constraint",                              // alter table
-		"Merge errors if the primary key types have changed (even if the new type has the same NomsKind)", // alter table
-		"parent index is longer than child index",
-		"parallel column updates (repro issue #4547)",
+		"dropping constraint from one branch drops from both",                                                            // alter table (also catches the no-checkout variant)
+		"merge with new triggers defined",                                                                                // triggers
 		"try to merge a nullable field into a non-null column",                                                           // alter table
 		"merge fulltext with renamed table",                                                                              // alter table
-		"merge when schemas are equal, but column tags are different",                                                    // alter table
-		"merge with float column default",                                                                                // alter table
-		"merge with float 1.23 column default",                                                                           // alter table
-		"merge with decimal 1.23 column default",                                                                         // alter table
-		"merge with different types",                                                                                     // alter table
 		"select * from dolt_status",                                                                                      // table_name column includes schema name,
 		"dolt_merge() (3way) works with no auto increment overlap",                                                       // sequencing doesn't work globally after merge, need to decide product behavior
 		"dolt_merge() (3way) with a gap in an auto increment key",                                                        // sequencing doesn't work globally after merge, need to decide product behavior
@@ -1264,22 +1101,10 @@ func TestDoltMerge(t *testing.T) {
 	denginetest.RunDoltMergeTests(t, h)
 }
 
-func TestDoltMergePrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunDoltMergePreparedTests(t, h)
-}
-
 func TestDoltRebase(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltRebaseTests(t, h)
-}
-
-func TestDoltRebasePrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunDoltRebasePreparedTests(t, h)
 }
 
 func TestDoltRevert(t *testing.T) {
@@ -1292,66 +1117,41 @@ func TestDoltRevert(t *testing.T) {
 	denginetest.RunDoltRevertTests(t, h)
 }
 
-func TestDoltRevertPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunDoltRevertPreparedTests(t, h)
-}
-
 func TestDoltAutoIncrement(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltAutoIncrementTests(t, h)
 }
 
-func TestDoltAutoIncrementPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunDoltAutoIncrementPreparedTests(t, h)
-}
-
 func TestDoltConflictsTableNameTable(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"dolt_preview_merge_conflicts_summary(",                                            // returns schema qualified table names
-		"Provides a dolt_conflicts_id",                                                     // relies on user vars
-		"dolt_conflicts_id is unique across merges",                                        // relies on user vars
-		"Updates on our columns get applied to the source table - compound / inverted pks", // broken, not clear why
-		"Updates on our columns get applied to the source table - keyless",                 // type issue
-		"Updating our cols after schema change",                                            // alter table
+		"dolt_preview_merge_conflicts_summary(", // returns schema qualified table names
+		"Provides a dolt_conflicts_id",          // relies on user vars
+		"Updating our cols after schema change", // alter table
 	})
 	denginetest.RunDoltConflictsTableNameTableTests(t, h)
 }
 
 // tests new format behavior for keyless merges that create CVs and conflicts
 func TestKeylessDoltMergeCVsAndConflicts(t *testing.T) {
-	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"Keyless merge with foreign keys documents violations", // foreign keys
-		"unique key violation for keyless table",               // alter table
-	})
+	h := newDoltgresServerHarness(t)
 	denginetest.RunKeylessDoltMergeCVsAndConflictsTests(t, h)
 }
 
 // eventually this will be part of TestDoltMerge
 func TestDoltMergeArtifacts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"conflicts of different schemas can't coexist",                                            // alter table
-		"violations with an older commit hash are overwritten if the value is the same",           // nothing to commit?
-		"right adds a unique key constraint and resolves existing violations.",                    // alter table
-		"unique key violation should be thrown even if a PK column is used in the unique index",   // alter table ADD UNIQUE syntax
-		"unique key violation should be thrown even if a PK column is used in the unique index 2", // alter table ADD UNIQUE syntax
-		"unique key violations should not be thrown for keys with null values",                    // alter table ADD UNIQUE syntax
-		"regression test for bad column ordering in schema",                                       // enum not supported in test harness
-		"schema conflicts return an error when autocommit is enabled",                             // problems detecting autocommit for business logic
-		"Multiple foreign key violations for a given row not supported",                           // foreign keys
-		"divergent type change causes schema conflict",                                            // alter table
-		"merge error lists all constraint violations when table has multiple violations",          // index names differ under PG naming
+		"conflicts of different schemas can't coexist",                                  // alter table
+		"violations with an older commit hash are overwritten if the value is the same", // nothing to commit?
+		"regression test for bad column ordering in schema",                             // enum not supported in test harness
+		"schema conflicts return an error when autocommit is enabled",                   // problems detecting autocommit for business logic
+		"merge error lists all constraint violations when table has multiple violations",
 	})
 	denginetest.RunDoltMergeArtifacts(t, h)
 }
 
 func TestDoltReset(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"CALL DOLT_RESET('--hard') should reset the merge state after uncommitted merge", // problem with autocommit detection
 		"select * from dolt_status",                    // table_name column includes schema name
 		"SELECT pk, v FROM t AS OF STAGED ORDER BY pk", // AS OF STAGED requires quoting in Postgres
 		"SELECT pk FROM t AS OF STAGED ORDER BY pk",    // AS OF STAGED requires quoting in Postgres
@@ -1372,33 +1172,19 @@ func TestDoltGC(t *testing.T) {
 
 func TestDoltCheckout(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"dolt_checkout and base name resolution", // needs db-qualified table names
 		"branch last checked out is deleted",
 		"Using non-existent refs",
 		"read-only databases", // read-only not yet implemented in harness
 		"Checkout tables from commit",
-		"dolt_checkout with new branch forcefully",                        // string primary key ordering broken
-		"dolt_checkout with new branch forcefully with dirty working set", // string primary key ordering broken
-		"dolt_checkout with tracking branch and table with same name",     // UseLocalFileSystem did not create remote dir
+		"dolt_checkout with tracking branch and table with same name", // UseLocalFileSystem did not create remote dir
 	})
 	denginetest.RunDoltCheckoutTests(t, h)
-}
-
-func TestDoltCheckoutPrepared(t *testing.T) {
-	t.Skip("need to implement prepared queries in harness")
-	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"dolt_checkout and base name resolution", // needs db-qualified table names
-		"branch last checked out is deleted",
-		"Using non-existent refs",
-		"read-only databases", // read-only not yet implemented in harness
-	})
-	denginetest.RunDoltCheckoutPreparedTests(t, h)
 }
 
 func TestDoltBranch(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Create branch from startpoint",  // missing SET @var syntax
-		"Join same table at two commits", // needs different branch-qualified DB syntax
+		"Join same table at two commits", // implicit cross-joins (no ON clause) unsupported in postgres
 	})
 
 	denginetest.RunDoltBranchTests(t, h)
@@ -1435,26 +1221,12 @@ func TestBrokenSystemTableQueries(t *testing.T) {
 
 func TestHistorySystemTable(t *testing.T) {
 	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"explain",                                       // not supported
-		"select message from dolt_log;",                 // more commits
-		"primary key table: rename table",               // DDL
-		"primary key table: non-pk column type changes", // DDL
-		"dolt_history table with AS OF",                 // AS OF
-		"dolt_history table with AS OF",                 // AS OF
-		"dolt_history table with enums",                 // enums
-		"can sort by dolt_log.commit",                   // more commits
+		"explain",                       // not supported
+		"select message from dolt_log",  // doltgres setup has extra commits
+		"dolt_history table with enums", // enums
+		"can sort by dolt_log.commit",   // more commits
 	}).WithParallelism(2)
 	denginetest.RunHistorySystemTableTests(t, harness)
-}
-
-func TestHistorySystemTablePrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t).WithParallelism(2)
-	denginetest.RunHistorySystemTableTestsPrepared(t, harness)
-}
-
-func TestBrokenHistorySystemTablePrepared(t *testing.T) {
-	t.Skip("test not migrated yet, skipped in Dolt")
 }
 
 func TestUnscopedDiffSystemTable(t *testing.T) {
@@ -1463,22 +1235,10 @@ func TestUnscopedDiffSystemTable(t *testing.T) {
 	denginetest.RunUnscopedDiffSystemTableTests(t, h)
 }
 
-func TestUnscopedDiffSystemTablePrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunUnscopedDiffSystemTableTestsPrepared(t, h)
-}
-
 func TestColumnDiffSystemTable(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunColumnDiffSystemTableTests(t, h)
-}
-
-func TestColumnDiffSystemTablePrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunColumnDiffSystemTableTestsPrepared(t, h)
 }
 
 func TestStatBranchTests(t *testing.T) {
@@ -1493,22 +1253,10 @@ func TestDiffTableFunction(t *testing.T) {
 	denginetest.RunDiffTableFunctionTests(t, harness)
 }
 
-func TestDiffTableFunctionPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDiffTableFunctionTestsPrepared(t, harness)
-}
-
 func TestDiffStatTableFunction(t *testing.T) {
 	t.Skip()
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunDiffStatTableFunctionTests(t, harness)
-}
-
-func TestDiffStatTableFunctionPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDiffStatTableFunctionTestsPrepared(t, harness)
 }
 
 func TestDiffSummaryTableFunction(t *testing.T) {
@@ -1517,22 +1265,10 @@ func TestDiffSummaryTableFunction(t *testing.T) {
 	denginetest.RunDiffSummaryTableFunctionTests(t, harness)
 }
 
-func TestDiffSummaryTableFunctionPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDiffSummaryTableFunctionTestsPrepared(t, harness)
-}
-
 func TestPatchTableFunction(t *testing.T) {
 	t.Skip()
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunDoltPatchTableFunctionTests(t, harness)
-}
-
-func TestPatchTableFunctionPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDoltPatchTableFunctionTestsPrepared(t, harness)
 }
 
 func TestLogTableFunction(t *testing.T) {
@@ -1541,22 +1277,10 @@ func TestLogTableFunction(t *testing.T) {
 	denginetest.RunLogTableFunctionTests(t, harness)
 }
 
-func TestLogTableFunctionPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunLogTableFunctionTestsPrepared(t, harness)
-}
-
 func TestDoltReflog(t *testing.T) {
 	t.Skip()
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunDoltReflogTests(t, harness)
-}
-
-func TestDoltReflogPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDoltReflogTestsPrepared(t, harness)
 }
 
 func TestCommitDiffSystemTable(t *testing.T) {
@@ -1565,34 +1289,16 @@ func TestCommitDiffSystemTable(t *testing.T) {
 	denginetest.RunCommitDiffSystemTableTests(t, harness)
 }
 
-func TestCommitDiffSystemTablePrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunCommitDiffSystemTableTestsPrepared(t, harness)
-}
-
 func TestDiffSystemTable(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltDiffSystemTableTests(t, h)
 }
 
-func TestDiffSystemTablePrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunDoltDiffSystemTableTestsPrepared(t, h)
-}
-
 func TestSchemaDiffTableFunction(t *testing.T) {
 	t.Skip()
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunSchemaDiffTableFunctionTests(t, harness)
-}
-
-func TestSchemaDiffTableFunctionPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunSchemaDiffTableFunctionTestsPrepared(t, harness)
 }
 
 func TestDoltDatabaseCollationDiffs(t *testing.T) {
@@ -1613,22 +1319,10 @@ func TestSystemTableIndexes(t *testing.T) {
 	denginetest.RunSystemTableIndexesTests(t, harness)
 }
 
-func TestSystemTableIndexesPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunSystemTableIndexesTestsPrepared(t, harness)
-}
-
 func TestSystemTableFunctionIndexes(t *testing.T) {
 	t.Skip()
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunSystemTableFunctionIndexesTests(t, harness)
-}
-
-func TestSystemTableFunctionIndexesPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunSystemTableFunctionIndexesTestsPrepared(t, harness)
 }
 
 func TestReadOnlyDatabases(t *testing.T) {
@@ -1652,7 +1346,6 @@ func TestAddAutoIncrementColumn(t *testing.T) {
 }
 
 func TestNullRanges(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNullRanges(t, h)
@@ -1688,12 +1381,6 @@ func TestDoltCherryPick(t *testing.T) {
 	denginetest.RunDoltCherryPickTests(t, harness)
 }
 
-func TestDoltCherryPickPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDoltCherryPickTestsPrepared(t, harness)
-}
-
 func TestDoltCommit(t *testing.T) {
 	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		// These tests set @@autocommit, which we can't translate accurately yet
@@ -1705,19 +1392,6 @@ func TestDoltCommit(t *testing.T) {
 		"DOLT_COMMIT respects foreign_key_checks=0",
 	})
 	denginetest.RunDoltCommitTests(t, harness)
-}
-
-func TestDoltCommitPrepared(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDoltCommitTestsPrepared(t, harness)
-}
-
-func TestQueriesPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestQueriesPrepared(t, h)
 }
 
 func TestStatsHistograms(t *testing.T) {
@@ -1735,198 +1409,14 @@ func TestStatsStorage(t *testing.T) {
 }
 
 func TestJoinStats(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunJoinStatsTests(t, h)
 }
 
 func TestStatisticIndexes(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestStatisticIndexFilters(t, h)
-}
-
-func TestSpatialQueriesPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestSpatialQueriesPrepared(t, h)
-}
-
-func TestPreparedStatistics(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunPreparedStatisticsTests(t, h)
-}
-
-func TestVersionedQueriesPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunVersionedQueriesPreparedTests(t, h)
-}
-
-func TestInfoSchemaPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestInfoSchemaPrepared(t, h)
-}
-
-func TestUpdateQueriesPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestUpdateQueriesPrepared(t, h)
-}
-
-func TestInsertQueriesPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestInsertQueriesPrepared(t, h)
-}
-
-func TestReplaceQueriesPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestReplaceQueriesPrepared(t, h)
-}
-
-func TestDeleteQueriesPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestDeleteQueriesPrepared(t, h)
-}
-
-func TestScriptsPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestScriptsPrepared(t, h)
-}
-
-func TestInsertScriptsPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestInsertScriptsPrepared(t, h)
-}
-
-func TestComplexIndexQueriesPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestComplexIndexQueriesPrepared(t, h)
-}
-
-func TestJsonScriptsPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	skippedTests := []string{
-		"round-trip into table", // The current Dolt JSON format does not preserve decimals and unsigneds in JSON.
-	}
-	enginetest.TestJsonScriptsPrepared(t, h, skippedTests)
-}
-
-func TestCreateCheckConstraintsScriptsPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestCreateCheckConstraintsScriptsPrepared(t, h)
-}
-
-func TestInsertIgnoreScriptsPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestInsertIgnoreScriptsPrepared(t, h)
-}
-
-func TestInsertErrorScriptsPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	h = h.WithSkippedQueries([]string{
-		"create table bad (vb varbinary(65535))",
-		"insert into bad values (repeat('0', 65536))",
-	})
-	enginetest.TestInsertErrorScriptsPrepared(t, h)
-}
-
-func TestViewsPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestViewsPrepared(t, h)
-}
-
-func TestVersionedViewsPrepared(t *testing.T) {
-	t.Skip()
-	t.Skip("not supported for prepareds")
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestVersionedViewsPrepared(t, h)
-}
-
-func TestShowTableStatusPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestShowTableStatusPrepared(t, h)
-}
-
-func TestPrepared(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestPrepared(t, h)
-}
-
-func TestDoltPreparedScripts(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	// TODO
-	// DoltPreparedScripts(t, h)
-}
-
-func TestPreparedInsert(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestPreparedInsert(t, h)
-}
-
-func TestPreparedStatements(t *testing.T) {
-	t.Skip()
-	skipPreparedTests(t)
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestPreparedStatements(t, h)
 }
 
 func TestCharsetCollationEngine(t *testing.T) {
@@ -1957,17 +1447,8 @@ func TestDoltVerifyConstraints(t *testing.T) {
 }
 
 func TestDoltStorageFormat(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunDoltStorageFormatTests(t, h)
-}
-
-func TestDoltStorageFormatPrepared(t *testing.T) {
-	t.Skip()
-	expectedFormatString := "NEW ( __DOLT__ )"
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestPreparedQuery(t, h, "SELECT dolt_storage_format()", []sql.Row{{expectedFormatString}}, nil)
 }
 
 func TestThreeWayMergeWithSchemaChangeScripts(t *testing.T) {
@@ -1975,13 +1456,6 @@ func TestThreeWayMergeWithSchemaChangeScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 
 	denginetest.RunThreeWayMergeWithSchemaChangeScripts(t, h)
-}
-
-func TestThreeWayMergeWithSchemaChangeScriptsPrepared(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-
-	denginetest.RunThreeWayMergeWithSchemaChangeScriptsPrepared(t, h)
 }
 
 // If CREATE DATABASE has an error within the DatabaseProvider, it should not
@@ -1998,8 +1472,267 @@ func TestStatsAutoRefreshConcurrency(t *testing.T) {
 	t.Skip("port test from Dolt")
 }
 
-func skipPreparedTests(t *testing.T) {
-	if skipPrepared {
-		t.Skip("skip prepared")
-	}
+func TestAdaptiveEncoding(t *testing.T) {
+	// The test runs end-to-end, but most subtests currently fail because:
+	//  - bytea/text round-trips through the harness lose data for BLOB columns
+	//  - the converter does not yet translate MySQL prefix indexes (`col(N)`),
+	//    LOAD_FILE(), or INSERT of text literals into bytea columns
+	// Unskip once those gaps are filled.
+	t.Skip("AdaptiveEncoding runs but fails on bytea round-trip / MySQL-only queries; see comment")
+
+	adaptiveEncoding := typeinfo.UseAdaptiveEncoding
+	defer func() { typeinfo.UseAdaptiveEncoding = adaptiveEncoding }()
+	typeinfo.UseAdaptiveEncoding = true
+
+	denginetest.RunTestAdaptiveEncoding(t, newDoltgresServerHarness(t), denginetest.AdaptiveEncodingTestType_Blob, denginetest.AdaptiveEncodingTestPurpose_Representation)
+	denginetest.RunTestAdaptiveEncoding(t, newDoltgresServerHarness(t), denginetest.AdaptiveEncodingTestType_Blob, denginetest.AdaptiveEncodingTestPurpose_Correctness)
+	denginetest.RunTestAdaptiveEncoding(t, newDoltgresServerHarness(t), denginetest.AdaptiveEncodingTestType_Text, denginetest.AdaptiveEncodingTestPurpose_Representation)
+	denginetest.RunTestAdaptiveEncoding(t, newDoltgresServerHarness(t), denginetest.AdaptiveEncodingTestType_Text, denginetest.AdaptiveEncodingTestPurpose_Correctness)
+
+	denginetest.RunAdaptiveEncodingScripts(t, newDoltgresServerHarness(t))
+}
+
+func TestSchemaOverridesWithAdaptiveEncoding(t *testing.T) {
+	// Runs end-to-end but fails on @@dolt_override_schema (user-variable scope)
+	// and the MySQL DESCRIBE statement. Unskip once those land.
+	t.Skip("SchemaOverrides runs but fails on @@dolt_override_schema / DESCRIBE; see comment")
+
+	adaptiveEncoding := typeinfo.UseAdaptiveEncoding
+	defer func() { typeinfo.UseAdaptiveEncoding = adaptiveEncoding }()
+	typeinfo.UseAdaptiveEncoding = true
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunSchemaOverridesTest(t, harness)
+}
+
+func TestJsonAdaptiveEncoding(t *testing.T) {
+	adaptiveEncoding := typeinfo.UseAdaptiveEncoding
+	defer func() { typeinfo.UseAdaptiveEncoding = adaptiveEncoding }()
+	typeinfo.UseAdaptiveEncoding = true
+
+	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"json_extract(", // MySQL-specific; postgres uses -> / jsonb_extract_path_text
+	})
+	denginetest.RunJsonAdaptiveEncodingTests(t, harness)
+}
+
+func TestBackupsSystemTable(t *testing.T) {
+	t.Skip("port test from Dolt")
+}
+
+func TestBranchActivity(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunBranchActivityTests(t, harness)
+}
+
+func TestBranchStatusTableFunction(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunBranchStatusTableFunctionTests(t, harness)
+}
+
+func TestConcurrentCreateDatabaseIfNotExists(t *testing.T) {
+	t.Skip("port test from Dolt")
+}
+
+func TestDoltBranchesSystemTable(t *testing.T) {
+	t.Skip("port test from Dolt")
+	h := newDoltgresServerHarness(t)
+	denginetest.RunDoltBranchesSystemTableTests(t, h)
+}
+
+func TestDoltCommitVerificationScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunDoltCommitVerificationScripts(t, harness)
+}
+
+func TestDoltDTableScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunDoltDTableScriptsTest(t, harness)
+}
+
+func TestDoltForeignKeyTests(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunDoltForeignKeyTests(t, harness)
+}
+
+func TestDoltHelpSystemTable(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	defer harness.Close()
+	denginetest.RunDoltHelpSystemTableTests(t, harness)
+}
+
+func TestDoltPreviewMergeConflicts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	h := newDoltgresServerHarness(t)
+	denginetest.RunDoltPreviewMergeConflictsTests(t, h)
+}
+
+func TestDoltQueryCatalogSystemTable(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	defer harness.Close()
+	denginetest.RunDoltQueryCatalogTests(t, harness)
+}
+
+func TestDoltRm(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	defer harness.Close()
+	denginetest.RunDoltRmTests(t, harness)
+}
+
+func TestDoltStash(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	defer harness.Close()
+	denginetest.RunDoltStashSystemTableTests(t, harness)
+}
+
+func TestDoltTestsSystemTable(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	defer harness.Close()
+	denginetest.RunDoltTestsTableTests(t, harness)
+}
+
+func TestDoltUserPrivileges(t *testing.T) {
+	t.Skip("MySQL-specific user privilege tests, not applicable to doltgresql")
+}
+
+func TestDoltWorkspace(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunDoltWorkspaceTests(t, harness)
+}
+
+func TestDriverExecution(t *testing.T) {
+	t.Skip("port test from Dolt - uses dolt_backup which is not yet supported")
+}
+
+func TestJsonDiffTableFunction(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunJsonDiffTableFunctionTests(t, harness)
+}
+
+func TestJsonValueScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunJsonValueScriptsTest(t, harness)
+}
+
+func TestLargeGeometryScripts(t *testing.T) {
+	t.Skip("doltgresql does not support spatial types")
+}
+
+func TestLegacyCreateTableScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunLegacyCreateTableScripts(t, harness)
+}
+
+func TestLegacyDeleteScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunLegacyDeleteScripts(t, harness)
+}
+
+func TestLegacyDropTableScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunLegacyDropTableScripts(t, harness)
+}
+
+func TestLegacyIndexScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunLegacyIndexScripts(t, harness)
+}
+
+func TestLegacyInsertScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunLegacyInsertScripts(t, harness)
+}
+
+func TestLegacyJoinScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunLegacyJoinScripts(t, harness)
+}
+
+func TestLegacyReplaceScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunLegacyReplaceScripts(t, harness)
+}
+
+func TestLegacySelectScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunLegacySelectScripts(t, harness)
+}
+
+func TestLegacyUpdateScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	harness := newDoltgresServerHarness(t)
+	denginetest.RunLegacyUpdateScripts(t, harness)
+}
+
+func TestNonlocalTable(t *testing.T) {
+	t.Skip("port test from Dolt")
+	h := newDoltgresServerHarness(t)
+	denginetest.RunNonlocalTableTests(t, h)
+}
+
+func TestNumericErrorScripts(t *testing.T) {
+	t.Skip("port test from Dolt")
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestNumericErrorScripts(t, h)
+}
+
+func TestSingleMergeScript(t *testing.T) {
+	t.Skip("debug harness for a single merge script")
+}
+
+func TestSingleTransactionScript(t *testing.T) {
+	t.Skip("debug harness for a single transaction script")
+}
+
+func TestTimeQueries(t *testing.T) {
+	t.Skip("port test from Dolt")
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestTimeQueries(t, h)
+}
+
+func TestUpdateIgnore(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"UPDATE IGNORE with primary keys and indexes", // ignore semantics are different
+		"UPDATE IGNORE with type conversions",         // postgres strict typing rejects MySQL coercions
+	})
+	defer h.Close()
+	enginetest.TestUpdateIgnore(t, h)
+}
+
+func TestUserPrivileges(t *testing.T) {
+	t.Skip("MySQL-specific user privilege tests, not applicable to doltgresql")
+}
+
+func TestVectorFunctions(t *testing.T) {
+	t.Skip("doltgresql does not yet support vector types")
+}
+
+func TestVectorIndexes(t *testing.T) {
+	t.Skip("doltgresql does not yet support vector types")
+}
+
+func TestVectorType(t *testing.T) {
+	t.Skip("doltgresql does not yet support vector types")
 }

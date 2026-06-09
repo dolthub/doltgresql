@@ -50,11 +50,98 @@ func transformAST(query string) ([]string, bool) {
 		return transformSelect(stmt)
 	case *sqlparser.Insert:
 		return transformInsert(stmt)
+	case *sqlparser.Update:
+		return transformUpdate(stmt)
+	case *sqlparser.Delete:
+		return transformDelete(stmt)
 	case *sqlparser.AlterTable:
 		return transformAlterTable(stmt)
 	}
 
 	return nil, false
+}
+
+// transformDelete rewrites DELETE statements that reference a `db.tbl`
+// qualifier so the qualifier becomes postgres' `db.public.tbl`. We don't
+// attempt any other DELETE rewriting today.
+func transformDelete(stmt *sqlparser.Delete) ([]string, bool) {
+	if containsQualifiedTableName(stmt) {
+		return []string{formatNode(stmt)}, true
+	}
+	return nil, false
+}
+
+// transformUpdate handles MySQL UPDATE statements that need rewriting before
+// Postgres can run them. Right now the only case we rewrite is `UPDATE IGNORE`:
+// Postgres has no IGNORE keyword on UPDATE, but the closest approximation is
+// `INSERT INTO t (cols) SELECT new_values FROM t WHERE cond ON CONFLICT DO NOTHING`,
+// which silently skips rows that would violate a constraint. The semantics are
+// not exactly equivalent (the original rows still exist, and the rowcount is
+// reported as INSERT rows rather than UPDATE matched/changed), but it lets the
+// tests at least exercise the conflict-handling code paths.
+func transformUpdate(stmt *sqlparser.Update) ([]string, bool) {
+	// Reformat plain UPDATEs that reference a `db.tbl` so the qualifier gets
+	// rewritten to postgres' `db.public.tbl`. UPDATE IGNORE goes through the
+	// INSERT … ON CONFLICT translation below regardless.
+	if stmt.Ignore != "ignore " {
+		if containsQualifiedTableName(stmt) {
+			return []string{formatNode(stmt)}, true
+		}
+		return nil, false
+	}
+
+	// Only handle single-table UPDATE IGNORE — JOIN updates would need much more
+	// translation work.
+	if len(stmt.TableExprs) != 1 {
+		return nil, false
+	}
+	aliased, ok := stmt.TableExprs[0].(*sqlparser.AliasedTableExpr)
+	if !ok {
+		return nil, false
+	}
+	tname, ok := aliased.Expr.(sqlparser.TableName)
+	if !ok {
+		return nil, false
+	}
+	tableName := translateTableName(tname)
+
+	// Build the column list and the SELECT expressions from the SET clause.
+	colList := make(tree.NameList, len(stmt.Exprs))
+	selectExprs := make(tree.SelectExprs, len(stmt.Exprs))
+	for i, e := range stmt.Exprs {
+		colList[i] = tree.Name(e.Name.Name.String())
+		selectExprs[i] = tree.SelectExpr{Expr: convertExpr(e.Expr)}
+	}
+
+	// FROM t [AS alias]
+	fromTable := &tree.AliasedTableExpr{
+		Expr: translateTableName(tname),
+	}
+	if !aliased.As.IsEmpty() {
+		fromTable.As = tree.AliasClause{Alias: tree.Name(aliased.As.String())}
+	}
+
+	selectClause := &tree.SelectClause{
+		Exprs: selectExprs,
+		From:  tree.From{Tables: tree.TableExprs{fromTable}},
+		Where: convertWhere(stmt.Where),
+	}
+
+	insert := tree.Insert{
+		Table:   tableName,
+		Columns: colList,
+		Rows: &tree.Select{
+			Select: selectClause,
+		},
+		OnConflict: &tree.OnConflict{
+			Columns:   tree.NameList{tree.Name("fake")}, // placeholder, see transformInsert
+			DoNothing: true,
+		},
+		Returning: &tree.NoReturningClause{},
+	}
+
+	ctx := formatNodeWithUnqualifiedTableNames(&insert)
+	return []string{ctx.String()}, true
 }
 
 func transformRename(stmt *sqlparser.DDL) ([]string, bool) {
@@ -68,8 +155,73 @@ func transformRename(stmt *sqlparser.DDL) ([]string, bool) {
 }
 
 func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
-	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
 	table := stmt.Table
+	// REPLACE INTO has no postgres equivalent. The closest match is
+	// `INSERT ... ON CONFLICT (...) DO UPDATE SET col = <new value>`, which
+	// updates an existing row in place (vs. DELETE + INSERT) but produces the
+	// same end state. We use the literal values from the INSERT row as the
+	// right-hand side (rather than EXCLUDED.col references, which doltgres
+	// doesn't yet resolve back through its MySQL translation layer).
+	//
+	// Limitations:
+	//   - REPLACE without an explicit column list — we'd need schema knowledge
+	//     to enumerate the target columns. REPLACE ... SET form is parsed by
+	//     vitess with Columns populated, so it works.
+	//   - Multi-row REPLACE — a single SET clause can't refer to multiple
+	//     candidate rows. Single-row only for now.
+	if stmt.Action == sqlparser.ReplaceStr {
+		if len(stmt.Columns) == 0 {
+			return nil, false
+		}
+
+		// Pull a single row of values out of the parsed insert. Vitess wraps
+		// `VALUES (...)` and `SET col = ...` in the same shape.
+		var valTuple sqlparser.ValTuple
+		switch r := stmt.Rows.(type) {
+		case sqlparser.Values:
+			if len(r) != 1 {
+				return nil, false
+			}
+			valTuple = r[0]
+		case *sqlparser.AliasedValues:
+			if len(r.Values) != 1 {
+				return nil, false
+			}
+			valTuple = r.Values[0]
+		default:
+			return nil, false
+		}
+		if len(valTuple) != len(stmt.Columns) {
+			return nil, false
+		}
+
+		tableName := translateTableName(table)
+
+		colList := make(tree.NameList, len(stmt.Columns))
+		updateExprs := make(tree.UpdateExprs, len(stmt.Columns))
+		for i, col := range stmt.Columns {
+			name := tree.Name(col.String())
+			colList[i] = name
+			updateExprs[i] = &tree.UpdateExpr{
+				Names: tree.NameList{name},
+				Expr:  convertExpr(valTuple[i]),
+			}
+		}
+
+		insert := tree.Insert{
+			Table:   tableName,
+			Columns: colList,
+			Rows:    rowsForInsert(stmt.Rows),
+			OnConflict: &tree.OnConflict{
+				Columns: tree.NameList{tree.Name("fake")}, // placeholder; doltgres ignores the conflict-target list
+				Exprs:   updateExprs,
+			},
+			Returning: &tree.NoReturningClause{},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&insert).String()}, true
+	}
+
+	// only bother translating inserts if there's an ON DUPLICATE KEY UPDATE clause, maybe revisit this later
 	if len(stmt.OnDup) > 0 {
 		tableName := translateTableName(table)
 
@@ -99,7 +251,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		ctx := formatNodeWithUnqualifiedTableNames(&insert)
 		return []string{ctx.String()}, true
 	} else if stmt.Ignore == "ignore " {
-		tableName := tree.NewTableName(tree.Name(table.DbQualifier.String()), tree.Name(table.Name.String()))
+		tableName := translateTableName(table)
 
 		var colList tree.NameList
 		if len(stmt.Columns) > 0 {
@@ -128,19 +280,73 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		return []string{ctx.String()}, true
 	}
 
+	// Plain INSERTs still need the qualified-name rewrite when they reference
+	// a `db.tbl` target so the table gets the postgres `db.public.tbl` form.
+	if containsQualifiedTableName(stmt) {
+		return []string{formatNode(stmt)}, true
+	}
+
 	return nil, false
 }
 
+// translateTableName converts a vitess MySQL TableName into a postgres TableName.
+// MySQL `db.tbl` maps to postgres `db.public.tbl`; bare `tbl` stays bare.
+// We mark the catalog/schema as "explicit" only when the source had a db
+// qualifier so the format callback in formatNodeWithUnqualifiedTableNames can
+// strip the prefix for unqualified names.
+//
+// Known schema names (`information_schema`, `pg_catalog`, etc.) are not
+// translated: MySQL exposes them as if they were databases, but postgres
+// exposes them as schemas, and the same `<schema>.<tbl>` form works in both.
 func translateTableName(table sqlparser.TableName) *tree.TableName {
-	return tree.NewTableName(tree.Name(table.DbQualifier.String()), tree.Name(table.Name.String()))
+	if table.DbQualifier.IsEmpty() {
+		// Unqualified: just the table name; let the formatter omit the prefix.
+		return tree.NewUnqualifiedTableName(tree.Name(table.Name.String()))
+	}
+	if isWellKnownSchema(table.DbQualifier.String()) {
+		// `schema.tbl` in postgres terms — encode the qualifier as the schema,
+		// not the catalog. ExplicitSchema/ExplicitCatalog handling differs in
+		// the format callback below.
+		tn := tree.MakeTableNameWithSchema(
+			"",
+			tree.Name(table.DbQualifier.String()),
+			tree.Name(table.Name.String()),
+		)
+		return &tn
+	}
+	tn := tree.MakeTableNameWithSchema(
+		tree.Name(table.DbQualifier.String()),
+		"public",
+		tree.Name(table.Name.String()),
+	)
+	return &tn
+}
+
+// isWellKnownSchema returns true if the given identifier is a postgres-style
+// schema (rather than a user database). When MySQL writes `information_schema.t`
+// the user intent is the system schema; postgres exposes it under the same name.
+func isWellKnownSchema(name string) bool {
+	switch strings.ToLower(name) {
+	case "information_schema", "pg_catalog", "performance_schema", "mysql", "sys":
+		return true
+	}
+	return false
 }
 
 func TableNameToUnresolvedObjectName(table sqlparser.TableName) *tree.UnresolvedObjectName {
-	if !table.DbQualifier.IsEmpty() {
-		panic(fmt.Sprintf("unhandled case: db qualifier present %v", table))
+	if table.DbQualifier.IsEmpty() {
+		name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Name.String(), "", ""}, 0)
+		if err != nil {
+			panic(err)
+		}
+		return name
 	}
-
-	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Name.String(), "", ""}, 0)
+	// MySQL db.tbl → postgres db.public.tbl (3 parts).
+	name, err := tree.NewUnresolvedObjectName(3, [3]string{
+		table.Name.String(),
+		"public",
+		table.DbQualifier.String(),
+	}, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -281,7 +487,7 @@ func convertTableExpr(table sqlparser.TableExpr) tree.TableExpr {
 		switch tableExpr := table.Expr.(type) {
 		case sqlparser.TableName:
 			return &tree.AliasedTableExpr{
-				Expr: tree.NewTableName(tree.Name(tableExpr.DbQualifier.String()), tree.Name(tableExpr.Name.String())),
+				Expr: translateTableName(tableExpr),
 				As: tree.AliasClause{
 					Alias: tree.Name(table.As.String()),
 				},
@@ -374,6 +580,32 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 	case *sqlparser.SQLVal:
 		return convertSQLVal(val)
 	case *sqlparser.ColName:
+		// Translate MySQL column references into postgres equivalents.
+		// MySQL uses a single qualifier for the database; postgres uses two
+		// (catalog + schema), with `public` as the conventional default
+		// schema when MySQL only gave a db name.
+		//   `col`                        -> col
+		//   `tbl.col`                    -> tbl.col
+		//   `db.tbl.col`                 -> db.public.tbl.col
+		//   `information_schema.tbl.col` -> information_schema.tbl.col
+		if !val.Qualifier.DbQualifier.IsEmpty() {
+			if isWellKnownSchema(val.Qualifier.DbQualifier.String()) {
+				return tree.NewUnresolvedName(
+					val.Qualifier.DbQualifier.String(),
+					val.Qualifier.Name.String(),
+					val.Name.String(),
+				)
+			}
+			return tree.NewUnresolvedName(
+				val.Qualifier.DbQualifier.String(),
+				"public",
+				val.Qualifier.Name.String(),
+				val.Name.String(),
+			)
+		}
+		if !val.Qualifier.Name.IsEmpty() {
+			return tree.NewUnresolvedName(val.Qualifier.Name.String(), val.Name.String())
+		}
 		return tree.NewUnresolvedName(val.Name.String())
 	case *sqlparser.FuncExpr:
 		return convertFuncExpr(val)
@@ -383,10 +615,28 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 		return convertBinaryExpr(val)
 	case *sqlparser.ComparisonExpr:
 		return convertComparisonExpr(val)
+	case *sqlparser.AndExpr:
+		return &tree.AndExpr{
+			Left:  convertExpr(val.Left),
+			Right: convertExpr(val.Right),
+		}
+	case *sqlparser.OrExpr:
+		return &tree.OrExpr{
+			Left:  convertExpr(val.Left),
+			Right: convertExpr(val.Right),
+		}
+	case *sqlparser.NotExpr:
+		return &tree.NotExpr{
+			Expr: convertExpr(val.Expr),
+		}
+	case *sqlparser.IsExpr:
+		return convertIsExpr(val)
+	case *sqlparser.UnaryExpr:
+		return convertUnaryExpr(val)
 	case *sqlparser.Subquery:
 		return convertSubquery(val)
 	case *sqlparser.ParenExpr:
-		return convertExpr(val.Expr)
+		return &tree.ParenExpr{Expr: convertExpr(val.Expr)}
 	case sqlparser.ValTuple:
 		return convertValTuple(val)
 	case *sqlparser.NullVal:
@@ -396,6 +646,46 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 		return &boolVal
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
+	}
+}
+
+func convertIsExpr(val *sqlparser.IsExpr) tree.Expr {
+	inner := convertExpr(val.Expr)
+	switch val.Operator {
+	case sqlparser.IsNullStr:
+		return &tree.IsNullExpr{Expr: inner}
+	case sqlparser.IsNotNullStr:
+		return &tree.IsNotNullExpr{Expr: inner}
+	case sqlparser.IsTrueStr:
+		boolVal := tree.DBool(true)
+		return &tree.ComparisonExpr{Operator: tree.IsNotDistinctFrom, Left: inner, Right: &boolVal}
+	case sqlparser.IsNotTrueStr:
+		boolVal := tree.DBool(true)
+		return &tree.ComparisonExpr{Operator: tree.IsDistinctFrom, Left: inner, Right: &boolVal}
+	case sqlparser.IsFalseStr:
+		boolVal := tree.DBool(false)
+		return &tree.ComparisonExpr{Operator: tree.IsNotDistinctFrom, Left: inner, Right: &boolVal}
+	case sqlparser.IsNotFalseStr:
+		boolVal := tree.DBool(false)
+		return &tree.ComparisonExpr{Operator: tree.IsDistinctFrom, Left: inner, Right: &boolVal}
+	default:
+		panic(fmt.Sprintf("unhandled IS operator: %s", val.Operator))
+	}
+}
+
+func convertUnaryExpr(val *sqlparser.UnaryExpr) tree.Expr {
+	switch val.Operator {
+	case sqlparser.UMinusStr:
+		return &tree.UnaryExpr{Operator: tree.UnaryMinus, Expr: convertExpr(val.Expr)}
+	case sqlparser.UPlusStr:
+		// Unary plus is a no-op in both MySQL and Postgres
+		return convertExpr(val.Expr)
+	case sqlparser.TildaStr:
+		return &tree.UnaryExpr{Operator: tree.UnaryComplement, Expr: convertExpr(val.Expr)}
+	case sqlparser.BangStr:
+		return &tree.NotExpr{Expr: convertExpr(val.Expr)}
+	default:
+		panic(fmt.Sprintf("unhandled unary operator: %s", val.Operator))
 	}
 }
 
@@ -433,6 +723,9 @@ func convertComparisonExpr(val *sqlparser.ComparisonExpr) tree.Expr {
 		op = tree.GE
 	case sqlparser.NotEqualStr:
 		op = tree.NE
+	case sqlparser.NullSafeEqualStr:
+		// MySQL's <=> is null-safe equality; Postgres equivalent is IS NOT DISTINCT FROM
+		op = tree.IsNotDistinctFrom
 	case sqlparser.InStr:
 		op = tree.In
 	case sqlparser.NotInStr:
@@ -474,6 +767,8 @@ func convertBinaryExpr(val *sqlparser.BinaryExpr) tree.Expr {
 		op = tree.Mult
 	case sqlparser.DivStr:
 		op = tree.Div
+	case sqlparser.IntDivStr:
+		op = tree.FloorDiv
 	case sqlparser.ModStr:
 		op = tree.Mod
 	case sqlparser.ShiftLeftStr:
@@ -538,95 +833,290 @@ func convertDdlStatement(statement *sqlparser.DDL) ([]string, bool) {
 	switch statement.Action {
 	case "alter":
 		if statement.ColumnAction != "" {
-			switch statement.ColumnAction {
-			case "modify":
-				if len(statement.TableSpec.Columns) != 1 {
-					return nil, false
-				}
-
-				stmts := make([]string, 0)
-
-				col := statement.TableSpec.Columns[0]
-				tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
-				if err != nil {
-					panic(err)
-				}
-
-				newType := convertTypeDef(col.Type)
-				alter := tree.AlterTable{
-					Table: tableName,
-					Cmds: []tree.AlterTableCmd{
-						&tree.AlterTableAlterColumnType{
-							Column: tree.Name(col.Name.String()),
-							ToType: newType,
-						},
-					},
-				}
-
-				ctx := formatNodeWithUnqualifiedTableNames(&alter)
-				stmts = append(stmts, ctx.String())
-
-				// constraints
-				if col.Type.NotNull {
-					alter.Cmds = []tree.AlterTableCmd{
-						&tree.AlterTableSetNotNull{
-							Column: tree.Name(col.Name.String()),
-						},
-					}
-					ctx = formatNodeWithUnqualifiedTableNames(&alter)
-					stmts = append(stmts, ctx.String())
-				} else {
-					alter.Cmds = []tree.AlterTableCmd{
-						&tree.AlterTableDropNotNull{
-							Column: tree.Name(col.Name.String()),
-						},
-					}
-					ctx = formatNodeWithUnqualifiedTableNames(&alter)
-					stmts = append(stmts, ctx.String())
-				}
-
-				// rename
-				if statement.Column.String() != col.Name.String() {
-					alter.Cmds = []tree.AlterTableCmd{
-						&tree.AlterTableRenameColumn{
-							Column:  tree.Name(statement.Column.String()),
-							NewName: tree.Name(col.Name.String()),
-						},
-					}
-					ctx = formatNodeWithUnqualifiedTableNames(&alter)
-					stmts = append(stmts, ctx.String())
-				}
-
-				return stmts, true
-			default:
-				return nil, false
-			}
+			return convertColumnAlter(statement)
+		}
+		if statement.ConstraintAction != "" {
+			return convertConstraintAlter(statement)
 		}
 		if statement.IndexSpec != nil {
-			switch statement.IndexSpec.Action {
-			case "drop":
-				tableName := tree.NewTableName(tree.Name(""), tree.Name(statement.Table.Name.String()))
-				indexName := statement.IndexSpec.ToName.String()
-				if statement.IndexSpec.Type == "primary" {
-					indexName = "PRIMARY"
-				}
-				dropIndex := tree.DropIndex{
-					IndexList: tree.TableIndexNames{
-						{
-							Table: *tableName,
-							Index: tree.UnrestrictedName(indexName),
-						},
-					},
-				}
+			return convertIndexAlter(statement)
+		}
+		return nil, false
+	case "rename":
+		// ALTER TABLE ... RENAME TO ...  (table rename within an ALTER TABLE)
+		if len(statement.FromTables) == 1 && len(statement.ToTables) == 1 {
+			rename := &tree.RenameTable{
+				Name:    TableNameToUnresolvedObjectName(statement.FromTables[0]),
+				NewName: TableNameToUnresolvedObjectName(statement.ToTables[0]),
+			}
+			return []string{formatNodeWithUnqualifiedTableNames(rename).String()}, true
+		}
+		return nil, false
+	default:
+		return nil, false
+	}
+}
 
-				ctx := formatNodeWithUnqualifiedTableNames(&dropIndex)
-				return []string{ctx.String()}, true
-			default:
+// convertColumnAlter handles ALTER TABLE ADD/DROP/MODIFY/CHANGE/RENAME COLUMN clauses.
+func convertColumnAlter(statement *sqlparser.DDL) ([]string, bool) {
+	tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+	if err != nil {
+		panic(err)
+	}
+
+	switch statement.ColumnAction {
+	case "add":
+		if statement.TableSpec == nil || len(statement.TableSpec.Columns) != 1 {
+			return nil, false
+		}
+		col := statement.TableSpec.Columns[0]
+		// AUTO_INCREMENT in ADD COLUMN would require us to emit a CREATE SEQUENCE
+		// statement too; skip for now to avoid silently producing a column without
+		// a working default.
+		if col.Type.Autoincrement {
+			return nil, false
+		}
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableAddColumn{
+					IfNotExists: statement.IfNotExists,
+					ColumnDef:   columnDefFromMySQL(col, ""),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	case "drop":
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableDropColumn{
+					IfExists: statement.IfExists,
+					Column:   tree.Name(statement.Column.String()),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	case "rename":
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableRenameColumn{
+					Column:  tree.Name(statement.Column.String()),
+					NewName: tree.Name(statement.ToColumn.String()),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	case "modify", "change":
+		if statement.TableSpec == nil || len(statement.TableSpec.Columns) != 1 {
+			return nil, false
+		}
+		col := statement.TableSpec.Columns[0]
+		stmts := make([]string, 0)
+
+		newType := convertTypeDef(col.Type)
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableAlterColumnType{
+					Column: tree.Name(col.Name.String()),
+					ToType: newType,
+				},
+			},
+		}
+		stmts = append(stmts, formatNodeWithUnqualifiedTableNames(&alter).String())
+
+		if col.Type.NotNull {
+			alter.Cmds = []tree.AlterTableCmd{
+				&tree.AlterTableSetNotNull{Column: tree.Name(col.Name.String())},
+			}
+		} else {
+			alter.Cmds = []tree.AlterTableCmd{
+				&tree.AlterTableDropNotNull{Column: tree.Name(col.Name.String())},
+			}
+		}
+		stmts = append(stmts, formatNodeWithUnqualifiedTableNames(&alter).String())
+
+		// CHANGE may also rename the column.
+		if statement.Column.String() != "" && statement.Column.String() != col.Name.String() {
+			alter.Cmds = []tree.AlterTableCmd{
+				&tree.AlterTableRenameColumn{
+					Column:  tree.Name(statement.Column.String()),
+					NewName: tree.Name(col.Name.String()),
+				},
+			}
+			stmts = append(stmts, formatNodeWithUnqualifiedTableNames(&alter).String())
+		}
+
+		return stmts, true
+
+	default:
+		return nil, false
+	}
+}
+
+// convertConstraintAlter handles ALTER TABLE ADD/DROP/RENAME CONSTRAINT clauses,
+// covering foreign keys and check constraints.
+func convertConstraintAlter(statement *sqlparser.DDL) ([]string, bool) {
+	if statement.TableSpec == nil || len(statement.TableSpec.Constraints) == 0 {
+		return nil, false
+	}
+
+	switch statement.ConstraintAction {
+	case "add":
+		// One constraint per ADD clause in the MySQL parse tree.
+		c := statement.TableSpec.Constraints[0]
+		tableName := *translateTableName(statement.Table)
+		switch d := c.Details.(type) {
+		case *sqlparser.ForeignKeyDefinition:
+			return []string{createForeignKeyStatement(tableName, d)}, true
+		case *sqlparser.CheckConstraintDefinition:
+			return []string{createCheckConstraintStatement(tableName, d)}, true
+		default:
+			return nil, false
+		}
+
+	case "drop":
+		// MySQL has separate DROP FOREIGN KEY / DROP CHECK syntax; postgres uses
+		// generic DROP CONSTRAINT regardless of constraint kind.
+		c := statement.TableSpec.Constraints[0]
+		tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+		if err != nil {
+			panic(err)
+		}
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableDropConstraint{
+					Constraint: tree.Name(c.Name),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	case "rename":
+		// MySQL: ALTER TABLE t RENAME [CONSTRAINT] foo TO bar. Vitess models this
+		// by stashing the two names in TableSpec.Constraints (first = old, second = new).
+		if len(statement.TableSpec.Constraints) < 2 {
+			return nil, false
+		}
+		tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+		if err != nil {
+			panic(err)
+		}
+		alter := tree.AlterTable{
+			Table: tableName,
+			Cmds: []tree.AlterTableCmd{
+				&tree.AlterTableRenameConstraint{
+					Constraint: tree.Name(statement.TableSpec.Constraints[0].Name),
+					NewName:    tree.Name(statement.TableSpec.Constraints[1].Name),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+
+	default:
+		return nil, false
+	}
+}
+
+// convertIndexAlter handles ALTER TABLE ADD/DROP/RENAME INDEX clauses.
+// Postgres expresses CREATE INDEX as a top-level statement (not an ALTER TABLE
+// command), so we emit a CREATE INDEX statement when adding.
+func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
+	switch statement.IndexSpec.Action {
+	case "drop":
+		tableName := translateTableName(statement.Table)
+		indexName := statement.IndexSpec.ToName.String()
+		if statement.IndexSpec.Type == "primary" {
+			indexName = "PRIMARY"
+		}
+		dropIndex := tree.DropIndex{
+			IndexList: tree.TableIndexNames{
+				{
+					Table: *tableName,
+					Index: tree.UnrestrictedName(indexName),
+				},
+			},
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&dropIndex).String()}, true
+
+	case "create":
+		// Bail out for index kinds the converter can't faithfully translate yet:
+		// MySQL prefix-key syntax (col(N)) and expression-only fields (functional
+		// indexes like `((LOWER(name)))`). Without bailing, we'd emit a
+		// malformed CreateIndex tree that panics on Format.
+		for _, f := range statement.IndexSpec.Fields {
+			if f.Length != nil || f.Column.IsEmpty() {
 				return nil, false
 			}
 		}
 
-		return nil, false
+		// MySQL's ALTER TABLE ... ADD INDEX/UNIQUE/PRIMARY KEY. The PRIMARY KEY
+		// variant has no postgres ALTER form that survives the existing harness
+		// (Doltgres has no DROP PRIMARY KEY either), so leave it alone.
+		if statement.IndexSpec.Type == "primary" {
+			tableName, err := tree.NewUnresolvedObjectName(1, [3]string{statement.Table.Name.String(), "", ""}, 0)
+			if err != nil {
+				panic(err)
+			}
+			cols := make(tree.IndexElemList, len(statement.IndexSpec.Fields))
+			for i, f := range statement.IndexSpec.Fields {
+				cols[i] = tree.IndexElem{Column: tree.Name(f.Column.String())}
+			}
+			alter := tree.AlterTable{
+				Table: tableName,
+				Cmds: []tree.AlterTableCmd{
+					&tree.AlterTableAddConstraint{
+						ConstraintDef: &tree.UniqueConstraintTableDef{
+							PrimaryKey: true,
+							IndexTableDef: tree.IndexTableDef{
+								Columns: cols,
+							},
+						},
+					},
+				},
+			}
+			return []string{formatNodeWithUnqualifiedTableNames(&alter).String()}, true
+		}
+
+		// Skip fulltext/spatial/vector — Postgres has no direct equivalent.
+		if statement.IndexSpec.Type == "fulltext" || statement.IndexSpec.Type == "spatial" || statement.IndexSpec.Type == "vector" {
+			return nil, false
+		}
+
+		cols := make(tree.IndexElemList, len(statement.IndexSpec.Fields))
+		for i, f := range statement.IndexSpec.Fields {
+			cols[i] = tree.IndexElem{
+				Column:    tree.Name(f.Column.String()),
+				Direction: tree.Ascending,
+			}
+		}
+		createIndex := tree.CreateIndex{
+			Name:    tree.Name(statement.IndexSpec.ToName.String()),
+			Table:   *translateTableName(statement.Table),
+			Unique:  statement.IndexSpec.Type == "unique",
+			Columns: cols,
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&createIndex).String()}, true
+
+	case "rename":
+		tableName := translateTableName(statement.Table)
+		from := statement.IndexSpec.FromName.String()
+		to := statement.IndexSpec.ToName.String()
+		renameIndex := tree.RenameIndex{
+			Index: &tree.TableIndexName{
+				Table: *tableName,
+				Index: tree.UnrestrictedName(from),
+			},
+			NewName: tree.UnrestrictedName(to),
+		}
+		return []string{formatNodeWithUnqualifiedTableNames(&renameIndex).String()}, true
+
 	default:
 		return nil, false
 	}
@@ -643,7 +1133,35 @@ func transformSelect(stmt *sqlparser.Select) ([]string, bool) {
 
 func shouldRewriteSelect(stmt *sqlparser.Select) bool {
 	return containsUserVars(stmt) ||
-		containsBinaryConversion(stmt)
+		containsBinaryConversion(stmt) ||
+		containsQualifiedTableName(stmt)
+}
+
+// containsQualifiedTableName reports whether the given node references a
+// MySQL `db.tbl` identifier whose qualifier is a real user database (not a
+// well-known postgres schema). Such queries need to be re-formatted so the
+// converter can insert the postgres `public` schema between catalog and
+// table. Queries that only reference `information_schema` etc. are left
+// untouched.
+func containsQualifiedTableName(stmt sqlparser.SQLNode) bool {
+	found := false
+	walker := func(node sqlparser.SQLNode) (bool, error) {
+		switch n := node.(type) {
+		case sqlparser.TableName:
+			if !n.DbQualifier.IsEmpty() && !isWellKnownSchema(n.DbQualifier.String()) {
+				found = true
+				return false, nil
+			}
+		case *sqlparser.ColName:
+			if !n.Qualifier.DbQualifier.IsEmpty() && !isWellKnownSchema(n.Qualifier.DbQualifier.String()) {
+				found = true
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	sqlparser.Walk(walker, stmt)
+	return found
 }
 
 func containsBinaryConversion(stmt *sqlparser.Select) bool {
@@ -687,19 +1205,10 @@ func containsUserVars(stmt *sqlparser.Select) bool {
 		}
 		return true, nil
 	}
-
-	for _, sel := range stmt.SelectExprs {
-		sqlparser.Walk(detectUserVar, sel)
-	}
-
-	if foundUserVar {
-		return true
-	}
-
-	if stmt.Where != nil {
-		sqlparser.Walk(detectUserVar, stmt.Where)
-	}
-
+	// Walk the whole statement so user variables get detected anywhere they
+	// appear — SELECT expressions, WHERE, GROUP BY, ORDER BY, and crucially
+	// FROM ... AS OF expressions (e.g. `FROM tbl AS OF @rev1`).
+	sqlparser.Walk(detectUserVar, stmt)
 	return foundUserVar
 }
 
@@ -740,12 +1249,49 @@ func formatNode(node sqlparser.SQLNode) string {
 func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode) {
 	switch node := node.(type) {
 	case sqlparser.ColIdent:
-		if strings.HasPrefix(node.String(), "@@") {
+		// MySQL `@var` and `@@var` references map to postgres' current_setting().
+		// All other identifiers go through tree.AutoQuoteIdent so that names
+		// containing special characters or matching a reserved keyword come out
+		// double-quoted (postgres' quoting style) rather than backticked
+		// (vitess' default formatID behavior).
+		switch {
+		case strings.HasPrefix(node.String(), "@@"):
 			buf.Myprintf("current_setting('.%s')", strings.TrimLeft(node.String(), "@"))
-		} else if strings.HasPrefix(node.String(), "@") {
+		case strings.HasPrefix(node.String(), "@"):
 			buf.Myprintf("current_setting('doltgres_enginetest.%s')", strings.TrimLeft(node.String(), "@"))
-		} else {
-			buf.Myprintf("%s", node.Lowered())
+		default:
+			buf.WriteString(AutoQuoteIdent(node.Lowered()))
+		}
+	case sqlparser.TableIdent:
+		// Same auto-quoting story as ColIdent; vitess' formatID would
+		// otherwise wrap special-character identifiers in backticks.
+		buf.WriteString(AutoQuoteIdent(node.String()))
+	case sqlparser.TableName:
+		// MySQL `db.tbl` → postgres `db.public.tbl`. MySQL has no schema
+		// concept, so we insert `public` (postgres' default schema) between
+		// the catalog and table when a database qualifier is present —
+		// except for well-known schemas like `information_schema`, where the
+		// MySQL qualifier already lines up with a postgres schema.
+		switch {
+		case node.DbQualifier.IsEmpty():
+			buf.Myprintf("%v", node.Name)
+		case isWellKnownSchema(node.DbQualifier.String()):
+			buf.Myprintf("%v.%v", node.DbQualifier, node.Name)
+		default:
+			buf.Myprintf("%v.public.%v", node.DbQualifier, node.Name)
+		}
+	case *sqlparser.ColName:
+		// Same translation for qualified column references: `db.tbl.col` →
+		// `db.public.tbl.col`, leaving `information_schema.tbl.col` alone.
+		switch {
+		case node.Qualifier.DbQualifier.IsEmpty() && node.Qualifier.Name.IsEmpty():
+			buf.Myprintf("%v", node.Name)
+		case node.Qualifier.DbQualifier.IsEmpty():
+			buf.Myprintf("%v.%v", node.Qualifier.Name, node.Name)
+		case isWellKnownSchema(node.Qualifier.DbQualifier.String()):
+			buf.Myprintf("%v.%v.%v", node.Qualifier.DbQualifier, node.Qualifier.Name, node.Name)
+		default:
+			buf.Myprintf("%v.public.%v.%v", node.Qualifier.DbQualifier, node.Qualifier.Name, node.Name)
 		}
 	case *sqlparser.UnaryExpr:
 		if node.Operator == "binary " {
@@ -768,6 +1314,51 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 
 var sequenceNum int
 
+// columnDefFromMySQL converts a parsed MySQL column definition into a Postgres
+// ColumnTableDef. The optional sequenceName argument is used as the source for
+// AUTO_INCREMENT columns; passing "" means callers don't want auto-increment
+// handled (e.g. ALTER TABLE ADD COLUMN where we don't currently emit a
+// CREATE SEQUENCE alongside).
+func columnDefFromMySQL(col *sqlparser.ColumnDefinition, sequenceName string) *tree.ColumnTableDef {
+	defVal := convertExpr(col.Type.Default)
+
+	if col.Type.Autoincrement && sequenceName != "" {
+		defVal = &tree.FuncExpr{
+			Func: tree.WrapFunction("nextval"),
+			Exprs: []tree.Expr{
+				tree.NewStrVal(sequenceName),
+			},
+		}
+	}
+
+	return &tree.ColumnTableDef{
+		Name:      tree.Name(col.Name.String()),
+		Type:      convertTypeDef(col.Type),
+		Collation: "", // TODO
+		Nullable: struct {
+			Nullability    tree.Nullability
+			ConstraintName tree.Name
+		}{
+			Nullability: convertNullability(col.Type),
+		},
+		PrimaryKey: struct {
+			IsPrimaryKey bool
+		}{
+			IsPrimaryKey: col.Type.KeyOpt == 1, // TODO: unexported const
+		},
+		Unique:               col.Type.KeyOpt == 3, // TODO: unexported const
+		UniqueConstraintName: "",                   // TODO
+		DefaultExpr: struct {
+			Expr           tree.Expr
+			ConstraintName tree.Name
+		}{
+			Expr:           defVal,
+			ConstraintName: "", // TODO
+		},
+		CheckExprs: nil, // TODO
+	}
+}
+
 func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	if stmt.TableSpec == nil {
 		return nil, false
@@ -775,50 +1366,18 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 
 	createTable := tree.CreateTable{
 		IfNotExists: stmt.IfNotExists,
-		Table:       tree.MakeTableNameWithSchema("", "", tree.Name(stmt.Table.Name.String())), // TODO: qualified names
+		Table:       *translateTableName(stmt.Table),
 	}
 
 	var queries []string
 	var autoIncColumn string
 	for _, col := range stmt.TableSpec.Columns {
-		defVal := convertExpr(col.Type.Default)
-
+		seqName := ""
 		if col.Type.Autoincrement {
 			autoIncColumn = col.Name.String()
-			defVal = &tree.FuncExpr{
-				Func: tree.WrapFunction("nextval"),
-				Exprs: []tree.Expr{
-					tree.NewStrVal(fmt.Sprintf("seq_%d", sequenceNum)),
-				},
-			}
+			seqName = fmt.Sprintf("seq_%d", sequenceNum)
 		}
-
-		createTable.Defs = append(createTable.Defs, &tree.ColumnTableDef{
-			Name:      tree.Name(col.Name.String()),
-			Type:      convertTypeDef(col.Type),
-			Collation: "", // TODO
-			Nullable: struct {
-				Nullability    tree.Nullability
-				ConstraintName tree.Name
-			}{
-				Nullability: convertNullability(col.Type),
-			},
-			PrimaryKey: struct {
-				IsPrimaryKey bool
-			}{
-				IsPrimaryKey: col.Type.KeyOpt == 1, // TODO: unexported const
-			},
-			Unique:               col.Type.KeyOpt == 3, // TODO: unexported const
-			UniqueConstraintName: "",                   // TODO
-			DefaultExpr: struct {
-				Expr           tree.Expr
-				ConstraintName tree.Name
-			}{
-				Expr:           defVal,
-				ConstraintName: "", // TODO
-			},
-			CheckExprs: nil, // TODO
-		})
+		createTable.Defs = append(createTable.Defs, columnDefFromMySQL(col, seqName))
 	}
 
 	// convert any primary key indexes
@@ -869,7 +1428,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 
 			createIndex := tree.CreateIndex{
 				Name:    tree.Name(index.Info.Name.String()),
-				Table:   tree.MakeTableNameWithSchema("", "", tree.Name(stmt.Table.Name.String())), // TODO: qualified
+				Table:   *translateTableName(stmt.Table),
 				Unique:  index.Info.Unique,
 				Columns: make(tree.IndexElemList, len(index.Fields)),
 			}
@@ -946,7 +1505,7 @@ func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefi
 	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
 		ConstraintDef: &tree.ForeignKeyConstraintTableDef{
 			FromCols: fromCols,
-			Table:    tree.MakeTableName(tree.Name(""), tree.Name(c.ReferencedTable.Name.String())),
+			Table:    *translateTableName(c.ReferencedTable),
 			ToCols:   toCols,
 			Actions: tree.ReferenceActions{
 				Delete: onDelete,
@@ -990,10 +1549,31 @@ func translateRefAction(action sqlparser.ReferenceAction) tree.RefAction {
 	}
 }
 
-// The default formatter always qualifies table names with db name and schema name, which we don't want in most cases
+// formatNodeWithUnqualifiedTableNames formats a node and, by default, prints
+// table names unqualified. The default postgres formatter always emits the
+// fully-qualified `catalog.schema.table` form, which is too noisy when we
+// haven't actually been given a qualifier. We do, however, want to preserve
+// qualifiers when the source MySQL query had one — see translateTableName for
+// the rules.
 func formatNodeWithUnqualifiedTableNames(n tree.NodeFormatter) *tree.FmtCtx {
 	ctx := tree.NewFmtCtx(tree.FmtSimple)
 	ctx.SetReformatTableNames(func(ctx *tree.FmtCtx, tn *tree.TableName) {
+		switch {
+		case tn.ExplicitCatalog && tn.CatalogName != "":
+			ctx.FormatNode(&tn.CatalogName)
+			ctx.WriteByte('.')
+			schema := tn.SchemaName
+			if schema == "" {
+				schema = "public"
+			}
+			ctx.FormatNode(&schema)
+			ctx.WriteByte('.')
+		case tn.ExplicitSchema && tn.SchemaName != "":
+			// Schema-only qualifier (e.g. `information_schema.tbl`); the catalog
+			// is left implicit so postgres uses the current database.
+			ctx.FormatNode(&tn.SchemaName)
+			ctx.WriteByte('.')
+		}
 		ctx.FormatNode(&tn.ObjectName)
 	})
 	ctx.FormatNode(n)
@@ -1593,6 +2173,348 @@ func TestBoolValSupport(t *testing.T) {
 	require.Contains(t, result[0], "false", "Result should contain converted boolean literal")
 }
 
+// TestTranslateMysqlShowCreateTable covers the harness-side rewrite that
+// turns the MySQL-format CREATE TABLE text in the test fixtures into the
+// doltgres/postgres dialect, so SHOW CREATE TABLE assertions compare apples
+// to apples.
+func TestTranslateMysqlShowCreateTable(t *testing.T) {
+	type test struct {
+		name     string
+		input    string
+		expected string
+	}
+	tests := []test{
+		{
+			name: "basic types and PRIMARY KEY",
+			input: "CREATE TABLE `a` (\n" +
+				"  `pk` int NOT NULL,\n" +
+				"  `c1` int,\n" +
+				"  PRIMARY KEY (`pk`)\n" +
+				") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
+			expected: "CREATE TABLE \"a\" (\n" +
+				"  \"pk\" integer NOT NULL,\n" +
+				"  \"c1\" integer,\n" +
+				"  PRIMARY KEY (\"pk\")\n" +
+				")",
+		},
+		{
+			name: "non-unique KEY dropped; UNIQUE KEY becomes CONSTRAINT",
+			input: "CREATE TABLE `tbl` (\n" +
+				"  `a` int NOT NULL,\n" +
+				"  PRIMARY KEY (`a`),\n" +
+				"  KEY `tbl_bc` (`b`,`c`),\n" +
+				"  UNIQUE KEY `tbl_c` (`c`)\n" +
+				") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
+			expected: "CREATE TABLE \"tbl\" (\n" +
+				"  \"a\" integer NOT NULL,\n" +
+				"  PRIMARY KEY (\"a\"),\n" +
+				"  CONSTRAINT \"tbl_c\" UNIQUE (\"c\")\n" +
+				")",
+		},
+		{
+			name: "DEFAULT CURRENT_TIMESTAMP and doubled parens",
+			input: "CREATE TABLE `t` (\n" +
+				"  `a` int DEFAULT CURRENT_TIMESTAMP,\n" +
+				"  `b` int NOT NULL DEFAULT ((7 + 11))\n" +
+				") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
+			expected: "CREATE TABLE \"t\" (\n" +
+				"  \"a\" integer DEFAULT (now()),\n" +
+				"  \"b\" integer NOT NULL DEFAULT (7 + 11)\n" +
+				")",
+		},
+		{
+			name: "type-name substitutions",
+			input: "CREATE TABLE `types` (\n" +
+				"  `a` tinyint,\n" +
+				"  `b` smallint,\n" +
+				"  `c` mediumint,\n" +
+				"  `d` bigint,\n" +
+				"  `e` float,\n" +
+				"  `f` double,\n" +
+				"  `g` decimal(10,2),\n" +
+				"  `h` blob,\n" +
+				"  `i` datetime,\n" +
+				"  `j` char(5)\n" +
+				") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin",
+			expected: "CREATE TABLE \"types\" (\n" +
+				"  \"a\" smallint,\n" +
+				"  \"b\" smallint,\n" +
+				"  \"c\" integer,\n" +
+				"  \"d\" bigint,\n" +
+				"  \"e\" real,\n" +
+				"  \"f\" double precision,\n" +
+				"  \"g\" numeric,\n" +
+				"  \"h\" bytea,\n" +
+				"  \"i\" timestamp,\n" +
+				"  \"j\" bpchar(5)\n" +
+				")",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := translateMysqlShowCreateTable(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+// TestAutoQuotedIdentifiers verifies that identifiers needing quoting come
+// out double-quoted in postgres-style
+func TestAutoQuotedIdentifiers(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input:    "SELECT * FROM `mydb/b2`.t",
+			expected: []string{`select * from "mydb/b2".public.t`},
+		},
+		{
+			input:    "INSERT INTO `mydb/b2`.t VALUES (1)",
+			expected: []string{`insert into "mydb/b2".public.t values (1)`},
+		},
+		{
+			input:    "USE `mydb/b2`",
+			expected: []string{`USE "mydb/b2"`},
+		},
+		{
+			input:    "SELECT `weird-col` FROM t",
+			expected: []string{`SELECT "weird-col" FROM t`},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+// TestQualifiedNameConversion covers the MySQL→Postgres translation of
+// `db.tbl` → `db.public.tbl` (and column-qualified equivalents).
+func TestQualifiedNameConversion(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input:    "CREATE TABLE test.x (pk int primary key)",
+			expected: []string{"CREATE TABLE test.public.x (pk INTEGER NOT NULL PRIMARY KEY)"},
+		},
+		{
+			input:    "INSERT INTO test.x VALUES (1, 2) on duplicate key update a = 5",
+			expected: []string{"INSERT INTO test.public.x VALUES (1, 2) ON CONFLICT (fake) DO UPDATE SET a = 5"},
+		},
+		{
+			input:    "SELECT pk FROM test.x",
+			expected: []string{"select pk from test.public.x"},
+		},
+		{
+			input:    "SELECT db1.t1.i FROM db1.t1 WHERE db1.t1.i > 0",
+			expected: []string{"select db1.public.t1.i from db1.public.t1 where db1.public.t1.i > 0"},
+		},
+		{
+			input:    "DELETE FROM test.x WHERE pk = 2",
+			expected: []string{"delete from test.public.x where pk = 2"},
+		},
+		{
+			input:    "UPDATE test.x SET pk = 300 WHERE pk = 3",
+			expected: []string{"update test.public.x set pk = 300 where pk = 3"},
+		},
+		// Unqualified queries should pass through untouched by the qualified-name path.
+		{
+			input:    "CREATE TABLE x (pk int primary key)",
+			expected: []string{"CREATE TABLE x (pk INTEGER NOT NULL PRIMARY KEY)"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+// TestReplaceIntoConversion covers REPLACE INTO → INSERT ... ON CONFLICT
+// DO UPDATE SET col = EXCLUDED.col translation.
+func TestReplaceIntoConversion(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input: "REPLACE INTO mytable (i, s) VALUES (1, 'first row')",
+			expected: []string{
+				"INSERT INTO mytable(i, s) VALUES (1, 'first row') ON CONFLICT (fake) DO UPDATE SET i = 1, s = 'first row'",
+			},
+		},
+		{
+			input: "REPLACE INTO mytable SET i = 1, s = 'first row'",
+			expected: []string{
+				"INSERT INTO mytable(i, s) VALUES (1, 'first row') ON CONFLICT (fake) DO UPDATE SET i = 1, s = 'first row'",
+			},
+		},
+		{
+			input: "REPLACE INTO mytable (s, i) VALUES ('x', 999)",
+			expected: []string{
+				"INSERT INTO mytable(s, i) VALUES ('x', 999) ON CONFLICT (fake) DO UPDATE SET s = 'x', i = 999",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+// TestUpdateIgnoreConversion covers translating UPDATE IGNORE into an
+// INSERT ... ON CONFLICT DO NOTHING form. Non-IGNORE UPDATEs are left alone.
+func TestUpdateIgnoreConversion(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input: "UPDATE IGNORE mytable SET i = 2 WHERE i = 1",
+			expected: []string{
+				"INSERT INTO mytable(i) SELECT 2 FROM mytable WHERE i = 1 ON CONFLICT (fake) DO NOTHING",
+			},
+		},
+		{
+			input: "UPDATE IGNORE pkTable SET pk = pk + 1, val = val + 1",
+			expected: []string{
+				`INSERT INTO "pkTable"(pk, val) SELECT pk + 1, val + 1 FROM "pkTable" ON CONFLICT (fake) DO NOTHING`,
+			},
+		},
+		{
+			input: "UPDATE IGNORE t1 SET v1 = v1 + 5 WHERE pk > 3",
+			expected: []string{
+				"INSERT INTO t1(v1) SELECT v1 + 5 FROM t1 WHERE pk > 3 ON CONFLICT (fake) DO NOTHING",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+// TestAlterTableConversion covers the ALTER TABLE clauses translated by
+// convertColumnAlter / convertConstraintAlter / convertIndexAlter.
+func TestAlterTableConversion(t *testing.T) {
+	type test struct {
+		input    string
+		expected []string
+	}
+	tests := []test{
+		{
+			input:    "ALTER TABLE foo ADD COLUMN c int",
+			expected: []string{"ALTER TABLE foo ADD COLUMN c INTEGER NULL"},
+		},
+		{
+			input:    "ALTER TABLE foo ADD COLUMN c int NOT NULL DEFAULT 7",
+			expected: []string{"ALTER TABLE foo ADD COLUMN c INTEGER NOT NULL DEFAULT 7"},
+		},
+		{
+			input:    "ALTER TABLE foo DROP COLUMN c",
+			expected: []string{"ALTER TABLE foo DROP COLUMN c"},
+		},
+		{
+			input:    "ALTER TABLE foo RENAME COLUMN c TO d",
+			expected: []string{"ALTER TABLE foo RENAME COLUMN c TO d"},
+		},
+		{
+			input: "ALTER TABLE foo MODIFY COLUMN c bigint NOT NULL",
+			expected: []string{
+				"ALTER TABLE foo ALTER COLUMN c SET DATA TYPE BIGINT",
+				"ALTER TABLE foo ALTER COLUMN c SET NOT NULL",
+			},
+		},
+		{
+			input: "ALTER TABLE foo CHANGE COLUMN c d bigint",
+			expected: []string{
+				"ALTER TABLE foo ALTER COLUMN d SET DATA TYPE BIGINT",
+				"ALTER TABLE foo ALTER COLUMN d DROP NOT NULL",
+				"ALTER TABLE foo RENAME COLUMN c TO d",
+			},
+		},
+		{
+			input:    "ALTER TABLE foo RENAME TO bar",
+			expected: []string{"ALTER TABLE foo RENAME TO bar"},
+		},
+		{
+			input:    "ALTER TABLE foo DROP CONSTRAINT my_check",
+			expected: []string{"ALTER TABLE foo DROP CONSTRAINT my_check"},
+		},
+		{
+			input:    "ALTER TABLE foo DROP FOREIGN KEY my_fk",
+			expected: []string{"ALTER TABLE foo DROP CONSTRAINT my_fk"},
+		},
+		{
+			input: "ALTER TABLE foo ADD CONSTRAINT my_fk FOREIGN KEY (a) REFERENCES bar(b)",
+			expected: []string{
+				"ALTER TABLE foo ADD FOREIGN KEY (a) REFERENCES bar (b) ON DELETE RESTRICT ON UPDATE RESTRICT",
+			},
+		},
+		{
+			input:    "ALTER TABLE foo ADD INDEX my_idx (a, b)",
+			expected: []string{"CREATE INDEX my_idx ON foo ( a ASC, b ASC ) NULLS NOT DISTINCT "},
+		},
+		{
+			input:    "ALTER TABLE foo ADD UNIQUE my_uq (a)",
+			expected: []string{"CREATE UNIQUE INDEX my_uq ON foo ( a ASC ) NULLS NOT DISTINCT "},
+		},
+		{
+			input:    "ALTER TABLE foo DROP INDEX my_idx",
+			expected: []string{"DROP INDEX foo@my_idx"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := convertQuery(tc.input)
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+// TestExpressionConversionRobustness ensures convertExpr handles common
+// MySQL expression kinds (AND/OR/NOT/IS NULL/IS NOT NULL/unary +-/qualified
+// column references) without panicking. Previously any of these would crash
+// the converter with "unhandled type" when the test framework tried to
+// re-emit the parsed expression in postgres form.
+func TestExpressionConversionRobustness(t *testing.T) {
+	queries := []string{
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = -a",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = NOT b",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b IS NULL",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b IS NOT NULL",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b AND b",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b OR b",
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b DIV 2",
+	}
+
+	for _, q := range queries {
+		t.Run(q, func(t *testing.T) {
+			result := convertQuery(q)
+			require.NotEmpty(t, result)
+		})
+	}
+}
+
 // TestBitTypeSupport tests BIT type conversion for dolt#9641 compatibility
 // See: https://github.com/dolthub/dolt/issues/9641
 func TestBitTypeSupport(t *testing.T) {
@@ -1615,4 +2537,12 @@ func TestBitTypeSupport(t *testing.T) {
 	require.NotEmpty(t, unionResult)
 	require.Len(t, unionResult, 1)
 	require.Contains(t, unionResult[0], "UNION")
+}
+
+// AutoQuoteIdent takes an identifier and returns it quoted if necessary
+func AutoQuoteIdent(name string) string {
+	n := tree.Name(name)
+	ctx := tree.NewFmtCtx(tree.FmtSimple)
+	ctx.FormatNode(&n)
+	return ctx.CloseAndGetString()
 }
