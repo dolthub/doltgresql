@@ -705,6 +705,40 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "RETURNS TABLE with conflicting variable names",
+			SetUpScript: []string{
+				`CREATE TABLE customers2 (
+					id INT PRIMARY KEY,
+					name TEXT
+				);`,
+				`INSERT INTO customers2 VALUES (1, 'John'), (2, 'Jane');`,
+				`CREATE OR REPLACE FUNCTION func_conflict(n INT) RETURNS TABLE (id INT, name TEXT) 
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY
+						SELECT c.id, c.name
+						FROM customers2 c
+						WHERE c.id = n;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT func_conflict(1);",
+					Expected: []sql.Row{
+						{"(1,John)"},
+					},
+				},
+				{
+					Query: "SELECT func_conflict(2);",
+					Expected: []sql.Row{
+						{"(2,Jane)"},
+					},
+				},
+			},
+		},
+		{
 			Name: "RETURNS SETOF with composite param",
 			SetUpScript: []string{
 				`CREATE TYPE user_summary AS (

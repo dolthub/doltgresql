@@ -471,25 +471,31 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 		token := scanResult.Tokens[i]
 		substring := expression[token.Start:token.End]
 		// varMap lowercases everything, so we'll lowercase our substring to enable case-insensitivity
-		if _, ok := varMap[strings.ToLower(substring)]; ok {
-			// If there's a '.', then we'll assume this is accessing a record's field (`NEW.val1` for example)
-			for i+2 < len(scanResult.Tokens) && scanResult.Tokens[i+1].Token == '.' {
-				nextFieldSubstring := expression[scanResult.Tokens[i+2].Start:scanResult.Tokens[i+2].End]
-				substring += "." + nextFieldSubstring
-				i += 2
-			}
-			// Variables cannot have a '(' after their name as that would classify them as functions, so we have to
-			// explicitly check for that. This is because variables and functions can share names, for example:
-			// SELECT COUNT(*) INTO count FROM table_name;
-			if i+1 >= len(scanResult.Tokens) || scanResult.Tokens[i+1].Token != '(' {
+		isAfterDot := i > 0 && scanResult.Tokens[i-1].Token == '.'
+
+		if !isAfterDot {
+			if _, ok := varMap[strings.ToLower(substring)]; ok {
+				// If there's a '.', then we'll assume this is accessing a record's field (`NEW.val1` for example)
+				for i+2 < len(scanResult.Tokens) && scanResult.Tokens[i+1].Token == '.' {
+					nextFieldSubstring := expression[scanResult.Tokens[i+2].Start:scanResult.Tokens[i+2].End]
+					substring += "." + nextFieldSubstring
+					i += 2
+				}
+				// Variables cannot have a '(' after their name as that would classify them as functions, so we have to
+				// explicitly check for that. This is because variables and functions can share names, for example:
+				// SELECT COUNT(*) INTO count FROM table_name;
+				if i+1 >= len(scanResult.Tokens) || scanResult.Tokens[i+1].Token != '(' {
+					referencedVars = append(referencedVars, substring)
+					newExpression += fmt.Sprintf("$%d ", len(referencedVars))
+				} else {
+					newExpression += substring + " "
+				}
+			} else if _, ok := triggerSpecialVariables[substring]; ok {
 				referencedVars = append(referencedVars, substring)
 				newExpression += fmt.Sprintf("$%d ", len(referencedVars))
 			} else {
 				newExpression += substring + " "
 			}
-		} else if _, ok := triggerSpecialVariables[substring]; ok {
-			referencedVars = append(referencedVars, substring)
-			newExpression += fmt.Sprintf("$%d ", len(referencedVars))
 		} else {
 			newExpression += substring + " "
 		}
