@@ -4022,5 +4022,19 @@ func TestOperators(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Error cases",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT, v VARCHAR);",
+				"INSERT INTO t VALUES (1, 'true');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// https://github.com/dolthub/doltgresql/issues/2160
+					Query:       `SELECT * FROM t WHERE v = true;`,
+					ExpectedErr: "operator does not exist: varchar = bool",
+				},
+			},
+		},
 	})
 }

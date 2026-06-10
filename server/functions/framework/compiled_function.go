@@ -100,6 +100,28 @@ func newCompiledFunctionInternal(
 	}
 	// If we do not receive an overload, then the parameters given did not result in a valid match
 	if !overload.Valid() {
+		if isOperator {
+			if strings.HasPrefix(name, "internal_binary_operator_func_") {
+				opStr := strings.TrimPrefix(name, "internal_binary_operator_func_")
+				var leftType, rightType string
+				if len(originalTypes) > 0 {
+					leftType = originalTypes[0].String()
+				}
+				if len(originalTypes) > 1 {
+					rightType = originalTypes[1].String()
+				}
+				c.stashedErr = cerrors.Errorf("operator does not exist: %s %s %s", leftType, opStr, rightType)
+				return c
+			} else if strings.HasPrefix(name, "internal_unary_operator_func_") {
+				opStr := strings.TrimPrefix(name, "internal_unary_operator_func_")
+				var childType string
+				if len(originalTypes) > 0 {
+					childType = originalTypes[0].String()
+				}
+				c.stashedErr = cerrors.Errorf("operator does not exist: %s%s", opStr, childType)
+				return c
+			}
+		}
 		c.stashedErr = ErrFunctionDoesNotExist.New(c.OverloadString(originalTypes))
 		return c
 	}
