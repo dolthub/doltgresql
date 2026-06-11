@@ -437,7 +437,9 @@ func CreateServerLocalWithPort(t *testing.T, database string, port int) (context
 	// [T.Cleanup] function that runs without checking the [svcs.Controller] and it cannot be overwritten.
 	// TODO(elianddb): Setup an optional [T.Cleanup] function for the temporary directory. Our default setup for now is
 	//  preferable for debugging the database after a failure.
-	dbDir, err := os.MkdirTemp(os.TempDir(), t.Name())
+	// t.Name() contains "/" for subtests, which os.MkdirTemp rejects as a path separator in the pattern.
+	safeName := strings.ReplaceAll(t.Name(), "/", "_")
+	dbDir, err := os.MkdirTemp(os.TempDir(), safeName)
 	require.NoError(t, err)
 	fileSys, err := filesys.LocalFilesysWithWorkingDir(dbDir)
 	require.NoError(t, err)
