@@ -141,8 +141,8 @@ func (p PgConstraintHandler) Indexes() ([]sql.Index, error) {
 				{Expression: "pg_constraint.connamespace", Type: pgtypes.Oid},
 			},
 		},
-		//pg_constraint_conparentid_index is skipped because we don't support partitions, but might be worth
-		//implementing if it makes any tool faster
+		// pg_constraint_conparentid_index is skipped because we don't support partitions, but might be worth
+		// implementing if it makes any tool faster
 		pgCatalogInMemIndex{
 			name:    "pg_constraint_contypid_index",
 			tblName: "pg_constraint",
