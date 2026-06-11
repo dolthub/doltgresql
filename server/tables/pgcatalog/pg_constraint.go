@@ -274,7 +274,6 @@ func (p PgConstraintHandler) getIndexScanRange(rng sql.Range, index sql.Index) (
 		}
 
 		if hasUpperBound {
-			// TODO: does this make sense?
 			// our less-than upper bounds depend on how many fields were set
 			if typOidUpperSet {
 				if nameUpperSet {
