@@ -113,13 +113,13 @@ func (p PgConstraintHandler) PkSchema() sql.PrimaryKeySchema {
 // Indexes implements tables.IndexedTableHandler.
 func (p PgConstraintHandler) Indexes() ([]sql.Index, error) {
 	return []sql.Index{
-		//pgCatalogInMemIndex{
-		//	name:        "pg_constraint_oid_index",
-		//	tblName:     "pg_constraint",
-		//	dbName:      "pg_catalog",
-		//	uniq:        true,
-		//	columnExprs: []sql.ColumnExpressionType{{Expression: "pg_constraint.oid", Type: pgtypes.Oid}},
-		//},
+		pgCatalogInMemIndex{
+			name:        "pg_constraint_oid_index",
+			tblName:     "pg_constraint",
+			dbName:      "pg_catalog",
+			uniq:        true,
+			columnExprs: []sql.ColumnExpressionType{{Expression: "pg_constraint.oid", Type: pgtypes.Oid}},
+		},
 		pgCatalogInMemIndex{
 			name:    "pg_constraint_conrelid_contypid_conname_index",
 			tblName: "pg_constraint",
@@ -131,27 +131,27 @@ func (p PgConstraintHandler) Indexes() ([]sql.Index, error) {
 				{Expression: "pg_constraint.conname", Type: pgtypes.Name},
 			},
 		},
-		//pgCatalogInMemIndex{
-		//	name:    "pg_constraint_conname_nsp_index",
-		//	tblName: "pg_constraint",
-		//	dbName:  "pg_catalog",
-		//	uniq:    false,
-		//	columnExprs: []sql.ColumnExpressionType{
-		//		{Expression: "pg_constraint.conname", Type: pgtypes.Name},
-		//		{Expression: "pg_constraint.connamespace", Type: pgtypes.Oid},
-		//	},
-		//},
-		// pg_constraint_conparentid_index is skipped because we don't support partitions, but might be worth
-		// implementing if it makes any tool faster
-		//pgCatalogInMemIndex{
-		//	name:    "pg_constraint_contypid_index",
-		//	tblName: "pg_constraint",
-		//	dbName:  "pg_catalog",
-		//	uniq:    false,
-		//	columnExprs: []sql.ColumnExpressionType{
-		//		{Expression: "pg_constraint.contypid", Type: pgtypes.Oid},
-		//	},
-		//},
+		pgCatalogInMemIndex{
+			name:    "pg_constraint_conname_nsp_index",
+			tblName: "pg_constraint",
+			dbName:  "pg_catalog",
+			uniq:    false,
+			columnExprs: []sql.ColumnExpressionType{
+				{Expression: "pg_constraint.conname", Type: pgtypes.Name},
+				{Expression: "pg_constraint.connamespace", Type: pgtypes.Oid},
+			},
+		},
+		//pg_constraint_conparentid_index is skipped because we don't support partitions, but might be worth
+		//implementing if it makes any tool faster
+		pgCatalogInMemIndex{
+			name:    "pg_constraint_contypid_index",
+			tblName: "pg_constraint",
+			dbName:  "pg_catalog",
+			uniq:    false,
+			columnExprs: []sql.ColumnExpressionType{
+				{Expression: "pg_constraint.contypid", Type: pgtypes.Oid},
+			},
+		},
 	}, nil
 }
 
