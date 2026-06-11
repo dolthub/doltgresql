@@ -96,6 +96,18 @@ var typesTests = []ScriptTest{
 				},
 			},
 			{
+				Query: "SELECT 0::bit, 1::bit, 2::bit, 3::bit, 4::bit, 5::bit(2), 6::bit(2);",
+				Expected: []sql.Row{{
+					pgtype.Bits{Bytes: []uint8{0x00}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x80}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x00}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x80}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x00}, Len: 1, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x40}, Len: 2, Valid: true},
+					pgtype.Bits{Bytes: []uint8{0x80}, Len: 2, Valid: true},
+				}},
+			},
+			{
 				Query:       "INSERT INTO t_bit VALUES (3, B'101', '111');",
 				ExpectedErr: "bit string length 3 does not match type bit(8)",
 			},
