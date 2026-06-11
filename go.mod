@@ -6,10 +6,10 @@ require (
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20260609180312-20cac47c5cf9
+	github.com/dolthub/dolt/go v0.40.5-0.20260611201749-2de22d2c05da
 	github.com/dolthub/eventsapi_schema v0.0.0-20260310172945-37a9265ade69
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20260608231025-6579b6af9de2
+	github.com/dolthub/go-mysql-server v0.20.1-0.20260610222239-82ca9a426101
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1
 	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
 	github.com/dolthub/vitess v0.0.0-20260604210335-0893abc80542
@@ -105,7 +105,7 @@ require (
 	github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 // indirect
 	github.com/dolthub/dolt-mcp v0.3.4 // indirect
 	github.com/dolthub/fslock v0.0.5 // indirect
-	github.com/dolthub/go-icu-regex v0.0.0-20260412212219-49724d547866 // indirect
+	github.com/dolthub/go-icu-regex v0.0.0-20260610153742-72563bc7ca83 // indirect
 	github.com/dolthub/gozstd v0.0.0-20240423170813-23a2903bca63 // indirect
 	github.com/dolthub/ishell v0.0.0-20260414231531-5f031e3e9037 // indirect
 	github.com/dolthub/jsonpath v0.0.2-0.20240227200619-19675ab05c71 // indirect

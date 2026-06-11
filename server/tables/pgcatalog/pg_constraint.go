@@ -278,11 +278,11 @@ func (p PgConstraintHandler) getIndexScanRange(rng sql.Range, index sql.Index) (
 			if typOidUpperSet {
 				if nameUpperSet {
 					nameUpper = fmt.Sprintf("%s%o", nameUpper, rune(0))
-				} else {
+				} else if typOidUpper < math.MaxUint32 { // prevent overflow
 					typOidUpper = typOidUpper + 1
 				}
 			} else {
-				if !relOidUpperSet {
+				if !relOidUpperSet && relOidUpper < math.MaxUint32 { // prevent overflow
 					relOidUpper = relOidUpper + 1
 				}
 			}
