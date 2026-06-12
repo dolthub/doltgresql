@@ -17,7 +17,9 @@
 #     Postgres array, e.g. {0}.
 #   * Backtick identifiers become double-quoted identifiers.
 #   * `select ... from dual` becomes `select ...`.
-#   * @@GLOBAL.dolt_cluster_role etc. are kept (tests are skipped regardless).
+#   * MySQL system-variable access becomes Postgres: `SELECT @@GLOBAL.x` ->
+#     `SELECT current_setting('x') AS x`, and `SET @@GLOBAL.x = v` /
+#     `SET @@PERSIST.x = v` -> `SET x = v`.
 parallel: true
 tests:
 - name: persisted role and epoch take precedence over bootstrap values
@@ -63,9 +65,9 @@ tests:
   - on: server1
     queries:
     - exec: "use dolt_cluster"
-    - query: "select @@GLOBAL.dolt_cluster_role, @@GLOBAL.dolt_cluster_role_epoch"
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role","@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
         rows: [["standby","10"]]
     - query: |
         select "database", standby_remote, role, epoch from dolt_cluster_status order by "database" asc
@@ -79,9 +81,9 @@ tests:
   - on: server1
     queries:
     - exec: "use dolt_cluster"
-    - query: "select @@GLOBAL.dolt_cluster_role, @@GLOBAL.dolt_cluster_role_epoch"
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role","@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
         rows: [["standby","10"]]
 - name: dolt_assume_cluster_role
   skip: "cluster replication not yet implemented in Doltgres"
@@ -125,17 +127,17 @@ tests:
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
-    - query: "select @@GLOBAL.dolt_cluster_role, @@GLOBAL.dolt_cluster_role_epoch"
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role","@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
         rows: [["standby","10"]]
     - query: "select dolt_assume_cluster_role('standby', '12')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
-    - query: "select @@GLOBAL.dolt_cluster_role, @@GLOBAL.dolt_cluster_role_epoch"
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role","@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
         rows: [["standby","12"]]
     - query: "select dolt_assume_cluster_role('primary', '13')"
       result:
@@ -146,17 +148,17 @@ tests:
       error_match: "this connection can no longer be used"
   - on: server1
     queries:
-    - query: "select @@GLOBAL.dolt_cluster_role, @@GLOBAL.dolt_cluster_role_epoch"
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role","@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
         rows: [["primary","13"]]
     restart_server: {}
   # Assert that it comes back up with newly assumed role.
   - on: server1
     queries:
-    - query: "select @@GLOBAL.dolt_cluster_role, @@GLOBAL.dolt_cluster_role_epoch"
+    - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role","@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
         rows: [["primary","13"]]
 - name: create database makes a new remote
   skip: "cluster replication not yet implemented in Doltgres"
@@ -420,9 +422,9 @@ tests:
       result:
         columns: ["count"]
         rows: [["5"]]
-    - query: "select @@global.dolt_cluster_role_epoch"
+    - query: "select current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@global.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role_epoch"]
         rows: [["10"]]
   - on: server1
     queries:
@@ -444,9 +446,9 @@ tests:
       result:
         columns: ["count"]
         rows: [["10"]]
-    - query: "select @@global.dolt_cluster_role_epoch"
+    - query: "select current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@global.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role_epoch"]
         rows: [["11"]]
 - name: standby transitioned to primary becomes read write
   skip: "cluster replication not yet implemented in Doltgres"
@@ -623,9 +625,9 @@ tests:
   - on: server1
     retry_attempts: 100
     queries:
-    - query: "SELECT @@GLOBAL.dolt_cluster_role,@@GLOBAL.dolt_cluster_role_epoch"
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role,current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role", "@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role", "dolt_cluster_role_epoch"]
         rows: [["detected_broken_config", "10"]]
     - exec: "use repo1"
     - exec: "create table more_vals (i int primary key)"
@@ -633,9 +635,9 @@ tests:
   - on: server2
     retry_attempts: 100
     queries:
-    - query: "SELECT @@GLOBAL.dolt_cluster_role,@@GLOBAL.dolt_cluster_role_epoch"
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role,current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role", "@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role", "dolt_cluster_role_epoch"]
         rows: [["detected_broken_config", "10"]]
     - exec: "use repo1"
     - exec: "create table more_vals (i int primary key)"
@@ -732,9 +734,9 @@ tests:
         rows: [["10"]]
   - on: server2
     queries:
-    - query: "SELECT @@GLOBAL.dolt_cluster_role,@@GLOBAL.dolt_cluster_role_epoch"
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role,current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role", "@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role", "dolt_cluster_role_epoch"]
         rows: [["standby", "15"]]
     - query: "SELECT count(*) FROM repo1.vals"
       result:
@@ -837,9 +839,9 @@ tests:
         rows: [["5"]]
   - on: server1
     queries:
-    - query: "SELECT @@GLOBAL.dolt_cluster_role,@@GLOBAL.dolt_cluster_role_epoch"
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role,current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
-        columns: ["@@GLOBAL.dolt_cluster_role", "@@GLOBAL.dolt_cluster_role_epoch"]
+        columns: ["dolt_cluster_role", "dolt_cluster_role_epoch"]
         rows: [["standby", "15"]]
     - query: "SELECT count(*) FROM repo1.vals"
       result:
@@ -1224,7 +1226,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET @@PERSIST.dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
     - exec: 'CREATE DATABASE repo1'
     - exec: 'USE repo1'
     - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
@@ -1537,7 +1539,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET @@GLOBAL.dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
     - exec: 'create database repo1'
     - exec: 'use repo1'
     - exec: 'create table vals (i int primary key)'
@@ -1620,7 +1622,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET @@GLOBAL.dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
     - exec: 'create database repo1'
     - exec: 'create database droppedrepo'
     - exec: 'use droppedrepo'
@@ -1684,7 +1686,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET @@GLOBAL.dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
     - exec: 'create database repo1'
     - exec: 'use repo1'
     - exec: 'create table vals (a int)'
@@ -1863,7 +1865,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET @@GLOBAL.dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
     - exec: "create database testdb"
     - exec: "use testdb"
     - exec: "create table vals (id int primary key)"
@@ -1878,7 +1880,7 @@ tests:
         columns: ["count"]
         rows:
         - ["2"]
-    - exec: 'SET @@GLOBAL.dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
     - exec: "insert into vals values (0),(1),(2)"
   - on: standby_two
     queries:
@@ -1959,7 +1961,7 @@ tests:
     queries:
     - exec: 'CREATE DATABASE repo1'
     - exec: 'USE repo1'
-    - exec: 'SET @@GLOBAL.dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
     - exec: 'CREATE TABLE t (id SERIAL PRIMARY KEY, v INT)'
     - exec: 'INSERT INTO t(v) VALUES (0),(0),(0),(0),(0)'
   - on: server2
@@ -2026,23 +2028,23 @@ tests:
     - exec: 'CREATE DATABASE repo1'
     - exec: 'USE repo1'
     - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
-    - query: 'SELECT @@GLOBAL.dolt_cluster_role'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
       result:
-        columns: ['@@GLOBAL.dolt_cluster_role']
+        columns: ['dolt_cluster_role']
         rows: [['primary']]
-    - query: 'SELECT @@GLOBAL.read_only'
+    - query: "SELECT current_setting('read_only') AS read_only"
       result:
-        columns: ['@@GLOBAL.read_only']
+        columns: ['read_only']
         rows: [['0']]
   - on: server2
     queries:
-    - query: 'SELECT @@GLOBAL.dolt_cluster_role'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
       result:
-        columns: ['@@GLOBAL.dolt_cluster_role']
+        columns: ['dolt_cluster_role']
         rows: [['standby']]
-    - query: 'SELECT @@GLOBAL.read_only'
+    - query: "SELECT current_setting('read_only') AS read_only"
       result:
-        columns: ['@@GLOBAL.read_only']
+        columns: ['read_only']
         rows: [['1']]
   - on: server1
     queries:
@@ -2051,13 +2053,13 @@ tests:
   - on: server1
     queries:
     - exec: 'USE repo1'
-    - query: 'SELECT @@GLOBAL.dolt_cluster_role'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
       result:
-        columns: ['@@GLOBAL.dolt_cluster_role']
+        columns: ['dolt_cluster_role']
         rows: [['standby']]
-    - query: 'SELECT @@GLOBAL.read_only'
+    - query: "SELECT current_setting('read_only') AS read_only"
       result:
-        columns: ['@@GLOBAL.read_only']
+        columns: ['read_only']
         rows: [['1']]
   - on: server2
     queries:
@@ -2065,13 +2067,13 @@ tests:
   - on: server2
     queries:
     - exec: 'USE repo1'
-    - query: 'SELECT @@GLOBAL.dolt_cluster_role'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
       result:
-        columns: ['@@GLOBAL.dolt_cluster_role']
+        columns: ['dolt_cluster_role']
         rows: [['primary']]
-    - query: 'SELECT @@GLOBAL.read_only'
+    - query: "SELECT current_setting('read_only') AS read_only"
       result:
-        columns: ['@@GLOBAL.read_only']
+        columns: ['read_only']
         rows: [['0']]
   - on: server2
     queries:
@@ -2083,13 +2085,13 @@ tests:
   - on: server1
     queries:
     - exec: 'USE repo1'
-    - query: 'SELECT @@GLOBAL.dolt_cluster_role'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
       result:
-        columns: ['@@GLOBAL.dolt_cluster_role']
+        columns: ['dolt_cluster_role']
         rows: [['primary']]
-    - query: 'SELECT @@GLOBAL.read_only'
+    - query: "SELECT current_setting('read_only') AS read_only"
       result:
-        columns: ['@@GLOBAL.read_only']
+        columns: ['read_only']
         rows: [['0']]
 # https://github.com/dolthub/dolt/issues/10015
 - name: read_only system variable with behavior config respects cluster role
@@ -2134,47 +2136,47 @@ tests:
   connections:
   - on: server1
     queries:
-    - query: 'SELECT @@GLOBAL.dolt_cluster_role'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
       result:
-        columns: ['@@GLOBAL.dolt_cluster_role']
+        columns: ['dolt_cluster_role']
         rows: [['primary']]
-    - query: 'SELECT @@GLOBAL.read_only'
+    - query: "SELECT current_setting('read_only') AS read_only"
       result:
-        columns: ['@@GLOBAL.read_only']
+        columns: ['read_only']
         rows: [['1']]
   - on: server2
     queries:
-    - query: 'SELECT @@GLOBAL.dolt_cluster_role'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
       result:
-        columns: ['@@GLOBAL.dolt_cluster_role']
+        columns: ['dolt_cluster_role']
         rows: [['standby']]
-    - query: 'SELECT @@GLOBAL.read_only'
+    - query: "SELECT current_setting('read_only') AS read_only"
       result:
-        columns: ['@@GLOBAL.read_only']
+        columns: ['read_only']
         rows: [['1']]
   - on: server1
     queries:
     - exec: "select dolt_assume_cluster_role('standby', 2)"
   - on: server1
     queries:
-    - query: 'SELECT @@GLOBAL.dolt_cluster_role'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
       result:
-        columns: ['@@GLOBAL.dolt_cluster_role']
+        columns: ['dolt_cluster_role']
         rows: [['standby']]
-    - query: 'SELECT @@GLOBAL.read_only'
+    - query: "SELECT current_setting('read_only') AS read_only"
       result:
-        columns: ['@@GLOBAL.read_only']
+        columns: ['read_only']
         rows: [['1']]
   - on: server2
     queries:
     - exec: "select dolt_assume_cluster_role('primary', 2)"
   - on: server2
     queries:
-    - query: 'SELECT @@GLOBAL.dolt_cluster_role'
+    - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
       result:
-        columns: ['@@GLOBAL.dolt_cluster_role']
+        columns: ['dolt_cluster_role']
         rows: [['primary']]
-    - query: 'SELECT @@GLOBAL.read_only'
+    - query: "SELECT current_setting('read_only') AS read_only"
       result:
-        columns: ['@@GLOBAL.read_only']
+        columns: ['read_only']
         rows: [['1']]
