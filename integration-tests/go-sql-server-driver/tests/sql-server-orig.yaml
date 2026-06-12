@@ -107,25 +107,7 @@ tests:
       dynamic_port: server1
       error_matches:
       - "already in use"
-- name: test autocommit
-  skip: "MySQL-specific autocommit session-variable semantics not applicable to Doltgres"
-  repos:
-  - name: repo1
-    server:
-      args: []
-      dynamic_port: server1
-  connections:
-  - on: repo1
-    queries:
-    - exec: 'set autocommit=0'
-    - exec: 'create table t(c0 int)'
-  - on: repo1
-    queries:
-    - query: "select table_name from information_schema.tables where table_schema = 'public' order by table_name"
-      result:
-        columns: ["table_name"]
-        rows: [["t"]]
-- name: test basic querying via dolt sql-server
+- name: test basic querying
   repos:
   - name: repo1
     server:
