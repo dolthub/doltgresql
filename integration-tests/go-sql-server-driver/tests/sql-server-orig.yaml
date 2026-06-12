@@ -1,7 +1,6 @@
 parallel: true
 tests:
 - name: read-only flag prevents modification
-  skip: "Doltgres read-only mode rejects the connection's session-setup query, so connections cannot be established against a read-only server (behavioral difference from Dolt)"
   repos:
   - name: repo1
     server:
@@ -27,7 +26,6 @@ tests:
         columns: ["count"]
         rows: [["0"]]
 - name: read-only flag still allows select
-  skip: "Doltgres read-only mode rejects the connection's session-setup query, so even SELECT connections cannot be established against a read-only server (behavioral difference from Dolt)"
   repos:
   - name: repo1
     server:
@@ -52,7 +50,7 @@ tests:
         columns: ["c0"]
         rows: [["1"]]
 - name: read-only flag prevents dolt_commit
-  skip: "read-only flag does not prevent dolt_commit"
+  skip: "Doltgres read-only mode does not block the dolt_commit() procedure; it is not classified as a write by the engine read-only guard"
   repos:
   - name: repo1
     server:
@@ -70,7 +68,7 @@ tests:
     - query: "select dolt_commit('--allow-empty', '-m', 'msg')"
       error_match: "read only"
 - name: read-only flag prevents dolt_reset
-  skip: "read-only flag does not prevent dolt_reset"
+  skip: "Doltgres read-only mode does not block the dolt_reset() procedure; it is not classified as a write by the engine read-only guard"
   repos:
   - name: repo1
     server:

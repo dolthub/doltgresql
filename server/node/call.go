@@ -67,6 +67,7 @@ func (c *Call) Expressions() []sql.Expression {
 
 // IsReadOnly implements the interface sql.ExecSourceRel.
 func (c *Call) IsReadOnly() bool {
+	// TODO: some procedures are read-only, some are not
 	return false
 }
 
