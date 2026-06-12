@@ -44,7 +44,7 @@ tests:
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
     - exec: 'create user aaron with password ''aaronspassword'''
-    - exec: 'grant ALL ON *.* to aaron'
+    - exec: 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO aaron'
     - exec: 'insert into vals values (5),(6),(7),(8),(9)'
   - on: server1
     user: 'aaron'
@@ -105,9 +105,9 @@ tests:
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
     - exec: 'create user aaron with password ''aaronspassword'''
-    - exec: 'grant ALL ON *.* to aaron'
+    - exec: 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO aaron'
     - exec: 'create user brian with password ''brianpassword'''
-    - exec: 'grant ALL ON *.* to brian'
+    - exec: 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO brian'
     - exec: 'delete from dolt_branch_control'
     - exec: 'insert into dolt_branch_control values (''repo1'', ''main'', ''aaron'', ''%'', ''admin'')'
   - on: server1
@@ -385,9 +385,9 @@ tests:
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
     - exec: 'create user aaron with password ''aaronspassword'''
-    - exec: 'grant ALL ON *.* to aaron'
+    - exec: 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO aaron'
     - exec: 'create user brian with password ''brianpassword'''
-    - exec: 'grant ALL ON *.* to brian'
+    - exec: 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO brian'
     - exec: 'delete from dolt_branch_control'
     - exec: 'insert into dolt_branch_control values (''repo1'', ''main'', ''aaron'', ''%'', ''admin'')'
   - on: server2

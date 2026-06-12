@@ -40,7 +40,7 @@ tests:
     queries:
     - exec: 'CREATE USER "brian" WITH PASSWORD ''brianspassword'''
       error_match: 'database server is set to read only mode'
-    - exec: 'GRANT ALL ON *.* TO "aaron"'
+    - exec: 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "aaron"'
       error_match: 'database server is set to read only mode'
 - name: create database cannot be run on standby
   skip: "cluster replication not yet implemented in Doltgres"
