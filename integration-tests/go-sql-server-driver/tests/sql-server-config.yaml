@@ -126,7 +126,7 @@ tests:
         columns: ["load_file"]
         rows: [["NULL"]]
     - exec: "create table loaded (contents text)"
-    - exec: "load data infile \"config.yaml\" into table loaded"
-      error_match: "LOAD DATA is unable to open file: The MySQL server is running with the --secure-file-priv option so it cannot execute this statement"
-    - exec: "load data infile \"/config.yaml\" into table loaded"
-      error_match: "LOAD DATA is unable to open file: The MySQL server is running with the --secure-file-priv option so it cannot execute this statement"
+    - exec: "COPY loaded FROM 'config.yaml'"
+      error_match: "must be superuser or have privileges of the pg_read_server_files role|secure_file_priv"
+    - exec: "COPY loaded FROM '/config.yaml'"
+      error_match: "must be superuser or have privileges of the pg_read_server_files role|secure_file_priv"

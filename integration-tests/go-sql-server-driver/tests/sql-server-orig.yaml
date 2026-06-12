@@ -226,10 +226,12 @@ tests:
         columns: ["datname"]
         rows:
         - ["repo1"]
-- name: LOAD DATA LOCAL INFILE works
-  skip: "MySQL-specific LOAD DATA LOCAL INFILE behavior has no Postgres equivalent"
+- name: COPY loads CSV data from a file
   repos:
   - name: repo1
+    with_files:
+    - name: "1pk5col-ints.csv"
+      source_path: "testdata/1pk5col-ints.csv"
     server:
       args: []
       dynamic_port: server1
@@ -237,18 +239,20 @@ tests:
   - on: repo1
     queries:
     - exec: "CREATE TABLE test(pk int primary key, c1 int, c2 int, c3 int, c4 int, c5 int)"
-    - exec: "SET local_infile = 1"
-    - exec: "LOAD DATA LOCAL INFILE 'testdata/1pk5col-ints.csv' INTO TABLE test CHARACTER SET UTF8MB4 FIELDS TERMINATED BY ',' ESCAPED BY '' LINES TERMINATED BY '\n' IGNORE 1 LINES"
+    - exec: "COPY test FROM '1pk5col-ints.csv' WITH (FORMAT csv, HEADER)"
     - query: "SELECT * FROM test"
       result:
         columns: ["pk","c1","c2","c3","c4","c5"]
         rows:
         - ["0","1","2","3","4","5"]
         - ["1","1","2","3","4","5"]
-- name: LOAD DATA LOCAL INFILE automatically ignores row with existing primary key
-  skip: "MySQL-specific LOAD DATA LOCAL INFILE behavior has no Postgres equivalent"
+- name: COPY into a table with a conflicting primary key (no IGNORE equivalent)
+  skip: "Postgres COPY errors on a primary-key conflict and has no equivalent of MySQL's LOAD DATA ... IGNORE; the Postgres idiom is INSERT ... ON CONFLICT DO NOTHING"
   repos:
   - name: repo1
+    with_files:
+    - name: "1pk5col-ints.csv"
+      source_path: "testdata/1pk5col-ints.csv"
     server:
       args: []
       dynamic_port: server1
@@ -257,18 +261,20 @@ tests:
     queries:
     - exec: "CREATE TABLE test(pk int primary key, c1 int, c2 int, c3 int, c4 int, c5 int)"
     - exec: "INSERT INTO test VALUES (0, 0, 0, 0, 0, 0)"
-    - exec: "SET local_infile = 1"
-    - exec: "LOAD DATA LOCAL INFILE 'testdata/1pk5col-ints.csv' INTO TABLE test CHARACTER SET UTF8MB4 FIELDS TERMINATED BY ',' ESCAPED BY '' LINES TERMINATED BY '\n' IGNORE 1 LINES"
+    - exec: "COPY test FROM '1pk5col-ints.csv' WITH (FORMAT csv, HEADER)"
     - query: "SELECT * FROM test"
       result:
         columns: ["pk","c1","c2","c3","c4","c5"]
         rows:
         - ["0","0","0","0","0","0"]
         - ["1","1","2","3","4","5"]
-- name: LOAD DATA LOCAL INFILE can replace row with existing primary key
-  skip: "MySQL-specific LOAD DATA LOCAL INFILE behavior has no Postgres equivalent"
+- name: COPY into a table with a conflicting primary key (no REPLACE equivalent)
+  skip: "Postgres COPY errors on a primary-key conflict and has no equivalent of MySQL's LOAD DATA ... REPLACE; the Postgres idiom is INSERT ... ON CONFLICT DO UPDATE"
   repos:
   - name: repo1
+    with_files:
+    - name: "1pk5col-ints.csv"
+      source_path: "testdata/1pk5col-ints.csv"
     server:
       args: []
       dynamic_port: server1
@@ -277,8 +283,7 @@ tests:
     queries:
     - exec: "CREATE TABLE test(pk int primary key, c1 int, c2 int, c3 int, c4 int, c5 int)"
     - exec: "INSERT INTO test VALUES (0, 0, 0, 0, 0, 0)"
-    - exec: "SET local_infile = 1"
-    - exec: "LOAD DATA LOCAL INFILE 'testdata/1pk5col-ints.csv' REPLACE INTO TABLE test CHARACTER SET UTF8MB4 FIELDS TERMINATED BY ',' ESCAPED BY '' LINES TERMINATED BY '\n' IGNORE 1 LINES"
+    - exec: "COPY test FROM '1pk5col-ints.csv' WITH (FORMAT csv, HEADER)"
     - query: "SELECT * FROM test"
       result:
         columns: ["pk","c1","c2","c3","c4","c5"]
