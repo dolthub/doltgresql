@@ -1,119 +1,7 @@
 parallel: true
 tests:
-- name: persist global variable before server startup
-  skip: "MySQL-specific behavior not applicable to Doltgres (sqlserver.global persisted config / max_connections)"
-  repos:
-  - name: repo1
-    with_files:
-      - name: "repo1/.dolt/config.json"
-        contents: |
-          {"sqlserver.global.max_connections":"1000"}
-    server:
-      args: []
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - query: "select current_setting('max_connections') as max_connections"
-      result:
-        columns: ["max_connections"]
-        rows: [["1000"]]
-- name: invalid persisted global variable name throws warning on server startup, but does not crash
-  skip: "MySQL-specific behavior not applicable to Doltgres (sqlserver.global persisted config)"
-  repos:
-  - name: repo1
-    with_files:
-      - name: "repo1/.dolt/config.json"
-        contents: |
-          {"sqlserver.global.unknown":"1000"}
-    server:
-      args: []
-      dynamic_port: repo1
-      log_matches:
-      - "persisted system variable unknown was not loaded since its definition does not exist."
-  connections:
-  - on: repo1
-- name: invalid persisted global variable value throws warning on server startup, but does not crash
-  skip: "MySQL-specific behavior not applicable to Doltgres (sqlserver.global persisted config / max_connections)"
-  repos:
-  - name: repo1
-    with_files:
-      - name: "repo1/.dolt/config.json"
-        contents: |
-          {"sqlserver.global.max_connections":"string"}
-    server:
-      args: []
-      dynamic_port: repo1
-      log_matches:
-      - "error: failed to load persisted global variables: key: 'max_connections'; strconv.ParseInt: parsing \"string\": invalid syntax"
-  connections:
-  - on: repo1
-- name: persisted global variable in server
-  skip: "MySQL-specific behavior not applicable to Doltgres (SET PERSIST / max_connections)"
-  repos:
-  - name: repo1
-    server:
-      args: []
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - exec: "SET PERSIST max_connections = 1000"
-    - query: "select current_setting('max_connections') as max_connections"
-      result:
-        columns: ["max_connections"]
-        rows: [["1000"]]
-    restart_server: {}
-  - on: repo1
-    queries:
-    - query: "select current_setting('max_connections') as max_connections"
-      result:
-        columns: ["max_connections"]
-        rows: [["1000"]]
-- name: dolt_replicate_heads is global variable
-  skip: "MySQL-specific @@GLOBAL/@@SESSION system-variable semantics not applicable to Doltgres"
-  repos:
-  - name: repo1
-    server:
-      args: []
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - exec: "SET dolt_replicate_heads = 'main'"
-    - query: "select current_setting('dolt_replicate_heads') as dolt_replicate_heads"
-      result:
-        columns: ["dolt_replicate_heads"]
-        rows: [["main"]]
-  - on: repo1
-    queries:
-    - query: "select current_setting('dolt_replicate_heads') as dolt_replicate_heads"
-      result:
-        columns: ["dolt_replicate_heads"]
-        rows: [["main"]]
-- name: dolt_replicate_all_heads is global variable
-  skip: "MySQL-specific @@GLOBAL/@@SESSION system-variable semantics not applicable to Doltgres"
-  repos:
-  - name: repo1
-    server:
-      args: []
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - exec: "SET dolt_replicate_all_heads = 1"
-    - query: "select current_setting('dolt_replicate_all_heads') as dolt_replicate_all_heads"
-      result:
-        columns: ["dolt_replicate_all_heads"]
-        rows: [["1"]]
-  - on: repo1
-    queries:
-    - query: "select current_setting('dolt_replicate_all_heads') as dolt_replicate_all_heads"
-      result:
-        columns: ["dolt_replicate_all_heads"]
-        rows: [["1"]]
 - name: dolt_transaction_commit is global variable
-  skip: "MySQL-specific @@GLOBAL/@@SESSION system-variable semantics not applicable to Doltgres"
+  skip: "dolt_transaction_commit not being respected after being set"
   repos:
   - name: repo1
     server:
@@ -132,61 +20,14 @@ tests:
     - query: "select count(*) from dolt_log"
       result:
         columns: ["count"]
-        rows: [["1"]]
+        rows: [["2"]]
     - exec: "create table tmp (i int)"
     - query: "select count(*) from dolt_log"
       result:
         columns: ["count"]
-        rows: [["2"]]
-- name: persist only global variable during server session
-  skip: "MySQL-specific behavior not applicable to Doltgres (SET PERSIST / SET PERSIST_ONLY / max_connections)"
-  repos:
-  - name: repo1
-    server:
-      args: []
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - exec: "SET PERSIST max_connections = 1000"
-    - exec: "SET PERSIST_ONLY max_connections = 7777"
-    - query: "select current_setting('max_connections') as max_connections"
-      result:
-        columns: ["max_connections"]
-        rows: [["1000"]]
-    restart_server: {}
-  - on: repo1
-    queries:
-    - query: "select current_setting('max_connections') as max_connections"
-      result:
-        columns: ["max_connections"]
-        rows: [["7777"]]
-- name: persist invalid global variable name during server session
-  skip: "MySQL-specific behavior not applicable to Doltgres (SET PERSIST)"
-  repos:
-  - name: repo1
-    server:
-      args: []
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - exec: "SET PERSIST unknown = 1000"
-      error_match: "Unknown system variable"
-- name: persist invalid global variable value during server session
-  skip: "MySQL-specific behavior not applicable to Doltgres (SET PERSIST / max_connections)"
-  repos:
-  - name: repo1
-    server:
-      args: []
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - exec: "SET PERSIST max_connections = 'string'"
-      error_match: "Variable 'max_connections' can't be set to the value of 'string'"
+        rows: [["3"]]
 - name: set max_connections with yaml config
-  skip: "MySQL-specific behavior not applicable to Doltgres (max_connections listener config)"
+  skip: "need to adapt to doltgres listener"
   repos:
   - name: repo1
     with_files:
@@ -205,76 +46,8 @@ tests:
       result:
         columns: ["max_connections"]
         rows: [["999"]]
-- name: persistence behavior
-  skip: "MySQL-specific behavior not applicable to Doltgres (max_connections default)"
-  repos:
-  - name: repo1
-    server:
-      args: []
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - query: "select current_setting('max_connections') as max_connections"
-      result:
-        columns: ["max_connections"]
-        rows: [["151"]]
-- name: persisted global variable defined on the command line
-  skip: "MySQL-specific behavior not applicable to Doltgres (no --max-connections CLI flag)"
-  repos:
-  - name: repo1
-    server:
-      args: []
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - query: "select current_setting('max_connections') as max_connections"
-      result:
-        columns: ["max_connections"]
-        rows: [["555"]]
-- name: "@@global.dolt_log_level behavior"
-  skip: "MySQL-specific @@GLOBAL system-variable / log-level semantics not applicable to Doltgres"
-  repos:
-  - name: repo1
-    with_files:
-      - name: "server.yaml"
-        contents: |
-          log_level: warning
-      - name: "server-info.yaml"
-        contents: |
-          log_level: info
-    server:
-      args: ["--config", "server.yaml"]
-      dynamic_port: repo1
-      log_matches:
-      - "Starting query"
-  connections:
-  - on: repo1
-    queries:
-    - query: "select current_setting('dolt_log_level') as dolt_log_level"
-      result:
-        columns: ["dolt_log_level"]
-        rows: [["warning"]]
-    - exec: "set dolt_log_level = 'trace'"
-    - query: "select 2+2 as sum"
-      result:
-        columns: ["sum"]
-        rows: [["4"]]
-    - query: "select current_setting('dolt_log_level') as dolt_log_level"
-      result:
-        columns: ["dolt_log_level"]
-        rows: [["trace"]]
-    restart_server:
-      args: ["--config", "server-info.yaml"]
-  - on: repo1
-    queries:
-    - query: "select current_setting('dolt_log_level') as dolt_log_level"
-      result:
-        columns: ["dolt_log_level"]
-        rows: [["info"]]
-- name: "@@global.dolt_auto_gc_enabled default"
-  skip: "MySQL-specific @@GLOBAL system-variable semantics not applicable to Doltgres"
+- name: "dolt_auto_gc_enabled default"
+  skip: "default not set yet"
   repos:
   - name: repo1
     server:
@@ -290,7 +63,7 @@ tests:
     - exec: "SET dolt_auto_gc_enabled = 0"
       error_match: "Variable 'dolt_auto_gc_enabled' is a read only variable"
 - name: "@@global.dolt_auto_gc_enabled true"
-  skip: "MySQL-specific @@GLOBAL system-variable semantics not applicable to Doltgres"
+  skip: "config field not supported yet"
   repos:
   - name: repo1
     with_files:
@@ -310,7 +83,7 @@ tests:
         columns: ["dolt_auto_gc_enabled"]
         rows: [["1"]]
 - name: "@@global.dolt_auto_gc_enabled false"
-  skip: "MySQL-specific @@GLOBAL system-variable semantics not applicable to Doltgres"
+  skip: "config field not supported yet"
   repos:
     - name: repo1
       with_files:
@@ -329,28 +102,8 @@ tests:
           result:
             columns: ["dolt_auto_gc_enabled"]
             rows: [["0"]]
-- name: system variables in config.yaml can be read in show variables
-  skip: "MySQL-specific system-variable / secure_file_priv / max_connections semantics not applicable to Doltgres"
-  repos:
-  - name: repo1
-    with_files:
-      - name: "config.yaml"
-        contents: |
-          system_variables:
-            secure_file_priv: "/dev/null"
-            max_connections: 1000
-    server:
-      args: ["--config", "config.yaml"]
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - query: "select current_setting('secure_file_priv') as secure_file_priv, current_setting('max_connections') as max_connections"
-      result:
-        columns: ["secure_file_priv", "max_connections"]
-        rows: [["/dev/null", "1000"]]
 - name: secure_file_priv set to /dev/null prevents loading files
-  skip: "MySQL-specific LOAD_FILE / LOAD DATA / secure_file_priv behavior has no Postgres equivalent"
+  skip: "field / feature needs to be supported"
   repos:
   - name: repo1
     with_files:
@@ -377,36 +130,3 @@ tests:
       error_match: "LOAD DATA is unable to open file: The MySQL server is running with the --secure-file-priv option so it cannot execute this statement"
     - exec: "load data infile \"/config.yaml\" into table loaded"
       error_match: "LOAD DATA is unable to open file: The MySQL server is running with the --secure-file-priv option so it cannot execute this statement"
-- name: secure_file_priv set to empty strings allows loading files
-  skip: "MySQL-specific LOAD_FILE / LOAD DATA / secure_file_priv behavior has no Postgres equivalent"
-  repos:
-  - name: repo1
-    with_files:
-      - name: "config.yaml"
-        contents: |
-          system_variables:
-            secure_file_priv: ""
-      - name: "repo1/known_contents"
-        contents: |
-          system_variables:
-            secure_file_priv: ""
-    server:
-      args: ["--config", "config.yaml"]
-      dynamic_port: repo1
-  connections:
-  - on: repo1
-    queries:
-    - query: "select LOAD_FILE('known_contents') as load_file"
-      result:
-        columns: ["load_file"]
-        rows: [["system_variables:\n  secure_file_priv: \"\"\n"]]
-    - query: "select LOAD_FILE('./.dolt/../known_contents') as load_file"
-      result:
-        columns: ["load_file"]
-        rows: [["system_variables:\n  secure_file_priv: \"\"\n"]]
-    - exec: "create table loaded (contents text)"
-    - exec: "load data infile \"known_contents\" into table loaded lines terminated by \"\\0\""
-    - query: "select contents from loaded"
-      result:
-        columns: ["contents"]
-        rows: [["system_variables:\n  secure_file_priv: \"\"\n"]]
