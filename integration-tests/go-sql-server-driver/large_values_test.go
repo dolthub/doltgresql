@@ -757,8 +757,8 @@ func TestTypeDiversity(t *testing.T) {
 
 		// Mix of empty, short, medium, large, unicode, and NULL values.
 		vals := []struct {
-			id                    int
-			ch, vc, tx, mtx, ltx  interface{}
+			id                   int
+			ch, vc, tx, mtx, ltx interface{}
 		}{
 			{0, "", "", "", "", ""},
 			{1, "hello", "world", "short text", "medium text", "long text"},
