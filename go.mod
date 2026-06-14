@@ -218,3 +218,8 @@ require (
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+// Temporary: dolt's go.mod replace for the IsComplete hook is not honored
+// when doltgresql is the main module, so it must be repeated here. Remove
+// once dolthub/dolt#10866's upstream ishell change merges. Refs: dolthub/dolt#10866
+replace github.com/dolthub/ishell => github.com/codeaucafe/ishell v0.0.0-20260607220657-061915e86568
