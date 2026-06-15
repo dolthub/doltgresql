@@ -80,7 +80,7 @@ func record_recv_callable(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, va
 	if data == nil {
 		return nil, nil
 	}
-	typeColl, err := core.GetTypesCollectionFromContext(ctx)
+	typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

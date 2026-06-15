@@ -93,7 +93,7 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 
 	baseCastToType := checkForDomainType(c.castToType)
-	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (c *ExplicitCast) WithResolvedChildren(ctx context.Context, children []any)
 		if !ok {
 			return nil, errors.Errorf("%T requires a SQL context for type resolution", c)
 		}
-		typeColl, err := core.GetTypesCollectionFromContext(sqlCtx)
+		typeColl, err := core.GetTypesCollectionFromContext(sqlCtx, "")
 		if err != nil {
 			return nil, err
 		}

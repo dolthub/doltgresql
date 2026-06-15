@@ -304,7 +304,7 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 	if err != nil {
 		return nil, err
 	}
-	typeColl, err := core.GetTypesCollectionFromContext(ctx)
+	typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

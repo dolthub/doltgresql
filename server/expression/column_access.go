@@ -141,7 +141,7 @@ func (expr *ColumnAccess) WithChildren(ctx *sql.Context, children ...sql.Express
 		return nil, errors.New("column access is only valid for Doltgres types")
 	}
 	if !doltgresType.IsResolvedType() {
-		typeColl, err := core.GetTypesCollectionFromContext(ctx)
+		typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, err
 		}

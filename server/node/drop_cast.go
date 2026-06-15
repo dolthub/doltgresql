@@ -63,7 +63,7 @@ func (c *DropCast) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *DropCast) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	castCollection, err := core.GetCastsCollectionFromContext(ctx)
+	castCollection, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

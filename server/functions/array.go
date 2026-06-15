@@ -48,7 +48,7 @@ var array_in = framework.Function3{
 		baseTypeOid := val2.(id.Id)
 		baseType := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
 		if baseType == nil {
-			if typColl, err := pgtypes.GetTypesCollectionFromContext(ctx); err == nil && typColl != nil {
+			if typColl, err := pgtypes.GetTypesCollectionFromContext(ctx, ""); err == nil && typColl != nil {
 				if t, err := typColl.GetType(ctx, id.Type(baseTypeOid)); err == nil {
 					baseType = t
 				}
@@ -181,7 +181,7 @@ func array_recv_callable(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val
 	if data == nil {
 		return nil, nil
 	}
-	typeColl, err := core.GetTypesCollectionFromContext(ctx)
+	typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

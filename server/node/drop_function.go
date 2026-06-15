@@ -85,7 +85,7 @@ func (d *DropFunction) IsReadOnly() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (d *DropFunction) RowIter(ctx *sql.Context, r sql.Row) (iter sql.RowIter, err error) {
-	funcColl, err := core.GetFunctionsCollectionFromContext(ctx)
+	funcColl, err := core.GetFunctionsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

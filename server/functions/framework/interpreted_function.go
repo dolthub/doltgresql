@@ -149,7 +149,7 @@ func (iFunc InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgs
 				return nil, err
 			}
 		}
-		castsColl, err := core.GetCastsCollectionFromContext(ctx)
+		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, err
 		}

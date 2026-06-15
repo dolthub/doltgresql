@@ -110,7 +110,7 @@ func (c *CreateFunction) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx)
+	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

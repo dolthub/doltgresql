@@ -98,7 +98,7 @@ func serializeTypeRecord(ctx *sql.Context, t *DoltgresType, val any) ([]byte, er
 // deserializeTypeRecord handles deserialization from the Dolt serialized format to our standard representation used by
 // expressions and nodes.
 func deserializeTypeRecord(ctx *sql.Context, t *DoltgresType, data []byte) (any, error) {
-	typeColl, err := GetTypesCollectionFromContext(ctx)
+	typeColl, err := GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

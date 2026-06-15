@@ -632,7 +632,7 @@ func (c *CompiledFunction) resolveFunction(ctx *sql.Context, argTypes []*pgtypes
 // implicitly converted to the ones provided. This is the set of all possible overloads that could be used with the
 // param types provided.
 func (c *CompiledFunction) typeCompatibleOverloads(ctx *sql.Context, fnOverloads []Overload, argTypes []*pgtypes.DoltgresType) ([]overloadMatch, error) {
-	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -915,7 +915,7 @@ func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr fun
 	}
 
 	if len(c.Arguments) < len(sqlFunc.ParameterTypes) {
-		castsColl, err := core.GetCastsCollectionFromContext(ctx)
+		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 		if err != nil {
 			return err
 		}

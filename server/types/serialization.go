@@ -264,7 +264,7 @@ func recursiveDeserializeType(ctx *sql.Context, typ *DoltgresType, typeColl Type
 	var recursedType *DoltgresType
 	var err error
 	if typeColl == nil {
-		typeColl, err = GetTypesCollectionFromContext(ctx)
+		typeColl, err = GetTypesCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, nil, err
 		}

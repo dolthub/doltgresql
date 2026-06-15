@@ -56,7 +56,7 @@ func FindCommonType(ctx *sql.Context, types []*pgtypes.DoltgresType) (_ *pgtypes
 			return nil, false, errors.Errorf("types %s and %s cannot be matched", candidateType.String(), typ.String())
 		}
 	}
-	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, false, err
 	}

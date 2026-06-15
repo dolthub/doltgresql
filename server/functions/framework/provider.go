@@ -35,11 +35,11 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 	if !core.IsContextValid(ctx) {
 		return nil, false
 	}
-	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx)
+	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, false
 	}
-	typesCollection, err := core.GetTypesCollectionFromContext(ctx)
+	typesCollection, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, false
 	}

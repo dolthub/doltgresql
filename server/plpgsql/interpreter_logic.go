@@ -47,7 +47,7 @@ type InterpretedFunction interface {
 
 // GetTypesCollectionFromContext is declared within the core package, but is assigned to this variable to work around
 // import cycles.
-var GetTypesCollectionFromContext func(ctx *sql.Context) (*typecollection.TypeCollection, error)
+var GetTypesCollectionFromContext func(ctx *sql.Context, database string) (*typecollection.TypeCollection, error)
 
 // Call runs the contained operations on the given runner.
 func Call(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunner, paramsAndReturn []*pgtypes.DoltgresType, vals []any) (any, error) {
@@ -118,7 +118,7 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return nil, err
 			}
 		case OpCode_Declare:
-			typeCollection, err := GetTypesCollectionFromContext(ctx)
+			typeCollection, err := GetTypesCollectionFromContext(ctx, "")
 			if err != nil {
 				return nil, err
 			}
