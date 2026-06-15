@@ -417,7 +417,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.([]byte); ok {
 			return v, sql.InRange, nil
 		}
-	case "bpchar", "char", "name", "text", "unknown", "varchar":
+	case "bpchar", "char", "name", "text", "varchar":
 		_, ok, err := sql.Unwrap[string](ctx, v)
 		if err != nil {
 			return nil, sql.InRange, err
@@ -479,6 +479,24 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	case "uuid":
 		if _, ok := v.(uuid.UUID); ok {
 			return v, sql.InRange, nil
+		}
+	case "unknown":
+		// TODO: implement other types, assume everything is either bool or unwrappable string for now
+		switch v := v.(type) {
+		case bool:
+			if v {
+				return "t", sql.InRange, nil
+			} else {
+				return "f", sql.InRange, nil
+			}
+		default:
+			_, ok, err := sql.Unwrap[string](ctx, v)
+			if err != nil {
+				return nil, sql.InRange, err
+			}
+			if ok {
+				return v, sql.InRange, nil
+			}
 		}
 	default:
 		return v, sql.InRange, nil
