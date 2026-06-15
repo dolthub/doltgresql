@@ -1,0 +1,142 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.26.2-alpine AS golang_cgo
+ENV CGO_ENABLED=1
+ENV GO_LDFLAGS="-linkmode external -extldflags '-static'"
+RUN apk add --no-cache build-base
+
+# --- Build doltgres binary ---
+FROM golang_cgo AS doltgres_build
+RUN apk add --no-cache icu-dev icu-static
+RUN apk update && apk add --no-cache bash
+WORKDIR /root/building
+COPY go.mod doltgresql/
+WORKDIR doltgresql
+RUN go mod download
+COPY --exclude=testing/postgres-client-tests/ . .
+WORKDIR /root/building/doltgresql/postgres/parser
+RUN sh ./build.sh
+WORKDIR /root/building/doltgresql/cmd/doltgres
+RUN go build -ldflags "-linkmode external -extldflags '-static'" -o /build/bin/doltgres .
+
+# --- Build Go postgres clients (pgx, lib/pq) ---
+FROM golang:1.26.4 AS go_clients_build
+COPY testing/postgres-client-tests/go/pgx/ /build/go/pgx/
+WORKDIR /build/go/pgx
+RUN go build -o /build/bin/pgx-test .
+COPY testing/postgres-client-tests/go/libpq/ /build/go/libpq/
+WORKDIR /build/go/libpq
+RUN go build -o /build/bin/libpq-test .
+
+# --- Build Rust sqlx client ---
+FROM rust:1.96-slim-bookworm AS rust_clients_build
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+COPY testing/postgres-client-tests/rust/ /build/rust/
+WORKDIR /build/rust
+RUN cargo build --release
+
+# --- Build C libpq client ---
+FROM debian:bookworm-slim AS c_clients_build
+RUN apt-get update && apt-get install -y gcc make libpq-dev pkg-config && rm -rf /var/lib/apt/lists/*
+COPY testing/postgres-client-tests/c/ /build/c/
+WORKDIR /build/c
+RUN make
+
+# --- Install Node postgres client deps ---
+FROM node:22-bookworm-slim AS node_clients_build
+COPY testing/postgres-client-tests/node/package.json /build/node/
+COPY testing/postgres-client-tests/node/package-lock.json /build/node/
+WORKDIR /build/node
+RUN npm install
+COPY testing/postgres-client-tests/node/ /build/node/
+
+# --- Install Ruby pg gem ---
+FROM ruby:3.4-bookworm AS ruby_clients_build
+RUN apt-get update && apt-get install -y libpq-dev && rm -rf /var/lib/apt/lists/*
+COPY testing/postgres-client-tests/ruby/Gemfile /build/ruby/
+COPY testing/postgres-client-tests/ruby/Gemfile.lock /build/ruby/
+WORKDIR /build/ruby
+RUN bundle install
+COPY testing/postgres-client-tests/ruby/ /build/ruby/
+
+# --- Install Python deps ---
+FROM python:3.14-slim-bookworm AS python_clients_build
+RUN pip3 install --no-cache-dir --target /build/python-deps sqlalchemy==2.0.46
+COPY testing/postgres-client-tests/python/ /build/python/
+WORKDIR /build/python/
+
+# --- Runtime ---
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    lsb-release && \
+    sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+
+# java JDBC dependencies
+COPY testing/postgres-client-tests/java/ /postgres-client-tests/java/
+RUN apt-get install -y \
+    openjdk-17-jdk && \
+    curl -L -o /postgres-client-tests/java/postgresql-42.7.3.jar https://jdbc.postgresql.org/download/postgresql-42.7.3.jar
+
+# perl dependencies
+RUN apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-psycopg2 \
+    perl \
+    cpanminus \
+    php \
+    php-pgsql \
+    r-base \
+    libpq-dev \
+    ca-certificates-java \
+    bats \
+    lsof \
+    postgresql-client-15 \
+    nodejs \
+    elixir \
+    git && \
+    update-ca-certificates -f && \
+    rm -rf /var/lib/apt/lists/*
+
+# cpan dependencies
+RUN cpanm --force DBD::Pg
+
+# r dependencies
+COPY testing/postgres-client-tests/r/ /postgres-client-tests/r/
+RUN Rscript -e 'install.packages("RPostgres", repos="https://cloud.r-project.org")'
+
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64/
+ENV GEM_HOME="/usr/local/bundle"
+ENV PYTHONPATH=/usr/local/lib/python-deps
+
+COPY --from=ruby_clients_build /usr/local/bin/ruby /usr/local/bin/
+COPY --from=ruby_clients_build /usr/local/lib/ /usr/local/lib/
+COPY --from=ruby_clients_build /usr/local/bundle/ /usr/local/bundle/
+RUN ldconfig
+
+COPY --from=doltgres_build /build/bin/doltgres /usr/local/bin/doltgres
+COPY --from=go_clients_build /build/bin/pgx-test /build/bin/go/pgx-test
+COPY --from=go_clients_build /build/bin/libpq-test /build/bin/go/libpq-test
+COPY --from=rust_clients_build /build/rust/target/release/sqlx_exists_demo /build/bin/rust/sqlx_exists_demo
+COPY --from=c_clients_build /build/c/postgres-c-connector-test /build/bin/c/postgres-c-connector-test
+COPY --from=node_clients_build /build/node/ /postgres-client-tests/node/
+COPY --from=python_clients_build /build/python/ /postgres-client-tests/python/
+COPY --from=python_clients_build /build/python-deps/ /usr/local/lib/python-deps/
+COPY --from=ruby_clients_build /build/ruby/ /postgres-client-tests/ruby/
+
+COPY testing/postgres-client-tests/c/ /postgres-client-tests/c/
+COPY testing/postgres-client-tests/drizzle/ /postgres-client-tests/drizzle/
+COPY testing/postgres-client-tests/helpers.bash /postgres-client-tests/
+COPY testing/postgres-client-tests/php/ /postgres-client-tests/php/
+COPY testing/postgres-client-tests/perl/ /postgres-client-tests/perl/
+COPY testing/postgres-client-tests/postgres-client-tests.bats /postgres-client-tests/
+COPY testing/postgres-client-tests/postgres-client-tests-entrypoint.sh /postgres-client-tests/entrypoint.sh
+
+WORKDIR /postgres-client-tests
+ENTRYPOINT ["/postgres-client-tests/entrypoint.sh"]
