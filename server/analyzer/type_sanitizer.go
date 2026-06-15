@@ -78,6 +78,32 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				// Some aggregation functions cannot be wrapped due to expectations in the analyzer, so we exclude them here.
 				switch expr.FunctionName() {
 				case "Count", "CountDistinct", "group_concat", "JSONObjectAgg", "Sum":
+				case "coalesce":
+					// Replace GMS Coalesce with a Doltgres-native implementation that uses
+					// Postgres type-resolution rules (FindCommonType) to infer the result type.
+					// GMS's Coalesce.Type() falls back to LongText when its arguments are
+					// DoltgresTypes because they don't satisfy GMS's IsNumber/IsText checks.
+					if _, isPgCoalesce := expr.(*pgexprs.PgCoalesce); !isPgCoalesce {
+						children := expr.Children()
+						allDoltgresTypes := true
+						for _, child := range children {
+							if _, ok := child.Type(ctx).(*pgtypes.DoltgresType); !ok {
+								allDoltgresTypes = false
+								break
+							}
+						}
+						if allDoltgresTypes {
+							pgCoalesce, err := pgexprs.NewPgCoalesce(ctx, children...)
+							if err != nil {
+								return nil, transform.NewTree, err
+							}
+							return pgCoalesce, transform.NewTree, nil
+						}
+					}
+					// Fall through to GMSCast if children aren't DoltgresTypes yet.
+					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
+						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
+					}
 				default:
 					// Some GMS functions wrap Doltgres parameters, so we'll only handle those that return GMS types
 					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
