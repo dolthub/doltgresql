@@ -418,6 +418,13 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 			return v, sql.InRange, nil
 		}
 	case "bpchar", "char", "name", "text", "unknown", "varchar":
+		if b, ok := v.(bool); ok {
+			if b {
+				return "t", sql.InRange, nil
+			} else {
+				return "f", sql.InRange, nil
+			}
+		}
 		_, ok, err := sql.Unwrap[string](ctx, v)
 		if err != nil {
 			return nil, sql.InRange, err
