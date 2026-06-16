@@ -484,7 +484,7 @@ func TestPgCast(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT COUNT(*) FROM "pg_catalog"."pg_cast";`,
-					Expected: []sql.Row{{117}},
+					Expected: []sql.Row{{118}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_cast";`,
@@ -496,7 +496,7 @@ func TestPgCast(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT COUNT(*) FROM PG_catalog.pg_CAST ORDER BY oid;",
-					Expected: []sql.Row{{117}},
+					Expected: []sql.Row{{118}},
 				},
 			},
 		},
@@ -5082,7 +5082,7 @@ ORDER BY 1;`,
 				{
 					// This is to make sure a full range scan works (we don't support a full range scan on the index yet)
 					Query:    `SELECT relname from pg_catalog.pg_class order by oid limit 1;`,
-					Expected: []sql.Row{sql.Row{"pg_publication_namespace"}},
+					Expected: []sql.Row{{"pg_publication_namespace"}},
 				},
 				{
 					Query: `EXPLAIN SELECT c.oid
@@ -6045,9 +6045,9 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{245736992, "dolt_conflicts", 2200, "r"},
 						{1932298159, "dolt_constraint_violations", 2200, "r"},
 						{2357712556, "dolt_diff", 2200, "r"},
-						sql.Row{101228732, "dolt_diff_commit_hash_key", 2200, "i"},
+						{101228732, "dolt_diff_commit_hash_key", 2200, "i"},
 						{3491847678, "dolt_log", 2200, "r"},
-						sql.Row{2292720014, "dolt_log_commit_hash_key", 2200, "i"},
+						{2292720014, "dolt_log_commit_hash_key", 2200, "i"},
 						{604995978, "dolt_merge_status", 2200, "r"},
 						{887648921, "dolt_remote_branches", 2200, "r"},
 						{1471391189, "dolt_remote_branches_dolt_branches_name_idx_key", 2200, "i"},
