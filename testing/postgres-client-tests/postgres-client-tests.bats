@@ -22,6 +22,10 @@ teardown() {
     java -cp $BATS_TEST_DIRNAME/java:$BATS_TEST_DIRNAME/java/postgresql-42.7.3.jar PostgresTest $USER $PORT
 }
 
+@test "r2dbc-postgresql client" {
+    java -jar /build/bin/r2dbc/r2dbc-test.jar $USER $PORT
+}
+
 @test "node postgres client" {
     node $BATS_TEST_DIRNAME/node/index.js $USER $PORT
 }

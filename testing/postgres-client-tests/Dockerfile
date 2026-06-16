@@ -84,6 +84,12 @@ COPY testing/postgres-client-tests/dotnet/ /build/dotnet/
 WORKDIR /build/dotnet
 RUN dotnet publish -c Release -o /build/output/
 
+# --- Build Java R2DBC client ---
+FROM maven:3.9-eclipse-temurin-17 AS r2dbc_clients_build
+COPY testing/postgres-client-tests/r2dbc/ /build/r2dbc/
+WORKDIR /build/r2dbc
+RUN mvn package -q
+
 # --- Runtime ---
 FROM debian:bookworm-slim
 
@@ -157,6 +163,7 @@ COPY --from=go_clients_build /build/bin/libpq-test /build/bin/go/libpq-test
 COPY --from=rust_clients_build /build/rust/target/release/sqlx_exists_demo /build/bin/rust/sqlx_exists_demo
 COPY --from=c_clients_build /build/c/postgres-c-connector-test /build/bin/c/postgres-c-connector-test
 COPY --from=dotnet_clients_build /build/output /build/bin/dotnet
+COPY --from=r2dbc_clients_build /build/r2dbc/target/r2dbc-test-1.0.jar /build/bin/r2dbc/r2dbc-test.jar
 COPY --from=node_clients_build /build/node/ /postgres-client-tests/node/
 COPY --from=python_clients_build /build/python/ /postgres-client-tests/python/
 COPY --from=python_clients_build /build/python-deps/ /usr/local/lib/python-deps/
