@@ -53,7 +53,7 @@ func (ac *AssignmentCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if err != nil || val == nil {
 		return val, err
 	}
-	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

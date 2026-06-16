@@ -78,7 +78,7 @@ func (d *DropProcedure) IsReadOnly() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (d *DropProcedure) RowIter(ctx *sql.Context, r sql.Row) (iter sql.RowIter, err error) {
-	procColl, err := core.GetProceduresCollectionFromContext(ctx)
+	procColl, err := core.GetProceduresCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

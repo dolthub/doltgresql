@@ -86,7 +86,7 @@ func (c *DropType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	if err != nil {
 		return nil, err
 	}
-	collection, err := core.GetTypesCollectionFromContext(ctx)
+	collection, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

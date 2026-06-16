@@ -259,7 +259,11 @@ func resolveType(ctx *sql.Context, db sql.Database, typ *pgtypes.DoltgresType) (
 	if typ.IsResolvedType() {
 		return typ, nil
 	}
-	typs, err := core.GetTypesCollectionFromContext(ctx)
+	var dbname string
+	if db != nil {
+		dbname = db.Name()
+	}
+	typs, err := core.GetTypesCollectionFromContext(ctx, dbname)
 	if err != nil {
 		return nil, err
 	}

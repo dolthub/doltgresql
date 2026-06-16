@@ -66,7 +66,7 @@ func (array *Array) Children() []sql.Expression {
 func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	resultTyp := array.coercedType.ArrayBaseType()
 	values := make([]any, len(array.children))
-	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) 
 		if schemaName == "" {
 			schemaName, _ = core.GetCurrentSchema(ctx)
 		}
-		if typeColl, tcErr := core.GetTypesCollectionFromContext(ctx); tcErr == nil && typeColl != nil {
+		if typeColl, tcErr := core.GetTypesCollectionFromContext(ctx, ""); tcErr == nil && typeColl != nil {
 			if resolved, rErr := typeColl.GetType(ctx, id.NewType(schemaName, targetType.ID.TypeName())); rErr == nil && resolved != nil {
 				targetType = resolved
 			}

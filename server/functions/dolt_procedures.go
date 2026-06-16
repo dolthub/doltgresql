@@ -173,7 +173,7 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	castsColl, err := core.GetCastsCollectionFromContext(ctx)
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

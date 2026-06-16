@@ -89,7 +89,7 @@ func (c *CreateProcedure) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
-	procCollection, err := core.GetProceduresCollectionFromContext(ctx)
+	procCollection, err := core.GetProceduresCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

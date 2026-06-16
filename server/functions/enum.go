@@ -143,7 +143,7 @@ var enum_cmp = framework.Function2{
 // getDoltgresTypeFromId takes internal ID and returns the DoltgresType associated to it. It allows retrieving a
 // user-defined type, and it requires a valid sql.Context.
 func getDoltgresTypeFromId(ctx *sql.Context, rawId id.Id) (*pgtypes.DoltgresType, error) {
-	typCol, err := core.GetTypesCollectionFromContext(ctx)
+	typCol, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

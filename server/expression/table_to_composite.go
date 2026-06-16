@@ -35,7 +35,7 @@ var _ sql.Expression = (*TableToComposite)(nil)
 
 // NewTableToComposite creates a new composite table type.
 func NewTableToComposite(ctx *sql.Context, tableName string, fields []sql.Expression) (sql.Expression, error) {
-	coll, err := core.GetTypesCollectionFromContext(ctx)
+	coll, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}

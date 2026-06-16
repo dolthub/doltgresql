@@ -160,7 +160,7 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 
 		var typeMap map[string][]*types.DoltgresType
 		if callbacks.Type != nil {
-			coll, err := core.GetTypesCollectionFromContext(ctx)
+			coll, err := core.GetTypesCollectionFromContext(ctx, database)
 			if err != nil {
 				return err
 			}

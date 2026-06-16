@@ -78,7 +78,7 @@ func (c *CreateCast) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateCast) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	castCollection, err := core.GetCastsCollectionFromContext(ctx)
+	castCollection, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (c *CreateCast) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			paramTypes[i] = param.Type.ID
 		}
 		funcID := id.NewFunction(schemaName, c.FuncName, paramTypes...)
-		funcCollection, err := core.GetFunctionsCollectionFromContext(ctx)
+		funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, err
 		}

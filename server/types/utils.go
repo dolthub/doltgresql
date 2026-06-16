@@ -77,10 +77,10 @@ type CastsCollection interface {
 }
 
 // GetTypesCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
-var GetTypesCollectionFromContext func(*sql.Context) (TypeCollection, error)
+var GetTypesCollectionFromContext func(*sql.Context, string) (TypeCollection, error)
 
 // GetCastsCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
-var GetCastsCollectionFromContext func(*sql.Context) (CastsCollection, error)
+var GetCastsCollectionFromContext func(*sql.Context, string) (CastsCollection, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.

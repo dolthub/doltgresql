@@ -169,7 +169,7 @@ func (c *CreateTrigger) WithResolvedChildren(ctx context.Context, children []any
 func loadFunction(ctx *sql.Context, funcCollection *functions.Collection, funcID id.Function) (functions.Function, error) {
 	var err error
 	if funcCollection == nil {
-		funcCollection, err = core.GetFunctionsCollectionFromContext(ctx)
+		funcCollection, err = core.GetFunctionsCollectionFromContext(ctx, "")
 		if err != nil {
 			return functions.Function{}, err
 		}

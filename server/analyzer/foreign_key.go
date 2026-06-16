@@ -32,7 +32,8 @@ func validateForeignKeyDefinition(ctx *sql.Context, fkDef sql.ForeignKeyConstrai
 	var castsColl *casts.Collection
 	if len(fkDef.Columns) > 0 {
 		var err error
-		castsColl, err = core.GetCastsCollectionFromContext(ctx)
+		// TODO: which database is this supposed to use?
+		castsColl, err = core.GetCastsCollectionFromContext(ctx, "")
 		if err != nil {
 			return err
 		}

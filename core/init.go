@@ -37,11 +37,11 @@ func Init() {
 	id.RegisterListener(sequenceIDListener{}, id.Section_Table)
 	typecollection.GetSqlTableFromContext = GetSqlTableFromContext
 	typecollection.GetSchemaName = GetSchemaName
-	pgtypes.GetTypesCollectionFromContext = func(ctx *sql.Context) (pgtypes.TypeCollection, error) {
-		return GetTypesCollectionFromContext(ctx)
+	pgtypes.GetTypesCollectionFromContext = func(ctx *sql.Context, database string) (pgtypes.TypeCollection, error) {
+		return GetTypesCollectionFromContext(ctx, database)
 	}
 	pgtypes.GetAssignmentCast = func(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (pgtypes.Cast, error) {
-		castsColl, err := GetCastsCollectionFromContext(ctx)
+		castsColl, err := GetCastsCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, err
 		}

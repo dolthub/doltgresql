@@ -87,7 +87,7 @@ func cachePgTypes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	oidIdx := NewUniqueInMemIndexStorage[*pgType](lessTypeOid)
 
 	allTypes := pgtypes.GetAllBuitInTypes()
-	typeColl, err := core.GetTypesCollectionFromContext(ctx)
+	typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return err
 	}

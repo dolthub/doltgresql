@@ -119,7 +119,7 @@ OuterLoop:
 func beforeTableDeletionCheckFuncsProcs(ctx *sql.Context, doltTable *sqle.DoltTable, allDeletedTables []doltdb.TableName) error {
 	tableName := doltTable.TableName()
 	tableAsType := id.NewType(tableName.Schema, tableName.Name)
-	funcsColl, err := core.GetFunctionsCollectionFromContext(ctx)
+	funcsColl, err := core.GetFunctionsCollectionFromContext(ctx, "")
 	if err != nil {
 		return err
 	}
@@ -136,7 +136,7 @@ func beforeTableDeletionCheckFuncsProcs(ctx *sql.Context, doltTable *sqle.DoltTa
 	if err != nil {
 		return err
 	}
-	procsColl, err := core.GetProceduresCollectionFromContext(ctx)
+	procsColl, err := core.GetProceduresCollectionFromContext(ctx, "")
 	if err != nil {
 		return err
 	}

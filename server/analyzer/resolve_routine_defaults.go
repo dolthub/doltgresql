@@ -36,11 +36,11 @@ import (
 func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	switch n := node.(type) {
 	case *pgnodes.Call:
-		procCollection, err := core.GetProceduresCollectionFromContext(ctx)
+		procCollection, err := core.GetProceduresCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, transform.SameTree, err
 		}
-		typesCollection, err := core.GetTypesCollectionFromContext(ctx)
+		typesCollection, err := core.GetTypesCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, transform.SameTree, err
 		}
