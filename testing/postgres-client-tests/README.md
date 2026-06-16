@@ -5,7 +5,7 @@ on pull requests.
 These tests can be run locally using Docker. From the doltgresql directory of the repo, run:
 
 ```bash
-$ docker build -t postgres-client-tests -f testing/PostgresDockerfile .
+$ docker build -t postgres-client-tests -f testing/postgres-client-tests/Dockerfile .
 $ docker run postgres-client-tests:latest
 ```
 

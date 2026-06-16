@@ -15,12 +15,6 @@ setup() {
 teardown() {
     cd ..
     teardown_doltgres_repo
-
-    # Check if postgresql is still running. If so stop it
-    active=$(service postgresql status)
-    if echo "$active" | grep "online"; then
-        service postgresql stop
-    fi
 }
 
 @test "postgres-connector-java client" {
@@ -101,7 +95,22 @@ teardown() {
   npx tsx src/index.ts
 }
 
+@test "R RPostgres client" {
+    Rscript $BATS_TEST_DIRNAME/r/rpostgres-test.r $USER $PORT
+}
+
 @test "rust sqlx" {
-    cd $BATS_TEST_DIRNAME/rust
-    RUSTFLAGS=-Awarnings cargo run -- $USER $PORT
+    /build/bin/rust/sqlx_exists_demo $USER $PORT
+}
+
+@test "go pgx client" {
+    /build/bin/go/pgx-test $USER $PORT
+}
+
+@test "go lib/pq client" {
+    /build/bin/go/libpq-test $USER $PORT
+}
+
+@test "dotnet Npgsql client" {
+    /build/bin/dotnet/npgsql-test $USER $PORT
 }
