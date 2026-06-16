@@ -110,3 +110,7 @@ teardown() {
 @test "go lib/pq client" {
     /build/bin/go/libpq-test $USER $PORT
 }
+
+@test "dotnet Npgsql client" {
+    /build/bin/dotnet/npgsql-test $USER $PORT
+}

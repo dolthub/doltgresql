@@ -4,3 +4,6 @@ node/node_modules/
 elixir/postgrex/_build
 elixir/postgrex/mix.lock
 elixir/postgrex/dep
+dotnet/bin
+dotnet/obj
+dotnet/out

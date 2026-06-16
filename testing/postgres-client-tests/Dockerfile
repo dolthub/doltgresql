@@ -64,6 +64,12 @@ RUN pip3 install --no-cache-dir --target /build/python-deps sqlalchemy==2.0.46
 COPY testing/postgres-client-tests/python/ /build/python/
 WORKDIR /build/python/
 
+# --- Build .NET Npgsql client ---
+FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS dotnet_clients_build
+COPY testing/postgres-client-tests/dotnet/ /build/dotnet/
+WORKDIR /build/dotnet
+RUN dotnet publish -c Release -o /build/output/
+
 # --- Runtime ---
 FROM debian:bookworm-slim
 
@@ -100,9 +106,17 @@ RUN apt-get install -y \
     postgresql-client-15 \
     nodejs \
     elixir \
+    libicu-dev \
     git && \
     update-ca-certificates -f && \
     rm -rf /var/lib/apt/lists/*
+
+# install .NET
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh \
+    && chmod +x dotnet-install.sh \
+    && ./dotnet-install.sh --channel 9.0 --runtime aspnetcore --install-dir /usr/share/dotnet \
+    && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
+    && rm dotnet-install.sh
 
 # cpan dependencies
 RUN cpanm --force DBD::Pg
@@ -125,6 +139,7 @@ COPY --from=go_clients_build /build/bin/pgx-test /build/bin/go/pgx-test
 COPY --from=go_clients_build /build/bin/libpq-test /build/bin/go/libpq-test
 COPY --from=rust_clients_build /build/rust/target/release/sqlx_exists_demo /build/bin/rust/sqlx_exists_demo
 COPY --from=c_clients_build /build/c/postgres-c-connector-test /build/bin/c/postgres-c-connector-test
+COPY --from=dotnet_clients_build /build/output /build/bin/dotnet
 COPY --from=node_clients_build /build/node/ /postgres-client-tests/node/
 COPY --from=python_clients_build /build/python/ /postgres-client-tests/python/
 COPY --from=python_clients_build /build/python-deps/ /usr/local/lib/python-deps/
