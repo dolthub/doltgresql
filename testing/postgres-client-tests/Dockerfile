@@ -41,6 +41,20 @@ COPY testing/postgres-client-tests/c/ /build/c/
 WORKDIR /build/c
 RUN make
 
+# --- Build C++ libpqxx client ---
+FROM debian:bookworm-slim AS cpp_clients_build
+RUN apt-get update && apt-get install -y g++ make libpqxx-dev pkg-config && rm -rf /var/lib/apt/lists/*
+COPY testing/postgres-client-tests/cpp/ /build/cpp/
+WORKDIR /build/cpp
+RUN make
+
+# --- Build ODBC psqlODBC client ---
+FROM debian:bookworm-slim AS odbc_clients_build
+RUN apt-get update && apt-get install -y gcc make unixodbc-dev && rm -rf /var/lib/apt/lists/*
+COPY testing/postgres-client-tests/odbc/ /build/odbc/
+WORKDIR /build/odbc
+RUN make
+
 # --- Install Node postgres client deps ---
 FROM node:22-bookworm-slim AS node_clients_build
 COPY testing/postgres-client-tests/node/package.json /build/node/
@@ -100,6 +114,9 @@ RUN apt-get install -y \
     php-pgsql \
     r-base \
     libpq-dev \
+    odbc-postgresql \
+    g++ make libpqxx-dev pkg-config \
+    gcc make unixodbc-dev \
     ca-certificates-java \
     bats \
     lsof \
@@ -123,7 +140,7 @@ RUN cpanm --force DBD::Pg
 
 # r dependencies
 COPY testing/postgres-client-tests/r/ /postgres-client-tests/r/
-RUN Rscript -e 'install.packages("RPostgres", repos="https://cloud.r-project.org")'
+RUN Rscript -e 'install.packages(c("RPostgres", "RPostgreSQL"), repos="https://cloud.r-project.org")'
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64/
 ENV GEM_HOME="/usr/local/bundle"
@@ -146,6 +163,8 @@ COPY --from=python_clients_build /build/python-deps/ /usr/local/lib/python-deps/
 COPY --from=ruby_clients_build /build/ruby/ /postgres-client-tests/ruby/
 
 COPY testing/postgres-client-tests/c/ /postgres-client-tests/c/
+COPY testing/postgres-client-tests/cpp/ /postgres-client-tests/cpp/
+COPY testing/postgres-client-tests/odbc/ /postgres-client-tests/odbc/
 COPY testing/postgres-client-tests/drizzle/ /postgres-client-tests/drizzle/
 COPY testing/postgres-client-tests/helpers.bash /postgres-client-tests/
 COPY testing/postgres-client-tests/php/ /postgres-client-tests/php/

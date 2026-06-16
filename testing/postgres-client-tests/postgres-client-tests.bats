@@ -62,6 +62,18 @@ teardown() {
     $BATS_TEST_DIRNAME/c/postgres-c-connector-test $USER $PORT
 }
 
+@test "c++ libpqxx client" {
+    cd $BATS_TEST_DIRNAME/cpp
+    make
+    ./libpqxx-test $USER $PORT
+}
+
+@test "psqlODBC client" {
+    cd $BATS_TEST_DIRNAME/odbc
+    make
+    ./psqlodbc-test $USER $PORT
+}
+
 @test "python postgres: psycopg2 client" {
     cd $BATS_TEST_DIRNAME/python
     python3 psycopg2_test.py $USER $PORT
@@ -97,6 +109,10 @@ teardown() {
 
 @test "R RPostgres client" {
     Rscript $BATS_TEST_DIRNAME/r/rpostgres-test.r $USER $PORT
+}
+
+@test "R RPostgreSQL client" {
+    Rscript $BATS_TEST_DIRNAME/r/rpostgresql-test.r $USER $PORT
 }
 
 @test "rust sqlx" {
