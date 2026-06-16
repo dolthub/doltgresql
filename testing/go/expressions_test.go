@@ -487,3 +487,66 @@ func TestSubscript(t *testing.T) {
 		},
 	})
 }
+
+func TestCoalesce(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			// https://github.com/dolthub/doltgresql/issues/2332
+			Name: "COALESCE(NULL, col) in UPDATE",
+			SetUpScript: []string{
+				`CREATE TABLE t (id UUID PRIMARY KEY, val INTEGER NOT NULL DEFAULT 0, d DATE)`,
+				`INSERT INTO t VALUES ('00000000-0000-0000-0000-000000000001', 42, '2026-01-01')`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Should be a no-op; val stays 42.
+					Query:            `UPDATE t SET val = COALESCE(NULL, val) WHERE id = '00000000-0000-0000-0000-000000000001'`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT val FROM t WHERE id = '00000000-0000-0000-0000-000000000001'`,
+					Expected: []sql.Row{{int32(42)}},
+				},
+				{
+					// Should be a no-op; d stays '2026-01-01'.
+					Query:            `UPDATE t SET d = COALESCE(NULL, d) WHERE id = '00000000-0000-0000-0000-000000000001'`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT d FROM t WHERE id = '00000000-0000-0000-0000-000000000001'`,
+					Expected: []sql.Row{{"2026-01-01"}},
+				},
+			},
+		},
+		{
+			Name: "COALESCE type resolution in SELECT",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT COALESCE(NULL, 42)`,
+					Expected: []sql.Row{{int32(42)}},
+				},
+				{
+					Query:    `SELECT COALESCE(NULL, NULL)`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT COALESCE(NULL, NULL, 'hello')`,
+					Expected: []sql.Row{{"hello"}},
+				},
+				{
+					Query:    `SELECT COALESCE(1, 2, 3)`,
+					Expected: []sql.Row{{int32(1)}},
+				},
+				{
+					Query:    `SELECT COALESCE(NULL, 2, 3)`,
+					Expected: []sql.Row{{int32(2)}},
+				},
+				{
+					// Explicit cast workaround still works.
+					Query:    `SELECT COALESCE(NULL::integer, 42)`,
+					Expected: []sql.Row{{int32(42)}},
+				},
+			},
+		},
+	})
+}
