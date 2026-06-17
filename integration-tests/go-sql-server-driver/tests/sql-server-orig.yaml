@@ -1,0 +1,445 @@
+parallel: true
+tests:
+- name: read-only flag prevents modification
+  repos:
+  - name: repo1
+    server:
+      args: ["--config", "readonly.yaml"]
+      dynamic_port: server1
+    with_files:
+    - name: readonly.yaml
+      contents: |
+        log_level: trace
+        behavior:
+          read_only: true
+  connections:
+  - on: repo1
+    queries:
+    - query: "select count(*) as count from information_schema.tables where table_schema = 'public'"
+      result:
+        columns: ["count"]
+        rows: [["0"]]
+    - exec: "create table i_should_not_exist (c0 int)"
+      error_match: "read only mode"
+    - query: "select count(*) as count from information_schema.tables where table_schema = 'public'"
+      result:
+        columns: ["count"]
+        rows: [["0"]]
+- name: read-only flag still allows select
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+    with_files:
+    - name: readonly.yaml
+      contents: |
+        behavior:
+          read_only: true
+  connections:
+  - on: repo1
+    queries:
+    - exec: "create table t(c0 int)"
+    - exec: "insert into t values (1)"
+    restart_server:
+      args: ["--config", "readonly.yaml"]
+  - on: repo1
+    queries:
+    - query: "select * from t"
+      result:
+        columns: ["c0"]
+        rows: [["1"]]
+- name: read-only flag prevents dolt_commit
+  skip: "Doltgres read-only mode does not block the dolt_commit() procedure; it is not classified as a write by the engine read-only guard"
+  repos:
+  - name: repo1
+    server:
+      args: ["--config", "readonly.yaml"]
+      dynamic_port: server1
+    with_files:
+    - name: readonly.yaml
+      contents: |
+        log_level: trace
+        behavior:
+          read_only: true
+  connections:
+  - on: repo1
+    queries:
+    - query: "select dolt_commit('--allow-empty', '-m', 'msg')"
+      error_match: "read only"
+- name: read-only flag prevents dolt_reset
+  skip: "Doltgres read-only mode does not block the dolt_reset() procedure; it is not classified as a write by the engine read-only guard"
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+    with_files:
+    - name: readonly.yaml
+      contents: |
+        log_level: trace
+        behavior:
+          read_only: true
+  connections:
+  - on: repo1
+    queries:
+    - query: "select dolt_commit('--allow-empty', '-m', 'msg')"
+      result:
+        columns: ["dolt_commit"]
+        rows: []
+    restart_server:
+      args: ["--config", "readonly.yaml"]
+  - on: repo1
+    queries:
+    - query: "select dolt_reset('--hard', 'HEAD~1')"
+      error_match: "read only"
+- name: port in use
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+  - name: repo2
+    server:
+      args: []
+      dynamic_port: server1
+      error_matches:
+      - "already in use"
+- name: test basic querying
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: repo1
+    queries:
+    - query: "select table_name from information_schema.tables where table_schema = 'public' order by table_name"
+      result:
+        columns: ["table_name"]
+        rows: []
+  - on: repo1
+    queries:
+    - exec: |
+        CREATE TABLE one_pk (
+            pk bigint NOT NULL,
+            c1 bigint,
+            c2 bigint,
+            PRIMARY KEY (pk)
+        )
+  - on: repo1
+    queries:
+    - query: "select table_name from information_schema.tables where table_schema = 'public' order by table_name"
+      result:
+        columns: ["table_name"]
+        rows: [["one_pk"]]
+  - on: repo1
+    queries:
+    - exec: "INSERT INTO one_pk (pk) VALUES (0)"
+  - on: repo1
+    queries:
+    - query: "SELECT * FROM one_pk ORDER BY pk"
+      result:
+        columns: ["pk","c1","c2"]
+        rows: [["0","NULL","NULL"]]
+  - on: repo1
+    queries:
+    - exec: "INSERT INTO one_pk (pk,c1) VALUES (1,1)"
+  - on: repo1
+    queries:
+    - exec: "INSERT INTO one_pk (pk,c1,c2) VALUES (2,2,2),(3,3,3)"
+  - on: repo1
+    queries:
+    - query: "SELECT * FROM one_pk ORDER BY pk"
+      result:
+        columns: ["pk","c1","c2"]
+        rows:
+        - ["0","NULL","NULL"]
+        - ["1","1","NULL"]
+        - ["2","2","2"]
+        - ["3","3","3"]
+  - on: repo1
+    queries:
+    - exec: "UPDATE one_pk SET c2=c1 WHERE c2 is NULL and c1 IS NOT NULL"
+- name: test multiple queries on same connection
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: repo1
+    queries:
+    - exec: |
+        CREATE TABLE one_pk (
+            pk bigint NOT NULL,
+            c1 bigint,
+            c2 bigint,
+            PRIMARY KEY (pk)
+        )
+    - exec: "INSERT INTO one_pk (pk) VALUES (0)"
+    - exec: "INSERT INTO one_pk (pk,c1) VALUES (1,1)"
+    - exec: "INSERT INTO one_pk (pk,c1,c2) VALUES (2,2,2),(3,3,3)"
+    - query: "SELECT * FROM one_pk ORDER BY pk"
+      result:
+        columns: ["pk","c1","c2"]
+        rows:
+        - ["0","NULL","NULL"]
+        - ["1","1","NULL"]
+        - ["2","2","2"]
+        - ["3","3","3"]
+  - on: repo1
+    queries:
+    - query: "SELECT * FROM one_pk ORDER BY pk"
+      result:
+        columns: ["pk","c1","c2"]
+        rows:
+        - ["0","NULL","NULL"]
+        - ["1","1","NULL"]
+        - ["2","2","2"]
+        - ["3","3","3"]
+- name: test CREATE and DROP database via sql-server
+  # The original test creates a database, then `USE`s it to operate on its
+  # tables on the same connection. Postgres/Doltgres binds the database at
+  # connection time (no USE across databases), and this test framework can only
+  # open connections to servers registered by repo/multi-repo name (via `on:`),
+  # so a freshly-created database cannot be reached by name. We still exercise
+  # CREATE DATABASE / DROP DATABASE and verify pg_database visibility.
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: repo1
+    queries:
+    - exec: "CREATE DATABASE test"
+    - query: "select datname from pg_database where datname in ('repo1','test') order by datname"
+      result:
+        columns: ["datname"]
+        rows:
+        - ["repo1"]
+        - ["test"]
+    - exec: "drop database test"
+    - query: "select datname from pg_database where datname in ('repo1','test') order by datname"
+      result:
+        columns: ["datname"]
+        rows:
+        - ["repo1"]
+- name: COPY loads CSV data from a file
+  repos:
+  - name: repo1
+    with_files:
+    - name: "1pk5col-ints.csv"
+      source_path: "testdata/1pk5col-ints.csv"
+    server:
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: repo1
+    queries:
+    - exec: "CREATE TABLE test(pk int primary key, c1 int, c2 int, c3 int, c4 int, c5 int)"
+    - exec: "COPY test FROM '1pk5col-ints.csv' WITH (FORMAT csv, HEADER)"
+    - query: "SELECT * FROM test"
+      result:
+        columns: ["pk","c1","c2","c3","c4","c5"]
+        rows:
+        - ["0","1","2","3","4","5"]
+        - ["1","1","2","3","4","5"]
+- name: JSON queries
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: repo1
+    queries:
+    - exec: |
+        CREATE TABLE js_test (
+            pk int NOT NULL,
+            js json,
+            PRIMARY KEY (pk)
+        )
+    - exec: |
+        INSERT INTO js_test VALUES (1, '{"a":1}')
+    - query: "SELECT * FROM js_test"
+      result:
+        columns: ["pk","js"]
+        rows:
+          or:
+          - [["1", '{"a": 1}']]
+          - [["1", '{"a":1}']]
+- name: select a branch with dolt_checkout
+  # The original test used MySQL `USE repo1/feature-branch` to switch to a
+  # branch-revision database. Doltgres has no `USE` statement, so the equivalent
+  # session branch switch is done with dolt_checkout().
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: repo1
+    queries:
+    - query: "select dolt_branch('feature-branch')"
+      result:
+        columns: ["dolt_branch"]
+        rows: [["{0}"]]
+    - query: "select dolt_checkout('feature-branch')"
+      result:
+        columns: ["dolt_checkout"]
+        rows:
+          or:
+          - [["{0,\"Switched to branch 'feature-branch'\"}"]]
+          - [["{0,Switched to branch 'feature-branch'}"]]
+    - exec: |
+        CREATE TABLE test (
+            pk int,
+            c1 int,
+            PRIMARY KEY (pk)
+        )
+  - on: repo1
+    queries:
+    - query: "select table_name from information_schema.tables where table_schema = 'public' order by table_name"
+      result:
+        columns: ["table_name"]
+        rows: []
+    - query: "select dolt_checkout('feature-branch')"
+      result:
+        columns: ["dolt_checkout"]
+        rows:
+          or:
+          - [["{0,\"Switched to branch 'feature-branch'\"}"]]
+          - [["{0,Switched to branch 'feature-branch'}"]]
+    - query: "select table_name from information_schema.tables where table_schema = 'public' order by table_name"
+      result:
+        columns: ["table_name"]
+        rows: [["test"]]
+- name: auto increment for a table should reset between drops
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: repo1
+    queries:
+    - exec: "CREATE TABLE t1(pk serial primary key, val int)"
+    - exec: "INSERT INTO t1 (val) VALUES (1),(2)"
+    - query: "SELECT * FROM t1 ORDER BY pk"
+      result:
+        columns: ["pk", "val"]
+        rows: [["1", "1"], ["2", "2"]]
+    - exec: "DROP TABLE t1"
+    - exec: "CREATE TABLE t1(pk serial primary key, val int)"
+    - exec: "INSERT INTO t1 (val) VALUES (1),(2)"
+    - query: "SELECT * FROM t1 ORDER BY pk"
+      result:
+        columns: ["pk", "val"]
+        rows: [["1", "1"], ["2", "2"]]
+- name: Create a temporary table and validate that it doesn't persist after a session closes
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: repo1
+    queries:
+    - query: "select table_name from information_schema.tables where table_schema = 'public' order by table_name"
+      result:
+        columns: ["table_name"]
+        rows: []
+    - exec: "CREATE TEMPORARY TABLE t1(pk int primary key, val int)"
+    - exec: "INSERT INTO t1 VALUES (1, 1),(2, 2)"
+  - on: repo1
+    queries:
+    - exec: "INSERT INTO t1 VALUES (1, 1),(2, 2)"
+      error_match: "(does not exist|not found)"
+- name: create a collated database connected to a non-dolt database
+  skip: "MySQL-specific COLLATE database creation / non-Dolt database semantics not applicable to Doltgres"
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: repo1
+    queries:
+    - exec: "USE mysql"
+    - exec: "CREATE DATABASE testdb COLLATE utf8mb4_unicode_ci"
+    - exec: "USE testdb"
+- name: dolt_gc succeeds as first write on existing database without a journal after chunk journal is enabled
+  skip: "Requires the database to be initialized with the chunk journal disabled; the doltgres test harness initializes databases with the journal enabled, so this storage-internals scenario cannot be reproduced yet"
+  # The original test created the database via CREATE DATABASE on a multi-repo
+  # server, then USE'd it. Doltgres binds the database at connect time and this
+  # framework can only connect to databases registered by repo name (via `on:`),
+  # so the database is created up front as a repo and connected to directly. The
+  # server starts with the chunk journal disabled, data is written, then the
+  # server is restarted (re-enabling the chunk journal) and dolt_gc is run as the
+  # first write.
+  repos:
+  - name: mydb
+    server:
+      envs: ["DOLT_DISABLE_CHUNK_JOURNAL=true"]
+      args: []
+      dynamic_port: server1
+  connections:
+  - on: mydb
+    queries:
+    - exec: "CREATE TABLE vals (id int primary key, val int)"
+    - exec: "INSERT INTO vals VALUES (1, 1),(2, 2)"
+    restart_server:
+      envs: []
+  - on: mydb
+    queries:
+    - query: "select dolt_gc() as dolt_gc"
+      result:
+        columns: ["dolt_gc"]
+        rows: [["{0}"]]
+- name: file remotes update appropriately
+  skip: "remotesapi/file-remote replication across servers not yet supported in Doltgres"
+  multi_repos:
+  - name: server1
+    server:
+      args: []
+      dynamic_port: server1
+  - name: server2
+    server:
+      args: []
+      dynamic_port: server2
+  - name: server3
+    server:
+      args: []
+      dynamic_port: server3
+  connections:
+  - on: server1
+    queries:
+    - exec: "CREATE DATABASE mydb"
+    - exec: "select dolt_remote('add', 'origin', 'file://{{get_tempdir \"remote_storage\"}}')"
+    - exec: "select dolt_push('origin', 'main:main')"
+  - on: server2
+    queries:
+    - exec: "select dolt_clone('file://{{get_tempdir \"remote_storage\"}}', 'mydb')"
+  - on: server3
+    queries:
+    - exec: "select dolt_clone('file://{{get_tempdir \"remote_storage\"}}', 'mydb')"
+  - on: server2
+    queries:
+    - exec: "CREATE TABLE test (id int PRIMARY KEY)"
+    - exec: "select dolt_commit('-Am', 'create test table')"
+    - exec: "select dolt_push('origin', 'main')"
+  - on: server3
+    queries:
+    - exec: "select dolt_pull('origin', 'main')"
+    - exec: "INSERT INTO test VALUES (1), (2), (47)"
+    - exec: "select dolt_commit('-am', 'Insert some initial values.')"
+    - exec: "select dolt_push('origin', 'main')"
+  - on: server1
+    queries:
+    - exec: "select dolt_pull('origin', 'main')"
+    - query: "SELECT * FROM test ORDER BY id ASC"
+      result:
+        columns: ["id"]
+        rows: [["1"], ["2"], ["47"]]

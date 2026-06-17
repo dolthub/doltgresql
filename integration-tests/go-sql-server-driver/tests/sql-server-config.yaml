@@ -1,0 +1,132 @@
+parallel: true
+tests:
+- name: dolt_transaction_commit is global variable
+  skip: "dolt_transaction_commit not being respected after being set"
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: repo1
+  connections:
+  - on: repo1
+    queries:
+    - exec: "SET dolt_transaction_commit = 1"
+    - query: "select current_setting('dolt_transaction_commit') as dolt_transaction_commit"
+      result:
+        columns: ["dolt_transaction_commit"]
+        rows: [["1"]]
+  - on: repo1
+    queries:
+    - query: "select count(*) from dolt_log"
+      result:
+        columns: ["count"]
+        rows: [["2"]]
+    - exec: "create table tmp (i int)"
+    - query: "select count(*) from dolt_log"
+      result:
+        columns: ["count"]
+        rows: [["3"]]
+- name: set max_connections with yaml config
+  skip: "need to adapt to doltgres listener"
+  repos:
+  - name: repo1
+    with_files:
+      - name: "server.yaml"
+        contents: |
+          log_level: trace
+          listener:
+            max_connections: 999
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: repo1
+  connections:
+  - on: repo1
+    queries:
+    - query: "select current_setting('max_connections') as max_connections"
+      result:
+        columns: ["max_connections"]
+        rows: [["999"]]
+- name: "dolt_auto_gc_enabled default"
+  skip: "default not set yet"
+  repos:
+  - name: repo1
+    server:
+      args: []
+      dynamic_port: repo1
+  connections:
+  - on: repo1
+    queries:
+    - query: "select current_setting('dolt_auto_gc_enabled') as dolt_auto_gc_enabled"
+      result:
+        columns: ["dolt_auto_gc_enabled"]
+        rows: [["1"]]
+    - exec: "SET dolt_auto_gc_enabled = 0"
+      error_match: "Variable 'dolt_auto_gc_enabled' is a read only variable"
+- name: "@@global.dolt_auto_gc_enabled true"
+  skip: "config field not supported yet"
+  repos:
+  - name: repo1
+    with_files:
+      - name: "config.yaml"
+        contents: |
+          behavior:
+            auto_gc_behavior:
+              enable: true
+    server:
+      args: ["--config", "config.yaml"]
+      dynamic_port: repo1
+  connections:
+  - on: repo1
+    queries:
+    - query: "select current_setting('dolt_auto_gc_enabled') as dolt_auto_gc_enabled"
+      result:
+        columns: ["dolt_auto_gc_enabled"]
+        rows: [["1"]]
+- name: "@@global.dolt_auto_gc_enabled false"
+  skip: "config field not supported yet"
+  repos:
+    - name: repo1
+      with_files:
+        - name: "config.yaml"
+          contents: |
+            behavior:
+              auto_gc_behavior:
+                enable: false
+      server:
+        args: ["--config", "config.yaml"]
+        dynamic_port: repo1
+  connections:
+    - on: repo1
+      queries:
+        - query: "select current_setting('dolt_auto_gc_enabled') as dolt_auto_gc_enabled"
+          result:
+            columns: ["dolt_auto_gc_enabled"]
+            rows: [["0"]]
+- name: secure_file_priv set to /dev/null prevents loading files
+  skip: "field / feature needs to be supported"
+  repos:
+  - name: repo1
+    with_files:
+      - name: "config.yaml"
+        contents: |
+          system_variables:
+            secure_file_priv: "/dev/null"
+    server:
+      args: ["--config", "config.yaml"]
+      dynamic_port: repo1
+  connections:
+  - on: repo1
+    queries:
+    - query: "select LOAD_FILE('config.yaml') as load_file"
+      result:
+        columns: ["load_file"]
+        rows: [["NULL"]]
+    - query: "select LOAD_FILE('/etc/passwd') as load_file"
+      result:
+        columns: ["load_file"]
+        rows: [["NULL"]]
+    - exec: "create table loaded (contents text)"
+    - exec: "COPY loaded FROM 'config.yaml'"
+      error_match: "must be superuser or have privileges of the pg_read_server_files role|secure_file_priv"
+    - exec: "COPY loaded FROM '/config.yaml'"
+      error_match: "must be superuser or have privileges of the pg_read_server_files role|secure_file_priv"

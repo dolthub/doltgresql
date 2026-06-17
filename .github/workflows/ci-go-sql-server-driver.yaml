@@ -1,0 +1,50 @@
+name: Test Go SQL Server Driver
+
+on: [pull_request]
+
+concurrency:
+  group: ci-go-sql-server-driver-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Go SQL Server Driver tests
+    defaults:
+      run:
+        shell: bash
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-22.04, macos-latest ]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+        id: go
+      - name: Create CI Bin
+        run: |
+          mkdir -p ./.ci_bin
+          echo "$(pwd)/.ci_bin" >> $GITHUB_PATH
+      - name: Install ICU4C (MacOS)
+        if: ${{ matrix.os == 'macos-latest' }}
+        run: |
+          dir=$(brew --cellar icu4c)
+          dir="$dir"/$(ls "$dir")
+          echo CGO_CPPFLAGS=-I$dir/include >> $GITHUB_ENV
+          echo CGO_LDFLAGS=-L$dir/lib >> $GITHUB_ENV
+      - name: Build SQL Syntax
+        run: ./build.sh
+        working-directory: ./postgres/parser
+        shell: bash
+      - name: Install DoltgreSQL
+        working-directory: ./
+        run: |
+          go build -mod=readonly -o .ci_bin/doltgres ./cmd/doltgres
+          echo "DOLTGRES_BIN_PATH=$(pwd)/.ci_bin/doltgres" >> $GITHUB_ENV
+      - name: Test Go SQL Server Driver
+        working-directory: ./integration-tests/go-sql-server-driver
+        run: |
+          go test --timeout=20m ./...

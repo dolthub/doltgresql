@@ -1,0 +1,87 @@
+parallel: true
+tests:
+
+- name: large json values replicate to standby
+  # Cluster replication is not yet implemented in Doltgres, so this test is
+  # skipped. The cluster config and the large-json schema/data are translated
+  # faithfully (JSON_OBJECT/JSON_ARRAY -> json_build_object/json_build_array,
+  # LENGTH(doc) -> LENGTH(doc::text), doc->>'$.id' -> doc->>'id') so this can be
+  # enabled once replication lands.
+  skip: "cluster/remotesapi replication not yet implemented in Doltgres"
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        listener:
+          host: 0.0.0.0
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        listener:
+          host: 0.0.0.0
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "SET dolt_cluster_ack_writes_timeout_secs = 10"
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: |
+        CREATE TABLE large_json (
+          id  BIGINT PRIMARY KEY,
+          doc JSON
+        )
+    - exec: "INSERT INTO large_json VALUES (1, json_build_object('id', 1, 'payload', REPEAT('abcde', 2200)))"
+    - exec: "INSERT INTO large_json VALUES (2, json_build_object('id', 2, 'payload', REPEAT('fghij', 2200)))"
+    - exec: "INSERT INTO large_json VALUES (3, json_build_object('id', 3, 'payload', REPEAT('klmno', 2200)))"
+    - exec: "INSERT INTO large_json VALUES (4, json_build_object('id', 4, 'items', json_build_array(REPEAT('x',3700), REPEAT('y',3700), REPEAT('z',3700))))"
+    - exec: "INSERT INTO large_json VALUES (5, json_build_object('id', 5, 'nested', json_build_object('a', REPEAT('p',5500), 'b', REPEAT('q',5500))))"
+    - query: "SELECT COUNT(*) AS count FROM large_json WHERE LENGTH(doc::text) > 11000"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+    - query: "SELECT doc->>'id' AS id FROM large_json WHERE id = 3"
+      result:
+        columns: ["id"]
+        rows: [["3"]]
+  - on: server2
+    retry_attempts: 100
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT COUNT(*) AS count FROM large_json"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+    - query: "SELECT COUNT(*) AS count FROM large_json WHERE LENGTH(doc::text) > 11000"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+    - query: "SELECT doc->>'id' AS id FROM large_json WHERE id = 3"
+      result:
+        columns: ["id"]
+        rows: [["3"]]

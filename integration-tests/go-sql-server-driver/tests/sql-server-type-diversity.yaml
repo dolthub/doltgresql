@@ -1,0 +1,184 @@
+parallel: true
+tests:
+
+- name: type diverse table replicates correctly
+  # Cluster replication is not yet implemented in Doltgres, so this test is
+  # skipped. The cluster config and the type-diverse schema/data are translated
+  # to Postgres faithfully so this can be enabled once replication lands.
+  #
+  # Type translation notes (MySQL -> Postgres):
+  #   TINYINT -> smallint (Postgres has no 1-byte int)
+  #   DOUBLE -> double precision
+  #   DATETIME -> timestamp
+  #   BLOB -> bytea
+  #   BOOLEAN -> boolean
+  #   JSON -> json
+  #   ENUM(...) / SET(...) -> varchar (Postgres has no inline ENUM/SET); the
+  #     spirit (constrained categorical / multi-value column) is preserved as
+  #     text values.
+  skip: "cluster/remotesapi replication not yet implemented in Doltgres"
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        listener:
+          host: 0.0.0.0
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        listener:
+          host: 0.0.0.0
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "SET dolt_cluster_ack_writes_timeout_secs = 10"
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: |
+        CREATE TABLE type_diverse (
+          id           BIGINT PRIMARY KEY,
+          col_tinyint  SMALLINT,
+          col_smallint SMALLINT,
+          col_int      INT,
+          col_bigint   BIGINT,
+          col_decimal  DECIMAL(20,10),
+          col_float    REAL,
+          col_double   DOUBLE PRECISION,
+          col_char     CHAR(50),
+          col_varchar  VARCHAR(500),
+          col_text     TEXT,
+          col_blob     BYTEA,
+          col_date     DATE,
+          col_time     TIME,
+          col_datetime TIMESTAMP,
+          col_bool     BOOLEAN,
+          col_json     JSON,
+          col_enum     VARCHAR(16),
+          col_set      VARCHAR(64)
+        )
+    # Row 1: typical values.
+    - exec: |
+        INSERT INTO type_diverse VALUES (
+          1, 42, 1000, 1000000, 9000000000,
+          12345678.9012345678, 3.14, 2.71828182845905,
+          'hello', 'longer varchar value',
+          'some text content', '\x736f6d6520626c6f6220636f6e74656e74',
+          '2024-06-15', '12:30:00', '2024-06-15 12:30:00',
+          true, json_build_object('key','value','count',42),
+          'alpha', 'red,green'
+        )
+    # Row 2: minimum boundary values.
+    - exec: |
+        INSERT INTO type_diverse VALUES (
+          2, -128, -32768, -2147483648, -9223372036854775808,
+          -9999999999.9999999999, -1.5, -1.23456789,
+          '', '',
+          '', '\x',
+          '1000-01-01', '00:00:00', '1000-01-01 00:00:00',
+          false, json_build_object(),
+          'beta', 'green'
+        )
+    # Row 3: maximum/large values - large TEXT and BLOB cross the out-of-band threshold.
+    - exec: |
+        INSERT INTO type_diverse VALUES (
+          3, 127, 32767, 2147483647, 9223372036854775807,
+          9999999999.9999999999, 1.5, 9.87654321,
+          REPEAT('x',50), REPEAT('y',500),
+          REPEAT('z',15000), decode(REPEAT('62',20000), 'hex'),
+          '9999-12-31', '23:59:59', '9999-12-31 23:59:59',
+          true, json_build_object('data', REPEAT('d',11000)),
+          'gamma', 'red,green,blue'
+        )
+    # Row 4: all nullable columns are NULL.
+    - exec: 'INSERT INTO type_diverse (id) VALUES (4)'
+    - query: "SELECT COUNT(*) AS count FROM type_diverse"
+      result:
+        columns: ["count"]
+        rows: [["4"]]
+    - query: "SELECT COUNT(*) AS count FROM type_diverse WHERE col_int = -2147483648 AND col_bigint = -9223372036854775808"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+    - query: "SELECT COUNT(*) AS count FROM type_diverse WHERE LENGTH(col_text) = 15000 AND LENGTH(col_blob) = 20000"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+    - query: "SELECT COUNT(*) AS count FROM type_diverse WHERE col_tinyint IS NULL AND col_date IS NULL AND col_json IS NULL"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+  - on: server2
+    retry_attempts: 100
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT COUNT(*) AS count FROM type_diverse"
+      result:
+        columns: ["count"]
+        rows: [["4"]]
+    # Integer boundaries must survive the replication round-trip.
+    - query: "SELECT COUNT(*) AS count FROM type_diverse WHERE col_tinyint = -128 AND col_int = -2147483648 AND col_bigint = -9223372036854775808"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+    - query: "SELECT COUNT(*) AS count FROM type_diverse WHERE col_tinyint = 127 AND col_int = 2147483647 AND col_bigint = 9223372036854775807"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+    # Large out-of-band values must be present with their correct sizes.
+    - query: "SELECT COUNT(*) AS count FROM type_diverse WHERE LENGTH(col_text) = 15000 AND LENGTH(col_blob) = 20000"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+    # Date and time boundary values must be preserved.
+    - query: "SELECT COUNT(*) AS count FROM type_diverse WHERE col_date = '1000-01-01' AND col_time = '00:00:00'"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+    - query: "SELECT COUNT(*) AS count FROM type_diverse WHERE col_date = '9999-12-31' AND col_time = '23:59:59'"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+    # ENUM/SET (translated to varchar) must replicate correctly.
+    - query: "SELECT col_enum, col_set FROM type_diverse WHERE id = 1"
+      result:
+        columns: ["col_enum","col_set"]
+        rows: [["alpha","red,green"]]
+    - query: "SELECT col_enum, col_set FROM type_diverse WHERE id = 3"
+      result:
+        columns: ["col_enum","col_set"]
+        rows: [["gamma","red,green,blue"]]
+    - query: "SELECT col_json->>'key' AS key FROM type_diverse WHERE id = 1"
+      result:
+        columns: ["key"]
+        rows: [["value"]]
+    # NULL values must survive replication.
+    - query: "SELECT COUNT(*) AS count FROM type_diverse WHERE col_tinyint IS NULL AND col_date IS NULL AND col_json IS NULL"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
