@@ -258,5 +258,26 @@ func TestRegressions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "star expression with sql value or names column",
+			SetUpScript: []string{
+				`CREATE TABLE test(y INTEGER PRIMARY KEY, z INTEGER, j TEXT);`,
+				`INSERT INTO test VALUES (1, 2, 'first row'), (3, 4, 'second row');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT *, 1, j FROM test;`,
+					Expected: []sql.Row{{1, 2, "first row", 1, "first row"}, {3, 4, "second row", 1, "second row"}},
+				},
+				{
+					Query:    `SELECT j, 11, * FROM test;`,
+					Expected: []sql.Row{{"first row", 11, 1, 2, "first row"}, {"second row", 11, 3, 4, "second row"}},
+				},
+				{
+					Query:    `SELECT j, 111, *, j FROM test;`,
+					Expected: []sql.Row{{"first row", 111, 1, 2, "first row", "first row"}, {"second row", 111, 3, 4, "second row", "second row"}},
+				},
+			},
+		},
 	})
 }
