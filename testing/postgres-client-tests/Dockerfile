@@ -103,6 +103,12 @@ RUN mix local.hex --force && \
     mix deps.get && \
     mix escript.build
 
+# --- Build Swift PostgresNIO client ---
+FROM swift:6.0-bookworm AS swift_clients_build
+COPY testing/postgres-client-tests/swift/ /build/swift/
+WORKDIR /build/swift
+RUN swift build -c release --static-swift-stdlib
+
 # --- Runtime ---
 FROM debian:bookworm-slim
 
@@ -181,6 +187,7 @@ COPY --from=c_clients_build /build/c/postgres-c-connector-test /build/bin/c/post
 COPY --from=dotnet_clients_build /build/output /build/bin/dotnet
 COPY --from=r2dbc_clients_build /build/r2dbc/target/r2dbc-test-1.0.jar /build/bin/r2dbc/r2dbc-test.jar
 COPY --from=elixir_clients_build /build/elixir/postgrex-test /build/bin/elixir/postgrex-test
+COPY --from=swift_clients_build /build/swift/.build/release/postgresnio-test /build/bin/swift/postgresnio-test
 COPY --from=node_clients_build /build/node/ /postgres-client-tests/node/
 COPY --from=python_clients_build /build/python/ /postgres-client-tests/python/
 COPY --from=python_clients_build /build/python-deps/ /usr/local/lib/python-deps/

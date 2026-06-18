@@ -139,3 +139,7 @@ teardown() {
     skip "fails from https://github.com/dolthub/doltgresql/issues/2859"
     /build/bin/elixir/postgrex-test $USER $PORT
 }
+
+@test "swift postgresnio client" {
+    /build/bin/swift/postgresnio-test $USER $PORT
+}
