@@ -5191,6 +5191,8 @@ ORDER BY 1,2;`,
 					},
 				},
 				{
+					// TODO: The `c.relname = 't2'` filter expression is matched in the IndexedTableAccess and should be
+					//  removed from the filter node https://github.com/dolthub/dolt/issues/11231
 					Query: `EXPLAIN SELECT c.relname, a.attname 
 FROM pg_catalog.pg_class c 
     JOIN pg_catalog.pg_attribute a 
