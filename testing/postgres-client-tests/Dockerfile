@@ -90,6 +90,19 @@ COPY testing/postgres-client-tests/r2dbc/ /build/r2dbc/
 WORKDIR /build/r2dbc
 RUN mvn package -q
 
+# --- Build Elixir Postgrex client ---
+FROM hexpm/elixir:1.16.3-erlang-24.2-debian-bookworm-20260610-slim AS elixir_clients_build
+ENV ELIXIR_ERL_OPTIONS="+fnu"
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+RUN apt-get update && apt-get install -y elixir && rm -rf /var/lib/apt/lists/*
+COPY testing/postgres-client-tests/elixir/ /build/elixir/
+WORKDIR /build/elixir
+RUN mix local.hex --force && \
+    mix local.rebar --force && \
+    mix deps.get && \
+    mix escript.build
+
 # --- Runtime ---
 FROM debian:bookworm-slim
 
@@ -151,6 +164,9 @@ RUN Rscript -e 'install.packages(c("RPostgres", "RPostgreSQL"), repos="https://c
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64/
 ENV GEM_HOME="/usr/local/bundle"
 ENV PYTHONPATH=/usr/local/lib/python-deps
+ENV ELIXIR_ERL_OPTIONS="+fnu"
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 COPY --from=ruby_clients_build /usr/local/bin/ruby /usr/local/bin/
 COPY --from=ruby_clients_build /usr/local/lib/ /usr/local/lib/
@@ -163,7 +179,11 @@ COPY --from=go_clients_build /build/bin/libpq-test /build/bin/go/libpq-test
 COPY --from=rust_clients_build /build/rust/target/release/sqlx_exists_demo /build/bin/rust/sqlx_exists_demo
 COPY --from=c_clients_build /build/c/postgres-c-connector-test /build/bin/c/postgres-c-connector-test
 COPY --from=dotnet_clients_build /build/output /build/bin/dotnet
+<<<<<<< Updated upstream
 COPY --from=r2dbc_clients_build /build/r2dbc/target/r2dbc-test-1.0.jar /build/bin/r2dbc/r2dbc-test.jar
+=======
+COPY --from=elixir_clients_build /build/elixir/postgrex-test /build/bin/elixir/postgrex-test
+>>>>>>> Stashed changes
 COPY --from=node_clients_build /build/node/ /postgres-client-tests/node/
 COPY --from=python_clients_build /build/python/ /postgres-client-tests/python/
 COPY --from=python_clients_build /build/python-deps/ /usr/local/lib/python-deps/

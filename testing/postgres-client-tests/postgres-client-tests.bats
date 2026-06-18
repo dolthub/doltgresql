@@ -134,3 +134,8 @@ teardown() {
 @test "dotnet Npgsql client" {
     /build/bin/dotnet/npgsql-test $USER $PORT
 }
+
+@test "elixir postgrex client" {
+    skip "fails from https://github.com/dolthub/doltgresql/issues/2859"
+    /build/bin/elixir/postgrex-test $USER $PORT
+}
