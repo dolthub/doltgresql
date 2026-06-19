@@ -19,7 +19,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -126,7 +126,7 @@ type ItemView struct {
 // items. This function should be expanded as we add more items to iterate over.
 func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) error {
 	sess := ctx.Session.(*dsess.DoltSession)
-	currentDatabase, err := sess.Provider().Database(ctx, database)
+	currentDatabase, err := sess.GenericProvider().Database(ctx, database)
 	if err != nil {
 		return err
 	}
@@ -481,7 +481,7 @@ func RunCallback(ctx *sql.Context, internalID id.Id, callbacks Callbacks) error 
 	}
 	// We know we have the relevant callback for the given section, so we'll grab the schema
 	doltSession := dsess.DSessFromSess(ctx.Session)
-	currentDatabase, err := doltSession.Provider().Database(ctx, ctx.GetCurrentDatabase())
+	currentDatabase, err := doltSession.GenericProvider().Database(ctx, ctx.GetCurrentDatabase())
 	if err != nil {
 		return err
 	}
