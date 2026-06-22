@@ -128,7 +128,7 @@ func decomposeRecordFilterLessThan(
 	orExprs := make([]sql.Expression, n)
 	for i := 0; i < n; i++ {
 		andExprs := make([]sql.Expression, n-i)
-		for j := 0; j < n-i; j++ {
+		for j := 0; j < n-i-1; j++ {
 			newLit := gmsexpr.NewLiteral(recVals[j].Value, recVals[j].Type)
 			expr, err := expression.NewBinaryOperator(framework.Operator_BinaryEqual).WithChildren(
 				ctx,
@@ -164,7 +164,7 @@ func decomposeRecordFilterGreaterThan(
 	orExprs := make([]sql.Expression, n)
 	for i := 0; i < n; i++ {
 		andExprs := make([]sql.Expression, n-i)
-		for j := 0; j < n-i; j++ {
+		for j := 0; j < n-i-1; j++ {
 			newLit := gmsexpr.NewLiteral(recVals[j].Value, recVals[j].Type)
 			expr, err := expression.NewBinaryOperator(framework.Operator_BinaryEqual).WithChildren(
 				ctx,
@@ -225,7 +225,7 @@ func decomposeRecordFilterLessThanEquals(
 
 	for i := 1; i < n; i++ {
 		andExprs = make([]sql.Expression, n-i)
-		for j := 0; j < n-i; j++ {
+		for j := 0; j < n-i-1; j++ {
 			newLit = gmsexpr.NewLiteral(recVals[j].Value, recVals[j].Type)
 			expr, err = expression.NewBinaryOperator(framework.Operator_BinaryEqual).WithChildren(
 				ctx,
@@ -287,7 +287,7 @@ func decomposeRecordFilterGreaterThanEquals(
 
 	for i := 1; i < n; i++ {
 		andExprs = make([]sql.Expression, n-i)
-		for j := 0; j < n-i; j++ {
+		for j := 0; j < n-i-1; j++ {
 			newLit = gmsexpr.NewLiteral(recVals[j].Value, recVals[j].Type)
 			expr, err = expression.NewBinaryOperator(framework.Operator_BinaryEqual).WithChildren(
 				ctx,
