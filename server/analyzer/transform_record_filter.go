@@ -38,8 +38,19 @@ func TransformRecordFilter(
 			return n, transform.SameTree, nil
 		}
 		// TODO: should only convert expressions when there's applicable index
-		if _, ok = tblNode.UnderlyingTable().(sql.IndexAddressableTable); !ok {
+		iat, ok := tblNode.UnderlyingTable().(sql.IndexAddressableTable)
+		if !ok {
 			return n, transform.SameTree, nil
+		}
+
+		idxs, err := iat.GetIndexes(ctx)
+		if err != nil {
+			return nil, transform.SameTree, err
+		}
+
+		// every expression must be
+		for _, idx := range idxs {
+			idx.Expressions()
 		}
 
 		newExpr, same, err := decomposeRecordFilter(ctx, filter.Expression)
@@ -179,7 +190,7 @@ func decomposeRecordFilterGreaterThan(
 		newLit := gmsexpr.NewLiteral(recVals[n-i-1].Value, recVals[n-i-1].Type)
 		expr, err := expression.NewBinaryOperator(framework.Operator_BinaryGreaterThan).WithChildren(
 			ctx,
-			recExprs[i],
+			recExprs[n-i-1],
 			newLit,
 		)
 		if err != nil {
