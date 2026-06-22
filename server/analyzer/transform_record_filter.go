@@ -38,7 +38,7 @@ func TransformRecordFilter(
 			return n, transform.SameTree, nil
 		}
 		// TODO: should only convert expressions when there's applicable index
-		if _, ok = tblNode.UnderlyingTable().(sql.IndexAddressableTable); ok {
+		if _, ok = tblNode.UnderlyingTable().(sql.IndexAddressableTable); !ok {
 			return n, transform.SameTree, nil
 		}
 
@@ -235,7 +235,7 @@ func decomposeRecordFilterLessThanEquals(
 			if err != nil {
 				return nil, err
 			}
-			andExprs[i] = expr
+			andExprs[j] = expr
 		}
 		newLit = gmsexpr.NewLiteral(recVals[n-i-1].Value, recVals[n-i-1].Type)
 		expr, err = expression.NewBinaryOperator(framework.Operator_BinaryLessThan).WithChildren(
@@ -296,7 +296,7 @@ func decomposeRecordFilterGreaterThanEquals(
 			if err != nil {
 				return nil, err
 			}
-			andExprs[i] = expr
+			andExprs[j] = expr
 		}
 		newLit = gmsexpr.NewLiteral(recVals[n-i-1].Value, recVals[n-i-1].Type)
 		expr, err = expression.NewBinaryOperator(framework.Operator_BinaryGreaterThan).WithChildren(
