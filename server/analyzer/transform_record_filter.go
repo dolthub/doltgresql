@@ -272,6 +272,7 @@ func decomposeRecordFilterGreaterThanEquals(
 		}
 		andExprs[i] = expr
 	}
+
 	newLit := gmsexpr.NewLiteral(recVals[n-1].Value, recVals[n-1].Type)
 	expr, err := expression.NewBinaryOperator(framework.Operator_BinaryGreaterOrEqual).WithChildren(
 		ctx,
