@@ -79,6 +79,7 @@ echo '
               "--output='$format'",
               "--version='$version'",
               "--doltgres",
+              "--workers=10",
               "--email-template=DoltgresSqlCorrectnessReleaseTemplate",
               '"$nomsBinFormat"'
               '"$issueNumber"'

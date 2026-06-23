@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/sqllogictest/go/logictest"
@@ -33,6 +34,7 @@ var resultFormat = flag.String("r", "json", "format of parsed results")
 var withServer = flag.Bool("server", false, "format of parsed results")
 var doltgres = flag.String("doltgres", "", "local doltgres binary")
 var timeout = flag.Int64("timeout", 0, "set a timeout (in seconds) for each test query")
+var workers = flag.Int("workers", 1, "number of parallel workers; requires --server=true")
 
 // Runs all sqllogictest test files (or directories containing them) given as arguments.
 // Usage: $command (run|parse) [version] [file1.test dir1/ dir2/]
@@ -47,19 +49,23 @@ func main() {
 	}
 
 	if args[0] == "run" {
-		var h logictest.Harness
 		// to run with server: $command --server=true --doltgres=<path to doltgres> run [tests]
+		// to run with concurrent workers: add --workers=N (requires --server=true)
 		if *withServer {
 			if *doltgres == "" {
 				log.Fatal("Must supply --doltgres=<path to doltgres> with --server=true")
 			}
-			dh := harness.NewDoltgresHarness(*doltgres, *timeout)
-			defer dh.Close()
-			h = dh
+			if *workers > 1 {
+				runConcurrent(*doltgres, *workers, *timeout, args[1:]...)
+			} else {
+				dh := harness.NewDoltgresHarness(*doltgres, *timeout)
+				defer dh.Close()
+				logictest.RunTestFiles(dh, args[1:]...)
+			}
 		} else {
-			h = harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable", *timeout)
+			h := harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable", *timeout)
+			logictest.RunTestFiles(h, args[1:]...)
 		}
-		logictest.RunTestFiles(h, args[1:]...)
 	} else if args[0] == "parse" {
 		if len(args) < 3 {
 			panic("Usage: logictest [-r(csv|json)] parse <version> (file | dir/)")
@@ -68,6 +74,20 @@ func main() {
 	} else {
 		panic("Unrecognized command " + args[0])
 	}
+}
+
+// runConcurrent starts a single shared doltgres server and fans out workers goroutines over the
+// test files. Each worker gets its own isolated database (sqllogictest_1, sqllogictest_2, …).
+func runConcurrent(doltgresExec string, numWorkers int, queryTimeout int64, paths ...string) {
+	srv := harness.StartSharedServer(doltgresExec)
+	defer srv.Close()
+
+	var workerIdx int32
+	logictest.RunTestFilesConcurrently(func() logictest.Harness {
+		n := atomic.AddInt32(&workerIdx, 1)
+		dbName := fmt.Sprintf("sqllogictest_%d", n)
+		return harness.NewDoltgresWorkerHarness(harness.DefaultPort, dbName, queryTimeout)
+	}, numWorkers, paths...)
 }
 
 func parseTestResults(version, f string) {
