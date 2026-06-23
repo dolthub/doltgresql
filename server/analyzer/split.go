@@ -22,20 +22,20 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// SplitConjunction breaks AND expressions into their left and right parts, recursively.
-func SplitConjunction(ctx *sql.Context, expr sql.Expression) []sql.Expression {
+// splitConjunction breaks AND expressions into their left and right parts, recursively.
+func splitConjunction(ctx *sql.Context, expr sql.Expression) []sql.Expression {
 	if expr == nil {
 		return nil
 	}
 	switch expr := expr.(type) {
 	case *expression.And:
 		return append(
-			SplitConjunction(ctx, expr.LeftChild),
-			SplitConjunction(ctx, expr.RightChild)...,
+			splitConjunction(ctx, expr.LeftChild),
+			splitConjunction(ctx, expr.RightChild)...,
 		)
 	case *pgexprs.GMSCast:
 		// We should check to see if we need to preserve the cast on each child individually
-		split := SplitConjunction(ctx, expr.Child())
+		split := splitConjunction(ctx, expr.Child())
 		for i := range split {
 			if _, ok := split[i].Type(ctx).(*pgtypes.DoltgresType); !ok {
 				split[i] = pgexprs.NewGMSCast(split[i])
