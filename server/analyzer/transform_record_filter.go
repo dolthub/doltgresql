@@ -1,3 +1,17 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package analyzer
 
 import (
@@ -38,19 +52,8 @@ func TransformRecordFilter(
 			return n, transform.SameTree, nil
 		}
 		// TODO: should only convert expressions when there's applicable index
-		iat, ok := tblNode.UnderlyingTable().(sql.IndexAddressableTable)
-		if !ok {
+		if _, ok = tblNode.UnderlyingTable().(sql.IndexAddressableTable); !ok {
 			return n, transform.SameTree, nil
-		}
-
-		idxs, err := iat.GetIndexes(ctx)
-		if err != nil {
-			return nil, transform.SameTree, err
-		}
-
-		// every expression must be
-		for _, idx := range idxs {
-			idx.Expressions()
 		}
 
 		newExpr, same, err := decomposeRecordFilter(ctx, filter.Expression)
@@ -112,6 +115,7 @@ func decomposeRecordFilter(ctx *sql.Context, expr sql.Expression) (sql.Expressio
 		})
 }
 
+// decomposeRecordFilterEquals splits up (i, j, ...) = (x, y, ...) expression into (i = x) AND (j = y) AND ...
 func decomposeRecordFilterEquals(
 	ctx *sql.Context,
 	recExprs []sql.Expression,
@@ -130,6 +134,7 @@ func decomposeRecordFilterEquals(
 	return gmsexpr.JoinAnd(exprs...), nil
 }
 
+// decomposeRecordFilterLessThan splits up (i, j, ..., k) < (x, y, ..., z) into ((i = x) OR (j = y) ... OR (k < z)) AND ...
 func decomposeRecordFilterLessThan(
 	ctx *sql.Context,
 	recExprs []sql.Expression,
@@ -166,6 +171,7 @@ func decomposeRecordFilterLessThan(
 	return gmsexpr.JoinOr(orExprs...), nil
 }
 
+// decomposeRecordFilterLessThan splits up (i, j, ..., k) > (x, y, ..., z) into ((i = x) OR (j = y) ... OR (k > z)) AND ...
 func decomposeRecordFilterGreaterThan(
 	ctx *sql.Context,
 	recExprs []sql.Expression,
@@ -202,6 +208,7 @@ func decomposeRecordFilterGreaterThan(
 	return gmsexpr.JoinOr(orExprs...), nil
 }
 
+// decomposeRecordFilterLessThanEquals splits up (i, j, ..., k) <= (x, y, ..., z) into ((i = x) OR (j = y) ... OR (k <= z)) AND ...
 func decomposeRecordFilterLessThanEquals(
 	ctx *sql.Context,
 	recExprs []sql.Expression,
@@ -263,6 +270,7 @@ func decomposeRecordFilterLessThanEquals(
 	return gmsexpr.JoinOr(orExprs...), nil
 }
 
+// decomposeRecordFilterGreaterThanEquals splits up (i, j, ..., k) >= (x, y, ..., z) into ((i = x) OR (j = y) ... OR (k >= z)) AND ...
 func decomposeRecordFilterGreaterThanEquals(
 	ctx *sql.Context,
 	recExprs []sql.Expression,
