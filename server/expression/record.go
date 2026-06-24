@@ -115,3 +115,8 @@ func (t *RecordExpr) WithResolvedChildren(ctx context.Context, children []any) (
 	}
 	return t.WithChildren(ctx.(*sql.Context), newExpressions...)
 }
+
+// Expressions implements the expression.TupleLike interface.
+func (t *RecordExpr) Expressions() []sql.Expression {
+	return t.exprs
+}
