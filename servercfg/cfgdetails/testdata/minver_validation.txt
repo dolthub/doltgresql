@@ -55,3 +55,17 @@ PostgresReplicationConfig *cfgdetails.PostgresReplicationConfig 0.7.4 postgres_r
 -PostgresDatabase *string 0.7.4 postgres_database,omitempty
 -PostgresPort *int 0.7.4 postgres_port,omitempty
 -SlotName *string 0.7.4 slot_name,omitempty
+ClusterCfg *cfgdetails.DoltgresClusterConfig TBD cluster,omitempty
+-StandbyRemotes []cfgdetails.DoltgresStandbyRemoteConfig 0.0.0 standby_remotes
+--Name string 0.0.0 name
+--RemoteURLTemplate string 0.0.0 remote_url_template
+-BootstrapRole string 0.0.0 bootstrap_role
+-BootstrapEpoch int 0.0.0 bootstrap_epoch
+-RemotesAPI cfgdetails.DoltgresClusterRemotesAPIConfig 0.0.0 remotesapi
+--Addr string 0.0.0 address
+--Port int 0.0.0 port
+--TLSKey string 0.0.0 tls_key
+--TLSCert string 0.0.0 tls_cert
+--TLSCA string 0.0.0 tls_ca
+--URLMatches []string 0.0.0 server_name_urls
+--DNSMatches []string 0.0.0 server_name_dns
