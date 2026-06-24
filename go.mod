@@ -11,7 +11,7 @@ require (
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-mysql-server v0.20.1-0.20260623211023-73b94872e61c
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1
-	github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216
+	github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166
 	github.com/dolthub/vitess v0.0.0-20260617012411-2f308f6cdc23
 	github.com/fatih/color v1.13.0
 	github.com/goccy/go-json v0.10.2
