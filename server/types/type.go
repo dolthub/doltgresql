@@ -1187,6 +1187,25 @@ func (t *DoltgresType) CallReceive(ctx *sql.Context, val []byte) (any, error) {
 func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTypeHandler, val []byte) ([]byte, error) {
 	ot, ok := other.(*DoltgresType)
 	if !ok {
+		if other == nil {
+			// TODO: replace this with something much better than this hack
+			//  `other` will be nil in cases where the parent and child are mismatched (AdaptiveEncoding vs StringEnc for example)
+			//  Since we do restrict foreign keys to similar types, if the calling type is a string type, we can fairly
+			//  safely assume that the other type is also a string type. This is implemented specifically for a customer
+			//  issue, as should be replaced as soon as a real fix is found.
+			switch t.ID.TypeName() {
+			case "bpchar", "text", "varchar":
+				var str string
+				if len(val) > 0 {
+					if val[len(val)-1] == 0 {
+						str = string(val[:len(val)-1])
+					} else {
+						str = string(val)
+					}
+				}
+				return t.SerializeValue(ctx, str)
+			}
+		}
 		return nil, errors.Errorf("expected DoltgresType, got %T", other)
 	}
 
@@ -1195,7 +1214,8 @@ func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTyp
 		return nil, err
 	}
 
-	toValue, _, err := t.ConvertToType(nil, ot, value)
+	sqlCtx, _ := ctx.(*sql.Context)
+	toValue, _, err := t.ConvertToType(sqlCtx, ot, value)
 	if err != nil {
 		return nil, err
 	}
