@@ -47,7 +47,7 @@ func noDatabaseDSN(port int) string {
 }
 
 func withDatabaseDSN(port int, dbName string) string {
-	return fmt.Sprintf("postgresql://postgres:password@0.0.0.0:%d/%s?sslmode=disable", port, dbName)
+	return fmt.Sprintf("postgresql://postgres:password@127.0.0.1:%d/%s?sslmode=disable", port, dbName)
 }
 
 var _ logictest.Harness = &DoltgresHarness{}
@@ -174,9 +174,83 @@ func (h *DoltgresHarness) EngineStr() string {
 	return "postgresql"
 }
 
-// Init resets the harness to a clean state for the next test file. It drops and recreates the
-// worker's database; no server restart is needed since the fresh database provides clean state.
+// Init resets the harness to a clean state for the next test file.
+// For worker harnesses (no server process), it keeps a persistent connection and resets the
+// public schema via DROP+CREATE — avoiding database-level connection races entirely.
+// For server-owning harnesses, it drops and recreates the database (safe because only one worker
+// uses each database in the non-concurrent path).
 func (h *DoltgresHarness) Init() error {
+	if h.server == nil {
+		return h.initWorker()
+	}
+	return h.initServer()
+}
+
+// initWorker resets a worker harness between test files.
+//
+// When useDropSchema is true (PostgreSQL), it wipes and recreates the public schema on the
+// persistent connection — no reconnect needed, no races.
+func (h *DoltgresHarness) initWorker() error {
+	ctx := context.Background()
+
+	if h.db != nil {
+		h.db.Close()
+		h.db = nil
+	}
+	noDB, err := sql.Open("pgx", noDatabaseDSN(h.port))
+	if err != nil {
+		return err
+	}
+	_, err = noDB.ExecContext(ctx, "DROP DATABASE IF EXISTS "+h.dbName)
+	if err == nil {
+		_, err = noDB.ExecContext(ctx, "CREATE DATABASE "+h.dbName)
+	}
+	noDB.Close()
+	if err != nil {
+		return fmt.Errorf("resetting database %s: %w", h.dbName, err)
+	}
+	return h.openWorkerDB(ctx)
+}
+
+// openWorkerDB establishes a connection to the worker's database, creating it if necessary.
+func (h *DoltgresHarness) openWorkerDB(ctx context.Context) error {
+	db, err := sql.Open("pgx", withDatabaseDSN(h.port, h.dbName))
+	if err != nil {
+		return err
+	}
+	if pingErr := db.Ping(); pingErr == nil {
+		h.db = db
+		return nil
+	}
+	db.Close()
+
+	// Database does not exist yet; create it.
+	noDB, err := sql.Open("pgx", noDatabaseDSN(h.port))
+	if err != nil {
+		return err
+	}
+	_, createErr := noDB.ExecContext(ctx, "CREATE DATABASE "+h.dbName)
+	noDB.Close()
+	if createErr != nil {
+		logErr(createErr, "creating database "+h.dbName)
+		return createErr
+	}
+
+	db, err = sql.Open("pgx", withDatabaseDSN(h.port, h.dbName))
+	if err != nil {
+		return err
+	}
+	if err = db.Ping(); err != nil {
+		db.Close()
+		return err
+	}
+	h.db = db
+	return nil
+}
+
+// initServer resets the server-owning harness by dropping and recreating the database.
+// This is only used in the non-concurrent (single-worker) path.
+func (h *DoltgresHarness) initServer() error {
 	ctx := context.Background()
 
 	if h.db != nil {
@@ -184,22 +258,18 @@ func (h *DoltgresHarness) Init() error {
 		h.db = nil
 	}
 
-	// Drop and recreate the database so the next file starts with a clean slate.
-	noDB, err := sql.Open("pgx", noDatabaseDSN(h.port))
-	if err != nil {
-		logErr(err, "opening no-db connection")
-		return err
+	noDB, openErr := sql.Open("pgx", noDatabaseDSN(h.port))
+	if openErr != nil {
+		logErr(openErr, "opening no-db connection")
+		return openErr
 	}
-	defer noDB.Close()
-
-	_, err = noDB.ExecContext(ctx, "DROP DATABASE IF EXISTS "+h.dbName)
-	if err != nil {
-		logErr(err, "dropping database "+h.dbName)
-		return err
+	_, err := noDB.ExecContext(ctx, "DROP DATABASE IF EXISTS "+h.dbName)
+	if err == nil {
+		_, err = noDB.ExecContext(ctx, "CREATE DATABASE "+h.dbName)
 	}
-	_, err = noDB.ExecContext(ctx, "CREATE DATABASE "+h.dbName)
+	noDB.Close()
 	if err != nil {
-		logErr(err, "creating database "+h.dbName)
+		logErr(err, "resetting database "+h.dbName)
 		return err
 	}
 
