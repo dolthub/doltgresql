@@ -21,9 +21,10 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/apd/v3"
-	"github.com/dolthub/doltgresql/server/types"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 // TestLegacyJsonBRoundTrip verifies that JSONB values written in the old ExtendedEnc format
