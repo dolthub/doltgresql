@@ -15,6 +15,7 @@
 package types
 
 import (
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
@@ -125,7 +126,8 @@ func jsonValueToInterface(value JsonValue) any {
 	case JsonValueString:
 		return string(v)
 	case JsonValueNumber:
-		return v
+		d := apd.Decimal(v)
+		return &d
 	case JsonValueBoolean:
 		return bool(v)
 	case JsonValueNull:
