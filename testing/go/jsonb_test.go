@@ -300,6 +300,45 @@ func requireJsonEqual(t *testing.T, expected, actual any) {
 	}
 }
 
+// TestLegacyJsonBReserialization verifies that a value deserialized from the legacy
+// ExtendedEnc format can be re-serialized without error. This exercises the path where
+// serializeTypeJsonB receives a JSONDocument whose Val contains *apd.Decimal (the type
+// that jsonValueToInterface now returns for JsonValueNumber after the bugfix), and
+// ConvertToJsonDocument must handle it.
+func TestLegacyJsonBReserialization(t *testing.T) {
+	tests := []struct {
+		name  string
+		input any
+	}{
+		{"number_integer", json.Number("42")},
+		{"number_negative", json.Number("-7")},
+		{"number_float", json.Number("3.14")},
+		{"number_large", json.Number("99999999999999999999")},
+		{"object_with_number", map[string]any{"n": json.Number("99")}},
+		{"array_with_numbers", []any{json.Number("1"), json.Number("2"), json.Number("3")}},
+		{"nested_number", map[string]any{"a": map[string]any{"b": json.Number("1.5")}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := gmstypes.JSONDocument{Val: tt.input}
+
+			// Step 1: serialize (simulates old Doltgres write using the legacy ExtendedEnc path)
+			serialized, err := types.JsonB.SerializeValue(context.Background(), doc)
+			require.NoError(t, err)
+
+			// Step 2: deserialize (jsonValueToInterface now returns *apd.Decimal for numbers)
+			deserialized, err := types.JsonB.DeserializeValue(context.Background(), serialized)
+			require.NoError(t, err)
+			require.NotNil(t, deserialized)
+
+			// Step 3: re-serialize the deserialized value.
+			_, err = types.JsonB.SerializeValue(context.Background(), deserialized)
+			require.NoError(t, err, "re-serializing a deserialized legacy JSONB value must not fail")
+		})
+	}
+}
+
 // mustDecimal parses s into an *apd.Decimal, panicking on failure.
 func mustDecimal(s string) *apd.Decimal {
 	d := new(apd.Decimal)
