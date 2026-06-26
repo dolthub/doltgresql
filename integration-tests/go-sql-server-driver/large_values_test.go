@@ -280,7 +280,6 @@ func TestLargeOutOfBandValues(t *testing.T) {
 
 	t.Run("LargeJSON", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("Doltgres panics (interface conversion: *val.ExtendedValueWrapper) when retrieving a large out-of-band JSON value")
 		const jsonTargetSize = 12_000
 		const numRows = 20
 
@@ -992,7 +991,6 @@ func TestTypeDiversity(t *testing.T) {
 
 	t.Run("SpecialTypes", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("Doltgres panics (interface conversion: *val.ExtendedValueWrapper) when retrieving a large out-of-band JSON value")
 		server := setupTestServer(t, "special_types_test")
 		db, err := server.DB(driver.Connection{})
 		require.NoError(t, err)
@@ -1055,10 +1053,11 @@ func TestTypeDiversity(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(jsonDoc), &jsonObj))
 		require.Greater(t, len(jsonObj), 0, "large JSON value must be a non-empty object")
 
-		// Verify ENUM and SET values. FIND_IN_SET('blue', col_set) > 0 becomes a
-		// membership test against the comma-separated string.
+		// Verify ENUM and SET values. Use a comma-padded LIKE pattern to test
+		// exact element membership in the comma-separated SET string without
+		// relying on string_to_array, which is not yet implemented in Doltgres.
 		err = conn.QueryRowContext(ctx,
-			"SELECT COUNT(*) FROM special_types WHERE col_enum = 'gamma' AND ('blue' = ANY(string_to_array(col_set, ',')))").Scan(&count)
+			"SELECT COUNT(*) FROM special_types WHERE col_enum = 'gamma' AND (',' || col_set || ',') LIKE '%,blue,%'").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count, "ENUM and SET values must round-trip correctly")
 

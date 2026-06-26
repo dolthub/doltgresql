@@ -78,6 +78,15 @@ var json_out = framework.Function1{
 }
 
 func json_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	// Large values stored with the old ExtendedAdaptiveEnc encoding are returned as a
+	// *val.ExtendedValueWrapper (sql.AnyWrapper). Unwrap to get the underlying JSONDocument.
+	if wrapper, ok := val.(sql.AnyWrapper); ok {
+		unwrapped, err := wrapper.UnwrapAny(ctx)
+		if err != nil {
+			return nil, err
+		}
+		val = unwrapped
+	}
 	switch v := val.(type) {
 	case string:
 		return v, nil
@@ -89,8 +98,25 @@ func json_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (a
 	}
 }
 
+// JsonOutCallable is exported so that tests outside this package can exercise the json output
+// function directly without going through the global function registry.
+var JsonOutCallable = json_out_callable
+
+// JsonbOutCallable is exported so that tests outside this package can exercise the jsonb output
+// function directly without going through the global function registry.
+var JsonbOutCallable = jsonb_out_callable
+
 // jsonb_out_callable formats a JSONB value for output. JSONB normalizes JSON with spaces after ':' and ','.
 func jsonb_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	// Large values stored with the old ExtendedAdaptiveEnc encoding are returned as a
+	// *val.ExtendedValueWrapper (sql.AnyWrapper). Unwrap to get the underlying JSONDocument.
+	if wrapper, ok := val.(sql.AnyWrapper); ok {
+		unwrapped, err := wrapper.UnwrapAny(ctx)
+		if err != nil {
+			return nil, err
+		}
+		val = unwrapped
+	}
 	switch v := val.(type) {
 	case string:
 		// Parse and reformat the string as proper JSONB (normalized with spaces)
