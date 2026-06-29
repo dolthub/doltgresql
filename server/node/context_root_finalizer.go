@@ -52,7 +52,7 @@ func (rf *ContextRootFinalizer) DebugString(ctx *sql.Context) string {
 
 // IsReadOnly implements the interface sql.ExecBuilderNode.
 func (rf *ContextRootFinalizer) IsReadOnly() bool {
-	return false
+	return rf.child.IsReadOnly()
 }
 
 // Resolved implements the interface sql.ExecBuilderNode.

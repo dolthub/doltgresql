@@ -80,6 +80,7 @@ jobs:
           add: ${{ format('["{0}/server/server.go", "{0}/servercfg/config.go", "{0}/servercfg/cfgdetails/testdata/minver_validation.txt"]', github.workspace) }}
           cwd: "."
           new_branch: cd-release
+          push: 'origin cd-release --set-upstream --force'
       - name: Create Pull Request
         run: gh pr create --base main --head "cd-release" --title "[no-release-notes] Release v${{ needs.format-version.outputs.version }}" --body "Created by the Release workflow to update DoltgreSQL's version"
         env:

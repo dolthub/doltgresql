@@ -1,0 +1,185 @@
+parallel: false
+tests:
+- name: users and grants cannot be run on standby
+  skip: "cluster replication / MySQL grants not yet supported in Doltgres"
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server2
+    queries:
+    - exec: 'CREATE USER "brian" WITH PASSWORD ''brianspassword'''
+      error_match: 'database server is set to read only mode'
+    - exec: 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "aaron"'
+      error_match: 'database server is set to read only mode'
+- name: create database cannot be run on standby
+  skip: "cluster replication not yet implemented in Doltgres"
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server2
+    queries:
+    - exec: 'CREATE DATABASE my_db'
+      error_match: 'database server is set to read only mode'
+- name: drop database cannot be run on standby
+  skip: "cluster replication not yet implemented in Doltgres"
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "SET dolt_cluster_ack_writes_timeout_secs = 10"
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2),(3),(4)'
+  - on: server2
+    queries:
+    - exec: 'DROP DATABASE repo1'
+      error_match: 'database server is set to read only mode'
+- name: when a server becomes primary it accepts writes
+  skip: "cluster replication not yet implemented in Doltgres"
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server2
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', 2)"
+  - on: server2
+    queries:
+    - exec: "SET dolt_cluster_ack_writes_timeout_secs = 10"
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2),(3),(4)'
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT COUNT(*) as count FROM vals'
+      result:
+        columns: ["count"]
+        rows:
+        - ["5"]

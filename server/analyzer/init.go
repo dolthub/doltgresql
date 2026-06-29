@@ -17,7 +17,6 @@ package analyzer
 import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
-	"github.com/dolthub/go-mysql-server/sql/memo"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 
@@ -39,6 +38,7 @@ const (
 	ruleId_GenerateForeignKeyName                                        // generateForeignKeyName
 	ruleId_ReplaceIndexedTables                                          // replaceIndexedTables
 	ruleId_ReplaceNode                                                   // replaceNode
+	ruleId_TransformRecordFilter                                         // transformRecordFilter
 	ruleId_ReplaceSerial                                                 // replaceSerial
 	ruleId_InsertContextRootFinalizer                                    // insertContextRootFinalizer
 	ruleId_ResolveType                                                   // resolveType
@@ -97,6 +97,10 @@ func Init() {
 	// Remove all other validation rules that do not apply to Postgres
 	analyzer.DefaultValidationRules = removeAnalyzerRules(analyzer.DefaultValidationRules, analyzer.ValidateOperandsId)
 
+	analyzer.DefaultRules = append(analyzer.DefaultRules,
+		analyzer.Rule{Id: ruleId_TransformRecordFilter, Apply: TransformRecordFilter},
+	)
+
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},
 		analyzer.Rule{Id: ruleId_ReplaceArithmeticExpressions, Apply: ReplaceArithmeticExpressions},
@@ -126,10 +130,7 @@ func initEngine() {
 
 	expression.DefaultExpressionFactory = pgexpression.PostgresExpressionFactory{}
 
-	// There are a couple places during analysis where SplitConjunction in GMS cannot correctly split up
-	// Doltgres expressions, so we need to override the default function used.
-	analyzer.SplitConjunction = SplitConjunction
-	memo.SplitConjunction = SplitConjunction
+	expression.SplitConjunction = splitConjunction
 }
 
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by
