@@ -1,0 +1,112 @@
+FROM --platform=${BUILDPLATFORM} ubuntu:22.04
+
+# install python, java, bats, git ruby, perl, cpan
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update -y && \
+    apt install -y \
+    curl \
+    gnupg \
+    software-properties-common && \
+    curl -sL https://deb.nodesource.com/setup_22.x | bash - && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' && \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+RUN apt update -y && \
+    apt install -y \
+    python3 \
+    python3-pip \
+    python3-psycopg2 \
+    curl \
+    wget \
+    pkg-config \
+    openjdk-17-jdk \
+    ca-certificates-java \
+    bats \
+    perl \
+    php \
+    php-pgsql \
+    cpanminus \
+    cmake \
+    g++ \
+    libmysqlcppconn-dev \
+    git \
+    ruby \
+    ruby-dev \
+    gem \
+    libc6 \
+    libgcc1 \
+    r-base \
+    libpq-dev \
+    nodejs \
+    lsof \
+    postgresql-server-dev-15 && \
+    update-ca-certificates -f
+
+# install rust (cargo)
+ENV RUSTUP_HOME=/root/.rustup \
+    CARGO_HOME=/root/.cargo
+ENV PATH="${CARGO_HOME}/bin:${PATH}"
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal && \
+    rustc --version && cargo --version
+
+# install go
+WORKDIR /root
+ENV GO_VERSION=1.26.2
+ENV GOPATH=/go
+ENV PATH=$PATH:$GOPATH/bin
+ENV PATH=$PATH:$GOPATH/bin:/usr/local/go/bin
+RUN curl -O "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz" && \
+    sha256sum "go${GO_VERSION}.linux-amd64.tar.gz" && \
+    tar -xvf "go${GO_VERSION}.linux-amd64.tar.gz" -C /usr/local && \
+    chown -R root:root /usr/local/go && \
+    mkdir -p $HOME/go/{bin,src} && \
+    go version
+
+# Setup JAVA_HOME -- useful for docker commandline
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64/
+
+# install java postgres JDBC driver
+RUN mkdir -p /postgres-client-tests/java
+RUN curl -L -o /postgres-client-tests/java/postgresql-42.7.3.jar \
+    https://jdbc.postgresql.org/download/postgresql-42.7.3.jar
+
+# install node deps
+COPY ./testing/postgres-client-tests/node/package.json /postgres-client-tests/node/
+COPY ./testing/postgres-client-tests/node/package-lock.json /postgres-client-tests/node/
+WORKDIR /postgres-client-tests/node
+RUN npm install
+
+# install cpan dependencies
+RUN cpanm --force DBD::Pg
+
+# install ruby dependencies
+COPY ./testing/postgres-client-tests/ruby/Gemfile /postgres-client-tests/ruby/
+COPY ./testing/postgres-client-tests/ruby/Gemfile.lock /postgres-client-tests/ruby/
+WORKDIR /postgres-client-tests/ruby
+RUN gem install bundler -v 2.1.4 && bundle install
+
+# install sqlalchemy
+RUN pip3 install --no-cache-dir sqlalchemy==2.0.46
+
+# install doltgres from source
+WORKDIR /root/building
+COPY go.mod doltgresql/
+# download dependencies first to persist Go dependencies download cache for doltgres despite other edits
+WORKDIR doltgresql
+RUN go mod download
+# exclude clients directory to persist build-cache for doltgres when only editing client code
+COPY --exclude=testing/postgres-client-tests/ . .
+
+# Build the parser
+WORKDIR /root/building/doltgresql/postgres/parser
+RUN bash ./build.sh
+
+# Build the doltgres binary, which we will need for bats, and put it on PATH
+WORKDIR /root/building/doltgresql/cmd/doltgres
+RUN go build -o /usr/local/bin/doltgres .
+
+COPY ./testing/postgres-client-tests /postgres-client-tests
+COPY ./testing/postgres-client-tests/postgres-client-tests-entrypoint.sh /postgres-client-tests/entrypoint.sh
+
+WORKDIR /postgres-client-tests
+ENTRYPOINT ["/postgres-client-tests/entrypoint.sh"]

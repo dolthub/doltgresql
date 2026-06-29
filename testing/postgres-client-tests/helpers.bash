@@ -50,6 +50,8 @@ definePORT() {
 defineCONFIG() {
   PORT=$1
   cat <<EOF
+  log_level: debug
+
   behavior:
     read_only: false
     disable_client_multi_statements: false

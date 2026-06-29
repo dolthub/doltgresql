@@ -41,6 +41,20 @@ COPY testing/postgres-client-tests/c/ /build/c/
 WORKDIR /build/c
 RUN make
 
+# --- Build C++ libpqxx client ---
+FROM debian:bookworm-slim AS cpp_clients_build
+RUN apt-get update && apt-get install -y g++ make libpqxx-dev pkg-config && rm -rf /var/lib/apt/lists/*
+COPY testing/postgres-client-tests/cpp/ /build/cpp/
+WORKDIR /build/cpp
+RUN make
+
+# --- Build ODBC psqlODBC client ---
+FROM debian:bookworm-slim AS odbc_clients_build
+RUN apt-get update && apt-get install -y gcc make unixodbc-dev && rm -rf /var/lib/apt/lists/*
+COPY testing/postgres-client-tests/odbc/ /build/odbc/
+WORKDIR /build/odbc
+RUN make
+
 # --- Install Node postgres client deps ---
 FROM node:22-bookworm-slim AS node_clients_build
 COPY testing/postgres-client-tests/node/package.json /build/node/
@@ -69,6 +83,31 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS dotnet_clients_build
 COPY testing/postgres-client-tests/dotnet/ /build/dotnet/
 WORKDIR /build/dotnet
 RUN dotnet publish -c Release -o /build/output/
+
+# --- Build Java R2DBC client ---
+FROM maven:3.9-eclipse-temurin-17 AS r2dbc_clients_build
+COPY testing/postgres-client-tests/r2dbc/ /build/r2dbc/
+WORKDIR /build/r2dbc
+RUN mvn package -q
+
+# --- Build Elixir Postgrex client ---
+FROM hexpm/elixir:1.16.3-erlang-24.2-debian-bookworm-20260610-slim AS elixir_clients_build
+ENV ELIXIR_ERL_OPTIONS="+fnu"
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+RUN apt-get update && apt-get install -y elixir && rm -rf /var/lib/apt/lists/*
+COPY testing/postgres-client-tests/elixir/ /build/elixir/
+WORKDIR /build/elixir
+RUN mix local.hex --force && \
+    mix local.rebar --force && \
+    mix deps.get && \
+    mix escript.build
+
+# --- Build Swift PostgresNIO client ---
+FROM swift:6.0-bookworm AS swift_clients_build
+COPY testing/postgres-client-tests/swift/ /build/swift/
+WORKDIR /build/swift
+RUN swift build -c release --static-swift-stdlib
 
 # --- Runtime ---
 FROM debian:bookworm-slim
@@ -100,6 +139,9 @@ RUN apt-get install -y \
     php-pgsql \
     r-base \
     libpq-dev \
+    odbc-postgresql \
+    g++ make libpqxx-dev pkg-config \
+    gcc make unixodbc-dev \
     ca-certificates-java \
     bats \
     lsof \
@@ -123,11 +165,14 @@ RUN cpanm --force DBD::Pg
 
 # r dependencies
 COPY testing/postgres-client-tests/r/ /postgres-client-tests/r/
-RUN Rscript -e 'install.packages("RPostgres", repos="https://cloud.r-project.org")'
+RUN Rscript -e 'install.packages(c("RPostgres", "RPostgreSQL"), repos="https://cloud.r-project.org")'
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64/
 ENV GEM_HOME="/usr/local/bundle"
 ENV PYTHONPATH=/usr/local/lib/python-deps
+ENV ELIXIR_ERL_OPTIONS="+fnu"
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 COPY --from=ruby_clients_build /usr/local/bin/ruby /usr/local/bin/
 COPY --from=ruby_clients_build /usr/local/lib/ /usr/local/lib/
@@ -140,12 +185,17 @@ COPY --from=go_clients_build /build/bin/libpq-test /build/bin/go/libpq-test
 COPY --from=rust_clients_build /build/rust/target/release/sqlx_exists_demo /build/bin/rust/sqlx_exists_demo
 COPY --from=c_clients_build /build/c/postgres-c-connector-test /build/bin/c/postgres-c-connector-test
 COPY --from=dotnet_clients_build /build/output /build/bin/dotnet
+COPY --from=r2dbc_clients_build /build/r2dbc/target/r2dbc-test-1.0.jar /build/bin/r2dbc/r2dbc-test.jar
+COPY --from=elixir_clients_build /build/elixir/postgrex-test /build/bin/elixir/postgrex-test
+COPY --from=swift_clients_build /build/swift/.build/release/postgresnio-test /build/bin/swift/postgresnio-test
 COPY --from=node_clients_build /build/node/ /postgres-client-tests/node/
 COPY --from=python_clients_build /build/python/ /postgres-client-tests/python/
 COPY --from=python_clients_build /build/python-deps/ /usr/local/lib/python-deps/
 COPY --from=ruby_clients_build /build/ruby/ /postgres-client-tests/ruby/
 
 COPY testing/postgres-client-tests/c/ /postgres-client-tests/c/
+COPY testing/postgres-client-tests/cpp/ /postgres-client-tests/cpp/
+COPY testing/postgres-client-tests/odbc/ /postgres-client-tests/odbc/
 COPY testing/postgres-client-tests/drizzle/ /postgres-client-tests/drizzle/
 COPY testing/postgres-client-tests/helpers.bash /postgres-client-tests/
 COPY testing/postgres-client-tests/php/ /postgres-client-tests/php/

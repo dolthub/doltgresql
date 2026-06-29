@@ -22,6 +22,10 @@ teardown() {
     java -cp $BATS_TEST_DIRNAME/java:$BATS_TEST_DIRNAME/java/postgresql-42.7.3.jar PostgresTest $USER $PORT
 }
 
+@test "r2dbc-postgresql client" {
+    java -jar /build/bin/r2dbc/r2dbc-test.jar $USER $PORT
+}
+
 @test "node postgres client" {
     node $BATS_TEST_DIRNAME/node/index.js $USER $PORT
 }
@@ -62,6 +66,18 @@ teardown() {
     $BATS_TEST_DIRNAME/c/postgres-c-connector-test $USER $PORT
 }
 
+@test "c++ libpqxx client" {
+    cd $BATS_TEST_DIRNAME/cpp
+    make
+    ./libpqxx-test $USER $PORT
+}
+
+@test "psqlODBC client" {
+    cd $BATS_TEST_DIRNAME/odbc
+    make
+    ./psqlodbc-test $USER $PORT
+}
+
 @test "python postgres: psycopg2 client" {
     cd $BATS_TEST_DIRNAME/python
     python3 psycopg2_test.py $USER $PORT
@@ -99,6 +115,10 @@ teardown() {
     Rscript $BATS_TEST_DIRNAME/r/rpostgres-test.r $USER $PORT
 }
 
+@test "R RPostgreSQL client" {
+    Rscript $BATS_TEST_DIRNAME/r/rpostgresql-test.r $USER $PORT
+}
+
 @test "rust sqlx" {
     /build/bin/rust/sqlx_exists_demo $USER $PORT
 }
@@ -113,4 +133,13 @@ teardown() {
 
 @test "dotnet Npgsql client" {
     /build/bin/dotnet/npgsql-test $USER $PORT
+}
+
+@test "elixir postgrex client" {
+    skip "fails from https://github.com/dolthub/doltgresql/issues/2859"
+    /build/bin/elixir/postgrex-test $USER $PORT
+}
+
+@test "swift postgresnio client" {
+    /build/bin/swift/postgresnio-test $USER $PORT
 }
