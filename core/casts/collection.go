@@ -74,6 +74,7 @@ func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree
 		mapHash:       underlyingMap.HashOf(),
 		underlyingMap: underlyingMap,
 		ns:            ns,
+		castCache:     make(map[string]id.Cast),
 	}
 	return collection, nil
 }
@@ -575,6 +576,7 @@ func (pgc *Collection) Clone(ctx context.Context) *Collection {
 		mapHash:       pgc.mapHash,
 		underlyingMap: pgc.underlyingMap,
 		ns:            pgc.ns,
+		castCache:     pgc.castCache,
 	}
 }
 
