@@ -8,3 +8,6 @@ elixir/postgrex-test
 dotnet/bin
 dotnet/obj
 dotnet/out
+c/libaprutil-test
+c/libdbi-test
+c/postgres-c-connector-test
