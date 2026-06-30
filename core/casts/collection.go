@@ -39,7 +39,6 @@ type Collection struct {
 	mapHash       hash.Hash // This is cached so that we don't have to calculate the hash every time
 	underlyingMap prolly.AddressMap
 	ns            tree.NodeStore
-	castCache     map[string]id.Cast
 }
 
 // CastType is the type of the cast, indicating which contexts it may be called in.
@@ -74,7 +73,6 @@ func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree
 		mapHash:       underlyingMap.HashOf(),
 		underlyingMap: underlyingMap,
 		ns:            ns,
-		castCache:     make(map[string]id.Cast),
 	}
 	return collection, nil
 }
@@ -136,15 +134,8 @@ func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 // GetAssignmentCast returns the assignment type cast function that will cast the source type to the target type.
 // Returns a Cast with an invalid ID if such a cast is not valid.
 func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
-	cID := string(sourceType.ID) + string(targetType.ID)
-	var castID id.Cast
-	var ok bool
-	if castID, ok = pgc.castCache[cID]; !ok {
-		pgc.castCache[cID] = id.NewCast(sourceType.ID, targetType.ID)
-	}
-
-	// TODO: possible to cache this too?
-	c, err := pgc.getCast(ctx, castID, sourceType, targetType, CastType_Assignment)
+	castID := id.NewCast(sourceType.ID, targetType.ID)                              // TODO: expensive
+	c, err := pgc.getCast(ctx, castID, sourceType, targetType, CastType_Assignment) // TODO: expensive
 	if err != nil {
 		return Cast{}, err
 	}
@@ -576,7 +567,6 @@ func (pgc *Collection) Clone(ctx context.Context) *Collection {
 		mapHash:       pgc.mapHash,
 		underlyingMap: pgc.underlyingMap,
 		ns:            pgc.ns,
-		castCache:     pgc.castCache,
 	}
 }
 
