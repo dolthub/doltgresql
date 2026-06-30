@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/sqllogictest/go/logictest"
@@ -30,9 +31,10 @@ import (
 )
 
 var resultFormat = flag.String("r", "json", "format of parsed results")
-var withServer = flag.Bool("server", false, "format of parsed results")
+var manageServer = flag.Bool("server", false, "whether the runner should launch the server process")
 var doltgres = flag.String("doltgres", "", "local doltgres binary")
 var timeout = flag.Int64("timeout", 0, "set a timeout (in seconds) for each test query")
+var workers = flag.Int("workers", 1, "number of parallel workers")
 
 // Runs all sqllogictest test files (or directories containing them) given as arguments.
 // Usage: $command (run|parse) [version] [file1.test dir1/ dir2/]
@@ -47,19 +49,27 @@ func main() {
 	}
 
 	if args[0] == "run" {
-		var h logictest.Harness
-		// to run with server: $command --server=true --doltgres=<path to doltgres> run [tests]
-		if *withServer {
+		if *manageServer {
 			if *doltgres == "" {
 				log.Fatal("Must supply --doltgres=<path to doltgres> with --server=true")
 			}
-			dh := harness.NewDoltgresHarness(*doltgres, *timeout)
-			defer dh.Close()
-			h = dh
+			if *workers > 1 {
+				srv := harness.StartSharedServer(*doltgres)
+				defer srv.Close()
+				runConcurrent(*workers, *timeout, args[1:]...)
+			} else {
+				dh := harness.NewDoltgresHarness(*doltgres, *timeout)
+				defer dh.Close()
+				logictest.RunTestFiles(dh, args[1:]...)
+			}
 		} else {
-			h = harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable", *timeout)
+			if *workers > 1 {
+				runConcurrent(*workers, *timeout, args[1:]...)
+			} else {
+				h := harness.NewPostgresqlHarness("postgresql://postgres:password@localhost:5432/sqllogictest?sslmode=disable", *timeout)
+				logictest.RunTestFiles(h, args[1:]...)
+			}
 		}
-		logictest.RunTestFiles(h, args[1:]...)
 	} else if args[0] == "parse" {
 		if len(args) < 3 {
 			panic("Usage: logictest [-r(csv|json)] parse <version> (file | dir/)")
@@ -68,6 +78,17 @@ func main() {
 	} else {
 		panic("Unrecognized command " + args[0])
 	}
+}
+
+// runConcurrent fans out |numWorkers| goroutines over the test files specified in |paths|.
+// Each worker gets its own isolated database (sqllogictest_1, sqllogictest_2, …).
+func runConcurrent(numWorkers int, queryTimeout int64, paths ...string) {
+	var workerIdx int32
+	logictest.RunTestFilesConcurrently(func() logictest.Harness {
+		n := atomic.AddInt32(&workerIdx, 1)
+		dbName := fmt.Sprintf("sqllogictest_%d", n)
+		return harness.NewDoltgresWorkerHarness(harness.DefaultPort, dbName, queryTimeout)
+	}, numWorkers, paths...)
 }
 
 func parseTestResults(version, f string) {

@@ -268,6 +268,8 @@ github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1 h1:GY17cGA4
 github.com/dolthub/pg_query_go/v6 v6.0.0-20251215122834-fb20be4254d1/go.mod h1:qnrZP3/1slFl2Bq5yw38HLOsArZareGwdpEceriblLc=
 github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216 h1:JWkKRE4EHUcEVQCMRBej8DYxjYjRz/9MdF/NNQh0o70=
 github.com/dolthub/sqllogictest/go v0.0.0-20240618184124-ca47f9354216/go.mod h1:e/FIZVvT2IR53HBCAo41NjqgtEnjMJGKca3Y/dAmZaA=
+github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166 h1:fdexJBpLDyAGnFbviZYfZ0jhLMnbTWTh39CyQ1EhA28=
+github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166/go.mod h1:e/FIZVvT2IR53HBCAo41NjqgtEnjMJGKca3Y/dAmZaA=
 github.com/dolthub/vitess v0.0.0-20260617012411-2f308f6cdc23 h1:1yEYWCBuhxDdbUGorvhA3JPnUIFHZr2qXuJ4AKBHLC0=
 github.com/dolthub/vitess v0.0.0-20260617012411-2f308f6cdc23/go.mod h1:5SVEJgAhw5nnQUFnGgKI1Svqes1Mw+zKUsalyxmOuG0=
 github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=

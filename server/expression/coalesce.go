@@ -129,7 +129,18 @@ func (c *PgCoalesce) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		if ok && argType.Equals(commonType) {
 			return val, nil
 		}
-		// Cast the value to the common type (handles mixed-type args, e.g. int2 and int4).
+		// For Doltgres types, use an assignment cast to convert argType → commonType.
+		// This handles numeric widening (e.g. int4→int8, int4→float8) when COALESCE args have mixed types.
+		if ok && argType != nil {
+			cast, castErr := pgtypes.GetAssignmentCast(ctx, argType, commonType)
+			if castErr == nil && cast != nil {
+				converted, castErr := cast.Eval(ctx, val, argType, commonType)
+				if castErr != nil {
+					return nil, castErr
+				}
+				return converted, nil
+			}
+		}
 		converted, _, err := commonType.Convert(ctx, val)
 		if err != nil {
 			return nil, err
