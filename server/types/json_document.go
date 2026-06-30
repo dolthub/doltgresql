@@ -321,8 +321,6 @@ func ConvertToJsonDocument(val interface{}) (JsonValue, error) {
 		return JsonValueNumber(*d), nil
 	case *apd.Decimal:
 		return JsonValueNumber(*val), nil
-	case apd.Decimal:
-		return JsonValueNumber(val), nil
 	case bool:
 		return JsonValueBoolean(val), nil
 	case nil:
