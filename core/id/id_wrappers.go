@@ -90,7 +90,16 @@ func NewCast(sourceType Type, targetType Type) Cast {
 	if len(sourceType) == 0 && len(targetType) == 0 {
 		return NullCast
 	}
-	return Cast(NewId(Section_Cast, string(sourceType), string(targetType)))
+
+	// segment + len(data) + len(source) + len(target) + source + target
+	buf := make([]byte, 1+1+1+1+len(sourceType)+len(targetType))
+	buf[0] = uint8(Section_Cast)
+	buf[1] = 2
+	buf[2] = uint8(len(sourceType))
+	buf[3] = uint8(len(targetType))
+	copy(buf[4:], sourceType)
+	copy(buf[4+len(sourceType):], targetType)
+	return Cast(buf)
 }
 
 // NewCheck returns a new Check. This wrapper must not be returned to the client.
