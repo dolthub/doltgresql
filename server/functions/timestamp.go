@@ -16,13 +16,13 @@ package functions
 
 import (
 	"fmt"
-	"github.com/dolthub/doltgresql/core"
 	"strings"
 	"time"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgtype"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
