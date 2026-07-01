@@ -36,7 +36,12 @@ RUN cargo build --release
 
 # --- Build C libpq client ---
 FROM debian:bookworm-slim AS c_clients_build
-RUN apt-get update && apt-get install -y gcc make libpq-dev pkg-config && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    gcc make pkg-config \
+    libpq-dev \
+    libapr1-dev libaprutil1-dev libaprutil1-dbd-pgsql \
+    libdbi-dev libdbd-pgsql \
+    && rm -rf /var/lib/apt/lists/*
 COPY testing/postgres-client-tests/c/ /build/c/
 WORKDIR /build/c
 RUN make
@@ -64,10 +69,9 @@ RUN npm install
 COPY testing/postgres-client-tests/node/ /build/node/
 
 # --- Install Ruby pg gem ---
-FROM ruby:3.4-bookworm AS ruby_clients_build
-RUN apt-get update && apt-get install -y libpq-dev && rm -rf /var/lib/apt/lists/*
+FROM ruby:4.0.5-bookworm AS ruby_clients_build
+RUN apt-get update && apt-get install -y libyaml-dev libpq-dev && rm -rf /var/lib/apt/lists/*
 COPY testing/postgres-client-tests/ruby/Gemfile /build/ruby/
-COPY testing/postgres-client-tests/ruby/Gemfile.lock /build/ruby/
 WORKDIR /build/ruby
 RUN bundle install
 COPY testing/postgres-client-tests/ruby/ /build/ruby/
@@ -138,10 +142,13 @@ RUN apt-get install -y \
     php \
     php-pgsql \
     r-base \
+    libyaml-dev \
     libpq-dev \
     odbc-postgresql \
     g++ make libpqxx-dev pkg-config \
     gcc make unixodbc-dev \
+    libapr1-dev libaprutil1-dev libaprutil1-dbd-pgsql \
+    libdbi-dev libdbd-pgsql \
     ca-certificates-java \
     bats \
     lsof \

@@ -51,6 +51,14 @@ teardown() {
     ruby $BATS_TEST_DIRNAME/ruby/pg-test.rb $USER $PORT
 }
 
+@test "ruby Sequel client" {
+    ruby $BATS_TEST_DIRNAME/ruby/sequel-test.rb $USER $PORT
+}
+
+@test "ruby ActiveRecord client" {
+    ruby $BATS_TEST_DIRNAME/ruby/activerecord-test.rb $USER $PORT
+}
+
 @test "php pg_connect client" {
     cd $BATS_TEST_DIRNAME/php
     php pg_connect_test.php $USER $PORT
@@ -142,4 +150,14 @@ teardown() {
 
 @test "swift postgresnio client" {
     /build/bin/swift/postgresnio-test $USER $PORT
+}
+
+@test "libaprutil apr_dbd client" {
+    (cd $BATS_TEST_DIRNAME/c; make)
+    $BATS_TEST_DIRNAME/c/libaprutil-test $USER $PORT
+}
+
+@test "libdbi pgsql client" {
+    (cd $BATS_TEST_DIRNAME/c; make)
+    $BATS_TEST_DIRNAME/c/libdbi-test $USER $PORT
 }
