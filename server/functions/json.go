@@ -90,7 +90,7 @@ func json_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (a
 	switch v := val.(type) {
 	case string:
 		return v, nil
-	case types.LazyJSONDocument:
+	case *types.LazyJSONDocument:
 		bytes, err := v.GetBytes(ctx)
 		if err != nil {
 			return nil, err

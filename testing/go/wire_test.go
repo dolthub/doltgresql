@@ -2475,13 +2475,13 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								[]byte(`{"key1": {"key": "value"}}`),
+								[]byte(`{"key1":{"key":"value"}}`),
 								[]byte(`{}`),
 							},
 						},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								[]byte(`{"key1": {"key": [2, 3]}}`),
+								[]byte(`{"key1":{"key":[2,3]}}`),
 								[]byte(`[]`),
 							},
 						},
@@ -2558,13 +2558,13 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								[]byte(`{"key1": {"key": "value"}}`),
+								[]byte(`{"key1":{"key":"value"}}`),
 								[]byte(`{}`),
 							},
 						},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								[]byte(`{"key1": {"key": [2, 3]}}`),
+								[]byte(`{"key1":{"key":[2, 3]}}`),
 								[]byte(`[]`),
 							},
 						},
@@ -2641,13 +2641,13 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								[]byte(`{"key1": {"key": "value"}}`),
+								[]byte(`{"key1":{"key":"value"}}`),
 								[]byte(`{}`),
 							},
 						},
 						&pgproto3.DataRow{
 							Values: [][]byte{
-								[]byte(`{"key1": {"key": [2, 3]}}`),
+								[]byte(`{"key1":{"key":[2, 3]}}`),
 								[]byte(`[]`),
 							},
 						},
