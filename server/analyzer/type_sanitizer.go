@@ -57,6 +57,19 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 					}
 				}
+				// Window function outputs carry GMS types in the Window schema; wrap with GMSCast
+				// so the type is properly converted to a Doltgres type for the wire protocol.
+				// A Sort node may sit between the Project and Window (for outer ORDER BY).
+				if isWindowOrWrapsWindow(child) {
+					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
+						// GMS ranking functions (rank, dense_rank, ntile) use Uint64, but Postgres
+						// returns bigint for these. ExplicitCast overrides the Numeric mapping.
+						if expr.Type(ctx).Type() == query.Type_UINT64 {
+							return pgexprs.NewExplicitCast(expr, pgtypes.Int64), transform.NewTree, nil
+						}
+						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
+					}
+				}
 			}
 			return expr, transform.SameTree, nil
 		case *expression.Literal:
@@ -75,6 +88,12 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		case sql.FunctionExpression:
 			// Compiled functions are Doltgres functions. We're only concerned with GMS functions.
 			if _, ok := expr.(framework.Function); !ok {
+				// Window functions implement sql.WindowAdaptableExpression and must NOT be wrapped in
+				// GMSCast. Wrapping hides the interface from windowToIter, which then falls to the
+				// default "last value" path and calls Eval() directly, returning ErrWindowUnsupported.
+				if _, ok := expr.(sql.WindowAdaptableExpression); ok {
+					return expr, transform.SameTree, nil
+				}
 				// Some aggregation functions cannot be wrapped due to expectations in the analyzer, so we exclude them here.
 				switch expr.FunctionName() {
 				case "Count", "CountDistinct", "group_concat", "JSONObjectAgg", "Sum":
@@ -244,4 +263,23 @@ func typeSanitizerLiterals(ctx *sql.Context, gmsLiteral *expression.Literal) (sq
 	default:
 		return nil, transform.NewTree, errors.Errorf("SANITIZER: encountered a GMS type that cannot be handled: %s", gmsLiteral.Type(ctx).String())
 	}
+}
+
+// isWindowOrWrapsWindow reports whether n is a *plan.Window or is a transparent
+// wrapper (Sort, Limit, Offset, Distinct, Filter) whose sole child is a *plan.Window.
+// This handles cases like: Project → Sort → Window, which arises when the query
+// has a top-level ORDER BY alongside a window function.
+func isWindowOrWrapsWindow(n sql.Node) bool {
+	if _, ok := n.(*plan.Window); ok {
+		return true
+	}
+	switch n.(type) {
+	case *plan.Sort, *plan.Limit, *plan.Offset, *plan.Distinct, *plan.Filter:
+		children := n.Children()
+		if len(children) == 1 {
+			_, ok := children[0].(*plan.Window)
+			return ok
+		}
+	}
+	return false
 }

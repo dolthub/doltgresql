@@ -834,7 +834,6 @@ func TestVersionedViews(t *testing.T) {
 }
 
 func TestWindowFunctions(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestWindowFunctions(t, h)
