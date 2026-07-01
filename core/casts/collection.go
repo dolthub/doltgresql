@@ -134,8 +134,8 @@ func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 // GetAssignmentCast returns the assignment type cast function that will cast the source type to the target type.
 // Returns a Cast with an invalid ID if such a cast is not valid.
 func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
-	castID := id.NewCast(sourceType.ID, targetType.ID)
-	c, err := pgc.getCast(ctx, castID, sourceType, targetType, CastType_Assignment)
+	castID := id.NewCast(sourceType.ID, targetType.ID)                              // TODO: expensive
+	c, err := pgc.getCast(ctx, castID, sourceType, targetType, CastType_Assignment) // TODO: expensive
 	if err != nil {
 		return Cast{}, err
 	}

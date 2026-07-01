@@ -90,7 +90,18 @@ func NewCast(sourceType Type, targetType Type) Cast {
 	if len(sourceType) == 0 && len(targetType) == 0 {
 		return NullCast
 	}
-	return Cast(NewId(Section_Cast, string(sourceType), string(targetType)))
+
+	return Cast(
+		string(
+			[]byte{
+				uint8(Section_Cast),
+				2,
+				uint8(len(sourceType)),
+				uint8(len(targetType)),
+			}) +
+			string(sourceType) +
+			string(targetType),
+	)
 }
 
 // NewCheck returns a new Check. This wrapper must not be returned to the client.
