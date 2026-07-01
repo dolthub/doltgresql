@@ -162,7 +162,7 @@ func getDateStyleOutputFormat(ctx *sql.Context) string {
 		return format
 	}
 
-	if cachedFormat, err := core.GetDateStyleOutputFormat(ctx); err == nil {
+	if cachedFormat, err := core.GetDateStyleOutputFormat(ctx); err == nil && cachedFormat != "" {
 		return cachedFormat
 	}
 
