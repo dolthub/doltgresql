@@ -69,10 +69,9 @@ RUN npm install
 COPY testing/postgres-client-tests/node/ /build/node/
 
 # --- Install Ruby pg gem ---
-FROM ruby:3.4-bookworm AS ruby_clients_build
-RUN apt-get update && apt-get install -y libpq-dev && rm -rf /var/lib/apt/lists/*
+FROM ruby:4.0.5-bookworm AS ruby_clients_build
+RUN apt-get update && apt-get install -y libyaml-dev libpq-dev && rm -rf /var/lib/apt/lists/*
 COPY testing/postgres-client-tests/ruby/Gemfile /build/ruby/
-COPY testing/postgres-client-tests/ruby/Gemfile.lock /build/ruby/
 WORKDIR /build/ruby
 RUN bundle install
 COPY testing/postgres-client-tests/ruby/ /build/ruby/
@@ -143,6 +142,7 @@ RUN apt-get install -y \
     php \
     php-pgsql \
     r-base \
+    libyaml-dev \
     libpq-dev \
     odbc-postgresql \
     g++ make libpqxx-dev pkg-config \

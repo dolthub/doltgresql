@@ -11,3 +11,4 @@ dotnet/out
 c/libaprutil-test
 c/libdbi-test
 c/postgres-c-connector-test
+ruby/Gemfile.lock

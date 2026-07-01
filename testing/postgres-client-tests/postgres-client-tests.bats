@@ -51,6 +51,14 @@ teardown() {
     ruby $BATS_TEST_DIRNAME/ruby/pg-test.rb $USER $PORT
 }
 
+@test "ruby Sequel client" {
+    ruby $BATS_TEST_DIRNAME/ruby/sequel-test.rb $USER $PORT
+}
+
+@test "ruby ActiveRecord client" {
+    ruby $BATS_TEST_DIRNAME/ruby/activerecord-test.rb $USER $PORT
+}
+
 @test "php pg_connect client" {
     cd $BATS_TEST_DIRNAME/php
     php pg_connect_test.php $USER $PORT
