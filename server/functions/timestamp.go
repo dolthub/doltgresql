@@ -16,6 +16,7 @@ package functions
 
 import (
 	"fmt"
+	"github.com/dolthub/doltgresql/core"
 	"strings"
 	"time"
 
@@ -161,16 +162,25 @@ func getDateStyleOutputFormat(ctx *sql.Context) string {
 		return format
 	}
 
+	if cachedFormat, err := core.GetDateStyleOutputFormat(ctx); err == nil {
+		return cachedFormat
+	}
+
 	val, err := ctx.GetSessionVariable(ctx, "datestyle")
 	if err != nil {
 		return format
 	}
 
+	defer func() {
+		_ = core.SetDateStyleOutputFormat(ctx, format)
+	}()
+
 	values := strings.Split(strings.ReplaceAll(val.(string), " ", ""), ",")
 	for _, value := range values {
 		switch value {
 		case DateStyleISO, DateStyleSQL, DateStylePostgres, DateStyleGerman:
-			return value
+			format = value
+			return format
 		}
 	}
 	return format

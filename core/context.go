@@ -48,6 +48,8 @@ type contextValues struct {
 
 	pgCatalogCache any
 	runner         sql.StatementRunner
+
+	dateOutputFormat string
 }
 
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
@@ -487,6 +489,25 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// GetDateStyleOutputFormat returns the cached DateOutputFormat
+func GetDateStyleOutputFormat(ctx *sql.Context) (string, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return "", err
+	}
+	return cv.dateOutputFormat, nil
+}
+
+// SetDateStyleOutputFormat cached the provided dateOutputFormat
+func SetDateStyleOutputFormat(ctx *sql.Context, dateOutputFormat string) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.dateOutputFormat = dateOutputFormat
 	return nil
 }
 
