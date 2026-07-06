@@ -1347,6 +1347,25 @@ var preparedStatementTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "merge join planning with bindvar equality filter on indexed join column",
+		SetUpScript: []string{
+			"CREATE TABLE t1 (pk INT PRIMARY KEY, fk INT, val INT);",
+			"CREATE INDEX t1_fk_idx ON t1(fk);",
+			"CREATE TABLE t2 (pk INT PRIMARY KEY, val INT);",
+			"INSERT INTO t1 VALUES (1, 1, 100), (2, 2, 200), (3, 3, 300);",
+			"INSERT INTO t2 VALUES (1, 10), (2, 20), (3, 30);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT t1.val, t2.val FROM t1 JOIN t2 ON t1.fk = t2.pk WHERE t1.fk = $1;",
+				BindVars: []any{1},
+				Expected: []sql.Row{
+					{100, 10},
+				},
+			},
+		},
+	},
 }
 
 var pgCatalogTests = []ScriptTest{
