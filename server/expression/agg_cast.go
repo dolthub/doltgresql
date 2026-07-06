@@ -16,7 +16,9 @@ package expression
 
 import (
 	"math"
+	"strconv"
 
+	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -27,9 +29,10 @@ import (
 // post-convert the buffer's Eval result. It preserves the sql.Aggregation
 // interface so GroupBy aggregation machinery works correctly.
 //
-// GMS SUM over integer columns always accumulates as float64 internally, but
-// Postgres specifies SUM(int2/int4/int8) → bigint. AggCast intercepts the
-// float64 buffer result and converts it to int64 so the correct wire type is used.
+// GMS SUM and AVG over integer columns always accumulate as float64 internally, but
+// Postgres specifies SUM(int2/int4/int8) → bigint and AVG(int2/int4/int8) → numeric.
+// AggCast intercepts the float64 buffer result and converts it to the target type so
+// the correct wire type is used.
 type AggCast struct {
 	inner      sql.Aggregation
 	targetType *pgtypes.DoltgresType
@@ -53,7 +56,7 @@ func (a *AggCast) NewBuffer(ctx *sql.Context) (sql.AggregationBuffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &aggCastBuffer{inner: buf}, nil
+	return &aggCastBuffer{inner: buf, targetType: a.targetType}, nil
 }
 
 // NewWindowFunction delegates to inner.
@@ -107,9 +110,11 @@ func (a *AggCast) WithChildren(ctx *sql.Context, children ...sql.Expression) (sq
 	return NewAggCast(agg, a.targetType), nil
 }
 
-// aggCastBuffer wraps an AggregationBuffer and post-converts float64 Eval results to int64.
+// aggCastBuffer wraps an AggregationBuffer and post-converts its float64 Eval result to
+// match targetType (int64 for bigint, numeric, or float32 for real; float64 is a no-op).
 type aggCastBuffer struct {
-	inner sql.AggregationBuffer
+	inner      sql.AggregationBuffer
+	targetType *pgtypes.DoltgresType
 }
 
 func (b *aggCastBuffer) Update(ctx *sql.Context, row sql.Row) error {
@@ -121,10 +126,24 @@ func (b *aggCastBuffer) Eval(ctx *sql.Context) (any, error) {
 	if err != nil || v == nil {
 		return v, err
 	}
-	if f, ok := v.(float64); ok {
+	f, ok := v.(float64)
+	if !ok {
+		return v, nil
+	}
+	switch {
+	case b.targetType.Equals(pgtypes.Numeric):
+		d, _, err := apd.NewFromString(strconv.FormatFloat(f, 'f', -1, 64))
+		if err != nil {
+			return nil, err
+		}
+		return d, nil
+	case b.targetType.Equals(pgtypes.Float32):
+		return float32(f), nil
+	case b.targetType.Equals(pgtypes.Float64):
+		return f, nil
+	default:
 		return int64(math.RoundToEven(f)), nil
 	}
-	return v, nil
 }
 
 func (b *aggCastBuffer) Dispose(ctx *sql.Context) {

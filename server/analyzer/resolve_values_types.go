@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+	"github.com/dolthub/go-mysql-server/sql/types"
 
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -189,7 +190,9 @@ func transformValuesNode(ctx *sql.Context, n sql.Node) (sql.Node, transform.Tree
 		columnTypes[colIdx] = make([]*pgtypes.DoltgresType, len(values.ExpressionTuples))
 		for rowIdx, row := range values.ExpressionTuples {
 			exprType := row[colIdx].Type(ctx)
-			if exprType == nil {
+			if exprType == nil || exprType == types.Null {
+				// A raw NULL literal reports the GMS sentinel Null type until TypeSanitizer
+				// converts it to a pgtypes.Unknown-typed literal.
 				columnTypes[colIdx][rowIdx] = pgtypes.Unknown
 			} else if pgType, ok := exprType.(*pgtypes.DoltgresType); ok {
 				columnTypes[colIdx][rowIdx] = pgType

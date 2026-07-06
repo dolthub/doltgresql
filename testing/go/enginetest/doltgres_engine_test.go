@@ -547,18 +547,19 @@ func TestScripts(t *testing.T) {
 		"preserve now()",          // harness error
 		"binary type primary key", // ERROR: blob/text column 'b' used in key specification without a key length
 		"varbinary primary key",   // ERROR: blob/text column 'b' used in key specification without a key length
-		"insert into t1 (a, b) values ('1234567890', '12345')",                // different error message
-		"insert into t2 (a, b) values ('1234567890', '12345')",                // different error message
-		"invalid utf8 encoding strings",                                       // need to investigate why some strings aren't giving errors, might be a harness error
-		"mismatched collation using hash in tuples",                           // ERROR: plan is not resolved because of node '*plan.Project'
-		"validate_password_strength and validate_password.length",             // unsupported
-		"validate_password_strength and validate_password.number_count",       // unsupported
-		"validate_password_strength and validate_password.mixed_case_count",   // unsupported
-		"validate_password_strength and validate_password.special_char_count", // unsupported
-		"coalesce with system types",                                          // unsupported
-		"histogram bucket merging error for implementor buckets",              // unsupported "with recursive" syntax
-		"varchar primary key",                                                 // literal values longer than the key length returns incorrect results for some queries
-		"can't create view with same name as existing table",                  // different error message
+		"insert into t1 (a, b) values ('1234567890', '12345')",                      // different error message
+		"insert into t2 (a, b) values ('1234567890', '12345')",                      // different error message
+		"invalid utf8 encoding strings",                                             // need to investigate why some strings aren't giving errors, might be a harness error
+		"mismatched collation using hash in tuples",                                 // ERROR: plan is not resolved because of node '*plan.Project'
+		"validate_password_strength and validate_password.length",                   // unsupported
+		"validate_password_strength and validate_password.number_count",             // unsupported
+		"validate_password_strength and validate_password.mixed_case_count",         // unsupported
+		"validate_password_strength and validate_password.special_char_count",       // unsupported
+		"coalesce with system types",                                                // unsupported
+		"histogram bucket merging error for implementor buckets",                    // unsupported "with recursive" syntax
+		"varchar primary key",                                                       // literal values longer than the key length returns incorrect results for some queries
+		"can't create view with same name as existing table",                        // different error message
+		"sum() and avg() on non-DECIMAL type column returns the DOUBLE type result", // expects MySQL SUM/AVG(int)-returns-DOUBLE semantics; Postgres SUM(int4) returns bigint and AVG(int4) returns numeric
 	})
 	defer h.Close()
 	enginetest.TestScripts(t, h)

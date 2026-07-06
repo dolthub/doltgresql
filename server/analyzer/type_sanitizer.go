@@ -141,16 +141,39 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				// Window functions (and GMS Sum) implement sql.WindowAdaptableExpression and must
 				// NOT be wrapped in GMSCast — that hides the interface from windowToIter.
 				if _, ok := expr.(sql.WindowAdaptableExpression); ok {
-					// GMS SUM always accumulates float64 internally, but Postgres SUM(int2/int4/int8)
-					// returns bigint. In GroupBy context, wrap with AggCast to convert the float64
-					// result to int64 while preserving the sql.Aggregation interface.
-					if expr.FunctionName() == "Sum" {
-						if _, isGroupBy := n.(*plan.GroupBy); isGroupBy {
-							if doltType, ok := expr.Type(ctx).(*pgtypes.DoltgresType); ok {
-								if doltType.Equals(pgtypes.Int32) || doltType.Equals(pgtypes.Int16) || doltType.Equals(pgtypes.Int64) {
-									return pgexprs.NewAggCast(expr.(sql.Aggregation), pgtypes.Int64), transform.NewTree, nil
-								}
+					// GMS SUM and AVG always accumulate as float64 internally, regardless of the
+					// input column's width, but Postgres promotes their result types:
+					//   SUM(smallint/integer) -> bigint
+					//   SUM(bigint)           -> numeric (a running sum of bigints can itself overflow bigint)
+					//   SUM(real)             -> real (needs narrowing back from the float64 accumulator)
+					//   AVG(smallint/integer/bigint) -> numeric
+					//   AVG(real)             -> double precision
+					// In GroupBy context, wrap with AggCast to convert the float64 result to the
+					// correct target type while preserving the sql.Aggregation interface.
+					var aggTargetType *pgtypes.DoltgresType
+					if doltType, ok := expr.Type(ctx).(*pgtypes.DoltgresType); ok {
+						switch expr.FunctionName() {
+						case "Sum":
+							switch {
+							case doltType.Equals(pgtypes.Int16), doltType.Equals(pgtypes.Int32):
+								aggTargetType = pgtypes.Int64
+							case doltType.Equals(pgtypes.Int64):
+								aggTargetType = pgtypes.Numeric
+							case doltType.Equals(pgtypes.Float32):
+								aggTargetType = pgtypes.Float32
 							}
+						case "Avg":
+							switch {
+							case doltType.Equals(pgtypes.Int16), doltType.Equals(pgtypes.Int32), doltType.Equals(pgtypes.Int64):
+								aggTargetType = pgtypes.Numeric
+							case doltType.Equals(pgtypes.Float32):
+								aggTargetType = pgtypes.Float64
+							}
+						}
+					}
+					if aggTargetType != nil {
+						if _, isGroupBy := n.(*plan.GroupBy); isGroupBy {
+							return pgexprs.NewAggCast(expr.(sql.Aggregation), aggTargetType), transform.NewTree, nil
 						}
 					}
 					return expr, transform.SameTree, nil
@@ -347,14 +370,19 @@ func findWindowNode(n sql.Node) *plan.Window {
 	return nil
 }
 
-// findGroupByChild returns the GroupBy if n is a GroupBy or transitively wraps one
-// through Having nodes. Returns nil if n does not expose a GroupBy this way.
+// findGroupByChild returns the GroupBy if n is a GroupBy or is a transparent wrapper
+// (Having, Project, Sort, Limit, Offset, Distinct, Filter) whose sole child transitively
+// wraps one. A HAVING clause's own condition, in particular, sits under a Having node whose
+// child is a Project (not the GroupBy directly) — e.g. Having -> Project -> GroupBy — so
+// this must traverse through Project to find it. Returns nil if n does not expose a GroupBy
+// this way.
 func findGroupByChild(n sql.Node) *plan.GroupBy {
-	switch typed := n.(type) {
-	case *plan.GroupBy:
-		return typed
-	case *plan.Having:
-		children := typed.Children()
+	if gb, ok := n.(*plan.GroupBy); ok {
+		return gb
+	}
+	switch n.(type) {
+	case *plan.Having, *plan.Project, *plan.Sort, *plan.Limit, *plan.Offset, *plan.Distinct, *plan.Filter:
+		children := n.Children()
 		if len(children) == 1 {
 			return findGroupByChild(children[0])
 		}

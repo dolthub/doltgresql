@@ -68,8 +68,11 @@ func Init() {
 		// because of custom batch set optimization in GMS skipping OnceBeforeDefault batch for some nodes.
 		analyzer.Rule{Id: ruleId_ResolveType, Apply: ResolveType},
 		analyzer.Rule{Id: ruleId_SetRunner, Apply: SetRunner},
-		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
+		// ResolveValuesTypes must run before TypeSanitizer: it unifies VALUES-clause column
+		// types (e.g. VALUES(1),(2.01) -> numeric) which TypeSanitizer's aggregate-type
+		// corrections (e.g. SUM(int) -> bigint) depend on being already resolved.
 		analyzer.Rule{Id: ruleId_ResolveValuesTypes, Apply: ResolveValuesTypes},
+		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		analyzer.Rule{Id: ruleId_GenerateForeignKeyName, Apply: generateForeignKeyName},
 		analyzer.Rule{Id: ruleId_AddDomainConstraints, Apply: AddDomainConstraints},
 		analyzer.Rule{Id: ruleId_ValidateColumnDefaults, Apply: ValidateColumnDefaults},
