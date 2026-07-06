@@ -48,7 +48,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		switch expr := expr.(type) {
 		case *expression.GetField:
 			switch n := n.(type) {
-			case *plan.Project, *plan.Filter, *plan.GroupBy:
+			case *plan.Project, *plan.Filter, *plan.GroupBy, *plan.Having:
 				child := n.Children()[0]
 				// Some dolt_ tables do not have doltgres types for their columns, so we convert them here
 				if rt, ok := child.(*plan.ResolvedTable); ok && strings.HasPrefix(rt.Name(), "dolt_") {
@@ -59,15 +59,65 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				}
 				// Window function outputs carry GMS types in the Window schema; wrap with GMSCast
 				// so the type is properly converted to a Doltgres type for the wire protocol.
-				// A Sort node may sit between the Project and Window (for outer ORDER BY).
 				if isWindowOrWrapsWindow(child) {
 					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
-						// GMS ranking functions (rank, dense_rank, ntile) use Uint64, but Postgres
-						// returns bigint for these. ExplicitCast overrides the Numeric mapping.
+						// GMS ranking functions (rank, dense_rank, ntile) use Uint64 internally,
+						// but Postgres returns bigint. ExplicitCast overrides the Numeric mapping.
 						if expr.Type(ctx).Type() == query.Type_UINT64 {
 							return pgexprs.NewExplicitCast(expr, pgtypes.Int64), transform.NewTree, nil
 						}
 						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
+					}
+					// After this point expr IS a DoltgresType.
+					doltType := expr.Type(ctx).(*pgtypes.DoltgresType)
+					// GMS window SUM propagates the child column's DoltgresType via Sum.Type(),
+					// but always accumulates float64 at runtime. Match by ColumnId in
+					// Window.SelectExprs; for integer aggregates apply Float64→Int64.
+					if winNode := findWindowNode(child); winNode != nil {
+						for _, selectExpr := range winNode.SelectExprs {
+							ide, ok := selectExpr.(sql.IdExpression)
+							if !ok || ide.Id() != expr.Id() {
+								continue
+							}
+							if _, isAgg := selectExpr.(sql.Aggregation); isAgg {
+								if doltType.Equals(pgtypes.Int32) || doltType.Equals(pgtypes.Int16) || doltType.Equals(pgtypes.Int64) {
+									return pgexprs.NewAssignmentCast(expr, pgtypes.Float64, pgtypes.Int64), transform.NewTree, nil
+								}
+							}
+							break
+						}
+					}
+					// An outer Project may carry a stale declared type; child.Schema() holds
+					// the corrected type after bottom-up transform. Re-annotate on mismatch.
+					if innerType := windowSchemaTypeByName(child, ctx, expr.Name()); innerType != nil {
+						if !doltType.Equals(innerType) {
+							return pgexprs.NewAssignmentCast(expr, innerType, innerType), transform.NewTree, nil
+						}
+					}
+				}
+				// If a GetField references a SubqueryAlias and has a GMS type but the SubqueryAlias
+				// schema already has a DoltgresType (e.g. from AggCast propagation through a CTE),
+				// rebuild the GetField with the correct type so downstream operators compile for the
+				// actual runtime type rather than the planbuilder-assigned GMS type.
+				if _, ok := child.(*plan.SubqueryAlias); ok {
+					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
+						if actualType := windowSchemaTypeByName(child, ctx, expr.Name()); actualType != nil {
+							return expression.NewGetField(expr.Index(), actualType, expr.Name(), expr.IsNullable(ctx)), transform.NewTree, nil
+						}
+					}
+				}
+				// When a GroupBy child (possibly through a Having wrapper) has AggCast applied
+				// (e.g. SUM over integers), its schema reports the corrected DoltgresType, but the
+				// GetField may have been constructed earlier with a stale type: either a GMS type
+				// (float64 from GMS's internal Sum type promotion), or the pre-AggCast DoltgresType
+				// (e.g. Int32, from Sum.Type() before AggCast overrode it to Int64). Re-annotate so
+				// rowToBytes uses the correct Doltgres type for wire serialization. The runtime value
+				// is already correct from AggCast.
+				if gb := findGroupByChild(child); gb != nil {
+					if doltType := groupBySchemaTypeById(gb, ctx, expr.Id()); doltType != nil {
+						if currentType, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok || !currentType.Equals(doltType) {
+							return pgexprs.NewAssignmentCast(expr, doltType, doltType), transform.NewTree, nil
+						}
 					}
 				}
 			}
@@ -88,10 +138,21 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		case sql.FunctionExpression:
 			// Compiled functions are Doltgres functions. We're only concerned with GMS functions.
 			if _, ok := expr.(framework.Function); !ok {
-				// Window functions implement sql.WindowAdaptableExpression and must NOT be wrapped in
-				// GMSCast. Wrapping hides the interface from windowToIter, which then falls to the
-				// default "last value" path and calls Eval() directly, returning ErrWindowUnsupported.
+				// Window functions (and GMS Sum) implement sql.WindowAdaptableExpression and must
+				// NOT be wrapped in GMSCast — that hides the interface from windowToIter.
 				if _, ok := expr.(sql.WindowAdaptableExpression); ok {
+					// GMS SUM always accumulates float64 internally, but Postgres SUM(int2/int4/int8)
+					// returns bigint. In GroupBy context, wrap with AggCast to convert the float64
+					// result to int64 while preserving the sql.Aggregation interface.
+					if expr.FunctionName() == "Sum" {
+						if _, isGroupBy := n.(*plan.GroupBy); isGroupBy {
+							if doltType, ok := expr.Type(ctx).(*pgtypes.DoltgresType); ok {
+								if doltType.Equals(pgtypes.Int32) || doltType.Equals(pgtypes.Int16) || doltType.Equals(pgtypes.Int64) {
+									return pgexprs.NewAggCast(expr.(sql.Aggregation), pgtypes.Int64), transform.NewTree, nil
+								}
+							}
+						}
+					}
 					return expr, transform.SameTree, nil
 				}
 				// Some aggregation functions cannot be wrapped due to expectations in the analyzer, so we exclude them here.
@@ -265,21 +326,65 @@ func typeSanitizerLiterals(ctx *sql.Context, gmsLiteral *expression.Literal) (sq
 	}
 }
 
-// isWindowOrWrapsWindow reports whether n is a *plan.Window or is a transparent
-// wrapper (Sort, Limit, Offset, Distinct, Filter) whose sole child is a *plan.Window.
-// This handles cases like: Project → Sort → Window, which arises when the query
-// has a top-level ORDER BY alongside a window function.
+// isWindowOrWrapsWindow reports whether n is, or transitively wraps, a *plan.Window.
 func isWindowOrWrapsWindow(n sql.Node) bool {
-	if _, ok := n.(*plan.Window); ok {
-		return true
+	return findWindowNode(n) != nil
+}
+
+// findWindowNode traverses Sort/Limit/Offset/Distinct/Filter/Project wrappers to find
+// the underlying *plan.Window, or nil if n does not wrap a Window.
+func findWindowNode(n sql.Node) *plan.Window {
+	if w, ok := n.(*plan.Window); ok {
+		return w
 	}
 	switch n.(type) {
-	case *plan.Sort, *plan.Limit, *plan.Offset, *plan.Distinct, *plan.Filter:
+	case *plan.Sort, *plan.Limit, *plan.Offset, *plan.Distinct, *plan.Filter, *plan.Project:
 		children := n.Children()
 		if len(children) == 1 {
-			_, ok := children[0].(*plan.Window)
-			return ok
+			return findWindowNode(children[0])
 		}
 	}
-	return false
+	return nil
+}
+
+// findGroupByChild returns the GroupBy if n is a GroupBy or transitively wraps one
+// through Having nodes. Returns nil if n does not expose a GroupBy this way.
+func findGroupByChild(n sql.Node) *plan.GroupBy {
+	switch typed := n.(type) {
+	case *plan.GroupBy:
+		return typed
+	case *plan.Having:
+		children := typed.Children()
+		if len(children) == 1 {
+			return findGroupByChild(children[0])
+		}
+	}
+	return nil
+}
+
+// windowSchemaTypeByName returns the DoltgresType for a named column in n's schema,
+// or nil if no match is found.
+func windowSchemaTypeByName(n sql.Node, ctx *sql.Context, name string) *pgtypes.DoltgresType {
+	for _, col := range n.Schema(ctx) {
+		if strings.EqualFold(col.Name, name) {
+			if t, ok := col.Type.(*pgtypes.DoltgresType); ok {
+				return t
+			}
+		}
+	}
+	return nil
+}
+
+// groupBySchemaTypeById returns the DoltgresType of the SelectDeps expression in gb whose
+// ColumnId matches id, or nil if no such expression exists or its type isn't a DoltgresType.
+func groupBySchemaTypeById(gb *plan.GroupBy, ctx *sql.Context, id sql.ColumnId) *pgtypes.DoltgresType {
+	for _, e := range gb.SelectDeps {
+		ide, ok := e.(sql.IdExpression)
+		if !ok || ide.Id() != id {
+			continue
+		}
+		t, _ := e.Type(ctx).(*pgtypes.DoltgresType)
+		return t
+	}
+	return nil
 }

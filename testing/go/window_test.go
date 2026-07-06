@@ -88,6 +88,55 @@ func TestWindowFunctions(t *testing.T) {
 						{6, "FL", int64(1)},
 					},
 				},
+				// ORDER BY on rank alias with LIMIT (multi-hop Limit→Sort→Window chain)
+				{
+					Query: "SELECT c_id, rank() OVER (ORDER BY c_id) AS rnk FROM c ORDER BY rnk DESC LIMIT 3",
+					Expected: []sql.Row{
+						{6, int64(6)},
+						{5, int64(5)},
+						{4, int64(4)},
+					},
+				},
+				// ORDER BY on rank alias (Sort→Window chain)
+				{
+					Query: "SELECT c_id, rank() OVER (ORDER BY c_id) AS r FROM c ORDER BY r",
+					Expected: []sql.Row{
+						{1, int64(1)},
+						{2, int64(2)},
+						{3, int64(3)},
+						{4, int64(4)},
+						{5, int64(5)},
+						{6, int64(6)},
+					},
+				},
+				// DISTINCT + ORDER BY on rank alias
+				{
+					Query: "SELECT DISTINCT c_id, rank() OVER (ORDER BY c_id) AS r FROM c ORDER BY r",
+					Expected: []sql.Row{
+						{1, int64(1)},
+						{2, int64(2)},
+						{3, int64(3)},
+						{4, int64(4)},
+						{5, int64(5)},
+						{6, int64(6)},
+					},
+				},
+				// CASE expression over rank() subquery (int64 rank values flow into Numeric cast)
+				{
+					Query: "SELECT sum(CASE WHEN r > 0 THEN 1 ELSE 0 END) FROM (SELECT rank() OVER (ORDER BY c_id) AS r FROM c) t",
+					Expected: []sql.Row{
+						{int64(6)},
+					},
+				},
+				// window SUM with non-empty result (GMS SumAgg.Compute returns float64, not int32)
+				{
+					Query: "SELECT c_id, SUM(o_id) OVER (PARTITION BY c_id) AS s FROM o WHERE c_id = 1 ORDER BY o_id",
+					Expected: []sql.Row{
+						{1, int64(60)},
+						{1, int64(60)},
+						{1, int64(60)},
+					},
+				},
 			},
 		},
 	})

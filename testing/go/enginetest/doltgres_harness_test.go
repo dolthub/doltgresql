@@ -132,6 +132,9 @@ var defaultSkippedQueries = []string{
 	"<=>",           // null-safe equality (PostgreSQL uses IS NOT DISTINCT FROM)
 	"modify column", // MySQL ALTER TABLE MODIFY COLUMN syntax
 	"column first",  // MySQL ADD COLUMN ... FIRST positioning
+
+	// GMS tests that expect MySQL SUM-returns-float64 semantics; Postgres SUM(int4) returns bigint (int64)
+	"sum(col1 * col2) > 0",
 }
 
 // Setup sets the setup scripts for this DoltHarness's engine

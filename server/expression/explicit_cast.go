@@ -38,6 +38,7 @@ type ExplicitCast struct {
 
 var _ vitess.Injectable = (*ExplicitCast)(nil)
 var _ sql.Expression = (*ExplicitCast)(nil)
+var _ sql.IdExpression = (*ExplicitCast)(nil)
 
 // NewExplicitCastInjectable returns an incomplete *ExplicitCast that must be resolved through the vitess.Injectable interface.
 func NewExplicitCastInjectable(castToType sql.Type) (*ExplicitCast, error) {
@@ -58,6 +59,26 @@ func NewExplicitCast(expr sql.Expression, toType *pgtypes.DoltgresType) *Explici
 		sqlChild:   expr,
 		castToType: toType,
 	}
+}
+
+// Id implements sql.IdExpression, forwarding the child's ColumnId so ExplicitCast
+// is transparent to the GMS index-assignment pass.
+func (c *ExplicitCast) Id() sql.ColumnId {
+	if ide, ok := c.sqlChild.(sql.IdExpression); ok {
+		return ide.Id()
+	}
+	return 0
+}
+
+// WithId implements sql.IdExpression.
+func (c *ExplicitCast) WithId(id sql.ColumnId) sql.IdExpression {
+	if ide, ok := c.sqlChild.(sql.IdExpression); ok {
+		newChild, ok := ide.WithId(id).(sql.Expression)
+		if ok {
+			return NewExplicitCast(newChild, c.castToType)
+		}
+	}
+	return c
 }
 
 // Children implements the sql.Expression interface.
