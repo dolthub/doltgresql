@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"sync"
 	"unsafe"
 )
 
@@ -85,6 +86,25 @@ const (
 	NullView View = ""
 )
 
+// buffer pool to reduce GC
+var buffers = sync.Pool{
+	// New is called when a new instance is needed
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
+}
+
+// GetBuffer fetches a buffer from the pool
+func getBuffer() *bytes.Buffer {
+	return buffers.Get().(*bytes.Buffer)
+}
+
+// PutBuffer returns a buffer to the pool
+func putBuffer(buf *bytes.Buffer) {
+	buf.Reset()
+	buffers.Put(buf)
+}
+
 // Id is an ID that is used within Doltgres. This ID is never exposed to clients through any normal means, and
 // exists solely for internal operations to be able to identify specific items. This functions as an internal
 // replacement for Postgres' OIDs.
@@ -102,7 +122,8 @@ func NewId(section Section, data ...string) Id {
 	if len(data) > 255 {
 		return newIdSecondFormat(section, data)
 	}
-	buf := bytes.Buffer{}
+	buf := getBuffer()
+	defer putBuffer(buf)
 	buf.WriteByte(uint8(section))
 	buf.WriteByte(uint8(len(data)))
 	for _, segment := range data {
@@ -121,7 +142,8 @@ func NewId(section Section, data ...string) Id {
 // newIdSecondFormat constructs an Id using the given section and data. This always returns the second format (using the
 // separator).
 func newIdSecondFormat(section Section, data []string) Id {
-	buf := bytes.Buffer{}
+	buf := getBuffer()
+	defer putBuffer(buf)
 	buf.WriteByte(uint8(section) | formatMask)
 	for i, segment := range data {
 		if i > 0 {
