@@ -49,6 +49,7 @@ type contextValues struct {
 	pgCatalogCache any
 	runner         sql.StatementRunner
 
+	// cache the dateOutputFormat, this is refreshed on SET
 	dateOutputFormat string
 }
 
