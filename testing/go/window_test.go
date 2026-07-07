@@ -139,5 +139,30 @@ func TestWindowFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "window SUM/AVG wrapped in a subquery projection",
+			SetUpScript: []string{
+				"CREATE TABLE wrapper_probe (grp INT, val INT);",
+				"INSERT INTO wrapper_probe VALUES (1, 10), (1, 20), (2, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT grp, val, grp_total FROM (SELECT grp, val, SUM(val) OVER (PARTITION BY grp) AS grp_total FROM wrapper_probe) sub ORDER BY grp, val;",
+					Expected: []sql.Row{
+						{1, 10, int64(30)},
+						{1, 20, int64(30)},
+						{2, 5, int64(5)},
+					},
+				},
+				{
+					Query: "SELECT grp, val, grp_avg FROM (SELECT grp, val, AVG(val) OVER (PARTITION BY grp) AS grp_avg FROM wrapper_probe) sub ORDER BY grp, val;",
+					Expected: []sql.Row{
+						{1, 10, Numeric("15")},
+						{1, 20, Numeric("15")},
+						{2, 5, Numeric("5")},
+					},
+				},
+			},
+		},
 	})
 }

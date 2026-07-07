@@ -25,14 +25,15 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// AggCast wraps a sql.Aggregation to override its declared return type and
-// post-convert the buffer's Eval result. It preserves the sql.Aggregation
-// interface so GroupBy aggregation machinery works correctly.
+// AggCast wraps a sql.Aggregation to override its declared return type and post-convert
+// its result, whether reached through the GroupBy buffer path (NewBuffer/Eval) or the
+// window function path (NewWindowFunction/Compute). It preserves both the sql.Aggregation
+// and sql.WindowAdaptableExpression interfaces so GroupBy and window execution both work.
 //
 // GMS SUM and AVG over integer columns always accumulate as float64 internally, but
 // Postgres specifies SUM(int2/int4/int8) → bigint and AVG(int2/int4/int8) → numeric.
-// AggCast intercepts the float64 buffer result and converts it to the target type so
-// the correct wire type is used.
+// AggCast intercepts the float64 result and converts it to the target type so the
+// correct wire type is used.
 type AggCast struct {
 	inner      sql.Aggregation
 	targetType *pgtypes.DoltgresType
@@ -40,6 +41,7 @@ type AggCast struct {
 
 var _ sql.Expression = (*AggCast)(nil)
 var _ sql.Aggregation = (*AggCast)(nil)
+var _ sql.WindowFunction = (*aggCastWindowFunction)(nil)
 
 // NewAggCast wraps inner so that its declared type is targetType and its buffer
 // Eval result is converted from float64 to int64.
@@ -59,9 +61,14 @@ func (a *AggCast) NewBuffer(ctx *sql.Context) (sql.AggregationBuffer, error) {
 	return &aggCastBuffer{inner: buf, targetType: a.targetType}, nil
 }
 
-// NewWindowFunction delegates to inner.
+// NewWindowFunction delegates to inner but wraps the result so Compute's float64 output is
+// converted to match targetType, the same way NewBuffer wraps the AggregationBuffer path.
 func (a *AggCast) NewWindowFunction(ctx *sql.Context) (sql.WindowFunction, error) {
-	return a.inner.NewWindowFunction(ctx)
+	fn, err := a.inner.NewWindowFunction(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &aggCastWindowFunction{inner: fn, targetType: a.targetType}, nil
 }
 
 // WithWindow delegates to inner.
@@ -126,26 +133,60 @@ func (b *aggCastBuffer) Eval(ctx *sql.Context) (any, error) {
 	if err != nil || v == nil {
 		return v, err
 	}
+	return convertAggResult(v, b.targetType)
+}
+
+func (b *aggCastBuffer) Dispose(ctx *sql.Context) {
+	b.inner.Dispose(ctx)
+}
+
+// aggCastWindowFunction wraps a sql.WindowFunction and post-converts its float64 Compute
+// result the same way aggCastBuffer does for the sql.AggregationBuffer (GroupBy) path.
+type aggCastWindowFunction struct {
+	inner      sql.WindowFunction
+	targetType *pgtypes.DoltgresType
+}
+
+func (w *aggCastWindowFunction) StartPartition(ctx *sql.Context, interval sql.WindowInterval, buffer sql.WindowBuffer) error {
+	return w.inner.StartPartition(ctx, interval, buffer)
+}
+
+func (w *aggCastWindowFunction) DefaultFramer() sql.WindowFramer {
+	return w.inner.DefaultFramer()
+}
+
+func (w *aggCastWindowFunction) Compute(ctx *sql.Context, interval sql.WindowInterval, buffer sql.WindowBuffer) (any, error) {
+	v, err := w.inner.Compute(ctx, interval, buffer)
+	if err != nil || v == nil {
+		return v, err
+	}
+	return convertAggResult(v, w.targetType)
+}
+
+func (w *aggCastWindowFunction) Dispose(ctx *sql.Context) {
+	w.inner.Dispose(ctx)
+}
+
+// convertAggResult converts a raw aggregation result (always float64 from GMS's SUM/AVG
+// implementations, regardless of the input column's width) to match targetType: numeric,
+// float32, float64 (a no-op), or int64 for everything else (bigint).
+func convertAggResult(v any, targetType *pgtypes.DoltgresType) (any, error) {
 	f, ok := v.(float64)
 	if !ok {
 		return v, nil
 	}
 	switch {
-	case b.targetType.Equals(pgtypes.Numeric):
+	case targetType.Equals(pgtypes.Numeric):
 		d, _, err := apd.NewFromString(strconv.FormatFloat(f, 'f', -1, 64))
 		if err != nil {
 			return nil, err
 		}
 		return d, nil
-	case b.targetType.Equals(pgtypes.Float32):
+	case targetType.Equals(pgtypes.Float32):
 		return float32(f), nil
-	case b.targetType.Equals(pgtypes.Float64):
+	case targetType.Equals(pgtypes.Float64):
 		return f, nil
 	default:
 		return int64(math.RoundToEven(f)), nil
 	}
-}
-
-func (b *aggCastBuffer) Dispose(ctx *sql.Context) {
-	b.inner.Dispose(ctx)
 }

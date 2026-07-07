@@ -70,25 +70,12 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					}
 					// After this point expr IS a DoltgresType.
 					doltType := expr.Type(ctx).(*pgtypes.DoltgresType)
-					// GMS window SUM propagates the child column's DoltgresType via Sum.Type(),
-					// but always accumulates float64 at runtime. Match by ColumnId in
-					// Window.SelectExprs; for integer aggregates apply Float64→Int64.
-					if winNode := findWindowNode(child); winNode != nil {
-						for _, selectExpr := range winNode.SelectExprs {
-							ide, ok := selectExpr.(sql.IdExpression)
-							if !ok || ide.Id() != expr.Id() {
-								continue
-							}
-							if _, isAgg := selectExpr.(sql.Aggregation); isAgg {
-								if doltType.Equals(pgtypes.Int32) || doltType.Equals(pgtypes.Int16) || doltType.Equals(pgtypes.Int64) {
-									return pgexprs.NewAssignmentCast(expr, pgtypes.Float64, pgtypes.Int64), transform.NewTree, nil
-								}
-							}
-							break
-						}
-					}
-					// An outer Project may carry a stale declared type; child.Schema() holds
-					// the corrected type after bottom-up transform. Re-annotate on mismatch.
+					// Window SUM/AVG over integer or real columns are fixed at the source (see the
+					// AggCast wrap for *plan.Window below), so the Window's own schema already
+					// reports the corrected type. An outer Project (possibly reached through a
+					// SubqueryAlias) may still carry a stale declared type from before that fix, or
+					// from GMS's own type propagation; child.Schema() holds the corrected type after
+					// the bottom-up transform. Re-annotate on mismatch.
 					if innerType := windowSchemaTypeByName(child, ctx, expr.Name()); innerType != nil {
 						if !doltType.Equals(innerType) {
 							return pgexprs.NewAssignmentCast(expr, innerType, innerType), transform.NewTree, nil
@@ -148,8 +135,15 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					//   SUM(real)             -> real (needs narrowing back from the float64 accumulator)
 					//   AVG(smallint/integer/bigint) -> numeric
 					//   AVG(real)             -> double precision
-					// In GroupBy context, wrap with AggCast to convert the float64 result to the
-					// correct target type while preserving the sql.Aggregation interface.
+					// In GroupBy or Window context, wrap with AggCast to convert the float64 result
+					// to the correct target type while preserving the sql.Aggregation and
+					// sql.WindowAdaptableExpression interfaces. Fixing this at the source (the
+					// aggregate itself) rather than at each outer reference to it is what makes this
+					// idempotent: AggCast doesn't implement sql.FunctionExpression, so once applied it
+					// no longer matches this case on a later revisit (e.g. via the opaque traversal
+					// that re-walks an already-analyzed subquery), unlike wrapping an outer GetField
+					// reference, whose declared type never changes and so looks like it "still needs
+					// fixing" on every subsequent visit.
 					var aggTargetType *pgtypes.DoltgresType
 					if doltType, ok := expr.Type(ctx).(*pgtypes.DoltgresType); ok {
 						switch expr.FunctionName() {
@@ -172,7 +166,8 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 						}
 					}
 					if aggTargetType != nil {
-						if _, isGroupBy := n.(*plan.GroupBy); isGroupBy {
+						switch n.(type) {
+						case *plan.GroupBy, *plan.Window:
 							return pgexprs.NewAggCast(expr.(sql.Aggregation), aggTargetType), transform.NewTree, nil
 						}
 					}
@@ -361,7 +356,7 @@ func findWindowNode(n sql.Node) *plan.Window {
 		return w
 	}
 	switch n.(type) {
-	case *plan.Sort, *plan.Limit, *plan.Offset, *plan.Distinct, *plan.Filter, *plan.Project:
+	case *plan.Sort, *plan.Limit, *plan.Offset, *plan.Distinct, *plan.Filter, *plan.Project, *plan.SubqueryAlias:
 		children := n.Children()
 		if len(children) == 1 {
 			return findWindowNode(children[0])
