@@ -90,6 +90,12 @@ func json_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (a
 	switch v := val.(type) {
 	case string:
 		return v, nil
+	case types.JSONBytes:
+		bytes, err := v.GetBytes(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return string(bytes), err
 	case sql.JSONWrapper:
 		// JSON type is stored as binary JSON (same as JSONB), so output is normalized with spaces
 		return jsonWrapperToFormattedString(ctx, v)
