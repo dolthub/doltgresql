@@ -19,6 +19,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -34,6 +37,27 @@ func InitPgProc() {
 // PgProcHandler is the handler for the pg_proc table.
 type PgProcHandler struct{}
 
+// pgSequence represents a row in the pg_proc table
+type pgProc struct {
+	oid        id.Id  // oid
+	name       string // proname
+	schemaOid  id.Id  // pronamespace
+	variadic   id.Id  // provariadic
+	kind       string // prokind
+	strict     bool   // proisstrict
+	retSet     bool   // proretset
+	volatile   string // provolatile
+	nArgs      int16  // pronargs
+	nArgDefs   int16  // pronargdefaults
+	retTyp     id.Id  // prorettype
+	argTypes   any    // proargtypes
+	allArgTyps any    // proallargtypes
+	argModes   any    // proargmodes
+	argNames   any    // proargnames
+	src        string // prosrc
+	// TODO: Fill in the rest of the pg_proc columns
+}
+
 var _ tables.Handler = PgProcHandler{}
 
 // Name implements the interface tables.Handler.
@@ -43,8 +67,170 @@ func (p PgProcHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgProcHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_proc row iter
-	return emptyRowIter()
+	cache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if cache.procs == nil {
+		err = cachePgProcs(ctx, cache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pgProcRowIter{
+		procs: cache.procs,
+		idx:   0,
+	}, nil
+}
+
+// cachePgProcs caches the pg_proc data for the current database in the session.
+func cachePgProcs(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
+	var pprocs []*pgProc
+
+	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		// TODO: add built-in functions
+		Function: func(ctx *sql.Context, schema functions.ItemSchema, f functions.ItemFunction) (cont bool, err error) {
+			variadic := id.Null
+			if f.Item.Variadic {
+				// TODO not implemented yet
+				variadic = id.Null
+			}
+
+			nArgs := int16(len(f.Item.ParameterTypes))
+			nArgDefs := int16(0)
+			retSet := false
+			if f.Item.ReturnType.IsValid() && f.Item.ReturnType.TypeName() == "record" {
+				retSet = true
+			}
+
+			var (
+				kind               = "f" // a for an aggregate function, or w for a window function
+				argTypes, argNames any
+				types, names       []any
+			)
+
+			hasNonEmtpyArgName := false
+			for i, typ := range f.Item.ParameterTypes {
+				if f.Item.ParameterDefaults[i] != "" {
+					nArgDefs += 1
+				}
+				if f.Item.ParameterNames[i] != "" {
+					names = append(names, f.Item.ParameterNames[i])
+				}
+				types = append(types, typ.AsId())
+				if f.Item.ParameterNames[i] != "" {
+					hasNonEmtpyArgName = true
+				}
+				names = append(names, f.Item.ParameterNames[i])
+			}
+
+			if len(types) > 0 {
+				argTypes = types
+			}
+			if hasNonEmtpyArgName && len(names) > 0 {
+				argNames = names
+			}
+
+			var volatile = "i" // immutable
+			if f.Item.IsNonDeterministic {
+				volatile = "v" // volatile
+			}
+
+			pprocs = append(pprocs, &pgProc{
+				oid:        f.OID.AsId(),
+				name:       f.Item.ID.FunctionName(),
+				schemaOid:  schema.OID.AsId(),
+				variadic:   variadic,
+				kind:       kind,
+				strict:     f.Item.Strict,
+				retSet:     retSet,
+				volatile:   volatile,
+				nArgs:      nArgs,
+				nArgDefs:   nArgDefs,
+				retTyp:     f.Item.ReturnType.AsId(),
+				argTypes:   argTypes,
+				allArgTyps: nil,
+				argModes:   nil,
+				argNames:   argNames,
+				src:        f.Item.SQLDefinition,
+			})
+			return true, nil
+		},
+		Procedure: func(ctx *sql.Context, schema functions.ItemSchema, p functions.ItemProcedure) (cont bool, err error) {
+			nArgs := int16(len(p.Item.ParameterTypes))
+			nArgDefs := int16(0)
+
+			var (
+				// argTypes includes only input arguments (including INOUT and VARIADIC arguments)
+				argTypes any
+				// argAllTypes includes all arguments (including OUT and INOUT arguments);
+				// however, if all the arguments are IN arguments, this field will be null.
+				argAllTypes any
+				argNames    any
+			)
+
+			var types, allTypes, names []any
+			hasNonINArg := false
+			hasNonEmtpyArgName := false
+			for i, typ := range p.Item.ParameterTypes {
+				switch p.Item.ParameterModes[i] {
+				case procedures.ParameterMode_IN:
+					types = append(types, typ.AsId())
+				case procedures.ParameterMode_VARIADIC, procedures.ParameterMode_INOUT:
+					types = append(types, typ.AsId())
+					hasNonINArg = true
+				case procedures.ParameterMode_OUT:
+					hasNonINArg = true
+				}
+				if p.Item.ParameterDefaults[i] != "" {
+					nArgDefs += 1
+				}
+				if p.Item.ParameterNames[i] != "" {
+					hasNonEmtpyArgName = true
+				}
+				allTypes = append(allTypes, typ.AsId())
+				names = append(names, p.Item.ParameterNames[i])
+			}
+
+			if len(types) > 0 {
+				argTypes = types
+			}
+			if hasNonINArg && len(allTypes) > 0 {
+				argAllTypes = allTypes
+			}
+			if hasNonEmtpyArgName && len(names) > 0 {
+				argNames = names
+			}
+
+			pprocs = append(pprocs, &pgProc{
+				oid:        p.OID.AsId(),
+				name:       p.Item.ID.ProcedureName(),
+				schemaOid:  schema.OID.AsId(),
+				variadic:   id.Null,
+				kind:       "p",
+				strict:     false,
+				retSet:     false,
+				volatile:   "v", // volatile
+				nArgs:      nArgs,
+				nArgDefs:   nArgDefs,
+				retTyp:     pgtypes.Void.ID.AsId(),
+				argTypes:   argTypes,
+				allArgTyps: argAllTypes,
+				argModes:   nil,
+				argNames:   argNames,
+				src:        p.Item.SQLDefinition,
+			})
+			return true, nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	pgCatalogCache.procs = pprocs
+	return nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -91,13 +277,52 @@ var pgProcSchema = sql.Schema{
 
 // pgProcRowIter is the sql.RowIter for the pg_proc table.
 type pgProcRowIter struct {
+	procs []*pgProc
+	idx   int
 }
 
 var _ sql.RowIter = (*pgProcRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgProcRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.procs) {
+		return nil, io.EOF
+	}
+	p := iter.procs[iter.idx]
+	iter.idx++
+
+	return sql.Row{
+		p.oid,        // oid
+		p.name,       // proname
+		p.schemaOid,  // pronamespace
+		id.Null,      // proowner
+		id.Null,      // prolang
+		float32(1),   // procost
+		float32(0),   // prorows
+		p.variadic,   // provariadic
+		nil,          // prosupport
+		p.kind,       // prokind
+		false,        // prosecdef
+		false,        // proleakproof
+		p.strict,     // proisstrict
+		p.retSet,     // proretset
+		p.volatile,   // provolatile
+		"u",          // proparallel // TODO: default to 'unsafe' for now
+		p.nArgs,      // pronargs
+		p.nArgDefs,   // pronargdefaults
+		p.retTyp,     // prorettype
+		p.argTypes,   // proargtypes
+		p.allArgTyps, // proallargtypes
+		p.argModes,   // proargmodes
+		p.argNames,   // proargnames
+		nil,          // proargdefaults
+		nil,          // protrftypes
+		p.src,        // prosrc
+		nil,          // probin
+		nil,          // prosqlbody
+		nil,          // proconfig
+		nil,          // proacl
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

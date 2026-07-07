@@ -2475,10 +2475,22 @@ func TestPgProc(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_proc",
+			SetUpScript: []string{
+				`CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1';`,
+				`CREATE TABLE cp_test (a int, b text);`,
+				`CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)
+				LANGUAGE SQL
+				AS $$
+					INSERT INTO cp_test VALUES(a, b);
+					INSERT INTO cp_test VALUES(c, b);
+				$$;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_proc";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_proc";`,
+					Expected: []sql.Row{
+						{2891346960, "alt_func1", 2200, 0, 0, 1.0, 0.0, 0, nil, "f", "f", "f", "f", "f", "v", "u", 1, 0, 23, "23", nil, nil, nil, nil, nil, "SELECT $1 + 1", nil, nil, nil, nil},
+						{1886569565, "ptest5", 2200, 0, 0, 1.0, 0.0, 0, nil, "p", "f", "f", "f", "f", "v", "u", 3, 1, 2278, "23 25 23", nil, nil, "{a,b,c}", nil, nil, "INSERT INTO cp_test VALUES (a, b);INSERT INTO cp_test VALUES (c, b)", nil, nil, nil, nil}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_proc";`,
@@ -2490,7 +2502,7 @@ func TestPgProc(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT proname FROM PG_catalog.pg_PROC ORDER BY proname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"alt_func1"}, {"ptest5"}},
 				},
 			},
 		},

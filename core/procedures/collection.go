@@ -263,7 +263,7 @@ func (pgp *Collection) iterateIDs(_ context.Context, callback func(procID id.Pro
 }
 
 // IterateProcedures iterates over all procedures in the collection.
-func (pgp *Collection) IterateProcedures(_ context.Context, callback func(f Procedure) (stop bool, err error)) error {
+func (pgp *Collection) IterateProcedures(_ context.Context, callback func(p Procedure) (stop bool, err error)) error {
 	for _, procID := range pgp.idCache {
 		stop, err := callback(pgp.accessCache[procID])
 		if err != nil {
