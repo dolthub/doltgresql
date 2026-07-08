@@ -26,7 +26,7 @@ var _ Statement = &AlterDefaultPrivileges{}
 // AlterDefaultPrivileges represents a ALTER DEFAULT PRIVILEGES statement.
 type AlterDefaultPrivileges struct {
 	ForRole      bool
-	TargetRoles  []string
+	TargetRole   string
 	Privileges   privilege.List
 	Target       TargetList
 	Grantees     []string
@@ -38,14 +38,14 @@ type AlterDefaultPrivileges struct {
 // Format implements the NodeFormatter interface.
 func (node *AlterDefaultPrivileges) Format(ctx *FmtCtx) {
 	ctx.WriteString("ALTER DEFAULT PRIVILEGES ")
-	if len(node.TargetRoles) > 0 {
+	if node.TargetRole != "" {
 		ctx.WriteString("FOR ")
 		if node.ForRole {
 			ctx.WriteString("ROLE ")
 		} else {
 			ctx.WriteString("USER ")
 		}
-		ctx.WriteString(strings.Join(node.TargetRoles, ", "))
+		ctx.WriteString(node.TargetRole)
 	}
 	if len(node.Target.InSchema) > 0 {
 		ctx.WriteString("IN SCHEMAS ")

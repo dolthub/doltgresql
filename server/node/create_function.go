@@ -28,6 +28,7 @@ import (
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -166,6 +167,17 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	})
 	if err != nil {
 		return nil, err
+	}
+	var authErr error
+	auth.LockWrite(func() {
+		ownerRole := auth.GetRole(ctx.Client().User)
+		if ownerRole.IsValid() {
+			auth.ApplyDefaultPrivilegesForNewRoutine(ownerRole.ID(), schemaName, c.FunctionName)
+		}
+		authErr = auth.PersistChanges()
+	})
+	if authErr != nil {
+		return nil, authErr
 	}
 	return sql.RowsToRowIter(), nil
 }

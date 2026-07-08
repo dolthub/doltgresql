@@ -101,6 +101,7 @@ func TestImportingDumps(t *testing.T) {
 		},
 		{
 			SetUpScript: []string{
+				"CREATE USER crisisresolver WITH SUPERUSER PASSWORD 'password';",
 				"CREATE USER crisisresolver_visitor WITH SUPERUSER PASSWORD 'password';",
 			},
 			Name:        "blacktscoder/CrisisSolver",
@@ -352,6 +353,7 @@ func TestImportingDumps(t *testing.T) {
 		{
 			SetUpScript: []string{
 				`CREATE USER neondb_owner WITH SUPERUSER PASSWORD 'password';`,
+				`CREATE USER cloud_admin WITH SUPERUSER PASSWORD 'password';`,
 			},
 			Name:        "mvnp/start-dashboard-v3-backend",
 			SQLFilename: "mvnp_start-dashboard-v3-backend.sql",
