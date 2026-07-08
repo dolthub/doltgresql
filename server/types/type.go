@@ -93,6 +93,9 @@ type DoltgresType struct {
 	BaseTypeForInternal id.Type // used for INTERNAL type only
 	SerializationFunc   internalSerializationFunc
 	DeserializationFunc internalDeserializationFunc
+
+	// TODO: refresh when you need to
+	castCache map[*DoltgresType]Cast
 }
 
 // internalNullType represents a type with a null ID, effectively stating that the field in the parent DoltgresType is
@@ -515,9 +518,18 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
-	cast, err := GetAssignmentCast(ctx, dt, t)
-	if err != nil {
-		return nil, sql.InRange, err
+	// TODO: cache here
+	if t.castCache == nil {
+		t.castCache = make(map[*DoltgresType]Cast)
+	}
+	var cast Cast
+	if cast, ok = t.castCache[dt]; !ok {
+		var err error
+		cast, err = GetAssignmentCast(ctx, dt, t)
+		if err != nil {
+			return nil, sql.InRange, err
+		}
+		t.castCache[dt] = cast
 	}
 	if cast == nil {
 		// In the case that we have an unknown type string literal, we attempt to parse it with the target type's
