@@ -46,9 +46,9 @@ type Collection struct {
 	ns            tree.NodeStore
 
 	// TODO: refresh these when assigning custom cast functions
-	explicitCastCache   map[castCacheKey]Cast
-	assignmentCastCache map[castCacheKey]Cast
-	implicitCastCache   map[castCacheKey]Cast
+	assCastCache map[castCacheKey]Cast
+	expCastCache map[castCacheKey]Cast
+	impCastCache map[castCacheKey]Cast
 }
 
 // CastType is the type of the cast, indicating which contexts it may be called in.
@@ -84,6 +84,10 @@ func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree
 		mapHash:       underlyingMap.HashOf(),
 		underlyingMap: underlyingMap,
 		ns:            ns,
+
+		assCastCache: make(map[castCacheKey]Cast),
+		expCastCache: make(map[castCacheKey]Cast),
+		impCastCache: make(map[castCacheKey]Cast),
 	}
 	return collection, nil
 }
@@ -149,7 +153,7 @@ func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.D
 		srcType: sourceType.ID,
 		tgtType: targetType.ID,
 	}
-	if cast, ok := pgc.assignmentCastCache[cacheKey]; ok {
+	if cast, ok := pgc.assCastCache[cacheKey]; ok {
 		return cast, nil
 	}
 	castID := id.NewCast(sourceType.ID, targetType.ID)
@@ -166,7 +170,7 @@ func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.D
 	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
 	if cast := pgc.getSizingOrIdentityCast(sourceType, targetType, CastType_Assignment); cast.ID.IsValid() {
 		// TODO: only cache identity casts for now
-		pgc.assignmentCastCache[cacheKey] = cast
+		pgc.assCastCache[cacheKey] = cast
 		return cast, nil
 	}
 	// We then check for a record to composite cast
