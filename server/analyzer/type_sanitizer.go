@@ -140,15 +140,20 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					//   SUM(real)             -> real (needs narrowing back from the float64 accumulator)
 					//   AVG(smallint/integer/bigint) -> numeric
 					//   AVG(real)             -> double precision
-					// In GroupBy or Window context, wrap with AggCast to convert the float64 result
-					// to the correct target type while preserving the sql.Aggregation and
-					// sql.WindowAdaptableExpression interfaces. Fixing this at the source (the
-					// aggregate itself) rather than at each outer reference to it is what makes this
-					// idempotent: AggCast doesn't implement sql.FunctionExpression, so once applied it
-					// no longer matches this case on a later revisit (e.g. via the opaque traversal
-					// that re-walks an already-analyzed subquery), unlike wrapping an outer GetField
-					// reference, whose declared type never changes and so looks like it "still needs
-					// fixing" on every subsequent visit.
+					// Wrap with AggCast to convert the float64 result to the correct target type
+					// while preserving the sql.Aggregation and sql.WindowAdaptableExpression
+					// interfaces. AggCast handles both the GroupBy buffer path and the window
+					// function path transparently, so there's no need to first check whether this
+					// expression sits under a *plan.GroupBy or a *plan.Window: a raw SUM/AVG can
+					// only be meaningfully evaluated in one of those two contexts to begin with (SQL
+					// has no other place a bare aggregate function can appear), so the wrap is safe
+					// unconditionally. Fixing this at the source (the aggregate itself) rather than
+					// at each outer reference to it is what makes this idempotent: AggCast doesn't
+					// implement sql.FunctionExpression, so once applied it no longer matches this
+					// case on a later revisit (e.g. via the opaque traversal that re-walks an
+					// already-analyzed subquery), unlike wrapping an outer GetField reference, whose
+					// declared type never changes and so looks like it "still needs fixing" on every
+					// subsequent visit.
 					var aggTargetType *pgtypes.DoltgresType
 					if doltType, ok := expr.Type(ctx).(*pgtypes.DoltgresType); ok {
 						switch expr.FunctionName() {
@@ -171,10 +176,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 						}
 					}
 					if aggTargetType != nil {
-						switch n.(type) {
-						case *plan.GroupBy, *plan.Window:
-							return pgexprs.NewAggCast(expr.(sql.Aggregation), aggTargetType), transform.NewTree, nil
-						}
+						return pgexprs.NewAggCast(expr.(sql.Aggregation), aggTargetType), transform.NewTree, nil
 					}
 					return expr, transform.SameTree, nil
 				}
