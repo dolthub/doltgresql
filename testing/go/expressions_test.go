@@ -548,5 +548,19 @@ func TestCoalesce(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "COALESCE with mixed types",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT COALESCE('a'::TEXT, 1::INTEGER)`,
+					ExpectedErr: `types text and integer cannot be matched`,
+				},
+				{
+					// smallint and bigint are compatible via numeric promotion; result is bigint.
+					Query:    `SELECT COALESCE(NULL, 1::SMALLINT, 2::BIGINT) AS v;`,
+					Expected: []sql.Row{{int64(1)}},
+				},
+			},
+		},
 	})
 }
