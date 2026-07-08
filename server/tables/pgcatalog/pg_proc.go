@@ -248,7 +248,7 @@ var pgProcSchema = sql.Schema{
 	{Name: "procost", Type: pgtypes.Float32, Default: nil, Nullable: false, Source: PgProcName},
 	{Name: "prorows", Type: pgtypes.Float32, Default: nil, Nullable: false, Source: PgProcName},
 	{Name: "provariadic", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgProcName},
-	{Name: "prosupport", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgProcName}, // TODO: type regproc
+	{Name: "prosupport", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgProcName},
 	{Name: "prokind", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgProcName},
 	{Name: "prosecdef", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgProcName},
 	{Name: "proleakproof", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgProcName},
