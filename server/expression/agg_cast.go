@@ -16,7 +16,6 @@ package expression
 
 import (
 	"math"
-	"strconv"
 
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
@@ -37,16 +36,46 @@ import (
 type AggCast struct {
 	inner      sql.Aggregation
 	targetType *pgtypes.DoltgresType
+	convKind   aggConvKind
 }
 
 var _ sql.Expression = (*AggCast)(nil)
 var _ sql.Aggregation = (*AggCast)(nil)
 var _ sql.WindowFunction = (*aggCastWindowFunction)(nil)
 
+// aggConvKind identifies which conversion convertAggResult should apply. It's derived from
+// targetType once, at AggCast construction time (query-analysis time), rather than by
+// calling DoltgresType.Equals on every row-group's Eval/Compute call (execution time,
+// happening once per group per query execution): DoltgresType.Equals is not a cheap identity
+// check — it compares two types by fully serializing both to byte buffers and comparing the
+// bytes. Precomputing the target once and comparing a small int on the hot path avoids
+// paying that serialization cost repeatedly.
+type aggConvKind byte
+
+const (
+	aggConvInt64 aggConvKind = iota
+	aggConvNumeric
+	aggConvFloat32
+	aggConvFloat64
+)
+
+func aggConvKindFor(targetType *pgtypes.DoltgresType) aggConvKind {
+	switch {
+	case targetType.Equals(pgtypes.Numeric):
+		return aggConvNumeric
+	case targetType.Equals(pgtypes.Float32):
+		return aggConvFloat32
+	case targetType.Equals(pgtypes.Float64):
+		return aggConvFloat64
+	default:
+		return aggConvInt64
+	}
+}
+
 // NewAggCast wraps inner so that its declared type is targetType and its buffer
-// Eval result is converted from float64 to int64.
+// Eval result is converted from float64 to match targetType.
 func NewAggCast(inner sql.Aggregation, targetType *pgtypes.DoltgresType) *AggCast {
-	return &AggCast{inner: inner, targetType: targetType}
+	return &AggCast{inner: inner, targetType: targetType, convKind: aggConvKindFor(targetType)}
 }
 
 // Type overrides the inner aggregation's declared type.
@@ -58,7 +87,7 @@ func (a *AggCast) NewBuffer(ctx *sql.Context) (sql.AggregationBuffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &aggCastBuffer{inner: buf, targetType: a.targetType}, nil
+	return &aggCastBuffer{inner: buf, convKind: a.convKind}, nil
 }
 
 // NewWindowFunction delegates to inner but wraps the result so Compute's float64 output is
@@ -68,7 +97,7 @@ func (a *AggCast) NewWindowFunction(ctx *sql.Context) (sql.WindowFunction, error
 	if err != nil {
 		return nil, err
 	}
-	return &aggCastWindowFunction{inner: fn, targetType: a.targetType}, nil
+	return &aggCastWindowFunction{inner: fn, convKind: a.convKind}, nil
 }
 
 // WithWindow delegates to inner.
@@ -118,10 +147,11 @@ func (a *AggCast) WithChildren(ctx *sql.Context, children ...sql.Expression) (sq
 }
 
 // aggCastBuffer wraps an AggregationBuffer and post-converts its float64 Eval result to
-// match targetType (int64 for bigint, numeric, or float32 for real; float64 is a no-op).
+// match convKind's target type (int64 for bigint, numeric, or float32 for real; float64 is
+// a no-op).
 type aggCastBuffer struct {
-	inner      sql.AggregationBuffer
-	targetType *pgtypes.DoltgresType
+	inner    sql.AggregationBuffer
+	convKind aggConvKind
 }
 
 func (b *aggCastBuffer) Update(ctx *sql.Context, row sql.Row) error {
@@ -133,7 +163,7 @@ func (b *aggCastBuffer) Eval(ctx *sql.Context) (any, error) {
 	if err != nil || v == nil {
 		return v, err
 	}
-	return convertAggResult(v, b.targetType)
+	return convertAggResult(v, b.convKind)
 }
 
 func (b *aggCastBuffer) Dispose(ctx *sql.Context) {
@@ -143,8 +173,8 @@ func (b *aggCastBuffer) Dispose(ctx *sql.Context) {
 // aggCastWindowFunction wraps a sql.WindowFunction and post-converts its float64 Compute
 // result the same way aggCastBuffer does for the sql.AggregationBuffer (GroupBy) path.
 type aggCastWindowFunction struct {
-	inner      sql.WindowFunction
-	targetType *pgtypes.DoltgresType
+	inner    sql.WindowFunction
+	convKind aggConvKind
 }
 
 func (w *aggCastWindowFunction) StartPartition(ctx *sql.Context, interval sql.WindowInterval, buffer sql.WindowBuffer) error {
@@ -160,7 +190,7 @@ func (w *aggCastWindowFunction) Compute(ctx *sql.Context, interval sql.WindowInt
 	if err != nil || v == nil {
 		return v, err
 	}
-	return convertAggResult(v, w.targetType)
+	return convertAggResult(v, w.convKind)
 }
 
 func (w *aggCastWindowFunction) Dispose(ctx *sql.Context) {
@@ -168,23 +198,23 @@ func (w *aggCastWindowFunction) Dispose(ctx *sql.Context) {
 }
 
 // convertAggResult converts a raw aggregation result (always float64 from GMS's SUM/AVG
-// implementations, regardless of the input column's width) to match targetType: numeric,
+// implementations, regardless of the input column's width) to match convKind: numeric,
 // float32, float64 (a no-op), or int64 for everything else (bigint).
-func convertAggResult(v any, targetType *pgtypes.DoltgresType) (any, error) {
+func convertAggResult(v any, convKind aggConvKind) (any, error) {
 	f, ok := v.(float64)
 	if !ok {
 		return v, nil
 	}
-	switch {
-	case targetType.Equals(pgtypes.Numeric):
-		d, _, err := apd.NewFromString(strconv.FormatFloat(f, 'f', -1, 64))
+	switch convKind {
+	case aggConvNumeric:
+		d, err := new(apd.Decimal).SetFloat64(f)
 		if err != nil {
 			return nil, err
 		}
 		return d, nil
-	case targetType.Equals(pgtypes.Float32):
+	case aggConvFloat32:
 		return float32(f), nil
-	case targetType.Equals(pgtypes.Float64):
+	case aggConvFloat64:
 		return f, nil
 	default:
 		return int64(math.RoundToEven(f)), nil

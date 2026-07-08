@@ -42,6 +42,11 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 	// TODO: this probably should not be opaque, we should let the analyzer dig into subqueries and analyze them when
 	//  it chooses. Doing all type transformations upfront like this masks bugs where certain tyupe conversion errors
 	//  only manifest in a subquery
+	// groupByTypeCache memoizes each GroupBy's ColumnId->DoltgresType map (see
+	// groupBySchemaTypesById) for the duration of this single TypeSanitizer call, so a
+	// GroupBy with M output columns pays the cost of scanning its SelectDeps once, not once
+	// per column reference to it.
+	groupByTypeCache := make(map[*plan.GroupBy]map[sql.ColumnId]*pgtypes.DoltgresType)
 	return pgtransform.NodeExprsWithNodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 		// This can be updated if we find more expressions that return GMS types.
 		// These should eventually be replaced with Doltgres-equivalents over time, rendering this function unnecessary.
@@ -101,7 +106,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				// rowToBytes uses the correct Doltgres type for wire serialization. The runtime value
 				// is already correct from AggCast.
 				if gb := findGroupByChild(child); gb != nil {
-					if doltType := groupBySchemaTypeById(gb, ctx, expr.Id()); doltType != nil {
+					if doltType := groupBySchemaTypesById(groupByTypeCache, gb, ctx)[expr.Id()]; doltType != nil {
 						if currentType, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok || !currentType.Equals(doltType) {
 							return pgexprs.NewAssignmentCast(expr, doltType, doltType), transform.NewTree, nil
 						}
@@ -398,16 +403,26 @@ func windowSchemaTypeByName(n sql.Node, ctx *sql.Context, name string) *pgtypes.
 	return nil
 }
 
-// groupBySchemaTypeById returns the DoltgresType of the SelectDeps expression in gb whose
-// ColumnId matches id, or nil if no such expression exists or its type isn't a DoltgresType.
-func groupBySchemaTypeById(gb *plan.GroupBy, ctx *sql.Context, id sql.ColumnId) *pgtypes.DoltgresType {
+// groupBySchemaTypesById returns a map from ColumnId to DoltgresType for every SelectDeps
+// expression in gb that has one, building it once per gb and caching the result in cache for
+// the remainder of the current TypeSanitizer call. Without this, resolving a single GetField
+// against gb required a linear scan of all of gb's SelectDeps; since this lookup runs once per
+// column reference to gb, a GroupBy with M output columns paid O(M) per column — O(M^2) total
+// — even when nothing needed correcting. Caching drops that to O(M) total per GroupBy.
+func groupBySchemaTypesById(cache map[*plan.GroupBy]map[sql.ColumnId]*pgtypes.DoltgresType, gb *plan.GroupBy, ctx *sql.Context) map[sql.ColumnId]*pgtypes.DoltgresType {
+	if m, ok := cache[gb]; ok {
+		return m
+	}
+	m := make(map[sql.ColumnId]*pgtypes.DoltgresType, len(gb.SelectDeps))
 	for _, e := range gb.SelectDeps {
 		ide, ok := e.(sql.IdExpression)
-		if !ok || ide.Id() != id {
+		if !ok {
 			continue
 		}
-		t, _ := e.Type(ctx).(*pgtypes.DoltgresType)
-		return t
+		if t, ok := e.Type(ctx).(*pgtypes.DoltgresType); ok {
+			m[ide.Id()] = t
+		}
 	}
-	return nil
+	cache[gb] = m
+	return m
 }
