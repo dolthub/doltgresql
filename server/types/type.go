@@ -642,7 +642,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 }
 
 // IsArrayType returns true if the type is of 'array' type.
-// It can be array category with empty its array attribute NULL and element attribute NOT NULL.
+// It can be array category with its array attribute NULL and element attribute NOT NULL.
 // Or it can be pseudo category with name 'anyarray'.
 func (t *DoltgresType) IsArrayType() bool {
 	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem.ID != id.NullType && t.Array.ID == id.NullType) ||

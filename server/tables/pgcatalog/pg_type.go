@@ -303,16 +303,16 @@ var pgTypeSchema = sql.Schema{
 	{Name: "typisdefined", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
 	{Name: "typdelim", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
 	{Name: "typrelid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typsubscript", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName}, // TODO: type regproc
+	{Name: "typsubscript", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName}, // TODO: type regproc
 	{Name: "typelem", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
 	{Name: "typarray", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},
-	{Name: "typinput", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},   // TODO: type regproc
-	{Name: "typoutput", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},  // TODO: type regproc
-	{Name: "typreceive", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName}, // TODO: type regproc
-	{Name: "typsend", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},    // TODO: type regproc
-	{Name: "typmodin", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},   // TODO: type regproc
-	{Name: "typmodout", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName},  // TODO: type regproc
-	{Name: "typanalyze", Type: pgtypes.Text, Default: nil, Nullable: false, Source: pgTypeName}, // TODO: type regproc
+	{Name: "typinput", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},   // TODO: type regproc
+	{Name: "typoutput", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},  // TODO: type regproc
+	{Name: "typreceive", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName}, // TODO: type regproc
+	{Name: "typsend", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},    // TODO: type regproc
+	{Name: "typmodin", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},   // TODO: type regproc
+	{Name: "typmodout", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName},  // TODO: type regproc
+	{Name: "typanalyze", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: pgTypeName}, // TODO: type regproc
 	{Name: "typalign", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
 	{Name: "typstorage", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: pgTypeName},
 	{Name: "typnotnull", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: pgTypeName},
