@@ -83,7 +83,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					// the bottom-up transform. Re-annotate on mismatch.
 					if innerType := windowSchemaTypeByName(child, ctx, expr.Name()); innerType != nil {
 						if !doltType.Equals(innerType) {
-							return pgexprs.NewAssignmentCast(expr, innerType, innerType), transform.NewTree, nil
+							return rebuildGetFieldWithType(ctx, expr, innerType), transform.NewTree, nil
 						}
 					}
 				}
@@ -94,7 +94,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				if _, ok := child.(*plan.SubqueryAlias); ok {
 					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
 						if actualType := windowSchemaTypeByName(child, ctx, expr.Name()); actualType != nil {
-							return expression.NewGetField(expr.Index(), actualType, expr.Name(), expr.IsNullable(ctx)), transform.NewTree, nil
+							return rebuildGetFieldWithType(ctx, expr, actualType), transform.NewTree, nil
 						}
 					}
 				}
@@ -108,7 +108,7 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				if gb := findGroupByChild(child); gb != nil {
 					if doltType := groupBySchemaTypesById(groupByTypeCache, gb, ctx)[expr.Id()]; doltType != nil {
 						if currentType, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok || !currentType.Equals(doltType) {
-							return pgexprs.NewAssignmentCast(expr, doltType, doltType), transform.NewTree, nil
+							return rebuildGetFieldWithType(ctx, expr, doltType), transform.NewTree, nil
 						}
 					}
 				}
@@ -390,6 +390,12 @@ func findGroupByChild(n sql.Node) *plan.GroupBy {
 		}
 	}
 	return nil
+}
+
+// rebuildGetFieldWithType returns a copy of expr with its declared type replaced by newType,
+// preserving the table/database qualifiers that expr already carries.
+func rebuildGetFieldWithType(ctx *sql.Context, expr *expression.GetField, newType *pgtypes.DoltgresType) *expression.GetField {
+	return expression.NewGetFieldWithTable(expr.Index(), int(expr.TableID()), newType, expr.Database(), expr.Table(), expr.Name(), expr.IsNullable(ctx))
 }
 
 // windowSchemaTypeByName returns the DoltgresType for a named column in n's schema,
