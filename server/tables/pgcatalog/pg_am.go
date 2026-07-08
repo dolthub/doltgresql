@@ -98,17 +98,17 @@ func (iter *pgAmRowIter) Close(ctx *sql.Context) error {
 type accessMethod struct {
 	oid     id.Id
 	name    string
-	handler string
+	handler id.Id
 	typ     string
 }
 
 // defaultPostgresAms is the list of default access methods available in Postgres.
 var defaultPostgresAms = []accessMethod{
-	{oid: id.NewAccessMethod("heap").AsId(), name: "heap", handler: "heap_tableam_handler", typ: "t"},
-	{oid: id.NewAccessMethod("btree").AsId(), name: "btree", handler: "bthandler", typ: "i"},
-	{oid: id.NewAccessMethod("hash").AsId(), name: "hash", handler: "hashhandler", typ: "i"},
-	{oid: id.NewAccessMethod("gist").AsId(), name: "gist", handler: "gisthandler", typ: "i"},
-	{oid: id.NewAccessMethod("gin").AsId(), name: "gin", handler: "ginhandler", typ: "i"},
-	{oid: id.NewAccessMethod("spgist").AsId(), name: "spgist", handler: "spghandler", typ: "i"},
-	{oid: id.NewAccessMethod("brin").AsId(), name: "brin", handler: "brinhandler", typ: "i"},
+	{oid: id.NewAccessMethod("heap").AsId(), name: "heap", handler: id.NewFunction("pg_catalog", "heap_tableam_handler", pgtypes.Internal.ID).AsId(), typ: "t"},
+	{oid: id.NewAccessMethod("btree").AsId(), name: "btree", handler: id.NewFunction("pg_catalog", "bthandler", pgtypes.Internal.ID).AsId(), typ: "i"},
+	{oid: id.NewAccessMethod("hash").AsId(), name: "hash", handler: id.NewFunction("pg_catalog", "hashhandler", pgtypes.Internal.ID).AsId(), typ: "i"},
+	{oid: id.NewAccessMethod("gist").AsId(), name: "gist", handler: id.NewFunction("pg_catalog", "gisthandler", pgtypes.Internal.ID).AsId(), typ: "i"},
+	{oid: id.NewAccessMethod("gin").AsId(), name: "gin", handler: id.NewFunction("pg_catalog", "ginhandler", pgtypes.Internal.ID).AsId(), typ: "i"},
+	{oid: id.NewAccessMethod("spgist").AsId(), name: "spgist", handler: id.NewFunction("pg_catalog", "spghandler", pgtypes.Internal.ID).AsId(), typ: "i"},
+	{oid: id.NewAccessMethod("brin").AsId(), name: "brin", handler: id.NewFunction("pg_catalog", "brinhandler", pgtypes.Internal.ID).AsId(), typ: "i"},
 }
