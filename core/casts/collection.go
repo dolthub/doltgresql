@@ -34,11 +34,21 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// castCacheKey is a Source and Target TypeID used to look up a Cast
+type castCacheKey struct {
+	srcType, tgtType id.Type
+}
+
 // Collection contains a collection of casts.
 type Collection struct {
 	mapHash       hash.Hash // This is cached so that we don't have to calculate the hash every time
 	underlyingMap prolly.AddressMap
 	ns            tree.NodeStore
+
+	// TODO: refresh these when assigning custom cast functions
+	explicitCastCache   map[castCacheKey]Cast
+	assignmentCastCache map[castCacheKey]Cast
+	implicitCastCache   map[castCacheKey]Cast
 }
 
 // CastType is the type of the cast, indicating which contexts it may be called in.
@@ -54,6 +64,7 @@ const (
 var builtInCasts = map[id.Cast]Cast{}
 
 // Cast represents a cast between two types.
+// TODO: pass these around as pointers
 type Cast struct {
 	ID       id.Cast
 	CastType CastType
@@ -134,6 +145,13 @@ func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 // GetAssignmentCast returns the assignment type cast function that will cast the source type to the target type.
 // Returns a Cast with an invalid ID if such a cast is not valid.
 func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
+	cacheKey := castCacheKey{
+		srcType: sourceType.ID,
+		tgtType: targetType.ID,
+	}
+	if cast, ok := pgc.assignmentCastCache[cacheKey]; ok {
+		return cast, nil
+	}
 	castID := id.NewCast(sourceType.ID, targetType.ID)
 	c, err := pgc.getCast(ctx, castID, sourceType, targetType, CastType_Assignment)
 	if err != nil {
@@ -147,6 +165,8 @@ func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.D
 	}
 	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
 	if cast := pgc.getSizingOrIdentityCast(sourceType, targetType, CastType_Assignment); cast.ID.IsValid() {
+		// TODO: only cache identity casts for now
+		pgc.assignmentCastCache[cacheKey] = cast
 		return cast, nil
 	}
 	// We then check for a record to composite cast
