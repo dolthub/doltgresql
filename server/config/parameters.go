@@ -20,6 +20,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dolthub/doltgresql/core"
+
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -215,6 +217,9 @@ func GetPgsqlScope(t PgsqlScopeType) sql.SystemVariableScope {
 func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 	switch p.Type {
 	case PsqlScopeSession:
+		// Reset any cached variables in ContextValues
+		// TODO: this may negatively impact performance for SET expressions
+		_ = core.SetDateStyleOutputFormat(ctx, "")
 		err := ctx.SetSessionVariable(ctx, name, val)
 		return err
 	case PsqlScopeLocal:

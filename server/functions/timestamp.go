@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgtype"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -161,16 +162,25 @@ func getDateStyleOutputFormat(ctx *sql.Context) string {
 		return format
 	}
 
+	if cachedFormat, err := core.GetDateStyleOutputFormat(ctx); err == nil && cachedFormat != "" {
+		return cachedFormat
+	}
+
 	val, err := ctx.GetSessionVariable(ctx, "datestyle")
 	if err != nil {
 		return format
 	}
 
+	defer func() {
+		_ = core.SetDateStyleOutputFormat(ctx, format)
+	}()
+
 	values := strings.Split(strings.ReplaceAll(val.(string), " ", ""), ",")
 	for _, value := range values {
 		switch value {
 		case DateStyleISO, DateStyleSQL, DateStylePostgres, DateStyleGerman:
-			return value
+			format = value
+			return format
 		}
 	}
 	return format
