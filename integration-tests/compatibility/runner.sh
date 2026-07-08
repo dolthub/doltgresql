@@ -187,6 +187,15 @@ test_backward_compatibility() {
   DOLTGRES_TEST_BIN="$(which doltgres)" \
     REPO_DIR="$(pwd)/repos/${ver}" \
     bats --print-output-on-failure ./test_files/bats/types_compatibility.bats
+
+  # Mixed-version workflows: old writes initial state, HEAD continues on it.
+  local scratch="$(pwd)/repos/${ver}-backward-workflow"
+  mkdir -p "$scratch"
+  echo "=== Backward workflow: old=${ver}, new=HEAD ==="
+  DOLTGRES_LEGACY_BIN="${bin}/doltgres" \
+    DOLTGRES_NEW_BIN="$(which doltgres)" \
+    REPO_DIR="$scratch" \
+    bats --print-output-on-failure ./test_files/bats/backward_workflow_compat.bats
 }
 
 test_forward_compatibility() {
