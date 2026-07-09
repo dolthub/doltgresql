@@ -182,20 +182,7 @@ test_backward_compatibility() {
   echo "=== Backward compat: testing HEAD doltgresql against repo from ${ver} ==="
   DOLTGRES_TEST_BIN="$(which doltgres)" \
     REPO_DIR="$(pwd)/repos/${ver}" \
-    bats --print-output-on-failure ./test_files/bats/compatibility.bats
-
-  DOLTGRES_TEST_BIN="$(which doltgres)" \
-    REPO_DIR="$(pwd)/repos/${ver}" \
-    bats --print-output-on-failure ./test_files/bats/types_compatibility.bats
-
-  # Mixed-version workflows: old writes initial state, HEAD continues on it.
-  local scratch="$(pwd)/repos/${ver}-backward-workflow"
-  mkdir -p "$scratch"
-  echo "=== Backward workflow: old=${ver}, new=HEAD ==="
-  DOLTGRES_LEGACY_BIN="${bin}/doltgres" \
-    DOLTGRES_NEW_BIN="$(which doltgres)" \
-    REPO_DIR="$scratch" \
-    bats --print-output-on-failure ./test_files/bats/backward_workflow_compat.bats
+    bats --print-output-on-failure ./test_files/bats/
 }
 
 test_forward_compatibility() {
@@ -211,11 +198,7 @@ test_forward_compatibility() {
   # repos/HEAD was already created by the main flow (see _main).
   DOLTGRES_TEST_BIN="${bin}/doltgres" \
     REPO_DIR="$(pwd)/repos/HEAD" \
-    bats --print-output-on-failure ./test_files/bats/compatibility.bats
-
-  DOLTGRES_TEST_BIN="${bin}/doltgres" \
-    REPO_DIR="$(pwd)/repos/HEAD" \
-    bats --print-output-on-failure ./test_files/bats/types_compatibility.bats
+    bats --print-output-on-failure ./test_files/bats/
 }
 
 test_bidirectional_compatibility() {
