@@ -409,24 +409,6 @@ func (root *RootValue) GetTableHash(ctx context.Context, tName doltdb.TableName)
 		return tVal, true, nil
 	}
 	return hash.Hash{}, false, nil
-	// Then check the root objects
-	_, rawID, objID, err := rootobject.ResolveName(ctx, root, tName)
-	if err != nil {
-		return hash.Hash{}, false, err
-	}
-	if objID == objinterface.RootObjectID_None {
-		return hash.Hash{}, false, nil
-	}
-	coll, err := rootobject.LoadCollection(ctx, root, objID)
-	if err != nil {
-		return hash.Hash{}, false, err
-	}
-	obj, ok, err := coll.GetRootObject(ctx, rawID)
-	if err != nil || !ok {
-		return hash.Hash{}, false, err
-	}
-	h, err := obj.HashOf(ctx)
-	return h, err == nil && !h.IsEmpty(), err
 }
 
 // GetTableNames implements the interface doltdb.RootValue.
