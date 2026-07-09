@@ -34,21 +34,11 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// castCacheKey is a Source and Target TypeID used to look up a Cast
-type castCacheKey struct {
-	srcType, tgtType id.Type
-}
-
 // Collection contains a collection of casts.
 type Collection struct {
 	mapHash       hash.Hash // This is cached so that we don't have to calculate the hash every time
 	underlyingMap prolly.AddressMap
 	ns            tree.NodeStore
-
-	// TODO: refresh these when assigning custom cast functions
-	assCastCache map[castCacheKey]Cast
-	expCastCache map[castCacheKey]Cast
-	impCastCache map[castCacheKey]Cast
 }
 
 // CastType is the type of the cast, indicating which contexts it may be called in.
@@ -104,7 +94,7 @@ func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 		return c, nil
 	}
 	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
-	if cast := pgc.getSizingOrIdentityCast(sourceType, targetType, CastType_Explicit); cast.ID.IsValid() {
+	if cast := pgc.getSizingOrIdentityCast(castID, sourceType, targetType, CastType_Explicit); cast.ID.IsValid() {
 		return cast, nil
 	}
 	// We then check for a record to composite cast
@@ -149,13 +139,6 @@ func (pgc *Collection) GetExplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 // GetAssignmentCast returns the assignment type cast function that will cast the source type to the target type.
 // Returns a Cast with an invalid ID if such a cast is not valid.
 func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (Cast, error) {
-	cacheKey := castCacheKey{
-		srcType: sourceType.ID,
-		tgtType: targetType.ID,
-	}
-	if cast, ok := pgc.assCastCache[cacheKey]; ok {
-		return cast, nil
-	}
 	castID := id.NewCast(sourceType.ID, targetType.ID)
 	c, err := pgc.getCast(ctx, castID, sourceType, targetType, CastType_Assignment)
 	if err != nil {
@@ -168,9 +151,7 @@ func (pgc *Collection) GetAssignmentCast(ctx *sql.Context, sourceType *pgtypes.D
 		return c, nil
 	}
 	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
-	if cast := pgc.getSizingOrIdentityCast(sourceType, targetType, CastType_Assignment); cast.ID.IsValid() {
-		// TODO: only cache identity casts for now
-		pgc.assCastCache[cacheKey] = cast
+	if cast := pgc.getSizingOrIdentityCast(castID, sourceType, targetType, CastType_Assignment); cast.ID.IsValid() {
 		return cast, nil
 	}
 	// We then check for a record to composite cast
@@ -217,7 +198,7 @@ func (pgc *Collection) GetImplicitCast(ctx *sql.Context, sourceType *pgtypes.Dol
 		return Cast{}, nil
 	}
 	// We check for the identity and sizing casts after checking the maps, as the identity may be overridden by a user.
-	if cast := pgc.getSizingOrIdentityCast(sourceType, targetType, CastType_Implicit); cast.ID.IsValid() {
+	if cast := pgc.getSizingOrIdentityCast(castID, sourceType, targetType, CastType_Implicit); cast.ID.IsValid() {
 		return cast, nil
 	}
 	// We then check for a record to composite cast
@@ -325,38 +306,30 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 // only differ in their atttypmod values. Returns a Cast with an invalid ID if no cast is matched. This mirrors the
 // behavior as described in:
 // https://www.postgresql.org/docs/15/typeconv-query.html
-func (pgc *Collection) getSizingOrIdentityCast(sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType, castType CastType) Cast {
+func (pgc *Collection) getSizingOrIdentityCast(castID id.Cast, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType, castType CastType) Cast {
 	// If we receive different types, then we can return immediately
 	if sourceType.ID != targetType.ID {
 		return Cast{}
 	}
+
 	// If we have different atttypmod values, then we need to do a sizing cast only if one exists
-	if sourceType.GetAttTypMod() != targetType.GetAttTypMod() {
-		// TODO: We don't have any sizing cast functions implemented, so for now we'll approximate using output to input.
-		//  We can use the query below to find all implemented sizing cast functions. It's also detailed in the link above.
-		//  Lastly, not all sizing functions accept a boolean, but for those that do, we need to see whether true is
-		//  used for explicit casts, or whether true is used for implicit casts.
-		//      SELECT
-		//        format_type(c.castsource, NULL) AS source,
-		//        format_type(c.casttarget, NULL) AS target,
-		//        p.oid::regprocedure AS func
-		//      FROM pg_cast c JOIN pg_proc p ON p.oid = c.castfunc WHERE c.castsource = c.casttarget ORDER BY 1,2;
-		return Cast{
-			ID:       id.NewCast(sourceType.ID, targetType.ID),
-			CastType: castType,
-			Function: id.NullFunction,
-			BuiltIn:  nil,
-			UseInOut: true,
-			request:  castType,
-		}
-	}
-	// If there is no sizing cast, then we simply use the identity cast
+	// Otherwise, then we simply use the identity cast
+	// TODO: We don't have any sizing cast functions implemented, so for now we'll approximate using output to input.
+	//  We can use the query below to find all implemented sizing cast functions. It's also detailed in the link above.
+	//  Lastly, not all sizing functions accept a boolean, but for those that do, we need to see whether true is
+	//  used for explicit casts, or whether true is used for implicit casts.
+	//      SELECT
+	//        format_type(c.castsource, NULL) AS source,
+	//        format_type(c.casttarget, NULL) AS target,
+	//        p.oid::regprocedure AS func
+	//      FROM pg_cast c JOIN pg_proc p ON p.oid = c.castfunc WHERE c.castsource = c.casttarget ORDER BY 1,2;
+	useInOut := sourceType.GetAttTypMod() != targetType.GetAttTypMod()
 	return Cast{
-		ID:       id.NewCast(sourceType.ID, targetType.ID),
+		ID:       castID,
 		CastType: castType,
 		Function: id.NullFunction,
 		BuiltIn:  nil,
-		UseInOut: false,
+		UseInOut: useInOut,
 		request:  castType,
 	}
 }

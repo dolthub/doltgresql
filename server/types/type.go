@@ -94,7 +94,8 @@ type DoltgresType struct {
 	SerializationFunc   internalSerializationFunc
 	DeserializationFunc internalDeserializationFunc
 
-	// TODO: refresh when you need to
+	// TODO: refresh
+	// TODO: guard with mutex?
 	castCache map[*DoltgresType]Cast
 }
 
@@ -518,7 +519,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
-	// TODO: cache here
+	// TODO: guard with mutex?
 	if t.castCache == nil {
 		t.castCache = make(map[*DoltgresType]Cast)
 	}
@@ -531,6 +532,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		}
 		t.castCache[dt] = cast
 	}
+
 	if cast == nil {
 		// In the case that we have an unknown type string literal, we attempt to parse it with the target type's
 		// input function
