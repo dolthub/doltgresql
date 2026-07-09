@@ -75,10 +75,6 @@ var pgSequencesSchema = sql.Schema{
 	{Name: "sequencename", Type: pgtypes.Name, Default: nil, Nullable: true, Source: PgSequencesName},
 	{Name: "sequenceowner", Type: pgtypes.Name, Default: nil, Nullable: true, Source: PgSequencesName},
 	{Name: "data_type", Type: pgtypes.Regtype, Default: nil, Nullable: true, Source: PgSequencesName},
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 	{Name: "start_value", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgSequencesName},
 	{Name: "min_value", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgSequencesName},
 	{Name: "max_value", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgSequencesName},
