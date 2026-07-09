@@ -165,9 +165,9 @@ func (pgs *TypeCollection) RenameRootObject(ctx context.Context, oldName id.Id, 
 	if err = pgs.DropType(ctx, oldTypeName); err != nil {
 		return err
 	}
-	newType := *typ
+	newType := typ.Copy()
 	newType.ID = newTypeName
-	return pgs.CreateType(ctx, &newType)
+	return pgs.CreateType(ctx, newType)
 }
 
 // ResolveName implements the interface objinterface.Collection.
