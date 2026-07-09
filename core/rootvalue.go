@@ -408,6 +408,7 @@ func (root *RootValue) GetTableHash(ctx context.Context, tName doltdb.TableName)
 	if !tVal.IsEmpty() {
 		return tVal, true, nil
 	}
+	return hash.Hash{}, false, nil
 	// Then check the root objects
 	_, rawID, objID, err := rootobject.ResolveName(ctx, root, tName)
 	if err != nil {
