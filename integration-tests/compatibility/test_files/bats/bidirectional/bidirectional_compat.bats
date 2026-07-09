@@ -269,9 +269,9 @@ SQL
 SELECT dolt_branch('head_feature');
 SELECT dolt_checkout('head_feature');
 INSERT INTO shared VALUES (10, 'head-feature-10', 'head'), (11, 'head-feature-11', 'head');
+SELECT dolt_add('.');
+SELECT dolt_commit('-m', 'head: feature branch inserts');
 SQL
-  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'head: feature branch inserts');"
-  sql -c "SELECT dolt_checkout('main');"
   stop_doltgres
 
   # Round 2: old creates its own branch, merges HEAD's feature branch
@@ -280,10 +280,11 @@ SQL
 SELECT dolt_branch('old_branch');
 SELECT dolt_checkout('old_branch');
 INSERT INTO shared VALUES (20, 'old-branch-20', 'old');
+SELECT dolt_add('.');
+SELECT dolt_commit('-m', 'old: old_branch insert');
 SQL
-  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: old_branch insert');"
+  
   sql <<SQL
-SELECT dolt_checkout('main');
 INSERT INTO shared VALUES (3, 'base-3', 'old');
 SQL
   sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: main insert');"
@@ -477,5 +478,93 @@ SQL
   run sql_csv -c "SELECT count(*) FROM jsondocs;"
   [ "$status" -eq 0 ]
   [[ "$output" =~ "3" ]] || false
+  stop_doltgres
+}
+
+@test "bidirectional: fk on varchar column from old repo, then merge" {
+  [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
+  [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
+
+  # --- Old: create parent with a VARCHAR(10) column and seed rows ---
+  old_server_start
+  sql <<SQL
+CREATE TABLE parent (
+  id  INT NOT NULL PRIMARY KEY,
+  val VARCHAR(10) NOT NULL UNIQUE
+);
+INSERT INTO parent VALUES (1, 'apple'), (2, 'banana'), (3, 'cherry');
+SQL
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: create parent');"
+  stop_doltgres
+
+  # --- New: create child with FK on VARCHAR(10) referencing parent(val) ---
+  new_server_start
+  sql <<SQL
+CREATE TABLE child (
+  id  INT NOT NULL PRIMARY KEY,
+  ref VARCHAR(10) NOT NULL,
+  CONSTRAINT child_ref_fk FOREIGN KEY (ref) REFERENCES parent(val)
+);
+SQL
+
+  # Valid inserts — ref values that exist in parent.
+  sql -c "INSERT INTO child VALUES (10, 'apple'), (11, 'banana');"
+  run sql_csv -c "SELECT count(*) FROM child;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "2" ]] || false
+
+  # Invalid insert — 'grape' is not present in parent, FK must reject.
+  run sql -c "INSERT INTO child VALUES (12, 'grape');"
+  [ "$status" -ne 0 ]
+
+  # Row count unchanged after the rejected insert.
+  run sql_csv -c "SELECT count(*) FROM child;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "2" ]] || false
+
+  # dolt_verify_constraints reports no violations. Returns {0} on success.
+  run sql_csv -c "SELECT dolt_verify_constraints('--all');"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "{0}" ]] || false
+
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'head: create child + fk');"
+
+  # --- Branch, write on both branches, then merge new into main ---
+  sql -c "SELECT dolt_branch('new');"
+
+  sql -c "INSERT INTO child VALUES (20, 'cherry');"
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'main: add cherry');"
+
+  sql <<SQL
+SELECT dolt_checkout('new');
+INSERT INTO child VALUES (30, 'banana');
+SELECT dolt_add('.');
+SELECT dolt_commit('-m', 'new: add banana on new branch');
+SQL
+
+  run sql -c "SELECT dolt_merge('new');"
+  [ "$status" -eq 0 ]
+
+  # After merge, main should see rows from both branches.
+  run sql_csv -c "SELECT count(*) FROM child;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "4" ]] || false
+
+  run sql_csv -c "SELECT id, ref FROM child ORDER BY id;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "10,apple" ]]  || false
+  [[ "$output" =~ "11,banana" ]] || false
+  [[ "$output" =~ "20,cherry" ]] || false
+  [[ "$output" =~ "30,banana" ]] || false
+
+  # FK still enforced after merge.
+  run sql -c "INSERT INTO child VALUES (99, 'grape');"
+  [ "$status" -ne 0 ]
+
+  # And still no reported constraint violations.
+  run sql_csv -c "SELECT dolt_verify_constraints('--all');"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "{0}" ]] || false
+
   stop_doltgres
 }
