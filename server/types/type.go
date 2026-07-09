@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
@@ -97,6 +98,7 @@ type DoltgresType struct {
 	// TODO: refresh
 	// TODO: guard with mutex?
 	castCache map[*DoltgresType]Cast
+	mutex     sync.Mutex
 }
 
 // internalNullType represents a type with a null ID, effectively stating that the field in the parent DoltgresType is
@@ -520,6 +522,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 	}
 
 	// TODO: guard with mutex?
+	t.mutex.Lock()
 	if t.castCache == nil {
 		t.castCache = make(map[*DoltgresType]Cast)
 	}
@@ -532,6 +535,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		}
 		t.castCache[dt] = cast
 	}
+	t.mutex.Unlock()
 
 	if cast == nil {
 		// In the case that we have an unknown type string literal, we attempt to parse it with the target type's
