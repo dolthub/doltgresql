@@ -130,3 +130,132 @@ SQL
 
   stop_doltgres
 }
+
+# ---------------------------------------------------------------------------
+# Larger bounded VARCHAR — same StringEnc encoding, exercises the same mixed
+# ExtendedEnc↔StringEnc conversion path with longer values.  Chiefly a
+# regression check that the length is respected through the conversion.
+# ---------------------------------------------------------------------------
+
+@test "backward workflow: fk on VARCHAR(255) column from old repo" {
+  [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
+  [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
+
+  old_server_start
+  sql <<SQL
+CREATE TABLE parent (
+  id  INT NOT NULL PRIMARY KEY,
+  val VARCHAR(255) NOT NULL UNIQUE
+);
+INSERT INTO parent VALUES
+  (1, 'short'),
+  (2, 'medium-length-value'),
+  (3, 'this is a considerably longer value that exercises multi-byte content in the parent index');
+SQL
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: create parent (varchar 255)');"
+  stop_doltgres
+
+  new_server_start
+  sql <<SQL
+CREATE TABLE child (
+  id  INT NOT NULL PRIMARY KEY,
+  ref VARCHAR(255) NOT NULL,
+  CONSTRAINT child_ref_fk FOREIGN KEY (ref) REFERENCES parent(val)
+);
+SQL
+
+  # Valid inserts across the full range of value lengths.
+  sql -c "INSERT INTO child VALUES (10, 'short'), (11, 'medium-length-value'), (12, 'this is a considerably longer value that exercises multi-byte content in the parent index');"
+
+  run sql_csv -c "SELECT count(*) FROM child;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "3" ]] || false
+
+  # Invalid insert.
+  run sql -c "INSERT INTO child VALUES (13, 'never seen in parent');"
+  [ "$status" -ne 0 ]
+
+  run sql_csv -c "SELECT dolt_verify_constraints('--all');"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "{0}" ]] || false
+
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'head: create child + fk');"
+  stop_doltgres
+}
+
+# ---------------------------------------------------------------------------
+# Parent-diff via merge — a branch removes a parent row while another branch
+# adds a child referencing it.  Merging surfaces a dangling-child violation.
+# This exercises the ExtendedEnc→StringEnc direction of the mixed conversion
+# (parent's stored key format → child's index key format), which the
+# child-only workflow above does not reach.
+# ---------------------------------------------------------------------------
+
+@test "backward workflow: dangling child violation surfaces on merge" {
+  [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
+  [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
+
+  # --- Old: create parent, seed rows ---
+  old_server_start
+  sql <<SQL
+CREATE TABLE parent (
+  id  INT NOT NULL PRIMARY KEY,
+  val VARCHAR(10) NOT NULL UNIQUE
+);
+INSERT INTO parent VALUES (1, 'apple'), (2, 'banana'), (3, 'cherry');
+SQL
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: create parent');"
+  stop_doltgres
+
+  # --- New: create child + FK, seed a child that will become dangling ---
+  new_server_start
+  sql <<SQL
+CREATE TABLE child (
+  id  INT NOT NULL PRIMARY KEY,
+  ref VARCHAR(10) NOT NULL,
+  CONSTRAINT child_ref_fk FOREIGN KEY (ref) REFERENCES parent(val)
+);
+INSERT INTO child VALUES (10, 'apple');
+SQL
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'head: create child + fk, seed');"
+
+  # No violations at this point.
+  run sql_csv -c "SELECT dolt_verify_constraints('--all');"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "{0}" ]] || false
+
+  # Branch off; on 'drop_banana' remove banana from parent (no child refs banana yet).
+  sql <<SQL
+SELECT dolt_branch('drop_banana');
+SELECT dolt_checkout('drop_banana');
+DELETE FROM parent WHERE val='banana';
+SELECT dolt_add('.');
+SELECT dolt_commit('-m', 'drop_banana: remove banana');
+SQL
+
+  # Back on main: add a child row that references banana (still valid on main).
+  sql <<SQL
+SELECT dolt_checkout('main');
+INSERT INTO child VALUES (20, 'banana');
+SELECT dolt_add('.');
+SELECT dolt_commit('-m', 'main: add child(20, banana)');
+SQL
+
+  # Merge drop_banana into main.  Parent lost banana; child references banana.
+  # Merge should surface the resulting dangling reference as a constraint
+  # violation on the child table.
+  run sql -c "SET dolt_force_transaction_commit=1; SELECT dolt_merge('drop_banana');"
+  [ "$status" -eq 0 ]
+
+  # Verify the violation was recorded against child.
+  run sql_csv -c "SELECT count(*) FROM dolt_constraint_violations_child;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "1" ]] || false
+
+  # And that the violation row is the banana reference (id=20).
+  run sql_csv -c "SELECT id, ref FROM dolt_constraint_violations_child;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "20,banana" ]] || false
+
+  stop_doltgres
+}
