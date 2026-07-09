@@ -92,9 +92,9 @@ func GetTypeByID(internalID id.Type) *DoltgresType {
 	return t
 }
 
-// GetAllBuitInTypes returns a slice containing all registered types.
+// GetAllBuiltInTypes returns a slice containing all registered types.
 // The slice is sorted by each type's ID.
-func GetAllBuitInTypes() []*DoltgresType {
+func GetAllBuiltInTypes() []*DoltgresType {
 	pgTypes := make([]*DoltgresType, 0, len(IDToBuiltInDoltgresType))
 	for internalID, typ := range IDToBuiltInDoltgresType {
 		if typ.ID == Unknown.ID && internalID.TypeName() != "unknown" {
@@ -296,7 +296,7 @@ func init() {
 		toInternal("xid"):              Xid,
 		toInternal("xml"):              Unknown,
 	}
-	for _, t := range GetAllBuitInTypes() {
+	for _, t := range GetAllBuiltInTypes() {
 		NameToInternalID[t.Name()] = t.ID
 		pt, ok := types.OidToType[oid.Oid(id.Cache().ToOID(t.ID.AsId()))]
 		if ok {
