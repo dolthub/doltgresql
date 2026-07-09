@@ -74,10 +74,6 @@ func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree
 		mapHash:       underlyingMap.HashOf(),
 		underlyingMap: underlyingMap,
 		ns:            ns,
-
-		assCastCache: make(map[castCacheKey]Cast),
-		expCastCache: make(map[castCacheKey]Cast),
-		impCastCache: make(map[castCacheKey]Cast),
 	}
 	return collection, nil
 }
