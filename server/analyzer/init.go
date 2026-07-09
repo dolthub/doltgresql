@@ -127,25 +127,33 @@ func initEngine() {
 	plan.ValidateForeignKeyDefinition = validateForeignKeyDefinition
 
 	planbuilder.IsAggregateFunc = IsAggregateFunc
+	planbuilder.IsWindowFunc = IsWindowFunc
 
 	expression.DefaultExpressionFactory = pgexpression.PostgresExpressionFactory{}
 
 	expression.SplitConjunction = splitConjunction
 }
 
+// postgresOnlyAggregateFuncNames holds Postgres aggregate functions with no MySQL equivalent. Every name
+// here must be recognized by both IsAggregateFunc and IsWindowFunc: buildScalar in GMS's planbuilder only
+// routes a call with an OVER(...) clause into the window-building path if IsWindowFunc recognizes its name,
+// and Postgres allows any aggregate to be used as a window function.
+var postgresOnlyAggregateFuncNames = map[string]bool{
+	"array_agg": true,
+	"bool_and":  true,
+	"bool_or":   true,
+}
+
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by
 // MySQL plus some postgres specific ones.
 func IsAggregateFunc(name string) bool {
-	if planbuilder.IsMySQLAggregateFuncName(name) {
-		return true
-	}
+	return planbuilder.IsMySQLAggregateFuncName(name) || postgresOnlyAggregateFuncNames[name]
+}
 
-	switch name {
-	case "array_agg", "bool_and", "bool_or":
-		return true
-	}
-
-	return false
+// IsWindowFunc checks if the given function name is a window function. This is the entire set supported by
+// MySQL plus some postgres specific ones.
+func IsWindowFunc(name string) bool {
+	return planbuilder.IsMySQLWindowFuncName(name) || postgresOnlyAggregateFuncNames[name]
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.

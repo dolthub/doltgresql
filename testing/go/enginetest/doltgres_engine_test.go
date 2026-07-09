@@ -540,6 +540,8 @@ func TestScripts(t *testing.T) {
 		"INSERT IGNORE throws an error when json is badly formatted",                                              // error messages don't match
 		"identical expressions over different windows should produce different results",                           // ERROR: integer: unhandled type: float64
 		"windows without ORDER BY should be treated as RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", // ERROR: integer: unhandled type: float64
+		"sum() and avg() on non-DECIMAL type column returns the DOUBLE type result",                               // MySQL-specific: MySQL widens FLOAT to DOUBLE for SUM; Postgres sum(real) stays real
+		"sum() and avg() on DECIMAL type column returns the DECIMAL type result",                                  // MySQL-specific: MySQL truncates AVG's decimal scale; Postgres numeric division keeps full precision
 		"division and int division operation on negative, small and big value for decimal type column of table",   // numeric keys broken
 		"update columns with default",                                                                             // broken, see repro in update_test.go
 		"select count(*) from t where (f in (null, cast(0.8 as float)));",                                         // incorrect result, needs a fix
@@ -834,20 +836,21 @@ func TestVersionedViews(t *testing.T) {
 }
 
 func TestWindowFunctions(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestWindowFunctions(t, h)
 }
 
 func TestWindowRowFrames(t *testing.T) {
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestWindowRowFrames(t, h)
 }
 
 func TestWindowRangeFrames(t *testing.T) {
+	// TODO: RANGE frame offset boundaries (e.g. "RANGE 2 PRECEDING") are computed by GMS as float64,
+	// which panics against DoltgresType.Compare for an int32 column; named windows themselves work fine
+	// (see TestNamedWindows).
 	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
@@ -855,6 +858,8 @@ func TestWindowRangeFrames(t *testing.T) {
 }
 
 func TestNamedWindows(t *testing.T) {
+	// TODO: only remaining failures are GMS's own mergeWindowDefs error messages using empty window
+	// names ("window '' cannot inherit ''" instead of the actual names) - cosmetic, not a correctness bug.
 	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
