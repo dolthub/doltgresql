@@ -529,6 +529,7 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		var err error
 		cast, err = GetAssignmentCast(ctx, dt, t)
 		if err != nil {
+			t.mutex.Unlock()
 			return nil, sql.InRange, err
 		}
 		t.castCache[dt] = cast
