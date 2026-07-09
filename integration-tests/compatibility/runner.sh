@@ -183,6 +183,19 @@ test_backward_compatibility() {
   DOLTGRES_TEST_BIN="$(which doltgres)" \
     REPO_DIR="$(pwd)/repos/${ver}" \
     bats --print-output-on-failure ./test_files/bats/
+
+  # Backward-only workflows (test_files/bats/backwards/): tests that only make
+  # sense with the old binary writing first and HEAD continuing.  Each test
+  # manages its own server lifecycle and needs both binaries.
+  if [ -d ./test_files/bats/backwards ]; then
+    local scratch="$(pwd)/repos/${ver}-backward-workflow"
+    mkdir -p "$scratch"
+    echo "=== Backward workflow: old=${ver}, new=HEAD ==="
+    DOLTGRES_LEGACY_BIN="${bin}/doltgres" \
+      DOLTGRES_NEW_BIN="$(which doltgres)" \
+      REPO_DIR="$scratch" \
+      bats --print-output-on-failure ./test_files/bats/backwards/
+  fi
 }
 
 test_forward_compatibility() {
