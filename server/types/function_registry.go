@@ -163,8 +163,5 @@ func toFuncID(functionName string, params ...id.Type) uint32 {
 // FromFuncID creates a valid function string for the given name and parameters, then registers the name with the
 // global functionRegistry. The ID from the registry is returned.
 func FromFuncID(u uint32) id.Function {
-	if u == 0 {
-		return id.NullFunction
-	}
 	return globalFunctionRegistry.GetInternalID(u)
 }

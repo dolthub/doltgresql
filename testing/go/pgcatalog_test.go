@@ -2504,6 +2504,10 @@ func TestPgProc(t *testing.T) {
 					Query:    "SELECT proname FROM PG_catalog.pg_PROC ORDER BY proname;",
 					Expected: []sql.Row{{"alt_func1"}, {"ptest5"}},
 				},
+				{
+					Query:    `SELECT t1.oid, t1.typname, p1.oid, p1.proname FROM pg_type AS t1, pg_proc AS p1 WHERE t1.typinput = p1.oid;`,
+					Expected: []sql.Row{},
+				},
 			},
 		},
 	})

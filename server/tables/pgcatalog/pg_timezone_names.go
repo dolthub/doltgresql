@@ -59,7 +59,7 @@ func (p PgTimezoneNamesHandler) PkSchema() sql.PrimaryKeySchema {
 var pgTimezoneNamesSchema = sql.Schema{
 	{Name: "name", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgTimezoneNamesName},
 	{Name: "abbrev", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgTimezoneNamesName},
-	{Name: "utc_offset", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgTimezoneNamesName}, // TODO: interval type
+	{Name: "utc_offset", Type: pgtypes.Interval, Default: nil, Nullable: true, Source: PgTimezoneNamesName},
 	{Name: "is_dst", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgTimezoneNamesName},
 }
 

@@ -63,7 +63,7 @@ var pgStatisticExtSchema = sql.Schema{
 	{Name: "stxnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgStatisticExtName},
 	{Name: "stxowner", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgStatisticExtName},
 	{Name: "stxstattarget", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgStatisticExtName},
-	{Name: "stxkeys", Type: pgtypes.Int16Array, Default: nil, Nullable: false, Source: PgStatisticExtName}, // TODO: int2vector type
+	{Name: "stxkeys", Type: pgtypes.Int16vector, Default: nil, Nullable: false, Source: PgStatisticExtName},
 	{Name: "stxkind", Type: pgtypes.InternalCharArray, Default: nil, Nullable: false, Source: PgStatisticExtName},
 	{Name: "stxexprs", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatisticExtName}, // TODO: collation C, pg_node_tree type
 }
