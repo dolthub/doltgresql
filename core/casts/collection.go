@@ -54,7 +54,6 @@ const (
 var builtInCasts = map[id.Cast]Cast{}
 
 // Cast represents a cast between two types.
-// TODO: pass these around as pointers
 type Cast struct {
 	ID       id.Cast
 	CastType CastType
