@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -206,26 +207,79 @@ func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+
+	stopped := false
+	stopServer := func() error {
+		if stopped {
+			return nil
+		}
+		stopped = true
+		if err := interruptCmd(cmd); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return fmt.Errorf("could not interrupt init server for %s: %w (output: %s)", name, err, output.String())
+		}
+		if err := cmd.Wait(); err != nil {
+			return fmt.Errorf("init server for %s did not exit cleanly: %w (output: %s)", name, err, output.String())
+		}
+		return nil
+	}
+	// Best-effort shutdown on error paths; the success path below calls
+	// stopServer explicitly and checks its result.
 	defer func() {
-		_ = cmd.Process.Signal(os.Interrupt)
-		_, _ = cmd.Process.Wait()
+		_ = stopServer()
 	}()
 
-	db, err := ConnectDB("postgres", "password", name, "127.0.0.1", port, nil)
+	db, err := ConnectDB("postgres", "password", "", "127.0.0.1", port, nil)
 	if err != nil {
 		return fmt.Errorf("could not connect to init server for %s: %w (output: %s)", name, err, output.String())
 	}
-	defer db.Close()
-
-	if _, err := db.Exec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, name)); err != nil {
+	_, err = db.Exec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, name))
+	db.Close()
+	if err != nil {
 		return err
 	}
+
+	// Connect to the new database, wait for its initialization to fully
+	// complete, and run any additional setup.
+	db, err = ConnectDB("postgres", "password", name, "127.0.0.1", port, nil)
+	if err != nil {
+		return fmt.Errorf("could not connect to database %s on init server: %w (output: %s)", name, err, output.String())
+	}
+	defer db.Close()
+	if err := waitForDatabaseInit(db); err != nil {
+		return fmt.Errorf("database %s was not fully initialized: %w (output: %s)", name, err, output.String())
+	}
+
+	// Complete any requested setup
 	if fn != nil {
 		if err := fn(db); err != nil {
 			return err
 		}
 	}
-	return nil
+
+	// Finally shutdown the server now that initialization is complete
+	return stopServer()
+}
+
+// waitForDatabaseInit blocks until the database that |db| is connected to has
+// been fully initialized.
+func waitForDatabaseInit(db *sql.DB) error {
+	var lastErr error
+	for i := 0; i < ConnectAttempts; i++ {
+		if i != 0 {
+			time.Sleep(RetrySleepDuration)
+		}
+		var n int
+		err := db.QueryRow(`SELECT count(*) FROM dolt_log WHERE message = 'CREATE DATABASE'`).Scan(&n)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if n > 0 {
+			return nil
+		}
+		lastErr = errors.New("no CREATE DATABASE commit found in dolt_log")
+	}
+	return lastErr
 }
 
 func sanitize(s string) string {

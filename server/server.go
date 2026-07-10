@@ -17,9 +17,11 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
@@ -148,6 +150,16 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return true, nil
 	})
 
+	// When we need to create the default database, gate the listener so that no external connections are accepted until
+	// that creation has fully completed. This is necessary due to the fact that `CREATE DATABASE` is non-transactional
+	// and non-atomic, so other clients could connect to a partially-created database otherwise. This problem exists in
+	// Dolt as well, but Dolt doesn't auto-create a database on init.
+	var gate *startupGate
+	if initializeDefaultDatabase {
+		gate = newStartupGate()
+		protocolListenerFactory = gate.gatedListenerFactory(protocolListenerFactory)
+	}
+
 	controller := svcs.NewController()
 	newCtx, cancelF := context.WithCancel(ctx)
 	go func() {
@@ -180,32 +192,54 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	}
 
 	if initializeDefaultDatabase {
-		err = createDefaultDatabase(ssCfg)
+		err = createDefaultDatabase(ssCfg, gate)
 		if err != nil {
+			controller.Stop()
 			return nil, err
 		}
+		// Release the startup gate to accept external connections now that init is finished
+		gate.Release()
 	}
 
 	// TODO: shutdown replication cleanly when we stop the server
 	_, err = startReplication(cfg, ssCfg)
 	if err != nil {
+		controller.Stop()
 		return nil, err
 	}
 
 	return controller, nil
 }
 
-// createDefaultDatabase creates the database named on the local server using the configuration values to connect, returning
-// any error
-func createDefaultDatabase(cfg doltservercfg.ServerConfig) error {
+// createDefaultDatabaseTimeout bounds first-run creation of the default
+// database. The internal connection is served by the same accept loop that
+// serves clients, so if the server fails to start its accept loop the dial
+// would otherwise block forever.
+const createDefaultDatabaseTimeout = 2 * time.Minute
+
+// createDefaultDatabase creates the database named on the local server, returning any error. The connection used is an
+// internal in-memory connection provided by |gate|; the server does not accept external connections until the gate is
+// released, which the caller does only after this function succeeds.
+func createDefaultDatabase(cfg doltservercfg.ServerConfig, gate *startupGate) error {
 	user, password := auth.GetSuperUserAndPassword()
 	dbName := getDefaultDatabaseName(user)
 
-	dsn := fmt.Sprintf("postgres://%s:%s@localhost:%d", user, password, cfg.Port())
+	// The host and port here are only used for display purposes: DialFunc below routes the connection through the
+	// gate's in-memory pipe. TLS is disabled because it is unnecessary for an in-process connection.
+	dsn := fmt.Sprintf("postgres://%s:%s@localhost:%d/?sslmode=disable", user, password, cfg.Port())
 
-	// Connect to the server and create the default database with the given name.
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, dsn)
+	ctx, cancel := context.WithTimeout(context.Background(), createDefaultDatabaseTimeout)
+	defer cancel()
+
+	connConfig, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return err
+	}
+	connConfig.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return gate.Dial(ctx)
+	}
+
+	conn, err := pgx.ConnectConfig(ctx, connConfig)
 	if err != nil {
 		return err
 	}
