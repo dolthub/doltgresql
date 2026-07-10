@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
@@ -93,6 +94,10 @@ type DoltgresType struct {
 	BaseTypeForInternal id.Type // used for INTERNAL type only
 	SerializationFunc   internalSerializationFunc
 	DeserializationFunc internalDeserializationFunc
+
+	// TODO: refresh
+	castCache map[*DoltgresType]Cast
+	mutex     sync.Mutex
 }
 
 // internalNullType represents a type with a null ID, effectively stating that the field in the parent DoltgresType is
@@ -515,10 +520,22 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
-	cast, err := GetAssignmentCast(ctx, dt, t)
-	if err != nil {
-		return nil, sql.InRange, err
+	t.mutex.Lock()
+	if t.castCache == nil {
+		t.castCache = make(map[*DoltgresType]Cast)
 	}
+	var cast Cast
+	if cast, ok = t.castCache[dt]; !ok {
+		var err error
+		cast, err = GetAssignmentCast(ctx, dt, t)
+		if err != nil {
+			t.mutex.Unlock()
+			return nil, sql.InRange, err
+		}
+		t.castCache[dt] = cast
+	}
+	t.mutex.Unlock()
+
 	if cast == nil {
 		// In the case that we have an unknown type string literal, we attempt to parse it with the target type's
 		// input function
@@ -1065,9 +1082,9 @@ func (t *DoltgresType) ValueType() reflect.Type {
 // to set attTypMod only, as it creates a copy of the type
 // to avoid updating the original type.
 func (t *DoltgresType) WithAttTypMod(tm int32) *DoltgresType {
-	newDt := *t
+	newDt := t.Copy()
 	newDt.attTypMod = tm
-	return &newDt
+	return newDt
 }
 
 // Zero implements the types.ExtendedType interface.
@@ -1227,6 +1244,56 @@ func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTyp
 func (t *DoltgresType) TypeInfo() typeinfo.TypeInfo {
 	return typeInfo{
 		Type: t,
+	}
+}
+
+// Copy returns a copy of the type without the cache and mutex
+func (t *DoltgresType) Copy() *DoltgresType {
+	return &DoltgresType{
+		ID:          t.ID,
+		TypType:     t.TypType,
+		TypCategory: t.TypCategory,
+		TypLength:   t.TypLength,
+		PassedByVal: t.PassedByVal,
+		IsPreferred: t.IsPreferred,
+		IsDefined:   t.IsDefined,
+		Delimiter:   t.Delimiter,
+
+		RelID:         t.RelID,
+		SubscriptFunc: t.SubscriptFunc,
+		Elem:          t.Elem,
+		Array:         t.Array,
+		InputFunc:     t.InputFunc,
+		OutputFunc:    t.OutputFunc,
+		ReceiveFunc:   t.ReceiveFunc,
+		SendFunc:      t.SendFunc,
+		ModInFunc:     t.ModInFunc,
+		ModOutFunc:    t.ModOutFunc,
+		AnalyzeFunc:   t.AnalyzeFunc,
+		Align:         t.Align,
+		Storage:       t.Storage,
+
+		NotNull:      t.NotNull,
+		BaseTypeType: t.BaseTypeType,
+		TypMod:       t.TypMod,
+		NDims:        t.NDims,
+		TypCollation: t.TypCollation,
+		DefaulBin:    t.DefaulBin,
+		Default:      t.Default,
+		Acl:          t.Acl,
+
+		Checks:         t.Checks,
+		attTypMod:      t.attTypMod,
+		CompareFunc:    t.CompareFunc,
+		InternalName:   t.InternalName,
+		EnumLabels:     t.EnumLabels,
+		CompositeAttrs: t.CompositeAttrs,
+
+		IsSerial:            t.IsSerial,
+		IsUnresolved:        t.IsUnresolved,
+		BaseTypeForInternal: t.BaseTypeForInternal,
+		SerializationFunc:   t.SerializationFunc,
+		DeserializationFunc: t.DeserializationFunc,
 	}
 }
 

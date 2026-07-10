@@ -52,13 +52,14 @@ func (*TypeCollection) HandleMerge(ctx context.Context, mro merge.MergeRootObjec
 			theirType.ID.TypeName(), ourType.TypType, theirType.TypType)
 	}
 	// Check if an ancestor is present
-	var ancType pgtypes.DoltgresType
+	var ancType *pgtypes.DoltgresType
 	hasAncestor := false
 	if mro.AncestorRootObj != nil {
-		ancType = *(mro.AncestorRootObj.(TypeWrapper).Type)
+		ancType = mro.AncestorRootObj.(TypeWrapper).Type
 		hasAncestor = true
 	}
-	mergedType := *ourType
+
+	mergedType := ourType.Copy()
 	switch theirType.TypType {
 	case pgtypes.TypeType_Domain:
 		if ourType.BaseTypeType.ID != theirType.BaseTypeType.ID {
@@ -87,7 +88,7 @@ func (*TypeCollection) HandleMerge(ctx context.Context, mro merge.MergeRootObjec
 			// TODO: check for duplicate check constraints
 			ourType.Checks = append(ourType.Checks, theirType.Checks...)
 		}
-		return TypeWrapper{Type: &mergedType}, &merge.MergeStats{
+		return TypeWrapper{Type: mergedType}, &merge.MergeStats{
 			Operation:            merge.TableModified,
 			Adds:                 0,
 			Deletes:              0,
