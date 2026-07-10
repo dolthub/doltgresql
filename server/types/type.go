@@ -583,10 +583,6 @@ func (t *DoltgresType) DomainUnderlyingBaseType() *DoltgresType {
 // Equals implements the types.ExtendedType interface.
 func (t *DoltgresType) Equals(otherType sql.Type) bool {
 	if otherExtendedType, ok := otherType.(*DoltgresType); ok {
-		if t.idType() && otherExtendedType.idType() {
-			// TODO this might not be the right way to do it
-			return true
-		}
 		return bytes.Equal(t.Serialize(), otherExtendedType.Serialize())
 	}
 	return false
@@ -637,16 +633,6 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 	} else {
 		return globalFunctionRegistry.GetFunction(ctx, t.InputFunc).CallVariadic(ctx, input)
 	}
-}
-
-// idType is true if the type uses id.Id value
-func (t *DoltgresType) idType() bool {
-	// E.g. regtype can be compared with oid type because both use id.Id type values.
-	if t.ID == Regproc.ID || t.ID == Regtype.ID ||
-		t.ID == Regclass.ID || t.ID == Oid.ID {
-		return true
-	}
-	return false
 }
 
 // IoOutput converts given type value to output string.
