@@ -197,10 +197,6 @@ SQL
   [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
   [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
 
-  # TEXT is stored with an adaptive encoding.  In v0.56.2 and older that is
-  # ExtendedAdaptiveEnc + DoltgresType handler; HEAD stores it as
-  # StringAdaptiveEnc + nil handler.  The mixed-handler case exercises the
-  # ExtendedAdaptiveEnc branch of convertNativeEncodedFkField.
   old_server_start
   sql <<SQL
 CREATE TABLE parent (
@@ -226,9 +222,17 @@ SQL
   [ "$status" -eq 0 ]
   [[ "$output" =~ "2" ]] || false
 
+  run sql_csv -c "SELECT dolt_verify_constraints('--all');"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "{0}" ]] || false
+
   # Invalid insert — 'grape' is not present in parent, FK must reject.
   run sql -c "INSERT INTO child VALUES (12, 'grape');"
   [ "$status" -ne 0 ]
+
+  run sql_csv -c "SELECT count(*) FROM child;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "2" ]] || false
 
   # No reported violations.
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
@@ -271,10 +275,7 @@ SQL
   [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
   [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
 
-  # Cross-type FK: parent's TEXT column vs child's VARCHAR(10) column.  In the
-  # old repo the parent's TEXT lives in ExtendedAdaptiveEnc + DoltgresType
-  # handler; HEAD's child VARCHAR(10) lives in StringEnc + nil handler.  Every
-  # value stored fits within VARCHAR(10) so no truncation is expected.
+  # Cross-type FK: parent's TEXT column vs child's VARCHAR(10) column. 
   old_server_start
   sql <<SQL
 CREATE TABLE parent (
@@ -315,11 +316,6 @@ SQL
   [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
   [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
 
-  # Opposite mixing from the previous test: parent's VARCHAR(10) is
-  # ExtendedEnc + DoltgresType handler in the old repo; HEAD's child TEXT is
-  # StringAdaptiveEnc + nil handler.  Exercises StringAdaptiveEnc source ↔
-  # ExtendedEnc target in convertNativeEncodedFkField (and the reverse on
-  # merge / parent-diff).
   old_server_start
   sql <<SQL
 CREATE TABLE parent (
@@ -360,10 +356,6 @@ SQL
   [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
   [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
 
-  # TEXT analogue of the VARCHAR dangling-child test above.  Exercises the
-  # parent-diff direction (ExtendedAdaptiveEnc → StringAdaptiveEnc, i.e. the
-  # parent's stored key format → the child's index key format) for adaptive
-  # encodings.
   old_server_start
   sql <<SQL
 CREATE TABLE parent (
