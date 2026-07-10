@@ -17,14 +17,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"net"
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
+	"github.com/dolthub/dolt/go/cmd/dolt/commands/engine"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
@@ -39,7 +38,6 @@ import (
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/initialization"
@@ -150,14 +148,13 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return true, nil
 	})
 
-	// When we need to create the default database, gate the listener so that no external connections are accepted until
-	// that creation has fully completed. This is necessary due to the fact that `CREATE DATABASE` is non-transactional
-	// and non-atomic, so other clients could connect to a partially-created database otherwise. This problem exists in
-	// Dolt as well, but Dolt doesn't auto-create a database on init.
-	var gate *startupGate
+	// When we need to create the default database, do so via an engine initializer, which runs after the engine is
+	// constructed but before the server accepts any connections. This is necessary due to the fact that
+	// `CREATE DATABASE` is non-transactional and non-atomic, so other clients could connect to a partially-created
+	// database otherwise. This problem exists in Dolt as well, but Dolt doesn't auto-create a database on init.
+	var engineInitializer sqlserver.EngineInitializer
 	if initializeDefaultDatabase {
-		gate = newStartupGate()
-		protocolListenerFactory = gate.gatedListenerFactory(protocolListenerFactory)
+		engineInitializer = defaultDatabaseInitializer{}
 	}
 
 	controller := svcs.NewController()
@@ -183,22 +180,13 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		DoltEnv:                 dEnv,
 		ProtocolListenerFactory: protocolListenerFactory,
 		ProviderFactory:         DoltgresProviderFactory{},
+		EngineInitializer:       engineInitializer,
 	})
 	go controller.Start(newCtx)
 
 	err = controller.WaitForStart()
 	if err != nil {
 		return nil, err
-	}
-
-	if initializeDefaultDatabase {
-		err = createDefaultDatabase(ssCfg, gate)
-		if err != nil {
-			controller.Stop()
-			return nil, err
-		}
-		// Release the startup gate to accept external connections now that init is finished
-		gate.Release()
 	}
 
 	// TODO: shutdown replication cleanly when we stop the server
@@ -211,41 +199,34 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	return controller, nil
 }
 
-// createDefaultDatabaseTimeout bounds first-run creation of the default
-// database. The internal connection is served by the same accept loop that
-// serves clients, so if the server fails to start its accept loop the dial
-// would otherwise block forever.
-const createDefaultDatabaseTimeout = 2 * time.Minute
+// defaultDatabaseInitializer creates the default database on a first run against an empty data dir. It runs via
+// sqlserver.Config.EngineInitializer, after the engine has been constructed but before the server accepts any
+// connections, so no client can observe (or interfere with) a partially created default database.
+type defaultDatabaseInitializer struct{}
 
-// createDefaultDatabase creates the database named on the local server, returning any error. The connection used is an
-// internal in-memory connection provided by |gate|; the server does not accept external connections until the gate is
-// released, which the caller does only after this function succeeds.
-func createDefaultDatabase(cfg doltservercfg.ServerConfig, gate *startupGate) error {
-	user, password := auth.GetSuperUserAndPassword()
+var _ sqlserver.EngineInitializer = defaultDatabaseInitializer{}
+
+// InitializeEngine implements sqlserver.EngineInitializer.
+func (defaultDatabaseInitializer) InitializeEngine(ctx context.Context, se *engine.SqlEngine) error {
+	user, _ := auth.GetSuperUserAndPassword()
 	dbName := getDefaultDatabaseName(user)
 
-	// The host and port here are only used for display purposes: DialFunc below routes the connection through the
-	// gate's in-memory pipe. TLS is disabled because it is unnecessary for an in-process connection.
-	dsn := fmt.Sprintf("postgres://%s:%s@localhost:%d/?sslmode=disable", user, password, cfg.Port())
-
-	ctx, cancel := context.WithTimeout(context.Background(), createDefaultDatabaseTimeout)
-	defer cancel()
-
-	connConfig, err := pgx.ParseConfig(dsn)
+	sqlCtx, err := se.NewDefaultContext(ctx)
 	if err != nil {
 		return err
 	}
-	connConfig.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		return gate.Dial(ctx)
-	}
+	// The session must run as the doltgres superuser: unlike Dolt, doltgres has
+	// no "root" user, so NewLocalContext's default client would be rejected.
+	sqlCtx.Session.SetClient(sql.Client{User: user, Address: "localhost", Capabilities: 0})
+	defer sql.SessionEnd(sqlCtx.Session)
+	sql.SessionCommandBegin(sqlCtx.Session)
+	defer sql.SessionCommandEnd(sqlCtx.Session)
 
-	conn, err := pgx.ConnectConfig(ctx, connConfig)
+	_, iter, _, err := se.Query(sqlCtx, fmt.Sprintf("CREATE DATABASE %s;", dbName))
 	if err != nil {
 		return err
 	}
-	defer conn.Close(ctx)
-
-	_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s;", dbName))
+	_, err = sql.RowIterToRows(sqlCtx, iter)
 	return err
 }
 
