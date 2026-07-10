@@ -56,6 +56,9 @@ type contextValues struct {
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
 // it creates one and adds it to the context.
 func getContextValues(ctx *sql.Context) (*contextValues, error) {
+	if ctx == nil {
+		return nil, errors.New("context is nil")
+	}
 	sess := dsess.DSessFromSess(ctx.Session)
 	if sess.DoltgresSessObj == nil {
 		cv := &contextValues{}
