@@ -48,11 +48,17 @@ type contextValues struct {
 
 	pgCatalogCache any
 	runner         sql.StatementRunner
+
+	// cache the dateOutputFormat, this is refreshed on SET
+	dateOutputFormat string
 }
 
 // getContextValues accesses the contextValues in the given context. If the context does not have a contextValues, then
 // it creates one and adds it to the context.
 func getContextValues(ctx *sql.Context) (*contextValues, error) {
+	if ctx == nil {
+		return nil, errors.New("context is nil")
+	}
 	sess := dsess.DSessFromSess(ctx.Session)
 	if sess.DoltgresSessObj == nil {
 		cv := &contextValues{}
@@ -487,6 +493,25 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// GetDateStyleOutputFormat returns the cached DateOutputFormat
+func GetDateStyleOutputFormat(ctx *sql.Context) (string, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return "", err
+	}
+	return cv.dateOutputFormat, nil
+}
+
+// SetDateStyleOutputFormat cached the provided dateOutputFormat
+func SetDateStyleOutputFormat(ctx *sql.Context, dateOutputFormat string) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.dateOutputFormat = dateOutputFormat
 	return nil
 }
 
