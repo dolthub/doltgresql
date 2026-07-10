@@ -428,6 +428,8 @@ func (root *RootValue) GetTableHash(ctx context.Context, tName doltdb.TableName)
 	return h, err == nil && !h.IsEmpty(), err
 }
 
+// test
+
 // GetTableNames implements the interface doltdb.RootValue.
 func (root *RootValue) GetTableNames(ctx context.Context, schemaName string, includeRootObjects bool) ([]string, error) {
 	tableMap, err := root.getTableMap(ctx, schemaName)
