@@ -312,7 +312,6 @@ tests:
     - exec: "create table vals (i int primary key)"
       error_match: "repo1 is read-only"
 - name: booted primary server is read write
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -1332,7 +1331,6 @@ tests:
         columns: ["count"]
         rows: [["1"]]
 - name: call dolt checkout
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
