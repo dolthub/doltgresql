@@ -76,7 +76,7 @@ func (n *Greatest) WithChildren(ctx *sql.Context, children ...sql.Expression) (s
 	}
 
 	if retType.ID == pgtypes.Numeric.ID {
-		// use Numeric type with no 
+		// use Numeric type with no
 		retType = pgtypes.Numeric
 	}
 
