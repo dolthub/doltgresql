@@ -108,7 +108,14 @@ func getRootFromContextForDatabase(ctx *sql.Context, database string) (*dsess.Do
 	if !ok {
 		return nil, nil, sql.ErrDatabaseNotFound.New(database)
 	}
-	return session, state.WorkingRoot().(*RootValue), nil
+	// Some databases (e.g. Dolt's synthetic dolt_cluster system database) aren't backed by a Doltgres *RootValue
+	// and never accumulate Doltgres-specific root object state (sequences, types, etc.), so there's nothing to
+	// return here.
+	root, ok := state.WorkingRoot().(*RootValue)
+	if !ok {
+		return session, nil, nil
+	}
+	return session, root, nil
 }
 
 // IsContextValid returns whether the context is valid for use with any of the functions in the package. If this is not
