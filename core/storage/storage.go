@@ -309,10 +309,10 @@ func serializeDatabaseSchemas(b *flatbuffers.Builder, dbSchemas []schema.Databas
 
 // encodeTableNameForAddressMap encodes the given table name for writing into storage.
 func encodeTableNameForAddressMap(name doltdb.TableName) string {
-	if name.Schema == "" {
+	if len(name.Schema) == 0 {
 		return name.Name
 	}
-	return fmt.Sprintf("\000%s\000%s", name.Schema, name.Name)
+	return "\000" + name.Schema + "\000" + name.Name
 }
 
 // decodeTableNameForAddressMap decodes a previously-encoded table name from storage.
