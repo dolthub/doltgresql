@@ -513,6 +513,63 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 // import cycles
 var GetAssignmentCast func(ctx *sql.Context, fromType *DoltgresType, toType *DoltgresType) (Cast, error)
 
+// GetImplicitCast is a reference to the implicit cast logic in the core package, which we can't use here due to
+// import cycles
+var GetImplicitCast func(ctx *sql.Context, fromType *DoltgresType, toType *DoltgresType) (Cast, error)
+
+// CastToType implements the types.ExtendedType interface.
+func (t *DoltgresType) CastToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
+	dt, ok := typ.(*DoltgresType)
+	if !ok {
+		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
+	}
+
+	t.mutex.Lock()
+	if t.castCache == nil {
+		t.castCache = make(map[*DoltgresType]Cast)
+	}
+	var cast Cast
+	if cast, ok = t.castCache[dt]; !ok {
+		var err error
+		cast, err = GetImplicitCast(ctx, t, dt)
+		if err != nil {
+			t.mutex.Unlock()
+			return nil, sql.InRange, err
+		}
+		t.castCache[dt] = cast
+	}
+	t.mutex.Unlock()
+
+	castResult, err := cast.Eval(ctx, val, dt, t)
+	if err != nil && errors.Is(err, ErrCastOutOfRange) {
+		// TODO: this could be either an overflow or an underflow, we should distinguish
+		return castResult, sql.Overflow, nil
+	} else if err != nil {
+		return nil, sql.InRange, err
+	}
+
+	return castResult, sql.InRange, nil
+}
+
+// CommonType implements the types.ExtendedType interface.
+func (t *DoltgresType) CommonType(ctx *sql.Context, typ sql.ExtendedType) sql.ExtendedType {
+	if t.Equals(typ) {
+		return t
+	}
+
+	dt, ok := typ.(*DoltgresType)
+	if !ok {
+		return t
+	}
+	if _, err := GetImplicitCast(ctx, t, dt); err == nil {
+		return dt
+	} else if _, err = GetImplicitCast(ctx, dt, t); err == nil {
+		return t
+	} // TODO else if there is preferred type for both?
+
+	return t
+}
+
 // ConvertToType implements the types.ExtendedType interface.
 func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
 	dt, ok := typ.(*DoltgresType)
