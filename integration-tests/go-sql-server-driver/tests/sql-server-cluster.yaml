@@ -161,7 +161,6 @@ tests:
         columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
         rows: [["primary","13"]]
 - name: create database makes a new remote
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -278,7 +277,6 @@ tests:
         columns: ["count"]
         rows: [["5"]]
 - name: booted standby server is read only
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -312,7 +310,6 @@ tests:
     - exec: "create table vals (i int primary key)"
       error_match: "repo1 is read-only"
 - name: booted primary server is read write
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -569,7 +566,6 @@ tests:
         columns: ["count"]
         rows: [["5"]]
 - name: misconfigured cluster with primaries at same epoch, both transition to detected_broken_config
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -1332,7 +1328,6 @@ tests:
         columns: ["count"]
         rows: [["1"]]
 - name: call dolt checkout
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
