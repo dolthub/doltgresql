@@ -18,10 +18,10 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core/casts"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
