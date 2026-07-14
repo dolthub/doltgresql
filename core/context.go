@@ -20,7 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -202,7 +202,7 @@ func GetSqlDatabaseFromContext(ctx *sql.Context, database string) (sql.Database,
 	if len(database) == 0 {
 		database = ctx.GetCurrentDatabase()
 	}
-	db, err := session.Provider().Database(ctx, database)
+	db, err := session.GenericProvider().Database(ctx, database)
 	if err != nil {
 		if sql.ErrDatabaseNotFound.Is(err) {
 			return nil, nil

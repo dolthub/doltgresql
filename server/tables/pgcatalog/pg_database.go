@@ -18,7 +18,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/dsess"
 	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -49,7 +49,7 @@ func (p PgDatabaseHandler) Name() string {
 func (p PgDatabaseHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
 	// TODO: Should the catalog be passed to RowIter like it is for the information_schema tables RowIter?
 	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
+	c := sqle.NewDefault(doltSession.GenericProvider()).Analyzer.Catalog
 
 	databases := c.AllDatabases(ctx)
 	dbs := make([]sql.Database, 0, len(databases))

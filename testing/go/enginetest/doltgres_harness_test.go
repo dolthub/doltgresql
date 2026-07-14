@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/dsess"
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	gms "github.com/dolthub/go-mysql-server"

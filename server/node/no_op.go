@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
