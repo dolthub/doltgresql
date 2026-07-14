@@ -920,6 +920,8 @@ func (t *DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltyp
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
+
+	// TODO: ideally, the wire conversions should append to dest to reduce memory allocations
 	value, err := sqlString(ctx, t, v)
 	if err != nil {
 		return sqltypes.Value{}, err
