@@ -232,21 +232,11 @@ func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 	if err != nil {
 		return fmt.Errorf("could not connect to init server for %s: %w (output: %s)", name, err, output.String())
 	}
-	_, err = db.Exec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, name))
-	db.Close()
-	if err != nil {
-		return err
-	}
-
-	// Connect to the new database, wait for its initialization to fully
-	// complete, and run any additional setup.
-	db, err = ConnectDB("postgres", "password", name, "127.0.0.1", port, nil)
-	if err != nil {
-		return fmt.Errorf("could not connect to database %s on init server: %w (output: %s)", name, err, output.String())
-	}
 	defer db.Close()
-	if err := waitForDatabaseInit(db); err != nil {
-		return fmt.Errorf("database %s was not fully initialized: %w (output: %s)", name, err, output.String())
+
+	_, err = db.Exec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, name))
+	if err != nil {
+		return fmt.Errorf("could not create database %s: %w (output: %s)", name, err, output.String())
 	}
 
 	// Complete any requested setup
@@ -258,28 +248,6 @@ func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 
 	// Finally shutdown the server now that initialization is complete
 	return stopServer()
-}
-
-// waitForDatabaseInit blocks until the database that |db| is connected to has
-// been fully initialized.
-func waitForDatabaseInit(db *sql.DB) error {
-	var lastErr error
-	for i := 0; i < ConnectAttempts; i++ {
-		if i != 0 {
-			time.Sleep(RetrySleepDuration)
-		}
-		var n int
-		err := db.QueryRow(`SELECT count(*) FROM dolt_log WHERE message = 'CREATE DATABASE'`).Scan(&n)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if n > 0 {
-			return nil
-		}
-		lastErr = errors.New("no CREATE DATABASE commit found in dolt_log")
-	}
-	return lastErr
 }
 
 func sanitize(s string) string {
