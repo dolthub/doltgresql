@@ -61,7 +61,14 @@ func GetRelationType(ctx *sql.Context, schema string, relation string) (Relation
 		return RelationType_Table, nil
 	}
 
-	return GetRelationTypeFromRoot(ctx, schema, relation, state.WorkingRoot().(*RootValue))
+	// The current database may not be backed by a Doltgres *RootValue (e.g. Dolt's synthetic dolt_cluster system
+	// database), in which case it has no Doltgres-tracked tables or sequences to find here.
+	root, ok := state.WorkingRoot().(*RootValue)
+	if !ok {
+		return RelationType_DoesNotExist, nil
+	}
+
+	return GetRelationTypeFromRoot(ctx, schema, relation, root)
 }
 
 // GetRelationTypeFromRoot performs the same function as GetRelationType, except that it uses the given root rather than

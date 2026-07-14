@@ -26,6 +26,11 @@ func GetCurrentSchema(ctx *sql.Context) (string, error) {
 	if err != nil {
 		return "", nil
 	}
+	// The current database may not be backed by a Doltgres *RootValue (e.g. Dolt's synthetic dolt_cluster system
+	// database), in which case there's no search path to resolve against.
+	if root == nil {
+		return "public", nil
+	}
 
 	return resolve.FirstExistingSchemaOnSearchPath(ctx, root)
 }

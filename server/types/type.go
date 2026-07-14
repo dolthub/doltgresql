@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/schema/typeinfo"
 	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/encodings"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
 	"github.com/dolthub/vitess/go/vt/proto/query"
@@ -976,13 +977,15 @@ func (t *DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltyp
 	if v == nil {
 		return sqltypes.NULL, nil
 	}
+
+	// TODO: ideally, the wire conversions should append to dest to reduce memory allocations
 	value, err := sqlString(ctx, t, v)
 	if err != nil {
 		return sqltypes.Value{}, err
 	}
 
 	// TODO: check type
-	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceString(dest, value)), nil
+	return sqltypes.MakeTrusted(sqltypes.Text, encodings.StringToBytes(value)), nil
 }
 
 // String implements the types.ExtendedType interface.

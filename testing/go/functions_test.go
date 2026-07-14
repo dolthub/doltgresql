@@ -778,6 +778,45 @@ func TestFunctionsMath(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "greatest/least",
+			SetUpScript: []string{
+				`create table t(a decimal(6, 2), b decimal(8, 5), c decimal(5, 1));`,
+				`insert into t values (2.75, 8.8, 3.1);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT GREATEST(25, 6, 7, 10, 20, 54);`,
+					ExpectedColNames: []string{"greatest"},
+					Expected:         []sql.Row{{54}},
+				},
+				{
+					Query:    `SELECT GREATEST(25, 6, 7, NULL, 20, 54);`,
+					Expected: []sql.Row{{54}},
+				},
+				{
+					Query:    `SELECT GREATEST(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:            `SELECT LEAST(25, 6, 7, 10, 20, 54);`,
+					ExpectedColNames: []string{"least"},
+					Expected:         []sql.Row{{6}},
+				},
+				{
+					Query:    `SELECT LEAST(25, 6, 7, NULL, 20, 54);`,
+					Expected: []sql.Row{{6}},
+				},
+				{
+					Query:    `SELECT LEAST(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `select greatest(a, b, c), least(a, b, c) from t;`,
+					Expected: []sql.Row{{Numeric("8.80000"), Numeric("2.75")}},
+				},
+			},
+		},
 	})
 }
 

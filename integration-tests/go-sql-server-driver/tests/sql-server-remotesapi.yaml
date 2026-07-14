@@ -1,11 +1,6 @@
 parallel: true
 tests:
 - name: can clone from server1 remotesapi endpoint
-  # The remotes API (used to serve/clone databases between servers) is not yet
-  # implemented in Doltgres, so this test is skipped. The config, remotesapi
-  # port wiring, and dolt_clone/dolt_commit flow are translated faithfully so it
-  # can be enabled once the feature lands.
-  skip: "cluster/remotesapi replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -49,7 +44,6 @@ tests:
         columns: ["count"]
         rows: [["5"]]
 - name: can clone from server1 remotesapi endpoint after a gc
-  skip: "cluster/remotesapi replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
