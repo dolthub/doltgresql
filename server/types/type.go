@@ -19,6 +19,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"github.com/dolthub/go-mysql-server/sql/encodings"
 	"math"
 	"reflect"
 	"sync"
@@ -925,7 +926,7 @@ func (t *DoltgresType) SQL(ctx *sql.Context, dest []byte, v interface{}) (sqltyp
 	}
 
 	// TODO: check type
-	return sqltypes.MakeTrusted(sqltypes.Text, types.AppendAndSliceString(dest, value)), nil
+	return sqltypes.MakeTrusted(sqltypes.Text, encodings.StringToBytes(value)), nil
 }
 
 // String implements the types.ExtendedType interface.
