@@ -176,6 +176,9 @@ func inputExpressionForSelectExpr(node tree.SelectExpr) string {
 	if strings.HasPrefix(inputExpression, "'") && strings.HasSuffix(inputExpression, "'") {
 		inputExpression = inputExpression[1 : len(inputExpression)-1]
 	}
+	if strings.HasPrefix(inputExpression, "\"") && strings.HasSuffix(inputExpression, "\"") {
+		inputExpression = inputExpression[1 : len(inputExpression)-1]
+	}
 	return inputExpression
 }
 
