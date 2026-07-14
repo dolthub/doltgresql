@@ -179,6 +179,32 @@ func TestWindowFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "named window reference honors ORDER BY from the WINDOW clause",
+			SetUpScript: []string{
+				"CREATE TABLE t_named(id int, grp int, amt int);",
+				"INSERT INTO t_named VALUES (1,1,10),(2,1,20),(3,2,5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT id, SUM(amt) OVER w AS s FROM t_named WINDOW w AS (PARTITION BY grp ORDER BY id) ORDER BY id;",
+					Expected: []sql.Row{
+						{1, int64(10)},
+						{2, int64(30)},
+						{3, int64(5)},
+					},
+				},
+				{
+					// Inline equivalent must match the named-window-reference result above.
+					Query: "SELECT id, SUM(amt) OVER (PARTITION BY grp ORDER BY id) AS s FROM t_named ORDER BY id;",
+					Expected: []sql.Row{
+						{1, int64(10)},
+						{2, int64(30)},
+						{3, int64(5)},
+					},
+				},
+			},
+		},
+		{
 			Name: "window SUM/AVG wrapped in a subquery projection",
 			SetUpScript: []string{
 				"CREATE TABLE wrapper_probe (grp INT, val INT);",
