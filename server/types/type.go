@@ -98,6 +98,8 @@ type DoltgresType struct {
 	// TODO: refresh
 	castCache map[*DoltgresType]Cast
 	mutex     sync.Mutex
+
+	qf QuickFunction
 }
 
 // internalNullType represents a type with a null ID, effectively stating that the field in the parent DoltgresType is
@@ -637,21 +639,26 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 
 // IoOutput converts given type value to output string.
 func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
-	var o any
-	var err error
-	if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
-		send := globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
-		resolvedTypes := send.ResolvedTypes()
-		resolvedTypes[0] = t
-		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(ctx, val)
-	} else {
-		o, err = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc).CallVariadic(ctx, val)
+	if t.qf == nil {
+		t.mutex.Lock()
+		if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
+			send := globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
+			resolvedTypes := send.ResolvedTypes()
+			resolvedTypes[0] = t
+			t.qf = send.WithResolvedTypes(resolvedTypes).(QuickFunction)
+		} else {
+			t.qf = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
+		}
+		t.mutex.Unlock()
 	}
+	
+	out, err := t.qf.CallVariadic(ctx, val)
 	if err != nil {
 		return "", err
 	}
+
 	var ok bool
-	os, ok, err := sql.Unwrap[string](ctx, o)
+	os, ok, err := sql.Unwrap[string](ctx, out)
 	if !ok {
 		return "", errors.Errorf("unexpected type for io output, expected string, got %T", val)
 	}
