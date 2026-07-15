@@ -452,8 +452,23 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 			return v, sql.InRange, nil
 		}
 	case "int8":
-		if _, ok := v.(int64); ok {
+		// TODO: not sure why this was not a real conversion before...
+		// TODO: other types
+		switch v := v.(type) {
+		case int8:
+			return int64(v), sql.InRange, nil
+		case int16:
+			return int64(v), sql.InRange, nil
+		case int32:
+			return int64(v), sql.InRange, nil
+		case int64:
 			return v, sql.InRange, nil
+		case uint8:
+			return int64(v), sql.InRange, nil
+		case uint16:
+			return int64(v), sql.InRange, nil
+		case uint32:
+			return int64(v), sql.InRange, nil
 		}
 	case "interval":
 		if _, ok := v.(duration.Duration); ok {
