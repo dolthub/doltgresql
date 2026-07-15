@@ -201,6 +201,9 @@ func (u *sqlSymUnion) cte() *tree.CTE {
 func (u *sqlSymUnion) ctes() []*tree.CTE {
     return u.val.([]*tree.CTE)
 }
+func (u *sqlSymUnion) cycleClause() tree.CycleClause {
+    return u.val.(tree.CycleClause)
+}
 func (u *sqlSymUnion) with() *tree.With {
     if with, ok := u.val.(*tree.With); ok {
         return with
@@ -1355,6 +1358,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Expr> func_application func_expr_common_subexpr special_function
 %type <tree.Expr> func_expr func_expr_windowless
 %type <empty> opt_with
+%type <tree.CycleClause> opt_cycle
 %type <*tree.With> with_clause opt_with_clause
 %type <[]*tree.CTE> cte_list
 %type <*tree.CTE> common_table_expr
@@ -10930,7 +10934,7 @@ materialize_clause:
   }
 
 common_table_expr:
-  table_alias_name opt_column_list AS '(' preparable_stmt ')'
+  table_alias_name opt_column_list AS '(' preparable_stmt ')' opt_cycle
     {
       $$.val = &tree.CTE{
         Name: tree.AliasClause{Alias: tree.Name($1), Cols: $2.nameList() },
@@ -10938,9 +10942,10 @@ common_table_expr:
           Set: false,
         },
         Stmt: $5.stmt(),
+        Cycle: $7.cycleClause(),
       }
     }
-| table_alias_name opt_column_list AS materialize_clause '(' preparable_stmt ')'
+| table_alias_name opt_column_list AS materialize_clause '(' preparable_stmt ')' opt_cycle
     {
       $$.val = &tree.CTE{
         Name: tree.AliasClause{Alias: tree.Name($1), Cols: $2.nameList() },
@@ -10949,8 +10954,20 @@ common_table_expr:
           Set: true,
         },
         Stmt: $6.stmt(),
+        Cycle: $8.cycleClause(),
       }
     }
+
+opt_cycle:
+  CYCLE name_list SET name USING name
+  {
+    $$.val = tree.CycleClause{
+      Fields: $2.nameList(),
+      Set: tree.Name($4),
+      Using: tree.Name($6),
+    }
+  }
+| /* EMPTY */ { $$.val = tree.CycleClause{} }
 
 opt_with:
   WITH {}

@@ -163,6 +163,7 @@ func Init() {
 	initPgTablespaceLocation()
 	initPgTotalRelationSize()
 	initPgTypeIsVisible()
+	initPgTypeof()
 	initPi()
 	initPower()
 	initQuoteIdent()

@@ -664,6 +664,25 @@ func TestSmokeTests(t *testing.T) {
 			},
 		},
 		{
+			Name: "ANY ROW",
+			// TODO: https://github.com/dolthub/doltgresql/issues/2936
+			Skip: true,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT ROW(NULL::int4) = ROW(NULL::int4);",
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: "SELECT ROW(NULL::int4) = ANY(ARRAY[ROW(NULL::int4)]);",
+					Expected: []sql.Row{
+						{"t"},
+					},
+				},
+			},
+		},
+		{
 			Name: "Empty statement",
 			Assertions: []ScriptTestAssertion{
 				{
