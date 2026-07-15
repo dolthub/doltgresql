@@ -205,6 +205,52 @@ func TestWindowFunctions(t *testing.T) {
 			},
 		},
 		{
+			// A named window that only has PARTITION BY (no ORDER BY) gets a "default to
+			// full-partition frame" baked in when it's built on its own. If another window
+			// then inherits from it and adds an ORDER BY -- either via a second named window
+			// (w2 AS (w1 ORDER BY id)) or an inline override (OVER (w1 ORDER BY id)) -- that
+			// stale full-partition frame must not survive the merge; the running sum implied
+			// by the newly-added ORDER BY has to win.
+			Name: "named window inheritance chain honors ORDER BY added by the child",
+			SetUpScript: []string{
+				"CREATE TABLE t_inherit(id int, grp int, amt int);",
+				"INSERT INTO t_inherit VALUES (1,1,10),(2,1,20),(3,1,30),(4,2,5),(5,2,15);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT id, SUM(amt) OVER w2 AS s FROM t_inherit WINDOW w1 AS (PARTITION BY grp), w2 AS (w1 ORDER BY id) ORDER BY id;",
+					Expected: []sql.Row{
+						{1, int64(10)},
+						{2, int64(30)},
+						{3, int64(60)},
+						{4, int64(5)},
+						{5, int64(20)},
+					},
+				},
+				{
+					Query: "SELECT id, SUM(amt) OVER (w1 ORDER BY id) AS s FROM t_inherit WINDOW w1 AS (PARTITION BY grp) ORDER BY id;",
+					Expected: []sql.Row{
+						{1, int64(10)},
+						{2, int64(30)},
+						{3, int64(60)},
+						{4, int64(5)},
+						{5, int64(20)},
+					},
+				},
+				{
+					// Inline equivalent must match both forms above.
+					Query: "SELECT id, SUM(amt) OVER (PARTITION BY grp ORDER BY id) AS s FROM t_inherit ORDER BY id;",
+					Expected: []sql.Row{
+						{1, int64(10)},
+						{2, int64(30)},
+						{3, int64(60)},
+						{4, int64(5)},
+						{5, int64(20)},
+					},
+				},
+			},
+		},
+		{
 			Name: "window SUM/AVG wrapped in a subquery projection",
 			SetUpScript: []string{
 				"CREATE TABLE wrapper_probe (grp INT, val INT);",
