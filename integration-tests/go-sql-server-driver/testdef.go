@@ -468,7 +468,15 @@ func (test Test) Run(t *testing.T) {
 	}
 
 	for _, mr := range test.MultiRepos {
-		// Each MultiRepo gets its own data-dir.
+		// Each MultiRepo gets its own dolt config --global (DOLT_ROOT_PATH) and
+		// its own data-dir. Separate global configs matter for cluster
+		// replication tests: the cluster role and epoch are persisted to the
+		// global config, and each server in a cluster must persist its own.
+		u, err := driver.NewDoltUser()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			u.Cleanup()
+		})
 		rs, err := u.MakeRepoStore()
 		require.NoError(t, err)
 		for _, r := range mr.Repos {

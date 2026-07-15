@@ -17,11 +17,14 @@ package core
 import (
 	"maps"
 	"slices"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
+	"github.com/dolthub/dolt/go/store/types"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/casts"
@@ -116,6 +119,35 @@ func getRootFromContextForDatabase(ctx *sql.Context, database string) (*dsess.Do
 		return session, nil, nil
 	}
 	return session, root, nil
+}
+
+var (
+	syntheticRootOnce sync.Once
+	syntheticRoot     *RootValue
+	syntheticRootErr  error
+)
+
+// getRootForCollections returns the working root for the given database, for use in loading the Doltgres
+// collections (sequences, types, functions, etc.). Databases that aren't backed by a Doltgres *RootValue
+// (e.g. Dolt's synthetic dolt_cluster system database) can't store any of these objects, so they get a shared,
+// empty, in-memory root: collections loaded from it are empty, meaning only built-in objects resolve there.
+func getRootForCollections(ctx *sql.Context, database string) (*RootValue, error) {
+	_, root, err := getRootFromContextForDatabase(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if root != nil {
+		return root, nil
+	}
+	syntheticRootOnce.Do(func() {
+		rv, err := emptyRootValue(ctx, types.NewMemoryValueStore(), tree.NewTestNodeStore())
+		if err != nil {
+			syntheticRootErr = err
+			return
+		}
+		syntheticRoot = rv.(*RootValue)
+	})
+	return syntheticRoot, syntheticRootErr
 }
 
 // IsContextValid returns whether the context is valid for use with any of the functions in the package. If this is not
@@ -311,7 +343,7 @@ func GetExtensionsCollectionFromContext(ctx *sql.Context, database string) (*ext
 		database = ctx.GetCurrentDatabase()
 	}
 	if cv.exts[database] == nil {
-		_, root, err := getRootFromContextForDatabase(ctx, database)
+		root, err := getRootForCollections(ctx, database)
 		if err != nil {
 			return nil, err
 		}
@@ -337,7 +369,7 @@ func GetFunctionsCollectionFromContext(ctx *sql.Context, database string) (*func
 		database = ctx.GetCurrentDatabase()
 	}
 	if cv.funcs[database] == nil {
-		_, root, err := getRootFromContextForDatabase(ctx, database)
+		root, err := getRootForCollections(ctx, database)
 		if err != nil {
 			return nil, err
 		}
@@ -363,7 +395,7 @@ func GetProceduresCollectionFromContext(ctx *sql.Context, database string) (*pro
 		database = ctx.GetCurrentDatabase()
 	}
 	if cv.procs[database] == nil {
-		_, root, err := getRootFromContextForDatabase(ctx, database)
+		root, err := getRootForCollections(ctx, database)
 		if err != nil {
 			return nil, err
 		}
@@ -390,7 +422,7 @@ func GetSequencesCollectionFromContext(ctx *sql.Context, database string) (*sequ
 		database = ctx.GetCurrentDatabase()
 	}
 	if cv.seqs[database] == nil {
-		_, root, err := getRootFromContextForDatabase(ctx, database)
+		root, err := getRootForCollections(ctx, database)
 		if err != nil {
 			return nil, err
 		}
@@ -416,7 +448,7 @@ func GetTriggersCollectionFromContext(ctx *sql.Context, database string) (*trigg
 		database = ctx.GetCurrentDatabase()
 	}
 	if cv.trigs[database] == nil {
-		_, root, err := getRootFromContextForDatabase(ctx, database)
+		root, err := getRootForCollections(ctx, database)
 		if err != nil {
 			return nil, err
 		}
@@ -442,7 +474,7 @@ func GetTypesCollectionFromContext(ctx *sql.Context, database string) (*typecoll
 		database = ctx.GetCurrentDatabase()
 	}
 	if cv.types[database] == nil {
-		_, root, err := getRootFromContextForDatabase(ctx, database)
+		root, err := getRootForCollections(ctx, database)
 		if err != nil {
 			return nil, err
 		}
@@ -468,7 +500,7 @@ func GetCastsCollectionFromContext(ctx *sql.Context, database string) (*casts.Co
 		database = ctx.GetCurrentDatabase()
 	}
 	if cv.casts[database] == nil {
-		_, root, err := getRootFromContextForDatabase(ctx, database)
+		root, err := getRootForCollections(ctx, database)
 		if err != nil {
 			return nil, err
 		}
@@ -528,6 +560,20 @@ func updateSessionRootForDatabase(ctx *sql.Context, db string, cv *contextValues
 	session, root, err := getRootFromContextForDatabase(ctx, db)
 	if err != nil {
 		return err
+	}
+
+	// Databases that aren't backed by a Doltgres *RootValue (e.g. Dolt's synthetic dolt_cluster system database)
+	// can't persist root object collections. Any collections cached for them are empty, synthetic ones, so just
+	// evict them from the context values.
+	if root == nil {
+		delete(cv.seqs, db)
+		delete(cv.funcs, db)
+		delete(cv.procs, db)
+		delete(cv.trigs, db)
+		delete(cv.exts, db)
+		delete(cv.types, db)
+		delete(cv.casts, db)
+		return nil
 	}
 
 	newRoot := root

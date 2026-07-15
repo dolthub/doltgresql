@@ -23,7 +23,6 @@
 parallel: true
 tests:
 - name: persisted role and epoch take precedence over bootstrap values
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -86,7 +85,6 @@ tests:
         columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
         rows: [["standby","10"]]
 - name: dolt_assume_cluster_role
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -197,7 +195,6 @@ tests:
         columns: ["name","url"]
         rows: [["standby","http://localhost:{{get_port \"server2_cluster\"}}/a_new_database"]]
 - name: primary comes up and replicates to standby
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -266,6 +263,7 @@ tests:
       result:
         columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
         rows:
+        - ["postgres","standby","primary","10","0","NULL"]
         - ["repo1","standby","primary","10","0","NULL"]
         - ["repo2","standby","primary","10","0","NULL"]
       retry_attempts: 100
@@ -342,7 +340,6 @@ tests:
     - exec: "use repo1"
     - exec: "create table vals (i int primary key)"
 - name: standby server takes primary epoch
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -409,6 +406,7 @@ tests:
       result:
         columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
         rows:
+        - ["postgres","standby","primary","10","0","NULL"]
         - ["repo1","standby","primary","10","0","NULL"]
         - ["repo2","standby","primary","10","0","NULL"]
       retry_attempts: 100
@@ -426,7 +424,7 @@ tests:
   - on: server1
     queries:
     - exec: "use repo1"
-    - exec: "select dolt_assume_cluster_role('primary', 11)"
+    - exec: "select dolt_assume_cluster_role('primary', '11')"
     - exec: "insert into vals values (6),(7),(8),(9),(10)"
     - exec: "use dolt_cluster"
     - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
@@ -448,7 +446,6 @@ tests:
         columns: ["dolt_cluster_role_epoch"]
         rows: [["11"]]
 - name: standby transitioned to primary becomes read write
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -481,7 +478,7 @@ tests:
     - exec: "use repo1"
     - exec: "create table vals (i int primary key)"
       error_match: "repo1 is read-only"
-    - query: "select dolt_assume_cluster_role('primary', 11)"
+    - query: "select dolt_assume_cluster_role('primary', '11')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
@@ -494,7 +491,6 @@ tests:
         columns: ["count"]
         rows: [["0"]]
 - name: primary transitioned to standby becomes read only
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -552,7 +548,7 @@ tests:
     - exec: "use repo1"
     - exec: "create table vals (i int primary key)"
     - exec: "insert into vals values (1),(2),(3),(4),(5)"
-    - query: "select dolt_assume_cluster_role('standby', 11)"
+    - query: "select dolt_assume_cluster_role('standby', '11')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
@@ -639,7 +635,6 @@ tests:
     - exec: "create table more_vals (i int primary key)"
       error_match: "repo1 is read-only"
 - name: an older primary comes up, becomes a standby and does not overwrite newer primary
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -739,7 +734,6 @@ tests:
         columns: ["count"]
         rows: [["10"]]
 - name: a newer primary comes up, old primary becomes a standby has its state overwritten
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -844,7 +838,6 @@ tests:
         columns: ["count"]
         rows: [["5"]]
 - name: graceful primary to standby transition without the standby up fails
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     repos:
@@ -880,7 +873,6 @@ tests:
     - exec: "create table vals (i int primary key)"
     - exec: "insert into vals values (0)"
 - name: dolt_cluster_transition_to_standby
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -929,7 +921,6 @@ tests:
         - ["1", "mysql", "standby", "http://localhost:{{get_port \"server2_cluster\"}}"]
         - ["1", "dolt_branch_control", "standby", "http://localhost:{{get_port \"server2_cluster\"}}"]
 - name: dolt_cluster_transition_to_standby too many standbys provided
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -973,7 +964,6 @@ tests:
     - query: "select dolt_cluster_transition_to_standby('2', '2')"
       error_match: failed to transition from primary to standby gracefully; could not ensure 2 replicas were caught up on all 3 databases. Only caught up 1 standbys fully.
 - name: create new database, primary replicates to standby, fails over, new primary replicates to standby, fails over, new primary has all writes
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1014,7 +1004,7 @@ tests:
     - exec: 'use repo1'
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
-    - query: "select dolt_assume_cluster_role('standby', 2)"
+    - query: "select dolt_assume_cluster_role('standby', '2')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
@@ -1025,7 +1015,7 @@ tests:
       result:
         columns: ["count"]
         rows: [["5"]]
-    - query: "select dolt_assume_cluster_role('primary', 2)"
+    - query: "select dolt_assume_cluster_role('primary', '2')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
@@ -1033,7 +1023,7 @@ tests:
     queries:
     - exec: 'use repo1'
     - exec: 'insert into vals values (5),(6),(7),(8),(9)'
-    - query: "select dolt_assume_cluster_role('standby', 3)"
+    - query: "select dolt_assume_cluster_role('standby', '3')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
@@ -1044,7 +1034,7 @@ tests:
       result:
         columns: ["count"]
         rows: [["10"]]
-    - query: "select dolt_assume_cluster_role('primary', 3)"
+    - query: "select dolt_assume_cluster_role('primary', '3')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
@@ -1057,7 +1047,6 @@ tests:
         columns: ["count"]
         rows: [["15"]]
 - name: last_updated heartbeats
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1095,13 +1084,13 @@ tests:
   - on: server1
     queries:
     - exec: 'create database repo1'
-    - query: "select dolt_assume_cluster_role('standby', 2)"
+    - query: "select dolt_assume_cluster_role('standby', '2')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
   - on: server1
     queries:
-    - query: "select dolt_assume_cluster_role('primary', 3)"
+    - query: "select dolt_assume_cluster_role('primary', '3')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
@@ -1120,7 +1109,6 @@ tests:
         columns: ["within_threshold"]
         rows: [["t"]]
 - name: create new database, clone a database, primary replicates to standby, standby has both databases
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1165,7 +1153,7 @@ tests:
     - exec: 'select dolt_remote(''add'', ''origin'', ''file://my_remote/'')'
     - exec: 'select dolt_push(''origin'', ''main:main'')'
     - exec: 'select dolt_clone(''file://repo1/my_remote'', ''repo_cloned'')'
-    - query: "select dolt_assume_cluster_role('standby', 2)"
+    - query: "select dolt_assume_cluster_role('standby', '2')"
       result:
         columns: ["dolt_assume_cluster_role"]
         rows: [["{0}"]]
@@ -1182,7 +1170,6 @@ tests:
         columns: ["count"]
         rows: [["5"]]
 - name: dolt_cluster_ack_writes_timeout_secs behavior
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1357,7 +1344,6 @@ tests:
     - exec: 'select dolt_checkout(''new_branch_name'')'
 # At one point the dolt_cluster database interacted poorly with creating savepoints.
 - name: savepoints work on cluster replicated databases
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1421,7 +1407,6 @@ tests:
         columns: ["id","val"]
         rows: []
 - name: call dolt gc
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1497,7 +1482,6 @@ tests:
       error_match: "must be the primary"
     - exec: 'select dolt_gc(''--shallow'')'
 - name: dropped database is no longer present on replica
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1580,7 +1564,6 @@ tests:
         rows:
         - ["repo1", "standby", "standby", "1"]
 - name: undropped database on primary is replicated to standby
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1644,7 +1627,6 @@ tests:
         columns: ["cnt"]
         rows: [["3"]]
 - name: dropped database recreated quiesces to expected state
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1738,7 +1720,6 @@ tests:
 # Assert that we can gracefully transition to standby even when there are no
 # dolt databases which we are replicating.
 - name: dolt_cluster_transition_to_standby no dolt databases exist
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1794,7 +1775,6 @@ tests:
     - exec: "select dolt_assume_cluster_role('primary', '3')"
 # Assert that we can add a new standby to an existing server and bring the server up.
 - name: adding new remotes to the config creates those remotes on startup
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1885,7 +1865,6 @@ tests:
         rows:
         - ["3"]
 - name: clusterdb doesn't panic for nil write session
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
     - name: server1
       repos:
@@ -1917,7 +1896,6 @@ tests:
         - exec: "set foreign_key_checks=0"
 
 - name: auto_increment maintained across failover
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -1969,10 +1947,10 @@ tests:
       retry_attempts: 100
   - on: server1
     queries:
-    - exec: "select dolt_assume_cluster_role('standby', 2)"
+    - exec: "select dolt_assume_cluster_role('standby', '2')"
   - on: server2
     queries:
-    - exec: "select dolt_assume_cluster_role('primary', 2)"
+    - exec: "select dolt_assume_cluster_role('primary', '2')"
   - on: server2
     queries:
     - exec: 'USE repo1'
@@ -1983,7 +1961,6 @@ tests:
         rows: [['1','0'], ['2','0'], ['3','0'], ['4','0'], ['5','0'], ['6','1']]
 # https://github.com/dolthub/dolt/issues/10015
 - name: read_only system variable reflects cluster role
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -2044,7 +2021,7 @@ tests:
   - on: server1
     queries:
     - exec: 'USE repo1'
-    - exec: "select dolt_assume_cluster_role('standby', 2)"
+    - exec: "select dolt_assume_cluster_role('standby', '2')"
   - on: server1
     queries:
     - exec: 'USE repo1'
@@ -2058,7 +2035,7 @@ tests:
         rows: [['1']]
   - on: server2
     queries:
-    - exec: "select dolt_assume_cluster_role('primary', 2)"
+    - exec: "select dolt_assume_cluster_role('primary', '2')"
   - on: server2
     queries:
     - exec: 'USE repo1'
@@ -2073,10 +2050,10 @@ tests:
   - on: server2
     queries:
     - exec: 'USE repo1'
-    - exec: "select dolt_assume_cluster_role('standby', 3)"
+    - exec: "select dolt_assume_cluster_role('standby', '3')"
   - on: server1
     queries:
-    - exec: "select dolt_assume_cluster_role('primary', 3)"
+    - exec: "select dolt_assume_cluster_role('primary', '3')"
   - on: server1
     queries:
     - exec: 'USE repo1'
@@ -2090,7 +2067,6 @@ tests:
         rows: [['0']]
 # https://github.com/dolthub/dolt/issues/10015
 - name: read_only system variable with behavior config respects cluster role
-  skip: "cluster replication not yet implemented in Doltgres"
   multi_repos:
   - name: server1
     with_files:
@@ -2151,7 +2127,7 @@ tests:
         rows: [['1']]
   - on: server1
     queries:
-    - exec: "select dolt_assume_cluster_role('standby', 2)"
+    - exec: "select dolt_assume_cluster_role('standby', '2')"
   - on: server1
     queries:
     - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"
@@ -2164,7 +2140,7 @@ tests:
         rows: [['1']]
   - on: server2
     queries:
-    - exec: "select dolt_assume_cluster_role('primary', 2)"
+    - exec: "select dolt_assume_cluster_role('primary', '2')"
   - on: server2
     queries:
     - query: "SELECT current_setting('dolt_cluster_role') AS dolt_cluster_role"

@@ -224,6 +224,12 @@ func (defaultDatabaseInitializer) InitializeEngine(ctx context.Context, se *engi
 
 	_, iter, _, err := se.Query(sqlCtx, fmt.Sprintf("CREATE DATABASE %s;", dbName))
 	if err != nil {
+		// A server that boots read-only (e.g. as a cluster replication standby)
+		// cannot create the default database. Skip creating it: on a standby it
+		// will be created by replication from the primary instead.
+		if sql.ErrReadOnly.Is(err) {
+			return nil
+		}
 		return err
 	}
 	_, err = sql.RowIterToRows(sqlCtx, iter)
