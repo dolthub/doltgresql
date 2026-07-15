@@ -56,6 +56,21 @@ type AggregateFunctionInterface interface {
 	FunctionInterface
 	// TODO: this maybe needs to take the place of the Callable function
 	NewBuffer([]sql.Expression) (sql.AggregationBuffer, error)
+	// NewWindowFunc returns the constructor used to build this aggregate's runtime sql.WindowFunction for use
+	// within an OVER(...) clause, or nil if this aggregate does not yet support window use.
+	NewWindowFunc() NewWindowFunctionFn
+}
+
+// NewWindowFunctionFn creates a sql.WindowFunction for the given arguments, for use within an OVER(...) clause
+// bound to the given window definition.
+type NewWindowFunctionFn func(exprs []sql.Expression, window *sql.WindowDefinition) (sql.WindowFunction, error)
+
+// WindowFunctionInterface is an interface for PostgreSQL functions that may only be used as window functions
+// (i.e. within an OVER(...) clause) and have no GROUP BY equivalent, such as row_number() or rank().
+type WindowFunctionInterface interface {
+	FunctionInterface
+	// NewWindowFunc returns the constructor used to build this function's runtime sql.WindowFunction.
+	NewWindowFunc() NewWindowFunctionFn
 }
 
 // Function0 is a function that does not take any parameters.
@@ -605,10 +620,32 @@ func (f Function7) enforceInterfaceInheritance(error) {}
 type Func1Aggregate struct {
 	Function1
 	NewAggBuffer func([]sql.Expression) (sql.AggregationBuffer, error)
+	// NewAggWindowFunc optionally builds this aggregate's runtime sql.WindowFunction for use within an
+	// OVER(...) clause. Leave nil if this aggregate does not yet support window use.
+	NewAggWindowFunc NewWindowFunctionFn
 }
+
+var _ AggregateFunctionInterface = Func1Aggregate{}
 
 func (f Func1Aggregate) NewBuffer(exprs []sql.Expression) (sql.AggregationBuffer, error) {
 	return f.NewAggBuffer(exprs)
 }
 
-var _ AggregateFunctionInterface = Func1Aggregate{}
+func (f Func1Aggregate) NewWindowFunc() NewWindowFunctionFn {
+	return f.NewAggWindowFunc
+}
+
+// Func0Window is a PostgreSQL function that takes no parameters and may only be used as a window function
+// (within an OVER(...) clause), such as row_number().
+type Func0Window struct {
+	Function0
+	NewWinFunc func(window *sql.WindowDefinition) (sql.WindowFunction, error)
+}
+
+var _ WindowFunctionInterface = Func0Window{}
+
+func (f Func0Window) NewWindowFunc() NewWindowFunctionFn {
+	return func(_ []sql.Expression, window *sql.WindowDefinition) (sql.WindowFunction, error) {
+		return f.NewWinFunc(window)
+	}
+}
