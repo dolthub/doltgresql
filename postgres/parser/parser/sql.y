@@ -13630,7 +13630,7 @@ over_clause:
   }
 | OVER window_name
   {
-    $$.val = &tree.WindowDef{Name: tree.Name($2)}
+    $$.val = &tree.WindowDef{RefName: tree.Name($2)}
   }
 | /* EMPTY */
   {

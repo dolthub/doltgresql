@@ -34,6 +34,9 @@ var Catalog = map[string][]FunctionInterface{}
 // AggregateCatalog contains all of the PostgreSQL aggregate functions.
 var AggregateCatalog = map[string][]AggregateFunctionInterface{}
 
+// WindowCatalog contains all of the PostgreSQL functions that may only be used as window functions.
+var WindowCatalog = map[string][]WindowFunctionInterface{}
+
 // initializedFunctions simply states whether Initialize has been called yet.
 var initializedFunctions = false
 
@@ -97,6 +100,21 @@ func RegisterAggregateFunction(f AggregateFunctionInterface) {
 	}
 }
 
+// RegisterWindowFunction registers the given window-only function, so that it will be usable from a running
+// server. This should be called from within an init().
+func RegisterWindowFunction(f WindowFunctionInterface) {
+	if initializedFunctions {
+		panic("attempted to register a function after the init() phase")
+	}
+	switch f := f.(type) {
+	case Func0Window:
+		name := strings.ToLower(f.Name)
+		WindowCatalog[name] = append(WindowCatalog[name], f)
+	default:
+		panic(fmt.Sprintf("unhandled function type %T", f))
+	}
+}
+
 // Initialize handles the initialization of the catalog by overwriting the built-in GMS functions, since they do not
 // apply to PostgreSQL (and functions of the same name often have different behavior).
 func Initialize(astConvert func(parser.Statement) (sqlparser.Statement, error)) {
@@ -114,12 +132,19 @@ func Initialize(astConvert func(parser.Statement) (sqlparser.Statement, error)) 
 	validateFunctions()
 	compileFunctions()
 	compileAggs()
+	compileWindowFuncs()
 }
 
 // replaceGmsBuiltIns replaces all GMS built-ins that have conflicting names with PostgreSQL functions.
 func replaceGmsBuiltIns() {
 	functionNames := make(map[string]struct{})
 	for name := range Catalog {
+		functionNames[strings.ToLower(name)] = struct{}{}
+	}
+	for name := range AggregateCatalog {
+		functionNames[strings.ToLower(name)] = struct{}{}
+	}
+	for name := range WindowCatalog {
 		functionNames[strings.ToLower(name)] = struct{}{}
 	}
 	var newBuiltIns []sql.Function
@@ -191,12 +216,10 @@ func compileNonOperatorFunction(funcName string, overloads []FunctionInterface) 
 	compiledCatalog[funcName] = createFunc
 }
 
-// compileNonOperatorFunction creates a CompiledFunction for each overload of the given function.
+// compileAggFunction creates a CompiledAggregateFunction for each overload of the given aggregate function.
 func compileAggFunction(funcName string, overloads []AggregateFunctionInterface) {
-	var newBuffer NewBufferFn
 	overloadTree := NewOverloads()
 	for _, functionOverload := range overloads {
-		newBuffer = functionOverload.NewBuffer
 		if err := overloadTree.Add(functionOverload); err != nil {
 			panic(err)
 		}
@@ -205,7 +228,27 @@ func compileAggFunction(funcName string, overloads []AggregateFunctionInterface)
 	// Store the compiled function into the engine's built-in functions
 	// TODO: don't do this, use an actual contract for communicating these functions to the engine catalog
 	createFunc := func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
-		return NewCompiledAggregateFunction(ctx, funcName, params, overloadTree, newBuffer), nil
+		return NewCompiledAggregateFunction(ctx, funcName, params, overloadTree), nil
+	}
+	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
+		Name: funcName,
+		Fn:   createFunc,
+	})
+	compiledCatalog[funcName] = createFunc
+}
+
+// compileWindowFunction creates a CompiledWindowFunction for each overload of the given window-only function.
+func compileWindowFunction(funcName string, overloads []WindowFunctionInterface) {
+	overloadTree := NewOverloads()
+	for _, functionOverload := range overloads {
+		if err := overloadTree.Add(functionOverload); err != nil {
+			panic(err)
+		}
+	}
+
+	// Store the compiled function into the engine's built-in functions
+	createFunc := func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
+		return NewCompiledWindowFunction(ctx, funcName, params, overloadTree), nil
 	}
 	function.BuiltIns = append(function.BuiltIns, sql.FunctionN{
 		Name: funcName,
@@ -258,5 +301,11 @@ func compileFunctions() {
 func compileAggs() {
 	for funcName, overloads := range AggregateCatalog {
 		compileAggFunction(funcName, overloads)
+	}
+}
+
+func compileWindowFuncs() {
+	for funcName, overloads := range WindowCatalog {
+		compileWindowFunction(funcName, overloads)
 	}
 }
