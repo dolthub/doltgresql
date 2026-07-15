@@ -183,6 +183,13 @@ func (rs RepoStore) DoltDebug(debuggerPort int, args ...string) *exec.Cmd {
 // already exist, runs the optional |fn| against a connection to that database,
 // and then shuts the server down. This is the doltgres equivalent of
 // `dolt init` plus any pre-server setup such as adding remotes.
+//
+// The server always connects through the "postgres" bootstrap database to
+// issue CREATE DATABASE, rather than connecting directly to |name|: doltgres
+// only auto-creates a DOLTGRES_DB-named database when the data-dir is
+// completely empty, so a direct connection to |name| fails with "database
+// does not exist" for every database after the first one in a shared store
+// (e.g. the second-plus repo in a multi_repos test).
 func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 	port, err := freePort()
 	if err != nil {
@@ -200,7 +207,6 @@ func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 	defer os.Remove(cfgPath)
 
 	cmd := rs.DoltCmd("--data-dir=.", "--config="+cfgPath)
-	cmd.Env = append(cmd.Env, "DOLTGRES_DB="+name)
 	output := new(bytes.Buffer)
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -241,7 +247,12 @@ func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 
 	// Complete any requested setup
 	if fn != nil {
-		if err := fn(db); err != nil {
+		dbForName, err := ConnectDB("postgres", "password", name, "127.0.0.1", port, nil)
+		if err != nil {
+			return fmt.Errorf("could not connect to %s after creating it: %w", name, err)
+		}
+		defer dbForName.Close()
+		if err := fn(dbForName); err != nil {
 			return err
 		}
 	}

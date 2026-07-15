@@ -34,6 +34,7 @@ import (
 	"github.com/dolthub/doltgresql/server/functions/binary"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/functions/unary"
+	"github.com/dolthub/doltgresql/server/functions/window"
 	"github.com/dolthub/doltgresql/server/tables"
 	"github.com/dolthub/doltgresql/server/tables/dtables"
 	"github.com/dolthub/doltgresql/server/tables/information_schema"
@@ -58,6 +59,7 @@ func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 		unary.Init()
 		functions.Init()
 		aggregate.Init()
+		window.Init()
 		builtInCasts := casts.Init(core.GetRunnerFromContext, func(f sql.Expression) bool {
 			if cf, ok := f.(*framework.CompiledFunction); ok {
 				return cf.IsStrict()

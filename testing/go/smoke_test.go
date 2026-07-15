@@ -648,7 +648,7 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT SUM(v1) FROM test WHERE v1 BETWEEN 3 AND 5;",
 					Expected: []sql.Row{
-						{12.0},
+						{int64(12)},
 					},
 				},
 				{
@@ -658,7 +658,7 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT SUM(v1) FROM test WHERE v1 BETWEEN 3 AND 5;",
 					Expected: []sql.Row{
-						{12.0},
+						{int64(12)},
 					},
 				},
 			},
