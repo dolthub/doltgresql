@@ -47,11 +47,14 @@ func Init() {
 		}
 		return castsColl.GetAssignmentCast(ctx, sourceType, targetType)
 	}
-	pgtypes.GetImplicitCast = func(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (pgtypes.Cast, error) {
+	pgtypes.GetImplicitCastFunc = func(ctx *sql.Context) (func(*pgtypes.DoltgresType, *pgtypes.DoltgresType) (pgtypes.Cast, bool, error), error) {
 		castsColl, err := GetCastsCollectionFromContext(ctx, "")
-		if err != nil {
-			return nil, err
-		}
-		return castsColl.GetImplicitCast(ctx, sourceType, targetType)
+		return func(sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (pgtypes.Cast, bool, error) {
+			c, nErr := castsColl.GetImplicitCast(ctx, sourceType, targetType)
+			if nErr != nil {
+				return nil, false, nErr
+			}
+			return c, c.ID.IsValid(), nil
+		}, err
 	}
 }

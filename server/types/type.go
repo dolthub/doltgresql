@@ -514,9 +514,9 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 // import cycles
 var GetAssignmentCast func(ctx *sql.Context, fromType *DoltgresType, toType *DoltgresType) (Cast, error)
 
-// GetImplicitCast is a reference to the implicit cast logic in the core package, which we can't use here due to
+// GetImplicitCastFunc is a reference to the implicit cast function logic in the core package, which we can't use here due to
 // import cycles
-var GetImplicitCast func(ctx *sql.Context, fromType *DoltgresType, toType *DoltgresType) (Cast, error)
+var GetImplicitCastFunc func(ctx *sql.Context) (func(*DoltgresType, *DoltgresType) (Cast, bool, error), error)
 
 // CastToType implements the types.ExtendedType interface.
 func (t *DoltgresType) CastToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
@@ -531,8 +531,12 @@ func (t *DoltgresType) CastToType(ctx *sql.Context, typ sql.ExtendedType, val an
 	}
 	var cast Cast
 	if cast, ok = t.castCache[dt]; !ok {
-		var err error
-		cast, err = GetImplicitCast(ctx, t, dt)
+		getImplicitCast, err := GetImplicitCastFunc(ctx)
+		if err != nil {
+			t.mutex.Unlock()
+			return nil, sql.InRange, err
+		}
+		cast, _, err = getImplicitCast(t, dt)
 		if err != nil {
 			t.mutex.Unlock()
 			return nil, sql.InRange, err
@@ -557,18 +561,30 @@ func (t *DoltgresType) CommonType(ctx *sql.Context, typ sql.ExtendedType) sql.Ex
 	if t.Equals(typ) {
 		return t
 	}
-
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
 		return t
 	}
-	if _, err := GetImplicitCast(ctx, t, dt); err == nil {
-		return dt
-	} else if _, err = GetImplicitCast(ctx, dt, t); err == nil {
-		return t
-	} // TODO else if there is preferred type for both?
 
-	return t
+	if t.ID == dt.ID {
+		return t
+	}
+	if t.IsPreferred {
+		return t
+	} else if dt.IsPreferred {
+		return dt
+	}
+	getImplicitCast, err := GetImplicitCastFunc(ctx)
+	if err != nil {
+		return Text
+	}
+	if _, isValid, err := getImplicitCast(t, dt); err == nil && isValid {
+		return dt
+	}
+	if _, isValid, err := getImplicitCast(dt, t); err == nil && isValid {
+		return t
+	}
+	return Text
 }
 
 // ConvertToType implements the types.ExtendedType interface.
