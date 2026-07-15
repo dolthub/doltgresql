@@ -65,40 +65,33 @@ func initDoltProcedures() {
 	initDynamicDoltProcedures()
 }
 
-// dynamicDoltProcedureNames are Dolt stored procedures that are registered with the database provider dynamically
+// dynamicDoltProcedures are Dolt stored procedures that are registered with the database provider dynamically
 // during engine construction (e.g. by the cluster replication controller), rather than appearing in the static
-// dprocedures.DoltProcedures list. They are registered here as late-bound functions: the procedure is resolved from
-// the session provider's external stored procedure registry at call time, since it does not exist yet (and may
-// never exist, if the corresponding feature isn't configured) when this registration runs.
-var dynamicDoltProcedureNames = []string{
-	"dolt_assume_cluster_role",
-	"dolt_cluster_transition_to_standby",
+// dprocedures.DoltProcedures list. They are registered here as late-bound functions: the procedure is resolved
+// from the session provider's external stored procedure registry at call time, since it does not exist yet (and
+// may never exist, if the corresponding feature isn't configured) when this registration runs. Unlike the static
+// Dolt procedures, which are uniformly variadic over text, these have fixed, typed signatures, declared here so
+// that numeric arguments resolve without quoting (e.g. `dolt_assume_cluster_role('standby', 2)`).
+var dynamicDoltProcedures = []struct {
+	name   string
+	params [2]*pgtypes.DoltgresType
+}{
+	{"dolt_assume_cluster_role", [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64}},
+	{"dolt_cluster_transition_to_standby", [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64}},
 }
 
 func initDynamicDoltProcedures() {
-	for _, name := range dynamicDoltProcedureNames {
-		framework.RegisterFunction(framework.Function1{
-			Name:       name,
+	for _, def := range dynamicDoltProcedures {
+		framework.RegisterFunction(framework.Function2{
+			Name:       def.name,
 			Return:     pgtypes.TextArray,
-			Parameters: [1]*pgtypes.DoltgresType{pgtypes.TextArray},
-			Variadic:   true,
-			Callable: func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-				p, funcVal, err := resolveDynamicDoltProcedure(ctx, name)
+			Parameters: def.params,
+			Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+				p, funcVal, err := resolveDynamicDoltProcedure(ctx, def.name)
 				if err != nil {
 					return nil, err
 				}
-				return varArgCallableForDoltProcedure(p, funcVal)(ctx, paramsAndReturn, val1)
-			},
-		})
-		framework.RegisterFunction(framework.Function0{
-			Name:   name,
-			Return: pgtypes.TextArray,
-			Callable: func(ctx *sql.Context) (any, error) {
-				p, funcVal, err := resolveDynamicDoltProcedure(ctx, name)
-				if err != nil {
-					return nil, err
-				}
-				return noArgCallableForDoltProcedure(p, funcVal)(ctx)
+				return varArgCallableForDoltProcedure(p, funcVal)(ctx, [2]*pgtypes.DoltgresType{}, []any{val1, val2})
 			},
 		})
 	}
@@ -217,8 +210,30 @@ func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Va
 }
 
 // checkDoltProcedureAccess ensures the current user is authorized as a SUPERUSER if the given |procedure| requires
-// admin.
+// admin, and that the server is not read-only if the procedure writes.
 func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedure) error {
+	// Procedures that write cannot run on a read-only server (e.g. a cluster replication standby, which
+	// manages the read_only system variable). Dolt enforces this on its CALL path via the engine's
+	// read-only flag; invoking the procedure as a Doltgres function bypasses that, so enforce it here.
+	if !procedure.ReadOnly {
+		if _, readOnly, ok := sql.SystemVariables.GetGlobal("read_only"); ok {
+			switch v := readOnly.(type) {
+			case bool:
+				if v {
+					return sql.ErrReadOnly.New()
+				}
+			case int8:
+				if v == 1 {
+					return sql.ErrReadOnly.New()
+				}
+			case int64:
+				if v == 1 {
+					return sql.ErrReadOnly.New()
+				}
+			}
+		}
+	}
+
 	if !procedure.AdminOnly {
 		return nil
 	}

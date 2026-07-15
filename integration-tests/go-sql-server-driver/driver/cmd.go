@@ -539,7 +539,11 @@ func (s *SqlServer) Connector(c Connection) (driver.Connector, error) {
 	if user == "" {
 		user = "postgres"
 	}
-	dsn := GetDSN(user, pass, s.DBName, "127.0.0.1", s.Port, c.DriverParams)
+	dbName := s.DBName
+	if c.Database != "" {
+		dbName = c.Database
+	}
+	dsn := GetDSN(user, pass, dbName, "127.0.0.1", s.Port, c.DriverParams)
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
