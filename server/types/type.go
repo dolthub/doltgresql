@@ -510,85 +510,12 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	return nil, sql.InRange, ErrUnhandledType.New(t.String(), v)
 }
 
-// GetAssignmentCast is a reference to the assignment cast logic in the core package, which we can't use here due to
-// import cycles
-var GetAssignmentCast func(ctx *sql.Context, fromType *DoltgresType, toType *DoltgresType) (Cast, error)
-
-// GetImplicitCastFunc is a reference to the implicit cast function logic in the core package, which we can't use here due to
-// import cycles
-var GetImplicitCastFunc func(ctx *sql.Context) (func(*DoltgresType, *DoltgresType) (Cast, bool, error), error)
-
-// CastToType implements the types.ExtendedType interface.
-func (t *DoltgresType) CastToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
-	dt, ok := typ.(*DoltgresType)
-	if !ok {
-		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
-	}
-
-	t.mutex.Lock()
-	if t.castCache == nil {
-		t.castCache = make(map[*DoltgresType]Cast)
-	}
-	var cast Cast
-	if cast, ok = t.castCache[dt]; !ok {
-		getImplicitCast, err := GetImplicitCastFunc(ctx)
-		if err != nil {
-			t.mutex.Unlock()
-			return nil, sql.InRange, err
-		}
-		cast, _, err = getImplicitCast(t, dt)
-		if err != nil {
-			t.mutex.Unlock()
-			return nil, sql.InRange, err
-		}
-		t.castCache[dt] = cast
-	}
-	t.mutex.Unlock()
-
-	castResult, err := cast.Eval(ctx, val, dt, t)
-	if err != nil && errors.Is(err, ErrCastOutOfRange) {
-		// TODO: this could be either an overflow or an underflow, we should distinguish
-		return castResult, sql.Overflow, nil
-	} else if err != nil {
-		return nil, sql.InRange, err
-	}
-
-	return castResult, sql.InRange, nil
-}
-
-// CommonType implements the types.ExtendedType interface.
-func (t *DoltgresType) CommonType(ctx *sql.Context, typ sql.ExtendedType) sql.ExtendedType {
-	if t.Equals(typ) {
-		return t
-	}
-	dt, ok := typ.(*DoltgresType)
-	if !ok {
-		return t
-	}
-
-	if t.ID == dt.ID {
-		return t
-	}
-	if t.IsPreferred {
-		return t
-	} else if dt.IsPreferred {
-		return dt
-	}
-	getImplicitCast, err := GetImplicitCastFunc(ctx)
-	if err != nil {
-		return Text
-	}
-	if _, isValid, err := getImplicitCast(t, dt); err == nil && isValid {
-		return dt
-	}
-	if _, isValid, err := getImplicitCast(dt, t); err == nil && isValid {
-		return t
-	}
-	return Text
-}
+// GetCastFunc is a reference to the assignment or the implicit cast function logic in the core package, which we can't use here due to
+// import cycles.
+var GetCastFunc func(ctx *sql.Context, convTyp byte) (func(*DoltgresType, *DoltgresType) (Cast, bool, error), error)
 
 // ConvertToType implements the types.ExtendedType interface.
-func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
+func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any, convTyp byte) (any, sql.ConvertInRange, error) {
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
 		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
@@ -601,7 +528,12 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 	var cast Cast
 	if cast, ok = t.castCache[dt]; !ok {
 		var err error
-		cast, err = GetAssignmentCast(ctx, dt, t)
+		getCastFunc, err := GetCastFunc(ctx, convTyp)
+		if err != nil {
+			t.mutex.Unlock()
+			return nil, sql.InRange, err
+		}
+		cast, _, err = getCastFunc(dt, t)
 		if err != nil {
 			t.mutex.Unlock()
 			return nil, sql.InRange, err
@@ -1308,7 +1240,7 @@ func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTyp
 	}
 
 	sqlCtx, _ := ctx.(*sql.Context)
-	toValue, _, err := t.ConvertToType(sqlCtx, ot, value)
+	toValue, _, err := t.ConvertToType(sqlCtx, ot, value, 'a')
 	if err != nil {
 		return nil, err
 	}

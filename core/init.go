@@ -15,10 +15,13 @@
 package core
 
 import (
+	"fmt"
+
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/types"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/typecollection"
@@ -40,21 +43,60 @@ func Init() {
 	pgtypes.GetTypesCollectionFromContext = func(ctx *sql.Context, database string) (pgtypes.TypeCollection, error) {
 		return GetTypesCollectionFromContext(ctx, database)
 	}
-	pgtypes.GetAssignmentCast = func(ctx *sql.Context, sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (pgtypes.Cast, error) {
-		castsColl, err := GetCastsCollectionFromContext(ctx, "")
-		if err != nil {
-			return nil, err
-		}
-		return castsColl.GetAssignmentCast(ctx, sourceType, targetType)
-	}
-	pgtypes.GetImplicitCastFunc = func(ctx *sql.Context) (func(*pgtypes.DoltgresType, *pgtypes.DoltgresType) (pgtypes.Cast, bool, error), error) {
+	pgtypes.GetCastFunc = func(ctx *sql.Context, convTyp byte) (func(*pgtypes.DoltgresType, *pgtypes.DoltgresType) (pgtypes.Cast, bool, error), error) {
 		castsColl, err := GetCastsCollectionFromContext(ctx, "")
 		return func(sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (pgtypes.Cast, bool, error) {
-			c, nErr := castsColl.GetImplicitCast(ctx, sourceType, targetType)
-			if nErr != nil {
-				return nil, false, nErr
+			var cast casts.Cast
+			var cErr error
+			switch convTyp {
+			case 'e':
+				cast, cErr = castsColl.GetExplicitCast(ctx, sourceType, targetType)
+			case 'a':
+				cast, cErr = castsColl.GetAssignmentCast(ctx, sourceType, targetType)
+			case 'i':
+				cast, cErr = castsColl.GetImplicitCast(ctx, sourceType, targetType)
+			default:
+				return nil, false, fmt.Errorf("unknown conversion type: %v", convTyp)
 			}
-			return c, c.ID.IsValid(), nil
+			if cErr != nil {
+				return nil, false, cErr
+			}
+			return cast, cast.ID.IsValid(), nil
 		}, err
+	}
+	sql.GetCommonExtendedType = func(ctx *sql.Context, sourceType, targetType sql.ExtendedType) sql.ExtendedType {
+		if sourceType.Equals(targetType) {
+			return sourceType
+		}
+		source, ok := sourceType.(*pgtypes.DoltgresType)
+		if !ok {
+			return source
+		}
+		target, ok := targetType.(*pgtypes.DoltgresType)
+		if !ok {
+			return source
+		}
+
+		if source.ID == target.ID {
+			return source
+		}
+		if source.IsPreferred {
+			return source
+		} else if target.IsPreferred {
+			return target
+		}
+		castsColl, err := GetCastsCollectionFromContext(ctx, "")
+		if err != nil {
+			return source
+		}
+		cast, err := castsColl.GetImplicitCast(ctx, source, target)
+		if err == nil && cast.ID.IsValid() {
+			return target
+		}
+		cast, err = castsColl.GetImplicitCast(ctx, target, source)
+		if err == nil && cast.ID.IsValid() {
+			return source
+		}
+		return pgtypes.Text
 	}
 }
