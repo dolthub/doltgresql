@@ -23,6 +23,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/cmd/dolt/cli"
+	"github.com/dolthub/dolt/go/cmd/dolt/commands/engine"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/sqlserver"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
@@ -37,7 +38,6 @@ import (
 	"github.com/dolthub/dolt/go/store/util/tempfiles"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/initialization"
@@ -148,6 +148,15 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return true, nil
 	})
 
+	// When we need to create the default database, do so via an engine initializer, which runs after the engine is
+	// constructed but before the server accepts any connections. This is necessary due to the fact that
+	// `CREATE DATABASE` is non-transactional and non-atomic, so other clients could connect to a partially-created
+	// database otherwise. This problem exists in Dolt as well, but Dolt doesn't auto-create a database on init.
+	var engineInitializer sqlserver.EngineInitializer
+	if initializeDefaultDatabase {
+		engineInitializer = defaultDatabaseInitializer{}
+	}
+
 	controller := svcs.NewController()
 	newCtx, cancelF := context.WithCancel(ctx)
 	go func() {
@@ -171,6 +180,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		DoltEnv:                 dEnv,
 		ProtocolListenerFactory: protocolListenerFactory,
 		ProviderFactory:         DoltgresProviderFactory{},
+		EngineInitializer:       engineInitializer,
 	})
 	go controller.Start(newCtx)
 
@@ -179,39 +189,44 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return nil, err
 	}
 
-	if initializeDefaultDatabase {
-		err = createDefaultDatabase(ssCfg)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// TODO: shutdown replication cleanly when we stop the server
 	_, err = startReplication(cfg, ssCfg)
 	if err != nil {
+		controller.Stop()
 		return nil, err
 	}
 
 	return controller, nil
 }
 
-// createDefaultDatabase creates the database named on the local server using the configuration values to connect, returning
-// any error
-func createDefaultDatabase(cfg doltservercfg.ServerConfig) error {
-	user, password := auth.GetSuperUserAndPassword()
+// defaultDatabaseInitializer creates the default database on a first run against an empty data dir. It runs via
+// sqlserver.Config.EngineInitializer, after the engine has been constructed but before the server accepts any
+// connections, so no client can observe (or interfere with) a partially created default database.
+type defaultDatabaseInitializer struct{}
+
+var _ sqlserver.EngineInitializer = defaultDatabaseInitializer{}
+
+// InitializeEngine implements sqlserver.EngineInitializer.
+func (defaultDatabaseInitializer) InitializeEngine(ctx context.Context, se *engine.SqlEngine) error {
+	user, _ := auth.GetSuperUserAndPassword()
 	dbName := getDefaultDatabaseName(user)
 
-	dsn := fmt.Sprintf("postgres://%s:%s@localhost:%d", user, password, cfg.Port())
-
-	// Connect to the server and create the default database with the given name.
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, dsn)
+	sqlCtx, err := se.NewDefaultContext(ctx)
 	if err != nil {
 		return err
 	}
-	defer conn.Close(ctx)
+	// The session must run as the doltgres superuser: unlike Dolt, doltgres has
+	// no "root" user, so NewLocalContext's default client would be rejected.
+	sqlCtx.Session.SetClient(sql.Client{User: user, Address: "localhost", Capabilities: 0})
+	defer sql.SessionEnd(sqlCtx.Session)
+	sql.SessionCommandBegin(sqlCtx.Session)
+	defer sql.SessionCommandEnd(sqlCtx.Session)
 
-	_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE %s;", dbName))
+	_, iter, _, err := se.Query(sqlCtx, fmt.Sprintf("CREATE DATABASE %s;", dbName))
+	if err != nil {
+		return err
+	}
+	_, err = sql.RowIterToRows(sqlCtx, iter)
 	return err
 }
 

@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -212,20 +213,39 @@ func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+
+	stopped := false
+	stopServer := func() error {
+		if stopped {
+			return nil
+		}
+		stopped = true
+		if err := interruptCmd(cmd); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return fmt.Errorf("could not interrupt init server for %s: %w (output: %s)", name, err, output.String())
+		}
+		if err := cmd.Wait(); err != nil {
+			return fmt.Errorf("init server for %s did not exit cleanly: %w (output: %s)", name, err, output.String())
+		}
+		return nil
+	}
+	// Best-effort shutdown on error paths; the success path below calls
+	// stopServer explicitly and checks its result.
 	defer func() {
-		_ = cmd.Process.Signal(os.Interrupt)
-		_, _ = cmd.Process.Wait()
+		_ = stopServer()
 	}()
 
-	db, err := ConnectDB("postgres", "password", "postgres", "127.0.0.1", port, nil)
+	db, err := ConnectDB("postgres", "password", "", "127.0.0.1", port, nil)
 	if err != nil {
 		return fmt.Errorf("could not connect to init server for %s: %w (output: %s)", name, err, output.String())
 	}
 	defer db.Close()
 
-	if _, err := db.Exec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, name)); err != nil {
-		return err
+	_, err = db.Exec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, name))
+	if err != nil {
+		return fmt.Errorf("could not create database %s: %w (output: %s)", name, err, output.String())
 	}
+
+	// Complete any requested setup
 	if fn != nil {
 		dbForName, err := ConnectDB("postgres", "password", name, "127.0.0.1", port, nil)
 		if err != nil {
@@ -236,7 +256,9 @@ func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 			return err
 		}
 	}
-	return nil
+
+	// Finally shutdown the server now that initialization is complete
+	return stopServer()
 }
 
 func sanitize(s string) string {
