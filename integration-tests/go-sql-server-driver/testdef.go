@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"text/template"
@@ -629,10 +630,28 @@ func RetryTestRun(t *testing.T, attempts int, test func(TestingT)) {
 	rtt.try(attempts, test)
 }
 
+// statusEventualConsistencyAttempts bounds how long RunQuery waits for a cluster
+// replication status query to converge to its expected result.
+// Retries are quite forgiving in these tests because the default `postgres` database in most of these tests is never
+// written to, which means it get replicated async by a background thread, rather than by a user write.
+const statusEventualConsistencyAttempts = 300
+
 func RunQuery(t *testing.T, conn *sql.Conn, q driver.Query, ports *DynamicResources) {
-	RetryTestRun(t, q.RetryAttempts, func(t TestingT) {
+	attempts := q.RetryAttempts
+	// Replication status is eventually consistent, so status queries always get at
+	// least the generous eventual-consistency budget, even if the test set a smaller
+	// (or no) retry_attempts.
+	if observesReplicationStatus(q) && attempts < statusEventualConsistencyAttempts {
+		attempts = statusEventualConsistencyAttempts
+	}
+	RetryTestRun(t, attempts, func(t TestingT) {
 		RunQueryAttempt(t, conn, q, ports)
 	})
+}
+
+// observesReplicationStatus reports whether the query reads the dolt_cluster_status system table
+func observesReplicationStatus(q driver.Query) bool {
+	return q.Query != "" && strings.Contains(strings.ToLower(q.Query), "dolt_cluster_status")
 }
 
 func RunQueryAttempt(t TestingT, conn *sql.Conn, q driver.Query, ports *DynamicResources) {

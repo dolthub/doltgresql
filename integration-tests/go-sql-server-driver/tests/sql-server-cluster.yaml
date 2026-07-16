@@ -2186,3 +2186,274 @@ tests:
       result:
         columns: ['read_only']
         rows: [['1']]
+# The tests below exercise cluster replication of the auto-created "postgres"
+# default database directly (the only database many customers will ever create)
+- name: postgres default database replicates to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2),(3),(4)'
+  - on: server2
+    queries:
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: postgres default database on booted standby is read only
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2)'
+  - on: server2
+    queries:
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["3"]]
+    - exec: 'INSERT INTO vals VALUES (3)'
+      error_match: "postgres is read-only"
+- name: postgres default database survives failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (1),(2),(3)'
+  # Fail over gracefully: demote the primary first, then promote the standby.
+  - on: server1
+    queries:
+    - query: "select dolt_assume_cluster_role('standby', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - query: "select dolt_assume_cluster_role('primary', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["3"]]
+    - exec: 'INSERT INTO vals VALUES (4),(5)'
+  - on: server1
+    queries:
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: postgres default database replication status
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2)'
+  - on: server1
+    database: dolt_cluster
+    queries:
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","1","0","NULL"]
+- name: postgres default database sequence val maintained across failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE TABLE t (id SERIAL PRIMARY KEY, v INT)'
+    - exec: 'INSERT INTO t(v) VALUES (0),(0),(0),(0),(0)'
+  - on: server2
+    queries:
+    - query: 'SELECT * FROM t ORDER BY id'
+      result:
+        columns: ['id', 'v']
+        rows: [['1','0'], ['2','0'], ['3','0'], ['4','0'], ['5','0']]
+  - on: server1
+    queries:
+    - exec: "select dolt_assume_cluster_role('standby', 2)"
+  - on: server2
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', 2)"
+  - on: server2
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'INSERT INTO t(v) VALUES (1)'
+    - query: 'SELECT * FROM t ORDER BY id'
+      result:
+        columns: ['id', 'v']
+        rows: [['1','0'], ['2','0'], ['3','0'], ['4','0'], ['5','0'], ['6','1']]

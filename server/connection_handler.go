@@ -307,10 +307,12 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 			}
 		}
 	}
-	// set initial database
+	// Set the initial database. Postgres has no concept of a session without a current database: if the client
+	// doesn't specify one, it defaults to the username (matching libpq). Either way, if the resolved database
+	// doesn't exist we must reject the connection rather than proceed with a database-less session, which would
+	// break assumptions throughout the engine.
 	db, ok := startupMessage.Parameters["database"]
-	dbSpecified := ok && len(db) > 0
-	if !dbSpecified {
+	if !ok || len(db) == 0 {
 		db = h.mysqlConn.User
 	}
 	useStmt := fmt.Sprintf("SET database TO '%s';", db)
@@ -322,13 +324,11 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 	err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, useStmt, parsed, func(_ *sql.Context, _ *Result) error {
 		return nil
 	})
-	// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
-	// ignoring any error
-	if err != nil && dbSpecified {
+	if err != nil {
 		_ = h.send(&pgproto3.ErrorResponse{
 			Severity: string(ErrorResponseSeverity_Fatal),
 			Code:     "3D000",
-			Message:  fmt.Sprintf(`"database "%s" does not exist"`, db),
+			Message:  fmt.Sprintf(`database "%s" does not exist`, db),
 			Routine:  "InitPostgres",
 		})
 		return err

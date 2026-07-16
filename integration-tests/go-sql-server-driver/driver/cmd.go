@@ -41,7 +41,9 @@ var DelvePath string
 const TestUserName = "Bats Tests"
 const TestEmailAddress = "bats@email.fake"
 
-const ConnectAttempts = 50
+// ConnectAttempts and RetrySleepDuration are used by the test driver to retry connections to a doltgres server
+// that is starting up.
+const ConnectAttempts = 200
 const RetrySleepDuration = 50 * time.Millisecond
 
 // EnvDoltgresBinPath is the environment variable used to locate the doltgres
