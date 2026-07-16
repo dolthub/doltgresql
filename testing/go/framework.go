@@ -734,15 +734,50 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 	return v
 }
 
+// NormalizeRecordValue is used within NormalizeArrayType to handle normalization of a record.
+func NormalizeRecordValue(val any) []types.RecordValue {
+	anyArray, ok := val.([]any)
+	if !ok {
+		panic("expected array of records to contain a nested slice")
+	}
+	newArray := make([]types.RecordValue, len(anyArray))
+	for anyArrayIdx, anyArrayElement := range anyArray {
+		anyArrayElement = NormalizeIntsAndFloats(anyArrayElement)
+		switch anyArrayElement.(type) {
+		case int64:
+			newArray[anyArrayIdx] = types.RecordValue{
+				Value: anyArrayElement,
+				Type:  types.Int64,
+			}
+		case float64:
+			newArray[anyArrayIdx] = types.RecordValue{
+				Value: anyArrayElement,
+				Type:  types.Float64,
+			}
+		case string:
+			newArray[anyArrayIdx] = types.RecordValue{
+				Value: anyArrayElement,
+				Type:  types.Text,
+			}
+		default:
+			panic("nested record element needs to be handled in this switch")
+		}
+	}
+	return newArray
+}
+
 // NormalizeArrayType normalizes array types by normalizing its elements first,
 // then to a string using the type IoOutput method.
 func NormalizeArrayType(dt *types.DoltgresType, arr []any) any {
 	newVal := make([]any, len(arr))
 	for i, el := range arr {
-		newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
+		if dt.ArrayBaseType().ID == types.Record.ID {
+			newVal[i] = NormalizeRecordValue(el)
+		} else {
+			newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
+		}
 	}
-	baseType := dt.ArrayBaseType()
-	if baseType.ID == types.Bool.ID {
+	if dt.ArrayBaseType().ID == types.Bool.ID {
 		sqlVal, err := dt.SQL(sql.NewEmptyContext(), nil, newVal)
 		if err != nil {
 			panic(err)
