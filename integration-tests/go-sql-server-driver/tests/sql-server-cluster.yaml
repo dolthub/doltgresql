@@ -924,6 +924,14 @@ tests:
     - exec: "use repo1"
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    # Wait for replication to quiesce (including the async first push of the auto-created postgres
+    # database) before the graceful transition below, which has a fixed 10-second budget for standbys
+    # to catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     # Dolt asserts the procedure's per-database caught_up rows here. Doltgres exposes Dolt procedures as
     # functions returning a single text-array value (first row only), which can't express that result, so
     # assert the outcome instead: the transition succeeds and the server ends up a standby.
@@ -1020,6 +1028,14 @@ tests:
     - exec: 'use repo1'
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    # Wait for replication to quiesce (including the async first push of the auto-created postgres
+    # database) before the graceful transition below, which has a fixed 10-second budget for standbys
+    # to catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
@@ -1039,6 +1055,14 @@ tests:
     queries:
     - exec: 'use repo1'
     - exec: 'insert into vals values (5),(6),(7),(8),(9)'
+    # Wait for replication to quiesce before the graceful transition below; promotion reset each
+    # database's replication progress, and the auto-created postgres database has no synchronous
+    # ack to wait on. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - query: "select dolt_assume_cluster_role('standby', 3)"
       result:
         columns: ["dolt_assume_cluster_role"]
@@ -1100,6 +1124,14 @@ tests:
   - on: server1
     queries:
     - exec: 'create database repo1'
+    # Wait for replication to quiesce (including the async first push of the auto-created postgres
+    # database) before the graceful transition below, which has a fixed 10-second budget for standbys
+    # to catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
@@ -1170,6 +1202,14 @@ tests:
     - exec: 'select dolt_remote(''add'', ''origin'', ''file://my_remote/'')'
     - exec: 'select dolt_push(''origin'', ''main:main'')'
     - exec: 'select dolt_clone(''file://repo1/my_remote'', ''repo_cloned'')'
+    # Wait for replication to quiesce (including the async first pushes of the auto-created postgres
+    # database and the just-cloned repo_cloned database) before the graceful transition below, which
+    # has a fixed 10-second budget for standbys to catch up. Status queries are auto-retried.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
@@ -1226,7 +1266,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'CREATE DATABASE repo1'
     - exec: 'USE repo1'
     - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
@@ -1538,7 +1578,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'create database repo1'
     - exec: 'use repo1'
     - exec: 'create table vals (i int primary key)'
@@ -1630,7 +1670,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'create database repo1'
     - exec: 'create database droppedrepo'
     - exec: 'use droppedrepo'
@@ -1693,7 +1733,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'create database repo1'
     - exec: 'use repo1'
     - exec: 'create table vals (a int)'
@@ -1796,12 +1836,26 @@ tests:
         rows:
         - ["dolt_cluster"]
         - ["postgres"]
+    # Wait for replication to quiesce (the auto-created postgres database's first push is async)
+    # before the graceful transition below, which has a fixed 10-second budget for standbys to
+    # catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - exec: "select dolt_cluster_transition_to_standby('2', '1')"
   - on: server2
     queries:
     - exec: "select dolt_assume_cluster_role('primary', '2')"
   - on: server2
     queries:
+    # As above: promotion reset the new primary's replication progress.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - exec: "select dolt_cluster_transition_to_standby('3', '1')"
   - on: server1
     queries:
@@ -1873,7 +1927,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: "create database testdb"
     - exec: "use testdb"
     - exec: "create table vals (id int primary key)"
@@ -1888,7 +1942,7 @@ tests:
         columns: ["count"]
         rows:
         - ["2"]
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: "insert into vals values (0),(1),(2)"
   - on: standby_two
     queries:
@@ -1937,7 +1991,7 @@ tests:
     queries:
     - exec: 'CREATE DATABASE repo1'
     - exec: 'USE repo1'
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'CREATE TABLE t (id SERIAL PRIMARY KEY, v INT)'
     - exec: 'INSERT INTO t(v) VALUES (0),(0),(0),(0),(0)'
   - on: server2
@@ -1950,6 +2004,14 @@ tests:
       retry_attempts: 100
   - on: server1
     queries:
+    # Wait for replication to quiesce (including the async first push of the auto-created postgres
+    # database) before the graceful transition below, which has a fixed 10-second budget for standbys
+    # to catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - exec: "select dolt_assume_cluster_role('standby', 2)"
   - on: server2
     queries:
@@ -2225,7 +2287,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
     - exec: 'INSERT INTO vals VALUES (0),(1),(2),(3),(4)'
   - on: server2
@@ -2271,7 +2333,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
     - exec: 'INSERT INTO vals VALUES (0),(1),(2)'
   - on: server2
@@ -2319,7 +2381,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
     - exec: 'INSERT INTO vals VALUES (1),(2),(3)'
   # Fail over gracefully: demote the primary first, then promote the standby.
@@ -2337,7 +2399,7 @@ tests:
         rows: [["{0}"]]
   - on: server2
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - query: 'SELECT count(*) FROM vals'
       result:
         columns: ["count"]
@@ -2386,7 +2448,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
     - exec: 'INSERT INTO vals VALUES (0),(1),(2)'
   - on: server1
@@ -2434,7 +2496,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'CREATE TABLE t (id SERIAL PRIMARY KEY, v INT)'
     - exec: 'INSERT INTO t(v) VALUES (0),(0),(0),(0),(0)'
   - on: server2
@@ -2451,7 +2513,7 @@ tests:
     - exec: "select dolt_assume_cluster_role('primary', 2)"
   - on: server2
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'INSERT INTO t(v) VALUES (1)'
     - query: 'SELECT * FROM t ORDER BY id'
       result:

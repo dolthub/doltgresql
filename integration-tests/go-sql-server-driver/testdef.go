@@ -60,7 +60,11 @@ type Test struct {
 // Set this environment variable to effectively disable timeouts for debugging.
 const debugEnvKey = "DOLTGRES_SQL_SERVER_TEST_DEBUG"
 
-var timeout = 20 * time.Second
+// timeout bounds each individual query in a test. It must comfortably exceed the
+// dolt_cluster_ack_writes_timeout_secs values used in the cluster replication tests (60s): a write on the
+// primary legitimately blocks for up to that long waiting for standbys to acknowledge replication, e.g.
+// when a standby is slow to complete first contact (jwks setup plus create-on-push) on a loaded CI host.
+var timeout = 90 * time.Second
 
 func init() {
 	_, ok := os.LookupEnv(debugEnvKey)
@@ -634,7 +638,10 @@ func RetryTestRun(t *testing.T, attempts int, test func(TestingT)) {
 // replication status query to converge to its expected result.
 // Retries are quite forgiving in these tests because the default `postgres` database in most of these tests is never
 // written to, which means it get replicated async by a background thread, rather than by a user write.
-const statusEventualConsistencyAttempts = 300
+// At driver.RetrySleepDuration (50ms) per attempt this is roughly 30 seconds, which also makes status
+// queries usable as explicit quiesce barriers before graceful role transitions (which have a fixed
+// 10-second internal budget for standbys to catch up).
+const statusEventualConsistencyAttempts = 600
 
 func RunQuery(t *testing.T, conn *sql.Conn, q driver.Query, ports *DynamicResources) {
 	attempts := q.RetryAttempts
