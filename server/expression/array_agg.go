@@ -28,7 +28,7 @@ import (
 
 type ArrayAgg struct {
 	selectExprs []sql.Expression
-	orderBy     sql.SortFields
+	orderBy     sql.SortConditions
 	id          sql.ColumnId
 	Distinct    bool
 }
@@ -45,7 +45,7 @@ func (a *ArrayAgg) WithResolvedChildren(ctx context.Context, children []any) (an
 		a.selectExprs[i] = children[i].(sql.Expression)
 	}
 
-	a.orderBy = children[len(children)-1].(sql.SortFields)
+	a.orderBy = children[len(children)-1].(sql.SortConditions)
 	return a, nil
 }
 
@@ -171,9 +171,9 @@ func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 
 	if a.a.orderBy != nil {
 		sorter := &expression.Sorter{
-			SortFields: a.a.orderBy,
-			Rows:       a.elements,
-			Ctx:        ctx,
+			SortConditions: a.a.orderBy,
+			Rows:           a.elements,
+			Ctx:            ctx,
 		}
 
 		sort.Stable(sorter)
