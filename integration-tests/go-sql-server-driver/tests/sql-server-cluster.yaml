@@ -1546,6 +1546,10 @@ tests:
     - exec: 'use repo2'
     - exec: 'create table vals (i int primary key)'
     - exec: 'use dolt_cluster'
+    # The retry here (and on status assertions generally) matters for the postgres database: unlike the
+    # user databases above, whose replication is synchronized by dolt_cluster_ack_writes_timeout_secs,
+    # the auto-created postgres database is first pushed by the background replication thread some time
+    # after startup, so its replication_lag_millis stays NULL until that first push completes.
     - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis is not null as \"replication_lag_millis\", current_error from dolt_cluster_status order by \"database\" asc"
       result:
         columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
@@ -1553,6 +1557,7 @@ tests:
         - ["postgres", "standby", "primary", "1", "true", "NULL"]
         - ["repo1", "standby", "primary", "1", "true", "NULL"]
         - ["repo2", "standby", "primary", "1", "true", "NULL"]
+      retry_attempts: 100
     - exec: 'use repo1'
     - exec: 'drop database repo2'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
@@ -1570,6 +1575,7 @@ tests:
         rows:
         - ["postgres", "standby", "primary", "1", "true", "NULL"]
         - ["repo1", "standby", "primary", "1", "true", "NULL"]
+      retry_attempts: 100
   - on: server2
     queries:
     - query: 'SELECT datname FROM pg_database ORDER BY datname'
@@ -1709,6 +1715,7 @@ tests:
         columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
         rows:
         - ["postgres", "standby", "primary", "1", "true", "NULL"]
+      retry_attempts: 100
   - on: server2
     queries:
     - query: 'SELECT datname FROM pg_database ORDER BY datname'
@@ -2014,6 +2021,20 @@ tests:
       result:
         columns: ['read_only']
         rows: [['1']]
+  # Wait for the standby to be fully caught up before the graceful transition below. The auto-created
+  # postgres database is first pushed by the background replication thread some time after startup
+  # (replication_lag_millis is NULL until that first push completes), and the graceful transition has a
+  # fixed timeout it would otherwise spend waiting on the same convergence.
+  - on: server1
+    queries:
+    - exec: 'USE dolt_cluster'
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","1","0","NULL"]
+        - ["repo1","standby","primary","1","0","NULL"]
+      retry_attempts: 100
   - on: server1
     queries:
     - exec: 'USE repo1'
@@ -2043,6 +2064,18 @@ tests:
       result:
         columns: ['read_only']
         rows: [['0']]
+  # As above: promotion resets each database's replication progress, so wait for the new primary to
+  # catch its standby up before gracefully transitioning it back to standby.
+  - on: server2
+    queries:
+    - exec: 'USE dolt_cluster'
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","2","0","NULL"]
+        - ["repo1","standby","primary","2","0","NULL"]
+      retry_attempts: 100
   - on: server2
     queries:
     - exec: 'USE repo1'
