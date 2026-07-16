@@ -44,6 +44,11 @@ type Connection struct {
 	// The user to connect as. For Doltgres this defaults to the Postgres
 	// superuser, "postgres".
 	User string `default:"postgres" yaml:"user"`
+	// The database to connect to, overriding the server's default. Useful
+	// when no user database exists yet (e.g. a read-only server with an
+	// empty data dir), where a synthetic database like dolt_cluster is the
+	// only one available to connect to.
+	Database string `yaml:"database"`
 	// The password to connect with.
 	Pass     string `yaml:"password"`
 	PassFile string `yaml:"password_file"`

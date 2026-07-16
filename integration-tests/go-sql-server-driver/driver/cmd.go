@@ -539,7 +539,18 @@ func (s *SqlServer) Connector(c Connection) (driver.Connector, error) {
 	if user == "" {
 		user = "postgres"
 	}
-	dsn := GetDSN(user, pass, s.DBName, "127.0.0.1", s.Port, c.DriverParams)
+	dbName := s.DBName
+	if c.Database != "" {
+		dbName = c.Database
+	}
+	if dbName == "" {
+		// Always request a database explicitly. When the client sends no database, doltgres attempts
+		// an implicit USE of the user's name and silently proceeds with a database-less session if it
+		// fails, breaking later queries.
+		// TODO: fix this in doltgres, reject connections with a missing user database instead of silently proceeding
+		dbName = user
+	}
+	dsn := GetDSN(user, pass, dbName, "127.0.0.1", s.Port, c.DriverParams)
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		return nil, err

@@ -224,6 +224,10 @@ func (defaultDatabaseInitializer) InitializeEngine(ctx context.Context, se *engi
 
 	_, iter, _, err := se.Query(sqlCtx, fmt.Sprintf("CREATE DATABASE %s;", dbName))
 	if err != nil {
+		// Ignore CREATE DATABASE errors if the server is read-only. This happens while bootstrapping a read replica.
+		if sql.ErrReadOnly.Is(err) {
+			return nil
+		}
 		return err
 	}
 	_, err = sql.RowIterToRows(sqlCtx, iter)

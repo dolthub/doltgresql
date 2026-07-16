@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -65,6 +66,15 @@ func getCurSetting(ctx *sql.Context, s string, missingOk bool) (any, error) {
 
 	if variable != nil {
 		return fmt.Sprintf("%v", variable), nil
+	}
+
+	// System variables with no session scope (e.g. dolt_cluster_role during cluster replication) can change at
+	// runtime, but sessions snapshot system variables at creation time, so the session copy can go stale. The
+	// live global value is the effective setting for such variables, so return it directly.
+	if config.IsGlobalOnlySystemVariable(s) {
+		if _, globalVal, ok := sql.SystemVariables.GetGlobal(s); ok {
+			return fmt.Sprintf("%v", globalVal), nil
+		}
 	}
 
 	variable, err = ctx.GetSessionVariable(ctx, s)

@@ -22,6 +22,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dprocedures"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -61,6 +62,59 @@ func initDoltProcedures() {
 			Callable: noArgCallable,
 		})
 	}
+	initDynamicDoltProcedures()
+}
+
+// dynamicDoltProcedures are Dolt stored procedures that are registered with the database provider dynamically
+// during engine construction (e.g. by the cluster replication controller), rather than appearing in the static
+// dprocedures.DoltProcedures list.
+var dynamicDoltProcedures = []struct {
+	name   string
+	params [2]*pgtypes.DoltgresType
+}{
+	{"dolt_assume_cluster_role", [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64}},
+	{"dolt_cluster_transition_to_standby", [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64}},
+}
+
+func initDynamicDoltProcedures() {
+	for _, def := range dynamicDoltProcedures {
+		framework.RegisterFunction(framework.Function2{
+			Name:       def.name,
+			Return:     pgtypes.TextArray,
+			Parameters: def.params,
+			Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+				p, funcVal, err := resolveDynamicDoltProcedure(ctx, def.name)
+				if err != nil {
+					return nil, err
+				}
+				return varArgCallableForDoltProcedure(p, funcVal)(ctx, [2]*pgtypes.DoltgresType{}, []any{val1, val2})
+			},
+		})
+	}
+}
+
+// resolveDynamicDoltProcedure resolves a dynamically-registered Dolt stored procedure by name through the session
+// provider's external stored procedure registry. Returns an error if no procedure is registered under the name,
+// which is the case when the feature that registers it (e.g. cluster replication) isn't configured.
+func resolveDynamicDoltProcedure(ctx *sql.Context, name string) (*plan.ExternalProcedure, reflect.Value, error) {
+	session := dsess.DSessFromSess(ctx.Session)
+	espp, ok := session.Provider().(sql.ExternalStoredProcedureProvider)
+	if !ok {
+		return nil, reflect.Value{}, errors.Errorf("function: '%s' not found", name)
+	}
+	details, err := espp.ExternalStoredProcedures(ctx, name)
+	if err != nil {
+		return nil, reflect.Value{}, err
+	}
+	if len(details) == 0 {
+		return nil, reflect.Value{}, errors.Errorf("function: '%s' not found", name)
+	}
+	procDef := details[0]
+	p, err := resolveExternalStoredProcedure(ctx, procDef)
+	if err != nil {
+		return nil, reflect.Value{}, err
+	}
+	return p, reflect.ValueOf(procDef.Function), nil
 }
 
 // varArgCallableForDoltProcedure creates a callable function that takes in a variadic number of parameters. This is
@@ -82,14 +136,20 @@ func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.V
 		funcParams := make([]reflect.Value, len(values)+1)
 		funcParams[0] = reflect.ValueOf(ctx)
 
+		if !funcType.IsVariadic() && len(values) != len(p.ParamDefinitions) {
+			return nil, errors.Errorf("function '%s' expects %d parameters, %d were provided",
+				p.Name, len(p.ParamDefinitions), len(values))
+		}
+
 		for i := range values {
-			paramDefinition := p.ParamDefinitions[0]
+			var paramDefinition plan.ProcedureParam
 			var funcParamType reflect.Type
-			if paramDefinition.Variadic {
+			if funcType.IsVariadic() {
+				paramDefinition = p.ParamDefinitions[0]
 				funcParamType = funcType.In(funcType.NumIn() - 1).Elem()
 			} else {
-				// TODO: support non-variadic procedures
-				return nil, sql.ErrExternalProcedureInvalidParamType.New(funcType.String())
+				paramDefinition = p.ParamDefinitions[i]
+				funcParamType = funcType.In(i + 1)
 			}
 
 			// Grab the passed-in variable and convert it to the type we expect
@@ -146,8 +206,20 @@ func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Va
 }
 
 // checkDoltProcedureAccess ensures the current user is authorized as a SUPERUSER if the given |procedure| requires
-// admin.
+// admin, and that the server is not read-only if the procedure writes.
 func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedure) error {
+	if !procedure.ReadOnly {
+		if _, readOnly, ok := sql.SystemVariables.GetGlobal("read_only"); ok {
+			ro, err := sql.ConvertToBool(ctx, readOnly)
+			if err != nil {
+				return err
+			}
+			if ro {
+				return sql.ErrReadOnly.New()
+			}
+		}
+	}
+
 	if !procedure.AdminOnly {
 		return nil
 	}
@@ -181,7 +253,7 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 	// The conversion to []text needs []any, not sql.Row
 	rowSlice := make([]any, len(row))
 	for i := range row {
-		sourceType, err := typeForElement(row[i])
+		sourceType, sourceVal, err := typeForElement(row[i])
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +261,7 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		textVal, err := cast.Eval(ctx, row[i], sourceType, pgtypes.Text)
+		textVal, err := cast.Eval(ctx, sourceVal, sourceType, pgtypes.Text)
 		if err != nil {
 			return nil, err
 		}
@@ -199,18 +271,24 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 	return rowSlice, nil
 }
 
-func typeForElement(v any) (*pgtypes.DoltgresType, error) {
+// typeForElement returns the Doltgres type for the given value, along with the value converted to the Go type
+// that the returned Doltgres type expects.
+func typeForElement(v any) (*pgtypes.DoltgresType, any, error) {
 	switch x := v.(type) {
 	case int64:
-		return pgtypes.Int64, nil
+		return pgtypes.Int64, x, nil
+	case int:
+		return pgtypes.Int64, int64(x), nil
 	case int32:
-		return pgtypes.Int32, nil
-	case int16, int8:
-		return pgtypes.Int16, nil
+		return pgtypes.Int32, x, nil
+	case int16:
+		return pgtypes.Int16, x, nil
+	case int8:
+		return pgtypes.Int16, int16(x), nil
 	case string:
-		return pgtypes.Text, nil
+		return pgtypes.Text, x, nil
 	default:
-		return nil, errors.Errorf("dolt_procedures: unsupported type %T", x)
+		return nil, nil, errors.Errorf("dolt_procedures: unsupported type %T", x)
 	}
 }
 

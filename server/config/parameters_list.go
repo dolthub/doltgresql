@@ -36,6 +36,34 @@ func IsValidDoltConfigParameter(name string) bool {
 	return ok
 }
 
+// IsGlobalOnlySystemVariable returns true if the given name refers to a registered system variable that has no
+// session scope (e.g. Dolt's cluster replication variables such as dolt_cluster_role). Such variables can only
+// meaningfully be read from and written to the global scope: sessions snapshot system variables at creation time,
+// so a session copy would go stale (on read) or be invisible to the rest of the server (on write).
+func IsGlobalOnlySystemVariable(name string) bool {
+	_, ok := GlobalOnlySystemVariableScope(name)
+	return ok
+}
+
+// GlobalOnlySystemVariableScope returns the declared scope of the given system variable and true if the variable
+// is registered and has no session scope (Global, Persist, or PersistOnly). See IsGlobalOnlySystemVariable.
+func GlobalOnlySystemVariableScope(name string) (sql.MysqlSVScopeType, bool) {
+	sysVar, _, ok := sql.SystemVariables.GetGlobal(strings.ToLower(name))
+	if !ok {
+		return 0, false
+	}
+	msv, isMysqlVar := sysVar.(*sql.MysqlSystemVariable)
+	if !isMysqlVar || msv.Scope == nil {
+		return 0, false
+	}
+	switch msv.Scope.Type {
+	case sql.SystemVariableScope_Global, sql.SystemVariableScope_Persist, sql.SystemVariableScope_PersistOnly:
+		return msv.Scope.Type, true
+	default:
+		return 0, false
+	}
+}
+
 // postgresConfigParameters is a list of configuration parameters that can be used in SET statement.
 var postgresConfigParameters = map[string]sql.SystemVariable{
 	"allow_in_place_tablespaces": &Parameter{
