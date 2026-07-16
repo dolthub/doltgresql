@@ -93,7 +93,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	if dEnv.HasDoltDataDir() {
 		cwd, _ := dEnv.FS.Abs(".")
 		return nil, errors.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database. "+
-			"To use the current directory (%s) as a database, start the server from the parent directory.", cwd)
+				"To use the current directory (%s) as a database, start the server from the parent directory.", cwd)
 	}
 
 	defer tempfiles.MovableTempFileProvider.Clean()
@@ -224,9 +224,7 @@ func (defaultDatabaseInitializer) InitializeEngine(ctx context.Context, se *engi
 
 	_, iter, _, err := se.Query(sqlCtx, fmt.Sprintf("CREATE DATABASE %s;", dbName))
 	if err != nil {
-		// A server that boots read-only (e.g. as a cluster replication standby)
-		// cannot create the default database. Skip creating it: on a standby it
-		// will be created by replication from the primary instead.
+		// Ignore CREATE DATABASE errors if the server is read-only. This happens while bootstrapping a read replica.
 		if sql.ErrReadOnly.Is(err) {
 			return nil
 		}

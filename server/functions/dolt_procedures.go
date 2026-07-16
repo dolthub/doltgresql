@@ -67,11 +67,7 @@ func initDoltProcedures() {
 
 // dynamicDoltProcedures are Dolt stored procedures that are registered with the database provider dynamically
 // during engine construction (e.g. by the cluster replication controller), rather than appearing in the static
-// dprocedures.DoltProcedures list. They are registered here as late-bound functions: the procedure is resolved
-// from the session provider's external stored procedure registry at call time, since it does not exist yet (and
-// may never exist, if the corresponding feature isn't configured) when this registration runs. Unlike the static
-// Dolt procedures, which are uniformly variadic over text, these have fixed, typed signatures, declared here so
-// that numeric arguments resolve without quoting (e.g. `dolt_assume_cluster_role('standby', 2)`).
+// dprocedures.DoltProcedures list.
 var dynamicDoltProcedures = []struct {
 	name   string
 	params [2]*pgtypes.DoltgresType
@@ -212,24 +208,14 @@ func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Va
 // checkDoltProcedureAccess ensures the current user is authorized as a SUPERUSER if the given |procedure| requires
 // admin, and that the server is not read-only if the procedure writes.
 func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedure) error {
-	// Procedures that write cannot run on a read-only server (e.g. a cluster replication standby, which
-	// manages the read_only system variable). Dolt enforces this on its CALL path via the engine's
-	// read-only flag; invoking the procedure as a Doltgres function bypasses that, so enforce it here.
 	if !procedure.ReadOnly {
 		if _, readOnly, ok := sql.SystemVariables.GetGlobal("read_only"); ok {
-			switch v := readOnly.(type) {
-			case bool:
-				if v {
-					return sql.ErrReadOnly.New()
-				}
-			case int8:
-				if v == 1 {
-					return sql.ErrReadOnly.New()
-				}
-			case int64:
-				if v == 1 {
-					return sql.ErrReadOnly.New()
-				}
+			ro, err := sql.ConvertToBool(ctx, readOnly)
+			if err != nil {
+				return err
+			}
+			if ro {
+				return sql.ErrReadOnly.New()
 			}
 		}
 	}
