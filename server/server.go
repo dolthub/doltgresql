@@ -93,7 +93,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	if dEnv.HasDoltDataDir() {
 		cwd, _ := dEnv.FS.Abs(".")
 		return nil, errors.Errorf("Cannot start a server within a directory containing a Dolt or Doltgres database. "+
-				"To use the current directory (%s) as a database, start the server from the parent directory.", cwd)
+			"To use the current directory (%s) as a database, start the server from the parent directory.", cwd)
 	}
 
 	defer tempfiles.MovableTempFileProvider.Clean()
