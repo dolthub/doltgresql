@@ -62,7 +62,7 @@ var pgAmprocSchema = sql.Schema{
 	{Name: "amproclefttype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAmprocName},
 	{Name: "amprocrighttype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAmprocName},
 	{Name: "amprocnum", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAmprocName},
-	{Name: "amproc", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAmprocName}, // TODO: regproc type
+	{Name: "amproc", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAmprocName},
 }
 
 // pgAmprocRowIter is the sql.RowIter for the pg_amproc table.

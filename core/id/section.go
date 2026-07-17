@@ -111,7 +111,7 @@ func (section Section) String() string {
 	case Section_Operator:
 		return "Operator"
 	case Section_OperatorClass:
-		return "OperatorClass:"
+		return "OperatorClass"
 	case Section_OperatorFamily:
 		return "OperatorFamily"
 	case Section_PrimaryKey:

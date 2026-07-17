@@ -58,7 +58,7 @@ func (p PgTimezoneAbbrevsHandler) PkSchema() sql.PrimaryKeySchema {
 // pgTimezoneAbbrevsSchema is the schema for pg_timezone_abbrevs.
 var pgTimezoneAbbrevsSchema = sql.Schema{
 	{Name: "abbrev", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgTimezoneAbbrevsName},
-	{Name: "utc_offset", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgTimezoneAbbrevsName}, // TODO: interval type
+	{Name: "utc_offset", Type: pgtypes.Interval, Default: nil, Nullable: true, Source: PgTimezoneAbbrevsName},
 	{Name: "is_dst", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgTimezoneAbbrevsName},
 }
 

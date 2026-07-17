@@ -510,12 +510,12 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 	return nil, sql.InRange, ErrUnhandledType.New(t.String(), v)
 }
 
-// GetAssignmentCast is a reference to the assignment cast logic in the core package, which we can't use here due to
-// import cycles
-var GetAssignmentCast func(ctx *sql.Context, fromType *DoltgresType, toType *DoltgresType) (Cast, error)
+// GetCastFunc is a reference to the assignment or the implicit cast function logic in the core package, which we can't use here due to
+// import cycles.
+var GetCastFunc func(ctx *sql.Context, convTyp byte) (func(*DoltgresType, *DoltgresType) (Cast, bool, error), error)
 
 // ConvertToType implements the types.ExtendedType interface.
-func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any) (any, sql.ConvertInRange, error) {
+func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val any, convTyp byte) (any, sql.ConvertInRange, error) {
 	dt, ok := typ.(*DoltgresType)
 	if !ok {
 		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
@@ -528,7 +528,12 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 	var cast Cast
 	if cast, ok = t.castCache[dt]; !ok {
 		var err error
-		cast, err = GetAssignmentCast(ctx, dt, t)
+		getCastFunc, err := GetCastFunc(ctx, convTyp)
+		if err != nil {
+			t.mutex.Unlock()
+			return nil, sql.InRange, err
+		}
+		cast, _, err = getCastFunc(dt, t)
 		if err != nil {
 			t.mutex.Unlock()
 			return nil, sql.InRange, err
@@ -660,7 +665,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 }
 
 // IsArrayType returns true if the type is of 'array' type.
-// It can be array category with empty its array attribute NULL and element attribute NOT NULL.
+// It can be array category with its array attribute NULL and element attribute NOT NULL.
 // Or it can be pseudo category with name 'anyarray'.
 func (t *DoltgresType) IsArrayType() bool {
 	return (t.TypCategory == TypeCategory_ArrayTypes && t.Elem.ID != id.NullType && t.Array.ID == id.NullType) ||
@@ -1235,7 +1240,7 @@ func (t *DoltgresType) ConvertSerialized(ctx context.Context, other val.TupleTyp
 	}
 
 	sqlCtx, _ := ctx.(*sql.Context)
-	toValue, _, err := t.ConvertToType(sqlCtx, ot, value)
+	toValue, _, err := t.ConvertToType(sqlCtx, ot, value, 'a')
 	if err != nil {
 		return nil, err
 	}
