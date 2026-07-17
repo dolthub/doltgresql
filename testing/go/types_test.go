@@ -2070,6 +2070,16 @@ var typesTests = []ScriptTest{
 					{2, "556 778 223"},
 				},
 			},
+			{
+				Skip:     true, // TODO: should convert oidvector to oid[] and subscript but on special indexing of [0:1]
+				Query:    "select ('16 17'::oidvector)[1];",
+				Expected: []sql.Row{{17}},
+			},
+			{
+				Skip:     true, // TODO: support cast from oidvector to oid[]
+				Query:    "select '16 17'::oidvector::oid[];",
+				Expected: []sql.Row{{"[0:1]={16,17}"}},
+			},
 		},
 	},
 	{

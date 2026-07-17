@@ -60,8 +60,8 @@ var pgTransformSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTransformName},
 	{Name: "trftype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTransformName},
 	{Name: "trflang", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTransformName},
-	{Name: "trffromsql", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTransformName}, // TODO: regproc type
-	{Name: "trftosql", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTransformName},   // TODO: regproc type
+	{Name: "trffromsql", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTransformName},
+	{Name: "trftosql", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTransformName},
 }
 
 // pgTransformRowIter is the sql.RowIter for the pg_transform table.

@@ -60,11 +60,11 @@ var pgTsParserSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTsParserName},
 	{Name: "prsname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgTsParserName},
 	{Name: "prsnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTsParserName},
-	{Name: "prsstart", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName},    // TODO: regproc type
-	{Name: "prstoken", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName},    // TODO: regproc type
-	{Name: "prsend", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName},      // TODO: regproc type
-	{Name: "prsheadline", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName}, // TODO: regproc type
-	{Name: "prslextype", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName},  // TODO: regproc type
+	{Name: "prsstart", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
+	{Name: "prstoken", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
+	{Name: "prsend", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
+	{Name: "prsheadline", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
+	{Name: "prslextype", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
 }
 
 // pgTsParserRowIter is the sql.RowIter for the pg_ts_parser table.

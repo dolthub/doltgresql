@@ -82,7 +82,11 @@ var regprocout = framework.Function1{
 		if input.Section() == id.Section_OID {
 			return input.Segment(0), nil
 		}
-		return val.(id.Id).Segment(1), nil
+		res := val.(id.Id).Segment(1)
+		if res == "" {
+			return "-", nil
+		}
+		return res, nil
 	},
 }
 
