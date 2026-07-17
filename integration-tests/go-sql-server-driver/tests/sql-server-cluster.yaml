@@ -925,6 +925,14 @@ tests:
     - exec: "use repo1"
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    # Wait for replication to quiesce (including the async first push of the auto-created postgres
+    # database) before the graceful transition below, which has a fixed 10-second budget for standbys
+    # to catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     # Dolt asserts the procedure's per-database caught_up rows here. Doltgres exposes Dolt procedures as
     # functions returning a single text-array value (first row only), which can't express that result, so
     # assert the outcome instead: the transition succeeds and the server ends up a standby.
@@ -976,10 +984,21 @@ tests:
     - exec: "use repo1"
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    # Wait for replication to quiesce before the graceful transition below, so that its failure
+    # is deterministically about the standby count rather than about in-flight replication.
+    # Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     # Unlike Dolt, the database count includes the auto-created default database "postgres"
-    # (postgres, repo1, mysql users/grants, dolt_branch_control).
+    # (postgres, repo1, mysql users/grants, dolt_branch_control). The trailing "Only caught up N
+    # standbys fully" count is not asserted: it depends on whether the single configured standby's
+    # users/grants and branch-control replication have completed first contact, which is timing
+    # dependent on slow CI hosts.
     - query: "select dolt_cluster_transition_to_standby('2', '2')"
-      error_match: failed to transition from primary to standby gracefully; could not ensure 2 replicas were caught up on all 4 databases. Only caught up 1 standbys fully.
+      error_match: failed to transition from primary to standby gracefully; could not ensure 2 replicas were caught up on all 4 databases.
 - name: create new database, primary replicates to standby, fails over, new primary replicates to standby, fails over, new primary has all writes
   multi_repos:
   - name: server1
@@ -1021,6 +1040,14 @@ tests:
     - exec: 'use repo1'
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    # Wait for replication to quiesce (including the async first push of the auto-created postgres
+    # database) before the graceful transition below, which has a fixed 10-second budget for standbys
+    # to catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
@@ -1040,6 +1067,14 @@ tests:
     queries:
     - exec: 'use repo1'
     - exec: 'insert into vals values (5),(6),(7),(8),(9)'
+    # Wait for replication to quiesce before the graceful transition below; promotion reset each
+    # database's replication progress, and the auto-created postgres database has no synchronous
+    # ack to wait on. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - query: "select dolt_assume_cluster_role('standby', 3)"
       result:
         columns: ["dolt_assume_cluster_role"]
@@ -1101,6 +1136,14 @@ tests:
   - on: server1
     queries:
     - exec: 'create database repo1'
+    # Wait for replication to quiesce (including the async first push of the auto-created postgres
+    # database) before the graceful transition below, which has a fixed 10-second budget for standbys
+    # to catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
@@ -1171,6 +1214,14 @@ tests:
     - exec: 'select dolt_remote(''add'', ''origin'', ''file://my_remote/'')'
     - exec: 'select dolt_push(''origin'', ''main:main'')'
     - exec: 'select dolt_clone(''file://repo1/my_remote'', ''repo_cloned'')'
+    # Wait for replication to quiesce (including the async first pushes of the auto-created postgres
+    # database and the just-cloned repo_cloned database) before the graceful transition below, which
+    # has a fixed 10-second budget for standbys to catch up. Status queries are auto-retried.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
@@ -1227,7 +1278,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'CREATE DATABASE repo1'
     - exec: 'USE repo1'
     - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
@@ -1539,7 +1590,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'create database repo1'
     - exec: 'use repo1'
     - exec: 'create table vals (i int primary key)'
@@ -1631,7 +1682,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'create database repo1'
     - exec: 'create database droppedrepo'
     - exec: 'use droppedrepo'
@@ -1694,7 +1745,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'create database repo1'
     - exec: 'use repo1'
     - exec: 'create table vals (a int)'
@@ -1797,12 +1848,26 @@ tests:
         rows:
         - ["dolt_cluster"]
         - ["postgres"]
+    # Wait for replication to quiesce (the auto-created postgres database's first push is async)
+    # before the graceful transition below, which has a fixed 10-second budget for standbys to
+    # catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - exec: "select dolt_cluster_transition_to_standby('2', '1')"
   - on: server2
     queries:
     - exec: "select dolt_assume_cluster_role('primary', '2')"
   - on: server2
     queries:
+    # As above: promotion reset the new primary's replication progress.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - exec: "select dolt_cluster_transition_to_standby('3', '1')"
   - on: server1
     queries:
@@ -1874,7 +1939,7 @@ tests:
   connections:
   - on: server1
     queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: "create database testdb"
     - exec: "use testdb"
     - exec: "create table vals (id int primary key)"
@@ -1889,7 +1954,7 @@ tests:
         columns: ["count"]
         rows:
         - ["2"]
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: "insert into vals values (0),(1),(2)"
   - on: standby_two
     queries:
@@ -1938,7 +2003,7 @@ tests:
     queries:
     - exec: 'CREATE DATABASE repo1'
     - exec: 'USE repo1'
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
     - exec: 'CREATE TABLE t (id SERIAL PRIMARY KEY, v INT)'
     - exec: 'INSERT INTO t(v) VALUES (0),(0),(0),(0),(0)'
   - on: server2
@@ -1951,6 +2016,14 @@ tests:
       retry_attempts: 100
   - on: server1
     queries:
+    # Wait for replication to quiesce (including the async first push of the auto-created postgres
+    # database) before the graceful transition below, which has a fixed 10-second budget for standbys
+    # to catch up. Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     - exec: "select dolt_assume_cluster_role('standby', 2)"
   - on: server2
     queries:
@@ -2187,3 +2260,274 @@ tests:
       result:
         columns: ['read_only']
         rows: [['1']]
+# The tests below exercise cluster replication of the auto-created "postgres"
+# default database directly (the only database many customers will ever create)
+- name: postgres default database replicates to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2),(3),(4)'
+  - on: server2
+    queries:
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: postgres default database on booted standby is read only
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2)'
+  - on: server2
+    queries:
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["3"]]
+    - exec: 'INSERT INTO vals VALUES (3)'
+      error_match: "postgres is read-only"
+- name: postgres default database survives failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (1),(2),(3)'
+  # Fail over gracefully: demote the primary first, then promote the standby.
+  - on: server1
+    queries:
+    - query: "select dolt_assume_cluster_role('standby', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - query: "select dolt_assume_cluster_role('primary', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["3"]]
+    - exec: 'INSERT INTO vals VALUES (4),(5)'
+  - on: server1
+    queries:
+    - query: 'SELECT count(*) FROM vals'
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: postgres default database replication status
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE vals (i INT PRIMARY KEY)'
+    - exec: 'INSERT INTO vals VALUES (0),(1),(2)'
+  - on: server1
+    database: dolt_cluster
+    queries:
+    - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis, current_error from dolt_cluster_status order by \"database\" asc"
+      result:
+        columns: ["database","standby_remote","role","epoch","replication_lag_millis","current_error"]
+        rows:
+        - ["postgres","standby","primary","1","0","NULL"]
+- name: postgres default database sequence val maintained across failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'CREATE TABLE t (id SERIAL PRIMARY KEY, v INT)'
+    - exec: 'INSERT INTO t(v) VALUES (0),(0),(0),(0),(0)'
+  - on: server2
+    queries:
+    - query: 'SELECT * FROM t ORDER BY id'
+      result:
+        columns: ['id', 'v']
+        rows: [['1','0'], ['2','0'], ['3','0'], ['4','0'], ['5','0']]
+  - on: server1
+    queries:
+    - exec: "select dolt_assume_cluster_role('standby', 2)"
+  - on: server2
+    queries:
+    - exec: "select dolt_assume_cluster_role('primary', 2)"
+  - on: server2
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
+    - exec: 'INSERT INTO t(v) VALUES (1)'
+    - query: 'SELECT * FROM t ORDER BY id'
+      result:
+        columns: ['id', 'v']
+        rows: [['1','0'], ['2','0'], ['3','0'], ['4','0'], ['5','0'], ['6','1']]

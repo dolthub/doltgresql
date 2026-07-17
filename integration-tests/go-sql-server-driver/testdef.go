@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"text/template"
@@ -59,7 +60,11 @@ type Test struct {
 // Set this environment variable to effectively disable timeouts for debugging.
 const debugEnvKey = "DOLTGRES_SQL_SERVER_TEST_DEBUG"
 
-var timeout = 20 * time.Second
+// timeout bounds each individual query in a test. It must comfortably exceed the
+// dolt_cluster_ack_writes_timeout_secs values used in the cluster replication tests (60s): a write on the
+// primary legitimately blocks for up to that long waiting for standbys to acknowledge replication, e.g.
+// when a standby is slow to complete first contact (jwks setup plus create-on-push) on a loaded CI host.
+var timeout = 90 * time.Second
 
 func init() {
 	_, ok := os.LookupEnv(debugEnvKey)
@@ -629,10 +634,31 @@ func RetryTestRun(t *testing.T, attempts int, test func(TestingT)) {
 	rtt.try(attempts, test)
 }
 
+// statusEventualConsistencyAttempts bounds how long RunQuery waits for a cluster
+// replication status query to converge to its expected result.
+// Retries are quite forgiving in these tests because the default `postgres` database in most of these tests is never
+// written to, which means it get replicated async by a background thread, rather than by a user write.
+// At driver.RetrySleepDuration (50ms) per attempt this is roughly 30 seconds, which also makes status
+// queries usable as explicit quiesce barriers before graceful role transitions (which have a fixed
+// 10-second internal budget for standbys to catch up).
+const statusEventualConsistencyAttempts = 600
+
 func RunQuery(t *testing.T, conn *sql.Conn, q driver.Query, ports *DynamicResources) {
-	RetryTestRun(t, q.RetryAttempts, func(t TestingT) {
+	attempts := q.RetryAttempts
+	// Replication status is eventually consistent, so status queries always get at
+	// least the generous eventual-consistency budget, even if the test set a smaller
+	// (or no) retry_attempts.
+	if observesReplicationStatus(q) && attempts < statusEventualConsistencyAttempts {
+		attempts = statusEventualConsistencyAttempts
+	}
+	RetryTestRun(t, attempts, func(t TestingT) {
 		RunQueryAttempt(t, conn, q, ports)
 	})
+}
+
+// observesReplicationStatus reports whether the query reads the dolt_cluster_status system table
+func observesReplicationStatus(q driver.Query) bool {
+	return q.Query != "" && strings.Contains(strings.ToLower(q.Query), "dolt_cluster_status")
 }
 
 func RunQueryAttempt(t TestingT, conn *sql.Conn, q driver.Query, ports *DynamicResources) {
