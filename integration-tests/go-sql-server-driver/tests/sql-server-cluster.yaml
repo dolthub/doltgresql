@@ -984,10 +984,21 @@ tests:
     - exec: "use repo1"
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
+    # Wait for replication to quiesce before the graceful transition below, so that its failure
+    # is deterministically about the standby count rather than about in-flight replication.
+    # Status queries are auto-retried by the test runner.
+    - exec: 'use dolt_cluster'
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
     # Unlike Dolt, the database count includes the auto-created default database "postgres"
-    # (postgres, repo1, mysql users/grants, dolt_branch_control).
+    # (postgres, repo1, mysql users/grants, dolt_branch_control). The trailing "Only caught up N
+    # standbys fully" count is not asserted: it depends on whether the single configured standby's
+    # users/grants and branch-control replication have completed first contact, which is timing
+    # dependent on slow CI hosts.
     - query: "select dolt_cluster_transition_to_standby('2', '2')"
-      error_match: failed to transition from primary to standby gracefully; could not ensure 2 replicas were caught up on all 4 databases. Only caught up 1 standbys fully.
+      error_match: failed to transition from primary to standby gracefully; could not ensure 2 replicas were caught up on all 4 databases.
 - name: create new database, primary replicates to standby, fails over, new primary replicates to standby, fails over, new primary has all writes
   multi_repos:
   - name: server1

@@ -42,8 +42,11 @@ const TestUserName = "Bats Tests"
 const TestEmailAddress = "bats@email.fake"
 
 // ConnectAttempts and RetrySleepDuration are used by the test driver to retry connections to a doltgres server
-// that is starting up.
-const ConnectAttempts = 200
+// that is starting up. Besides server startup, the retries must also absorb cluster replication being
+// eventually consistent: connections default to the "postgres" database, and on a freshly-booted standby
+// that database only exists once its first push from the primary lands (which on a slow CI host can take
+// many seconds of first-contact setup). ~30 seconds, matching statusEventualConsistencyAttempts.
+const ConnectAttempts = 600
 const RetrySleepDuration = 50 * time.Millisecond
 
 // EnvDoltgresBinPath is the environment variable used to locate the doltgres
