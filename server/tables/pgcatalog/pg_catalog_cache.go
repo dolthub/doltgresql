@@ -59,6 +59,9 @@ type pgCatalogCache struct {
 	// pg_index / pg_indexes
 	pgIndexes *pgIndexCache
 
+	// pg_proc
+	procs []*pgProc
+
 	// pg_sequence / pg_sequences
 	sequences []*pgSequence
 

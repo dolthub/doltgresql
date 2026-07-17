@@ -60,8 +60,8 @@ var pgPreparedStatementsSchema = sql.Schema{
 	{Name: "name", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "statement", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "prepare_time", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
-	{Name: "parameter_types", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPreparedStatementsName}, // TODO: regtype[] type
-	{Name: "result_types", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPreparedStatementsName},    // TODO: regtype[] type
+	{Name: "parameter_types", Type: pgtypes.RegtypeArray, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
+	{Name: "result_types", Type: pgtypes.RegtypeArray, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "from_sql", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "generic_plans", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "custom_plans", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgPreparedStatementsName},

@@ -130,7 +130,7 @@ func (c *PgCoalesce) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 			return val, nil
 		}
 		// Cast the value to the common type (handles mixed-type args, e.g. int2 and int4).
-		converted, _, err := commonType.ConvertToType(ctx, argType, val)
+		converted, _, err := commonType.ConvertToType(ctx, argType, val, 'a')
 		if err != nil {
 			return nil, err
 		}

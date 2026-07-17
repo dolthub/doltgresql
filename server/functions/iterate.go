@@ -23,7 +23,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/core/typecollection"
 	"github.com/dolthub/doltgresql/server/tables"
@@ -40,8 +42,12 @@ type Callbacks struct {
 	ColumnDefault func(ctx *sql.Context, schema ItemSchema, table ItemTable, check ItemColumnDefault) (cont bool, err error)
 	// ForeignKey is the callback for foreign keys.
 	ForeignKey func(ctx *sql.Context, schema ItemSchema, table ItemTable, foreignKey ItemForeignKey) (cont bool, err error)
+	// Function is the callback for functions.
+	Function func(ctx *sql.Context, schema ItemSchema, function ItemFunction) (cont bool, err error)
 	// Index is the callback for indexes.
 	Index func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error)
+	// Procedure is the callbacks for procedures.
+	Procedure func(ctx *sql.Context, schema ItemSchema, function ItemProcedure) (cont bool, err error)
 	// Schema is the callback for schemas/namespaces.
 	Schema func(ctx *sql.Context, schema ItemSchema) (cont bool, err error)
 	// Sequence is the callback for sequences.
@@ -81,10 +87,22 @@ type ItemForeignKey struct {
 	Item sql.ForeignKeyConstraint
 }
 
+// ItemFunction contains the relevant information to pass to the Function callback.
+type ItemFunction struct {
+	OID  id.Function
+	Item *functions.Function
+}
+
 // ItemIndex contains the relevant information to pass to the Index callback.
 type ItemIndex struct {
 	OID  id.Index
 	Item sql.Index
+}
+
+// ItemProcedure contains the relevant information to pass to the Procedure callback.
+type ItemProcedure struct {
+	OID  id.Procedure
+	Item *procedures.Procedure
 }
 
 // ItemSchema contains the relevant information to pass to the Schema callback.
@@ -168,7 +186,26 @@ func IterateDatabase(ctx *sql.Context, database string, callbacks Callbacks) err
 			typeMap = typesBySchema(ctx, coll)
 		}
 
-		if err = iterateSchemas(ctx, callbacks, schemas, sequenceMap, typeMap); err != nil {
+		var functionMap map[string][]*functions.Function
+		if callbacks.Function != nil {
+			coll, err := core.GetFunctionsCollectionFromContext(ctx, database)
+			if err != nil {
+				return err
+			}
+			functionMap = functionsBySchema(ctx, coll)
+
+		}
+
+		var procedureMap map[string][]*procedures.Procedure
+		if callbacks.Function != nil {
+			coll, err := core.GetProceduresCollectionFromContext(ctx, database)
+			if err != nil {
+				return err
+			}
+			procedureMap = proceduresBySchema(ctx, coll)
+		}
+
+		if err = iterateSchemas(ctx, callbacks, schemas, sequenceMap, typeMap, functionMap, procedureMap); err != nil {
 			return err
 		}
 	}
@@ -180,6 +217,28 @@ func typesBySchema(ctx *sql.Context, coll *typecollection.TypeCollection) map[st
 	m := make(map[string][]*types.DoltgresType)
 	_ = coll.IterateTypes(ctx, func(typ *types.DoltgresType) (stop bool, err error) {
 		m[typ.Schema()] = append(m[typ.Schema()], typ)
+		return false, nil
+	})
+	return m
+}
+
+// functionsBySchema returns a map of schema name to functions within that schema.
+func functionsBySchema(ctx *sql.Context, coll *functions.Collection) map[string][]*functions.Function {
+	m := make(map[string][]*functions.Function)
+	_ = coll.IterateFunctions(ctx, func(f functions.Function) (stop bool, err error) {
+		sch := f.ID.SchemaName()
+		m[sch] = append(m[sch], &f)
+		return false, nil
+	})
+	return m
+}
+
+// proceduresBySchema returns a map of schema name to procedures within that schema.
+func proceduresBySchema(ctx *sql.Context, coll *procedures.Collection) map[string][]*procedures.Procedure {
+	m := make(map[string][]*procedures.Procedure)
+	_ = coll.IterateProcedures(ctx, func(p procedures.Procedure) (stop bool, err error) {
+		sch := p.ID.SchemaName()
+		m[sch] = append(m[sch], &p)
 		return false, nil
 	})
 	return m
@@ -199,6 +258,8 @@ func iterateSchemas(
 	sortedSchemas []sql.DatabaseSchema,
 	sequenceMap map[string][]*sequences.Sequence,
 	typeMap map[string][]*types.DoltgresType,
+	functionMap map[string][]*functions.Function,
+	procedureMap map[string][]*procedures.Procedure,
 ) error {
 	// Iterate over the sorted schemas by the iteration order
 	for _, schemaIndex := range callbacks.schemaIterationOrder(sortedSchemas) {
@@ -223,6 +284,16 @@ func iterateSchemas(
 		}
 
 		err := iterateSequences(ctx, callbacks, sequenceMap, schema, itemSchema)
+		if err != nil {
+			return err
+		}
+
+		err = iterateFunctions(ctx, callbacks, functionMap, schema, itemSchema)
+		if err != nil {
+			return err
+		}
+
+		err = iterateProcedures(ctx, callbacks, procedureMap, schema, itemSchema)
 		if err != nil {
 			return err
 		}
@@ -446,6 +517,22 @@ func iterateForeignKeys(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSc
 	return nil
 }
 
+// iterateFunctions is called by iterateSchemas to handle functions.
+func iterateFunctions(ctx *sql.Context, callbacks Callbacks, functionMap map[string][]*functions.Function, schema sql.DatabaseSchema, itemSchema ItemSchema) error {
+	for _, f := range functionMap[schema.SchemaName()] {
+		itemFunction := ItemFunction{
+			OID:  f.ID,
+			Item: f,
+		}
+		if cont, err := callbacks.Function(ctx, itemSchema, itemFunction); err != nil {
+			return err
+		} else if !cont {
+			return nil
+		}
+	}
+	return nil
+}
+
 // iterateIndexes is called by iterateTables to handle indexes.
 func iterateIndexes(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema, itemTable ItemTable, indexCount *int) error {
 	if indexedTable, ok := itemTable.Item.(sql.IndexAddressable); ok {
@@ -467,6 +554,22 @@ func iterateIndexes(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema
 			} else if !cont {
 				return nil
 			}
+		}
+	}
+	return nil
+}
+
+// iterateProcedures is called by iterateSchemas to handle procedures.
+func iterateProcedures(ctx *sql.Context, callbacks Callbacks, procedureMap map[string][]*procedures.Procedure, schema sql.DatabaseSchema, itemSchema ItemSchema) error {
+	for _, p := range procedureMap[schema.SchemaName()] {
+		itemProcedure := ItemProcedure{
+			OID:  p.ID,
+			Item: p,
+		}
+		if cont, err := callbacks.Procedure(ctx, itemSchema, itemProcedure); err != nil {
+			return err
+		} else if !cont {
+			return nil
 		}
 	}
 	return nil
@@ -511,6 +614,14 @@ func RunCallback(ctx *sql.Context, internalID id.Id, callbacks Callbacks) error 
 		}
 		if !itemSchema.OID.IsValid() {
 			return nil
+		}
+		// Check if we're looking for a function
+		if internalID.Section() == id.Section_Function {
+			return runFunction(ctx, internalID, callbacks, itemSchema)
+		}
+		// Check if we're looking for a procedure
+		if internalID.Section() == id.Section_Procedure {
+			return runProcedure(ctx, internalID, callbacks, itemSchema)
 		}
 		// Check if we're looking for a sequence
 		if internalID.Section() == id.Section_Sequence {
@@ -691,6 +802,42 @@ func runNamespace(ctx *sql.Context, internalID id.Id, callbacks Callbacks, sorte
 	return nil
 }
 
+// runFunction is called by RunCallback to handle Section_Function.
+func runFunction(ctx *sql.Context, internalID id.Id, callbacks Callbacks, itemSchema ItemSchema) error {
+	collection, err := core.GetFunctionsCollectionFromContext(ctx, itemSchema.Item.Name())
+	if err != nil {
+		return err
+	}
+	return collection.IterateFunctions(ctx, func(f functions.Function) (stop bool, err error) {
+		if f.ID.AsId() == internalID {
+			_, err = callbacks.Function(ctx, itemSchema, ItemFunction{
+				OID:  id.Function(internalID),
+				Item: &f,
+			})
+			return true, err
+		}
+		return false, nil
+	})
+}
+
+// runProcedure is called by RunCallback to handle Section_Procedure.
+func runProcedure(ctx *sql.Context, internalID id.Id, callbacks Callbacks, itemSchema ItemSchema) error {
+	collection, err := core.GetProceduresCollectionFromContext(ctx, itemSchema.Item.Name())
+	if err != nil {
+		return err
+	}
+	return collection.IterateProcedures(ctx, func(p procedures.Procedure) (stop bool, err error) {
+		if p.ID.AsId() == internalID {
+			_, err = callbacks.Procedure(ctx, itemSchema, ItemProcedure{
+				OID:  id.Procedure(internalID),
+				Item: &p,
+			})
+			return true, err
+		}
+		return false, nil
+	})
+}
+
 // runSequence is called by RunCallback to handle Section_Sequence.
 func runSequence(ctx *sql.Context, internalID id.Id, callbacks Callbacks, itemSchema ItemSchema) error {
 	collection, err := core.GetSequencesCollectionFromContext(ctx, itemSchema.Item.Name())
@@ -756,7 +903,8 @@ func runView(ctx *sql.Context, internalID id.Id, callbacks Callbacks, itemSchema
 // runCallbackValidation ensures that the callbacks match the given oid.
 func runCallbackValidation(ctx *sql.Context, internalID id.Id, callbacks Callbacks) bool {
 	// Check that we have the relevant callback, and return early if we do not
-	switch internalID.Section() {
+	s := internalID.Section()
+	switch s {
 	case id.Section_Check:
 		if callbacks.Check == nil {
 			return false
@@ -772,12 +920,20 @@ func runCallbackValidation(ctx *sql.Context, internalID id.Id, callbacks Callbac
 		if callbacks.ForeignKey == nil {
 			return false
 		}
+	case id.Section_Function:
+		if callbacks.Function == nil {
+			return false
+		}
 	case id.Section_Index:
 		if callbacks.Index == nil {
 			return false
 		}
 	case id.Section_Namespace:
 		if callbacks.Schema == nil {
+			return false
+		}
+	case id.Section_Procedure:
+		if callbacks.Procedure == nil {
 			return false
 		}
 	case id.Section_Sequence:
@@ -803,7 +959,9 @@ func (iter Callbacks) iteratesOverSchemas() bool {
 	return iter.Check != nil ||
 		iter.ColumnDefault != nil ||
 		iter.ForeignKey != nil ||
+		iter.Function != nil ||
 		iter.Index != nil ||
+		iter.Procedure != nil ||
 		iter.Schema != nil ||
 		iter.Sequence != nil ||
 		iter.Table != nil ||

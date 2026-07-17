@@ -71,9 +71,9 @@ var pgStatReplicationSchema = sql.Schema{
 	{Name: "write_lsn", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatReplicationName},  // TODO: pg_lsn type
 	{Name: "flush_lsn", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatReplicationName},  // TODO: pg_lsn type
 	{Name: "replay_lsn", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatReplicationName}, // TODO: pg_lsn type
-	{Name: "write_lag", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatReplicationName},  // TODO: interval type
-	{Name: "flush_lag", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatReplicationName},  // TODO: interval type
-	{Name: "replay_lag", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatReplicationName}, // TODO: interval type
+	{Name: "write_lag", Type: pgtypes.Interval, Default: nil, Nullable: true, Source: PgStatReplicationName},
+	{Name: "flush_lag", Type: pgtypes.Interval, Default: nil, Nullable: true, Source: PgStatReplicationName},
+	{Name: "replay_lag", Type: pgtypes.Interval, Default: nil, Nullable: true, Source: PgStatReplicationName},
 	{Name: "sync_priority", Type: pgtypes.Int32, Default: nil, Nullable: true, Source: PgStatReplicationName},
 	{Name: "sync_state", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgStatReplicationName},
 	{Name: "reply_time", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgStatReplicationName},

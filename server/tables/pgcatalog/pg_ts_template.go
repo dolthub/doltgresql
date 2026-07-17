@@ -60,8 +60,8 @@ var pgTsTemplateSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTsTemplateName},
 	{Name: "tmplname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgTsTemplateName},
 	{Name: "tmplnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTsTemplateName},
-	{Name: "tmplinit", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsTemplateName},   // TODO: regproc type
-	{Name: "tmpllexize", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsTemplateName}, // TODO: regproc type
+	{Name: "tmplinit", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsTemplateName},
+	{Name: "tmpllexize", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsTemplateName},
 }
 
 // pgTsTemplateRowIter is the sql.RowIter for the pg_ts_template table.

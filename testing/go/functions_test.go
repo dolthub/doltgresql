@@ -2201,14 +2201,49 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name:        "pg_get_functiondef",
-			SetUpScript: []string{},
+			Name: "pg_get_functiondef",
+			SetUpScript: []string{
+				`CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1';`,
+				`CREATE TABLE cp_test (a int, b text);`,
+				`CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)
+				LANGUAGE SQL
+				AS $$
+					INSERT INTO cp_test VALUES(a, b);
+					INSERT INTO cp_test VALUES(c, b);
+				$$;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					// TODO: not supported yet
 					Query: `SELECT pg_get_functiondef(22)`,
 					Expected: []sql.Row{
 						{""},
+					},
+				},
+				{
+					Skip:  true, // TODO: fails to convert oid to function id because it hasn't been cached.
+					Query: `SELECT pg_get_functiondef(2891346960)`,
+					Expected: []sql.Row{
+						{"CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1'"},
+					},
+				},
+				{
+					Query: `SELECT oid, proname FROM pg_catalog.pg_proc WHERE proname = 'alt_func1' OR proname = 'ptest5';`,
+					Expected: []sql.Row{
+						{2891346960, "alt_func1"},
+						{1886569565, "ptest5"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_functiondef(2891346960)`,
+					Expected: []sql.Row{
+						{"CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1'"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_functiondef(1886569565)`,
+					Expected: []sql.Row{
+						{"CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)\n\t\t\t\tLANGUAGE SQL\n\t\t\t\tAS $$\n\t\t\t\t\tINSERT INTO cp_test VALUES(a, b);\n\t\t\t\t\tINSERT INTO cp_test VALUES(c, b);\n\t\t\t\t$$"},
 					},
 				},
 			},
