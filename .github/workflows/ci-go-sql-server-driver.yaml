@@ -16,9 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-22.04 ]
+#        os: [ ubuntu-22.04 ]
 # TODO: failing on MacOS due to races in syncig the default postgres db with no writes        
-#       os: [ ubuntu-22.04, macos-latest ]
+       os: [ ubuntu-22.04, macos-latest ]
     steps:
       - uses: actions/checkout@v6
       - name: Set up Go
