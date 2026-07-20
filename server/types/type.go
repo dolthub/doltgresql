@@ -651,25 +651,20 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	var o any
 	var err error
-	t.mutex.Lock()
-	if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
-		if t.sendFunc == nil || t.sendFuncID != t.OutputFunc {
-			sendFunc := globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
-			resolvedTypes := sendFunc.ResolvedTypes()
-			resolvedTypes[0] = t
-			t.sendFunc = sendFunc.WithResolvedTypes(resolvedTypes).(QuickFunction)
-			t.sendFuncID = t.OutputFunc
-		}
-		o, err = t.sendFunc.CallVariadic(ctx, val)
-	} else {
-		if t.sendFunc == nil || t.sendFuncID != t.OutputFunc {
 
-			t.sendFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
-			t.sendFuncID = t.OutputFunc
+	t.mutex.Lock()
+	if t.sendFunc == nil || t.sendFuncID != t.OutputFunc {
+		t.sendFuncID = t.OutputFunc
+		t.sendFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
+		if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
+			resTypes := t.sendFunc.ResolvedTypes()
+			resTypes[0] = t
+			t.sendFunc = t.sendFunc.WithResolvedTypes(resTypes).(QuickFunction)
 		}
-		o, err = t.sendFunc.CallVariadic(ctx, val)
 	}
 	t.mutex.Unlock()
+
+	o, err = t.sendFunc.CallVariadic(ctx, val)
 	if err != nil {
 		return "", err
 	}
