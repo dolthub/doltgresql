@@ -123,10 +123,11 @@ var _ BTreeStorageAccess[*pgType] = &pgTypeCache{}
 
 // pgIndexCache holds cached data for the pg_index table, including two btree indexes for fast lookups by index OID
 type pgIndexCache struct {
-	indexes     []*pgIndex
-	tableNames  map[id.Id]string
-	indexOidIdx *inMemIndexStorage[*pgIndex]
-	indrelidIdx *inMemIndexStorage[*pgIndex]
+	indexes      []*pgIndex
+	tableNames   map[id.Id]string
+	tableSchemas map[id.Id]sql.Schema
+	indexOidIdx  *inMemIndexStorage[*pgIndex]
+	indrelidIdx  *inMemIndexStorage[*pgIndex]
 }
 
 var _ BTreeStorageAccess[*pgIndex] = &pgIndexCache{}

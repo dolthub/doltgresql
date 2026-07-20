@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -103,12 +104,12 @@ func (iter *pgIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		iter.indexes.tableNames[index.tableOid], // tablename
 		formatIndexName(index.index),            // indexname
 		"",                                      // tablespace
-		getIndexDef(index.index, index.schemaName), // indexdef
+		getIndexDef(index.index, index.schemaName, iter.indexes.tableSchemas[index.tableOid]), // indexdef
 	}, nil
 }
 
 // formatIndexName returns the definition of the index.
-func getIndexDef(index sql.Index, schema string) string {
+func getIndexDef(index sql.Index, schema string, tableSchema sql.Schema) string {
 	name := formatIndexName(index)
 	using := strings.ToLower(index.IndexType())
 	unique := ""
@@ -118,12 +119,16 @@ func getIndexDef(index sql.Index, schema string) string {
 
 	cols := make([]string, len(index.Expressions()))
 	for i, expr := range index.Expressions() {
-		split := strings.Split(expr, ".")
-		if len(split) > 1 {
-			cols[i] = split[1]
-		} else {
-			cols[i] = expr
+		colName := extractColName(expr)
+		var col *sql.Column
+		if colIdx := tableSchema.IndexOfColName(colName); colIdx >= 0 {
+			col = tableSchema[colIdx]
 		}
+		if exprText, ok := functions.RenderHiddenIndexColumnExpr(col); ok {
+			cols[i] = exprText
+			continue
+		}
+		cols[i] = colName
 	}
 	colsStr := strings.Join(cols, ", ")
 
