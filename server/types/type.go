@@ -97,8 +97,12 @@ type DoltgresType struct {
 	DeserializationFunc internalDeserializationFunc
 
 	// TODO: refresh
-	castCache map[*DoltgresType]Cast
 	mutex     sync.Mutex
+	castCache map[*DoltgresType]Cast
+
+	// Cache the received function from globalRegistry
+	outFuncID uint32
+	outFunc   QuickFunction
 }
 
 // internalNullType represents a type with a null ID, effectively stating that the field in the parent DoltgresType is
@@ -645,14 +649,22 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	var o any
 	var err error
-	if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
-		send := globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
-		resolvedTypes := send.ResolvedTypes()
-		resolvedTypes[0] = t
-		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(ctx, val)
-	} else {
-		o, err = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc).CallVariadic(ctx, val)
+
+	var outFunc QuickFunction
+	t.mutex.Lock()
+	if t.outFunc == nil || t.outFuncID != t.OutputFunc {
+		t.outFuncID = t.OutputFunc
+		t.outFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
+		if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
+			resTypes := t.outFunc.ResolvedTypes()
+			resTypes[0] = t
+			t.outFunc = t.outFunc.WithResolvedTypes(resTypes).(QuickFunction)
+		}
 	}
+	outFunc = t.outFunc
+	t.mutex.Unlock()
+
+	o, err = outFunc.CallVariadic(ctx, val)
 	if err != nil {
 		return "", err
 	}
