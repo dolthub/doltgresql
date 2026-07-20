@@ -649,6 +649,7 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	var o any
 	var err error
+	t.mutex.Lock()
 	if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
 		if t.sendFunc == nil || t.sendFuncID != t.OutputFunc {
 			t.sendFuncID = t.OutputFunc
@@ -665,6 +666,7 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 		}
 		o, err = t.sendFunc.CallVariadic(ctx, val)
 	}
+	t.mutex.Unlock()
 	if err != nil {
 		return "", err
 	}
