@@ -19,7 +19,6 @@ import (
 	"encoding/base64"
 	goerrors "errors"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"os"
 	"regexp"
@@ -42,6 +41,7 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
