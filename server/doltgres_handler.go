@@ -19,6 +19,7 @@ import (
 	"encoding/base64"
 	goerrors "errors"
 	"fmt"
+	"golang.org/x/sync/errgroup"
 	"io"
 	"os"
 	"regexp"
@@ -726,7 +727,7 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 					continue
 				}
 
-				outputRow, rErr := rowToBytes(ctx, schema, row, formatCodes)
+				outputRow, rErr := rowToBytesConc(ctx, schema, row, formatCodes)
 				if rErr != nil {
 					return rErr
 				}
@@ -831,6 +832,62 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16
 			}
 			o[i] = val.ToBytes()
 		}
+	}
+	return o, nil
+}
+
+func rowToBytesConc(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16) ([][]byte, error) {
+	if len(row) == 0 {
+		return nil, nil
+	}
+	if len(s) == 0 {
+		// should not happen
+		return nil, errors.Errorf("received empty schema")
+	}
+	formatCodes, err := extendFormatCodes(len(row), formatCodes)
+	if err != nil {
+		return nil, err
+	}
+	o := make([][]byte, len(row))
+	eg := errgroup.Group{}
+	for i, v := range row {
+		if v == nil {
+			o[i] = nil
+			continue
+		}
+
+		if formatCodes[i] == 1 {
+			eg.Go(func() error {
+				var sendErr error
+				switch d := s[i].Type.(type) {
+				case *pgtypes.DoltgresType:
+					o[i], sendErr = d.CallSend(ctx, v)
+				default:
+					cast := pgexprs.NewGMSCast(expression.NewLiteral(v, d))
+					v, sendErr = cast.Eval(ctx, nil)
+					if sendErr != nil {
+						return sendErr
+					}
+					o[i], sendErr = cast.DoltgresType(ctx).CallSend(ctx, v)
+				}
+				return sendErr
+			})
+			continue
+		}
+
+		eg.Go(func() error {
+			var sqlErr error
+			val, sqlErr := s[i].Type.SQL(ctx, []byte{}, v) // We use []byte{} as there's a distinction between nil and empty
+			if sqlErr != nil {
+				return sqlErr
+			}
+			o[i] = val.ToBytes()
+			return nil
+		})
+	}
+	err = eg.Wait()
+	if err != nil {
+		return nil, err
 	}
 	return o, nil
 }
