@@ -100,11 +100,9 @@ type DoltgresType struct {
 	mutex     sync.Mutex
 	castCache map[*DoltgresType]Cast
 
-	// TODO: this is only used for IoOutput()
-	//   We should be able to use cache for Send() and cache functions for Receive()
 	// Cache the received function from globalRegistry
-	sendFuncID uint32
-	sendFunc   QuickFunction
+	outFuncID uint32
+	outFunc   QuickFunction
 }
 
 // internalNullType represents a type with a null ID, effectively stating that the field in the parent DoltgresType is
@@ -652,19 +650,21 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	var o any
 	var err error
 
+	var outFunc QuickFunction
 	t.mutex.Lock()
-	if t.sendFunc == nil || t.sendFuncID != t.OutputFunc {
-		t.sendFuncID = t.OutputFunc
-		t.sendFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
+	if t.outFunc == nil || t.outFuncID != t.OutputFunc {
+		t.outFuncID = t.OutputFunc
+		t.outFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
 		if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
-			resTypes := t.sendFunc.ResolvedTypes()
+			resTypes := t.outFunc.ResolvedTypes()
 			resTypes[0] = t
-			t.sendFunc = t.sendFunc.WithResolvedTypes(resTypes).(QuickFunction)
+			t.outFunc = t.outFunc.WithResolvedTypes(resTypes).(QuickFunction)
 		}
 	}
+	outFunc = t.outFunc
 	t.mutex.Unlock()
 
-	o, err = t.sendFunc.CallVariadic(ctx, val)
+	o, err = outFunc.CallVariadic(ctx, val)
 	if err != nil {
 		return "", err
 	}
