@@ -100,9 +100,11 @@ type DoltgresType struct {
 	mutex     sync.Mutex
 	castCache map[*DoltgresType]Cast
 
-	// TODO: I hope this doesn't cause problems later
+	// TODO: this is only used for IoOutput()
+	//   We should be able to use cache for Send() and cache functions for Receive()
+	// Cache the received function from globalRegistry
 	sendFuncID uint32
-	sendFunc   QuickFunction // TODO: should this be a map?
+	sendFunc   QuickFunction
 }
 
 // internalNullType represents a type with a null ID, effectively stating that the field in the parent DoltgresType is
@@ -652,17 +654,18 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 	t.mutex.Lock()
 	if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
 		if t.sendFunc == nil || t.sendFuncID != t.OutputFunc {
-			t.sendFuncID = t.OutputFunc
-			t.sendFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
-			resolvedTypes := t.sendFunc.ResolvedTypes()
+			sendFunc := globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
+			resolvedTypes := sendFunc.ResolvedTypes()
 			resolvedTypes[0] = t
-			t.sendFunc = t.sendFunc.WithResolvedTypes(resolvedTypes).(QuickFunction)
+			t.sendFunc = sendFunc.WithResolvedTypes(resolvedTypes).(QuickFunction)
+			t.sendFuncID = t.OutputFunc
 		}
 		o, err = t.sendFunc.CallVariadic(ctx, val)
 	} else {
 		if t.sendFunc == nil || t.sendFuncID != t.OutputFunc {
-			t.sendFuncID = t.OutputFunc
+
 			t.sendFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
+			t.sendFuncID = t.OutputFunc
 		}
 		o, err = t.sendFunc.CallVariadic(ctx, val)
 	}
@@ -1191,7 +1194,7 @@ func (t *DoltgresType) CallSend(ctx *sql.Context, val any) ([]byte, error) {
 	var err error
 	if t.ModInFunc != 0 || t.IsArrayType() {
 		send := globalFunctionRegistry.GetFunction(ctx, t.SendFunc)
-		resolvedTypes := send.ResolvedTypes() // TODO: why can't we just modify the function?
+		resolvedTypes := send.ResolvedTypes()
 		resolvedTypes[0] = t
 		o, err = send.WithResolvedTypes(resolvedTypes).(QuickFunction).CallVariadic(ctx, val)
 	} else {
