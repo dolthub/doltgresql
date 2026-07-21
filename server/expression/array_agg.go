@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/sorters"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/types"
@@ -170,7 +171,7 @@ func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 	}
 
 	if a.a.orderBy != nil {
-		sorter := &expression.Sorter{
+		sorter := &sorters.RowSorter{
 			SortConditions: a.a.orderBy,
 			Rows:           a.elements,
 			Ctx:            ctx,
