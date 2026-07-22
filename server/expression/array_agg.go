@@ -171,15 +171,12 @@ func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 	}
 
 	if a.a.orderBy != nil {
-		sorter := &sorters.RowSorter{
-			SortConditions: a.a.orderBy,
-			Rows:           a.elements,
-			Ctx:            ctx,
-		}
+		sorter := sorters.NewRowSorterWithRows(ctx, a.a.orderBy, a.elements)
 
 		sort.Stable(sorter)
-		if sorter.LastError != nil {
-			return nil, sorter.LastError
+		err := sorter.GetError()
+		if err != nil {
+			return nil, err
 		}
 	}
 
