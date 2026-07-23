@@ -338,10 +338,11 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	}
 
 	pgCatalogCache.pgIndexes = &pgIndexCache{
-		indexes:     indexes,
-		tableNames:  tableNames,
-		indexOidIdx: indexOidIdx,
-		indrelidIdx: indrelidIdx,
+		indexes:      indexes,
+		tableNames:   tableNames,
+		tableSchemas: tableSchemas,
+		indexOidIdx:  indexOidIdx,
+		indrelidIdx:  indrelidIdx,
 	}
 
 	return nil
