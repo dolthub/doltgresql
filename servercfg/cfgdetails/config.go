@@ -100,22 +100,36 @@ type DoltgresBehaviorConfig struct {
 	// DoltTransactionCommit enables the @@dolt_transaction_commit system variable, which
 	// automatically creates a Dolt commit when any SQL transaction is committed.
 	DoltTransactionCommit *bool `yaml:"dolt_transaction_commit,omitempty" minver:"0.7.4"`
+	// AutoGCBehavior configures automatic background garbage collection.
+	AutoGCBehavior *DoltgresAutoGCBehaviorYAMLConfig `yaml:"auto_gc_behavior,omitempty" minver:"TBD"`
 }
 
-// DoltgresAutoGCBehavior implements Dolt's doltservercfg.AutoGCBehavior.
-type DoltgresAutoGCBehavior struct {
+// DoltgresAutoGCBehaviorYAMLConfig implements Dolt's doltservercfg.AutoGCBehavior.
+type DoltgresAutoGCBehaviorYAMLConfig struct {
+	Enable_              *bool   `yaml:"enable,omitempty" minver:"TBD"`
+	ArchiveLevel_        *int    `yaml:"archive_level,omitempty" minver:"TBD"`
+	IncrementalFileSize_ *uint64 `yaml:"incremental_file_size,omitempty" minver:"TBD"`
 }
 
-func (DoltgresAutoGCBehavior) Enable() bool {
-	return false
+func (a *DoltgresAutoGCBehaviorYAMLConfig) Enable() bool {
+	if a.Enable_ == nil {
+		return true
+	}
+	return *a.Enable_
 }
 
-func (DoltgresAutoGCBehavior) ArchiveLevel() int {
-	return 0
+func (a *DoltgresAutoGCBehaviorYAMLConfig) ArchiveLevel() int {
+	if a.ArchiveLevel_ == nil {
+		return 1
+	}
+	return *a.ArchiveLevel_
 }
 
-func (DoltgresAutoGCBehavior) IncrementalFileSize() uint64 {
-	return 0
+func (a *DoltgresAutoGCBehaviorYAMLConfig) IncrementalFileSize() uint64 {
+	if a.IncrementalFileSize_ == nil {
+		return 0
+	}
+	return *a.IncrementalFileSize_
 }
 
 type DoltgresUserConfig struct {
@@ -655,7 +669,10 @@ func (cfg *DoltgresConfig) EventSchedulerStatus() string {
 }
 
 func (cfg *DoltgresConfig) AutoGCBehavior() doltservercfg.AutoGCBehavior {
-	return DoltgresAutoGCBehavior{}
+	if cfg.BehaviorConfig == nil || cfg.BehaviorConfig.AutoGCBehavior == nil {
+		return nil
+	}
+	return cfg.BehaviorConfig.AutoGCBehavior
 }
 
 func (cfg *DoltgresConfig) BranchActivityTracking() bool {
