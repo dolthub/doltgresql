@@ -339,7 +339,7 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 
 	// Iterate over all the built-in names for a relative match
 	var resolvedID id.Type
-	for _, typ := range pgtypes.GetAllBuitInTypes() {
+	for _, typ := range pgtypes.GetAllBuiltInTypes() {
 		if strings.EqualFold(typeName, typ.ID.TypeName()) {
 			if len(schemaName) > 0 && !strings.EqualFold(schemaName, typ.ID.SchemaName()) {
 				continue
@@ -404,7 +404,7 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes.DoltgresType) (stop bool, err error)) error {
 	// TODO: this should probably iterate tables as well since tables create composite types matching their rows
 	// We can iterate the built-in types first
-	for _, t := range pgtypes.GetAllBuitInTypes() {
+	for _, t := range pgtypes.GetAllBuiltInTypes() {
 		stop, err := f(t)
 		if err != nil || stop {
 			return err

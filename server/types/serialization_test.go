@@ -23,7 +23,7 @@ import (
 
 // TestSerializationConsistency checks that all types serialization and deserialization.
 func TestSerializationConsistency(t *testing.T) {
-	for _, typ := range GetAllBuitInTypes() {
+	for _, typ := range GetAllBuiltInTypes() {
 		t.Run(typ.Name(), func(t *testing.T) {
 			serializedType := typ.Serialize()
 			dt, err := DeserializeType(sql.NewEmptyContext(), serializedType)
