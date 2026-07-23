@@ -11,7 +11,7 @@ teardown() {
 }
 
 @test 'replication: test postgres connection' {
-    if [[ ! -v "RUN_DOLTGRES_REPLICATION_TESTS" ]]; then
+    if [ -z "${RUN_DOLTGRES_REPLICATION_TESTS+x}" ]; then
        skip "RUN_DOLTGRES_REPLICATION_TESTS not set, skipping"
     fi
 
