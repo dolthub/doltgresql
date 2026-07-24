@@ -49,10 +49,6 @@ var pg_advisory_lock_bigint = framework.Function1{
 			return false, errors.Errorf("lock subsystem not available")
 		}
 
-		// TODO: Postgres supports reentrant locks, meaning if pg_advisory_lock(123) is called multiple times,
-		//       pg_advisory_unlock(123) must be called the same number of times to fully release a lock. This
-		//       is different from MySQL's locking behavior, so LockSubsystem should be updated to support
-		//       a reentrant mode in addition to the current mode.
 		err := lockSubsystem.Lock(ctx, lockName, time.Millisecond*-1)
 		return err == nil, err
 	},
@@ -74,16 +70,7 @@ var pg_try_advisory_lock_bigint = framework.Function1{
 			return false, errors.Errorf("lock subsystem not available")
 		}
 
-		// TODO: We currently need to specify a timeout, but it may be a better mapping to
-		//       this function if we had a lockSubsystem.TryLock function that would try
-		//       to grab the lock once and then return immediately. Until then, we set a
-		//       short timeout and translate any timeout errors into a false return value.
-		err := lockSubsystem.Lock(ctx, lockName, time.Millisecond*1)
-		if sql.ErrLockTimeout.Is(err) {
-			return false, nil
-		}
-
-		return err == nil, err
+		return lockSubsystem.TryLock(ctx, lockName)
 	},
 }
 
