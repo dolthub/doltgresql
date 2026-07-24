@@ -26,10 +26,12 @@ import (
 type FunctionInterface interface {
 	// GetName returns the name of the function. The name is case-insensitive, so the casing does not matter.
 	GetName() string
+	// GetOutParameters returns sql.Schema of output parameter with names and types.
+	GetOutParameters() sql.Schema
 	// GetReturn returns the return type.
 	GetReturn() *pgtypes.DoltgresType
-	// GetParameters returns the parameter types for the function.
-	GetParameters() []*pgtypes.DoltgresType
+	// GetInputParameterTypes returns the parameter types for the function.
+	GetInputParameterTypes() []*pgtypes.DoltgresType
 	// VariadicIndex returns the index of the variadic parameter, if it exists, or -1 otherwise
 	VariadicIndex() int
 	// GetExpectedParameterCount returns the number of parameters that are valid for this function.
@@ -81,6 +83,7 @@ type Function0 struct {
 	Strict             bool
 	SRF                bool
 	Callable           func(ctx *sql.Context) (any, error)
+	OutParams          sql.Schema // name and type, potentially default?
 }
 
 // Function1 is a function that takes one parameter. The parameter and return type is passed into the Callable function
@@ -222,11 +225,15 @@ var _ FunctionInterface = Function7{}
 // GetName implements the FunctionInterface interface.
 func (f Function0) GetName() string { return f.Name }
 
+func (f Function0) GetOutParameters() sql.Schema {
+	return f.OutParams
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function0) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function0) GetParameters() []*pgtypes.DoltgresType { return nil }
+func (f Function0) GetInputParameterTypes() []*pgtypes.DoltgresType { return nil }
 
 func (f Function0) VariadicIndex() int {
 	return -1
@@ -258,11 +265,16 @@ func (f Function0) enforceInterfaceInheritance(error) {}
 // GetName implements the FunctionInterface interface.
 func (f Function1) GetName() string { return f.Name }
 
+func (f Function1) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function1) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function1) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function1) GetInputParameterTypes() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function1) VariadicIndex() int {
@@ -299,11 +311,16 @@ func (f Function1) enforceInterfaceInheritance(error) {}
 // GetName implements the FunctionInterface interface.
 func (f Function1N) GetName() string { return f.Name }
 
+func (f Function1N) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function1N) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function1N) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function1N) GetInputParameterTypes() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function1N) VariadicIndex() int {
@@ -336,11 +353,16 @@ func (f Function1N) enforceInterfaceInheritance(error) {}
 // GetName implements the FunctionInterface interface.
 func (f Function2) GetName() string { return f.Name }
 
+func (f Function2) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function2) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function2) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function2) GetInputParameterTypes() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function2) VariadicIndex() int {
@@ -377,11 +399,16 @@ func (f Function2) enforceInterfaceInheritance(error) {}
 // GetName implements the FunctionInterface interface.
 func (f Function2N) GetName() string { return f.Name }
 
+func (f Function2N) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function2N) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function2N) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function2N) GetInputParameterTypes() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function2N) VariadicIndex() int {
@@ -414,11 +441,16 @@ func (f Function2N) enforceInterfaceInheritance(error) {}
 // GetName implements the FunctionInterface interface.
 func (f Function3) GetName() string { return f.Name }
 
+func (f Function3) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function3) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function3) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function3) GetInputParameterTypes() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function3) VariadicIndex() int {
@@ -455,11 +487,16 @@ func (f Function3) enforceInterfaceInheritance(error) {}
 // GetName implements the FunctionInterface interface.
 func (f Function4) GetName() string { return f.Name }
 
+func (f Function4) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function4) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function4) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function4) GetInputParameterTypes() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function4) VariadicIndex() int {
@@ -496,11 +533,16 @@ func (f Function4) enforceInterfaceInheritance(error) {}
 // GetName implements the FunctionInterface interface.
 func (f Function5) GetName() string { return f.Name }
 
+func (f Function5) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function5) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function5) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function5) GetInputParameterTypes() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function5) VariadicIndex() int {
@@ -537,11 +579,16 @@ func (f Function5) enforceInterfaceInheritance(error) {}
 // GetName implements the FunctionInterface interface.
 func (f Function6) GetName() string { return f.Name }
 
+func (f Function6) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function6) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function6) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function6) GetInputParameterTypes() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function6) VariadicIndex() int {
@@ -578,11 +625,16 @@ func (f Function6) enforceInterfaceInheritance(error) {}
 // GetName implements the FunctionInterface interface.
 func (f Function7) GetName() string { return f.Name }
 
+func (f Function7) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetReturn implements the FunctionInterface interface.
 func (f Function7) GetReturn() *pgtypes.DoltgresType { return getTypeIfRowType(f.IsSRF(), f.Return) }
 
 // GetParameters implements the FunctionInterface interface.
-func (f Function7) GetParameters() []*pgtypes.DoltgresType { return f.Parameters[:] }
+func (f Function7) GetInputParameterTypes() []*pgtypes.DoltgresType { return f.Parameters[:] }
 
 // VariadicIndex implements the FunctionInterface interface.
 func (f Function7) VariadicIndex() int {

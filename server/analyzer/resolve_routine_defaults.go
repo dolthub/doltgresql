@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
@@ -60,14 +61,17 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 			return nil, transform.SameTree, sql.ErrStoredProcedureDoesNotExist.New(n.ProcedureName)
 		}
 
-		same := transform.SameTree
 		overloadTree := framework.NewOverloads()
 		for _, overload := range overloads {
-			paramTypes := make([]*pgtypes.DoltgresType, len(overload.ParameterTypes))
-			for i, paramType := range overload.ParameterTypes {
-				paramTypes[i], err = typesCollection.GetType(ctx, paramType)
+			paramTypes := make([]*pgtypes.DoltgresType, len(overload.AllParams))
+			var inputTypes []*pgtypes.DoltgresType
+			for i, param := range overload.AllParams {
+				paramTypes[i], err = typesCollection.GetType(ctx, param.Type)
 				if err != nil || paramTypes[i] == nil {
 					return nil, transform.SameTree, err
+				}
+				if param.Mode != procedures.ParameterMode_OUT {
+					inputTypes = append(inputTypes, paramTypes[i])
 				}
 			}
 			// TODO: we should probably have procedure equivalents instead of converting these to functions
@@ -89,9 +93,9 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 				if err = overloadTree.Add(framework.SQLFunction{
 					ID:                 id.Function(overload.ID),
 					ReturnType:         pgtypes.Void,
-					ParameterNames:     overload.ParameterNames,
-					ParameterTypes:     paramTypes,
-					ParameterDefaults:  overload.ParameterDefaults,
+					AllParams:          overload.AllParams,
+					AllTypes:           paramTypes,
+					InputTypes:         inputTypes,
 					Variadic:           false,
 					IsNonDeterministic: true,
 					Strict:             false,
@@ -104,8 +108,9 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 				if err = overloadTree.Add(framework.InterpretedFunction{
 					ID:                 id.Function(overload.ID),
 					ReturnType:         pgtypes.Void,
-					ParameterNames:     overload.ParameterNames,
-					ParameterTypes:     paramTypes,
+					AllParams:          overload.AllParams,
+					AllTypes:           paramTypes,
+					InputTypes:         inputTypes,
 					Variadic:           false,
 					IsNonDeterministic: true,
 					Strict:             false,
@@ -124,7 +129,8 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 			return nil, transform.SameTree, err
 		}
 		n.CompiledFunc = compiledFunction
-		return node, same, nil
+		n.CachedSchema = compiledFunction.OutParametersSchema()
+		return node, transform.NewTree, nil
 	default:
 		return node, transform.SameTree, nil
 	}

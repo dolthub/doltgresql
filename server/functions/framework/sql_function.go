@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -32,9 +33,9 @@ import (
 type SQLFunction struct {
 	ID                 id.Function
 	ReturnType         *pgtypes.DoltgresType
-	ParameterNames     []string
-	ParameterTypes     []*pgtypes.DoltgresType
-	ParameterDefaults  []string
+	AllParams          []procedures.Parameter
+	AllTypes           []*pgtypes.DoltgresType
+	InputTypes         []*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
@@ -47,7 +48,7 @@ var _ FunctionInterface = SQLFunction{}
 
 // GetExpectedParameterCount implements the interface FunctionInterface.
 func (sqlFunc SQLFunction) GetExpectedParameterCount() int {
-	return len(sqlFunc.ParameterTypes)
+	return len(sqlFunc.InputTypes)
 }
 
 // GetName implements the interface FunctionInterface.
@@ -55,9 +56,25 @@ func (sqlFunc SQLFunction) GetName() string {
 	return sqlFunc.ID.FunctionName()
 }
 
-// GetParameters implements the interface FunctionInterface.
-func (sqlFunc SQLFunction) GetParameters() []*pgtypes.DoltgresType {
-	return sqlFunc.ParameterTypes
+// GetOutParameters implements the interface FunctionInterface.
+func (sqlFunc SQLFunction) GetOutParameters() sql.Schema {
+	var outParams []*sql.Column
+	for i, param := range sqlFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_OUT, procedures.ParameterMode_INOUT:
+			outParams = append(outParams, &sql.Column{
+				Name: param.Name,
+				Type: sqlFunc.AllTypes[i],
+				// TODO default val ?
+			})
+		}
+	}
+	return outParams
+}
+
+// GetInputParameterTypes implements the interface FunctionInterface.
+func (sqlFunc SQLFunction) GetInputParameterTypes() []*pgtypes.DoltgresType {
+	return sqlFunc.InputTypes
 }
 
 // GetReturn implements the interface FunctionInterface.
@@ -102,13 +119,14 @@ func (sqlFunc SQLFunction) enforceInterfaceInheritance(error) {}
 // CallSqlFunction runs the given SQL definition inside the function on the given runner.
 func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner, args []any) (any, error) {
 	paramMap := make(map[string]*ParamTypAndValue)
-	for i, name := range f.ParameterNames {
+	for i, param := range f.AllParams {
+		var name = param.Name
 		if name == "" {
 			// This allows for positional references such as $1, $2, etc.
 			name = fmt.Sprintf("$%d", i+1)
 		}
 		paramMap[name] = &ParamTypAndValue{
-			Typ:        f.ParameterTypes[i],
+			Typ:        f.AllTypes[i],
 			Val:        args[i],
 			FromCreate: false,
 		}

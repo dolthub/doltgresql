@@ -58,7 +58,7 @@ func main() {
 		for _, function := range framework.Catalog[functionName] {
 			var literalGeneratorParams []utils.StatementGenerator
 			literalGeneratorParams = append(literalGeneratorParams, utils.Text(functionName+"("))
-			for i, paramType := range function.GetParameters() {
+			for i, paramType := range function.GetInputParameterTypes() {
 				if i > 0 {
 					literalGeneratorParams = append(literalGeneratorParams, utils.Text(", "))
 				}

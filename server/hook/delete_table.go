@@ -124,8 +124,8 @@ func beforeTableDeletionCheckFuncsProcs(ctx *sql.Context, doltTable *sqle.DoltTa
 		return err
 	}
 	err = funcsColl.IterateFunctions(ctx, func(f functions.Function) (stop bool, err error) {
-		for _, paramType := range f.ParameterTypes {
-			if paramType == tableAsType {
+		for _, param := range f.AllParams {
+			if param.Type == tableAsType {
 				// TODO: portion after newline should be in DETAILS but we don't yet support that in our error messages
 				return true, errors.Newf("cannot drop table %s because other objects depend on it\nfunction %s depends on type %s",
 					tableName.Name, f.Name().Name, tableName.Name)
@@ -141,8 +141,8 @@ func beforeTableDeletionCheckFuncsProcs(ctx *sql.Context, doltTable *sqle.DoltTa
 		return err
 	}
 	err = procsColl.IterateProcedures(ctx, func(p procedures.Procedure) (stop bool, err error) {
-		for _, paramType := range p.ParameterTypes {
-			if paramType == tableAsType {
+		for _, param := range p.AllParams {
+			if param.Type == tableAsType {
 				// TODO: portion after newline should be in DETAILS but we don't yet support that in our error messages
 				return true, errors.Newf("cannot drop table %s because other objects depend on it\nfunction %s depends on type %s",
 					tableName.Name, p.Name().Name, tableName.Name)

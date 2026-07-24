@@ -59,9 +59,10 @@ type InterpreterScopeDetails struct {
 // the same as a stack in the traditional programming sense, but rather is a loose abstraction that serves the same
 // general purpose.
 type InterpreterStack struct {
-	stack   *utils.Stack[*InterpreterScopeDetails]
-	runner  sql.StatementRunner
-	labelID int
+	outParams []string
+	stack     *utils.Stack[*InterpreterScopeDetails]
+	runner    sql.StatementRunner
+	labelID   int
 
 	// returnQueryBuffer buffers results from RETURN QUERY statements
 	returnQueryBuffer [][]pgtypes.RecordValue
@@ -77,9 +78,10 @@ func NewInterpreterStack(runner sql.StatementRunner) InterpreterStack {
 		variables: make(map[string]*interpreterVariable),
 	})
 	return InterpreterStack{
-		stack:   stack,
-		runner:  runner,
-		cursors: make(map[string]*cursorState),
+		outParams: make([]string, 0),
+		stack:     stack,
+		runner:    runner,
+		cursors:   make(map[string]*cursorState),
 	}
 }
 
@@ -225,6 +227,10 @@ func (is *InterpreterStack) PopScope() {
 	is.stack.Pop()
 }
 
+func (is *InterpreterStack) SetOutParams(name []string) {
+	is.outParams = name
+}
+
 // SetVariable sets the first variable found, with a matching name, to the value given. This does not ensure that the
 // value matches the expectations of the type, so it should be validated before this is called. Returns an error if the
 // variable cannot be found.
@@ -259,6 +265,25 @@ func (is *InterpreterStack) BufferReturnQueryResults(results [][]pgtypes.RecordV
 // ReturnQueryResults returns the buffered results from a RETURN QUERY statement.
 func (is *InterpreterStack) ReturnQueryResults() [][]pgtypes.RecordValue {
 	return is.returnQueryBuffer
+}
+
+// ReturnOutParamResults
+func (is *InterpreterStack) ReturnOutParamResults() any {
+	// single OUT parameter is not record type
+	if len(is.outParams) == 1 {
+		v := is.GetVariable(is.outParams[0])
+		return *v.Value
+	}
+	// multiple OUT parameters are record type
+	record := make([]pgtypes.RecordValue, len(is.outParams))
+	for i, iv := range is.outParams {
+		v := is.GetVariable(iv)
+		record[i] = pgtypes.RecordValue{
+			Value: *v.Value,
+			Type:  v.Type,
+		}
+	}
+	return record
 }
 
 // InitCursor stores the result set for a FOR record IN query LOOP cursor.

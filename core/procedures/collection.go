@@ -42,6 +42,13 @@ const (
 	ParameterMode_VARIADIC ParameterMode = 3
 )
 
+type Parameter struct {
+	Mode    ParameterMode // TODO: single array for all params OR use index?
+	Name    string
+	Type    id.Type
+	Default string
+}
+
 // Collection contains a collection of procedures.
 type Collection struct {
 	accessCache   map[id.Procedure]Procedure      // This cache is used for general access when you know the exact ID
@@ -54,16 +61,13 @@ type Collection struct {
 
 // Procedure represents a created procedure.
 type Procedure struct {
-	ID                id.Procedure
-	ParameterNames    []string
-	ParameterTypes    []id.Type
-	ParameterModes    []ParameterMode
-	ParameterDefaults []string
-	Definition        string
-	ExtensionName     string                         // Only used when this is an extension procedure
-	ExtensionSymbol   string                         // Only used when this is an extension procedure
-	Operations        []plpgsql.InterpreterOperation // Only used when this is a plpgsql language
-	SQLDefinition     string                         // Only used when this is a sql language
+	ID              id.Procedure
+	AllParams       []Parameter
+	Definition      string
+	ExtensionName   string                         // Only used when this is an extension procedure
+	ExtensionSymbol string                         // Only used when this is an extension procedure
+	Operations      []plpgsql.InterpreterOperation // Only used when this is a plpgsql language
+	SQLDefinition   string                         // Only used when this is a sql language
 }
 
 var _ objinterface.Collection = (*Collection)(nil)
@@ -415,30 +419,6 @@ func (procedure Procedure) Name() doltdb.TableName {
 	return ProcedureIDToTableName(procedure.ID)
 }
 
-// ParameterModesAsString returns a string that represents the parameter modes. The string may be converted back to a
-// slice using ParameterModesFromString.
-func (procedure Procedure) ParameterModesAsString() string {
-	sb := strings.Builder{}
-	for i, mode := range procedure.ParameterModes {
-		if i > 0 {
-			sb.WriteRune(',')
-		}
-		switch mode {
-		case ParameterMode_IN:
-			sb.WriteString("in")
-		case ParameterMode_OUT:
-			sb.WriteString("out")
-		case ParameterMode_INOUT:
-			sb.WriteString("inout")
-		case ParameterMode_VARIADIC:
-			sb.WriteString("variadic")
-		default:
-			panic("unhandled procedure parameter mode")
-		}
-	}
-	return sb.String()
-}
-
 // ProcedureIDToTableName returns the ID in a format that's better for user consumption.
 func ProcedureIDToTableName(procID id.Procedure) doltdb.TableName {
 	paramTypes := procID.Parameters()
@@ -454,29 +434,4 @@ func ProcedureIDToTableName(procID id.Procedure) doltdb.TableName {
 		Name:   fmt.Sprintf("%s(%s)", procID.ProcedureName(), strings.Join(strTypes, ",")),
 		Schema: procID.SchemaName(),
 	}
-}
-
-// ParameterModesFromString returns a ParameterMode slice from the given string. It is assumed that this string was
-// originally created using Procedure.ParameterModesAsString.
-func ParameterModesFromString(str string) ([]ParameterMode, error) {
-	if len(str) == 0 {
-		return nil, nil
-	}
-	modeStrings := strings.Split(str, ",")
-	modes := make([]ParameterMode, len(modeStrings))
-	for i, modeString := range modeStrings {
-		switch modeString {
-		case "in":
-			modes[i] = ParameterMode_IN
-		case "out":
-			modes[i] = ParameterMode_OUT
-		case "inout":
-			modes[i] = ParameterMode_INOUT
-		case "variadic":
-			modes[i] = ParameterMode_VARIADIC
-		default:
-			return nil, errors.Errorf("`%s` is not a valid parameter argmode, it may be one of the following: in, out, inout, variadic", modeString)
-		}
-	}
-	return modes, nil
 }

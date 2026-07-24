@@ -23,6 +23,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/auth"
@@ -40,39 +41,43 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	}
 	// Grab the general information that we'll need to create the function
 	tableName := node.Name.ToTableName()
-	var retType *pgtypes.DoltgresType
-	if len(node.RetType) == 0 {
-		retType = pgtypes.Void
-	} else if !node.ReturnsTable {
-		// Return types may specify "trigger", but this doesn't apply elsewhere
-		_, retType, err = nodeResolvableTypeReference(ctx, node.RetType[0].Type, true)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		retType = createAnonymousCompositeType(node.RetType)
+
+	params, defaults, outTypes, err := resolveRoutineParameters(ctx, node.Args)
+	if err != nil {
+		return nil, err
 	}
 
-	params := make([]pgnodes.RoutineParam, len(node.Args))
-	var defaults []vitess.Expr
-	for i, arg := range node.Args {
-		// parameter name
-		params[i].Name = arg.Name.String()
-		// parameter type
-		_, params[i].Type, err = nodeResolvableTypeReference(ctx, arg.Type, false)
+	var retType *pgtypes.DoltgresType
+	if len(outTypes) == 1 {
+		retType = outTypes[0]
+	} else if len(outTypes) > 1 {
+		// TODO need to store types inside record type??
+		retType = pgtypes.Record
+	} else {
+		retType = pgtypes.Void
+	}
+
+	if node.ReturnsTable {
+		if len(outTypes) != 0 {
+			return nil, fmt.Errorf("function result type must be %s because of OUT parameters", retType.String())
+		}
+		retType = createAnonymousCompositeType(node.RetType)
+	} else if len(node.RetType) != 0 {
+		if len(outTypes) > 1 {
+			return nil, fmt.Errorf("function result type must be %s because of OUT parameters", retType.String())
+		}
+		// Return types may specify "trigger", but this doesn't apply elsewhere
+		_, rt, err := nodeResolvableTypeReference(ctx, node.RetType[0].Type, true)
 		if err != nil {
 			return nil, err
 		}
-		// parameter default
-		if arg.Default != nil {
-			params[i].HasDefault = true
-			d, err := nodeExpr(ctx, arg.Default)
-			if err != nil {
-				return nil, err
-			}
-			defaults = append(defaults, d)
+
+		if len(outTypes) == 1 && retType.ID != rt.ID {
+			return nil, fmt.Errorf("function result type must be %s because of OUT parameters", retType.String())
 		}
+		retType = rt
 	}
+
 	var strict bool
 	if nullInputOption, ok := options[tree.OptionNullInput]; ok {
 		if nullInputOption.NullInput == tree.ReturnsNullOnNullInput || nullInputOption.NullInput == tree.StrictNullInput {
@@ -265,4 +270,58 @@ func validateRoutineOptions(ctx *Context, options []tree.RoutineOption) (map[tre
 		}
 	}
 	return optDefined, nil
+}
+
+// resolveRoutineParameters
+func resolveRoutineParameters(ctx *Context, args tree.RoutineArgs) ([]pgnodes.RoutineParam, []vitess.Expr, []*pgtypes.DoltgresType, error) {
+	params := make([]pgnodes.RoutineParam, len(args))
+	var err error
+	var defaults []vitess.Expr
+	var seenVariadic = false
+	var outTypes []*pgtypes.DoltgresType
+	for i, arg := range args {
+		// parameter name
+		params[i].Name = arg.Name.String()
+		// parameter type
+		_, params[i].Type, err = nodeResolvableTypeReference(ctx, arg.Type, false)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		// parameter mode
+		switch arg.Mode {
+		case tree.RoutineArgModeIn:
+			if seenVariadic {
+				return nil, nil, nil, errors.Errorf("VARIADIC parameter must be the last input parameter")
+			}
+			params[i].Mode = procedures.ParameterMode_IN
+		case tree.RoutineArgModeVariadic:
+			if !params[i].Type.IsArrayType() {
+				return nil, nil, nil, errors.Errorf("VARIADIC parameter must be an array")
+			}
+			seenVariadic = true
+			params[i].Mode = procedures.ParameterMode_VARIADIC
+		case tree.RoutineArgModeOut:
+			outTypes = append(outTypes, params[i].Type)
+			params[i].Mode = procedures.ParameterMode_OUT
+		case tree.RoutineArgModeInout:
+			outTypes = append(outTypes, params[i].Type)
+			if seenVariadic {
+				return nil, nil, nil, errors.Errorf("VARIADIC parameter must be the last input parameter")
+			}
+			params[i].Mode = procedures.ParameterMode_INOUT
+		default:
+			return nil, nil, nil, errors.Newf("unknown routine argmode: `%v`", arg.Mode)
+		}
+		// parameter default
+		if arg.Default != nil {
+			params[i].HasDefault = true
+			d, err := nodeExpr(ctx, arg.Default)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			defaults = append(defaults, d)
+		}
+	}
+
+	return params, defaults, outTypes, nil
 }

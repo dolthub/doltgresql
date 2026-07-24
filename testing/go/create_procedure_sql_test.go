@@ -49,8 +49,8 @@ $$;`,
 					Expected: []sql.Row{},
 				},
 				{
-					SkipResultsCheck: true, // TODO: need fix for returning results
 					Query:            `CALL add('f')`,
+					ExpectedColNames: []string{"new_host_connection_id"},
 					Expected:         []sql.Row{{"2222"}},
 				},
 				{
@@ -85,7 +85,8 @@ $$;`,
 					Expected: []sql.Row{},
 				},
 				{
-					Query: `CALL create_game('d')`,
+					SkipResultsCheck: true, // generates random number
+					Query:            `CALL create_game('d')`,
 				},
 				{
 					Query:    `SELECT id, host_connection_id FROM games`,

@@ -15,6 +15,8 @@
 package framework
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -44,8 +46,13 @@ func (cFunc CFunction) GetName() string {
 	return cFunc.ID.FunctionName()
 }
 
+func (cFunc CFunction) GetOutParameters() sql.Schema {
+	// TODO
+	return nil
+}
+
 // GetParameters implements the interface FunctionInterface.
-func (cFunc CFunction) GetParameters() []*pgtypes.DoltgresType {
+func (cFunc CFunction) GetInputParameterTypes() []*pgtypes.DoltgresType {
 	return cFunc.ParameterTypes
 }
 

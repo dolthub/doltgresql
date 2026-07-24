@@ -32,20 +32,20 @@ func (procedure Procedure) Serialize(ctx context.Context) ([]byte, error) {
 
 	// Write all of the procedures to the writer
 	writer := utils.NewWriter(256)
-	writer.VariableUint(1) // Version
+	writer.VariableUint(2) // Version
 	// Write the procedure data
 	writer.Id(procedure.ID.AsId())
-	writer.StringSlice(procedure.ParameterNames)
-	writer.IdTypeSlice(procedure.ParameterTypes)
+	//writer.StringSlice(procedure.ParameterNames)
+	//writer.IdTypeSlice(procedure.ParameterTypes)
 	writer.String(procedure.Definition)
 	writer.String(procedure.ExtensionName)
 	writer.String(procedure.ExtensionSymbol)
 	writer.String(procedure.SQLDefinition)
 	// Write the parameter modes
-	writer.VariableUint(uint64(len(procedure.ParameterModes)))
-	for _, mode := range procedure.ParameterModes {
-		writer.Uint8(uint8(mode))
-	}
+	//writer.VariableUint(uint64(len(procedure.ParameterModes)))
+	//for _, mode := range procedure.ParameterModes {
+	//	writer.Uint8(uint8(mode))
+	//}
 	// Write the operations
 	writer.VariableUint(uint64(len(procedure.Operations)))
 	for _, op := range procedure.Operations {
@@ -57,7 +57,16 @@ func (procedure Procedure) Serialize(ctx context.Context) ([]byte, error) {
 		writer.StringMap(op.Options)
 	}
 	// Write version 1 data
-	writer.StringSlice(procedure.ParameterDefaults)
+	//writer.StringSlice(procedure.ParameterDefaults)
+	// Write version 2 data
+	// Write the parameters
+	writer.VariableUint(uint64(len(procedure.AllParams)))
+	for _, param := range procedure.AllParams {
+		writer.Uint8(uint8(param.Mode))
+		writer.String(param.Name)
+		writer.Id(param.Type.AsId())
+		writer.String(param.Default)
+	}
 	// Returns the data
 	return writer.Data(), nil
 }
@@ -70,25 +79,34 @@ func DeserializeProcedure(ctx context.Context, data []byte) (Procedure, error) {
 	}
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
-	if version > 1 {
+	if version > 2 {
 		return Procedure{}, errors.Errorf("version %d of procedures is not supported, please upgrade the server", version)
 	}
 
 	// Read from the reader
 	p := Procedure{}
 	p.ID = id.Procedure(reader.Id())
-	p.ParameterNames = reader.StringSlice()
-	p.ParameterTypes = reader.IdTypeSlice()
+	var paramNames []string
+	var paramTypes []id.Type
+	var paramModes []ParameterMode
+	var paramDefaults []string
+	if version < 2 {
+		paramNames = reader.StringSlice()
+		paramTypes = reader.IdTypeSlice()
+	}
 	p.Definition = reader.String()
 	p.ExtensionName = reader.String()
 	p.ExtensionSymbol = reader.String()
 	p.SQLDefinition = reader.String()
-	// Read the parameter modes
-	modeCount := reader.VariableUint()
-	p.ParameterModes = make([]ParameterMode, modeCount)
-	for modeIdx := uint64(0); modeIdx < modeCount; modeIdx++ {
-		p.ParameterModes[modeIdx] = ParameterMode(reader.Uint8())
+	if version < 2 {
+		// Read the parameter modes
+		modeCount := reader.VariableUint()
+		paramModes = make([]ParameterMode, modeCount)
+		for modeIdx := uint64(0); modeIdx < modeCount; modeIdx++ {
+			paramModes[modeIdx] = ParameterMode(reader.Uint8())
+		}
 	}
+
 	// Read the operations
 	opCount := reader.VariableUint()
 	p.Operations = make([]plpgsql.InterpreterOperation, opCount)
@@ -102,8 +120,33 @@ func DeserializeProcedure(ctx context.Context, data []byte) (Procedure, error) {
 		op.Options = reader.StringMap()
 		p.Operations[opIdx] = op
 	}
-	if version >= 1 {
-		p.ParameterDefaults = reader.StringSlice()
+	if version == 1 {
+		paramDefaults = reader.StringSlice()
+	}
+	if version >= 2 {
+		// Read the parameters
+		modeCount := reader.VariableUint()
+		p.AllParams = make([]Parameter, modeCount)
+		for i := range p.AllParams {
+			pa := Parameter{}
+			pa.Mode = ParameterMode(reader.Uint8())
+			pa.Name = reader.String()
+			pa.Type = id.Type(reader.Id())
+			pa.Default = reader.String()
+			p.AllParams[i] = pa
+		}
+	} else {
+		params := make([]Parameter, len(paramNames))
+		for i, paramName := range paramNames {
+			params[i] = Parameter{
+				Name: paramName,
+				Type: paramTypes[i],
+				Mode: paramModes[i],
+			}
+			if paramDefaults != nil {
+				params[i].Default = paramDefaults[i]
+			}
+		}
 	}
 	if !reader.IsEmpty() {
 		return Procedure{}, errors.New("extra data found while deserializing a procedure")

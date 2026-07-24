@@ -120,7 +120,7 @@ func (c *CreateCast) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		if err != nil {
 			return nil, err
 		}
-		if f.ParameterTypes[0] != c.Source.ID {
+		if f.AllParams[0].Type != c.Source.ID {
 			// Although the error mentions binary-coercible, we can't actually support that due to how types work in Go.
 			// Our bit representations of values will differ from Postgres.
 			return nil, errors.New("argument of cast function must match or be binary-coercible from source data type")

@@ -28,6 +28,7 @@ import (
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 )
@@ -46,9 +47,7 @@ type Collection struct {
 type Function struct {
 	ID                 id.Function
 	ReturnType         id.Type
-	ParameterNames     []string
-	ParameterTypes     []id.Type
-	ParameterDefaults  []string
+	AllParams          []procedures.Parameter
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool

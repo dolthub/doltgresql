@@ -170,9 +170,9 @@ func validateFunction(funcName string, overloads []FunctionInterface) error {
 	// Verify that each function uses the correct Function overload
 	for _, functionOverload := range overloads {
 		if functionOverload.GetExpectedParameterCount() >= 0 &&
-			len(functionOverload.GetParameters()) != functionOverload.GetExpectedParameterCount() {
+			len(functionOverload.GetInputParameterTypes()) != functionOverload.GetExpectedParameterCount() {
 			return errors.Errorf("function `%s` should have %d arguments but has %d arguments",
-				funcName, functionOverload.GetExpectedParameterCount(), len(functionOverload.GetParameters()))
+				funcName, functionOverload.GetExpectedParameterCount(), len(functionOverload.GetInputParameterTypes()))
 		}
 	}
 	// Verify that all overloads are unique
@@ -180,8 +180,8 @@ func validateFunction(funcName string, overloads []FunctionInterface) error {
 		for _, f2 := range overloads[functionIndex+1:] {
 			sameCount := 0
 			if f1.GetExpectedParameterCount() == f2.GetExpectedParameterCount() {
-				f2Parameters := f2.GetParameters()
-				for parameterIndex, f1Parameter := range f1.GetParameters() {
+				f2Parameters := f2.GetInputParameterTypes()
+				for parameterIndex, f1Parameter := range f1.GetInputParameterTypes() {
 					if f1Parameter.Equals(f2Parameters[parameterIndex]) {
 						sameCount++
 					}
