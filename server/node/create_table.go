@@ -16,12 +16,14 @@ package node
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/server/auth"
 )
 
 // CreateTable is a node that implements functionality specifically relevant to Doltgres' table creation needs.
@@ -93,7 +95,46 @@ func (c *CreateTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sq
 			return nil, err
 		}
 	}
-	return createTableIter, err
+
+	ownerRole := auth.GetRole(ctx.Client().User)
+	if ownerRole.IsValid() {
+		return &createTableDefaultPrivsIter{
+			inner:      createTableIter,
+			ownerID:    ownerRole.ID(),
+			schemaName: schemaName,
+			tableName:  c.gmsCreateTable.Name(),
+		}, nil
+	}
+	return createTableIter, nil
+}
+
+// createTableDefaultPrivsIter wraps the create table iter to apply default privileges after creation.
+type createTableDefaultPrivsIter struct {
+	inner      sql.RowIter
+	ownerID    auth.RoleID
+	schemaName string
+	tableName  string
+	applied    bool
+}
+
+func (i *createTableDefaultPrivsIter) Next(ctx *sql.Context) (sql.Row, error) {
+	row, err := i.inner.Next(ctx)
+	if err == io.EOF && !i.applied {
+		i.applied = true
+		var applyErr error
+		auth.LockWrite(func() {
+			auth.ApplyDefaultPrivilegesForNewTable(i.ownerID, i.schemaName, i.tableName)
+			applyErr = auth.PersistChanges()
+		})
+		if applyErr != nil {
+			return nil, applyErr
+		}
+	}
+	return row, err
+}
+
+func (i *createTableDefaultPrivsIter) Close(ctx *sql.Context) error {
+	return i.inner.Close(ctx)
 }
 
 // Schema implements the interface sql.ExecBuilderNode.

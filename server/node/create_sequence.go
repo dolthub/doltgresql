@@ -30,6 +30,7 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/tables"
@@ -224,6 +225,17 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		if err != nil {
 			return nil, err
 		}
+	}
+	var authErr error
+	auth.LockWrite(func() {
+		ownerRole := auth.GetRole(ctx.Client().User)
+		if ownerRole.IsValid() {
+			auth.ApplyDefaultPrivilegesForNewSequence(ownerRole.ID(), c.sequence.Id.SchemaName(), c.sequence.Id.SequenceName())
+		}
+		authErr = auth.PersistChanges()
+	})
+	if authErr != nil {
+		return nil, authErr
 	}
 	return sql.RowsToRowIter(), nil
 }

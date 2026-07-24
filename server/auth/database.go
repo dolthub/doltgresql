@@ -45,6 +45,7 @@ type Database struct {
 	sequencePrivileges *SequencePrivileges
 	routinePrivileges  *RoutinePrivileges
 	roleMembership     *RoleMembership
+	defaultPrivileges  *DefaultPrivileges
 }
 
 // ClearDatabase clears the internal database, leaving only the default users. This is primarily for use by tests.
@@ -57,6 +58,7 @@ func ClearDatabase() {
 	clear(globalDatabase.sequencePrivileges.Data)
 	clear(globalDatabase.routinePrivileges.Data)
 	clear(globalDatabase.roleMembership.Data)
+	clear(globalDatabase.defaultPrivileges.Data)
 	dbInitDefault()
 }
 
@@ -94,6 +96,14 @@ func RenameRole(oldName string, newName string) {
 func RoleExists(name string) bool {
 	_, ok := globalDatabase.rolesByName[name]
 	return ok
+}
+
+// GetRoleName returns the name of the role with the given ID. Returns an empty string if the role does not exist.
+func GetRoleName(id RoleID) string {
+	if role, ok := globalDatabase.rolesByID[id]; ok {
+		return role.Name
+	}
+	return ""
 }
 
 // SetRole sets the role matching the given name. This will add a role that does not yet exist, and overwrite an
@@ -143,6 +153,7 @@ func dbInit(dEnv *env.DoltEnv, cfg Config) {
 		sequencePrivileges: NewSequencePrivileges(),
 		routinePrivileges:  NewRoutinePrivileges(),
 		roleMembership:     NewRoleMembership(),
+		defaultPrivileges:  NewDefaultPrivileges(),
 	}
 	globalLock = &sync.RWMutex{}
 	if dEnv != nil {
