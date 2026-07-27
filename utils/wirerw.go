@@ -126,12 +126,15 @@ func (rw *WireRW) ReadBytes(n uint32) []byte {
 }
 
 // sliceForRead returns the next n unread bytes, explicitly checked against the buffer's actual
-// length rather than relying on Go's implicit slice-capacity check.
+// length rather than relying on Go's implicit slice-capacity check. The check is done via
+// subtraction rather than rw.readIdx+n so that a near-maximum n can't wrap the uint32 addition
+// around and bypass the bounds check.
 func (rw *WireRW) sliceForRead(n uint32) []byte {
 	buf := rw.buf.Bytes()
-	if rw.readIdx+n > uint32(len(buf)) {
+	bufLen := uint32(len(buf))
+	if rw.readIdx > bufLen || n > bufLen-rw.readIdx {
 		panic(fmt.Sprintf("wire reader: attempted to read %d bytes at offset %d, but only %d bytes are available",
-			n, rw.readIdx, len(buf)-int(rw.readIdx)))
+			n, rw.readIdx, int(bufLen)-int(rw.readIdx)))
 	}
 	return buf[rw.readIdx : rw.readIdx+n]
 }
