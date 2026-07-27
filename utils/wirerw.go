@@ -17,6 +17,7 @@ package utils
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math"
 )
 
@@ -83,21 +84,21 @@ func (rw *WireRW) ReadUint8() uint8 {
 
 // ReadUint16 reads a uint16.
 func (rw *WireRW) ReadUint16() uint16 {
-	data := rw.buf.Bytes()[rw.readIdx : rw.readIdx+2]
+	data := rw.sliceForRead(2)
 	rw.readIdx += 2
 	return binary.BigEndian.Uint16(data)
 }
 
 // ReadUint32 reads a uint32.
 func (rw *WireRW) ReadUint32() uint32 {
-	data := rw.buf.Bytes()[rw.readIdx : rw.readIdx+4]
+	data := rw.sliceForRead(4)
 	rw.readIdx += 4
 	return binary.BigEndian.Uint32(data)
 }
 
 // ReadUint64 reads a uint64.
 func (rw *WireRW) ReadUint64() uint64 {
-	data := rw.buf.Bytes()[rw.readIdx : rw.readIdx+8]
+	data := rw.sliceForRead(8)
 	rw.readIdx += 8
 	return binary.BigEndian.Uint64(data)
 }
@@ -119,9 +120,20 @@ func (rw *WireRW) ReadString(n uint32) string {
 
 // ReadBytes reads the next N bytes.
 func (rw *WireRW) ReadBytes(n uint32) []byte {
-	data := rw.buf.Bytes()[rw.readIdx : rw.readIdx+n]
+	data := rw.sliceForRead(n)
 	rw.readIdx += n
 	return data
+}
+
+// sliceForRead returns the next n unread bytes, explicitly checked against the buffer's actual
+// length rather than relying on Go's implicit slice-capacity check.
+func (rw *WireRW) sliceForRead(n uint32) []byte {
+	buf := rw.buf.Bytes()
+	if rw.readIdx+n > uint32(len(buf)) {
+		panic(fmt.Sprintf("wire reader: attempted to read %d bytes at offset %d, but only %d bytes are available",
+			n, rw.readIdx, len(buf)-int(rw.readIdx)))
+	}
+	return buf[rw.readIdx : rw.readIdx+n]
 }
 
 // WriteBool writes a 1-byte bool.
