@@ -22,6 +22,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,8 +60,8 @@ func TestBindingWithOidZero(t *testing.T) {
 	var id int32
 	var name string
 	require.NoError(t, conn.QueryRow(ctx, "SELECT id, name FROM my_table").Scan(&id, &name))
-	require.Equal(t, int32(42), id)
-	require.Equal(t, "Alice", name)
+	assert.Equal(t, int32(42), id)
+	assert.Equal(t, "Alice", name)
 }
 
 // TestBindingInt4ToBigintWithUntypedNull is a regression test for
@@ -103,10 +104,10 @@ func TestBindingInt4ToBigintWithUntypedNull(t *testing.T) {
 	var b int32
 	var f *bool
 	require.NoError(t, rows.Scan(&a, &b, &f))
-	require.Equal(t, int64(1), a)
-	require.Equal(t, int32(2), b)
-	require.Nil(t, f)
-	require.False(t, rows.Next())
+	assert.Equal(t, int64(1), a)
+	assert.Equal(t, int32(2), b)
+	assert.Nil(t, f)
+	assert.False(t, rows.Next())
 }
 
 // TestBindingWhereClauseInt4ToBigintWithUntypedNull is a regression test for
@@ -142,8 +143,8 @@ func TestBindingWhereClauseInt4ToBigintWithUntypedNull(t *testing.T) {
 	result := resultReader.Read()
 	require.NoError(t, result.Err)
 	require.Len(t, result.Rows, 1)
-	require.Equal(t, "1", string(result.Rows[0][0]))
-	require.Equal(t, "t", string(result.Rows[0][1]))
+	assert.Equal(t, "1", string(result.Rows[0][0]))
+	assert.Equal(t, "t", string(result.Rows[0][1]))
 }
 
 // TestBindingUpdateInt4ToBigintWithUntypedNull is a regression test for
@@ -179,8 +180,8 @@ func TestBindingUpdateInt4ToBigintWithUntypedNull(t *testing.T) {
 	var a int64
 	var f *bool
 	require.NoError(t, conn.QueryRow(ctx, "SELECT a, f FROM t3 WHERE id = 1").Scan(&a, &f))
-	require.Equal(t, int64(42), a)
-	require.Nil(t, f)
+	assert.Equal(t, int64(42), a)
+	assert.Nil(t, f)
 }
 
 // TestBindingFloat4ToDoubleWithUntypedNull is a regression test for
@@ -215,8 +216,8 @@ func TestBindingFloat4ToDoubleWithUntypedNull(t *testing.T) {
 	var a float64
 	var f *bool
 	require.NoError(t, conn.QueryRow(ctx, "SELECT a, f FROM t4").Scan(&a, &f))
-	require.Equal(t, float64(3.5), a)
-	require.Nil(t, f)
+	assert.Equal(t, float64(3.5), a)
+	assert.Nil(t, f)
 }
 
 // TestBindingInt8ToIntColumnWithUntypedNull is a regression test for
@@ -250,8 +251,8 @@ func TestBindingInt8ToIntColumnWithUntypedNull(t *testing.T) {
 	var a int32
 	var f *bool
 	require.NoError(t, conn.QueryRow(ctx, "SELECT a, f FROM t5").Scan(&a, &f))
-	require.Equal(t, int32(7), a)
-	require.Nil(t, f)
+	assert.Equal(t, int32(7), a)
+	assert.Nil(t, f)
 }
 
 // TestBindingShortParameterOIDsArray is a regression test for a defect found from
@@ -281,8 +282,8 @@ func TestBindingShortParameterOIDsArray(t *testing.T) {
 
 	var a, b int32
 	require.NoError(t, conn.QueryRow(ctx, "SELECT a, b FROM t6").Scan(&a, &b))
-	require.Equal(t, int32(1), a)
-	require.Equal(t, int32(2), b)
+	assert.Equal(t, int32(1), a)
+	assert.Equal(t, int32(2), b)
 }
 
 func TestIssue2386(t *testing.T) {
@@ -384,8 +385,8 @@ func TestBindingOnConflictDoUpdateWithUntypedNull(t *testing.T) {
 	var a int64
 	var f *bool
 	require.NoError(t, conn.QueryRow(ctx, "SELECT a, f FROM tconf WHERE id = 1").Scan(&a, &f))
-	require.Equal(t, int64(42), a)
-	require.Nil(t, f)
+	assert.Equal(t, int64(42), a)
+	assert.Nil(t, f)
 }
 
 // TestBindingMultipleInferredAndExplicitOIDsInterleaved tests the OID-merge logic by interleaving
@@ -423,9 +424,9 @@ func TestBindingMultipleInferredAndExplicitOIDsInterleaved(t *testing.T) {
 	var d float64
 	var e *bool
 	require.NoError(t, conn.QueryRow(ctx, "SELECT a, b, c, d, e FROM t7").Scan(&a, &b, &c, &d, &e))
-	require.Equal(t, int32(11), a)
-	require.Equal(t, int64(22), b)
-	require.Equal(t, int32(33), c)
-	require.Equal(t, float64(4.5), d)
-	require.Nil(t, e)
+	assert.Equal(t, int32(11), a)
+	assert.Equal(t, int64(22), b)
+	assert.Equal(t, int32(33), c)
+	assert.Equal(t, float64(4.5), d)
+	assert.Nil(t, e)
 }

@@ -17,7 +17,7 @@ package utils
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestWireRWReadPastEndPanicsWithDiagnostic asserts that reading more bytes than are available
@@ -26,19 +26,19 @@ import (
 func TestWireRWReadPastEndPanicsWithDiagnostic(t *testing.T) {
 	t.Run("ReadUint32 past end", func(t *testing.T) {
 		rw := NewWireReader([]byte{1, 2, 3})
-		require.PanicsWithValue(t,
+		assert.PanicsWithValue(t,
 			"wire reader: attempted to read 4 bytes at offset 0, but only 3 bytes are available",
 			func() { rw.ReadUint32() })
 	})
 	t.Run("ReadUint64 past end", func(t *testing.T) {
 		rw := NewWireReader([]byte{1, 2, 3, 4})
-		require.PanicsWithValue(t,
+		assert.PanicsWithValue(t,
 			"wire reader: attempted to read 8 bytes at offset 0, but only 4 bytes are available",
 			func() { rw.ReadUint64() })
 	})
 	t.Run("ReadBytes exactly at end succeeds", func(t *testing.T) {
 		rw := NewWireReader([]byte{1, 2, 3, 4})
-		require.Equal(t, []byte{1, 2, 3, 4}, rw.ReadBytes(4))
+		assert.Equal(t, []byte{1, 2, 3, 4}, rw.ReadBytes(4))
 	})
 }
 
@@ -48,9 +48,9 @@ func TestWireRWReadPastEndPanicsWithDiagnostic(t *testing.T) {
 func TestWireRWReadBytesWrappedLengthDoesNotOverflow(t *testing.T) {
 	rw := NewWireReader([]byte{1, 2, 3, 4, 5})
 	// Consume one valid prefix byte so readIdx is nonzero
-	require.Equal(t, uint8(1), rw.ReadUint8())
+	assert.Equal(t, uint8(1), rw.ReadUint8())
 
-	require.PanicsWithValue(t,
+	assert.PanicsWithValue(t,
 		"wire reader: attempted to read 4294967295 bytes at offset 1, but only 4 bytes are available",
 		func() { rw.ReadBytes(4294967295) })
 }
