@@ -47,7 +47,6 @@ tests:
         columns: ["max_connections"]
         rows: [["999"]]
 - name: "dolt_auto_gc_enabled default"
-  skip: "default not set yet"
   repos:
   - name: repo1
     server:
@@ -63,7 +62,6 @@ tests:
     - exec: "SET dolt_auto_gc_enabled = 0"
       error_match: "Variable 'dolt_auto_gc_enabled' is a read only variable"
 - name: "@@global.dolt_auto_gc_enabled true"
-  skip: "config field not supported yet"
   repos:
   - name: repo1
     with_files:
@@ -83,7 +81,6 @@ tests:
         columns: ["dolt_auto_gc_enabled"]
         rows: [["1"]]
 - name: "@@global.dolt_auto_gc_enabled false"
-  skip: "config field not supported yet"
   repos:
     - name: repo1
       with_files:
