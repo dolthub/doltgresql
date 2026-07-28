@@ -222,4 +222,4 @@ require (
 // Temporary: dolt's go.mod replace for the IsComplete hook is not honored
 // when doltgresql is the main module, so it must be repeated here. Remove
 // once dolthub/dolt#10866's upstream ishell change merges. Refs: dolthub/dolt#10866
-replace github.com/dolthub/ishell => github.com/codeaucafe/ishell v0.0.0-20260607220657-061915e86568
+replace github.com/dolthub/ishell => github.com/codeaucafe/ishell v0.0.0-20260722022957-950b93b95974
