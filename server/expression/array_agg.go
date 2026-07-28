@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/sorters"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/server/types"
@@ -28,7 +29,7 @@ import (
 
 type ArrayAgg struct {
 	selectExprs []sql.Expression
-	orderBy     sql.SortFields
+	orderBy     sql.SortConditions
 	id          sql.ColumnId
 	Distinct    bool
 }
@@ -45,7 +46,7 @@ func (a *ArrayAgg) WithResolvedChildren(ctx context.Context, children []any) (an
 		a.selectExprs[i] = children[i].(sql.Expression)
 	}
 
-	a.orderBy = children[len(children)-1].(sql.SortFields)
+	a.orderBy = children[len(children)-1].(sql.SortConditions)
 	return a, nil
 }
 
@@ -170,15 +171,12 @@ func (a *arrayAggBuffer) Eval(ctx *sql.Context) (interface{}, error) {
 	}
 
 	if a.a.orderBy != nil {
-		sorter := &expression.Sorter{
-			SortFields: a.a.orderBy,
-			Rows:       a.elements,
-			Ctx:        ctx,
-		}
+		sorter := sorters.NewRowSorterWithRows(ctx, a.a.orderBy, a.elements)
 
 		sort.Stable(sorter)
-		if sorter.LastError != nil {
-			return nil, sorter.LastError
+		err := sorter.GetError()
+		if err != nil {
+			return nil, err
 		}
 	}
 
