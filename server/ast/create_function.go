@@ -62,9 +62,6 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		}
 		retType = createAnonymousCompositeType(node.RetType)
 	} else if len(node.RetType) != 0 {
-		if len(outTypes) > 1 {
-			return nil, fmt.Errorf("function result type must be %s because of OUT parameters", retType.String())
-		}
 		// Return types may specify "trigger", but this doesn't apply elsewhere
 		_, rt, err := nodeResolvableTypeReference(ctx, node.RetType[0].Type, true)
 		if err != nil {
@@ -72,6 +69,8 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		}
 
 		if len(outTypes) == 1 && retType.ID != rt.ID {
+			return nil, fmt.Errorf("function result type must be %s because of OUT parameters", retType.String())
+		} else if len(outTypes) > 1 && rt.ID != pgtypes.Record.ID {
 			return nil, fmt.Errorf("function result type must be %s because of OUT parameters", retType.String())
 		}
 		retType = rt

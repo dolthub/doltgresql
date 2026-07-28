@@ -1051,9 +1051,12 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 		}
 		sess.ClearNotices()
 
-		if returnsRow(query) {
+		// CALL statement does not return row unless the procedure has OUT parameter, then it returns single row result.
+		callWithRowReturned := query.StatementTag == "CALL" && res.RowsAffected != 0
+
+		if returnsRow(query) || callWithRowReturned {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
-			if !isExecute && !hasSentRowDescription {
+			if (!isExecute && !hasSentRowDescription) || callWithRowReturned {
 				hasSentRowDescription = true
 				h.backend.Send(&pgproto3.RowDescription{
 					Fields: res.Fields,
@@ -1238,7 +1241,7 @@ func (h *ConnectionHandler) send(message pgproto3.BackendMessage) error {
 // returnsRow returns whether the query returns set of rows such as SELECT and FETCH statements.
 func returnsRow(query ConvertedQuery) bool {
 	switch query.StatementTag {
-	case "SELECT", "SHOW", "FETCH", "EXPLAIN", "SHOW TABLES", "SHOW CREATE", "SHOW INDEXES FROM TABLE", "SHOW DATABASES", "SHOW SCHEMAS", "CALL":
+	case "SELECT", "SHOW", "FETCH", "EXPLAIN", "SHOW TABLES", "SHOW CREATE", "SHOW INDEXES FROM TABLE", "SHOW DATABASES", "SHOW SCHEMAS":
 		return true
 	case "INSERT", "UPDATE", "DELETE":
 		return hasReturningClause(query.AST)
