@@ -2547,6 +2547,28 @@ var typesTests = []ScriptTest{
 				Query:       `SELECT '""acos'::regproc;`,
 				ExpectedErr: "invalid name syntax",
 			},
+			{
+				Query: `SELECT 'pg_catalog.acos'::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{
+				Query: `SELECT typinput = 'pg_catalog.array_in'::regproc FROM pg_catalog.pg_type WHERE typname = 'int4';`,
+				Expected: []sql.Row{
+					{"f"},
+				},
+			},
+			{
+				Query: `SELECT typinput = 'pg_catalog.array_in'::regproc FROM pg_catalog.pg_type WHERE typname = '_int4';`,
+				Expected: []sql.Row{
+					{"t"},
+				},
+			},
+			{
+				Query:       `SELECT 'public.acos'::regproc;`,
+				ExpectedErr: "does not exist",
+			},
 		},
 	},
 	{
