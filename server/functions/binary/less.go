@@ -66,6 +66,7 @@ func initBinaryLessThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, oidvectorlt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, textltname)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, text_lt)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, tidlt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, time_lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, timestamp_lt_date)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, timestamp_lt)
@@ -434,6 +435,18 @@ var text_lt = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(ctx, val1, val2)
+		return res == -1, err
+	},
+}
+
+// tidlt represents the PostgreSQL function of the same name, taking the same parameters.
+var tidlt = framework.Function2{
+	Name:       "tidlt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Tid, pgtypes.Tid},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.Tid.Compare(ctx, val1, val2)
 		return res == -1, err
 	},
 }
