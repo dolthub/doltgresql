@@ -43,7 +43,7 @@ var cidin = framework.Function1{
 		input := val.(string)
 		uVal, err := strconv.ParseUint(strings.TrimSpace(input), 10, 32)
 		if err != nil {
-			return uint32(0), nil
+			return uint32(0), err
 		}
 		return uint32(uVal), nil
 	},
