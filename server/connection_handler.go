@@ -25,7 +25,6 @@ import (
 	"net"
 	"os"
 	"runtime/debug"
-	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -555,15 +554,26 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 	// A valid Parse message must have ParameterObjectIDs if there are any binding variables.
 	bindVarTypes := message.ParameterOIDs
 
-	// Clients can specify an OID of zero to indicate that the type should be inferred. If we
-	// see any zero OIDs, we fall back to extracting the bind var types from the plan.
-	if len(bindVarTypes) == 0 || slices.Contains(bindVarTypes, 0) {
-		// NOTE: This is used for Prepared Statement Tests only.
-		bindVarTypes, err = extractBindVarTypes(ctx, analyzedPlan)
-		if err != nil {
-			return err
+	// Clients can specify an OID of zero for a parameter, or omit trailing parameters from
+	// ParameterOIDs entirely (the Postgres protocol allows specifying types for only a prefix
+	// of the placeholders), to indicate that a parameter's type should be inferred. We always
+	// compute the plan-inferred types (we can't know whether bindVarTypes is missing
+	// trailing entries without first inspecting the analyzed plan) but only use an inferred
+	// type to fill a position the client left unspecified. An explicit, non-zero OID from the
+	// client must never be overwritten by an inferred type, since the client will encode that
+	// parameter's Bind value using its own declared type.
+	inferredTypes, err := extractBindVarTypes(ctx, analyzedPlan)
+	if err != nil {
+		return err
+	}
+	merged := make([]uint32, len(inferredTypes))
+	copy(merged, inferredTypes)
+	for i, oid := range bindVarTypes {
+		if oid != 0 && i < len(merged) {
+			merged[i] = oid
 		}
 	}
+	bindVarTypes = merged
 
 	h.preparedStatements[message.Name] = PreparedStatementData{
 		Query:        query,

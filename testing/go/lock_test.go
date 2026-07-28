@@ -65,5 +65,59 @@ func TestAdvisoryLocks(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "advisory locks are reentrant",
+			SetUpScript: []string{
+				`CREATE USER user1 PASSWORD 'password';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_advisory_lock(10)`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					// The same session may acquire a lock it already holds.
+					Query:    `SELECT pg_advisory_lock(10)`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_try_advisory_lock(10)`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Username: "user1",
+					Password: "password",
+					Query:    `SELECT pg_try_advisory_lock(10)`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_advisory_unlock(10)`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_advisory_unlock(10)`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					// The lock was acquired three times, so two unlocks leave it held and
+					// other sessions still cannot acquire it.
+					Username: "user1",
+					Password: "password",
+					Query:    `SELECT pg_try_advisory_lock(10)`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_advisory_unlock(10)`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					// After the final unlock, other sessions may acquire the lock.
+					Username: "user1",
+					Password: "password",
+					Query:    `SELECT pg_try_advisory_lock(10)`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
 	})
 }
