@@ -35,7 +35,6 @@ type SQLFunction struct {
 	ReturnType         *pgtypes.DoltgresType
 	AllParams          []procedures.Parameter
 	AllTypes           []*pgtypes.DoltgresType
-	InputTypes         []*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
@@ -48,7 +47,14 @@ var _ FunctionInterface = SQLFunction{}
 
 // GetExpectedParameterCount implements the interface FunctionInterface.
 func (sqlFunc SQLFunction) GetExpectedParameterCount() int {
-	return len(sqlFunc.InputTypes)
+	inputParamCount := 0
+	for _, param := range sqlFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_INOUT, procedures.ParameterMode_VARIADIC:
+			inputParamCount += 1
+		}
+	}
+	return inputParamCount
 }
 
 // GetName implements the interface FunctionInterface.
@@ -74,7 +80,14 @@ func (sqlFunc SQLFunction) GetOutParameters() sql.Schema {
 
 // GetInputParameterTypes implements the interface FunctionInterface.
 func (sqlFunc SQLFunction) GetInputParameterTypes() []*pgtypes.DoltgresType {
-	return sqlFunc.InputTypes
+	var typs []*pgtypes.DoltgresType
+	for i, param := range sqlFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_INOUT, procedures.ParameterMode_VARIADIC:
+			typs = append(typs, sqlFunc.AllTypes[i])
+		}
+	}
+	return typs
 }
 
 // GetReturn implements the interface FunctionInterface.

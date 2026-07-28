@@ -42,8 +42,9 @@ const (
 	ParameterMode_VARIADIC ParameterMode = 3
 )
 
+// Parameter represents a routine parameter with mode, name, type and default value.
 type Parameter struct {
-	Mode    ParameterMode // TODO: single array for all params OR use index?
+	Mode    ParameterMode
 	Name    string
 	Type    id.Type
 	Default string

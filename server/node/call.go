@@ -86,12 +86,12 @@ func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 
 	cf := c.CompiledFunc.SetStatementRunner(ctx, c.Runner.Runner).(*framework.CompiledFunction)
-	ree, err := cf.Eval(ctx, nil)
+	res, err := cf.Eval(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	if c.CachedSchema != nil {
-		return sql.RowsToRowIter(sql.Row{ree}), nil
+		return sql.RowsToRowIter(sql.Row{res}), nil
 	}
 	return sql.RowsToRowIter(), nil
 }

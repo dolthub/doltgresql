@@ -20,7 +20,6 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/core/procedures"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -76,14 +75,10 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 		}
 
 		paramTypes := make([]*pgtypes.DoltgresType, len(overload.AllParams))
-		var inputTypes []*pgtypes.DoltgresType
 		for i, param := range overload.AllParams {
 			paramTypes[i], err = typesCollection.GetType(ctx, param.Type)
 			if err != nil || paramTypes[i] == nil {
 				return nil, false
-			}
-			if param.Mode != procedures.ParameterMode_OUT {
-				inputTypes = append(inputTypes, paramTypes[i])
 			}
 		}
 		if len(overload.ExtensionName) > 0 {
@@ -105,7 +100,6 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 				ReturnType:         returnType,
 				AllParams:          overload.AllParams,
 				AllTypes:           paramTypes,
-				InputTypes:         inputTypes,
 				Variadic:           overload.Variadic,
 				IsNonDeterministic: overload.IsNonDeterministic,
 				Strict:             overload.Strict,
@@ -120,7 +114,6 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 				ReturnType:         returnType,
 				AllParams:          overload.AllParams,
 				AllTypes:           paramTypes,
-				InputTypes:         inputTypes,
 				Variadic:           overload.Variadic,
 				IsNonDeterministic: overload.IsNonDeterministic,
 				Strict:             overload.Strict,

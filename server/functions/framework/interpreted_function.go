@@ -37,7 +37,6 @@ type InterpretedFunction struct {
 	ReturnType         *pgtypes.DoltgresType
 	AllParams          []procedures.Parameter
 	AllTypes           []*pgtypes.DoltgresType
-	InputTypes         []*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
@@ -50,29 +49,19 @@ var _ plpgsql.InterpretedFunction = InterpretedFunction{}
 
 // GetExpectedParameterCount implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) GetExpectedParameterCount() int {
-	return len(iFunc.InputTypes)
+	inputParamCount := 0
+	for _, param := range iFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_INOUT, procedures.ParameterMode_VARIADIC:
+			inputParamCount += 1
+		}
+	}
+	return inputParamCount
 }
 
 // GetName implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) GetName() string {
 	return iFunc.ID.FunctionName()
-}
-
-// GetOutParameters implements the interface FunctionInterface.
-func (iFunc InterpretedFunction) GetOutParameters() sql.Schema {
-	// TODO: use it as INPUT types only?
-	var outParams []*sql.Column
-	for i, param := range iFunc.AllParams {
-		switch param.Mode {
-		case procedures.ParameterMode_OUT, procedures.ParameterMode_INOUT:
-			outParams = append(outParams, &sql.Column{
-				Name: param.Name,
-				Type: iFunc.AllTypes[i],
-				// TODO default val ?
-			})
-		}
-	}
-	return outParams
 }
 
 // GetAllNames implements the interface InterpretedFunction.
@@ -84,22 +73,8 @@ func (iFunc InterpretedFunction) GetAllNames() []string {
 	return names
 }
 
-// GetOutputParameters implements the interface InterpretedFunction.
-func (iFunc InterpretedFunction) GetOutputParameters() ([]string, []*pgtypes.DoltgresType) {
-	var names []string
-	var typs []*pgtypes.DoltgresType
-	for i, param := range iFunc.AllParams {
-		switch param.Mode {
-		case procedures.ParameterMode_OUT, procedures.ParameterMode_INOUT:
-			names = append(names, param.Name)
-			typs = append(typs, iFunc.AllTypes[i])
-		}
-	}
-	return names, typs
-}
-
-// GetInputParameters implements the interface InterpretedFunction.
-func (iFunc InterpretedFunction) GetInputParameters() ([]string, []*pgtypes.DoltgresType) {
+// GetInputParameterNamesAndTypes implements the interface InterpretedFunction.
+func (iFunc InterpretedFunction) GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType) {
 	var names []string
 	var typs []*pgtypes.DoltgresType
 	for i, param := range iFunc.AllParams {
@@ -114,7 +89,44 @@ func (iFunc InterpretedFunction) GetInputParameters() ([]string, []*pgtypes.Dolt
 
 // GetInputParameterTypes implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) GetInputParameterTypes() []*pgtypes.DoltgresType {
-	return iFunc.InputTypes
+	var typs []*pgtypes.DoltgresType
+	for i, param := range iFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_INOUT, procedures.ParameterMode_VARIADIC:
+			typs = append(typs, iFunc.AllTypes[i])
+		}
+	}
+	return typs
+}
+
+// GetOutputParameterNamesAndTypes implements the interface InterpretedFunction.
+func (iFunc InterpretedFunction) GetOutputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType) {
+	var names []string
+	var typs []*pgtypes.DoltgresType
+	for i, param := range iFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_OUT, procedures.ParameterMode_INOUT:
+			names = append(names, param.Name)
+			typs = append(typs, iFunc.AllTypes[i])
+		}
+	}
+	return names, typs
+}
+
+// GetOutParameters implements the interface FunctionInterface.
+func (iFunc InterpretedFunction) GetOutParameters() sql.Schema {
+	var outParams []*sql.Column
+	for i, param := range iFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_OUT, procedures.ParameterMode_INOUT:
+			outParams = append(outParams, &sql.Column{
+				Name: param.Name,
+				Type: iFunc.AllTypes[i],
+				// TODO default val ?
+			})
+		}
+	}
+	return outParams
 }
 
 // GetReturn implements the interface FunctionInterface.

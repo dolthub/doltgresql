@@ -31,14 +31,25 @@ func (function Function) Serialize(ctx context.Context) ([]byte, error) {
 		return nil, nil
 	}
 
+	paramNames := make([]string, len(function.AllParams))
+	paramTypes := make([]id.Type, len(function.AllParams))
+	paramDefaults := make([]string, len(function.AllParams))
+	paramModes := make([]procedures.ParameterMode, len(function.AllParams))
+	for i, param := range function.AllParams {
+		paramNames[i] = param.Name
+		paramTypes[i] = param.Type
+		paramDefaults[i] = param.Default
+		paramModes[i] = param.Mode
+	}
+
 	// Write all of the functions to the writer
 	writer := utils.NewWriter(256)
 	writer.VariableUint(4) // Version
 	// Write the function data
 	writer.Id(function.ID.AsId())
 	writer.Id(function.ReturnType.AsId())
-	//writer.StringSlice(function.ParameterNames)
-	//writer.IdTypeSlice(function.ParameterTypes)
+	writer.StringSlice(paramNames)
+	writer.IdTypeSlice(paramTypes)
 	writer.Bool(function.Variadic)
 	writer.Bool(function.IsNonDeterministic)
 	writer.Bool(function.Strict)
@@ -60,15 +71,11 @@ func (function Function) Serialize(ctx context.Context) ([]byte, error) {
 	writer.String(function.SQLDefinition)
 	writer.Bool(function.SetOf)
 	// Write version 3 data
-	//writer.StringSlice(function.ParameterDefaults)
+	writer.StringSlice(paramDefaults)
 	// Write version 4 data
-	// Write the parameters
-	writer.VariableUint(uint64(len(function.AllParams)))
-	for _, param := range function.AllParams {
-		writer.Uint8(uint8(param.Mode))
-		writer.String(param.Name)
-		writer.Id(param.Type.AsId())
-		writer.String(param.Default)
+	writer.VariableUint(uint64(len(paramModes)))
+	for _, mode := range paramModes {
+		writer.Uint8(uint8(mode))
 	}
 	// Returns the data
 	return writer.Data(), nil
@@ -90,13 +97,8 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 	f := Function{}
 	f.ID = id.Function(reader.Id())
 	f.ReturnType = id.Type(reader.Id())
-	var paramNames []string
-	var paramTypes []id.Type
-	var paramDefaults []string
-	if version < 4 {
-		paramNames = reader.StringSlice()
-		paramTypes = reader.IdTypeSlice()
-	}
+	paramNames := reader.StringSlice()
+	paramTypes := reader.IdTypeSlice()
 	f.Variadic = reader.Bool()
 	f.IsNonDeterministic = reader.Bool()
 	f.Strict = reader.Bool()
@@ -122,31 +124,31 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 		f.SQLDefinition = reader.String()
 		f.SetOf = reader.Bool()
 	}
-	if version == 3 {
+	var paramDefaults []string
+	if version >= 3 {
 		paramDefaults = reader.StringSlice()
 	}
+	var paramModes []procedures.ParameterMode
 	if version >= 4 {
-		// Read the parameters
+		// Read the parameter modes
 		modeCount := reader.VariableUint()
-		f.AllParams = make([]procedures.Parameter, modeCount)
-		for i := range f.AllParams {
-			p := procedures.Parameter{}
-			p.Mode = procedures.ParameterMode(reader.Uint8())
-			p.Name = reader.String()
-			p.Type = id.Type(reader.Id())
-			p.Default = reader.String()
-			f.AllParams[i] = p
+		paramModes = make([]procedures.ParameterMode, modeCount)
+		for modeIdx := uint64(0); modeIdx < modeCount; modeIdx++ {
+			paramModes[modeIdx] = procedures.ParameterMode(reader.Uint8())
 		}
-	} else {
-		params := make([]procedures.Parameter, len(paramNames))
-		for i, paramName := range paramNames {
-			params[i] = procedures.Parameter{
-				Name: paramName,
-				Type: paramTypes[i],
-			}
-			if paramDefaults != nil {
-				params[i].Default = paramDefaults[i]
-			}
+	}
+
+	f.AllParams = make([]procedures.Parameter, len(paramNames))
+	for i, paramName := range paramNames {
+		f.AllParams[i] = procedures.Parameter{
+			Name: paramName,
+			Type: paramTypes[i],
+		}
+		if paramDefaults != nil {
+			f.AllParams[i].Default = paramDefaults[i]
+		}
+		if paramModes != nil {
+			f.AllParams[i].Mode = paramModes[i]
 		}
 	}
 	if !reader.IsEmpty() {

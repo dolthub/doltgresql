@@ -28,9 +28,12 @@ func initPgShowAllSettings() {
 	framework.RegisterFunction(pg_show_all_settings)
 }
 
+// pgShowAllSettingsName is the name for pg_show_all_settings function.
+const pgShowAllSettingsName = "pg_show_all_settings"
+
 // pg_show_all_settings represents the PostgreSQL function of the same name, taking the same parameters.
 var pg_show_all_settings = framework.Function0{
-	Name:               "pg_show_all_settings",
+	Name:               pgShowAllSettingsName,
 	Return:             pgtypes.Record, // SETOF record
 	IsNonDeterministic: true,
 	Strict:             true,
@@ -70,8 +73,6 @@ var pg_show_all_settings = framework.Function0{
 	},
 	OutParams: pgShowAllSettingsOutArgs,
 }
-
-var pgShowAllSettingsName = "pg_show_all_settings"
 
 // pgShowAllSettingsOutArgs is the schema for pg_show_all_settings table function. Each column is OUT argument.
 var pgShowAllSettingsOutArgs = sql.Schema{

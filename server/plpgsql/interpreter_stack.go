@@ -227,6 +227,7 @@ func (is *InterpreterStack) PopScope() {
 	is.stack.Pop()
 }
 
+// SetOutParams sets the output parameter names slice for the stack.
 func (is *InterpreterStack) SetOutParams(name []string) {
 	is.outParams = name
 }
@@ -267,7 +268,7 @@ func (is *InterpreterStack) ReturnQueryResults() [][]pgtypes.RecordValue {
 	return is.returnQueryBuffer
 }
 
-// ReturnOutParamResults
+// ReturnOutParamResults returns the results in output parameters if there is any from a RETURN QUERY statement.
 func (is *InterpreterStack) ReturnOutParamResults() any {
 	// single OUT parameter is not record type
 	if len(is.outParams) == 1 {

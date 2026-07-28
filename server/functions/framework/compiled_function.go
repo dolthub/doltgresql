@@ -942,17 +942,17 @@ func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr fun
 		return nil
 	}
 
-	// TODO
-	inParamIdx := 0
-	if len(c.Arguments) < len(sqlFunc.InputTypes) {
+	if len(c.Arguments) < sqlFunc.GetExpectedParameterCount() {
 		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 		if err != nil {
 			return err
 		}
+		inParamIdx := 0
 		for i, param := range sqlFunc.AllParams {
 			if param.Mode == procedures2.ParameterMode_OUT {
 				continue
 			}
+			inParamIdx += 1
 			if inParamIdx < len(c.Arguments) {
 				if exprTypeId := c.Arguments[inParamIdx].Type(ctx).(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && sqlFunc.AllTypes[i].ID != exprTypeId {
 					// if non-matching type, then skip appending defaults
@@ -971,7 +971,6 @@ func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr fun
 				}
 				c.overload.casts = append(c.overload.casts, implicitCast)
 			}
-			inParamIdx += 1
 		}
 	}
 

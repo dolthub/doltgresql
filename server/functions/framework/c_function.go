@@ -46,12 +46,12 @@ func (cFunc CFunction) GetName() string {
 	return cFunc.ID.FunctionName()
 }
 
+// GetOutParameters implements the interface FunctionInterface.
 func (cFunc CFunction) GetOutParameters() sql.Schema {
-	// TODO
 	return nil
 }
 
-// GetParameters implements the interface FunctionInterface.
+// GetInputParameterTypes implements the interface FunctionInterface.
 func (cFunc CFunction) GetInputParameterTypes() []*pgtypes.DoltgresType {
 	return cFunc.ParameterTypes
 }

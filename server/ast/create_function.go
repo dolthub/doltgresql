@@ -51,7 +51,6 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	if len(outTypes) == 1 {
 		retType = outTypes[0]
 	} else if len(outTypes) > 1 {
-		// TODO need to store types inside record type??
 		retType = pgtypes.Record
 	} else {
 		retType = pgtypes.Void
@@ -272,7 +271,8 @@ func validateRoutineOptions(ctx *Context, options []tree.RoutineOption) (map[tre
 	return optDefined, nil
 }
 
-// resolveRoutineParameters
+// resolveRoutineParameters takes the parsed routine arguments and resolves their modes, names, types and default expressions if defined.
+// It returns slices of routine parameters, default expressions and output parameter types.
 func resolveRoutineParameters(ctx *Context, args tree.RoutineArgs) ([]pgnodes.RoutineParam, []vitess.Expr, []*pgtypes.DoltgresType, error) {
 	params := make([]pgnodes.RoutineParam, len(args))
 	var err error

@@ -95,7 +95,6 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 	}
 
 	allParams := make([]procedures.Parameter, len(c.Parameters))
-	//paramNames := make([]string, len(c.Parameters))
 	var inputParamTypes []id.Type
 	for i, param := range c.Parameters {
 		p := procedures.Parameter{

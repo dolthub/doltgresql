@@ -35,8 +35,8 @@ import (
 type InterpretedFunction interface {
 	ApplyBindings(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string, enforceType bool) (newStmt string, varFound bool, err error)
 	GetAllNames() []string
-	GetOutputParameters() ([]string, []*pgtypes.DoltgresType)
-	GetInputParameters() ([]string, []*pgtypes.DoltgresType)
+	GetOutputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
+	GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
 	GetReturn() *pgtypes.DoltgresType
 	GetStatements() []InterpreterOperation
 	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (schema sql.Schema, rows []sql.Row, err error)
@@ -56,12 +56,12 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunne
 	stack := NewInterpreterStack(runner)
 	// Add the parameters
 	// add OUT mode first as it also includes INOUT
-	outNames, outTyps := iFunc.GetOutputParameters()
+	outNames, outTyps := iFunc.GetOutputParameterNamesAndTypes()
 	for i, outTyp := range outTyps {
 		stack.NewVariable(outNames[i], outTyp)
 	}
 	stack.SetOutParams(outNames)
-	inNames, inTyps := iFunc.GetInputParameters()
+	inNames, inTyps := iFunc.GetInputParameterNamesAndTypes()
 	if len(vals) != len(inTyps) {
 		return nil, fmt.Errorf("input parameter count mismatch: expected %d got %d", len(inTyps), len(vals))
 	}
