@@ -343,6 +343,21 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 	case *apd.Decimal:
 		bb := v2.(*apd.Decimal)
 		return NumericCompare(ab, bb), nil
+	case TidValue:
+		bb := v2.(TidValue)
+		if ab.Block == bb.Block {
+			if ab.Offset == bb.Offset {
+				return 0, nil
+			} else if ab.Offset < bb.Offset {
+				return -1, nil
+			} else {
+				return 1, nil
+			}
+		} else if ab.Block < bb.Block {
+			return -1, nil
+		} else {
+			return 1, nil
+		}
 	case timeofday.TimeOfDay:
 		bb := v2.(timeofday.TimeOfDay)
 		return ab.Compare(bb), nil
