@@ -45,6 +45,53 @@ jobs:
         env:
           BRANCH_NAME: ${{ github.head_ref }}
           CHANGE_TARGET: ${{ github.base_ref }}
+      - name: Check generated parser sources
+        shell: bash
+        run: |
+          generated=(
+            postgres/parser/parser/sql.go
+            postgres/parser/parser/help_messages.go
+            postgres/parser/lex/tokens.go
+            postgres/parser/lex/reserved_keywords.go
+            postgres/parser/lex/keywords.go
+          )
+          if ! git diff --quiet -- "${generated[@]}"; then
+            echo "ERROR: Generated parser sources differ from the checked in version."
+            echo "Run ./postgres/parser/build.sh and commit the result."
+            git diff --stat -- "${generated[@]}"
+            git diff -- "${generated[@]}"
+            exit 1
+          fi
+          for f in "${generated[@]}"; do
+            if ! git ls-files --error-unmatch -- "$f" > /dev/null 2>&1; then
+              echo "ERROR: $f is generated but not tracked by git."
+              echo "Consumers of this repo as a Go module need it in the module zip."
+              echo "Check that no .gitignore rule matches it, then git add it."
+              exit 1
+            fi
+          done
+          echo "generated parser sources are up to date"
+      - name: Check consumers do not need ungenerated artifacts
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          rc=0
+          for goos in windows darwin linux; do
+            while IFS='|' read -r dir pat; do
+              [ -z "$pat" ] && continue
+              rel="${dir#$PWD/}"
+              if [ -z "$(git ls-files -- "$rel/$pat")" ]; then
+                echo "ERROR: GOOS=$goos embeds '$rel/$pat', which matches no git-tracked file."
+                echo "Consumers building for $goos from a module zip cannot run generators first,"
+                echo "so an embedded artifact must be committed or put behind a build tag."
+                rc=1
+              fi
+            done < <(GOOS=$goos go list -e -f '{{$d := .Dir}}{{range .EmbedPatterns}}{{$d}}|{{.}}{{"\n"}}{{end}}' ./...)
+          done
+          if [ "$rc" -ne 0 ]; then exit 1; fi
+          GOOS=windows go build -mod=readonly ./postgres/parser/parser ./postgres/parser/lex
+          echo "no embedded artifact depends on running a generator"
   format:
     needs: verify
     if: ${{ needs.verify.outputs.format == 'true' }}

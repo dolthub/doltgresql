@@ -51,7 +51,7 @@ gofmt -s -w parser/help_messages.go
  cat parser/gen/sql.go.tmp | \
  sed -E 's/^const ([A-Z][_A-Z0-9]*) =.*$/const \1 = lex.\1/g') > parser/sql.go.tmp || rm parser/sql.go.tmp
 mv -f parser/sql.go.tmp parser/sql.go
-go run golang.org/x/tools/cmd/goimports -w parser/sql.go
+go run golang.org/x/tools/cmd/goimports -local github.com/dolthub/doltgresql -w parser/sql.go
 
 # Build extension support
 ../../core/extensions/pg_extension/library/build_library.sh
