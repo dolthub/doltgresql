@@ -1,16 +1,19 @@
 # Tests that Doltgres-specific root objects replicate from a cluster primary to
 # a standby. Doltgres stores objects like sequences, user-defined types,
-# functions, triggers, extensions, procedures, and casts as RootObjects on the
-# root value (schemas are stored on the root value struct directly), so cluster
+# functions, triggers, procedures, and casts as RootObjects on the root value
+# (schemas are stored on the root value struct directly), so cluster
 # replication must carry all of them to the standby along with table data.
+# Extensions are also RootObjects, but CREATE EXTENSION requires a local
+# Postgres installation to supply extension libraries and is incompletely
+# implemented, so it is not covered here.
 #
 # Each test creates one kind of root object on the primary and verifies it on
 # the standby, either through the pg_catalog tables that are populated from the
 # root object collections (pg_sequence, pg_type, pg_proc, pg_cast) or
 # behaviorally (calling a replicated function, using a replicated type).
-# pg_trigger and pg_extension are currently unpopulated stubs, so triggers and
-# extensions are verified behaviorally; triggers require a write, so that test
-# fails over to the standby and asserts the trigger fires on the new primary.
+# pg_trigger is currently an unpopulated stub and observing a trigger requires
+# a write, so that test fails over to the standby and asserts the trigger fires
+# on the new primary.
 #
 # All tests set dolt_cluster_ack_writes_timeout_secs on the primary so that
 # writes block until the standby has acknowledged them, making the standby
@@ -63,9 +66,10 @@ tests:
   - on: server2
     queries:
     - exec: 'USE repo1'
-    # information_schema.schemata cannot be used here: it iterates all databases
-    # and panics on the dolt_cluster database (clusterdb does not implement
-    # AllSchemas), so verify via pg_namespace, which reads the current database.
+    - query: "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'testschema'"
+      result:
+        columns: ["schema_name"]
+        rows: [["testschema"]]
     - query: "SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = 'testschema'"
       result:
         columns: ["nspname"]
@@ -381,67 +385,6 @@ tests:
         rows:
         - ["15"]
         - ["21"]
-- name: extension replicates to standby
-  # The uuid-ossp shared library is loaded from a local Postgres installation
-  # (located via pg_config), which the test environment does not provide.
-  skip: "CREATE EXTENSION requires a local Postgres installation supplying extension libraries via pg_config"
-  multi_repos:
-  - name: server1
-    with_files:
-    - name: server.yaml
-      contents: |
-        log_level: trace
-        cluster:
-          standby_remotes:
-          - name: standby
-            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
-          bootstrap_role: primary
-          bootstrap_epoch: 1
-          remotesapi:
-            port: {{get_port "server1_cluster"}}
-    server:
-      args: ["--config", "server.yaml"]
-      dynamic_port: server1
-  - name: server2
-    with_files:
-    - name: server.yaml
-      contents: |
-        log_level: trace
-        cluster:
-          standby_remotes:
-          - name: standby
-            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
-          bootstrap_role: standby
-          bootstrap_epoch: 1
-          remotesapi:
-            port: {{get_port "server2_cluster"}}
-    server:
-      args: ["--config", "server.yaml"]
-      dynamic_port: server2
-  connections:
-  - on: server1
-    queries:
-    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
-    - exec: 'CREATE DATABASE repo1'
-    - exec: 'USE repo1'
-    - exec: 'CREATE EXTENSION "uuid-ossp"'
-    - query: 'SELECT uuid_ns_url() AS u'
-      result:
-        columns: ["u"]
-        rows: [["6ba7b811-9dad-11d1-80b4-00c04fd430c8"]]
-  # pg_extension is not yet populated, so verify by calling the functions the
-  # extension installs.
-  - on: server2
-    queries:
-    - exec: 'USE repo1'
-    - query: 'SELECT uuid_ns_url() AS u'
-      result:
-        columns: ["u"]
-        rows: [["6ba7b811-9dad-11d1-80b4-00c04fd430c8"]]
-    - query: 'SELECT uuid_nil() AS u'
-      result:
-        columns: ["u"]
-        rows: [["00000000-0000-0000-0000-000000000000"]]
 - name: procedure replicates to standby and is callable after failover
   multi_repos:
   - name: server1
