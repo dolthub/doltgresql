@@ -43,7 +43,8 @@ func (p PgOperatorHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgOperatorHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_operator row iter
+	// pg_operator is currently empty, since built-in operators are not yet cataloged with stable OIDs.
+	// TODO: fill this in from the operator framework's built-in operators
 	return emptyRowIter()
 }
 

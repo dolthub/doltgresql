@@ -43,7 +43,8 @@ func (p PgSubscriptionHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgSubscriptionHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_subscription row iter
+	// pg_subscription is currently empty, since CREATE SUBSCRIPTION is not supported.
+	// TODO: fill this in when subscriptions are supported
 	return emptyRowIter()
 }
 

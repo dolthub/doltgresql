@@ -693,8 +693,20 @@ func TestPgCollation(t *testing.T) {
 			Name: "pg_collation",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_collation";`,
-					Expected: []sql.Row{},
+					Query: `SELECT oid, collname, collprovider, collisdeterministic, collencoding, collcollate, collctype FROM "pg_catalog"."pg_collation" WHERE collname IN ('default', 'C', 'POSIX') ORDER BY oid;`,
+					Expected: []sql.Row{
+						{100, "default", "d", "t", -1, "default", "default"},
+						{950, "C", "c", "t", -1, "C", "C"},
+						{951, "POSIX", "c", "t", -1, "POSIX", "POSIX"},
+					},
+				},
+				{ // All built-in collations are present (libc defaults plus the ICU set)
+					Query:    `SELECT count(*) > 700 FROM "pg_catalog"."pg_collation";`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{ // ICU collations use the ICU provider
+					Query:    `SELECT collname, collprovider FROM "pg_catalog"."pg_collation" WHERE collname = 'en-x-icu';`,
+					Expected: []sql.Row{{"en-x-icu", "i"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_collation";`,
@@ -705,8 +717,8 @@ func TestPgCollation(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT collname FROM PG_catalog.pg_COLLATION ORDER BY collname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT collname FROM PG_catalog.pg_COLLATION WHERE collname = 'default' ORDER BY collname;",
+					Expected: []sql.Row{{"default"}},
 				},
 			},
 		},
@@ -1802,8 +1814,13 @@ func TestPgLanguage(t *testing.T) {
 			Name: "pg_language",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_language";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_language" ORDER BY oid;`,
+					Expected: []sql.Row{
+						{12, "internal", 0, "f", "f", 0, 0, 0, nil},
+						{13, "c", 0, "f", "f", 0, 0, 0, nil},
+						{14, "sql", 0, "f", "t", 0, 0, 0, nil},
+						{14024, "plpgsql", 0, "t", "t", 0, 0, 0, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_language";`,
@@ -1815,7 +1832,7 @@ func TestPgLanguage(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT lanname FROM PG_catalog.pg_LANGUAGE ORDER BY lanname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"c"}, {"internal"}, {"plpgsql"}, {"sql"}},
 				},
 			},
 		},
@@ -2357,9 +2374,33 @@ func TestPgOpclass(t *testing.T) {
 		{
 			Name: "pg_opclass",
 			Assertions: []ScriptTestAssertion{
+				{ // The default btree opclasses for the integer types, joined against pg_am, pg_opfamily, and pg_type
+					Query: `SELECT opc.opcname, am.amname, opf.opfname, t.typname, opc.opcdefault
+							FROM pg_catalog.pg_opclass opc
+							JOIN pg_catalog.pg_am am ON opc.opcmethod = am.oid
+							JOIN pg_catalog.pg_opfamily opf ON opc.opcfamily = opf.oid
+							JOIN pg_catalog.pg_type t ON opc.opcintype = t.oid
+							WHERE opc.opcname IN ('int2_ops', 'int4_ops', 'int8_ops') AND am.amname = 'btree'
+							ORDER BY opc.opcname;`,
+					Expected: []sql.Row{
+						{"int2_ops", "btree", "integer_ops", "int2", "t"},
+						{"int4_ops", "btree", "integer_ops", "int4", "t"},
+						{"int8_ops", "btree", "integer_ops", "int8", "t"},
+					},
+				},
+				{ // varchar_ops is a non-default opclass over text, matching Postgres
+					Query: `SELECT opc.opcname, t.typname, opc.opcdefault
+							FROM pg_catalog.pg_opclass opc
+							JOIN pg_catalog.pg_am am ON opc.opcmethod = am.oid
+							JOIN pg_catalog.pg_type t ON opc.opcintype = t.oid
+							WHERE opc.opcname = 'varchar_ops' AND am.amname = 'hash';`,
+					Expected: []sql.Row{
+						{"varchar_ops", "text", "f"},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_opclass";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) > 40 FROM "pg_catalog"."pg_opclass";`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_opclass";`,
@@ -2370,8 +2411,8 @@ func TestPgOpclass(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT opcname FROM PG_catalog.pg_OPCLASS ORDER BY opcname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT opcname FROM PG_catalog.pg_OPCLASS WHERE opcname = 'uuid_ops' ORDER BY opcname;",
+					Expected: []sql.Row{{"uuid_ops"}, {"uuid_ops"}},
 				},
 			},
 		},
@@ -2409,9 +2450,29 @@ func TestPgOpfamily(t *testing.T) {
 		{
 			Name: "pg_opfamily",
 			Assertions: []ScriptTestAssertion{
+				{ // Operator family OIDs match the fixed OIDs assigned by Postgres
+					Query: `SELECT opf.oid, opf.opfname, am.amname
+							FROM pg_catalog.pg_opfamily opf
+							JOIN pg_catalog.pg_am am ON opf.opfmethod = am.oid
+							WHERE opf.opfname = 'integer_ops'
+							ORDER BY opf.oid;`,
+					Expected: []sql.Row{
+						{1976, "integer_ops", "btree"},
+						{1977, "integer_ops", "hash"},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_opfamily";`,
-					Expected: []sql.Row{},
+					Query: `SELECT oid, opfname FROM "pg_catalog"."pg_opfamily" WHERE opfname IN ('text_ops', 'datetime_ops') ORDER BY oid;`,
+					Expected: []sql.Row{
+						{434, "datetime_ops"},
+						{435, "datetime_ops"},
+						{1994, "text_ops"},
+						{1995, "text_ops"},
+					},
+				},
+				{
+					Query:    `SELECT count(*) > 30 FROM "pg_catalog"."pg_opfamily";`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_opfamily";`,
@@ -2422,8 +2483,8 @@ func TestPgOpfamily(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT opfname FROM PG_catalog.pg_OPFAMILY ORDER BY opfname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT opfname FROM PG_catalog.pg_OPFAMILY WHERE opfname = 'uuid_ops' ORDER BY opfname;",
+					Expected: []sql.Row{{"uuid_ops"}, {"uuid_ops"}},
 				},
 			},
 		},
@@ -3322,9 +3383,15 @@ func TestPgStatActivity(t *testing.T) {
 		{
 			Name: "pg_stat_activity",
 			Assertions: []ScriptTestAssertion{
+				{ // The current session appears with its own query as an active client backend
+					Query: `SELECT DISTINCT state, backend_type, query FROM "pg_catalog"."pg_stat_activity" WHERE state = 'active' AND query LIKE '%pg_stat_activity%';`,
+					Expected: []sql.Row{
+						{"active", "client backend", `SELECT DISTINCT state, backend_type, query FROM "pg_catalog"."pg_stat_activity" WHERE state = 'active' AND query LIKE '%pg_stat_activity%';`},
+					},
+				},
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_stat_activity";`,
-					Expected: []sql.Row{},
+					Query:    `SELECT count(*) > 0 FROM "pg_catalog"."pg_stat_activity";`,
+					Expected: []sql.Row{{"t"}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_activity";`,
@@ -3335,8 +3402,8 @@ func TestPgStatActivity(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query:    "SELECT datname FROM PG_catalog.pg_STAT_ACTIVITY ORDER BY datname;",
-					Expected: []sql.Row{},
+					Query:    "SELECT count(*) > 0 FROM PG_catalog.pg_STAT_ACTIVITY;",
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},
@@ -4863,8 +4930,11 @@ func TestPgTablespace(t *testing.T) {
 			Name: "pg_tablespace",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_tablespace";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_tablespace" ORDER BY oid;`,
+					Expected: []sql.Row{
+						{1663, "pg_default", 0, nil, nil},
+						{1664, "pg_global", 0, nil, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_tablespace";`,
@@ -4876,7 +4946,7 @@ func TestPgTablespace(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT spcname FROM PG_catalog.pg_TABLESPACE ORDER BY spcname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"pg_default"}, {"pg_global"}},
 				},
 			},
 		},
@@ -5036,8 +5106,10 @@ func TestPgTsConfig(t *testing.T) {
 			Name: "pg_ts_config",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_ts_config";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_ts_config";`,
+					Expected: []sql.Row{
+						{3748, "simple", 11, 0, 3722},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_config";`,
@@ -5049,7 +5121,7 @@ func TestPgTsConfig(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT cfgname FROM PG_catalog.pg_TS_CONFIG ORDER BY cfgname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"simple"}},
 				},
 			},
 		},
@@ -5088,8 +5160,10 @@ func TestPgTsDict(t *testing.T) {
 			Name: "pg_ts_dict",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_ts_dict";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_ts_dict";`,
+					Expected: []sql.Row{
+						{3765, "simple", 11, 0, 3727, nil},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_dict";`,
@@ -5101,7 +5175,7 @@ func TestPgTsDict(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT dictname FROM PG_catalog.pg_TS_DICT ORDER BY dictname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"simple"}},
 				},
 			},
 		},
@@ -5114,8 +5188,10 @@ func TestPgTsParser(t *testing.T) {
 			Name: "pg_ts_parser",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_ts_parser";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_ts_parser";`,
+					Expected: []sql.Row{
+						{3722, "default", 11, "prsd_start", "prsd_nexttoken", "prsd_end", "prsd_headline", "prsd_lextype"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_parser";`,
@@ -5127,7 +5203,7 @@ func TestPgTsParser(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT prsname FROM PG_catalog.pg_TS_PARSER ORDER BY prsname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"default"}},
 				},
 			},
 		},
@@ -5140,8 +5216,10 @@ func TestPgTsTemplate(t *testing.T) {
 			Name: "pg_ts_template",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT * FROM "pg_catalog"."pg_ts_template";`,
-					Expected: []sql.Row{},
+					Query: `SELECT * FROM "pg_catalog"."pg_ts_template";`,
+					Expected: []sql.Row{
+						{3727, "simple", 11, "dsimple_init", "dsimple_lexize"},
+					},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_template";`,
@@ -5153,7 +5231,7 @@ func TestPgTsTemplate(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT tmplname FROM PG_catalog.pg_TS_TEMPLATE ORDER BY tmplname;",
-					Expected: []sql.Row{},
+					Expected: []sql.Row{{"simple"}},
 				},
 			},
 		},

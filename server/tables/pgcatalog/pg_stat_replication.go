@@ -43,7 +43,9 @@ func (p PgStatReplicationHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatReplicationHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_replication row iter
+	// pg_stat_replication is currently empty, since streaming replication is not supported.
+	// Doltgres uses its own replication mechanisms, which are not exposed through this view.
+	// TODO: fill this in when streaming replication statistics are available
 	return emptyRowIter()
 }
 

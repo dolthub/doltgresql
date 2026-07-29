@@ -43,7 +43,8 @@ func (p PgStatisticHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatisticHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_statistic row iter
+	// pg_statistic is currently empty, since planner statistics are not yet mapped from Dolt's statistics subsystem.
+	// TODO: fill this in from the Dolt statistics provider when ANALYZE integration exists
 	return emptyRowIter()
 }
 

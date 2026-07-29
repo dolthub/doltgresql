@@ -66,4 +66,3 @@ var pgStatioUserIndexesSchema = sql.Schema{
 	{Name: "idx_blks_read", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatioUserIndexesName},
 	{Name: "idx_blks_hit", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatioUserIndexesName},
 }
-

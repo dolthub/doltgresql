@@ -43,7 +43,9 @@ func (p PgReplicationSlotsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgReplicationSlotsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_replication_slots row iter
+	// pg_replication_slots is currently empty, since replication slots are not supported.
+	// Doltgres uses its own replication mechanisms, which are not exposed through this catalog.
+	// TODO: fill this in when replication slots are supported
 	return emptyRowIter()
 }
 

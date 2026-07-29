@@ -68,4 +68,3 @@ var pgStatSysIndexesSchema = sql.Schema{
 	{Name: "idx_tup_read", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatSysIndexesName},
 	{Name: "idx_tup_fetch", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatSysIndexesName},
 }
-

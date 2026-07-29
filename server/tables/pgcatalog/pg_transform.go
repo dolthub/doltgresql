@@ -43,7 +43,9 @@ func (p PgTransformHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTransformHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_transform row iter
+	// pg_transform is currently empty, since transforms are not supported.
+	// This table is also empty in vanilla Postgres by default.
+	// TODO: fill this in when transforms are supported
 	return emptyRowIter()
 }
 

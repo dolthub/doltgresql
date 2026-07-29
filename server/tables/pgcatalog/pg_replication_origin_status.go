@@ -43,7 +43,9 @@ func (p PgReplicationOriginStatusHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgReplicationOriginStatusHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_replication_origin_status row iter
+	// pg_replication_origin_status is currently empty, since replication origins are not supported.
+	// Doltgres uses its own replication mechanisms, which are not exposed through this catalog.
+	// TODO: fill this in when replication origins are supported
 	return emptyRowIter()
 }
 
