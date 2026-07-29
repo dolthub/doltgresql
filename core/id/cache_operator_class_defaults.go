@@ -30,7 +30,6 @@ func init() {
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "char_ops"), 429)
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "datetime_ops"), 434)
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "float_ops"), 1970)
-	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "network_ops"), 1974)
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "integer_ops"), 1976)
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "interval_ops"), 1982)
 	globalCache.setBuiltIn(NewId(Section_OperatorFamily, "btree", "numeric_ops"), 1988)
@@ -82,6 +81,8 @@ func init() {
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "timetz_ops"), 15021)
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "uuid_ops"), 15022)
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "varchar_ops"), 15023)
+	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "bit_ops"), 15024)
+	globalCache.setBuiltIn(NewId(Section_OperatorClass, "btree", "varbit_ops"), 15025)
 
 	// hash operator classes (Doltgres-assigned OIDs, see comment above)
 	globalCache.setBuiltIn(NewId(Section_OperatorClass, "hash", "bool_ops"), 15100)

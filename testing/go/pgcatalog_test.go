@@ -2402,6 +2402,11 @@ func TestPgOpclass(t *testing.T) {
 					Query:    `SELECT count(*) > 40 FROM "pg_catalog"."pg_opclass";`,
 					Expected: []sql.Row{{"t"}},
 				},
+				{ // Every operator family has at least one operator class
+					Query: `SELECT oid, opfname FROM pg_opfamily f
+							WHERE NOT EXISTS (SELECT 1 FROM pg_opclass WHERE opcfamily = f.oid);`,
+					Expected: []sql.Row{},
+				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_opclass";`,
 					ExpectedErr: "not",

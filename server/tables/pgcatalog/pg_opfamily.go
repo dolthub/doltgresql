@@ -92,7 +92,6 @@ var defaultOperatorFamilies = []operatorFamily{
 	{am: "btree", name: "char_ops"},
 	{am: "btree", name: "datetime_ops"},
 	{am: "btree", name: "float_ops"},
-	{am: "btree", name: "network_ops"},
 	{am: "btree", name: "integer_ops"},
 	{am: "btree", name: "interval_ops"},
 	{am: "btree", name: "numeric_ops"},

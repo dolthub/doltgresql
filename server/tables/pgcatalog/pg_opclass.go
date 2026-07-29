@@ -92,6 +92,7 @@ func (c operatorClass) oid() id.Id {
 // related types and access methods gain support.
 var defaultOperatorClasses = []operatorClass{
 	{am: "btree", name: "array_ops", familyName: "array_ops", inputType: pgtypes.AnyArray, isDefault: true},
+	{am: "btree", name: "bit_ops", familyName: "bit_ops", inputType: pgtypes.Bit, isDefault: true},
 	{am: "btree", name: "bool_ops", familyName: "bool_ops", inputType: pgtypes.Bool, isDefault: true},
 	{am: "btree", name: "bpchar_ops", familyName: "bpchar_ops", inputType: pgtypes.BpChar, isDefault: true},
 	{am: "btree", name: "bytea_ops", familyName: "bytea_ops", inputType: pgtypes.Bytea, isDefault: true},
@@ -114,6 +115,7 @@ var defaultOperatorClasses = []operatorClass{
 	{am: "btree", name: "timestamptz_ops", familyName: "datetime_ops", inputType: pgtypes.TimestampTZ, isDefault: true},
 	{am: "btree", name: "timetz_ops", familyName: "timetz_ops", inputType: pgtypes.TimeTZ, isDefault: true},
 	{am: "btree", name: "uuid_ops", familyName: "uuid_ops", inputType: pgtypes.Uuid, isDefault: true},
+	{am: "btree", name: "varbit_ops", familyName: "varbit_ops", inputType: pgtypes.VarBit, isDefault: true},
 	// varchar_ops operates on text, matching Postgres (varchar has no operators of its own)
 	{am: "btree", name: "varchar_ops", familyName: "text_ops", inputType: pgtypes.Text, isDefault: false},
 	{am: "hash", name: "bool_ops", familyName: "bool_ops", inputType: pgtypes.Bool, isDefault: true},
