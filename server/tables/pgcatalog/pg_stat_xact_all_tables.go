@@ -43,8 +43,11 @@ func (p PgStatXactAllTablesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatXactAllTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_xact_all_tables row iter
-	return emptyRowIter()
+	entries, err := getStatTableEntries(ctx, statTablesAll)
+	if err != nil {
+		return nil, err
+	}
+	return &pgStatXactTablesRowIter{entries: entries}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -71,18 +74,42 @@ var pgStatXactAllTablesSchema = sql.Schema{
 	{Name: "n_tup_newpage_upd", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatXactAllTablesName},
 }
 
-// pgStatXactAllTablesRowIter is the sql.RowIter for the pg_stat_xact_all_tables table.
-type pgStatXactAllTablesRowIter struct {
+// pgStatXactTablesRowIter is the sql.RowIter for the pg_stat_xact_all_tables,
+// pg_stat_xact_sys_tables, and pg_stat_xact_user_tables tables. All statistics counters are zero,
+// since Doltgres does not track table access statistics. This matches what a freshly-started
+// Postgres server reports.
+// TODO: fill in the statistics columns when table access statistics are tracked
+type pgStatXactTablesRowIter struct {
+	entries []statTableEntry
+	idx     int
 }
 
-var _ sql.RowIter = (*pgStatXactAllTablesRowIter)(nil)
+var _ sql.RowIter = (*pgStatXactTablesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
-func (iter *pgStatXactAllTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+func (iter *pgStatXactTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	if iter.idx >= len(iter.entries) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	entry := iter.entries[iter.idx-1]
+	return sql.Row{
+		entry.oid,        // relid
+		entry.schemaName, // schemaname
+		entry.tableName,  // relname
+		int64(0),         // seq_scan
+		int64(0),         // seq_tup_read
+		int64(0),         // idx_scan
+		int64(0),         // idx_tup_fetch
+		int64(0),         // n_tup_ins
+		int64(0),         // n_tup_upd
+		int64(0),         // n_tup_del
+		int64(0),         // n_tup_hot_upd
+		int64(0),         // n_tup_newpage_upd
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
-func (iter *pgStatXactAllTablesRowIter) Close(ctx *sql.Context) error {
+func (iter *pgStatXactTablesRowIter) Close(ctx *sql.Context) error {
 	return nil
 }

@@ -43,8 +43,11 @@ func (p PgStatioAllIndexesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatioAllIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_statio_all_indexes row iter
-	return emptyRowIter()
+	entries, err := getStatIndexEntries(ctx, statIndexesAll)
+	if err != nil {
+		return nil, err
+	}
+	return &pgStatioIndexesRowIter{entries: entries}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -66,18 +69,36 @@ var pgStatioAllIndexesSchema = sql.Schema{
 	{Name: "idx_blks_hit", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatioAllIndexesName},
 }
 
-// pgStatioAllIndexesRowIter is the sql.RowIter for the pg_statio_all_indexes table.
-type pgStatioAllIndexesRowIter struct {
+// pgStatioIndexesRowIter is the sql.RowIter for the pg_statio_all_indexes, pg_statio_sys_indexes,
+// and pg_statio_user_indexes tables. All I/O counters are zero, since Doltgres does not track
+// index block I/O statistics. This matches what a freshly-started Postgres server reports.
+// TODO: fill in the statistics columns when index I/O statistics are tracked
+type pgStatioIndexesRowIter struct {
+	entries []statIndexEntry
+	idx     int
 }
 
-var _ sql.RowIter = (*pgStatioAllIndexesRowIter)(nil)
+var _ sql.RowIter = (*pgStatioIndexesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
-func (iter *pgStatioAllIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+func (iter *pgStatioIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	if iter.idx >= len(iter.entries) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	entry := iter.entries[iter.idx-1]
+	return sql.Row{
+		entry.tableOid,   // relid
+		entry.indexOid,   // indexrelid
+		entry.schemaName, // schemaname
+		entry.tableName,  // relname
+		entry.indexName,  // indexrelname
+		int64(0),         // idx_blks_read
+		int64(0),         // idx_blks_hit
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
-func (iter *pgStatioAllIndexesRowIter) Close(ctx *sql.Context) error {
+func (iter *pgStatioIndexesRowIter) Close(ctx *sql.Context) error {
 	return nil
 }

@@ -15,8 +15,6 @@
 package pgcatalog
 
 import (
-	"io"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +41,11 @@ func (p PgStatSysTablesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatSysTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_sys_tables row iter
-	return emptyRowIter()
+	entries, err := getStatTableEntries(ctx, statTablesSys)
+	if err != nil {
+		return nil, err
+	}
+	return &pgStatTablesRowIter{entries: entries}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -83,20 +84,4 @@ var pgStatSysTablesSchema = sql.Schema{
 	{Name: "autovacuum_count", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatSysTablesName},
 	{Name: "analyze_count", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatSysTablesName},
 	{Name: "autoanalyze_count", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatSysTablesName},
-}
-
-// pgStatSysTablesRowIter is the sql.RowIter for the pg_stat_sys_tables table.
-type pgStatSysTablesRowIter struct {
-}
-
-var _ sql.RowIter = (*pgStatSysTablesRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgStatSysTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgStatSysTablesRowIter) Close(ctx *sql.Context) error {
-	return nil
 }

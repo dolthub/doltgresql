@@ -43,7 +43,10 @@ func (p PgRulesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgRulesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_rules row iter
+	// pg_rules is currently empty: the Postgres pg_rules view explicitly excludes the implicit
+	// "_RETURN" view rules (which are visible in pg_rewrite), and Doltgres does not support
+	// CREATE RULE, so there are never any other rules to show.
+	// TODO: fill this in if CREATE RULE is ever supported
 	return emptyRowIter()
 }
 

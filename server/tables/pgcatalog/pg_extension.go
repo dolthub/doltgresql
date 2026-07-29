@@ -19,6 +19,10 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/extensions"
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +47,24 @@ func (p PgExtensionHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgExtensionHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_extension row iter
-	return emptyRowIter()
+	extCollection, err := core.GetExtensionsCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return nil, err
+	}
+	var exts []extensions.Extension
+	err = extCollection.IterAll(ctx, func(rootObj objinterface.RootObject) (stop bool, err error) {
+		if ext, ok := rootObj.(extensions.Extension); ok {
+			exts = append(exts, ext)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pgExtensionRowIter{
+		extensions: exts,
+		idx:        0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -69,13 +89,29 @@ var pgExtensionSchema = sql.Schema{
 
 // pgExtensionRowIter is the sql.RowIter for the pg_extension table.
 type pgExtensionRowIter struct {
+	extensions []extensions.Extension
+	idx        int
 }
 
 var _ sql.RowIter = (*pgExtensionRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgExtensionRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.extensions) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	ext := iter.extensions[iter.idx-1]
+	return sql.Row{
+		ext.ExtName.AsId(),                   // oid
+		ext.ExtName.Name(),                   // extname
+		id.Null,                              // extowner // TODO: extension owner is not yet tracked
+		ext.Namespace.AsId(),                 // extnamespace
+		ext.Relocatable,                      // extrelocatable
+		ext.LibIdentifier.Version().String(), // extversion
+		nil,                                  // extconfig
+		nil,                                  // extcondition
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

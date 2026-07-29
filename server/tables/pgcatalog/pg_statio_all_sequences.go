@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +45,11 @@ func (p PgStatioAllSequencesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatioAllSequencesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_statio_all_sequences row iter
-	return emptyRowIter()
+	entries, err := getStatioSequenceEntries(ctx, statTablesAll)
+	if err != nil {
+		return nil, err
+	}
+	return &pgStatioSequencesRowIter{entries: entries}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -64,18 +69,64 @@ var pgStatioAllSequencesSchema = sql.Schema{
 	{Name: "blks_hit", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatioAllSequencesName},
 }
 
-// pgStatioAllSequencesRowIter is the sql.RowIter for the pg_statio_all_sequences table.
-type pgStatioAllSequencesRowIter struct {
+// statioSequenceEntry identifies a sequence row in the pg_statio_*_sequences tables.
+type statioSequenceEntry struct {
+	oid          id.Id
+	schemaName   string
+	sequenceName string
 }
 
-var _ sql.RowIter = (*pgStatioAllSequencesRowIter)(nil)
+// getStatioSequenceEntries returns a statioSequenceEntry for each sequence in the current database
+// whose schema matches the given filter.
+func getStatioSequenceEntries(ctx *sql.Context, filter statTablesFilter) ([]statioSequenceEntry, error) {
+	var entries []statioSequenceEntry
+	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		Sequence: func(ctx *sql.Context, schema functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
+			if filter(schema) {
+				entries = append(entries, statioSequenceEntry{
+					oid:          sequence.OID.AsId(),
+					schemaName:   schema.Item.SchemaName(),
+					sequenceName: sequence.Item.Id.SequenceName(),
+				})
+			}
+			return true, nil
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// pgStatioSequencesRowIter is the sql.RowIter for the pg_statio_all_sequences,
+// pg_statio_sys_sequences, and pg_statio_user_sequences tables. All block I/O counters are zero,
+// since Doltgres does not track block-level I/O statistics. This matches what a freshly-started
+// Postgres server reports.
+// TODO: fill in the I/O statistics columns when block I/O statistics are tracked
+type pgStatioSequencesRowIter struct {
+	entries []statioSequenceEntry
+	idx     int
+}
+
+var _ sql.RowIter = (*pgStatioSequencesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
-func (iter *pgStatioAllSequencesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+func (iter *pgStatioSequencesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	if iter.idx >= len(iter.entries) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	entry := iter.entries[iter.idx-1]
+	return sql.Row{
+		entry.oid,          // relid
+		entry.schemaName,   // schemaname
+		entry.sequenceName, // relname
+		int64(0),           // blks_read
+		int64(0),           // blks_hit
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
-func (iter *pgStatioAllSequencesRowIter) Close(ctx *sql.Context) error {
+func (iter *pgStatioSequencesRowIter) Close(ctx *sql.Context) error {
 	return nil
 }

@@ -15,8 +15,6 @@
 package pgcatalog
 
 import (
-	"io"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +41,11 @@ func (p PgStatUserIndexesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatUserIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_user_indexes row iter
-	return emptyRowIter()
+	entries, err := getStatIndexEntries(ctx, statIndexesUser)
+	if err != nil {
+		return nil, err
+	}
+	return &pgStatIndexesRowIter{entries: entries}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -68,18 +69,3 @@ var pgStatUserIndexesSchema = sql.Schema{
 	{Name: "idx_tup_fetch", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatUserIndexesName},
 }
 
-// pgStatUserIndexesRowIter is the sql.RowIter for the pg_stat_user_indexes table.
-type pgStatUserIndexesRowIter struct {
-}
-
-var _ sql.RowIter = (*pgStatUserIndexesRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgStatUserIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgStatUserIndexesRowIter) Close(ctx *sql.Context) error {
-	return nil
-}

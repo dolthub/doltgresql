@@ -43,7 +43,9 @@ func (p PgDbRoleSettingHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgDbRoleSettingHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_db_role_setting row iter
+	// pg_db_role_setting is currently empty, since Doltgres does not yet support per-role or per-database
+	// configuration settings (ALTER ROLE ... SET / ALTER DATABASE ... SET).
+	// TODO: fill this in when per-role/per-database settings are supported
 	return emptyRowIter()
 }
 
