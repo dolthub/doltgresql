@@ -1,0 +1,586 @@
+# Tests that Doltgres-specific root objects replicate from a cluster primary to
+# a standby. Doltgres stores objects like sequences, user-defined types,
+# functions, triggers, extensions, procedures, and casts as RootObjects on the
+# root value (schemas are stored on the root value struct directly), so cluster
+# replication must carry all of them to the standby along with table data.
+#
+# Each test creates one kind of root object on the primary and verifies it on
+# the standby, either through the pg_catalog tables that are populated from the
+# root object collections (pg_sequence, pg_type, pg_proc, pg_cast) or
+# behaviorally (calling a replicated function, using a replicated type).
+# pg_trigger and pg_extension are currently unpopulated stubs, so triggers and
+# extensions are verified behaviorally; triggers require a write, so that test
+# fails over to the standby and asserts the trigger fires on the new primary.
+#
+# All tests set dolt_cluster_ack_writes_timeout_secs on the primary so that
+# writes block until the standby has acknowledged them, making the standby
+# assertions deterministic without retries.
+parallel: true
+tests:
+- name: schema replicates to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE SCHEMA testschema'
+    - exec: 'CREATE TABLE testschema.t1 (pk INT PRIMARY KEY, v TEXT)'
+    - exec: "INSERT INTO testschema.t1 VALUES (1, 'one'), (2, 'two'), (3, 'three')"
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    # information_schema.schemata cannot be used here: it iterates all databases
+    # and panics on the dolt_cluster database (clusterdb does not implement
+    # AllSchemas), so verify via pg_namespace, which reads the current database.
+    - query: "SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = 'testschema'"
+      result:
+        columns: ["nspname"]
+        rows: [["testschema"]]
+    - query: 'SELECT pk, v FROM testschema.t1 ORDER BY pk'
+      result:
+        columns: ["pk","v"]
+        rows:
+        - ["1","one"]
+        - ["2","two"]
+        - ["3","three"]
+- name: sequence replicates to standby and consumed state survives failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE SEQUENCE seq1 START WITH 10 INCREMENT BY 3 MAXVALUE 1000'
+    - query: "SELECT nextval('seq1')"
+      result:
+        columns: ["nextval"]
+        rows: [["10"]]
+    - query: "SELECT nextval('seq1')"
+      result:
+        columns: ["nextval"]
+        rows: [["13"]]
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT seqstart, seqincrement, seqmax FROM pg_catalog.pg_sequence WHERE seqrelid = 'seq1'::regclass"
+      result:
+        columns: ["seqstart","seqincrement","seqmax"]
+        rows: [["10","3","1000"]]
+  # Fail over to server2 and verify the sequence continues from the replicated
+  # state rather than restarting.
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - query: "select dolt_assume_cluster_role('standby', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - query: "select dolt_assume_cluster_role('primary', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT nextval('seq1')"
+      result:
+        columns: ["nextval"]
+        rows: [["16"]]
+- name: user-defined types replicate to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    # Enum type
+    - exec: "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')"
+    # Composite type
+    - exec: 'CREATE TYPE point_t AS (x INT, y INT)'
+    # Domain type
+    - exec: 'CREATE DOMAIN posint AS INTEGER CONSTRAINT posint_check CHECK (VALUE > 0)'
+    - exec: 'CREATE TABLE moods (pk INT PRIMARY KEY, m mood)'
+    - exec: "INSERT INTO moods VALUES (1, 'sad'), (2, 'happy')"
+    - exec: 'CREATE TABLE points (id INT PRIMARY KEY, p point_t)'
+    - exec: 'INSERT INTO points VALUES (1, ROW(1, 2)), (2, ROW(3, 4))'
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT typname FROM pg_catalog.pg_type WHERE typname IN ('mood', 'point_t', 'posint') ORDER BY typname"
+      result:
+        columns: ["typname"]
+        rows:
+        - ["mood"]
+        - ["point_t"]
+        - ["posint"]
+    - query: 'SELECT pk, m FROM moods ORDER BY pk'
+      result:
+        columns: ["pk","m"]
+        rows:
+        - ["1","sad"]
+        - ["2","happy"]
+    - query: "SELECT 'happy'::mood AS m"
+      result:
+        columns: ["m"]
+        rows: [["happy"]]
+    - query: 'SELECT id, p FROM points ORDER BY id'
+      result:
+        columns: ["id","p"]
+        rows:
+        - ["1","(1,2)"]
+        - ["2","(3,4)"]
+    - query: 'SELECT 42::posint AS p'
+      result:
+        columns: ["p"]
+        rows: [["42"]]
+    # The domain's check constraint must also have replicated.
+    - query: 'SELECT (-5)::posint AS p'
+      error_match: 'posint_check'
+- name: functions replicate to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE FUNCTION add_ints(a INT, b INT) RETURNS INT AS $$ SELECT a + b $$ LANGUAGE SQL'
+    - exec: 'CREATE FUNCTION triple(input INT) RETURNS INT AS $$ BEGIN RETURN input * 3; END; $$ LANGUAGE plpgsql'
+    - query: 'SELECT add_ints(1, 2) AS result'
+      result:
+        columns: ["result"]
+        rows: [["3"]]
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT proname FROM pg_catalog.pg_proc WHERE proname IN ('add_ints', 'triple') ORDER BY proname"
+      result:
+        columns: ["proname"]
+        rows:
+        - ["add_ints"]
+        - ["triple"]
+    - query: 'SELECT add_ints(3, 4) AS result'
+      result:
+        columns: ["result"]
+        rows: [["7"]]
+    - query: 'SELECT triple(5) AS result'
+      result:
+        columns: ["result"]
+        rows: [["15"]]
+- name: trigger replicates to standby and fires after failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE TABLE t_trigger (v1 INT8)'
+    - exec: 'CREATE FUNCTION f_trigger() RETURNS TRIGGER AS $$ BEGIN NEW.v1 := NEW.v1 * 3; RETURN NEW; END; $$ LANGUAGE plpgsql'
+    - exec: 'CREATE TRIGGER trig_trigger BEFORE INSERT ON t_trigger FOR EACH ROW EXECUTE FUNCTION f_trigger()'
+    - exec: 'INSERT INTO t_trigger VALUES (5)'
+    - query: 'SELECT v1 FROM t_trigger'
+      result:
+        columns: ["v1"]
+        rows: [["15"]]
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT v1 FROM t_trigger'
+      result:
+        columns: ["v1"]
+        rows: [["15"]]
+  # pg_trigger is not yet populated, so the only way to observe the trigger on
+  # the standby is to make it the primary and watch the trigger fire on insert.
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - query: "select dolt_assume_cluster_role('standby', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - query: "select dolt_assume_cluster_role('primary', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'INSERT INTO t_trigger VALUES (7)'
+    - query: 'SELECT v1 FROM t_trigger ORDER BY v1'
+      result:
+        columns: ["v1"]
+        rows:
+        - ["15"]
+        - ["21"]
+- name: extension replicates to standby
+  # The uuid-ossp shared library is loaded from a local Postgres installation
+  # (located via pg_config), which the test environment does not provide.
+  skip: "CREATE EXTENSION requires a local Postgres installation supplying extension libraries via pg_config"
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE EXTENSION "uuid-ossp"'
+    - query: 'SELECT uuid_ns_url() AS u'
+      result:
+        columns: ["u"]
+        rows: [["6ba7b811-9dad-11d1-80b4-00c04fd430c8"]]
+  # pg_extension is not yet populated, so verify by calling the functions the
+  # extension installs.
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: 'SELECT uuid_ns_url() AS u'
+      result:
+        columns: ["u"]
+        rows: [["6ba7b811-9dad-11d1-80b4-00c04fd430c8"]]
+    - query: 'SELECT uuid_nil() AS u'
+      result:
+        columns: ["u"]
+        rows: [["00000000-0000-0000-0000-000000000000"]]
+- name: procedure replicates to standby and is callable after failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE TABLE proc_data (v INT)'
+    - exec: 'CREATE PROCEDURE insert_value(IN n INT) LANGUAGE SQL AS $$ INSERT INTO proc_data VALUES (n) $$'
+    - exec: 'CALL insert_value(1)'
+    - query: 'SELECT v FROM proc_data ORDER BY v'
+      result:
+        columns: ["v"]
+        rows: [["1"]]
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT proname FROM pg_catalog.pg_proc WHERE proname = 'insert_value'"
+      result:
+        columns: ["proname"]
+        rows: [["insert_value"]]
+    - query: 'SELECT v FROM proc_data ORDER BY v'
+      result:
+        columns: ["v"]
+        rows: [["1"]]
+  # Fail over and verify the replicated procedure is callable on the new primary.
+  - on: server1
+    queries:
+    - exec: 'USE repo1'
+    - query: "select dolt_assume_cluster_role('standby', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - query: "select dolt_assume_cluster_role('primary', 2)"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["{0}"]]
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - exec: 'CALL insert_value(2)'
+    - query: 'SELECT v FROM proc_data ORDER BY v'
+      result:
+        columns: ["v"]
+        rows:
+        - ["1"]
+        - ["2"]
+- name: cast replicates to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 10'
+    - exec: 'CREATE DATABASE repo1'
+    - exec: 'USE repo1'
+    - exec: 'CREATE TABLE cast_src (v TEXT)'
+    - exec: 'CREATE TABLE cast_dst (v TEXT, tag TEXT)'
+    - exec: "CREATE FUNCTION cast_src_to_dst(src cast_src) RETURNS cast_dst AS $$ SELECT ROW((src).v, 'converted')::cast_dst $$ LANGUAGE SQL"
+    - exec: "CREATE FUNCTION cast_accept(dst cast_dst) RETURNS TEXT AS $$ SELECT (dst).v || ':' || (dst).tag $$ LANGUAGE SQL"
+    - exec: 'CREATE CAST (cast_src AS cast_dst) WITH FUNCTION cast_src_to_dst(cast_src)'
+    - query: "SELECT cast_accept((ROW('one')::cast_src)::cast_dst) AS r"
+      result:
+        columns: ["r"]
+        rows: [["one:converted"]]
+  - on: server2
+    queries:
+    - exec: 'USE repo1'
+    - query: "SELECT c.castcontext::text AS castcontext, c.castmethod::text AS castmethod FROM pg_cast c JOIN pg_type src ON src.oid = c.castsource JOIN pg_type dst ON dst.oid = c.casttarget WHERE src.typname = 'cast_src' AND dst.typname = 'cast_dst'"
+      result:
+        columns: ["castcontext","castmethod"]
+        rows: [["e","f"]]
+    - query: "SELECT cast_accept((ROW('two')::cast_src)::cast_dst) AS r"
+      result:
+        columns: ["r"]
+        rows: [["two:converted"]]
