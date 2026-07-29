@@ -3,21 +3,6 @@
 # functions, triggers, procedures, and casts as RootObjects on the root value
 # (schemas are stored on the root value struct directly), so cluster
 # replication must carry all of them to the standby along with table data.
-# Extensions are also RootObjects, but CREATE EXTENSION requires a local
-# Postgres installation to supply extension libraries and is incompletely
-# implemented, so it is not covered here.
-#
-# Each test creates one kind of root object on the primary and verifies it on
-# the standby, either through the pg_catalog tables that are populated from the
-# root object collections (pg_sequence, pg_type, pg_proc, pg_cast) or
-# behaviorally (calling a replicated function, using a replicated type).
-# pg_trigger is currently an unpopulated stub and observing a trigger requires
-# a write, so that test fails over to the standby and asserts the trigger fires
-# on the new primary.
-#
-# All tests set dolt_cluster_ack_writes_timeout_secs on the primary so that
-# writes block until the standby has acknowledged them, making the standby
-# assertions deterministic without retries.
 parallel: true
 tests:
 - name: schema replicates to standby
