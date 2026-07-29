@@ -41,7 +41,7 @@ func (p PgStatioSysSequencesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatioSysSequencesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	entries, err := getStatioSequenceEntries(ctx, statTablesSys)
+	entries, err := getStatioSequenceEntries(ctx, statSchemaSys)
 	if err != nil {
 		return nil, err
 	}

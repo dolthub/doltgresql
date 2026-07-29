@@ -53,6 +53,24 @@ func (p PgDependHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgDependHandler) RowIter(ctx *sql.Context, _ sql.Partition) (sql.RowIter, error) {
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.dependRows == nil {
+		err = cachePgDepends(ctx, pgCatalogCache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pgDependRowIter{rows: pgCatalogCache.dependRows}, nil
+}
+
+// cachePgDepends caches the pg_depend data for the current database in the session.
+func cachePgDepends(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	// pg_depend is a partial implementation containing only the dependencies that can currently be
 	// derived from the database's schema:
 	//   - sequence -> owning column ('a' auto dependencies, e.g. SERIAL columns and OWNED BY)
@@ -90,7 +108,7 @@ func (p PgDependHandler) RowIter(ctx *sql.Context, _ sql.Partition) (sql.RowIter
 		},
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Sequences owned by a table column (SERIAL columns, OWNED BY clauses) have an automatic
@@ -120,7 +138,8 @@ func (p PgDependHandler) RowIter(ctx *sql.Context, _ sql.Partition) (sql.RowIter
 		}
 	}
 
-	return &pgDependRowIter{rows: rows}, nil
+	pgCatalogCache.dependRows = rows
+	return nil
 }
 
 // PkSchema implements the interface tables.Handler.

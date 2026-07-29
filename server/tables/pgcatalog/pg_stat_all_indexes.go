@@ -45,7 +45,7 @@ func (p PgStatAllIndexesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatAllIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	entries, err := getStatIndexEntries(ctx, statIndexesAll)
+	entries, err := getStatIndexEntries(ctx, statSchemaAll)
 	if err != nil {
 		return nil, err
 	}
@@ -80,49 +80,46 @@ type statIndexEntry struct {
 	schemaName string
 	tableName  string
 	indexName  string
-}
-
-// statIndexesFilter determines which indexes are included in a pg_stat_*_indexes or
-// pg_statio_*_indexes table, based on the schema their table belongs to.
-type statIndexesFilter func(schema functions.ItemSchema) bool
-
-// statIndexesAll includes indexes on tables from all schemas.
-func statIndexesAll(schema functions.ItemSchema) bool {
-	return true
-}
-
-// statIndexesSys includes only indexes on tables from system schemas.
-func statIndexesSys(schema functions.ItemSchema) bool {
-	return schema.IsSystemSchema()
-}
-
-// statIndexesUser includes only indexes on tables from non-system schemas.
-func statIndexesUser(schema functions.ItemSchema) bool {
-	return !schema.IsSystemSchema()
+	isSystem   bool
 }
 
 // getStatIndexEntries returns a statIndexEntry for each index on a table in the current database
-// whose schema matches the given filter.
-func getStatIndexEntries(ctx *sql.Context, filter statIndexesFilter) ([]statIndexEntry, error) {
-	var entries []statIndexEntry
-	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
-		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
-			if filter(schema) {
+// whose schema matches the given filter. The unfiltered entry list is cached in the session's
+// pg_catalog cache, since iterating all schema elements is expensive.
+func getStatIndexEntries(ctx *sql.Context, filter statSchemaFilter) ([]statIndexEntry, error) {
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.statIndexEntries == nil {
+		var entries []statIndexEntry
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 				entries = append(entries, statIndexEntry{
 					tableOid:   table.OID.AsId(),
 					indexOid:   index.OID.AsId(),
 					schemaName: schema.Item.SchemaName(),
 					tableName:  table.Item.Name(),
 					indexName:  formatIndexName(index.Item),
+					isSystem:   schema.IsSystemSchema(),
 				})
-			}
-			return true, nil
-		},
-	})
-	if err != nil {
-		return nil, err
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.statIndexEntries = entries
 	}
-	return entries, nil
+
+	var filtered []statIndexEntry
+	for _, entry := range pgCatalogCache.statIndexEntries {
+		if filter(entry.isSystem) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered, nil
 }
 
 // pgStatIndexesRowIter is the sql.RowIter for the pg_stat_all_indexes, pg_stat_sys_indexes, and

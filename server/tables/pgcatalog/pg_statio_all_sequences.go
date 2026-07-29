@@ -45,7 +45,7 @@ func (p PgStatioAllSequencesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatioAllSequencesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	entries, err := getStatioSequenceEntries(ctx, statTablesAll)
+	entries, err := getStatioSequenceEntries(ctx, statSchemaAll)
 	if err != nil {
 		return nil, err
 	}
@@ -74,28 +74,44 @@ type statioSequenceEntry struct {
 	oid          id.Id
 	schemaName   string
 	sequenceName string
+	isSystem     bool
 }
 
 // getStatioSequenceEntries returns a statioSequenceEntry for each sequence in the current database
-// whose schema matches the given filter.
-func getStatioSequenceEntries(ctx *sql.Context, filter statTablesFilter) ([]statioSequenceEntry, error) {
-	var entries []statioSequenceEntry
-	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
-		Sequence: func(ctx *sql.Context, schema functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
-			if filter(schema) {
+// whose schema matches the given filter. The unfiltered entry list is cached in the session's
+// pg_catalog cache, since iterating all schema elements is expensive.
+func getStatioSequenceEntries(ctx *sql.Context, filter statSchemaFilter) ([]statioSequenceEntry, error) {
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.statioSequenceEntries == nil {
+		var entries []statioSequenceEntry
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Sequence: func(ctx *sql.Context, schema functions.ItemSchema, sequence functions.ItemSequence) (cont bool, err error) {
 				entries = append(entries, statioSequenceEntry{
 					oid:          sequence.OID.AsId(),
 					schemaName:   schema.Item.SchemaName(),
 					sequenceName: sequence.Item.Id.SequenceName(),
+					isSystem:     schema.IsSystemSchema(),
 				})
-			}
-			return true, nil
-		},
-	})
-	if err != nil {
-		return nil, err
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.statioSequenceEntries = entries
 	}
-	return entries, nil
+
+	var filtered []statioSequenceEntry
+	for _, entry := range pgCatalogCache.statioSequenceEntries {
+		if filter(entry.isSystem) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered, nil
 }
 
 // pgStatioSequencesRowIter is the sql.RowIter for the pg_statio_all_sequences,

@@ -47,9 +47,30 @@ func (p PgTriggerHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTriggerHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	collection, err := core.GetTriggersCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if pgCatalogCache.triggers == nil {
+		err = cachePgTriggers(ctx, pgCatalogCache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pgTriggerRowIter{
+		triggers: pgCatalogCache.triggers,
+		idx:      0,
+	}, nil
+}
+
+// cachePgTriggers caches the pg_trigger data for the current database in the session.
+func cachePgTriggers(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
+	collection, err := core.GetTriggersCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return err
 	}
 	var trigs []triggers.Trigger
 	err = collection.IterateTriggers(ctx, func(t triggers.Trigger) (stop bool, err error) {
@@ -57,7 +78,7 @@ func (p PgTriggerHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sq
 		return false, nil
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// Sort for deterministic output: by schema, then table, then trigger name
 	sort.Slice(trigs, func(i, j int) bool {
@@ -69,10 +90,8 @@ func (p PgTriggerHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sq
 		}
 		return trigs[i].ID.TriggerName() < trigs[j].ID.TriggerName()
 	})
-	return &pgTriggerRowIter{
-		triggers: trigs,
-		idx:      0,
-	}, nil
+	pgCatalogCache.triggers = trigs
+	return nil
 }
 
 // PkSchema implements the interface tables.Handler.

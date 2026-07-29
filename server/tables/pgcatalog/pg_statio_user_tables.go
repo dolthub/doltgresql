@@ -41,7 +41,7 @@ func (p PgStatioUserTablesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatioUserTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	entries, err := getStatTableEntries(ctx, statTablesUser)
+	entries, err := getStatTableEntries(ctx, statSchemaUser)
 	if err != nil {
 		return nil, err
 	}

@@ -47,9 +47,30 @@ func (p PgExtensionHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgExtensionHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	extCollection, err := core.GetExtensionsCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if pgCatalogCache.extensions == nil {
+		err = cachePgExtensions(ctx, pgCatalogCache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pgExtensionRowIter{
+		extensions: pgCatalogCache.extensions,
+		idx:        0,
+	}, nil
+}
+
+// cachePgExtensions caches the pg_extension data for the current database in the session.
+func cachePgExtensions(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
+	extCollection, err := core.GetExtensionsCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return err
 	}
 	var exts []extensions.Extension
 	err = extCollection.IterAll(ctx, func(rootObj objinterface.RootObject) (stop bool, err error) {
@@ -59,12 +80,10 @@ func (p PgExtensionHandler) RowIter(ctx *sql.Context, partition sql.Partition) (
 		return false, nil
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &pgExtensionRowIter{
-		extensions: exts,
-		idx:        0,
-	}, nil
+	pgCatalogCache.extensions = exts
+	return nil
 }
 
 // PkSchema implements the interface tables.Handler.

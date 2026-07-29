@@ -46,6 +46,27 @@ func (p PgEnumHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgEnumHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.enumLabels == nil {
+		err = cachePgEnums(ctx, pgCatalogCache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pgEnumRowIter{
+		labels: pgCatalogCache.enumLabels,
+		idx:    0,
+	}, nil
+}
+
+// cachePgEnums caches the pg_enum data for the current database in the session.
+func cachePgEnums(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	var enumLabels []pgEnumLabel
 	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Type: func(ctx *sql.Context, schema functions.ItemSchema, typ functions.ItemType) (cont bool, err error) {
@@ -71,12 +92,10 @@ func (p PgEnumHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.R
 		},
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &pgEnumRowIter{
-		labels: enumLabels,
-		idx:    0,
-	}, nil
+	pgCatalogCache.enumLabels = enumLabels
+	return nil
 }
 
 // PkSchema implements the interface tables.Handler.

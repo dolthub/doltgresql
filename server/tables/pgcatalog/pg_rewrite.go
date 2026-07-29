@@ -45,6 +45,27 @@ func (p PgRewriteHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgRewriteHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.rewrites == nil {
+		err = cachePgRewrites(ctx, pgCatalogCache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pgRewriteRowIter{
+		rewrites: pgCatalogCache.rewrites,
+		idx:      0,
+	}, nil
+}
+
+// cachePgRewrites caches the pg_rewrite data for the current database in the session.
+func cachePgRewrites(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	// Doltgres does not support CREATE RULE, so the only rewrite rules that exist are the implicit
 	// "_RETURN" rules that every view has.
 	var rewrites []pgRewrite
@@ -60,12 +81,10 @@ func (p PgRewriteHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sq
 		},
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &pgRewriteRowIter{
-		rewrites: rewrites,
-		idx:      0,
-	}, nil
+	pgCatalogCache.rewrites = rewrites
+	return nil
 }
 
 // PkSchema implements the interface tables.Handler.

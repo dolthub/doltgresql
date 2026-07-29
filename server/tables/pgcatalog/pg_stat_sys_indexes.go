@@ -41,7 +41,7 @@ func (p PgStatSysIndexesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatSysIndexesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	entries, err := getStatIndexEntries(ctx, statIndexesSys)
+	entries, err := getStatIndexEntries(ctx, statSchemaSys)
 	if err != nil {
 		return nil, err
 	}

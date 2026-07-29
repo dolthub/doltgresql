@@ -18,7 +18,6 @@ import (
 	"sort"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
-	sqle "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -50,9 +49,7 @@ func (p PgStatDatabaseConflictsHandler) RowIter(ctx *sql.Context, partition sql.
 	// matching what a freshly-started Postgres server reports.
 	// TODO: fill in real values when recovery conflict statistics are tracked
 	doltSession := dsess.DSessFromSess(ctx.Session)
-	c := sqle.NewDefault(doltSession.Provider()).Analyzer.Catalog
-
-	databases := c.AllDatabases(ctx)
+	databases := doltSession.Provider().AllDatabases(ctx)
 	dbs := make([]sql.Database, 0, len(databases))
 	for _, db := range databases {
 		name := db.Name()

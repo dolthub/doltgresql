@@ -45,7 +45,7 @@ func (p PgStatAllTablesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatAllTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	entries, err := getStatTableEntries(ctx, statTablesAll)
+	entries, err := getStatTableEntries(ctx, statSchemaAll)
 	if err != nil {
 		return nil, err
 	}
@@ -95,47 +95,63 @@ type statTableEntry struct {
 	oid        id.Id
 	schemaName string
 	tableName  string
+	isSystem   bool
 }
 
-// statTablesFilter determines which tables are included in a pg_stat_*_tables table, based on the
-// schema they belong to.
-type statTablesFilter func(schema functions.ItemSchema) bool
+// statSchemaFilter determines which entries are included in a pg_stat_* table, based on whether the
+// schema they belong to is a system schema. It is shared by the table, index, and sequence stat views.
+type statSchemaFilter func(isSystem bool) bool
 
-// statTablesAll includes tables from all schemas.
-func statTablesAll(schema functions.ItemSchema) bool {
+// statSchemaAll includes entries from all schemas.
+func statSchemaAll(isSystem bool) bool {
 	return true
 }
 
-// statTablesSys includes only tables from system schemas.
-func statTablesSys(schema functions.ItemSchema) bool {
-	return schema.IsSystemSchema()
+// statSchemaSys includes only entries from system schemas.
+func statSchemaSys(isSystem bool) bool {
+	return isSystem
 }
 
-// statTablesUser includes only tables from non-system schemas.
-func statTablesUser(schema functions.ItemSchema) bool {
-	return !schema.IsSystemSchema()
+// statSchemaUser includes only entries from non-system schemas.
+func statSchemaUser(isSystem bool) bool {
+	return !isSystem
 }
 
 // getStatTableEntries returns a statTableEntry for each table in the current database whose schema
-// matches the given filter.
-func getStatTableEntries(ctx *sql.Context, filter statTablesFilter) ([]statTableEntry, error) {
-	var entries []statTableEntry
-	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
-		Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
-			if filter(schema) {
+// matches the given filter. The unfiltered entry list is cached in the session's pg_catalog cache,
+// since iterating all schema elements is expensive.
+func getStatTableEntries(ctx *sql.Context, filter statSchemaFilter) ([]statTableEntry, error) {
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.statTableEntries == nil {
+		var entries []statTableEntry
+		err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+			Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 				entries = append(entries, statTableEntry{
 					oid:        table.OID.AsId(),
 					schemaName: schema.Item.SchemaName(),
 					tableName:  table.Item.Name(),
+					isSystem:   schema.IsSystemSchema(),
 				})
-			}
-			return true, nil
-		},
-	})
-	if err != nil {
-		return nil, err
+				return true, nil
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		pgCatalogCache.statTableEntries = entries
 	}
-	return entries, nil
+
+	var filtered []statTableEntry
+	for _, entry := range pgCatalogCache.statTableEntries {
+		if filter(entry.isSystem) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered, nil
 }
 
 // pgStatTablesRowIter is the sql.RowIter for the pg_stat_all_tables, pg_stat_sys_tables, and
