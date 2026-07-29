@@ -127,7 +127,7 @@ PostJoinRewrite:
 			if !aliasedTableExpr.Lateral &&
 				aliasedTableExpr.Hints == nil &&
 				len(aliasedTableExpr.Partitions) == 0 &&
-				ok && len(subquery.Columns) == 0 {
+				ok {
 				// If this is true, then we can confirm that it's just a wrapper (and not an explicit AliasedTableExpr).
 				// This may seem like a lot of fragile checks, but AliasedTableExpr explicitly sets its state to this in
 				// this circumstance. We do not want to create a TableFuncExpr except under very specific circumstances.
@@ -148,9 +148,10 @@ PostJoinRewrite:
 									}
 								}
 								from[i] = &vitess.TableFuncExpr{
-									Name:  funcExpr.Name.String(),
-									Exprs: funcExpr.Exprs,
-									Alias: aliasedTableExpr.As,
+									Name:    funcExpr.Name.String(),
+									Exprs:   funcExpr.Exprs,
+									Alias:   aliasedTableExpr.As,
+									Columns: subquery.Columns,
 								}
 							}
 						}
