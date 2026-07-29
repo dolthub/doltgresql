@@ -505,7 +505,7 @@ func TestAlterTable(t *testing.T) {
 					// Attempting to change to a smaller type that doesn't support the values in the
 					// column results in an error instead of changing the type.
 					Query:       "ALTER TABLE test1 ALTER COLUMN b TYPE smallint;",
-					ExpectedErr: "smallint: unhandled type: int32",
+					ExpectedErr: "out of range for smallint",
 				},
 			},
 		},
