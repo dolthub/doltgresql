@@ -16,9 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-22.04 ]
-# TODO: failing on MacOS due to races in syncig the default postgres db with no writes        
-#       os: [ ubuntu-22.04, macos-latest ]
+        os: [ ubuntu-22.04, macos-latest ]
     steps:
       - uses: actions/checkout@v6
       - name: Set up Go
@@ -48,5 +46,13 @@ jobs:
           echo "DOLTGRES_BIN_PATH=$(pwd)/.ci_bin/doltgres" >> $GITHUB_ENV
       - name: Test Go SQL Server Driver
         working-directory: ./integration-tests/go-sql-server-driver
+        env:
+          # On macOS runners, grpc-go's DNS resolver blocks on a TXT
+          # service-config lookup (_grpc_config.localhost) that the runner's
+          # DNS drops, stalling cluster replication channels for up to 30s
+          # (grpc's ResolvingTimeout) and starving the 10s graceful-transition
+          # budget. The doltgres servers spawned by the test harness inherit
+          # this env var, which disables the TXT lookup.
+          GRPC_ENABLE_TXT_SERVICE_CONFIG: "false"
         run: |
           go test --timeout=20m ./...
