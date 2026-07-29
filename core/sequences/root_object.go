@@ -325,6 +325,7 @@ func (pgs *Collection) RenameRootObject(ctx context.Context, oldName id.Id, newN
 	if !oldName.IsValid() || !newName.IsValid() || oldName.Section() != newName.Section() || oldName.Section() != id.Section_Sequence {
 		return errors.New("cannot rename sequence due to invalid name")
 	}
+	// TODO: Update ait
 	oldSeqName := id.Sequence(oldName)
 	newSeqName := id.Sequence(newName)
 	seq, err := pgs.GetSequence(ctx, oldSeqName)

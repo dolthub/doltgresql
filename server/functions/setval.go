@@ -15,6 +15,9 @@
 package functions
 
 import (
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/doltgresql/core/sequences"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -54,16 +57,59 @@ var setval_text_int64_boolean = framework.Function3{
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1 any, val2 any, val3 any) (any, error) {
 		// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
+		relationName := val1.(string)
+		newVal := val2.(int64)
+		autoAdvance := val3.(bool)
 		collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 		if err != nil {
 			return nil, err
 		}
-		// TODO: this should take a regclass as the parameter to determine the schema
-		schema, relation, err := ParseRelationName(ctx, val1.(string))
+		schema, relation, err := ParseRelationName(ctx, relationName)
 		if err != nil {
 			return nil, err
 		}
-		return val2.(int64), collection.SetVal(ctx, id.NewSequence(schema, relation), val2.(int64), val3.(bool))
+		seqId := id.NewSequence(schema, relation)
+		sequence, err := collection.GetSequence(ctx, seqId)
+		if err != nil {
+			return nil, err
+		}
+		// TODO: this should take a regclass as the parameter to determine the schema
+
+		db, err := getDb(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ait, err := dsess.GetSequenceTracker(ctx, db.GetGlobalState(), sequences.SequenceTrackerKey)
+		if err != nil {
+			return nil, err
+		}
+
+		ws, err := db.GetWorkingSet(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		nextState := sequence.SequenceState.WithValue(newVal)
+		if autoAdvance {
+			_, _, nextState, err = nextState.Next()
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		newSequeneable, err := ait.Set(ctx, relation, sequence, ws.Ref(), nextState)
+		_ = newSequeneable
+		if err != nil {
+			return nil, err
+		}
+
+		err = collection.SetVal(ctx, seqId, val2.(int64), false, val3.(bool))
+		if err != nil {
+			return nil, err
+		}
+		// TODO: What to do with the returned value?
+		// DO we need to pass in the entire sequenceable to SetVal, or is it guarenteed to be the old one?
+		return newVal, nil // collection.SetVal(ctx, seqId, val2.(int64), val3.(bool))
 	},
 }
 
@@ -94,4 +140,23 @@ func ParseRelationName(ctx *sql.Context, name string) (schema string, relation s
 	relation = strings.Trim(relation, `"`)
 
 	return schema, relation, nil
+}
+
+func getSequenceTracker(ctx *sql.Context) (*sequences.SequenceTracker, error) {
+	sess := dsess.DSessFromSess(ctx.Session)
+	db, err := sess.Provider().Database(ctx, sess.GetCurrentDatabase())
+	if err != nil {
+		return nil, err
+	}
+	db2 := db.(sqle.Database)
+	return dsess.GetSequenceTracker(ctx, db2.GetGlobalState(), sequences.SequenceTrackerKey)
+}
+
+func getDb(ctx *sql.Context) (sqle.Database, error) {
+	sess := dsess.DSessFromSess(ctx.Session)
+	db, err := sess.Provider().Database(ctx, sess.GetCurrentDatabase())
+	if err != nil {
+		return sqle.Database{}, err
+	}
+	return db.(sqle.Database), nil
 }

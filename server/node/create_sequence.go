@@ -17,6 +17,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"math"
 	"strings"
 
@@ -188,6 +189,20 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		return nil, err
 	}
 	if err = collection.CreateSequence(ctx, c.sequence); err != nil {
+		return nil, err
+	}
+	sess := dsess.DSessFromSess(ctx.Session)
+	db, err := sess.Provider().Database(ctx, sess.GetCurrentDatabase())
+	if err != nil {
+		return nil, err
+	}
+	ait, err := dsess.GetSequenceTracker(ctx, db.(sqle.Database).GetGlobalState(), sequences.SequenceTrackerKey)
+	if err != nil {
+		return nil, err
+	}
+	seq := c.sequence.SequenceState
+	err = ait.AddNewTable(c.sequence.Id.SequenceName(), seq)
+	if err != nil {
 		return nil, err
 	}
 	if c.fromAlter {

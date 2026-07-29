@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -30,6 +32,41 @@ func initNextVal() {
 	framework.RegisterFunction(nextval_regclass)
 }
 
+func nextval(ctx *sql.Context, ait *sequences.SequenceTracker, relationName string) (int64, error) {
+	// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
+	collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return 0, err
+	}
+
+	schema, sequenceString, err := ParseRelationName(ctx, relationName)
+	if err != nil {
+		return 0, err
+	}
+
+	// TODO: Include Schema Name
+	// As a partial workaround, ensure that the sequence exists
+	sequenceId := id.NewSequence(schema, sequenceString)
+	sequence, err := collection.GetSequence(ctx, sequenceId)
+	if err != nil {
+		return 0, err
+	}
+	if sequence == nil {
+		return 0, errors.Errorf(`relation "%s" does not exist`, sequenceString)
+	}
+
+	next, err := ait.Next(ctx, sequenceString, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	err = collection.SetVal(ctx, sequenceId, next, true, true)
+	if err != nil {
+		return 0, err
+	}
+	return next, err
+}
+
 // nextval_text represents the PostgreSQL function of the same name, taking the same parameters.
 //
 // TODO: Even though we can implicitly convert a text param to a regclass param, it's an expensive process
@@ -43,17 +80,11 @@ var nextval_text = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		schema, sequence, err := ParseRelationName(ctx, val.(string))
+		ait, err := getSequenceTracker(ctx)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-
-		// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
-		collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
-		if err != nil {
-			return nil, err
-		}
-		return collection.NextVal(ctx, id.NewSequence(schema, sequence))
+		return nextval(ctx, ait, val.(string))
 	},
 }
 
@@ -69,17 +100,10 @@ var nextval_regclass = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-
-		schema, sequence, err := ParseRelationName(ctx, relationName)
+		ait, err := getSequenceTracker(ctx)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-
-		// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
-		collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
-		if err != nil {
-			return nil, err
-		}
-		return collection.NextVal(ctx, id.NewSequence(schema, sequence))
+		return nextval(ctx, ait, relationName)
 	},
 }

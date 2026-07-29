@@ -15,9 +15,11 @@
 package server
 
 import (
+	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -75,5 +77,14 @@ func (f DoltgresProviderFactory) NewProvider(defaultBranch string, fs filesys.Fi
 	if err != nil {
 		return nil, err
 	}
-	return &DoltgresDatabaseProvider{inner.(*sqle.DoltDatabaseProvider)}, nil
+	innerDoltDatabaseProvider := inner.(*sqle.DoltDatabaseProvider)
+	innerDoltDatabaseProvider.AddInitDatabaseHook(func(ctx *sql.Context, pro *sqle.DoltDatabaseProvider, name string, env *env.DoltEnv, db dsess.SqlDatabase) error {
+		sqleDatabase := db.(sqle.Database)
+		sequenceTracker, err := dsess.NewSequenceTracker(ctx, name, sqleDatabase.GetDoltDB(), sequences.SequenceSource{})
+		if err != nil {
+			return err
+		}
+		return sqleDatabase.GetGlobalState().AddSequenceTracker(ctx, sequences.SequenceTrackerKey, sequenceTracker)
+	})
+	return &DoltgresDatabaseProvider{innerDoltDatabaseProvider}, nil
 }

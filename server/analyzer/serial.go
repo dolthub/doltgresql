@@ -138,17 +138,19 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		}
 
 		ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", false, &sequences.Sequence{
-			Id:          id.NewSequence("", sequenceName),
 			DataTypeID:  col.Type.(*pgtypes.DoltgresType).ID,
 			Persistence: sequences.Persistence_Permanent,
-			Start:       1,
-			Current:     1,
-			Increment:   1,
-			Minimum:     1,
-			Maximum:     maxValue,
-			Cache:       1,
-			Cycle:       false,
-			IsAtEnd:     false,
+			SequenceState: sequences.SequenceState{
+				Id:        id.NewSequence("", sequenceName),
+				Start:     1,
+				Current:   1,
+				Increment: 1,
+				Minimum:   1,
+				Maximum:   maxValue,
+				Cache:     1,
+				Cycle:     false,
+				IsAtEnd:   false,
+			},
 			OwnerTable:  id.NewTable("", createTable.Name()),
 			OwnerColumn: col.Name,
 		}))

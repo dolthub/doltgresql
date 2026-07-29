@@ -17,10 +17,16 @@ package sequences
 import (
 	"context"
 	"fmt"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/globalstate/sequences"
+	"github.com/dolthub/doltgresql/utils"
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"io"
 	"math"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -48,11 +54,8 @@ const (
 	Persistence_Unlogged  Persistence = 2
 )
 
-// Sequence represents a single sequence within the pg_sequence table.
-type Sequence struct {
+type SequenceState struct {
 	Id            id.Sequence
-	DataTypeID    id.Type
-	Persistence   Persistence
 	Start         int64
 	Current       int64
 	Increment     int64
@@ -62,13 +65,161 @@ type Sequence struct {
 	Cycle         bool
 	IsAtEnd       bool
 	HasBeenCalled bool
-	OwnerTable    id.Table
-	OwnerColumn   string
+}
+
+type SequenceTracker = dsess.SequenceTracker[*Sequence, SequenceState, int64]
+
+// SequenceTrackerKey is the key to identify the SequenceTracker in the globalstate.GlobalState
+var SequenceTrackerKey dsess.TrackerKey[*SequenceTracker] = struct{}{}
+
+func (sequence SequenceState) Merge(otherSequenceState SequenceState) (merged SequenceState, ok bool) {
+	newSequenceState := sequence
+	// Handle the fields that are dependent on the increment direction.
+	// We'll always take the increment size that's the smallest for the most granularity, along with the one that
+	// has progressed the furthest.
+	// For opposing increment directions, we'll take whatever is in our collection.
+	if sequence.Increment >= 0 && otherSequenceState.Increment >= 0 {
+		newSequenceState.Increment = utils.Min(sequence.Increment, otherSequenceState.Increment)
+		newSequenceState.Start = utils.Min(sequence.Start, otherSequenceState.Start)
+	} else if sequence.Increment < 0 && otherSequenceState.Increment < 0 {
+		newSequenceState.Increment = utils.Max(sequence.Increment, otherSequenceState.Increment)
+		newSequenceState.Start = utils.Max(sequence.Start, otherSequenceState.Start)
+	} else {
+		return SequenceState{}, false
+	}
+	if sequence.GreaterThan(otherSequenceState) {
+		newSequenceState.Current = sequence.Current
+	} else {
+		newSequenceState.Current = otherSequenceState.Current
+	}
+	// TODO: How to handle the remaining fields if they differ?
+	return newSequenceState, true
+}
+
+var _ sequences.SequenceState[SequenceState, int64] = SequenceState{}
+
+func (sequence SequenceState) CurrentValue() int64 {
+	return sequence.Current
+}
+
+func (sequence SequenceState) WithValue(v int64) SequenceState {
+	sequence.Current = v
+	sequence.IsAtEnd = false
+	return sequence
+}
+
+func (sequence SequenceState) WithSQLValue(ctx *sql.Context, v interface{}) (SequenceState, error) {
+	// TODO: Coercing happens here, based on the type of the sequence
+	return sequence.WithValue(v.(int64)), nil
+}
+
+func (sequence SequenceState) GreaterThan(other SequenceState) bool {
+	// TODO: What to do if the two sequences move in different directions?
+	// Assume they move in the same direction.
+	// A sequence that has wrapped around is further along than a sequence that hasn't.
+	// Otherwise, we see which sequence is further alone, in the direction that it's incrementing.
+	if sequence.Increment > 0 {
+		hasWrapped := sequence.Current < sequence.Start
+		otherHasWrapped := other.Current < sequence.Start
+		if hasWrapped == otherHasWrapped {
+			return sequence.Current > other.Current
+		} else {
+			// Exactly one of the sequences has wrapped around. That sequence is greater.
+			return hasWrapped
+		}
+	} else {
+		hasWrapped := sequence.Current > sequence.Start
+		otherHasWrapped := other.Current > sequence.Start
+		if hasWrapped == otherHasWrapped {
+			return sequence.Current < other.Current
+		} else {
+			// Exactly one of the sequences has wrapped around. That sequence is greater.
+			return hasWrapped
+		}
+	}
+}
+
+func (sequence SequenceState) AtEnd() bool {
+	return sequence.IsAtEnd
+}
+
+func (sequence SequenceState) Next() (sqlVal int64, hasNext bool, nextState SequenceState, err error) {
+	// First we'll check if we've reached the end, and cycle or error as necessary
+	sequence.HasBeenCalled = true
+	if sequence.IsAtEnd {
+		if !sequence.Cycle {
+			if sequence.Increment > 0 {
+				return 0, false, SequenceState{}, errors.Errorf(`nextval: reached maximum value of sequence "%s" (%d)`, sequence.Id, sequence.Maximum)
+			} else {
+				return 0, false, SequenceState{}, errors.Errorf(`nextval: reached minimum value of sequence "%s" (%d)`, sequence.Id, sequence.Minimum)
+			}
+		}
+		sequence.IsAtEnd = false
+		if sequence.Increment > 0 {
+			sequence.Current = sequence.Minimum
+		} else {
+			sequence.Current = sequence.Maximum
+		}
+	}
+	// We'll return the current value, so everything after this sets the value for the next call
+	valueToReturn := sequence.Current
+	// Increment the current value
+	if sequence.Increment > 0 {
+		// Check for overflow or crossing the maximum, meaning we're at the end
+		if sequence.Current > math.MaxInt64-sequence.Increment || sequence.Current+sequence.Increment > sequence.Maximum {
+			sequence.IsAtEnd = true
+		} else {
+			sequence.Current += sequence.Increment
+		}
+	} else {
+		// Check for underflow or crossing the minimum, meaning we're at the end
+		if sequence.Current < math.MinInt64-sequence.Increment || sequence.Current+sequence.Increment < sequence.Minimum {
+			sequence.IsAtEnd = true
+		} else {
+			sequence.Current += sequence.Increment
+		}
+	}
+	return valueToReturn, true, sequence, nil
+}
+
+// Sequence represents a single sequence within the pg_sequence table.
+type Sequence struct {
+	DataTypeID  id.Type
+	Persistence Persistence
+	SequenceState
+	OwnerTable  id.Table
+	OwnerColumn string
+	mu          sync.Mutex
+}
+
+func (sequence *Sequence) GetSequenceState(ctx context.Context) (SequenceState, error) {
+	return sequence.SequenceState, nil
+}
+
+func (sequence *Sequence) HasSequenceState(ctx context.Context) (bool, error) {
+	return true, nil
+}
+
+func (sequence *Sequence) SetSequenceState(ctx context.Context, newSequenceState SequenceState) (*Sequence, error) {
+	newSequence := sequence
+	newSequence.SequenceState = newSequenceState
+	return newSequence, nil
+}
+
+func (sequence *Sequence) GetSequenceSqlType(ctx context.Context) (sql.Type, bool, error) {
+	// TODO: Return the actual correct type here
+	return types.Int64, true, nil
+}
+
+func (sequence *Sequence) TrySetSequenceState(ctx *sql.Context, val SequenceState) (*Sequence, bool, error) {
+	newSequence, err := sequence.SetSequenceState(ctx, val)
+	return newSequence, true, err
 }
 
 var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = (*Sequence)(nil)
 var _ doltdb.RootObject = (*Sequence)(nil)
+var _ sequences.SequencedRelation[*Sequence, int64, SequenceState] = (*Sequence)(nil)
 
 // GetSequence returns the sequence with the given schema and name. Returns nil if the sequence cannot be found.
 func (pgs *Collection) GetSequence(ctx context.Context, name id.Sequence) (*Sequence, error) {
@@ -284,7 +435,7 @@ func (pgs *Collection) NextVal(ctx context.Context, name id.Sequence) (int64, er
 }
 
 // SetVal sets the sequence to the
-func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue int64, autoAdvance bool) error {
+func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue int64, hasBeenCalled bool, autoAdvance bool) error {
 	seq, err := pgs.getSequence(ctx, name)
 	if err != nil {
 		return err
@@ -298,7 +449,7 @@ func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue in
 	}
 	seq.Current = newValue
 	seq.IsAtEnd = false
-	seq.HasBeenCalled = false
+	seq.HasBeenCalled = hasBeenCalled
 	if autoAdvance {
 		_, err := seq.nextValForSequence()
 		return err
@@ -435,40 +586,35 @@ func (pgs *Collection) writeCache(ctx context.Context) (err error) {
 
 // nextValForSequence increments the calling sequence.
 func (sequence *Sequence) nextValForSequence() (int64, error) {
-	// First we'll check if we've reached the end, and cycle or error as necessary
-	if sequence.IsAtEnd {
-		if !sequence.Cycle {
-			if sequence.Increment > 0 {
-				return 0, errors.Errorf(`nextval: reached maximum value of sequence "%s" (%d)`, sequence.Id, sequence.Maximum)
-			} else {
-				return 0, errors.Errorf(`nextval: reached minimum value of sequence "%s" (%d)`, sequence.Id, sequence.Minimum)
-			}
-		}
-		sequence.IsAtEnd = false
-		if sequence.Increment > 0 {
-			sequence.Current = sequence.Minimum
-		} else {
-			sequence.Current = sequence.Maximum
-		}
+	result, _, newSequence, err := sequence.Next()
+	if err != nil {
+		return 0, err
 	}
-	// We'll return the current value, so everything after this sets the value for the next call
-	sequence.HasBeenCalled = true
-	valueToReturn := sequence.Current
-	// Increment the current value
-	if sequence.Increment > 0 {
-		// Check for overflow or crossing the maximum, meaning we're at the end
-		if sequence.Current > math.MaxInt64-sequence.Increment || sequence.Current+sequence.Increment > sequence.Maximum {
-			sequence.IsAtEnd = true
-		} else {
-			sequence.Current += sequence.Increment
-		}
-	} else {
-		// Check for underflow or crossing the minimum, meaning we're at the end
-		if sequence.Current < math.MinInt64-sequence.Increment || sequence.Current+sequence.Increment < sequence.Minimum {
-			sequence.IsAtEnd = true
-		} else {
-			sequence.Current += sequence.Increment
-		}
+	sequence.SequenceState = newSequence
+	return result, nil
+}
+
+// SequenceSource reads relations from a RootValue by reading its RootObjects
+type SequenceSource struct{}
+
+var _ dsess.RelationSource[*Sequence, SequenceState, int64] = SequenceSource{}
+
+func (s SequenceSource) GetRelation(ctx context.Context, root doltdb.RootValue, tName doltdb.TableName) (relation *Sequence, resolvedName string, found bool, err error) {
+	obj, found, err := root.GetRootObject(ctx, tName)
+	if !found || err != nil {
+		return nil, "", found, err
 	}
-	return valueToReturn, nil
+	if seq, ok := obj.(*Sequence); ok {
+		return seq, tName.Name, true, nil
+	}
+	return nil, "", found, nil
+}
+
+func (s SequenceSource) GetRelations(ctx context.Context, root doltdb.RootValue, cb func(doltdb.TableName, *Sequence) (bool, error)) error {
+	return root.IterRootObjects(ctx, func(name doltdb.TableName, obj doltdb.RootObject) (stop bool, err error) {
+		if seq, ok := obj.(*Sequence); ok {
+			return cb(name, seq)
+		}
+		return false, nil
+	})
 }

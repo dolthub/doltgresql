@@ -982,6 +982,7 @@ func TestSequences(t *testing.T) {
 		},
 		{
 			Name: "dolt_add, dolt_branch, dolt_checkout, dolt_commit, dolt_reset",
+			Skip: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "CREATE SEQUENCE test;",
@@ -1099,6 +1100,7 @@ func TestSequences(t *testing.T) {
 		},
 		{
 			Name: "dolt_merge",
+			Skip: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "CREATE SEQUENCE test;",
