@@ -75,9 +75,11 @@ var StatsAggregateTests = []ScriptTest{
 				},
 			},
 			{
-				// max/min/count are GMS implementations, but should work on the same columns
+				// max/min/count are GMS implementations, but should work on the same columns.
+				// The count columns are unsigned, which surfaces as numeric (Postgres has no
+				// unsigned integer types).
 				Query:    "SELECT max(row_count), min(row_count), count(row_count) FROM dolt_statistics WHERE table_name = 't';",
-				Expected: []sql.Row{{100, 100, 1}},
+				Expected: []sql.Row{{Numeric("100"), Numeric("100"), 1}},
 			},
 			{
 				// sum as a window function: the Window node must also convert its input values
@@ -103,7 +105,7 @@ var StatsAggregateTests = []ScriptTest{
 				// aggregate (CompiledFunction.Eval), which must also convert the GMS values rather
 				// than silently discarding them.
 				Query:    "SELECT abs(row_count) FROM dolt_statistics WHERE table_name = 't';",
-				Expected: []sql.Row{{100}},
+				Expected: []sql.Row{{Numeric("100")}},
 			},
 		},
 	},
@@ -348,15 +350,11 @@ var StatsUsageTests = []ScriptTest{
 		// This test distinguishes stats-informed join planning from the size heuristics the
 		// planner falls back to without statistics. Table big has 5000 rows but the indexed
 		// filter val > 4950 matches only 50, fewer than small's 1000 rows, so a planner that
-		// consults the val histogram scans filtered big on the outside of the lookup join and
-		// probes small's primary key. Dolt produces exactly this plan for the equivalent MySQL
-		// script. Doltgres instead keeps small on the scan side, because join costing looks up
-		// row counts and index statistics with an empty schema name while Doltgres stats are
-		// keyed under schema 'public' (memo/rel_props.go RowCount and indexed_joins.go GetStats
-		// in go-mysql-server), so join planning currently never sees collected statistics.
-		// Unskip once join costing resolves the table's schema when querying the stats provider.
+		// consults the val histogram scans filtered big and looks up into small's primary key.
+		// A planner without statistics instead keeps small on the scan side of a lookup join
+		// into big's jc index, filtering the 4950 non-matching rows after each lookup. Dolt
+		// chooses the identical plan for the equivalent MySQL script.
 		Name: "join planner uses histograms to reorder a filtered lookup join",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE big (pk int primary key, val int, jc int);",
 			"CREATE INDEX big_val_idx ON big(val);",

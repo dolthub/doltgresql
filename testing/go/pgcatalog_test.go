@@ -5209,11 +5209,11 @@ ORDER BY 1,2;`,
 				{
 					// TODO: The `c.relname = 't2'` filter expression is matched in the IndexedTableAccess and should be
 					//  removed from the filter node https://github.com/dolthub/dolt/issues/11231
-					Query: `EXPLAIN SELECT c.relname, a.attname 
-FROM pg_catalog.pg_class c 
-    JOIN pg_catalog.pg_attribute a 
-        ON c.oid = a.attrelid 
-WHERE c.relkind = 'r' AND a.attnum > 0 
+					Query: `EXPLAIN SELECT c.relname, a.attname
+FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_attribute a
+        ON c.oid = a.attrelid
+WHERE c.relkind = 'r' AND a.attnum > 0
   AND NOT a.attisdropped
   AND c.relname = 't2'
 ORDER BY 1,2;`,
@@ -5221,19 +5221,19 @@ ORDER BY 1,2;`,
 						{"Project"},
 						{" ├─ columns: [c.relname, a.attname]"},
 						{" └─ Sort(c.relname ASC, a.attname ASC)"},
-						{"     └─ LookupJoin"},
+						{"     └─ InnerJoin"},
+						{"         ├─ c.oid = a.attrelid"},
 						{"         ├─ Filter"},
-						{"         │   ├─ (c.relkind = 'r' AND c.relname = 't2')"},
-						{"         │   └─ TableAlias(c)"},
-						{"         │       └─ IndexedTableAccess(pg_class)"},
-						{"         │           ├─ index: [pg_class.relname,pg_class.relnamespace]"},
-						{"         │           └─ filters: [{[t2, t2], [NULL, ∞)}]"},
+						{"         │   ├─ (a.attnum > 0 AND (NOT(a.attisdropped)))"},
+						{"         │   └─ TableAlias(a)"},
+						{"         │       └─ Table"},
+						{"         │           └─ name: pg_attribute"},
 						{"         └─ Filter"},
-						{"             ├─ (a.attnum > 0 AND (NOT(a.attisdropped)))"},
-						{"             └─ TableAlias(a)"},
-						{"                 └─ IndexedTableAccess(pg_attribute)"},
-						{"                     ├─ index: [pg_attribute.attrelid,pg_attribute.attname]"},
-						{"                     └─ keys: c.oid"},
+						{"             ├─ (c.relkind = 'r' AND c.relname = 't2')"},
+						{"             └─ TableAlias(c)"},
+						{"                 └─ IndexedTableAccess(pg_class)"},
+						{"                     ├─ index: [pg_class.relname,pg_class.relnamespace]"},
+						{"                     └─ filters: [{[t2, t2], [NULL, ∞)}]"},
 					},
 				},
 			},
