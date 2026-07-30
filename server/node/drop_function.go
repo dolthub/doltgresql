@@ -29,9 +29,10 @@ import (
 
 // RoutineWithParams represent a function or a procedure with schema name, routine name and its parameters.
 type RoutineWithParams struct {
-	SchemaName  string
-	RoutineName string
-	Args        []RoutineParam
+	SchemaName   string
+	RoutineName  string
+	Args         []RoutineParam
+	NoArgDefined bool
 }
 
 // DropFunction implements DROP FUNCTION.
@@ -108,6 +109,7 @@ func (d *DropFunction) WithResolvedChildren(ctx context.Context, children []any)
 	return d, nil
 }
 
+// dropFunction drops a function from given function collection.
 func dropFunction(ctx *sql.Context, funcColl *functions.Collection, fn *RoutineWithParams, ifExists bool) error {
 	// TODO: provide db
 	schema, err := core.GetSchemaName(ctx, nil, fn.SchemaName)
@@ -115,7 +117,7 @@ func dropFunction(ctx *sql.Context, funcColl *functions.Collection, fn *RoutineW
 		return err
 	}
 	var funcId = id.NewFunction(schema, fn.RoutineName)
-	if len(fn.Args) == 0 {
+	if fn.NoArgDefined {
 		funcs, err := funcColl.GetFunctionOverloads(ctx, funcId)
 		if err != nil {
 			return err

@@ -277,6 +277,7 @@ func resolveRoutineParameters(ctx *Context, args tree.RoutineArgs) ([]pgnodes.Ro
 	var err error
 	var defaults []vitess.Expr
 	var seenVariadic = false
+	var seenDefault = false
 	var outTypes []*pgtypes.DoltgresType
 	for i, arg := range args {
 		// parameter name
@@ -313,12 +314,15 @@ func resolveRoutineParameters(ctx *Context, args tree.RoutineArgs) ([]pgnodes.Ro
 		}
 		// parameter default
 		if arg.Default != nil {
+			seenDefault = true
 			params[i].HasDefault = true
 			d, err := nodeExpr(ctx, arg.Default)
 			if err != nil {
 				return nil, nil, nil, err
 			}
 			defaults = append(defaults, d)
+		} else if seenDefault && arg.Mode != tree.RoutineArgModeOut {
+			return nil, nil, nil, errors.Errorf("input parameters after one with a default value must also have defaults")
 		}
 	}
 

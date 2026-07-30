@@ -37,6 +37,28 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 			},
 		},
 		{
+			Name:        "default on input parameters",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `CREATE FUNCTION alt_func1(int = 2, int) RETURNS int LANGUAGE sql AS 'SELECT $1 + $2';`,
+					ExpectedErr: `input parameters after one with a default value must also have defaults`,
+				},
+				{
+					Query:    `CREATE FUNCTION alt_func1(int = 2, int = 3) RETURNS int LANGUAGE sql AS 'SELECT $1 + $2';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT alt_func1();`,
+					Expected: []sql.Row{{5}},
+				},
+				{
+					Query:    `SELECT alt_func1(12);`,
+					Expected: []sql.Row{{15}},
+				},
+			},
+		},
+		{
 			Name:        "named parameter",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
@@ -55,6 +77,27 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				{
 					Query:    `SELECT sub_numbers(1, 2);`,
 					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name:        "nil default on input parameters",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `create function dfunc(a varchar = 'def a', out _a varchar, c numeric = NULL, out _c numeric)
+							returns record as $$ select $1, $2; $$ language sql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            `select dfunc('Hello');`,
+					ExpectedColNames: []string{"dfunc"},
+					Expected:         []sql.Row{{[]any{"Hello", nil}}},
+				},
+				{
+					Query:            `select * from dfunc('Hello');`,
+					ExpectedColNames: []string{"_a", "_c"},
+					Expected:         []sql.Row{{"Hello", nil}},
 				},
 			},
 		},

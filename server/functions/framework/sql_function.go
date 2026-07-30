@@ -132,16 +132,22 @@ func (sqlFunc SQLFunction) enforceInterfaceInheritance(error) {}
 // CallSqlFunction runs the given SQL definition inside the function on the given runner.
 func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner, args []any) (any, error) {
 	paramMap := make(map[string]*ParamTypAndValue)
+	idx := 0
 	for i, param := range f.AllParams {
-		var name = param.Name
-		if name == "" {
+		if param.Mode != procedures.ParameterMode_OUT && idx < len(args) {
+			// This allows for name references.
+			paramMap[param.Name] = &ParamTypAndValue{
+				Typ:        f.AllTypes[i],
+				Val:        args[idx],
+				FromCreate: false,
+			}
 			// This allows for positional references such as $1, $2, etc.
-			name = fmt.Sprintf("$%d", i+1)
-		}
-		paramMap[name] = &ParamTypAndValue{
-			Typ:        f.AllTypes[i],
-			Val:        args[i],
-			FromCreate: false,
+			paramMap[fmt.Sprintf("$%d", idx+1)] = &ParamTypAndValue{
+				Typ:        f.AllTypes[i],
+				Val:        args[idx],
+				FromCreate: false,
+			}
+			idx += 1
 		}
 	}
 
@@ -218,19 +224,29 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			if err != nil {
 				return nil, err
 			}
-			// single column row result
-			if len(sch) != 1 {
-				return nil, errors.New("expression does not result in a single value")
-			}
+			// single row result
 			if len(rows) != 1 {
 				return nil, errors.New("expression returned multiple result sets")
 			}
-			if len(rows[0]) != 1 {
-				return nil, errors.New("expression returned multiple results")
+			if len(rows[0]) == 1 {
+				return rows[0][0], nil
 			}
-			return rows[0][0], nil
+
+			// non composite type - multiple column row result
+			if len(rows[0]) != len(sch) {
+				return nil, errors.New("number of row values does not match number of schema columns")
+			}
+			var r = make([]pgtypes.RecordValue, len(sch))
+			for j, col := range sch {
+				r[j] = pgtypes.RecordValue{
+					Type:  col.Type.(*pgtypes.DoltgresType),
+					Value: rows[0][j],
+				}
+			}
+			return r, nil
 		}
-		// multiple column row result
+
+		// composite type - multiple column row result
 		if f.ReturnType.TypCategory == pgtypes.TypeCategory_CompositeTypes {
 			// record type
 			return rowIterToRecord(ctx, rowIter, sch)
