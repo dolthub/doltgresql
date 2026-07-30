@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       format: ${{ steps.should_format.outputs.format }}
+      codegen: ${{ steps.check_codegen.outputs.codegen }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -46,6 +47,7 @@ jobs:
           BRANCH_NAME: ${{ github.head_ref }}
           CHANGE_TARGET: ${{ github.base_ref }}
       - name: Check generated parser sources
+        id: check_codegen
         shell: bash
         run: |
           generated=(
@@ -56,11 +58,16 @@ jobs:
             postgres/parser/lex/keywords.go
           )
           if ! git diff --quiet -- "${generated[@]}"; then
-            echo "ERROR: Generated parser sources differ from the checked in version."
-            echo "Run ./postgres/parser/build.sh and commit the result."
+            echo "generated parser sources are stale"
             git diff --stat -- "${generated[@]}"
-            git diff -- "${generated[@]}"
-            exit 1
+            if [ "${{ github.repository }}" != "dolthub/doltgresql" ]; then
+              echo "Pull requests from forks must regenerate manually."
+              echo "Please run ./postgres/parser/build.sh and commit the result."
+              exit 1
+            fi
+            echo "codegen=true" >> $GITHUB_OUTPUT
+          else
+            echo "generated parser sources are up to date"
           fi
           for f in "${generated[@]}"; do
             if ! git ls-files --error-unmatch -- "$f" > /dev/null 2>&1; then
@@ -70,7 +77,6 @@ jobs:
               exit 1
             fi
           done
-          echo "generated parser sources are up to date"
       - name: Check consumers do not need ungenerated artifacts
         shell: bash
         env:
@@ -92,6 +98,50 @@ jobs:
           if [ "$rc" -ne 0 ]; then exit 1; fi
           GOOS=windows go build -mod=readonly ./postgres/parser/parser ./postgres/parser/lex
           echo "no embedded artifact depends on running a generator"
+  codegen:
+    needs: verify
+    if: ${{ needs.verify.outputs.codegen == 'true' }}
+    name: Regenerate parser sources
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          submodules: true
+          token: ${{ secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Regenerate parser sources
+        run: ./postgres/parser/build.sh
+      - name: Detect changes
+        id: detect-changes
+        shell: bash
+        run: |
+          generated=(
+            postgres/parser/parser/sql.go
+            postgres/parser/parser/help_messages.go
+            postgres/parser/lex/tokens.go
+            postgres/parser/lex/reserved_keywords.go
+            postgres/parser/lex/keywords.go
+          )
+          if [ ! -z "$(git status --porcelain -- "${generated[@]}")" ]; then
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+          fi
+      - uses: EndBug/add-and-commit@v9.1.4
+        if: ${{ steps.detect-changes.outputs.has-changes == 'true' }}
+        with:
+          message: "[ga-codegen] Regenerate parser sources"
+          add: |
+            postgres/parser/parser/sql.go
+            postgres/parser/parser/help_messages.go
+            postgres/parser/lex/tokens.go
+            postgres/parser/lex/reserved_keywords.go
+            postgres/parser/lex/keywords.go
+          cwd: "."
+          pull: "--ff"
   format:
     needs: verify
     if: ${{ needs.verify.outputs.format == 'true' }}
