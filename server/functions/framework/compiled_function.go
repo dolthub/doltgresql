@@ -347,7 +347,10 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			if err != nil {
 				return nil, err
 			}
-			args[i], _, _ = dt.Convert(ctx, args[i])
+			args[i], err = ConvertGMSValueToDoltgresValue(ctx, arg.Type(ctx), args[i])
+			if err != nil {
+				return nil, err
+			}
 			exprTypes[i] = dt
 		}
 		if args[i] == nil && isStrict {
@@ -501,16 +504,20 @@ func (c *CompiledFunction) SetStatementRunner(ctx *sql.Context, runner sql.State
 
 // GetQuickFunction returns the QuickFunction form of this function, if it exists. If one does not exist, then this
 // return nil.
-func (c *CompiledFunction) GetQuickFunction() QuickFunction {
+func (c *CompiledFunction) GetQuickFunction(ctx *sql.Context) QuickFunction {
 	if c.stashedErr != nil || !c.Resolved() || !c.overload.Valid() || c.overload.params.variadic != -1 ||
 		len(c.overload.casts) > 0 {
 		return nil
 	}
+	// QuickFunctions evaluate their argument expressions directly, without the GMS value conversion that
+	// CompiledFunction.Eval performs, so any GMS-typed arguments (e.g. columns of the dolt_* system tables) must be
+	// wrapped to convert their values.
+	args := castGMSArguments(ctx, append([]sql.Expression{}, c.Arguments...))
 	switch f := c.overload.Function().(type) {
 	case Function1:
 		return &QuickFunction1{
 			Name:         c.Name,
-			Argument:     c.Arguments[0],
+			Argument:     args[0],
 			IsStrict:     c.overload.Function().IsStrict(),
 			IsSRF:        c.IsSRF(),
 			callResolved: ([2]*pgtypes.DoltgresType)(c.callResolved),
@@ -519,7 +526,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 	case Function2:
 		return &QuickFunction2{
 			Name:         c.Name,
-			Arguments:    ([2]sql.Expression)(c.Arguments),
+			Arguments:    ([2]sql.Expression)(args),
 			IsStrict:     c.overload.Function().IsStrict(),
 			IsSRF:        c.IsSRF(),
 			callResolved: ([3]*pgtypes.DoltgresType)(c.callResolved),
@@ -528,7 +535,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 	case Function3:
 		return &QuickFunction3{
 			Name:         c.Name,
-			Arguments:    ([3]sql.Expression)(c.Arguments),
+			Arguments:    ([3]sql.Expression)(args),
 			IsStrict:     c.overload.Function().IsStrict(),
 			IsSRF:        c.IsSRF(),
 			callResolved: ([4]*pgtypes.DoltgresType)(c.callResolved),

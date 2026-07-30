@@ -15,17 +15,10 @@
 package expression
 
 import (
-	"encoding/json"
-	"time"
-
-	"github.com/cockroachdb/apd/v3"
-	"github.com/cockroachdb/errors"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
-	"github.com/dolthub/go-mysql-server/sql/types"
-	"github.com/dolthub/vitess/go/vt/proto/query"
 
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -76,127 +69,7 @@ func (c *GMSCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if _, ok := c.sqlChild.Type(ctx).(*pgtypes.DoltgresType); ok {
 		return val, nil
 	}
-	sqlTyp := c.sqlChild.Type(ctx)
-	switch sqlTyp.Type() {
-	// Boolean types are a special case because of how they are translated on the wire in Postgres. If we identify a
-	// boolean result, we want to convert it from an int back to a boolean.
-	case query.Type_INT8:
-		if sqlTyp == types.Boolean {
-			newVal, _, err := types.Int32.Convert(ctx, val)
-			if err != nil {
-				return nil, err
-			}
-			if _, ok := newVal.(int32); !ok {
-				return nil, errors.Errorf("GMSCast expected type `int32`, got `%T`", val)
-			}
-			if newVal.(int32) == 0 {
-				return false, nil
-			} else {
-				return true, nil
-			}
-		}
-		fallthrough
-		// In Postgres, Int32 is generally the smallest value returned. But we convert int8 and int16 to this type during
-		// schema conversion, which means we must do so here as well to avoid runtime panics.
-	case query.Type_INT16, query.Type_INT24, query.Type_INT32, query.Type_YEAR:
-		newVal, _, err := types.Int32.Convert(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := newVal.(int32); !ok {
-			return nil, errors.Errorf("GMSCast expected type `int32`, got `%T`", val)
-		}
-		return newVal, nil
-	case query.Type_INT64, query.Type_BIT, query.Type_UINT8, query.Type_UINT16, query.Type_UINT24, query.Type_UINT32:
-		newVal, _, err := types.Int64.Convert(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := newVal.(int64); !ok {
-			return nil, errors.Errorf("GMSCast expected type `int64`, got `%T`", val)
-		}
-		return newVal, nil
-	case query.Type_UINT64:
-		// Postgres doesn't have a "public" Uint64 type, so we return a Numeric value
-		newVal, _, err := types.InternalDecimalType.Convert(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		dec, ok := newVal.(*apd.Decimal)
-		if !ok {
-			return nil, errors.Errorf("GMSCast expected type `*apd.Decimal`, got `%T`", val)
-		}
-		return dec, nil
-	case query.Type_FLOAT32:
-		newVal, _, err := types.Float32.Convert(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := newVal.(float32); !ok {
-			return nil, errors.Errorf("GMSCast expected type `float32`, got `%T`", val)
-		}
-		return newVal, nil
-	case query.Type_FLOAT64:
-		newVal, _, err := types.Float64.Convert(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := newVal.(float64); !ok {
-			return nil, errors.Errorf("GMSCast expected type `float64`, got `%T`", val)
-		}
-		return newVal, nil
-	case query.Type_DECIMAL:
-		newVal, _, err := types.InternalDecimalType.Convert(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		dec, ok := newVal.(*apd.Decimal)
-		if !ok {
-			return nil, errors.Errorf("GMSCast expected type `*apd.Decimal`, got `%T`", val)
-		}
-		return dec, nil
-	case query.Type_DATE, query.Type_DATETIME, query.Type_TIMESTAMP:
-		if val, ok := val.(time.Time); ok {
-			return val, nil
-		}
-		return nil, errors.Errorf("GMSCast expected type `Time`, got `%T`", val)
-	case query.Type_TIME:
-		if val, ok := val.(types.Timespan); ok {
-			return val.String(), nil
-		}
-		return nil, errors.Errorf("GMSCast expected type `Timespan`, got `%T`", val)
-	case query.Type_CHAR, query.Type_VARCHAR, query.Type_TEXT, query.Type_BINARY, query.Type_VARBINARY, query.Type_BLOB, query.Type_SET, query.Type_ENUM:
-		newVal, _, err := types.LongText.Convert(ctx, val)
-		if err != nil {
-			return nil, err
-		}
-		switch newVal := newVal.(type) {
-		case string:
-			return newVal, nil
-		case sql.StringWrapper:
-			return newVal.Unwrap(ctx)
-		default:
-			return nil, errors.Errorf("GMSCast expected type `string`, got `%T`", val)
-		}
-	case query.Type_JSON:
-		switch val := val.(type) {
-		case types.JSONDocument:
-			return val.JSONString()
-		case tree.IndexedJsonDocument:
-			return val.String(), nil
-		default:
-			// TODO: there are particular dolt tables (dolt_constraint_violations) that return json-marshallable structs
-			//  that we need to handle here like this
-			bytes, err := json.Marshal(val)
-			return string(bytes), err
-		}
-	case query.Type_NULL_TYPE:
-		return nil, nil
-	case query.Type_GEOMETRY:
-		return nil, errors.Errorf("GMS geometry types are not supported")
-	default:
-		return nil, errors.Errorf("GMS type `%s` is not supported", c.sqlChild.Type(ctx).String())
-	}
+	return framework.ConvertGMSValueToDoltgresValue(ctx, c.sqlChild.Type(ctx), val)
 }
 
 // IsNullable implements the sql.Expression interface.
