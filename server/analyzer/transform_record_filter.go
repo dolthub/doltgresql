@@ -55,6 +55,9 @@ func TransformRecordFilter(
 		default:
 			return n, transform.SameTree, nil
 		}
+		if tblNode == nil {
+			return n, transform.SameTree, nil
+		}
 		// TODO: should only convert expressions when there's applicable index
 		if _, ok = tblNode.UnderlyingTable().(sql.IndexAddressableTable); !ok {
 			return n, transform.SameTree, nil

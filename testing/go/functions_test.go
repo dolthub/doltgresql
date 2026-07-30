@@ -4237,6 +4237,68 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 			{
+				Name: "generate_series as table function with column alias",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:            `SELECT * FROM generate_series(1,3) AS s(r)`,
+						Expected:         []sql.Row{{1}, {2}, {3}},
+						ExpectedColNames: []string{"r"},
+					},
+					{
+						Query:    `SELECT r FROM generate_series(1,3) AS s(r)`,
+						Expected: []sql.Row{{1}, {2}, {3}},
+					},
+					{
+						Query:    `SELECT r + 1 FROM generate_series(1,3) AS s(r) WHERE r > 1`,
+						Expected: []sql.Row{{3}, {4}},
+					},
+					{
+						Query:            `SELECT * FROM generate_series(1, array_upper(current_schemas(false), 1)) AS s(r)`,
+						Expected:         []sql.Row{{1}},
+						ExpectedColNames: []string{"r"},
+					},
+				},
+			},
+			{
+				// Regression test for query used by DBeaver
+				Name: "generate_series as table function used in pgJDBC-style enum catalog query",
+				SetUpScript: []string{
+					"CREATE TYPE status_enum AS ENUM ('one', 'two', 'three');",
+					"CREATE TABLE test1 (id INT, status status_enum);",
+					"INSERT INTO test1 VALUES (1, 'one'), (2, 'two'), (3, 'three');",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `SELECT
+    typinput = 'pg_catalog.array_in'::regproc AS is_array,
+    typtype,
+    typname
+FROM pg_catalog.pg_type
+LEFT JOIN (
+    SELECT ns.oid AS nspoid, ns.nspname, r.r
+    FROM pg_namespace AS ns
+    JOIN (
+        SELECT
+            s.r,
+            (current_schemas(false))[s.r] AS nspname
+        FROM generate_series(
+            1,
+            array_upper(current_schemas(false), 1)
+        ) AS s(r)
+    ) AS r USING (nspname)
+) AS sp ON sp.nspoid = typnamespace
+WHERE pg_type.oid = (
+    SELECT atttypid
+    FROM pg_attribute
+    WHERE attrelid = 'test1'::regclass
+      AND attname = 'status'
+)
+ORDER BY sp.r, pg_type.oid DESC;`,
+						Expected: []sql.Row{{"f", "e", "status_enum"}},
+					},
+				},
+			},
+			{
 				Name: "nested generate_series",
 				// Nested SRF expressions cause an infinite loop, skipped in regression tests.
 				// Challenging to fix with the current expression eval architecture and very marginal as a use case.

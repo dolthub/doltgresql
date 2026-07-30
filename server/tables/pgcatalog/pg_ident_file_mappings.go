@@ -43,7 +43,8 @@ func (p PgIdentFileMappingsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgIdentFileMappingsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_ident_file_mappings row iter
+	// pg_ident_file_mappings is currently empty, since Doltgres does not use a pg_ident.conf file.
+	// TODO: fill this in if ident mapping configuration is ever exposed
 	return emptyRowIter()
 }
 

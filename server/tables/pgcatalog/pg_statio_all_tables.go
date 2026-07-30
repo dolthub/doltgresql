@@ -43,8 +43,11 @@ func (p PgStatioAllTablesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatioAllTablesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_statio_all_tables row iter
-	return emptyRowIter()
+	entries, err := getStatTableEntries(ctx, statSchemaAll)
+	if err != nil {
+		return nil, err
+	}
+	return &pgStatioTablesRowIter{entries: entries}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -70,18 +73,41 @@ var pgStatioAllTablesSchema = sql.Schema{
 	{Name: "tidx_blks_hit", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatioAllTablesName},
 }
 
-// pgStatioAllTablesRowIter is the sql.RowIter for the pg_statio_all_tables table.
-type pgStatioAllTablesRowIter struct {
+// pgStatioTablesRowIter is the sql.RowIter for the pg_statio_all_tables, pg_statio_sys_tables, and
+// pg_statio_user_tables tables. All block I/O counters are zero, since Doltgres does not track
+// block-level I/O statistics. This matches what a freshly-started Postgres server reports. The
+// toast columns are NULL because tables have no TOAST relations in Doltgres.
+// TODO: fill in the I/O statistics columns when block I/O statistics are tracked
+type pgStatioTablesRowIter struct {
+	entries []statTableEntry
+	idx     int
 }
 
-var _ sql.RowIter = (*pgStatioAllTablesRowIter)(nil)
+var _ sql.RowIter = (*pgStatioTablesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
-func (iter *pgStatioAllTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+func (iter *pgStatioTablesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	if iter.idx >= len(iter.entries) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	entry := iter.entries[iter.idx-1]
+	return sql.Row{
+		entry.oid,        // relid
+		entry.schemaName, // schemaname
+		entry.tableName,  // relname
+		int64(0),         // heap_blks_read
+		int64(0),         // heap_blks_hit
+		int64(0),         // idx_blks_read
+		int64(0),         // idx_blks_hit
+		nil,              // toast_blks_read
+		nil,              // toast_blks_hit
+		nil,              // tidx_blks_read
+		nil,              // tidx_blks_hit
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
-func (iter *pgStatioAllTablesRowIter) Close(ctx *sql.Context) error {
+func (iter *pgStatioTablesRowIter) Close(ctx *sql.Context) error {
 	return nil
 }

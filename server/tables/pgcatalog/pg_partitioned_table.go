@@ -43,7 +43,8 @@ func (p PgPartitionedTableHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPartitionedTableHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_partitioned_table row iter
+	// pg_partitioned_table is currently empty, since declarative partitioning is not supported.
+	// TODO: fill this in when partitioning is supported
 	return emptyRowIter()
 }
 

@@ -61,8 +61,9 @@ const (
 	Section_UniqueKey            Section = 36 // Refers to unique keys on tables
 	Section_User                 Section = 37 // Refers to users
 	Section_View                 Section = 38 // Refers to views
+	Section_Tablespace           Section = 39 // Refers to tablespaces
 
-	section_count uint8 = 39 // This is the number of sections, and should ALWAYS be kept up-to-date
+	section_count uint8 = 40 // This is the number of sections, and should ALWAYS be kept up-to-date
 )
 
 // String returns the name of the Section.
@@ -146,6 +147,8 @@ func (section Section) String() string {
 		return "User"
 	case Section_View:
 		return "View"
+	case Section_Tablespace:
+		return "Tablespace"
 	default:
 		return "UNKNOWN_SECTION"
 	}

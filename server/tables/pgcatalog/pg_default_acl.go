@@ -43,7 +43,9 @@ func (p PgDefaultAclHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgDefaultAclHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_default_acl row iter
+	// pg_default_acl is currently empty, since ALTER DEFAULT PRIVILEGES is not supported.
+	// This table is also empty in vanilla Postgres until default privileges are altered.
+	// TODO: fill this in when ALTER DEFAULT PRIVILEGES is supported
 	return emptyRowIter()
 }
 

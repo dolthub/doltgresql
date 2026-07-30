@@ -66,6 +66,7 @@ func initBinaryGreaterOrEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, oidvectorge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, textgename)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, text_ge)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, tidge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, time_ge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, timestamp_ge_date)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, timestamp_ge)
@@ -434,6 +435,18 @@ var text_ge = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+		return res >= 0, err
+	},
+}
+
+// tidge represents the PostgreSQL function of the same name, taking the same parameters.
+var tidge = framework.Function2{
+	Name:       "tidge",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Tid, pgtypes.Tid},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.Tid.Compare(ctx, val1, val2)
 		return res >= 0, err
 	},
 }

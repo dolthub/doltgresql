@@ -66,6 +66,7 @@ func initBinaryLessOrEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, oidvectorle)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, textlename)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, text_le)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, tidle)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, time_le)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, timestamp_le_date)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessOrEqual, timestamp_le)
@@ -434,6 +435,18 @@ var text_le = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+		return res <= 0, err
+	},
+}
+
+// tidle represents the PostgreSQL function of the same name, taking the same parameters.
+var tidle = framework.Function2{
+	Name:       "tidle",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Tid, pgtypes.Tid},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.Tid.Compare(ctx, val1, val2)
 		return res <= 0, err
 	},
 }

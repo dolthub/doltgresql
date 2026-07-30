@@ -17,6 +17,7 @@ package auth
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -45,6 +46,19 @@ type Database struct {
 	sequencePrivileges *SequencePrivileges
 	routinePrivileges  *RoutinePrivileges
 	roleMembership     *RoleMembership
+}
+
+// AllRoles returns every role in the database, sorted by the role's name. This does not handle locking, so callers
+// should protect the call with LockRead.
+func AllRoles() []Role {
+	roles := make([]Role, 0, len(globalDatabase.rolesByID))
+	for _, role := range globalDatabase.rolesByID {
+		roles = append(roles, role)
+	}
+	sort.Slice(roles, func(i, j int) bool {
+		return roles[i].Name < roles[j].Name
+	})
+	return roles
 }
 
 // ClearDatabase clears the internal database, leaving only the default users. This is primarily for use by tests.

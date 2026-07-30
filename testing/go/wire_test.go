@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -26,6 +27,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/cockroachdb/errors"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1008,6 +1011,160 @@ func TestWireTypesSending(t *testing.T) {
 							Values: [][]byte{
 								{'1'},
 								{'v'},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "CID returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 CID, v2 CID);",
+				"INSERT INTO test VALUES ('4', '5');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          29,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          29,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("4"),
+								[]byte("5"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "CID returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 CID, v2 CID);",
+				"INSERT INTO test VALUES ('6', '7');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          29,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          29,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 0, 0, 6},
+								{0, 0, 0, 7},
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
@@ -4077,6 +4234,160 @@ func TestWireTypesSending(t *testing.T) {
 			},
 		},
 		{
+			Name: "TID returning text format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TID, v2 TID);",
+				"INSERT INTO test VALUES ('(44,55)', '(66,77)');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          27,
+									DataTypeSize:         6,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          27,
+									DataTypeSize:         6,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("(44,55)"),
+								[]byte("(66,77)"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "TID returning binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TID, v2 TID);",
+				"INSERT INTO test VALUES ('(12,34)', '(56,78)');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Describe{
+							ObjectType: 'S',
+							Name:       "stmt_name",
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{}},
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("v1"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          27,
+									DataTypeSize:         6,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+								{
+									Name:                 []byte("v2"),
+									TableOID:             0,
+									TableAttributeNumber: 2,
+									DataTypeOID:          27,
+									DataTypeSize:         6,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{1},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								{0, 0, 0, 12, 0, 34},
+								{0, 0, 0, 56, 0, 78},
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
 			Name: "TIME returning text format",
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 TIME, v2 TIME);",
@@ -5499,6 +5810,77 @@ func TestWireTypesReceiving(t *testing.T) {
 							Values: [][]byte{
 								[]byte(`\xdeadbeef`),
 								[]byte(`\xc0ffee`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "CID receiving binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 CID, v2 CID);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 6},
+								{0, 0, 0, 7},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("6"),
+								[]byte("7"),
 							},
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
@@ -6935,6 +7317,77 @@ func TestWireTypesReceiving(t *testing.T) {
 			},
 		},
 		{
+			Name: "TID receiving binary format",
+			SetUpScript: []string{
+				"CREATE TABLE test (v1 TID, v2 TID);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name1",
+							Query: "INSERT INTO test VALUES ($1, $2);",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name1",
+							ParameterFormatCodes: []int16{1},
+							Parameters: [][]byte{
+								{0, 0, 0, 12, 0, 34},
+								{0, 0, 0, 56, 0, 78},
+							},
+							ResultFormatCodes: []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.CommandComplete{CommandTag: []byte("INSERT 0 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{
+							Name:  "stmt_name2",
+							Query: "SELECT * FROM test;",
+						},
+						&pgproto3.Bind{
+							DestinationPortal:    "",
+							PreparedStatement:    "stmt_name2",
+							ParameterFormatCodes: nil,
+							Parameters:           nil,
+							ResultFormatCodes:    []int16{0},
+						},
+						&pgproto3.Execute{},
+						&pgproto3.Close{
+							ObjectType: 'P',
+						},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte("(12,34)"),
+								[]byte("(56,78)"),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
 			Name: `TIME receiving binary format`,
 			SetUpScript: []string{
 				"CREATE TABLE test (v1 TIME, v2 TIME);",
@@ -7452,6 +7905,31 @@ func IgnoreMessageParameters(message pgproto3.BackendMessage) pgproto3.BackendMe
 	default:
 		return message
 	}
+}
+
+// TestInvalidStartupTimezoneReturnsError verifies that a StartupMessage carrying a timezone value
+// that fails GUC validation (e.g. an unparseable IANA zone name) is rejected with an explicit
+// ErrorResponse.
+func TestInvalidStartupTimezoneReturnsError(t *testing.T) {
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
+	ctx, conn, controller := CreateServerWithPort(t, "postgres", port)
+	conn.Close(ctx)
+	defer func() {
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+
+	cfg, err := pgx.ParseConfig(fmt.Sprintf("postgres://postgres:password@%s:%d/postgres", serverHost, port))
+	require.NoError(t, err)
+	cfg.RuntimeParams["timezone"] = "Not/A/Timezone"
+
+	_, err = pgx.ConnectConfig(context.Background(), cfg)
+	require.Error(t, err, "expected the invalid timezone startup parameter to be rejected")
+
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr, "expected an explicit PostgreSQL error, not a bare connection failure like an unexpected EOF")
+	assert.Equal(t, "22023", pgErr.Code)
 }
 
 // WireScriptTest is used to test wire messages, ensuring that our wire protocol behaves as expected.

@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +44,10 @@ func (p PgShadowHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgShadowHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_shadow row iter
-	return emptyRowIter()
+	return &pgShadowRowIter{
+		users: allLoginRoles(),
+		idx:   0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -65,18 +68,43 @@ var pgShadowSchema = sql.Schema{
 	{Name: "usebypassrls", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgShadowName},
 	{Name: "passwd", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgShadowName}, // TODO: collation C
 	{Name: "valuntil", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgShadowName},
-	{Name: "useconfig", Type: pgtypes.TimeArray, Default: nil, Nullable: true, Source: PgShadowName}, // TODO: collation C
+	{Name: "useconfig", Type: pgtypes.TextArray, Default: nil, Nullable: true, Source: PgShadowName}, // TODO: collation C
 }
 
 // pgShadowRowIter is the sql.RowIter for the pg_shadow table.
 type pgShadowRowIter struct {
+	users []auth.Role
+	idx   int
 }
 
 var _ sql.RowIter = (*pgShadowRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgShadowRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.users) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	role := iter.users[iter.idx-1]
+	var passwd any
+	if role.Password != nil {
+		passwd = role.Password.AsPasswordString()
+	}
+	var valUntil any
+	if role.ValidUntil != nil {
+		valUntil = *role.ValidUntil
+	}
+	return sql.Row{
+		role.Name,                      // usename
+		roleOid(role.Name),             // usesysid
+		role.CanCreateDB,               // usecreatedb
+		role.IsSuperUser,               // usesuper
+		role.IsReplicationRole,         // userepl
+		role.CanBypassRowLevelSecurity, // usebypassrls
+		passwd,                         // passwd
+		valUntil,                       // valuntil
+		nil,                            // useconfig (per-role settings are not supported)
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

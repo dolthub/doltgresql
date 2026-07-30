@@ -19,7 +19,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/server/functions"
 )
 
@@ -75,6 +77,30 @@ type pgCatalogCache struct {
 
 	// pg_tables
 	tables []pgTableRow
+
+	// pg_stat_*_tables / pg_stat_xact_*_tables / pg_statio_*_tables
+	statTableEntries []statTableEntry
+
+	// pg_stat_*_indexes / pg_statio_*_indexes
+	statIndexEntries []statIndexEntry
+
+	// pg_statio_*_sequences
+	statioSequenceEntries []statioSequenceEntry
+
+	// pg_enum
+	enumLabels []pgEnumLabel
+
+	// pg_trigger
+	triggers []triggers.Trigger
+
+	// pg_rewrite
+	rewrites []pgRewrite
+
+	// pg_extension
+	extensions []extensions.Extension
+
+	// pg_depend
+	dependRows []sql.Row
 }
 
 // pgClassCache holds cached data for the pg_class table, including two btree indexes for fast lookups by OID and

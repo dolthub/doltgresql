@@ -43,7 +43,8 @@ func (p PgInheritsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgInheritsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_inherits row iter
+	// pg_inherits is currently empty, since table inheritance and declarative partitioning are not supported.
+	// TODO: fill this in when table inheritance or partitioning is supported
 	return emptyRowIter()
 }
 

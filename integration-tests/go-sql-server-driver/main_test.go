@@ -72,6 +72,11 @@ func TestCluster(t *testing.T) {
 	RunTestsFile(t, "tests/sql-server-cluster.yaml")
 }
 
+func TestClusterRootObjects(t *testing.T) {
+	t.Parallel()
+	RunTestsFile(t, "tests/sql-server-cluster-root-objects.yaml")
+}
+
 func TestClusterUsersAndGrants(t *testing.T) {
 	t.Parallel()
 	RunTestsFile(t, "tests/sql-server-cluster-users-and-grants.yaml")

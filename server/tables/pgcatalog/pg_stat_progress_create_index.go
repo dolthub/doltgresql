@@ -43,7 +43,9 @@ func (p PgStatProgressCreateIndexHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatProgressCreateIndexHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_progress_create_index row iter
+	// pg_stat_progress_create_index is currently empty, since command progress reporting is not tracked.
+	// This view is also empty in vanilla Postgres when no CREATE INDEX is running.
+	// TODO: fill this in when command progress reporting is supported
 	return emptyRowIter()
 }
 

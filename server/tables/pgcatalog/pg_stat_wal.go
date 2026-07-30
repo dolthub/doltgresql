@@ -15,8 +15,7 @@
 package pgcatalog
 
 import (
-	"io"
-
+	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +42,19 @@ func (p PgStatWalHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatWalHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_wal row iter
-	return emptyRowIter()
+	// Doltgres does not track WAL activity statistics, so this returns a single row with zero
+	// counters and a NULL stats_reset, matching what a freshly-started Postgres server reports.
+	return sql.RowsToRowIter(sql.Row{
+		int64(0),      // wal_records
+		int64(0),      // wal_fpi
+		apd.New(0, 0), // wal_bytes
+		int64(0),      // wal_buffers_full
+		int64(0),      // wal_write
+		int64(0),      // wal_sync
+		float64(0),    // wal_write_time
+		float64(0),    // wal_sync_time
+		nil,           // stats_reset
+	}), nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -66,20 +76,4 @@ var pgStatWalSchema = sql.Schema{
 	{Name: "wal_write_time", Type: pgtypes.Float64, Default: nil, Nullable: true, Source: PgStatWalName},
 	{Name: "wal_sync_time", Type: pgtypes.Float64, Default: nil, Nullable: true, Source: PgStatWalName},
 	{Name: "stats_reset", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgStatWalName},
-}
-
-// pgStatWalRowIter is the sql.RowIter for the pg_stat_wal table.
-type pgStatWalRowIter struct {
-}
-
-var _ sql.RowIter = (*pgStatWalRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgStatWalRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgStatWalRowIter) Close(ctx *sql.Context) error {
-	return nil
 }

@@ -43,7 +43,10 @@ func (p PgTsConfigMapHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTsConfigMapHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_ts_config_map row iter
+	// pg_ts_config_map is currently empty. In Postgres it would contain the token-to-dictionary mappings for each
+	// text search configuration (the "simple" configuration alone maps ~18 token types), but Doltgres does not yet
+	// support full-text search, so we don't fabricate that matrix here.
+	// TODO: fill this in when full-text search configurations are supported
 	return emptyRowIter()
 }
 
