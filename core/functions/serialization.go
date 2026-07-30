@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -30,14 +31,25 @@ func (function Function) Serialize(ctx context.Context) ([]byte, error) {
 		return nil, nil
 	}
 
+	paramNames := make([]string, len(function.AllParams))
+	paramTypes := make([]id.Type, len(function.AllParams))
+	paramDefaults := make([]string, len(function.AllParams))
+	paramModes := make([]procedures.ParameterMode, len(function.AllParams))
+	for i, param := range function.AllParams {
+		paramNames[i] = param.Name
+		paramTypes[i] = param.Type
+		paramDefaults[i] = param.Default
+		paramModes[i] = param.Mode
+	}
+
 	// Write all of the functions to the writer
 	writer := utils.NewWriter(256)
-	writer.VariableUint(3) // Version
+	writer.VariableUint(4) // Version
 	// Write the function data
 	writer.Id(function.ID.AsId())
 	writer.Id(function.ReturnType.AsId())
-	writer.StringSlice(function.ParameterNames)
-	writer.IdTypeSlice(function.ParameterTypes)
+	writer.StringSlice(paramNames)
+	writer.IdTypeSlice(paramTypes)
 	writer.Bool(function.Variadic)
 	writer.Bool(function.IsNonDeterministic)
 	writer.Bool(function.Strict)
@@ -59,7 +71,12 @@ func (function Function) Serialize(ctx context.Context) ([]byte, error) {
 	writer.String(function.SQLDefinition)
 	writer.Bool(function.SetOf)
 	// Write version 3 data
-	writer.StringSlice(function.ParameterDefaults)
+	writer.StringSlice(paramDefaults)
+	// Write version 4 data
+	writer.VariableUint(uint64(len(paramModes)))
+	for _, mode := range paramModes {
+		writer.Uint8(uint8(mode))
+	}
 	// Returns the data
 	return writer.Data(), nil
 }
@@ -72,7 +89,7 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 	}
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
-	if version > 3 {
+	if version > 4 {
 		return Function{}, errors.Errorf("version %d of functions is not supported, please upgrade the server", version)
 	}
 
@@ -80,8 +97,8 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 	f := Function{}
 	f.ID = id.Function(reader.Id())
 	f.ReturnType = id.Type(reader.Id())
-	f.ParameterNames = reader.StringSlice()
-	f.ParameterTypes = reader.IdTypeSlice()
+	paramNames := reader.StringSlice()
+	paramTypes := reader.IdTypeSlice()
 	f.Variadic = reader.Bool()
 	f.IsNonDeterministic = reader.Bool()
 	f.Strict = reader.Bool()
@@ -107,8 +124,32 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 		f.SQLDefinition = reader.String()
 		f.SetOf = reader.Bool()
 	}
+	var paramDefaults []string
 	if version >= 3 {
-		f.ParameterDefaults = reader.StringSlice()
+		paramDefaults = reader.StringSlice()
+	}
+	var paramModes []procedures.ParameterMode
+	if version >= 4 {
+		// Read the parameter modes
+		modeCount := reader.VariableUint()
+		paramModes = make([]procedures.ParameterMode, modeCount)
+		for modeIdx := uint64(0); modeIdx < modeCount; modeIdx++ {
+			paramModes[modeIdx] = procedures.ParameterMode(reader.Uint8())
+		}
+	}
+
+	f.AllParams = make([]procedures.Parameter, len(paramNames))
+	for i, paramName := range paramNames {
+		f.AllParams[i] = procedures.Parameter{
+			Name: paramName,
+			Type: paramTypes[i],
+		}
+		if paramDefaults != nil {
+			f.AllParams[i].Default = paramDefaults[i]
+		}
+		if paramModes != nil {
+			f.AllParams[i].Mode = paramModes[i]
+		}
 	}
 	if !reader.IsEmpty() {
 		return Function{}, errors.Errorf("extra data found while deserializing a function")

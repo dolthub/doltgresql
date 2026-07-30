@@ -98,7 +98,7 @@ func cachePgProcs(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				variadic = id.Null
 			}
 
-			nArgs := int16(len(f.Item.ParameterTypes))
+			nArgs := int16(len(f.Item.AllParams))
 			nArgDefs := int16(0)
 			retSet := false
 			if f.Item.ReturnType.IsValid() && f.Item.ReturnType.TypeName() == "record" {
@@ -112,15 +112,15 @@ func cachePgProcs(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			)
 
 			hasNonEmtpyArgName := false
-			for i, typ := range f.Item.ParameterTypes {
-				if f.Item.ParameterDefaults[i] != "" {
+			for _, param := range f.Item.AllParams {
+				if param.Default != "" {
 					nArgDefs += 1
 				}
-				types = append(types, typ.AsId())
-				if f.Item.ParameterNames[i] != "" {
+				types = append(types, param.Type.AsId())
+				if param.Name != "" {
 					hasNonEmtpyArgName = true
 				}
-				names = append(names, f.Item.ParameterNames[i])
+				names = append(names, param.Name)
 			}
 
 			if len(types) > 0 {
@@ -156,7 +156,7 @@ func cachePgProcs(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			return true, nil
 		},
 		Procedure: func(ctx *sql.Context, schema functions.ItemSchema, p functions.ItemProcedure) (cont bool, err error) {
-			nArgs := int16(len(p.Item.ParameterTypes))
+			nArgs := int16(len(p.Item.AllParams))
 			nArgDefs := int16(0)
 
 			var (
@@ -169,32 +169,32 @@ func cachePgProcs(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			)
 
 			var types, allTypes, names []any
-			hasNonINArg := false
+			allINArg := true
 			hasNonEmtpyArgName := false
-			for i, typ := range p.Item.ParameterTypes {
-				switch p.Item.ParameterModes[i] {
+			for _, param := range p.Item.AllParams {
+				switch param.Mode {
 				case procedures.ParameterMode_IN:
-					types = append(types, typ.AsId())
+					types = append(types, param.Type.AsId())
 				case procedures.ParameterMode_VARIADIC, procedures.ParameterMode_INOUT:
-					types = append(types, typ.AsId())
-					hasNonINArg = true
+					types = append(types, param.Type.AsId())
+					allINArg = false
 				case procedures.ParameterMode_OUT:
-					hasNonINArg = true
+					allINArg = false
 				}
-				if p.Item.ParameterDefaults[i] != "" {
+				if param.Default != "" {
 					nArgDefs += 1
 				}
-				if p.Item.ParameterNames[i] != "" {
+				if param.Name != "" {
 					hasNonEmtpyArgName = true
 				}
-				allTypes = append(allTypes, typ.AsId())
-				names = append(names, p.Item.ParameterNames[i])
+				allTypes = append(allTypes, param.Type.AsId())
+				names = append(names, param.Name)
 			}
 
 			if len(types) > 0 {
 				argTypes = types
 			}
-			if hasNonINArg && len(allTypes) > 0 {
+			if !allINArg && len(allTypes) > 0 {
 				argAllTypes = allTypes
 			}
 			if hasNonEmtpyArgName && len(names) > 0 {

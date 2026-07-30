@@ -400,7 +400,7 @@ func TestDoltRemote(t *testing.T) {
 			fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", remoteUrl),
 			"select dolt_push('origin', 'main');",
 			fmt.Sprintf("select dolt_clone('%s', 'cloned_func');", remoteUrl),
-			"drop function double_it();",
+			"drop function double_it(int);",
 			"USE cloned_func",
 		},
 		Assertions: []ScriptTestAssertion{

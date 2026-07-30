@@ -1675,6 +1675,24 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_show_all_settings",
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: add all config parameters
+					Query: `SELECT name FROM pg_show_all_settings();`,
+					Expected: []sql.Row{
+						{"bytea_output"},
+					},
+				},
+				{
+					Query: `SELECT set_config('bytea_output','hex',false) FROM pg_show_all_settings() WHERE name = 'bytea_output';`,
+					Expected: []sql.Row{
+						{"hex"},
+					},
+				},
+			},
+		},
 	})
 }
 

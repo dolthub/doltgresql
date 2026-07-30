@@ -170,8 +170,6 @@ func (te *TriggerExecution) loadTriggerFunction(ctx *sql.Context, trigger trigge
 	return framework.InterpretedFunction{
 		ID:                 function.ID,
 		ReturnType:         pgtypes.Trigger,
-		ParameterNames:     nil,
-		ParameterTypes:     nil,
 		Variadic:           function.Variadic,
 		IsNonDeterministic: function.IsNonDeterministic,
 		Strict:             function.Strict,

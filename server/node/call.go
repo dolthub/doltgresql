@@ -33,7 +33,7 @@ type Call struct {
 	ProcedureName string
 	Exprs         []sql.Expression
 	Runner        pgexprs.StatementRunner
-	cachedSch     sql.Schema
+	CachedSchema  sql.Schema
 	originalExprs vitess.Exprs
 	CompiledFunc  *framework.CompiledFunction
 }
@@ -86,17 +86,22 @@ func (c *Call) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	}
 
 	cf := c.CompiledFunc.SetStatementRunner(ctx, c.Runner.Runner).(*framework.CompiledFunction)
-	_, err := cf.Eval(ctx, nil)
+	res, err := cf.Eval(ctx, nil)
 	if err != nil {
 		return nil, err
+	}
+	if c.CachedSchema != nil {
+		return sql.RowsToRowIter(sql.Row{res}), nil
 	}
 	return sql.RowsToRowIter(), nil
 }
 
 // Schema implements the interface sql.ExecSourceRel.
 func (c *Call) Schema(ctx *sql.Context) sql.Schema {
-	// TODO: this should be the INOUT and OUT parameters of the target procedure assuming we're not using the cached schema
-	return c.cachedSch
+	if c.CompiledFunc == nil || !c.CompiledFunc.Resolved() {
+		return nil
+	}
+	return c.CachedSchema
 }
 
 // String implements the interface sql.ExecSourceRel.
