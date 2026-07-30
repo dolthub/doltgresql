@@ -24,13 +24,87 @@ func TestStatsUsage(t *testing.T) {
 	RunScripts(t, StatsUsageTests)
 }
 
+func TestStatsAggregates(t *testing.T) {
+	RunScripts(t, StatsAggregateTests)
+}
+
+// StatsAggregateTests verify that aggregate functions work over the dolt_statistics system table.
+// The dolt_ system tables are implemented in GMS and produce GMS-typed values (e.g. uint64 for the
+// count columns of dolt_statistics), which the Doltgres-native aggregate implementations don't
+// accept directly; the TypeSanitizer analyzer rule must convert them, regardless of the plan shape
+// between the aggregation and the table (filters, joins, window nodes, etc).
+var StatsAggregateTests = []ScriptTest{
+	{
+		Name: "aggregate functions over dolt_statistics",
+		SetUpScript: []string{
+			"CREATE TABLE t (pk int primary key, c1 int);",
+			"INSERT INTO t SELECT i, i % 7 FROM generate_series(1, 100) g(i);",
+			"CREATE TABLE t2 (pk int primary key, c1 int);",
+			"CREATE INDEX t2_c1_idx ON t2(c1);",
+			"INSERT INTO t2 SELECT i, i % 3 FROM generate_series(1, 60) g(i);",
+			"ANALYZE t;",
+			"ANALYZE t2;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				// sum over the whole table
+				Query:    "SELECT sum(row_count) FROM dolt_statistics WHERE table_name = 't';",
+				Expected: []sql.Row{{Numeric("100")}},
+			},
+			{
+				// sum(int8) with a WHERE clause: the Filter node between the GroupBy and the
+				// table must not prevent value conversion
+				Query:    "SELECT sum(row_count) FROM dolt_statistics WHERE table_name = 't2' AND index_name = 'primary';",
+				Expected: []sql.Row{{Numeric("60")}},
+			},
+			{
+				Query:    "SELECT avg(row_count) FROM dolt_statistics WHERE table_name = 't';",
+				Expected: []sql.Row{{Numeric("100")}},
+			},
+			{
+				Query:    "SELECT avg(null_count) FROM dolt_statistics WHERE table_name = 't2';",
+				Expected: []sql.Row{{Numeric("0")}},
+			},
+			{
+				// GROUP BY across multiple tables and indexes
+				Query: "SELECT table_name, index_name, sum(row_count)::int FROM dolt_statistics GROUP BY table_name, index_name ORDER BY table_name, index_name;",
+				Expected: []sql.Row{
+					{"t", "primary", 100},
+					{"t2", "primary", 60},
+					{"t2", "t2_c1_idx", 60},
+				},
+			},
+			{
+				// max/min/count are GMS implementations, but should work on the same columns
+				Query:    "SELECT max(row_count), min(row_count), count(row_count) FROM dolt_statistics WHERE table_name = 't';",
+				Expected: []sql.Row{{100, 100, 1}},
+			},
+			{
+				// sum as a window function: the Window node must also convert its input values
+				Query:    "SELECT sum(row_count) OVER () FROM dolt_statistics WHERE table_name = 't';",
+				Expected: []sql.Row{{Numeric("100")}},
+			},
+			{
+				Query:    "SELECT sum(distinct_count) FROM dolt_statistics WHERE table_name = 't' HAVING sum(distinct_count) > 0;",
+				Expected: []sql.Row{{Numeric("100")}},
+			},
+			{
+				// aggregating a column that reaches the GroupBy through a join of aliased tables
+				Query:    "SELECT sum(a.row_count) FROM dolt_statistics a JOIN dolt_statistics b ON a.table_name = b.table_name AND a.index_name = b.index_name WHERE a.table_name = 't';",
+				Expected: []sql.Row{{Numeric("100")}},
+			},
+			{
+				// arithmetic over GMS-typed columns feeding an aggregate
+				Query:    "SELECT sum(row_count + null_count) FROM dolt_statistics WHERE table_name = 't';",
+				Expected: []sql.Row{{Numeric("100")}},
+			},
+		},
+	},
+}
+
 // StatsUsageTests verify that table statistics are collected when ANALYZE forces a refresh, that
 // the dolt_statistics system table reflects the analyzed data, and that the query planner chooses
 // sensible plans for joins and filters over tables of varying sizes and value cardinalities.
-//
-// Note that the row_count / distinct_count / null_count columns of dolt_statistics currently
-// return uint64 values, which sum() rejects ("sum: expected int64, got uint64"), so the queries
-// below cast to bigint before aggregating.
 var StatsUsageTests = []ScriptTest{
 	{
 		Name: "dolt_statistics contains reasonable values after ANALYZE",
@@ -47,7 +121,7 @@ var StatsUsageTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				// Every index on big should account for all 5000 rows across its histogram buckets
-				Query: "SELECT index_name, sum(row_count::bigint)::int FROM dolt_statistics WHERE table_name = 'big' GROUP BY index_name ORDER BY index_name;",
+				Query: "SELECT index_name, sum(row_count)::int FROM dolt_statistics WHERE table_name = 'big' GROUP BY index_name ORDER BY index_name;",
 				Expected: []sql.Row{
 					{"big_highcard_idx", 5000},
 					{"big_lowcard_idx", 5000},
@@ -56,22 +130,22 @@ var StatsUsageTests = []ScriptTest{
 			},
 			{
 				// The primary key is unique, so distinct count should equal row count
-				Query:    "SELECT sum(distinct_count::bigint)::int FROM dolt_statistics WHERE table_name = 'big' AND index_name = 'primary';",
+				Query:    "SELECT sum(distinct_count)::int FROM dolt_statistics WHERE table_name = 'big' AND index_name = 'primary';",
 				Expected: []sql.Row{{5000}},
 			},
 			{
 				// highcard is also unique
-				Query:    "SELECT sum(distinct_count::bigint)::int FROM dolt_statistics WHERE table_name = 'big' AND index_name = 'big_highcard_idx';",
+				Query:    "SELECT sum(distinct_count)::int FROM dolt_statistics WHERE table_name = 'big' AND index_name = 'big_highcard_idx';",
 				Expected: []sql.Row{{5000}},
 			},
 			{
 				// lowcard has only 10 distinct values, so no bucket can see more than 10 of them
-				Query:    "SELECT max(distinct_count::bigint) <= 10 AND sum(distinct_count::bigint) >= 10 FROM dolt_statistics WHERE table_name = 'big' AND index_name = 'big_lowcard_idx';",
+				Query:    "SELECT max(distinct_count) <= 10 AND sum(distinct_count) >= 10 FROM dolt_statistics WHERE table_name = 'big' AND index_name = 'big_lowcard_idx';",
 				Expected: []sql.Row{{"t"}},
 			},
 			{
 				// No NULL values were inserted anywhere
-				Query:    "SELECT sum(null_count::bigint)::int FROM dolt_statistics WHERE table_name IN ('big', 'small');",
+				Query:    "SELECT sum(null_count)::int FROM dolt_statistics WHERE table_name IN ('big', 'small');",
 				Expected: []sql.Row{{0}},
 			},
 			{
@@ -90,7 +164,7 @@ var StatsUsageTests = []ScriptTest{
 			},
 			{
 				// The small table's stats account for all of its rows too
-				Query: "SELECT index_name, sum(row_count::bigint)::int, sum(distinct_count::bigint)::int FROM dolt_statistics WHERE table_name = 'small' GROUP BY index_name ORDER BY index_name;",
+				Query: "SELECT index_name, sum(row_count)::int, sum(distinct_count)::int FROM dolt_statistics WHERE table_name = 'small' GROUP BY index_name ORDER BY index_name;",
 				Expected: []sql.Row{
 					{"primary", 10, 10},
 				},
@@ -106,7 +180,7 @@ var StatsUsageTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query:    "SELECT sum(row_count::bigint)::int FROM dolt_statistics WHERE table_name = 't';",
+				Query:    "SELECT sum(row_count)::int FROM dolt_statistics WHERE table_name = 't';",
 				Expected: []sql.Row{{100}},
 			},
 			{
@@ -119,7 +193,7 @@ var StatsUsageTests = []ScriptTest{
 			},
 			{
 				// The refreshed stats reflect the new row count
-				Query:    "SELECT sum(row_count::bigint)::int FROM dolt_statistics WHERE table_name = 't';",
+				Query:    "SELECT sum(row_count)::int FROM dolt_statistics WHERE table_name = 't';",
 				Expected: []sql.Row{{300}},
 			},
 		},
