@@ -2183,6 +2183,117 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "pg_opclass_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_opclass_is_visible(15000);`, // btree array_ops
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_opclass_is_visible(397);`, // an operator family, not an operator class
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_opclass_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_opfamily_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_opfamily_is_visible(397);`, // btree array_ops
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_opfamily_is_visible(15000);`, // an operator class, not an operator family
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_opfamily_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_operator_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: built-in operators are not yet cataloged, so no OID refers to a visible operator
+					Query:    `SELECT pg_operator_is_visible(22);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_conversion_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: encoding conversions are not yet cataloged, so no OID refers to a visible conversion
+					Query:    `SELECT pg_conversion_is_visible(22);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_ts_config_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_ts_config_is_visible(3748);`, // simple
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_ts_config_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_ts_dict_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_ts_dict_is_visible(3765);`, // simple
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_ts_dict_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_ts_template_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_ts_template_is_visible(3727);`, // simple
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_ts_template_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_statistics_obj_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: extended statistics objects are not yet supported, so no OID refers to a visible one
+					Query:    `SELECT pg_statistics_obj_is_visible(22);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
 	})
 }
 
@@ -2196,6 +2307,72 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Query: `SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = 'postgres';`,
 					Expected: []sql.Row{
 						{"UTF8"},
+					},
+				},
+			},
+		},
+		{
+			Name:        "pg_char_to_encoding",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT pg_char_to_encoding('UTF8');`,
+					Expected: []sql.Row{
+						{6},
+					},
+				},
+				{
+					Query: `SELECT pg_char_to_encoding('utf-8');`,
+					Expected: []sql.Row{
+						{6},
+					},
+				},
+				{
+					// TODO: only UTF8 is supported for now
+					Query: `SELECT pg_char_to_encoding('LATIN1');`,
+					Expected: []sql.Row{
+						{-1},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_get_function_arguments",
+			SetUpScript: []string{
+				`CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1';`,
+				`CREATE TABLE cp_test (a int, b text);`,
+				`CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)
+				LANGUAGE SQL
+				AS $$
+					INSERT INTO cp_test VALUES(a, b);
+					INSERT INTO cp_test VALUES(c, b);
+				$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT pg_get_function_arguments(22)`, // invalid
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+				{
+					// caches the function and procedure OIDs so that they can be used below
+					Query: `SELECT oid, proname FROM pg_catalog.pg_proc WHERE proname = 'alt_func1' OR proname = 'ptest5';`,
+					Expected: []sql.Row{
+						{2891346960, "alt_func1"},
+						{1886569565, "ptest5"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_function_arguments(2891346960)`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_function_arguments(1886569565)`,
+					Expected: []sql.Row{
+						{"a integer, b text, c integer DEFAULT 100"},
 					},
 				},
 			},
