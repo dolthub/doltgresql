@@ -120,6 +120,7 @@ func Init() {
 	initGenRandomUuid()
 	initGenerateSeries()
 	initGenerateSubscripts()
+	initGetdatabaseencoding()
 	initInitcap()
 	initLcm()
 	initLeft()

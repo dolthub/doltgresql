@@ -2300,6 +2300,18 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 func TestSystemCatalogInformationFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name:        "getdatabaseencoding",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT getdatabaseencoding();`,
+					Expected: []sql.Row{
+						{"UTF8"},
+					},
+				},
+			},
+		},
+		{
 			Name:        "pg_encoding_to_char",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
