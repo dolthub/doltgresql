@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +45,46 @@ func (p PgRewriteHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgRewriteHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_rewrite row iter
-	return emptyRowIter()
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.rewrites == nil {
+		err = cachePgRewrites(ctx, pgCatalogCache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pgRewriteRowIter{
+		rewrites: pgCatalogCache.rewrites,
+		idx:      0,
+	}, nil
+}
+
+// cachePgRewrites caches the pg_rewrite data for the current database in the session.
+func cachePgRewrites(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
+	// Doltgres does not support CREATE RULE, so the only rewrite rules that exist are the implicit
+	// "_RETURN" rules that every view has.
+	var rewrites []pgRewrite
+	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		View: func(ctx *sql.Context, schema functions.ItemSchema, view functions.ItemView) (cont bool, err error) {
+			rewrites = append(rewrites, pgRewrite{
+				// There is no dedicated id section for rewrite rules, so we use a trigger id to
+				// derive an OID that is unique and distinct from the view's own OID.
+				oid:     id.NewTrigger(schema.Item.SchemaName(), view.Item.Name, "_RETURN").AsId(),
+				evClass: view.OID.AsId(),
+			})
+			return true, nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	pgCatalogCache.rewrites = rewrites
+	return nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -67,15 +107,38 @@ var pgRewriteSchema = sql.Schema{
 	{Name: "ev_action", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgRewriteName}, // TODO: pg_node_tree type, collation C
 }
 
+// pgRewrite represents a row in the pg_rewrite table.
+type pgRewrite struct {
+	oid     id.Id
+	evClass id.Id
+}
+
 // pgRewriteRowIter is the sql.RowIter for the pg_rewrite table.
 type pgRewriteRowIter struct {
+	rewrites []pgRewrite
+	idx      int
 }
 
 var _ sql.RowIter = (*pgRewriteRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgRewriteRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.rewrites) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	rewrite := iter.rewrites[iter.idx-1]
+
+	return sql.Row{
+		rewrite.oid,     // oid
+		"_RETURN",       // rulename
+		rewrite.evClass, // ev_class
+		"1",             // ev_type (SELECT)
+		"O",             // ev_enabled
+		true,            // is_instead
+		"<>",            // ev_qual
+		"<>",            // ev_action (TODO: emit the actual query node tree for the view)
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

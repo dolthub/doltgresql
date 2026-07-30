@@ -64,6 +64,30 @@ func GetExtension(name string) (_ *pg_extension.ExtensionFiles, err error) {
 	extMutex.Lock()
 	defer extMutex.Unlock()
 
+	exts, err := getAllExtensions()
+	if err != nil {
+		return nil, err
+	}
+	ext, ok := exts[name]
+	if !ok {
+		return nil, errors.Errorf(`could not open extension control file "%s.control"`, name)
+	}
+	return ext, nil
+}
+
+// GetAllExtensions returns all extensions that are available for installation on this system, keyed by extension name.
+// Returns an error if the extensions could not be loaded (e.g. there is no local Postgres installation). The returned
+// map must not be modified.
+func GetAllExtensions() (map[string]*pg_extension.ExtensionFiles, error) {
+	extMutex.Lock()
+	defer extMutex.Unlock()
+
+	return getAllExtensions()
+}
+
+// getAllExtensions loads (and caches) all extensions that are available on this system. The mutex extMutex must be
+// held when this is called.
+func getAllExtensions() (_ map[string]*pg_extension.ExtensionFiles, err error) {
 	if cachedError != nil {
 		return nil, cachedError
 	}
@@ -76,11 +100,7 @@ func GetExtension(name string) (_ *pg_extension.ExtensionFiles, err error) {
 			return nil, err
 		}
 	}
-	ext, ok := allExtensions[name]
-	if !ok {
-		return nil, errors.Errorf(`could not open extension control file "%s.control"`, name)
-	}
-	return ext, nil
+	return allExtensions, nil
 }
 
 // GetExtensionFunction returns the function inside the extension matching the given names. Returns an error if the

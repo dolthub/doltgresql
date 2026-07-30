@@ -16,9 +16,13 @@ package pgcatalog
 
 import (
 	"io"
+	"sort"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/extensions"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -41,10 +45,69 @@ func (p PgAvailableExtensionVersionsHandler) Name() string {
 	return PgAvailableExtensionVersionsName
 }
 
+// pgAvailableExtensionVersion represents a row in the pg_available_extension_versions table.
+type pgAvailableExtensionVersion struct {
+	name        string
+	version     string
+	installed   bool
+	superuser   bool
+	trusted     bool
+	relocatable bool
+	schema      any
+	requires    any
+	comment     any
+}
+
 // RowIter implements the interface tables.Handler.
 func (p PgAvailableExtensionVersionsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_available_extension_versions row iter
-	return emptyRowIter()
+	allExtensions, err := extensions.GetAllExtensions()
+	if err != nil {
+		// Extensions cannot be loaded when there is no local Postgres installation, so we report that no extensions
+		// are available rather than returning an error.
+		return emptyRowIter()
+	}
+	extCollection, err := core.GetExtensionsCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return nil, err
+	}
+	// TODO: Postgres lists a row for every version that has an installation script, but we only track the default
+	//  version for each extension.
+	extVersions := make([]pgAvailableExtensionVersion, 0, len(allExtensions))
+	for name, extFiles := range allExtensions {
+		extVersion := pgAvailableExtensionVersion{
+			name:        name,
+			version:     extFiles.Control.DefaultVersion.String(),
+			superuser:   extFiles.Control.Superuser,
+			trusted:     extFiles.Control.Trusted,
+			relocatable: extFiles.Control.Relocatable,
+		}
+		if len(extFiles.Control.Schema) > 0 {
+			extVersion.schema = extFiles.Control.Schema
+		}
+		if len(extFiles.Control.Requires) > 0 {
+			requires := make([]any, len(extFiles.Control.Requires))
+			for i, req := range extFiles.Control.Requires {
+				requires[i] = req
+			}
+			extVersion.requires = requires
+		}
+		if len(extFiles.Control.Comment) > 0 {
+			extVersion.comment = extFiles.Control.Comment
+		}
+		if installed, err := extCollection.GetLoadedExtension(ctx, id.NewExtension(name)); err != nil {
+			return nil, err
+		} else if installed.ExtName.IsValid() {
+			extVersion.installed = installed.LibIdentifier.Version() == extFiles.Control.DefaultVersion
+		}
+		extVersions = append(extVersions, extVersion)
+	}
+	sort.Slice(extVersions, func(i, j int) bool {
+		return extVersions[i].name < extVersions[j].name
+	})
+	return &pgAvailableExtensionVersionsRowIter{
+		extensions: extVersions,
+		idx:        0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -70,13 +133,30 @@ var pgAvailableExtensionVersionsSchema = sql.Schema{
 
 // pgAvailableExtensionVersionsRowIter is the sql.RowIter for the pg_available_extension_versions table.
 type pgAvailableExtensionVersionsRowIter struct {
+	extensions []pgAvailableExtensionVersion
+	idx        int
 }
 
 var _ sql.RowIter = (*pgAvailableExtensionVersionsRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgAvailableExtensionVersionsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.extensions) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	ext := iter.extensions[iter.idx-1]
+	return sql.Row{
+		ext.name,        // name
+		ext.version,     // version
+		ext.installed,   // installed
+		ext.superuser,   // superuser
+		ext.trusted,     // trusted
+		ext.relocatable, // relocatable
+		ext.schema,      // schema
+		ext.requires,    // requires
+		ext.comment,     // comment
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

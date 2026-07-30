@@ -14,7 +14,11 @@
 
 package auth
 
-import "github.com/dolthub/doltgresql/utils"
+import (
+	"sort"
+
+	"github.com/dolthub/doltgresql/utils"
+)
 
 // RoleMembership contains all roles that have been granted to other roles.
 type RoleMembership struct {
@@ -34,6 +38,24 @@ func NewRoleMembership() *RoleMembership {
 	return &RoleMembership{
 		Data: make(map[RoleID]map[RoleID]RoleMembershipValue),
 	}
+}
+
+// AllRoleMemberships returns every role membership in the database, sorted by the group's ID and then the member's
+// ID. This does not handle locking, so callers should protect the call with LockRead.
+func AllRoleMemberships() []RoleMembershipValue {
+	var values []RoleMembershipValue
+	for _, groupMap := range globalDatabase.roleMembership.Data {
+		for _, value := range groupMap {
+			values = append(values, value)
+		}
+	}
+	sort.Slice(values, func(i, j int) bool {
+		if values[i].Group != values[j].Group {
+			return values[i].Group < values[j].Group
+		}
+		return values[i].Member < values[j].Member
+	})
+	return values
 }
 
 // AddMemberToGroup adds the member role to the group role.

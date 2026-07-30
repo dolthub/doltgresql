@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +44,10 @@ func (p PgTablespaceHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTablespaceHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_tablespace row iter
-	return emptyRowIter()
+	return &pgTablespaceRowIter{
+		tablespaces: defaultPostgresTablespaces,
+		idx:         0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -66,16 +69,42 @@ var pgTablespaceSchema = sql.Schema{
 
 // pgTablespaceRowIter is the sql.RowIter for the pg_tablespace table.
 type pgTablespaceRowIter struct {
+	tablespaces []tablespace
+	idx         int
 }
 
 var _ sql.RowIter = (*pgTablespaceRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgTablespaceRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.tablespaces) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	ts := iter.tablespaces[iter.idx-1]
+
+	return sql.Row{
+		ts.oid,  // oid
+		ts.name, // spcname
+		id.Null, // spcowner (TODO: owner)
+		nil,     // spcacl
+		nil,     // spcoptions
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
 func (iter *pgTablespaceRowIter) Close(ctx *sql.Context) error {
 	return nil
+}
+
+// tablespace represents a row in the pg_tablespace table.
+type tablespace struct {
+	oid  id.Id
+	name string
+}
+
+// defaultPostgresTablespaces is the list of built-in tablespaces available in Postgres.
+var defaultPostgresTablespaces = []tablespace{
+	{oid: id.NewTablespace("pg_default").AsId(), name: "pg_default"},
+	{oid: id.NewTablespace("pg_global").AsId(), name: "pg_global"},
 }

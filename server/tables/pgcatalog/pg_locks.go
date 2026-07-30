@@ -43,7 +43,8 @@ func (p PgLocksHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgLocksHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_locks row iter
+	// pg_locks is currently empty, since lock introspection is not exposed by the engine.
+	// TODO: fill this in when lock information is available
 	return emptyRowIter()
 }
 

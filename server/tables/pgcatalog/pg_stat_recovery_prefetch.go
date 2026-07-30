@@ -15,8 +15,6 @@
 package pgcatalog
 
 import (
-	"io"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +41,20 @@ func (p PgStatRecoveryPrefetchHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatRecoveryPrefetchHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_recovery_prefetch row iter
-	return emptyRowIter()
+	// Doltgres does not perform WAL recovery prefetching, so this returns a single row with zero
+	// counters and NULL values, matching what a Postgres server that is not in recovery reports.
+	return sql.RowsToRowIter(sql.Row{
+		nil,      // stats_reset
+		int64(0), // prefetch
+		int64(0), // hit
+		int64(0), // skip_init
+		int64(0), // skip_new
+		int64(0), // skip_fpw
+		int64(0), // skip_rep
+		nil,      // wal_distance
+		nil,      // block_distance
+		nil,      // io_depth
+	}), nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -67,20 +77,4 @@ var pgStatRecoveryPrefetchSchema = sql.Schema{
 	{Name: "wal_distance", Type: pgtypes.Int32, Default: nil, Nullable: true, Source: PgStatRecoveryPrefetchName},
 	{Name: "block_distance", Type: pgtypes.Int32, Default: nil, Nullable: true, Source: PgStatRecoveryPrefetchName},
 	{Name: "io_depth", Type: pgtypes.Int32, Default: nil, Nullable: true, Source: PgStatRecoveryPrefetchName},
-}
-
-// pgStatRecoveryPrefetchRowIter is the sql.RowIter for the pg_stat_recovery_prefetch table.
-type pgStatRecoveryPrefetchRowIter struct {
-}
-
-var _ sql.RowIter = (*pgStatRecoveryPrefetchRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgStatRecoveryPrefetchRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgStatRecoveryPrefetchRowIter) Close(ctx *sql.Context) error {
-	return nil
 }

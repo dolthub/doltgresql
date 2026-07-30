@@ -15,10 +15,12 @@
 package pgcatalog
 
 import (
-	"io"
+	"sort"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +45,37 @@ func (p PgStatDatabaseConflictsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatDatabaseConflictsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_database_conflicts row iter
-	return emptyRowIter()
+	// Doltgres does not track recovery conflict statistics, so all counters are zero,
+	// matching what a freshly-started Postgres server reports.
+	// TODO: fill in real values when recovery conflict statistics are tracked
+	doltSession := dsess.DSessFromSess(ctx.Session)
+	databases := doltSession.Provider().AllDatabases(ctx)
+	dbs := make([]sql.Database, 0, len(databases))
+	for _, db := range databases {
+		name := db.Name()
+		if name == "information_schema" || name == "pg_catalog" || name == "performance_schema" {
+			continue
+		}
+		dbs = append(dbs, db)
+	}
+	sort.Slice(dbs, func(i, j int) bool {
+		return dbs[i].Name() < dbs[j].Name()
+	})
+
+	rows := make([]sql.Row, 0, len(dbs))
+	for _, db := range dbs {
+		rows = append(rows, sql.Row{
+			id.NewDatabase(db.Name()).AsId(), // datid
+			db.Name(),                        // datname
+			int64(0),                         // confl_tablespace
+			int64(0),                         // confl_lock
+			int64(0),                         // confl_snapshot
+			int64(0),                         // confl_bufferpin
+			int64(0),                         // confl_deadlock
+			int64(0),                         // confl_active_logicalslot
+		})
+	}
+	return sql.RowsToRowIter(rows...), nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -65,20 +96,4 @@ var pgStatDatabaseConflictsSchema = sql.Schema{
 	{Name: "confl_bufferpin", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatDatabaseConflictsName},
 	{Name: "confl_deadlock", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatDatabaseConflictsName},
 	{Name: "confl_active_logicalslot", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatDatabaseConflictsName},
-}
-
-// pgStatDatabaseConflictsRowIter is the sql.RowIter for the pg_stat_database_conflicts table.
-type pgStatDatabaseConflictsRowIter struct {
-}
-
-var _ sql.RowIter = (*pgStatDatabaseConflictsRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgStatDatabaseConflictsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgStatDatabaseConflictsRowIter) Close(ctx *sql.Context) error {
-	return nil
 }

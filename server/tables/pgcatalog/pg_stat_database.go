@@ -15,10 +15,12 @@
 package pgcatalog
 
 import (
-	"io"
+	"sort"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +45,65 @@ func (p PgStatDatabaseHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatDatabaseHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_database row iter
-	return emptyRowIter()
+	// Doltgres does not track database statistics yet, so all counters are zero and all
+	// timestamps are NULL, matching what a freshly-started Postgres server reports.
+	// TODO: fill in real values when database statistics are tracked
+	doltSession := dsess.DSessFromSess(ctx.Session)
+	databases := doltSession.Provider().AllDatabases(ctx)
+	dbs := make([]sql.Database, 0, len(databases))
+	for _, db := range databases {
+		name := db.Name()
+		if name == "information_schema" || name == "pg_catalog" || name == "performance_schema" {
+			continue
+		}
+		dbs = append(dbs, db)
+	}
+	sort.Slice(dbs, func(i, j int) bool {
+		return dbs[i].Name() < dbs[j].Name()
+	})
+
+	// The first row reports stats for shared objects, with a zero OID and a NULL database name.
+	rows := make([]sql.Row, 0, len(dbs)+1)
+	rows = append(rows, pgStatDatabaseRow(id.Null, nil))
+	for _, db := range dbs {
+		rows = append(rows, pgStatDatabaseRow(id.NewDatabase(db.Name()).AsId(), db.Name()))
+	}
+	return sql.RowsToRowIter(rows...), nil
+}
+
+// pgStatDatabaseRow returns a pg_stat_database row for the given database OID and name, with all
+// counters zero and all timestamps NULL.
+func pgStatDatabaseRow(datid id.Id, datname any) sql.Row {
+	return sql.Row{
+		datid,      // datid
+		datname,    // datname
+		int32(0),   // numbackends
+		int64(0),   // xact_commit
+		int64(0),   // xact_rollback
+		int64(0),   // blks_read
+		int64(0),   // blks_hit
+		int64(0),   // tup_returned
+		int64(0),   // tup_fetched
+		int64(0),   // tup_inserted
+		int64(0),   // tup_updated
+		int64(0),   // tup_deleted
+		int64(0),   // conflicts
+		int64(0),   // temp_files
+		int64(0),   // temp_bytes
+		int64(0),   // deadlocks
+		int64(0),   // checksum_failures
+		nil,        // checksum_last_failure
+		float64(0), // blk_read_time
+		float64(0), // blk_write_time
+		float64(0), // session_time
+		float64(0), // active_time
+		float64(0), // idle_in_transaction_time
+		int64(0),   // sessions
+		int64(0),   // sessions_abandoned
+		int64(0),   // sessions_fatal
+		int64(0),   // sessions_killed
+		nil,        // stats_reset
+	}
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -85,20 +144,4 @@ var pgStatDatabaseSchema = sql.Schema{
 	{Name: "sessions_fatal", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatDatabaseName},
 	{Name: "sessions_killed", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatDatabaseName},
 	{Name: "stats_reset", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgStatDatabaseName},
-}
-
-// pgStatDatabaseRowIter is the sql.RowIter for the pg_stat_database table.
-type pgStatDatabaseRowIter struct {
-}
-
-var _ sql.RowIter = (*pgStatDatabaseRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgStatDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgStatDatabaseRowIter) Close(ctx *sql.Context) error {
-	return nil
 }

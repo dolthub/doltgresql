@@ -30,6 +30,12 @@ func IsValidPostgresConfigParameter(name string) bool {
 	return ok
 }
 
+// PostgresConfigParameters returns the full set of Postgres configuration parameters, keyed by lowercase
+// parameter name. The returned map is shared, so callers must not modify it (or the parameters within it).
+func PostgresConfigParameters() map[string]sql.SystemVariable {
+	return postgresConfigParameters
+}
+
 // IsValidDoltConfigParameter returns true if the given parameter name is a valid Dolt configuration parameter.
 func IsValidDoltConfigParameter(name string) bool {
 	_, ok := doltConfigParameters[strings.ToLower(name)]
