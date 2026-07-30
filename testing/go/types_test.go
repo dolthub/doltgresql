@@ -4023,3 +4023,32 @@ func TestShellTypes(t *testing.T) {
 		},
 	})
 }
+
+func TestCompositeTypes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "composite type as subquery alias",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT 'session_stats' AS chart_name,
+       						pg_catalog.Row_to_json(t) AS chart_data FROM (
+							SELECT
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity) AS "Total",
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity
+									WHERE  state = 'active') AS "Active",
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity
+                            		WHERE  state = 'idle') AS "Idle" ) t;`,
+					ExpectedColNames: []string{"chart_name", "chart_data"},
+					// it actually displays `{"Total":1,"Active":1,"Idle":0}` in client, which is the correct result
+					Expected: []sql.Row{{"session_stats", `{"Active":1,"Idle":0,"Total":1}`}},
+				},
+			},
+		},
+	})
+}

@@ -122,6 +122,7 @@ func Init() {
 	initGenerateSeries()
 	initGenerateSubscripts()
 	initHasDatabasePrivilege()
+	initHasSchemaPrivilege()
 	initInitcap()
 	initLcm()
 	initLeft()
