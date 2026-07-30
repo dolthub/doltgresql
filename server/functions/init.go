@@ -140,6 +140,7 @@ func Init() {
 	initObjDescription()
 	initOctetLength()
 	initPgCharToEncoding()
+	initPgCollationIsVisible()
 	initPgConversionIsVisible()
 	initPgEncodingToChar()
 	initPgFunctionIsVisible()

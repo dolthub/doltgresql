@@ -2184,6 +2184,28 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name:        "pg_collation_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_collation_is_visible(950);`, // C
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_collation_is_visible(100);`, // default
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_collation_is_visible(397);`, // an operator family, not a collation
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_collation_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
 			Name:        "pg_opclass_is_visible",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
