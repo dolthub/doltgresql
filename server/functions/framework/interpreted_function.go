@@ -25,6 +25,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -34,8 +35,8 @@ import (
 type InterpretedFunction struct {
 	ID                 id.Function
 	ReturnType         *pgtypes.DoltgresType
-	ParameterNames     []string
-	ParameterTypes     []*pgtypes.DoltgresType
+	AllParams          []procedures.Parameter
+	AllTypes           []*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
@@ -48,7 +49,14 @@ var _ plpgsql.InterpretedFunction = InterpretedFunction{}
 
 // GetExpectedParameterCount implements the interface FunctionInterface.
 func (iFunc InterpretedFunction) GetExpectedParameterCount() int {
-	return len(iFunc.ParameterTypes)
+	inputParamCount := 0
+	for _, param := range iFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_INOUT, procedures.ParameterMode_VARIADIC:
+			inputParamCount += 1
+		}
+	}
+	return inputParamCount
 }
 
 // GetName implements the interface FunctionInterface.
@@ -56,14 +64,69 @@ func (iFunc InterpretedFunction) GetName() string {
 	return iFunc.ID.FunctionName()
 }
 
-// GetParameters implements the interface FunctionInterface.
-func (iFunc InterpretedFunction) GetParameters() []*pgtypes.DoltgresType {
-	return iFunc.ParameterTypes
+// GetAllNames implements the interface InterpretedFunction.
+func (iFunc InterpretedFunction) GetAllNames() []string {
+	var names []string
+	for _, param := range iFunc.AllParams {
+		names = append(names, param.Name)
+	}
+	return names
 }
 
-// GetParameterNames returns the names of all parameters.
-func (iFunc InterpretedFunction) GetParameterNames() []string {
-	return iFunc.ParameterNames
+// GetInputParameterNamesAndTypes implements the interface InterpretedFunction.
+func (iFunc InterpretedFunction) GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType) {
+	var names []string
+	var typs []*pgtypes.DoltgresType
+	for i, param := range iFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_INOUT, procedures.ParameterMode_VARIADIC:
+			names = append(names, param.Name)
+			typs = append(typs, iFunc.AllTypes[i])
+		}
+	}
+	return names, typs
+}
+
+// GetInputParameterTypes implements the interface FunctionInterface.
+func (iFunc InterpretedFunction) GetInputParameterTypes() []*pgtypes.DoltgresType {
+	var typs []*pgtypes.DoltgresType
+	for i, param := range iFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_INOUT, procedures.ParameterMode_VARIADIC:
+			typs = append(typs, iFunc.AllTypes[i])
+		}
+	}
+	return typs
+}
+
+// GetOutputParameterNamesAndTypes implements the interface InterpretedFunction.
+func (iFunc InterpretedFunction) GetOutputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType) {
+	var names []string
+	var typs []*pgtypes.DoltgresType
+	for i, param := range iFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_OUT, procedures.ParameterMode_INOUT:
+			names = append(names, param.Name)
+			typs = append(typs, iFunc.AllTypes[i])
+		}
+	}
+	return names, typs
+}
+
+// GetOutParameters implements the interface FunctionInterface.
+func (iFunc InterpretedFunction) GetOutParameters() sql.Schema {
+	var outParams []*sql.Column
+	for i, param := range iFunc.AllParams {
+		switch param.Mode {
+		case procedures.ParameterMode_OUT, procedures.ParameterMode_INOUT:
+			outParams = append(outParams, &sql.Column{
+				Name: param.Name,
+				Type: iFunc.AllTypes[i],
+				// TODO default val ?
+			})
+		}
+	}
+	return outParams
 }
 
 // GetReturn implements the interface FunctionInterface.

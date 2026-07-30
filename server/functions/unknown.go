@@ -50,7 +50,11 @@ var unknownout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Unknown},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(string), nil
+		str, ok := val.(string)
+		if !ok {
+			return nil, errors.Errorf("unknown type received %T result", val)
+		}
+		return str, nil
 	},
 }
 

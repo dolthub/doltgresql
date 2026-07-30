@@ -21,7 +21,6 @@ import (
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/auth"
@@ -37,39 +36,11 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 	}
 	// Grab the general information that we'll need to create the procedure
 	tableName := node.Name.ToTableName()
-	params := make([]pgnodes.RoutineParam, len(node.Args))
-	var defaults []vitess.Expr
-	for i, arg := range node.Args {
-		// parameter name
-		params[i].Name = arg.Name.String()
-		// parameter type
-		_, params[i].Type, err = nodeResolvableTypeReference(ctx, arg.Type, false)
-		if err != nil {
-			return nil, err
-		}
-		// parameter mode
-		switch arg.Mode {
-		case tree.RoutineArgModeIn:
-			params[i].Mode = procedures.ParameterMode_IN
-		case tree.RoutineArgModeVariadic:
-			params[i].Mode = procedures.ParameterMode_VARIADIC
-		case tree.RoutineArgModeOut:
-			params[i].Mode = procedures.ParameterMode_OUT
-		case tree.RoutineArgModeInout:
-			params[i].Mode = procedures.ParameterMode_INOUT
-		default:
-			return nil, errors.Newf("unknown procedure argmode: `%v`", arg.Mode)
-		}
-		// parameter default
-		if arg.Default != nil {
-			params[i].HasDefault = true
-			d, err := nodeExpr(ctx, arg.Default)
-			if err != nil {
-				return nil, err
-			}
-			defaults = append(defaults, d)
-		}
+	params, defaults, _, err := resolveRoutineParameters(ctx, node.Args)
+	if err != nil {
+		return nil, err
 	}
+
 	// We only support PL/pgSQL, SQL and C for now, so we verify that here
 	var parsedBody []plpgsql.InterpreterOperation
 	var sqlDef string

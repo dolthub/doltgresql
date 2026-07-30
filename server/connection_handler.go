@@ -1074,9 +1074,12 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 		}
 		sess.ClearNotices()
 
-		if returnsRow(query) {
+		// CALL statement does not return row unless the procedure has OUT parameter, then it returns single row result.
+		callWithRowReturned := query.StatementTag == "CALL" && res.RowsAffected != 0
+
+		if returnsRow(query) || callWithRowReturned {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
-			if !isExecute && !hasSentRowDescription {
+			if (!isExecute && !hasSentRowDescription) || callWithRowReturned {
 				hasSentRowDescription = true
 				h.backend.Send(&pgproto3.RowDescription{
 					Fields: res.Fields,

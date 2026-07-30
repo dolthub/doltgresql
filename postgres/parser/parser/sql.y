@@ -4421,7 +4421,8 @@ returns_table_col_def:
 opt_routine_arg_with_default_list:
   /* EMPTY */
   {
-    $$.val = []*tree.RoutineArg{}
+    // DROP FUNCTION func1;
+    $$.val = []*tree.RoutineArg(nil)
   }
 | '(' ')'
   {

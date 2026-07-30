@@ -34,8 +34,9 @@ import (
 // framework package.
 type InterpretedFunction interface {
 	ApplyBindings(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string, enforceType bool) (newStmt string, varFound bool, err error)
-	GetParameters() []*pgtypes.DoltgresType
-	GetParameterNames() []string
+	GetAllNames() []string
+	GetOutputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
+	GetInputParameterNamesAndTypes() ([]string, []*pgtypes.DoltgresType)
 	GetReturn() *pgtypes.DoltgresType
 	GetStatements() []InterpreterOperation
 	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (schema sql.Schema, rows []sql.Row, err error)
@@ -54,13 +55,18 @@ func Call(ctx *sql.Context, iFunc InterpretedFunction, runner sql.StatementRunne
 	// Set up the initial state of the function
 	stack := NewInterpreterStack(runner)
 	// Add the parameters
-	parameterTypes := iFunc.GetParameters()
-	parameterNames := iFunc.GetParameterNames()
-	if len(vals) != len(parameterTypes) {
-		return nil, fmt.Errorf("parameter count mismatch: expected %d got %d", len(parameterTypes), len(vals))
+	// add OUT mode first as it also includes INOUT
+	outNames, outTyps := iFunc.GetOutputParameterNamesAndTypes()
+	for i, outTyp := range outTyps {
+		stack.NewVariable(outNames[i], outTyp)
+	}
+	stack.SetOutParams(outNames)
+	inNames, inTyps := iFunc.GetInputParameterNamesAndTypes()
+	if len(vals) != len(inTyps) {
+		return nil, fmt.Errorf("input parameter count mismatch: expected %d got %d", len(inTyps), len(vals))
 	}
 	for i := range vals {
-		stack.NewVariableWithValue(parameterNames[i], parameterTypes[i], vals[i])
+		stack.NewVariableWithValue(inNames[i], inTyps[i], vals[i])
 	}
 	return call(ctx, iFunc, stack)
 }
@@ -155,7 +161,7 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				defVal := operation.SecondaryData[0]
 				// Default value can be a literal value or a reference to parameter
 				isParam := false
-				for _, param := range iFunc.GetParameterNames() {
+				for _, param := range iFunc.GetAllNames() {
 					if param == defVal {
 						isParam = true
 						break
@@ -305,6 +311,10 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				}
 
 				return sql.RowsToRowIter(rows...), nil
+			}
+
+			if len(stack.outParams) != 0 {
+				return stack.ReturnOutParamResults(), nil
 			}
 
 			if len(operation.PrimaryData) == 0 {

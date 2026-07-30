@@ -149,7 +149,10 @@ func (c *CompiledAggregateFunction) NewBuffer(ctx *sql.Context) (sql.Aggregation
 	if err != nil {
 		return nil, err
 	}
-	return agg.NewBuffer(args)
+	// Buffers evaluate their argument expressions directly, without the GMS value conversion that
+	// CompiledFunction.Eval performs, so any GMS-typed arguments (e.g. columns of the dolt_* system
+	// tables) must be wrapped to convert their values.
+	return agg.NewBuffer(castGMSArguments(ctx, args))
 }
 
 // Id implements the interface sql.Aggregation.
@@ -178,7 +181,8 @@ func (c *CompiledAggregateFunction) NewWindowFunction(ctx *sql.Context) (sql.Win
 	if err != nil {
 		return nil, err
 	}
-	return newWindowFunc(args, c.window)
+	// See the comment in NewBuffer: GMS-typed arguments must convert their values.
+	return newWindowFunc(castGMSArguments(ctx, args), c.window)
 }
 
 // cloneArguments returns a deep copy of args. Each partition/group gets its own AggregationBuffer or

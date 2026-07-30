@@ -67,5 +67,5 @@ func getQuickFunctionForTypes(ctx *sql.Context, functionName string, params []*p
 	if err != nil || !ok {
 		return nil
 	}
-	return cf.GetQuickFunction()
+	return cf.GetQuickFunction(ctx)
 }

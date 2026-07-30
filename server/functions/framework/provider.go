@@ -74,9 +74,9 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 			return nil, false
 		}
 
-		paramTypes := make([]*pgtypes.DoltgresType, len(overload.ParameterTypes))
-		for i, paramType := range overload.ParameterTypes {
-			paramTypes[i], err = typesCollection.GetType(ctx, paramType)
+		paramTypes := make([]*pgtypes.DoltgresType, len(overload.AllParams))
+		for i, param := range overload.AllParams {
+			paramTypes[i], err = typesCollection.GetType(ctx, param.Type)
 			if err != nil || paramTypes[i] == nil {
 				return nil, false
 			}
@@ -98,9 +98,8 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 			if err = overloadTree.Add(SQLFunction{
 				ID:                 overload.ID,
 				ReturnType:         returnType,
-				ParameterNames:     overload.ParameterNames,
-				ParameterTypes:     paramTypes,
-				ParameterDefaults:  overload.ParameterDefaults,
+				AllParams:          overload.AllParams,
+				AllTypes:           paramTypes,
 				Variadic:           overload.Variadic,
 				IsNonDeterministic: overload.IsNonDeterministic,
 				Strict:             overload.Strict,
@@ -113,8 +112,8 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 			if err = overloadTree.Add(InterpretedFunction{
 				ID:                 overload.ID,
 				ReturnType:         returnType,
-				ParameterNames:     overload.ParameterNames,
-				ParameterTypes:     paramTypes,
+				AllParams:          overload.AllParams,
+				AllTypes:           paramTypes,
 				Variadic:           overload.Variadic,
 				IsNonDeterministic: overload.IsNonDeterministic,
 				Strict:             overload.Strict,
