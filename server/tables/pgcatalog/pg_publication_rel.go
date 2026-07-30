@@ -43,7 +43,8 @@ func (p PgPublicationRelHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPublicationRelHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_publication_rel row iter
+	// pg_publication_rel is currently empty, since CREATE PUBLICATION (logical replication publishing) is not supported.
+	// TODO: fill this in when publications are supported
 	return emptyRowIter()
 }
 

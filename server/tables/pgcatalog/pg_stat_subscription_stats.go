@@ -43,7 +43,8 @@ func (p PgStatSubscriptionStatsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatSubscriptionStatsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_subscription_stats row iter
+	// pg_stat_subscription_stats is currently empty, since CREATE SUBSCRIPTION is not supported.
+	// TODO: fill this in when subscriptions are supported
 	return emptyRowIter()
 }
 

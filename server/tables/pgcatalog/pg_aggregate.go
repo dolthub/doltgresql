@@ -43,7 +43,8 @@ func (p PgAggregateHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAggregateHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_aggregate row iter
+	// pg_aggregate is currently empty, since built-in aggregate functions do not yet have pg_proc entries.
+	// TODO: fill this in alongside built-in function entries in pg_proc
 	return emptyRowIter()
 }
 

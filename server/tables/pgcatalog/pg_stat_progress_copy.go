@@ -43,7 +43,9 @@ func (p PgStatProgressCopyHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatProgressCopyHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_progress_copy row iter
+	// pg_stat_progress_copy is currently empty, since command progress reporting is not tracked.
+	// This view is also empty in vanilla Postgres when no COPY is running.
+	// TODO: fill this in when command progress reporting is supported
 	return emptyRowIter()
 }
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +44,10 @@ func (p PgRolesHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgRolesHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_roles row iter
-	return emptyRowIter()
+	return &pgRolesRowIter{
+		roles: allRoles(),
+		idx:   0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -74,13 +77,38 @@ var pgRolesSchema = sql.Schema{
 
 // pgRolesRowIter is the sql.RowIter for the pg_roles table.
 type pgRolesRowIter struct {
+	roles []auth.Role
+	idx   int
 }
 
 var _ sql.RowIter = (*pgRolesRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgRolesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.roles) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	role := iter.roles[iter.idx-1]
+	var rolValidUntil any
+	if role.ValidUntil != nil {
+		rolValidUntil = *role.ValidUntil
+	}
+	return sql.Row{
+		role.Name,                      // rolname
+		role.IsSuperUser,               // rolsuper
+		role.InheritPrivileges,         // rolinherit
+		role.CanCreateRoles,            // rolcreaterole
+		role.CanCreateDB,               // rolcreatedb
+		role.CanLogin,                  // rolcanlogin
+		role.IsReplicationRole,         // rolreplication
+		role.ConnectionLimit,           // rolconnlimit
+		"********",                     // rolpassword (always masked, matching Postgres)
+		rolValidUntil,                  // rolvaliduntil
+		role.CanBypassRowLevelSecurity, // rolbypassrls
+		nil,                            // rolconfig (per-role settings are not supported)
+		roleOid(role.Name),             // oid
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -41,10 +42,51 @@ func (p PgGroupHandler) Name() string {
 	return PgGroupName
 }
 
+// pgGroup represents a row in the pg_group table.
+type pgGroup struct {
+	name    string
+	members []any
+}
+
 // RowIter implements the interface tables.Handler.
 func (p PgGroupHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_group row iter
-	return emptyRowIter()
+	var roles []auth.Role
+	var memberships []auth.RoleMembershipValue
+	auth.LockRead(func() {
+		roles = auth.AllRoles()
+		memberships = auth.AllRoleMemberships()
+	})
+	namesByID := make(map[auth.RoleID]string)
+	for _, role := range roles {
+		namesByID[role.ID()] = role.Name
+	}
+	membersByGroup := make(map[auth.RoleID][]any)
+	for _, membership := range memberships {
+		memberName, ok := namesByID[membership.Member]
+		if !ok {
+			continue
+		}
+		membersByGroup[membership.Group] = append(membersByGroup[membership.Group], roleOid(memberName))
+	}
+	// Roles that cannot log in are considered groups
+	var groups []pgGroup
+	for _, role := range roles {
+		if role.CanLogin {
+			continue
+		}
+		members := membersByGroup[role.ID()]
+		if members == nil {
+			members = []any{}
+		}
+		groups = append(groups, pgGroup{
+			name:    role.Name,
+			members: members,
+		})
+	}
+	return &pgGroupRowIter{
+		groups: groups,
+		idx:    0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -64,13 +106,24 @@ var pgGroupSchema = sql.Schema{
 
 // pgGroupRowIter is the sql.RowIter for the pg_group table.
 type pgGroupRowIter struct {
+	groups []pgGroup
+	idx    int
 }
 
 var _ sql.RowIter = (*pgGroupRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgGroupRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.groups) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	group := iter.groups[iter.idx-1]
+	return sql.Row{
+		group.name,          // groname
+		roleOid(group.name), // grosysid
+		group.members,       // grolist
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

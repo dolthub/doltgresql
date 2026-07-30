@@ -43,7 +43,8 @@ func (p PgConversionHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgConversionHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_conversion row iter
+	// pg_conversion is currently empty, since built-in encoding conversions are not yet cataloged.
+	// TODO: fill this in with the built-in encoding conversions
 	return emptyRowIter()
 }
 

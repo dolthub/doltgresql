@@ -43,7 +43,10 @@ func (p PgCursorsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgCursorsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_cursors row iter
+	// pg_cursors is currently empty, since Doltgres does not expose introspection of open cursors.
+	// Cursors are only used internally by the PL/pgSQL interpreter (server/plpgsql) during function
+	// execution, and there is no session-level registry of open cursors to report here.
+	// TODO: fill this in when session-level cursors (DECLARE ... CURSOR) are supported
 	return emptyRowIter()
 }
 

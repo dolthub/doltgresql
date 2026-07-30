@@ -43,7 +43,9 @@ func (p PgStatProgressAnalyzeHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatProgressAnalyzeHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_progress_analyze row iter
+	// pg_stat_progress_analyze is currently empty, since command progress reporting is not tracked.
+	// This view is also empty in vanilla Postgres when no ANALYZE is running.
+	// TODO: fill this in when command progress reporting is supported
 	return emptyRowIter()
 }
 

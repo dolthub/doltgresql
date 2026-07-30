@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -26,6 +27,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/cockroachdb/errors"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -7902,6 +7905,31 @@ func IgnoreMessageParameters(message pgproto3.BackendMessage) pgproto3.BackendMe
 	default:
 		return message
 	}
+}
+
+// TestInvalidStartupTimezoneReturnsError verifies that a StartupMessage carrying a timezone value
+// that fails GUC validation (e.g. an unparseable IANA zone name) is rejected with an explicit
+// ErrorResponse.
+func TestInvalidStartupTimezoneReturnsError(t *testing.T) {
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
+	ctx, conn, controller := CreateServerWithPort(t, "postgres", port)
+	conn.Close(ctx)
+	defer func() {
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+
+	cfg, err := pgx.ParseConfig(fmt.Sprintf("postgres://postgres:password@%s:%d/postgres", serverHost, port))
+	require.NoError(t, err)
+	cfg.RuntimeParams["timezone"] = "Not/A/Timezone"
+
+	_, err = pgx.ConnectConfig(context.Background(), cfg)
+	require.Error(t, err, "expected the invalid timezone startup parameter to be rejected")
+
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr, "expected an explicit PostgreSQL error, not a bare connection failure like an unexpected EOF")
+	assert.Equal(t, "22023", pgErr.Code)
 }
 
 // WireScriptTest is used to test wire messages, ensuring that our wire protocol behaves as expected.

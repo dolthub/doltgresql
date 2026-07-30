@@ -43,7 +43,9 @@ func (p PgDescriptionHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgDescriptionHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_description row iter
+	// pg_description is currently empty, since COMMENT ON is parsed but is a no-op (see
+	// server/ast/comment.go), so there is no comment storage to read from.
+	// TODO: fill this in when COMMENT ON is supported
 	return emptyRowIter()
 }
 

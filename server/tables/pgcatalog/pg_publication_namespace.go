@@ -43,7 +43,8 @@ func (p PgPublicationNamespaceHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPublicationNamespaceHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_publication_namespace row iter
+	// pg_publication_namespace is currently empty, since CREATE PUBLICATION (logical replication publishing) is not supported.
+	// TODO: fill this in when publications are supported
 	return emptyRowIter()
 }
 

@@ -43,7 +43,9 @@ func (p PgParameterAclHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgParameterAclHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_parameter_acl row iter
+	// pg_parameter_acl is currently empty, since GRANT ... ON PARAMETER is not supported.
+	// This table is also empty in vanilla Postgres by default.
+	// TODO: fill this in when parameter privileges are supported
 	return emptyRowIter()
 }
 
