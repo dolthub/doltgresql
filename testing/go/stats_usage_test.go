@@ -98,6 +98,13 @@ var StatsAggregateTests = []ScriptTest{
 				Query:    "SELECT sum(row_count + null_count) FROM dolt_statistics WHERE table_name = 't';",
 				Expected: []sql.Row{{Numeric("100")}},
 			},
+			{
+				// A scalar function over a GMS-typed column takes a different code path than an
+				// aggregate (CompiledFunction.Eval), which must also convert the GMS values rather
+				// than silently discarding them.
+				Query:    "SELECT abs(row_count) FROM dolt_statistics WHERE table_name = 't';",
+				Expected: []sql.Row{{100}},
+			},
 		},
 	},
 }

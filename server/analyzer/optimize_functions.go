@@ -59,7 +59,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 					}
 				}
 				hasSRF = hasSRF || compiledFunction.IsSRF()
-				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
+				if quickFunction := compiledFunction.GetQuickFunction(ctx); quickFunction != nil {
 					return quickFunction, transform.NewTree, nil
 				}
 
@@ -92,7 +92,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		exprs, sameExprs, err := transform.Exprs(ctx, projectNode.Projections, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 				hasSRFInProjection = hasSRFInProjection || compiledFunction.IsSRF()
-				if quickFunction := compiledFunction.GetQuickFunction(); quickFunction != nil {
+				if quickFunction := compiledFunction.GetQuickFunction(ctx); quickFunction != nil {
 					return quickFunction, transform.NewTree, nil
 				}
 				// TODO: need better way to detect sequence usage

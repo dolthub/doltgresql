@@ -16,6 +16,7 @@ package analyzer
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
@@ -46,17 +47,13 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		// These should eventually be replaced with Doltgres-equivalents over time, rendering this function unnecessary.
 		switch expr := expr.(type) {
 		case *expression.GetField:
-			switch n.(type) {
-			case *plan.Project, *plan.Filter, *plan.GroupBy, *plan.Window:
-				// Columns of tables implemented in GMS (the dolt_* system tables in particular) have GMS
-				// types and produce GMS values. User tables always have Doltgres column types, so a
-				// GMS-typed field reference can only come from such a table, no matter what plan shape
-				// (filters, joins, etc.) sits between this node and the table. We convert the value here
-				// so that downstream Doltgres consumers, such as the native aggregate buffers, always see
-				// Doltgres values. A field reference with no type yet (e.g. a reference to an alias that
-				// a later analyzer step resolves) is left alone.
-				if t := expr.Type(ctx); t != nil {
-					if _, ok := t.(*pgtypes.DoltgresType); !ok {
+			switch n := n.(type) {
+			case *plan.Project, *plan.Filter, *plan.GroupBy:
+				child := n.Children()[0]
+				// Some dolt_ tables do not have doltgres types for their columns, so we convert them here
+				if rt, ok := child.(*plan.ResolvedTable); ok && strings.HasPrefix(rt.Name(), "dolt_") {
+					// This is a projection on a table, so we can safely convert the type
+					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
 						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 					}
 				}
