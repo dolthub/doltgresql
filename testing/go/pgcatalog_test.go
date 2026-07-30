@@ -1117,12 +1117,12 @@ func TestPgConstraintIndexes(t *testing.T) {
 				{
 					// We don't care about the result, we just want to make sure it doens't error
 					Query: "SELECT true as sametable, conname," +
-						"pg_catalog.pg_get_constraintdef(r.oid, true) as condef," +
-						"conrelid::pg_catalog.regclass AS ontable " +
-						"FROM pg_catalog.pg_constraint r " +
-						"WHERE r.conrelid = '145181' AND r.contype = 'f' " +
-						"     AND conparentid = 0 " +
-						"ORDER BY conname",
+							"pg_catalog.pg_get_constraintdef(r.oid, true) as condef," +
+							"conrelid::pg_catalog.regclass AS ontable " +
+							"FROM pg_catalog.pg_constraint r " +
+							"WHERE r.conrelid = '145181' AND r.contype = 'f' " +
+							"     AND conparentid = 0 " +
+							"ORDER BY conname",
 				},
 			},
 		},
@@ -1691,18 +1691,18 @@ func TestPgIndex(t *testing.T) {
 				},
 				{ // Different cases but non-quoted, so it works
 					Query: "SELECT i.indexrelid from pg_class c " +
-						"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
-						"JOIN pg_namespace n ON c.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
-						"ORDER BY 1;",
+							"JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid " +
+							"JOIN pg_namespace n ON c.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
+							"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {2070175302}, {3185790121}},
 				},
 				{
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i " +
-						"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
-						"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
-						"JOIN pg_namespace n ON t.relnamespace = n.oid " +
-						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
+							"JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid " +
+							"JOIN pg_catalog.pg_class t ON i.indrelid = t.oid " +
+							"JOIN pg_namespace n ON t.relnamespace = n.oid " +
+							"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'",
 					Expected: []sql.Row{
 						{1067629180, 3120782595, "testing_pkey", "testing"},
 						{2070175302, 3120782595, "testing_v1_key", "testing"},
@@ -5735,6 +5735,8 @@ ORDER BY 1,2;`,
 				{
 					// TODO: The `c.relname = 't2'` filter expression is matched in the IndexedTableAccess and should be
 					//  removed from the filter node https://github.com/dolthub/dolt/issues/11231
+					// TODO: this table ordering and plan are suspect, and might be a result of table statistics being applied
+					//  even when they don't exist (which they don't for these two virtual tables)
 					Query: `EXPLAIN SELECT c.relname, a.attname
 FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_attribute a
