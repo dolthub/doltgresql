@@ -225,6 +225,15 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 			return false, err
 		}
 		if err = h.chooseInitialParameters(sm); err != nil {
+			// A startup parameter (e.g. datestyle, timezone) failed validation. Without an explicit
+			// ErrorResponse here, the client only sees the connection drop as an unexpected EOF instead
+			// of the reason its StartupMessage was rejected.
+			_ = h.send(&pgproto3.ErrorResponse{
+				Severity: string(ErrorResponseSeverity_Fatal),
+				Code:     "22023", // invalid_parameter_value
+				Message:  err.Error(),
+				Routine:  "InitPostgres",
+			})
 			return false, err
 		}
 		return true, h.send(&pgproto3.ReadyForQuery{
@@ -296,11 +305,26 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 // chooseInitialParameters attempts to choose the initial parameter settings for the connection,
 // if one is specified in the startup message provided.
 func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.StartupMessage) error {
+	postgresParser := psql.PostgresParser{}
 	for name, value := range startupMessage.Parameters {
 		// TODO: handle other parameters defined in StartupMessage
 		switch strings.ToLower(name) {
 		case "datestyle":
 			err := h.doltgresHandler.InitSessionParameterDefault(context.Background(), h.mysqlConn, "DateStyle", value)
+			if err != nil {
+				return err
+			}
+		case "timezone":
+			// timezone is set via a real SET statement rather than InitSessionParameterDefault because we want
+			// this value set for the current session, but NOT set as the default for all sessions.
+			setStmt := fmt.Sprintf("SET timezone TO '%s';", strings.ReplaceAll(value, "'", "''"))
+			parsed, err := postgresParser.ParseSimple(setStmt)
+			if err != nil {
+				return err
+			}
+			err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, setStmt, parsed, func(_ *sql.Context, _ *Result) error {
+				return nil
+			})
 			if err != nil {
 				return err
 			}
@@ -315,7 +339,6 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 		db = h.mysqlConn.User
 	}
 	useStmt := fmt.Sprintf("SET database TO '%s';", db)
-	postgresParser := psql.PostgresParser{}
 	parsed, err := postgresParser.ParseSimple(useStmt)
 	if err != nil {
 		return err

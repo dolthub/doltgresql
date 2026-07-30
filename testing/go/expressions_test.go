@@ -564,3 +564,50 @@ func TestCoalesce(t *testing.T) {
 		},
 	})
 }
+
+func TestCase(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			// https://github.com/dolthub/doltgresql/issues/2980
+			Name: "CASE with mixed numeric column and integer literal branches",
+			SetUpScript: []string{
+				`CREATE TABLE t (status text, price numeric(10,2));`,
+				`INSERT INTO t VALUES ('confirmed', 100.00), ('confirmed', 20.50), ('pending', 7.00);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_typeof(CASE WHEN status='confirmed' THEN price ELSE 0 END)::text FROM t LIMIT 1;`,
+					Expected: []sql.Row{{"numeric"}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN price ELSE 0 END) FROM t;`,
+					Expected: []sql.Row{{Numeric("120.50")}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN price ELSE 0::numeric END) FROM t;`,
+					Expected: []sql.Row{{Numeric("120.50")}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN price ELSE CAST(0 AS NUMERIC(10,2)) END) FROM t;`,
+					Expected: []sql.Row{{Numeric("120.50")}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN price END) FROM t;`,
+					Expected: []sql.Row{{Numeric("120.50")}},
+				},
+				{
+					Query:    `SELECT MAX(CASE WHEN status='confirmed' THEN price ELSE 0 END) FROM t;`,
+					Expected: []sql.Row{{Numeric("100.00")}},
+				},
+				{
+					Query:    `SELECT MIN(CASE WHEN status='confirmed' THEN price ELSE 0 END) FROM t;`,
+					Expected: []sql.Row{{Numeric("0.00")}},
+				},
+				{
+					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END) FROM t;`,
+					Expected: []sql.Row{{int64(2)}},
+				},
+			},
+		},
+	})
+}
