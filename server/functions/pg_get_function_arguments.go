@@ -44,42 +44,11 @@ var pg_get_function_arguments_oid = framework.Function1{
 		result := ""
 		err := RunCallback(ctx, oidVal, Callbacks{
 			Function: func(ctx *sql.Context, schema ItemSchema, function ItemFunction) (cont bool, err error) {
-				args := make([]string, len(function.Item.ParameterTypes))
-				for i, paramType := range function.Item.ParameterTypes {
-					arg := functionArgumentTypeName(paramType)
-					if name := function.Item.ParameterNames[i]; name != "" {
-						arg = name + " " + arg
-					}
-					// TODO: functions do not store per-parameter modes, so VARIADIC is not printed
-					if def := function.Item.ParameterDefaults[i]; def != "" {
-						arg += " DEFAULT " + def
-					}
-					args[i] = arg
-				}
-				result = strings.Join(args, ", ")
+				result = functionArgumentList(function.Item.AllParams)
 				return false, nil
 			},
 			Procedure: func(ctx *sql.Context, schema ItemSchema, procedure ItemProcedure) (cont bool, err error) {
-				args := make([]string, len(procedure.Item.ParameterTypes))
-				for i, paramType := range procedure.Item.ParameterTypes {
-					arg := functionArgumentTypeName(paramType)
-					if name := procedure.Item.ParameterNames[i]; name != "" {
-						arg = name + " " + arg
-					}
-					switch procedure.Item.ParameterModes[i] {
-					case procedures.ParameterMode_OUT:
-						arg = "OUT " + arg
-					case procedures.ParameterMode_INOUT:
-						arg = "INOUT " + arg
-					case procedures.ParameterMode_VARIADIC:
-						arg = "VARIADIC " + arg
-					}
-					if def := procedure.Item.ParameterDefaults[i]; def != "" {
-						arg += " DEFAULT " + def
-					}
-					args[i] = arg
-				}
-				result = strings.Join(args, ", ")
+				result = functionArgumentList(procedure.Item.AllParams)
 				return false, nil
 			},
 		})
@@ -88,6 +57,30 @@ var pg_get_function_arguments_oid = framework.Function1{
 		}
 		return result, nil
 	},
+}
+
+// functionArgumentList renders the given parameters as they would appear in a CREATE FUNCTION argument list.
+func functionArgumentList(params []procedures.Parameter) string {
+	args := make([]string, len(params))
+	for i, param := range params {
+		arg := functionArgumentTypeName(param.Type)
+		if param.Name != "" {
+			arg = param.Name + " " + arg
+		}
+		switch param.Mode {
+		case procedures.ParameterMode_OUT:
+			arg = "OUT " + arg
+		case procedures.ParameterMode_INOUT:
+			arg = "INOUT " + arg
+		case procedures.ParameterMode_VARIADIC:
+			arg = "VARIADIC " + arg
+		}
+		if param.Default != "" {
+			arg += " DEFAULT " + param.Default
+		}
+		args[i] = arg
+	}
+	return strings.Join(args, ", ")
 }
 
 // functionArgumentTypeName returns the name of the given parameter type as it would appear in a function's argument
