@@ -117,7 +117,7 @@ PostJoinRewrite:
 	// that we have to situationally support, as inner nodes do not have the proper context to output a TableFuncExpr,
 	// since TableFuncExprs pertain only to SELECT statements.
 	for i, fromExpr := range from {
-		from[i] = maybeRewriteTableFuncExpr(fromExpr)
+		from[i] = rewriteTableFuncExprs(fromExpr)
 	}
 	distinct := node.Distinct
 	var distinctOn vitess.Exprs
@@ -162,20 +162,19 @@ PostJoinRewrite:
 	}, nil
 }
 
-// maybeRewriteTableFuncExpr rewrites a table expression that represents a function call into a
-// vitess.TableFuncExpr, recursing into join and paren operands so that function table factors used as join
-// operands are also rewritten. Table expressions that don't represent a function call are returned unchanged.
-func maybeRewriteTableFuncExpr(fromExpr vitess.TableExpr) vitess.TableExpr {
+// rewriteTableFuncExprs rewrites a table expression that represents a function call into a
+// vitess.TableFuncExpr. Table expressions that don't represent a function call are returned unchanged.
+func rewriteTableFuncExprs(fromExpr vitess.TableExpr) vitess.TableExpr {
 	// Nodes are very liberal in wrapping themselves within other nodes, which gives them a technically correct
 	// tree, however GMS makes assumptions about the makeup of the trees that it receives. We'll eventually
 	// generalize this on the GMS side, but for now we need to transform our tree in case we need to use a TableFuncExpr.
 	switch expr := fromExpr.(type) {
 	case *vitess.JoinTableExpr:
-		expr.LeftExpr = maybeRewriteTableFuncExpr(expr.LeftExpr)
-		expr.RightExpr = maybeRewriteTableFuncExpr(expr.RightExpr)
+		expr.LeftExpr = rewriteTableFuncExprs(expr.LeftExpr)
+		expr.RightExpr = rewriteTableFuncExprs(expr.RightExpr)
 	case *vitess.ParenTableExpr:
 		for i := range expr.Exprs {
-			expr.Exprs[i] = maybeRewriteTableFuncExpr(expr.Exprs[i])
+			expr.Exprs[i] = rewriteTableFuncExprs(expr.Exprs[i])
 		}
 	case *vitess.AliasedTableExpr:
 		subquery, ok := expr.Expr.(*vitess.Subquery)
