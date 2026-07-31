@@ -58,7 +58,6 @@ func NewTableToComposite(ctx *sql.Context, tableName string, fields []sql.Expres
 			collation := "" // TODO: what should we use for the collation?
 			colType, ok := col.Type.(*pgtypes.DoltgresType)
 			if !ok {
-				// TODO: we don't support expressions like COUNT(*) in doltgres for now that it uses GMS type.
 				colType, err = pgtypes.FromGmsTypeToDoltgresType(col.Type)
 				if err != nil {
 					return nil, err
