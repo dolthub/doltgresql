@@ -97,6 +97,7 @@ type Function1 struct {
 	Strict             bool
 	SRF                bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error)
+	OutParams          sql.Schema // name and type, potentially default?
 }
 
 // Function1N is a function that takes at least one parameter. This is different from a SQL variadic function, as the
@@ -125,6 +126,7 @@ type Function2 struct {
 	Strict             bool
 	SRF                bool
 	Callable           func(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error)
+	OutParams          sql.Schema // name and type, potentially default?
 }
 
 // Function2N is a function that takes at least two parameters. This is different from a SQL variadic function, as the
@@ -268,7 +270,7 @@ func (f Function1) GetName() string { return f.Name }
 
 // GetOutParameters implements the FunctionInterface interface.
 func (f Function1) GetOutParameters() sql.Schema {
-	return nil
+	return f.OutParams
 }
 
 // GetReturn implements the FunctionInterface interface.
@@ -356,7 +358,7 @@ func (f Function2) GetName() string { return f.Name }
 
 // GetOutParameters implements the FunctionInterface interface.
 func (f Function2) GetOutParameters() sql.Schema {
-	return nil
+	return f.OutParams
 }
 
 // GetReturn implements the FunctionInterface interface.
