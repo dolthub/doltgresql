@@ -607,10 +607,14 @@ func (t *DoltgresType) DomainUnderlyingBaseType() *DoltgresType {
 
 // Equals implements the types.ExtendedType interface.
 func (t *DoltgresType) Equals(otherType sql.Type) bool {
-	if otherExtendedType, ok := otherType.(*DoltgresType); ok {
-		return bytes.Equal(t.Serialize(), otherExtendedType.Serialize())
+	otherExtendedType, ok := otherType.(*DoltgresType)
+	if !ok {
+		return false
 	}
-	return false
+	if t == otherExtendedType {
+		return true
+	}
+	return bytes.Equal(t.Serialize(), otherExtendedType.Serialize())
 }
 
 // FormatValue implements the types.ExtendedType interface. Callers with
