@@ -4471,6 +4471,28 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 			{
+				Name: "set-returning function as join operand",
+				SetUpScript: []string{
+					"CREATE TABLE test1 (id INT PRIMARY KEY);",
+					"INSERT INTO test1 VALUES (1), (2), (4);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:            `SELECT id, r FROM test1 LEFT JOIN generate_series(1,3) s(r) ON id = r ORDER BY id;`,
+						Expected:         []sql.Row{{1, 1}, {2, 2}, {4, nil}},
+						ExpectedColNames: []string{"id", "r"},
+					},
+					{
+						Query:    `SELECT id, r FROM test1 JOIN generate_series(1,3) AS s(r) ON id = s.r ORDER BY id;`,
+						Expected: []sql.Row{{1, 1}, {2, 2}},
+					},
+					{
+						Query:    `SELECT id, r FROM generate_series(1,3) s(r) LEFT JOIN test1 ON id = r ORDER BY r;`,
+						Expected: []sql.Row{{1, 1}, {2, 2}, {nil, 3}},
+					},
+				},
+			},
+			{
 				// Regression test for query used by DBeaver
 				Name: "generate_series as table function used in pgJDBC-style enum catalog query",
 				SetUpScript: []string{
