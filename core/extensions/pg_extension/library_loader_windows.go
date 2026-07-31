@@ -19,7 +19,7 @@ package pg_extension
 import (
 	"bytes"
 	"crypto/sha256"
-	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -33,17 +33,17 @@ import (
 // PLATFORM specifies which platform applies to the current library loader. This will always be a three-letter string.
 const PLATFORM = "WIN"
 
-//go:embed output/postgres.exe
-var libDefBytes []byte
-
-//go:embed output/pg_extension.dll
-var dllBytes []byte
+var ErrExtensionSupportUnavailable = errors.New("extension support is unavailable: this binary was built without " +
+	"the Windows extension support artifacts embedded, and pg_extension.dll was not found alongside the executable. " +
+	"Rebuild with the `pg_extension_embed` build tag, after running " +
+	"core/extensions/pg_extension/library/build_library.sh on Windows to produce them")
 
 // winLib is the Windows-specific implementation of InternalLoadedLibrary.
 type winLib struct{ dll syscall.Handle }
 
 var _ InternalLoadedLibrary = (*winLib)(nil)
 var addPGBinDir = &sync.Once{}
+var addPGBinDirErr error
 
 // loadLibraryInternal handles the loading of an extension's DLL.
 func loadLibraryInternal(path string) (InternalLoadedLibrary, error) {
@@ -68,30 +68,37 @@ func loadLibraryInternal(path string) (InternalLoadedLibrary, error) {
 				panic(fmt.Errorf("cannot find where the executable was launched:\n%s", err.Error()))
 			}
 			dllDir = filepath.Dir(currentBinaryLocation)
-			shouldWriteFiles := false
-			if _, err := os.Stat(filepath.Join(dllDir, "postgres.exe")); err != nil {
-				shouldWriteFiles = true
+			if len(libDefBytes) == 0 || len(dllBytes) == 0 {
+				if _, err := os.Stat(filepath.Join(dllDir, "pg_extension.dll")); err != nil {
+					addPGBinDirErr = ErrExtensionSupportUnavailable
+					return
+				}
 			} else {
-				func() {
-					// If the DLL hash doesn't match our hash, then we overwrite it
-					extDll, err := os.Open(filepath.Join(filepath.Dir(currentBinaryLocation), "pg_extension.dll"))
-					if err != nil {
-						shouldWriteFiles = true
-						return
-					}
-					defer func() {
-						_ = extDll.Close()
+				shouldWriteFiles := false
+				if _, err := os.Stat(filepath.Join(dllDir, "postgres.exe")); err != nil {
+					shouldWriteFiles = true
+				} else {
+					func() {
+						// If the DLL hash doesn't match our hash, then we overwrite it
+						extDll, err := os.Open(filepath.Join(filepath.Dir(currentBinaryLocation), "pg_extension.dll"))
+						if err != nil {
+							shouldWriteFiles = true
+							return
+						}
+						defer func() {
+							_ = extDll.Close()
+						}()
+						dllSha := sha256.Sum256(dllBytes)
+						extDllSha := sha256.New()
+						_, _ = io.Copy(extDllSha, extDll)
+						shouldWriteFiles = !bytes.Equal(extDllSha.Sum(nil), dllSha[:])
 					}()
-					dllSha := sha256.Sum256(dllBytes)
-					extDllSha := sha256.New()
-					_, _ = io.Copy(extDllSha, extDll)
-					shouldWriteFiles = !bytes.Equal(extDllSha.Sum(nil), dllSha[:])
-				}()
-			}
-			if shouldWriteFiles {
-				writeLocation := filepath.Dir(currentBinaryLocation)
-				_ = os.WriteFile(filepath.Join(writeLocation, "postgres.exe"), libDefBytes, 0755)
-				_ = os.WriteFile(filepath.Join(writeLocation, "pg_extension.dll"), dllBytes, 0755)
+				}
+				if shouldWriteFiles {
+					writeLocation := filepath.Dir(currentBinaryLocation)
+					_ = os.WriteFile(filepath.Join(writeLocation, "postgres.exe"), libDefBytes, 0755)
+					_ = os.WriteFile(filepath.Join(writeLocation, "pg_extension.dll"), dllBytes, 0755)
+				}
 			}
 		}
 		dirPtr, err := syscall.UTF16PtrFromString(dllDir)
@@ -101,6 +108,9 @@ func loadLibraryInternal(path string) (InternalLoadedLibrary, error) {
 		_, _, _ = syscall.MustLoadDLL("kernel32.dll").MustFindProc("SetDllDirectoryW").Call(uintptr(unsafe.Pointer(dirPtr)))
 		_, _ = syscall.LoadLibrary(filepath.Join(dllDir, "pg_extension.dll"))
 	})
+	if addPGBinDirErr != nil {
+		return nil, addPGBinDirErr
+	}
 	d, err := syscall.LoadLibrary(path)
 	if err != nil {
 		return nil, err
