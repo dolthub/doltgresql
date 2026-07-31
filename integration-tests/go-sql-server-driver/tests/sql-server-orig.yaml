@@ -285,14 +285,11 @@ tests:
     - query: "select dolt_branch('feature-branch')"
       result:
         columns: ["dolt_branch"]
-        rows: [["{0}"]]
+        rows: [["0"]]
     - query: "select dolt_checkout('feature-branch')"
       result:
         columns: ["dolt_checkout"]
-        rows:
-          or:
-          - [["{0,\"Switched to branch 'feature-branch'\"}"]]
-          - [["{0,Switched to branch 'feature-branch'}"]]
+        rows: [["(0,\"Switched to branch 'feature-branch'\")"]]
     - exec: |
         CREATE TABLE test (
             pk int,
@@ -308,10 +305,7 @@ tests:
     - query: "select dolt_checkout('feature-branch')"
       result:
         columns: ["dolt_checkout"]
-        rows:
-          or:
-          - [["{0,\"Switched to branch 'feature-branch'\"}"]]
-          - [["{0,Switched to branch 'feature-branch'}"]]
+        rows: [["(0,\"Switched to branch 'feature-branch'\")"]]
     - query: "select table_name from information_schema.tables where table_schema = 'public' order by table_name"
       result:
         columns: ["table_name"]
@@ -397,7 +391,7 @@ tests:
     - query: "select dolt_gc() as dolt_gc"
       result:
         columns: ["dolt_gc"]
-        rows: [["{0}"]]
+        rows: [["0"]]
 - name: file remotes update appropriately
   skip: "remotesapi/file-remote replication across servers not yet supported in Doltgres"
   multi_repos:

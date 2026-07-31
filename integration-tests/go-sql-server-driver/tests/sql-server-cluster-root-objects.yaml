@@ -136,13 +136,13 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - query: "select dolt_assume_cluster_role('primary', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - exec: 'USE repo1'
@@ -368,13 +368,13 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - query: "select dolt_assume_cluster_role('primary', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - exec: 'USE repo1'
@@ -450,13 +450,13 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - query: "select dolt_assume_cluster_role('primary', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - exec: 'USE repo1'

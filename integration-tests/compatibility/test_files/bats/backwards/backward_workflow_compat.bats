@@ -75,10 +75,10 @@ SQL
   [ "$status" -eq 0 ]
   [[ "$output" =~ "2" ]] || false
 
-  # dolt_verify_constraints reports no violations. Returns {0} on success.
+  # dolt_verify_constraints reports no violations. Returns 0 on success.
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "{0}" ]] || false
+  [ "${lines[1]}" = "0" ] || false
 
   sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'head: create child + fk');"
 
@@ -117,7 +117,7 @@ SQL
   # And still no reported constraint violations.
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "{0}" ]] || false
+  [ "${lines[1]}" = "0" ] || false
 
   stop_doltgres
 }
@@ -153,7 +153,7 @@ SQL
   # No violations at this point.
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "{0}" ]] || false
+  [ "${lines[1]}" = "0" ] || false
 
   # Branch 'drop_banana': remove banana from parent (no child refs banana yet).
   sql <<SQL
@@ -224,7 +224,7 @@ SQL
 
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "{0}" ]] || false
+  [ "${lines[1]}" = "0" ] || false
 
   # Invalid insert — 'grape' is not present in parent, FK must reject.
   run sql -c "INSERT INTO child VALUES (12, 'grape');"
@@ -237,7 +237,7 @@ SQL
   # No reported violations.
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "{0}" ]] || false
+  [ "${lines[1]}" = "0" ] || false
 
   sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'head: create child + fk');"
 
@@ -266,7 +266,7 @@ SQL
   # Still no violations reported.
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "{0}" ]] || false
+  [ "${lines[1]}" = "0" ] || false
 
   stop_doltgres
 }
@@ -306,7 +306,7 @@ SQL
 
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "{0}" ]] || false
+  [ "${lines[1]}" = "0" ] || false
 
   sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'head: create child + fk (varchar → text)');"
   stop_doltgres
@@ -346,7 +346,7 @@ SQL
 
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "{0}" ]] || false
+  [ "${lines[1]}" = "0" ] || false
 
   sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'head: create child + fk (text → varchar)');"
   stop_doltgres
@@ -380,7 +380,7 @@ SQL
 
   run sql_csv -c "SELECT dolt_verify_constraints('--all');"
   [ "$status" -eq 0 ]
-  [[ "$output" =~ "{0}" ]] || false
+  [ "${lines[1]}" = "0" ] || false
 
   # Branch 'drop_banana': remove banana from parent (no child refs banana yet).
   sql <<SQL
