@@ -276,7 +276,7 @@ func TestSmokeTests(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT DOLT_CHECKOUT('main');",
-					Expected: []sql.Row{{"{0,\"Switched to branch 'main'\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query: "SELECT * FROM test;",
@@ -287,7 +287,7 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CHECKOUT('other');",
-					Expected: []sql.Row{{"{0,\"Switched to branch 'other'\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query: "SELECT * FROM test;",

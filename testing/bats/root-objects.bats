@@ -22,14 +22,14 @@ SQL
     query_server -c "SELECT dolt_add('test');"
     run query_server -c "SELECT length(dolt_commit('-m', 'initial')::text);"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "34" ]] || false
+    [[ "$output" =~ "32" ]] || false
 
     query_server -c "SELECT dolt_branch('other');"
     query_server -c "SELECT setval('test', 20);"
     query_server -c "SELECT dolt_add('.');"
     run query_server -c "SELECT length(dolt_commit('-m', 'next')::text);"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "34" ]] || false
+    [[ "$output" =~ "32" ]] || false
 
     run query_server -c "SELECT nextval('test');"
     [ "$status" -eq 0 ]
@@ -57,7 +57,7 @@ SQL
     query_server -c "SELECT dolt_add('test');"
     run query_server -c "SELECT length(dolt_commit('-m', 'initial')::text);"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "34" ]] || false
+    [[ "$output" =~ "32" ]] || false
 
     stop_sql_server
     start_sql_server
@@ -66,7 +66,7 @@ SQL
     query_server -c "SELECT dolt_add('.');"
     run query_server -c "SELECT length(dolt_commit('-m', 'next')::text);"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "34" ]] || false
+    [[ "$output" =~ "32" ]] || false
 
     stop_sql_server
     start_sql_server

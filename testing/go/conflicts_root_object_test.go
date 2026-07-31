@@ -34,15 +34,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '3' || input; END; $$ LANGUAGE plpgsql;",
@@ -56,15 +56,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT2 AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
@@ -84,16 +84,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -136,15 +136,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '3' || input; END; $$ LANGUAGE plpgsql;",
@@ -158,15 +158,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
@@ -186,16 +186,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -242,15 +242,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '3' || input; END; $$ LANGUAGE plpgsql;",
@@ -264,15 +264,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
@@ -292,16 +292,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -348,15 +348,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '3' || input; END; $$ LANGUAGE plpgsql;",
@@ -370,15 +370,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
@@ -398,16 +398,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -454,15 +454,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
@@ -476,15 +476,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
@@ -504,16 +504,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -564,15 +564,15 @@ func TestConflictsRootObject(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '3' || input; END; $$ LANGUAGE plpgsql;",
@@ -580,15 +580,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "DROP FUNCTION interpreted_example(input TEXT);",
@@ -596,16 +596,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -640,15 +640,15 @@ func TestConflictsRootObject(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '3' || input; END; $$ LANGUAGE plpgsql;",
@@ -656,15 +656,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "DROP FUNCTION interpreted_example(input TEXT);",
@@ -672,16 +672,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -718,15 +718,15 @@ func TestConflictsRootObject(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '3' || input; END; $$ LANGUAGE plpgsql;",
@@ -734,15 +734,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "DROP FUNCTION interpreted_example(input TEXT);",
@@ -750,16 +750,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -796,15 +796,15 @@ func TestConflictsRootObject(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "DROP FUNCTION interpreted_example(input TEXT);",
@@ -812,15 +812,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
@@ -828,16 +828,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -874,15 +874,15 @@ func TestConflictsRootObject(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "DROP FUNCTION interpreted_example(input TEXT);",
@@ -890,15 +890,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
@@ -906,16 +906,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -950,15 +950,15 @@ func TestConflictsRootObject(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "DROP FUNCTION interpreted_example(input TEXT);",
@@ -966,15 +966,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS TEXT AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
@@ -982,16 +982,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -1028,15 +1028,15 @@ func TestConflictsRootObject(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
@@ -1044,15 +1044,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
@@ -1060,16 +1060,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{
@@ -1113,15 +1113,15 @@ func TestConflictsRootObject(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
@@ -1129,15 +1129,15 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
@@ -1145,16 +1145,16 @@ func TestConflictsRootObject(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
 					Expected: []sql.Row{
-						{`{"",0,1,"conflicts found"}`},
+						{[]any{"", int64(0), int64(1), "conflicts found"}},
 					},
 				},
 				{

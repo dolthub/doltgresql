@@ -149,9 +149,12 @@ func cachePgProcs(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				retTyp:     f.Item.ReturnType.AsId(),
 				argTypes:   argTypes,
 				allArgTyps: nil,
-				argModes:   nil,
-				argNames:   argNames,
-				src:        f.Item.SQLDefinition,
+				// TODO: functions with OUT parameters (FunctionInterface.GetOutParameters, e.g. the dolt_ stored
+				//  procedure functions and pg_show_all_settings) should populate proallargtypes, proargmodes, and
+				//  proargnames from their OUT parameter schemas.
+				argModes: nil,
+				argNames: argNames,
+				src:      f.Item.SQLDefinition,
 			})
 			return true, nil
 		},

@@ -284,6 +284,10 @@ func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedur
 // drainRowIter reads the single result row of a Dolt stored procedure and converts it to the value the equivalent
 // Postgres function would return: the bare value for a single-column schema, or a record value for a multi-column
 // schema (matching a function with multiple OUT parameters).
+// TODO: procedures that return multiple rows (e.g. dolt_cluster_transition_to_standby, which returns one row per
+//
+//	database) only surface their first row here. They should be modeled as SETOF functions returning a
+//	SetReturningFunctionRowIter so that all rows are returned.
 func drainRowIter(ctx *sql.Context, rowIter sql.RowIter, outSchema sql.Schema) (any, error) {
 	defer rowIter.Close(ctx)
 

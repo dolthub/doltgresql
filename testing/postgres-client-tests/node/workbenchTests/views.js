@@ -12,7 +12,7 @@ export const viewsTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_checkout: ["0", "Switched to branch 'more-updates'"] }],
+      rows: [{ dolt_checkout: `(0,"Switched to branch 'more-updates'")` }],
       fields: doltCheckoutFields,
     },
   },

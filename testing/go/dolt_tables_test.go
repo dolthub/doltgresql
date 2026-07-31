@@ -1516,7 +1516,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    "SELECT dolt_add('-A');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query: "SELECT * FROM dolt_status;",
@@ -1602,7 +1602,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    "SELECT dolt_add('-A');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query: "SELECT * FROM dolt_status ORDER BY table_name;",
@@ -2169,7 +2169,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `select dolt_rebase('-i', 'main');`,
-					Expected: []sql.Row{{"{0,\"interactive rebase started on branch dolt_rebase_branch1; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "interactive rebase started on branch dolt_rebase_branch1; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')"}}},
 				},
 				{
 					Query: "select rebase_order, action, commit_message from dolt_rebase order by rebase_order;",
@@ -2306,7 +2306,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    "select dolt_rebase('--continue');",
-					Expected: []sql.Row{{"{0,\"Successfully rebased and updated refs/heads/branch1\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "Successfully rebased and updated refs/heads/branch1"}}},
 				},
 				{
 					Query: "select message from dolt_log;",
@@ -2838,7 +2838,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 				},
 				{
 					Query:    `SELECT dolt_add('test_sch')`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:    `SELECT id, staged, from_id, to_id FROM newschema.dolt_workspace_test_sch`,

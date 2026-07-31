@@ -1026,15 +1026,15 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query: `CREATE OR REPLACE FUNCTION interpreted_as_of(input TEXT) RETURNS TEXT AS $$
@@ -1046,10 +1046,10 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1058,7 +1058,7 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    "SELECT dolt_checkout('main')",
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "SELECT interpreted_as_of('abcd');",
@@ -1091,15 +1091,15 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query: `CREATE FUNCTION interpreted_merging(input INT4) RETURNS INT4 AS $$
@@ -1111,10 +1111,10 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1123,7 +1123,7 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    "SELECT dolt_checkout('main')",
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "INSERT INTO test VALUES (80);",
@@ -1131,10 +1131,10 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
