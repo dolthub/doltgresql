@@ -303,22 +303,74 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter, outSchema sql.Schema) (
 
 	values := make([]pgtypes.RecordValue, len(row))
 	for i := range row {
+		pgType := pgtypes.FromGmsType(outSchema[i].Type)
 		val := row[i]
 		if val != nil {
 			val, _, err = outSchema[i].Type.Convert(ctx, val)
 			if err != nil {
 				return nil, err
 			}
+			val, err = coerceToPostgresValue(val, pgType)
+			if err != nil {
+				return nil, err
+			}
 		}
 		values[i] = pgtypes.RecordValue{
 			Value: val,
-			Type:  pgtypes.FromGmsType(outSchema[i].Type),
+			Type:  pgType,
 		}
 	}
 	if len(values) == 1 {
 		return values[0].Value, nil
 	}
 	return values, nil
+}
+
+// coerceToPostgresValue converts a value normalized by a GMS type into the Go representation that the given Doltgres
+// type expects. The GMS integer types are narrower than their Doltgres equivalents (e.g. a GMS TINYINT normalizes to
+// an int8, while its Doltgres equivalent INT4 expects an int32), so integer values must be widened to match.
+func coerceToPostgresValue(val any, pgType *pgtypes.DoltgresType) (any, error) {
+	switch pgType.ID {
+	case pgtypes.Int16.ID, pgtypes.Int32.ID, pgtypes.Int64.ID:
+		var intVal int64
+		switch v := val.(type) {
+		case int8:
+			intVal = int64(v)
+		case int16:
+			intVal = int64(v)
+		case int32:
+			intVal = int64(v)
+		case int64:
+			intVal = v
+		case uint8:
+			intVal = int64(v)
+		case uint16:
+			intVal = int64(v)
+		case uint32:
+			intVal = int64(v)
+		default:
+			return nil, errors.Errorf("dolt_procedures: unsupported value %T for type %s", val, pgType.String())
+		}
+		switch pgType.ID {
+		case pgtypes.Int16.ID:
+			return int16(intVal), nil
+		case pgtypes.Int32.ID:
+			return int32(intVal), nil
+		default:
+			return intVal, nil
+		}
+	case pgtypes.Bool.ID:
+		switch v := val.(type) {
+		case bool:
+			return v, nil
+		case int8:
+			return v != 0, nil
+		default:
+			return nil, errors.Errorf("dolt_procedures: unsupported value %T for type %s", val, pgType.String())
+		}
+	default:
+		return val, nil
+	}
 }
 
 var (
