@@ -16,6 +16,7 @@ package functions
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -47,6 +48,7 @@ func nextval(ctx *sql.Context, ait *sequences.SequenceTracker, relationName stri
 	// TODO: Include Schema Name
 	// As a partial workaround, ensure that the sequence exists
 	sequenceId := id.NewSequence(schema, sequenceString)
+	sequenceName := doltdb.TableName{Name: sequenceString, Schema: schema}
 	sequence, err := collection.GetSequence(ctx, sequenceId)
 	if err != nil {
 		return 0, err
@@ -55,7 +57,7 @@ func nextval(ctx *sql.Context, ait *sequences.SequenceTracker, relationName stri
 		return 0, errors.Errorf(`relation "%s" does not exist`, sequenceString)
 	}
 
-	next, err := ait.Next(ctx, sequenceString, nil)
+	next, err := ait.Next(ctx, sequenceName, nil)
 	if err != nil {
 		return 0, err
 	}

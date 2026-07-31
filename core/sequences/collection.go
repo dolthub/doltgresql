@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"io"
+	"iter"
 	"math"
 	"sort"
 	"strings"
@@ -610,11 +611,15 @@ func (s SequenceSource) GetRelation(ctx context.Context, root doltdb.RootValue, 
 	return nil, "", found, nil
 }
 
-func (s SequenceSource) GetRelations(ctx context.Context, root doltdb.RootValue, cb func(doltdb.TableName, *Sequence) (bool, error)) error {
-	return root.IterRootObjects(ctx, func(name doltdb.TableName, obj doltdb.RootObject) (stop bool, err error) {
-		if seq, ok := obj.(*Sequence); ok {
-			return cb(name, seq)
-		}
-		return false, nil
-	})
+func (s SequenceSource) IterRelations(ctx context.Context, root doltdb.RootValue) iter.Seq2[doltdb.TableName, *Sequence] {
+	return func(yield func(doltdb.TableName, *Sequence) bool) {
+		_ = root.IterRootObjects(ctx, func(name doltdb.TableName, obj doltdb.RootObject) (stop bool, err error) {
+			if seq, ok := obj.(*Sequence); ok {
+				if !yield(name, seq) {
+					return true, nil
+				}
+			}
+			return false, nil
+		})
+	}
 }

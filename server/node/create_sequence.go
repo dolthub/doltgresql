@@ -200,8 +200,9 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if err != nil {
 		return nil, err
 	}
-	seq := c.sequence.SequenceState
-	err = ait.AddNewTable(c.sequence.Id.SequenceName(), seq)
+	seqState := c.sequence.SequenceState
+	seqName := doltdb.TableName{Name: c.sequence.Id.SequenceName(), Schema: c.sequence.Id.SchemaName()}
+	err = ait.AddNewRelation(seqName, seqState)
 	if err != nil {
 		return nil, err
 	}
@@ -220,8 +221,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		}
 		// TODO: Do we need to convert to a TableName and then call String? Are we reliant on the specific way it's formatted?
 		//  This is how it's done in the analyzer for SERIAL types, so assuming it's for a good reason.
-		seqName := doltdb.TableName{Name: c.sequence.Id.SequenceName(), Schema: c.sequence.Id.SchemaName()}.String()
-		nextVal, foundFunc, err := framework.GetFunction(ctx, "nextval", pgexprs.NewTextLiteral(seqName))
+		nextVal, foundFunc, err := framework.GetFunction(ctx, "nextval", pgexprs.NewTextLiteral(seqName.String()))
 		if err != nil {
 			return nil, err
 		}

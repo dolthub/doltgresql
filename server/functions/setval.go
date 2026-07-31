@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/doltgresql/core/sequences"
@@ -69,6 +70,7 @@ var setval_text_int64_boolean = framework.Function3{
 			return nil, err
 		}
 		seqId := id.NewSequence(schema, relation)
+		sequenceName := doltdb.TableName{Name: relation, Schema: schema}
 		sequence, err := collection.GetSequence(ctx, seqId)
 		if err != nil {
 			return nil, err
@@ -97,7 +99,7 @@ var setval_text_int64_boolean = framework.Function3{
 			}
 		}
 
-		newSequeneable, err := ait.Set(ctx, relation, sequence, ws.Ref(), nextState)
+		newSequeneable, err := ait.Set(ctx, sequenceName, sequence, ws.Ref(), nextState)
 		_ = newSequeneable
 		if err != nil {
 			return nil, err
