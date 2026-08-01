@@ -927,10 +927,14 @@ tests:
     - exec: "use repo1"
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
-    # Dolt asserts the procedure's per-database caught_up rows here. Doltgres exposes Dolt procedures as
-    # functions returning a single text-array value (first row only), which can't express that result, so
-    # assert the outcome instead: the transition succeeds and the server ends up a standby.
-    - exec: "select dolt_cluster_transition_to_standby('2', '1')"
+    - query: 'select * from dolt_cluster_transition_to_standby(2, 1) order by "database"'
+      result:
+        columns: ["caught_up", "database", "remote", "remote_url"]
+        rows:
+        - ["1", "dolt_branch_control", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "mysql", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "postgres", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}/postgres"]
+        - ["1", "repo1", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}/repo1"]
   - on: server1
     queries:
     - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
@@ -1799,7 +1803,13 @@ tests:
         rows:
         - ["dolt_cluster"]
         - ["postgres"]
-    - exec: "select dolt_cluster_transition_to_standby('2', '1')"
+    - query: 'select * from dolt_cluster_transition_to_standby(2, 1) order by "database"'
+      result:
+        columns: ["caught_up", "database", "remote", "remote_url"]
+        rows:
+        - ["1", "dolt_branch_control", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "mysql", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "postgres", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}/postgres"]
   - on: server2
     queries:
     - exec: "select dolt_assume_cluster_role('primary', '2')"
