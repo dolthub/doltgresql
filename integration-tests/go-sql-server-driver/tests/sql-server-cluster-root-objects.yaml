@@ -122,6 +122,12 @@ tests:
       result:
         columns: ["seqstart","seqincrement","seqmax"]
         rows: [["10","3","1000"]]
+    # The consumed state (two nextval calls on the primary) must have
+    # replicated too, not just the sequence definition.
+    - query: "SELECT sequencename, last_value FROM pg_catalog.pg_sequences WHERE sequencename = 'seq1'"
+      result:
+        columns: ["sequencename","last_value"]
+        rows: [["seq1","13"]]
   # Fail over to server2 and verify the sequence continues from the replicated
   # state rather than restarting.
   - on: server1
@@ -225,6 +231,10 @@ tests:
         columns: ["p"]
         rows: [["42"]]
     # The domain's check constraint must also have replicated.
+    - query: "SELECT con.conname, con.contype::text AS contype, t.typname FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_type t ON t.oid = con.contypid WHERE con.conname = 'posint_check'"
+      result:
+        columns: ["conname","contype","typname"]
+        rows: [["posint_check","c","posint"]]
     - query: 'SELECT (-5)::posint AS p'
       error_match: 'posint_check'
 - name: functions replicate to standby
@@ -276,12 +286,12 @@ tests:
   - on: server2
     queries:
     - exec: 'USE repo1'
-    - query: "SELECT proname FROM pg_catalog.pg_proc WHERE proname IN ('add_ints', 'triple') ORDER BY proname"
+    - query: "SELECT proname, prokind::text AS prokind FROM pg_catalog.pg_proc WHERE proname IN ('add_ints', 'triple') ORDER BY proname"
       result:
-        columns: ["proname"]
+        columns: ["proname","prokind"]
         rows:
-        - ["add_ints"]
-        - ["triple"]
+        - ["add_ints","f"]
+        - ["triple","f"]
     - query: 'SELECT add_ints(3, 4) AS result'
       result:
         columns: ["result"]
@@ -345,8 +355,13 @@ tests:
       result:
         columns: ["v1"]
         rows: [["15"]]
-  # pg_trigger is not yet populated, so the only way to observe the trigger on
-  # the standby is to make it the primary and watch the trigger fire on insert.
+    # tgtype 7 = ROW | BEFORE | INSERT
+    - query: "SELECT t.tgname, c.relname, p.proname, t.tgtype, t.tgenabled::text AS tgenabled FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid JOIN pg_catalog.pg_proc p ON p.oid = t.tgfoid WHERE t.tgname = 'trig_trigger'"
+      result:
+        columns: ["tgname","relname","proname","tgtype","tgenabled"]
+        rows: [["trig_trigger","t_trigger","f_trigger","7","O"]]
+  # Fail over to server2 and verify the replicated trigger actually fires on
+  # the new primary.
   - on: server1
     queries:
     - exec: 'USE repo1'
@@ -420,10 +435,10 @@ tests:
   - on: server2
     queries:
     - exec: 'USE repo1'
-    - query: "SELECT proname FROM pg_catalog.pg_proc WHERE proname = 'insert_value'"
+    - query: "SELECT proname, prokind::text AS prokind FROM pg_catalog.pg_proc WHERE proname = 'insert_value'"
       result:
-        columns: ["proname"]
-        rows: [["insert_value"]]
+        columns: ["proname","prokind"]
+        rows: [["insert_value","p"]]
     - query: 'SELECT v FROM proc_data ORDER BY v'
       result:
         columns: ["v"]
