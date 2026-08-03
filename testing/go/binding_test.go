@@ -430,3 +430,34 @@ func TestBindingMultipleInferredAndExplicitOIDsInterleaved(t *testing.T) {
 	assert.Equal(t, float64(4.5), d)
 	assert.Nil(t, e)
 }
+
+// TestBindingJSONBExtractPathTextWithUntypedParam tests that an untyped parameter
+// compared against the result of `jsonb #>> text[]` is correctly inferred as JSONB (not TEXT).
+// https://github.com/dolthub/doltgresql/issues/3012.
+func TestBindingJSONBExtractPathTextWithUntypedParam(t *testing.T) {
+	ctx, connection, controller := CreateServer(t, "postgres")
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	conn := connection.Default
+
+	_, err := connection.Exec(ctx, "CREATE TABLE t8 (id TEXT PRIMARY KEY, props JSONB);")
+	require.NoError(t, err)
+	_, err = connection.Exec(ctx, `INSERT INTO t8 VALUES ('a', '{"name":"Alice"}');`)
+	require.NoError(t, err)
+
+	// $1 is untyped (OID 0) and must be inferred as text, since `#>>` returns text even
+	// though its left operand (props) is jsonb.
+	args := [][]byte{[]byte("Alice")}
+	paramOIDs := []uint32{0}
+	paramFormats := []int16{0}
+	sql := "SELECT count(*) FROM t8 WHERE props #>> array['name']::text[] = $1"
+
+	resultReader := conn.PgConn().ExecParams(ctx, sql, args, paramOIDs, paramFormats, nil)
+	result := resultReader.Read()
+	require.NoError(t, result.Err)
+	require.Len(t, result.Rows, 1)
+	assert.Equal(t, "1", string(result.Rows[0][0]))
+}
