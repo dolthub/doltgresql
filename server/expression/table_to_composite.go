@@ -34,12 +34,12 @@ type TableToComposite struct {
 var _ sql.Expression = (*TableToComposite)(nil)
 
 // NewTableToComposite creates a new composite table type.
-func NewTableToComposite(ctx *sql.Context, tableName string, fields []sql.Expression) (sql.Expression, error) {
+func NewTableToComposite(ctx *sql.Context, tableName string, fields []sql.Expression, tblSch []*sql.Column) (sql.Expression, error) {
 	coll, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	// TODO: we need to get the schema, but the GMS builder doesn't have that information
+	// TODO: tblSch is now provided by the GMS builder, but is not yet used to validate/construct the composite type
 	typ, err := coll.GetType(ctx, id.NewType("", tableName))
 	if err != nil {
 		return nil, err

@@ -27,12 +27,14 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// AnyExpr represents the ANY/SOME expression.
+// AnyExpr represents the ANY/SOME/ALL expression. ANY and SOME are synonyms (true if at least one comparison is
+// true); ALL additionally requires every comparison to be true, which the eval methods handle via an isAll flag
+// derived from name rather than as a separate type, since the two share all other resolution/traversal logic.
 type AnyExpr struct {
 	leftExpr    sql.Expression
 	rightExpr   sql.Expression
 	subOperator string
-	name        string // ANY or SOME
+	name        string // ANY, SOME, or ALL
 
 	subqueryAnyExpr   *subqueryAnyExpr
 	expressionAnyExpr *expressionAnyExpr
@@ -106,8 +108,10 @@ func (a *subqueryAnyExpr) resolved() bool {
 	return true
 }
 
-// eval evaluates the comparison functions for subqueryAnyExpr.
-func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row, left interface{}) (interface{}, error) {
+// eval evaluates the comparison functions for subqueryAnyExpr. isAll distinguishes ALL's all-must-match semantics
+// (vacuously true against zero rows; NULL if nothing failed but something was unknown) from ANY/SOME's
+// any-may-match semantics (short-circuits true on the first match).
+func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row, left interface{}, isAll bool) (interface{}, error) {
 	if len(a.compFuncs) == 0 {
 		return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", a)
 	}
@@ -120,7 +124,8 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 	}
 
 	if len(rightValues) == 0 {
-		return nil, nil
+		// ALL vacuously holds over an empty set; ANY/SOME cannot match anything.
+		return isAll, nil
 	}
 
 	// TODO: This is a workaround some subqueries where the schema length does not
@@ -149,6 +154,28 @@ func (a *subqueryAnyExpr) eval(ctx *sql.Context, subOperator string, row sql.Row
 	for i, rightValue := range rightValues {
 		a.arrayLiterals[i].Val = rightValue
 	}
+
+	if isAll {
+		foundNull := false
+		for _, compFunc := range a.compFuncs {
+			result, err := compFunc.Eval(ctx, row)
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				foundNull = true
+				continue
+			}
+			if !result.(bool) {
+				return false, nil
+			}
+		}
+		if foundNull {
+			return nil, nil
+		}
+		return true, nil
+	}
+
 	// Now we can loop over all comparison functions, as they'll reference their respective values
 	for _, compFunc := range a.compFuncs {
 		result, err := compFunc.Eval(ctx, row)
@@ -171,8 +198,8 @@ func (a *expressionAnyExpr) resolved() bool {
 	return true
 }
 
-// eval evaluates the comparison function for expressionAnyExpr.
-func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}) (interface{}, error) {
+// eval evaluates the comparison function for expressionAnyExpr. See subqueryAnyExpr.eval for the meaning of isAll.
+func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}, isAll bool) (interface{}, error) {
 	if a.compFunc == nil {
 		return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", a)
 	}
@@ -191,12 +218,36 @@ func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}
 		return nil, errors.Errorf("%T: expected right child to return `%T` but returned `%T`", a, []any{}, rightInterface)
 	}
 	if len(rightValues) == 0 {
-		return nil, nil
+		// ALL vacuously holds over an empty array; ANY/SOME cannot match anything.
+		return isAll, nil
 	}
 
 	// Next we'll assign our evaluated values to the expressions that the comparison function reference
 	// Note that the compiled function has a reference to the staticLiteral and arrayLiteral, so we must alter them in place
 	a.staticLiteral.Val = left
+
+	if isAll {
+		foundNull := false
+		for _, rightValue := range rightValues {
+			a.arrayLiteral.Val = rightValue
+			result, err := a.compFunc.Eval(ctx, row)
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				foundNull = true
+				continue
+			}
+			if !result.(bool) {
+				return false, nil
+			}
+		}
+		if foundNull {
+			return nil, nil
+		}
+		return true, nil
+	}
+
 	for _, rightValue := range rightValues {
 		a.arrayLiteral.Val = rightValue
 		result, err := a.compFunc.Eval(ctx, row)
@@ -221,12 +272,13 @@ func (a *AnyExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		return nil, err
 	}
 
+	isAll := a.name == "ALL"
 	if a.subqueryAnyExpr != nil {
-		return a.subqueryAnyExpr.eval(ctx, a.subOperator, row, left)
+		return a.subqueryAnyExpr.eval(ctx, a.subOperator, row, left, isAll)
 	}
 
 	if a.expressionAnyExpr != nil {
-		return a.expressionAnyExpr.eval(ctx, row, left)
+		return a.expressionAnyExpr.eval(ctx, row, left, isAll)
 	}
 
 	return nil, errors.Errorf("%T: cannot Eval as it has not been fully resolved", a)

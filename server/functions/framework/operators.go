@@ -248,7 +248,7 @@ func GetOperatorFromString(op string) (Operator, error) {
 		return Operator_BinaryGreaterOrEqual, nil
 	case "=":
 		return Operator_BinaryEqual, nil
-	case "<>":
+	case "<>", "!=":
 		return Operator_BinaryNotEqual, nil
 	case "&":
 		return Operator_BinaryBitAnd, nil
