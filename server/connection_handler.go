@@ -1359,6 +1359,6 @@ func castSQLError(err error) *pgconn.PgError {
 	return &pgconn.PgError{
 		Severity: string(ErrorResponseSeverity_Error),
 		Code:     code.String(),
-		Message:  fmt.Sprintf("%s", err.Error()),
+		Message:  err.Error(),
 	}
 }
