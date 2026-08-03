@@ -1769,8 +1769,11 @@ func int32FromSqlVal(v *sqlparser.SQLVal) int32 {
 
 var doltProcedureCall = regexp.MustCompile(`(?i)CALL DOLT_(\w+)`)
 
+// convertDoltProcedureCalls converts MySQL CALL statements for Dolt stored procedures into the equivalent Doltgres
+// function invocation. Invoking the function in the FROM clause explodes its result into one named, typed column per
+// OUT parameter, which matches the result schema of CALL on the MySQL side.
 func convertDoltProcedureCalls(query string) string {
-	return doltProcedureCall.ReplaceAllString(query, "SELECT DOLT_$1")
+	return doltProcedureCall.ReplaceAllString(query, "SELECT * FROM DOLT_$1")
 }
 
 // little state machine for turning MySQL quote characters into their postgres equivalents:

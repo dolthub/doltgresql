@@ -28,7 +28,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/types"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -46,48 +45,105 @@ func initDoltProcedures() {
 			panic(err)
 		}
 
+		outParams, returnType := doltProcedureOutParams(procDef)
 		funcVal := reflect.ValueOf(procDef.Function)
-		varArgCallable := varArgCallableForDoltProcedure(p, funcVal)
-		noArgCallable := noArgCallableForDoltProcedure(p, funcVal)
+		varArgCallable := varArgCallableForDoltProcedure(p, funcVal, procDef.Schema)
+		noArgCallable := noArgCallableForDoltProcedure(p, funcVal, procDef.Schema)
 		framework.RegisterFunction(framework.Function1{
 			Name:       procDef.Name,
-			Return:     pgtypes.TextArray,
+			Return:     returnType,
 			Parameters: [1]*pgtypes.DoltgresType{pgtypes.TextArray},
 			Variadic:   true,
 			Callable:   varArgCallable,
+			OutParams:  outParams,
 		})
 		framework.RegisterFunction(framework.Function0{
-			Name:     procDef.Name,
-			Return:   pgtypes.TextArray,
-			Callable: noArgCallable,
+			Name:      procDef.Name,
+			Return:    returnType,
+			Callable:  noArgCallable,
+			OutParams: outParams,
 		})
 	}
 	initDynamicDoltProcedures()
 }
 
+// doltProcedureOutParams converts the GMS output schema of a Dolt stored procedure into the OUT parameter schema and
+// return type of the equivalent Postgres function. A procedure with a single result column behaves like a function
+// with a single OUT parameter (its return type is the column's type), while procedures with multiple result columns
+// behave like functions with multiple OUT parameters (their return type is RECORD).
+func doltProcedureOutParams(procDef sql.ExternalStoredProcedureDetails) (sql.Schema, *pgtypes.DoltgresType) {
+	outParams := make(sql.Schema, len(procDef.Schema))
+	for i, col := range procDef.Schema {
+		outParams[i] = &sql.Column{
+			Name:     col.Name,
+			Type:     pgtypes.FromGmsType(col.Type),
+			Nullable: col.Nullable,
+			Source:   procDef.Name,
+		}
+	}
+	returnType := pgtypes.Record
+	if len(outParams) == 1 {
+		returnType = outParams[0].Type.(*pgtypes.DoltgresType)
+	}
+	return outParams, returnType
+}
+
 // dynamicDoltProcedures are Dolt stored procedures that are registered with the database provider dynamically
 // during engine construction (e.g. by the cluster replication controller), rather than appearing in the static
-// dprocedures.DoltProcedures list.
+// dprocedures.DoltProcedures list. The schemas here must mirror the ones the dynamic registrations declare.
+// Procedures marked srf return multiple rows and are registered as set-returning functions.
 var dynamicDoltProcedures = []struct {
 	name   string
 	params [2]*pgtypes.DoltgresType
+	schema sql.Schema
+	srf    bool
 }{
-	{"dolt_assume_cluster_role", [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64}},
-	{"dolt_cluster_transition_to_standby", [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64}},
+	{
+		name:   "dolt_assume_cluster_role",
+		params: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Int64},
+		schema: sql.Schema{
+			{Name: "status", Type: types.Int64, Nullable: false},
+		},
+	},
+	{
+		name:   "dolt_cluster_transition_to_standby",
+		params: [2]*pgtypes.DoltgresType{pgtypes.Int64, pgtypes.Int64},
+		schema: sql.Schema{
+			{Name: "caught_up", Type: types.Int8, Nullable: false},
+			{Name: "database", Type: types.LongText, Nullable: false},
+			{Name: "remote", Type: types.LongText, Nullable: false},
+			{Name: "remote_url", Type: types.LongText, Nullable: false},
+		},
+		srf: true, // returns one row per replicated database
+	},
 }
 
 func initDynamicDoltProcedures() {
 	for _, def := range dynamicDoltProcedures {
+		outParams, returnType := doltProcedureOutParams(sql.ExternalStoredProcedureDetails{
+			Name:   def.name,
+			Schema: def.schema,
+		})
+		schema := def.schema
+		name := def.name
+		callableFor := varArgCallableForDoltProcedure
+		if def.srf {
+			// SETOF functions are declared with a row return type wrapping the type of a single row
+			returnType = pgtypes.RowTypeWithReturnType(returnType)
+			callableFor = srfVarArgCallableForDoltProcedure
+		}
 		framework.RegisterFunction(framework.Function2{
 			Name:       def.name,
-			Return:     pgtypes.TextArray,
+			Return:     returnType,
 			Parameters: def.params,
+			OutParams:  outParams,
+			SRF:        def.srf,
 			Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-				p, funcVal, err := resolveDynamicDoltProcedure(ctx, def.name)
+				p, funcVal, err := resolveDynamicDoltProcedure(ctx, name)
 				if err != nil {
 					return nil, err
 				}
-				return varArgCallableForDoltProcedure(p, funcVal)(ctx, [2]*pgtypes.DoltgresType{}, []any{val1, val2})
+				return callableFor(p, funcVal, schema)(ctx, [2]*pgtypes.DoltgresType{}, []any{val1, val2})
 			},
 		})
 	}
@@ -119,70 +175,102 @@ func resolveDynamicDoltProcedure(ctx *sql.Context, name string) (*plan.ExternalP
 
 // varArgCallableForDoltProcedure creates a callable function that takes in a variadic number of parameters. This is
 // equivalent to calling "DOLT_PROC_NAME('abc', ...)".
-func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+func varArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value, outSchema sql.Schema) func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		rowIter, err := invokeDoltProcedure(ctx, p, funcVal, val1)
+		if err != nil {
+			return nil, err
+		}
+		return drainRowIter(ctx, rowIter, outSchema)
+	}
+}
+
+// srfVarArgCallableForDoltProcedure is the set-returning equivalent of varArgCallableForDoltProcedure, used for the
+// Dolt stored procedures that return more than one row (e.g. dolt_cluster_transition_to_standby, which returns one
+// row per replicated database). It returns a row iterator over all result rows rather than the first row's value.
+func srfVarArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value, outSchema sql.Schema) func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		rowIter, err := invokeDoltProcedure(ctx, p, funcVal, val1)
+		if err != nil {
+			return nil, err
+		}
+		return pgtypes.NewSetReturningFunctionRowIter(func(ctx *sql.Context) (sql.Row, error) {
+			row, err := rowIter.Next(ctx)
+			if err != nil {
+				closeErr := rowIter.Close(ctx)
+				if err == io.EOF {
+					if closeErr != nil {
+						return nil, closeErr
+					}
+					return nil, io.EOF
+				}
+				return nil, err
+			}
+			return convertProcedureRow(ctx, row, outSchema)
+		}), nil
+	}
+}
+
+// invokeDoltProcedure invokes the given Dolt stored procedure with the given variadic argument values, returning its
+// result row iterator.
+func invokeDoltProcedure(ctx *sql.Context, p *plan.ExternalProcedure, funcVal reflect.Value, val1 any) (sql.RowIter, error) {
 	funcType := funcVal.Type()
 
-	return func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		err := checkDoltProcedureAccess(ctx, p)
+	err := checkDoltProcedureAccess(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+
+	values, ok := val1.([]any)
+	if !ok {
+		return nil, sql.ErrExternalProcedureInvalidParamType.New(reflect.TypeOf(val1).String())
+	}
+
+	funcParams := make([]reflect.Value, len(values)+1)
+	funcParams[0] = reflect.ValueOf(ctx)
+
+	if !funcType.IsVariadic() && len(values) != len(p.ParamDefinitions) {
+		return nil, errors.Errorf("function '%s' expects %d parameters, %d were provided",
+			p.Name, len(p.ParamDefinitions), len(values))
+	}
+
+	for i := range values {
+		var paramDefinition plan.ProcedureParam
+		var funcParamType reflect.Type
+		if funcType.IsVariadic() {
+			paramDefinition = p.ParamDefinitions[0]
+			funcParamType = funcType.In(funcType.NumIn() - 1).Elem()
+		} else {
+			paramDefinition = p.ParamDefinitions[i]
+			funcParamType = funcType.In(i + 1)
+		}
+
+		// Grab the passed-in variable and convert it to the type we expect
+		exprParamVal, _, err := paramDefinition.Type.Convert(ctx, values[i])
 		if err != nil {
 			return nil, err
 		}
 
-		values, ok := val1.([]any)
-		if !ok {
-			return nil, sql.ErrExternalProcedureInvalidParamType.New(reflect.TypeOf(val1).String())
-		}
-
-		funcParams := make([]reflect.Value, len(values)+1)
-		funcParams[0] = reflect.ValueOf(ctx)
-
-		if !funcType.IsVariadic() && len(values) != len(p.ParamDefinitions) {
-			return nil, errors.Errorf("function '%s' expects %d parameters, %d were provided",
-				p.Name, len(p.ParamDefinitions), len(values))
-		}
-
-		for i := range values {
-			var paramDefinition plan.ProcedureParam
-			var funcParamType reflect.Type
-			if funcType.IsVariadic() {
-				paramDefinition = p.ParamDefinitions[0]
-				funcParamType = funcType.In(funcType.NumIn() - 1).Elem()
-			} else {
-				paramDefinition = p.ParamDefinitions[i]
-				funcParamType = funcType.In(i + 1)
-			}
-
-			// Grab the passed-in variable and convert it to the type we expect
-			exprParamVal, _, err := paramDefinition.Type.Convert(ctx, values[i])
-			if err != nil {
-				return nil, err
-			}
-
-			funcParams[i+1], err = p.ProcessParam(ctx, funcParamType, exprParamVal)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		out := funcVal.Call(funcParams)
-		if err, ok := out[1].Interface().(error); ok { // Only evaluates to true when error is not nil
+		funcParams[i+1], err = p.ProcessParam(ctx, funcParamType, exprParamVal)
+		if err != nil {
 			return nil, err
 		}
-
-		var rowIter sql.RowIter
-		if iter, ok := out[0].Interface().(sql.RowIter); ok {
-			rowIter = iter
-		} else {
-			rowIter = sql.RowsToRowIter()
-		}
-
-		return drainRowIter(ctx, rowIter)
 	}
+
+	out := funcVal.Call(funcParams)
+	if err, ok := out[1].Interface().(error); ok { // Only evaluates to true when error is not nil
+		return nil, err
+	}
+
+	if iter, ok := out[0].Interface().(sql.RowIter); ok {
+		return iter, nil
+	}
+	return sql.RowsToRowIter(), nil
 }
 
 // noArgCallableForDoltProcedure creates a callable function that does not take any parameters. This is equivalent to
 // calling "DOLT_PROC_NAME()".
-func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value) func(ctx *sql.Context) (any, error) {
+func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Value, outSchema sql.Schema) func(ctx *sql.Context) (any, error) {
 	return func(ctx *sql.Context) (any, error) {
 		err := checkDoltProcedureAccess(ctx, p)
 		if err != nil {
@@ -201,7 +289,7 @@ func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Va
 		} else {
 			rowIter = sql.RowsToRowIter()
 		}
-		return drainRowIter(ctx, rowIter)
+		return drainRowIter(ctx, rowIter, outSchema)
 	}
 }
 
@@ -236,7 +324,11 @@ func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedur
 	return nil
 }
 
-func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
+// drainRowIter reads the single result row of a Dolt stored procedure and converts it to the value the equivalent
+// Postgres function would return: the bare value for a single-column schema, or a record value for a multi-column
+// schema (matching a function with multiple OUT parameters). Procedures that return multiple rows must be registered
+// as set-returning functions using srfVarArgCallableForDoltProcedure instead.
+func drainRowIter(ctx *sql.Context, rowIter sql.RowIter, outSchema sql.Schema) (any, error) {
 	defer rowIter.Close(ctx)
 
 	row, err := rowIter.Next(ctx)
@@ -245,50 +337,93 @@ func drainRowIter(ctx *sql.Context, rowIter sql.RowIter) (any, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
+	converted, err := convertProcedureRow(ctx, row, outSchema)
 	if err != nil {
 		return nil, err
 	}
-
-	// The conversion to []text needs []any, not sql.Row
-	rowSlice := make([]any, len(row))
-	for i := range row {
-		sourceType, sourceVal, err := typeForElement(row[i])
-		if err != nil {
-			return nil, err
-		}
-		cast, err := castsColl.GetExplicitCast(ctx, sourceType, pgtypes.Text)
-		if err != nil {
-			return nil, err
-		}
-		textVal, err := cast.Eval(ctx, sourceVal, sourceType, pgtypes.Text)
-		if err != nil {
-			return nil, err
-		}
-
-		rowSlice[i] = textVal
+	if len(converted) == 1 {
+		return converted[0], nil
 	}
-	return rowSlice, nil
+
+	values := make([]pgtypes.RecordValue, len(converted))
+	for i := range converted {
+		values[i] = pgtypes.RecordValue{
+			Value: converted[i],
+			Type:  pgtypes.FromGmsType(outSchema[i].Type),
+		}
+	}
+	return values, nil
 }
 
-// typeForElement returns the Doltgres type for the given value, along with the value converted to the Go type
-// that the returned Doltgres type expects.
-func typeForElement(v any) (*pgtypes.DoltgresType, any, error) {
-	switch x := v.(type) {
-	case int64:
-		return pgtypes.Int64, x, nil
-	case int:
-		return pgtypes.Int64, int64(x), nil
-	case int32:
-		return pgtypes.Int32, x, nil
-	case int16:
-		return pgtypes.Int16, x, nil
-	case int8:
-		return pgtypes.Int16, int16(x), nil
-	case string:
-		return pgtypes.Text, x, nil
+// convertProcedureRow converts a result row from a Dolt stored procedure into the Go values that the corresponding
+// Postgres OUT parameter types expect, per the procedure's declared GMS output schema.
+func convertProcedureRow(ctx *sql.Context, row sql.Row, outSchema sql.Schema) (sql.Row, error) {
+	if len(row) != len(outSchema) {
+		return nil, errors.Errorf("dolt_procedures: expected %d result columns, got %d", len(outSchema), len(row))
+	}
+	converted := make(sql.Row, len(row))
+	for i := range row {
+		val := row[i]
+		if val != nil {
+			var err error
+			val, _, err = outSchema[i].Type.Convert(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			val, err = coerceToPostgresValue(val, pgtypes.FromGmsType(outSchema[i].Type))
+			if err != nil {
+				return nil, err
+			}
+		}
+		converted[i] = val
+	}
+	return converted, nil
+}
+
+// coerceToPostgresValue converts a value normalized by a GMS type into the Go representation that the given Doltgres
+// type expects. The GMS integer types are narrower than their Doltgres equivalents (e.g. a GMS TINYINT normalizes to
+// an int8, while its Doltgres equivalent INT4 expects an int32), so integer values must be widened to match.
+func coerceToPostgresValue(val any, pgType *pgtypes.DoltgresType) (any, error) {
+	switch pgType.ID {
+	case pgtypes.Int16.ID, pgtypes.Int32.ID, pgtypes.Int64.ID:
+		var intVal int64
+		switch v := val.(type) {
+		case int8:
+			intVal = int64(v)
+		case int16:
+			intVal = int64(v)
+		case int32:
+			intVal = int64(v)
+		case int64:
+			intVal = v
+		case uint8:
+			intVal = int64(v)
+		case uint16:
+			intVal = int64(v)
+		case uint32:
+			intVal = int64(v)
+		default:
+			return nil, errors.Errorf("dolt_procedures: unsupported value %T for type %s", val, pgType.String())
+		}
+		switch pgType.ID {
+		case pgtypes.Int16.ID:
+			return int16(intVal), nil
+		case pgtypes.Int32.ID:
+			return int32(intVal), nil
+		default:
+			return intVal, nil
+		}
+	case pgtypes.Bool.ID:
+		switch v := val.(type) {
+		case bool:
+			return v, nil
+		case int8:
+			return v != 0, nil
+		default:
+			return nil, errors.Errorf("dolt_procedures: unsupported value %T for type %s", val, pgType.String())
+		}
 	default:
-		return nil, nil, errors.Errorf("dolt_procedures: unsupported type %T", x)
+		return val, nil
 	}
 }
 

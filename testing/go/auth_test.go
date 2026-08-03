@@ -768,7 +768,7 @@ func TestAuthTests(t *testing.T) {
 					Query:    "SELECT DOLT_CHECKOUT('main');",
 					Username: `user1`,
 					Password: `a`,
-					Expected: []sql.Row{{"{0,\"Already on branch 'main'\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "Already on branch 'main'"}}},
 				},
 			},
 		},
@@ -972,7 +972,7 @@ func TestAuthTests(t *testing.T) {
 					Username: "testuser",
 					Password: "a",
 					Query:    "SELECT DOLT_BRANCH('otherbranch1');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{ // Prefix "other" is now locked by postgres
 					Username: "postgres",
@@ -996,7 +996,7 @@ func TestAuthTests(t *testing.T) {
 					Username: "testuser",
 					Password: "a",
 					Query:    "SELECT DOLT_BRANCH('otherbranch2');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{ // Create a longer match, which takes precedence over shorter matches
 					Username: "postgres",
@@ -1014,7 +1014,7 @@ func TestAuthTests(t *testing.T) {
 					Username: "testuser",
 					Password: "a",
 					Query:    "SELECT DOLT_BRANCH('other3');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Username: "postgres",
@@ -1026,7 +1026,7 @@ func TestAuthTests(t *testing.T) {
 					Username: "testuser",
 					Password: "a",
 					Query:    "SELECT DOLT_BRANCH('otherbranch3');",
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 			},
 		},
@@ -1366,101 +1366,101 @@ func TestAuthDoltProcedures(t *testing.T) {
 				"select dolt_commit('-m', 'add test table');",
 			},
 			Assertions: []ScriptTestAssertion{
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('sync-url', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('sync-url', '%s');", authTestFireUrl("bak1")), []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak1', '%s');", authTestFireUrl("bak1")), []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_checkout('-b', 'test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('-b', 'test');", []sql.Row{{[]any{int64(0), "Switched to branch 'test'"}}}, ""),
 
-				authTestAssertAsSuper("select dolt_branch('new_branch');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_branch('new_branch');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsSuper("insert into test_table values (2);", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_add('.');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper("select length(dolt_commit('-m', 'amend test table')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select dolt_add('.');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-m', 'amend test table')::text) = 32;", []sql.Row{{"t"}}, ""),
 
-				authTestAssertAsSuper("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('main');", []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}}, ""),
 				authTestAssertAsSuper("select length(dolt_cherry_pick('test')::text);", []sql.Row{{40}}, ""),
 
-				authTestAssertAsSuper("select dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_clean('--dry-run');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsSuper("set authtest.hash = '';", []sql.Row{}, ""),
 				// TODO(elianddb): variadic parameter support for Dolt stored procedures functions
-				authTestSkipAsSuper("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('-b', 'conflict');", []sql.Row{{[]any{int64(0), "Switched to branch 'conflict'"}}}, ""),
 				authTestAssertAsSuper("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
-				authTestAssertAsSuper("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 34;", []sql.Row{{"t"}}, ""),
-				authTestAssertAsSuper("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 32;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('main');", []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}}, ""),
 				authTestAssertAsSuper("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
-				authTestAssertAsSuper("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 32;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsSuper("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_merge('conflict');", []sql.Row{{`{"",0,1,"conflicts found"}`}}, ""),
+				authTestAssertAsSuper("select dolt_merge('conflict');", []sql.Row{{[]any{"", int64(0), int64(1), "conflicts found"}}}, ""),
 
-				authTestAssertAsSuper("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{int64(0)}}, ""),
 
 				// TODO(elianddb): unsupported type uint64
-				authTestSkipAsSuper("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_backup('remove', 'bak1');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak2', '%s');", authTestFireUrl("bak2")), []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper("select dolt_backup('sync', 'bak2');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('restore', '%s', 'restored_db');", authTestFireUrl("bak2")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_backup('remove', 'bak1');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('add', 'bak2', '%s');", authTestFireUrl("bak2")), []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper("select dolt_backup('sync', 'bak2');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_backup('restore', '%s', 'restored_db');", authTestFireUrl("bak2")), []sql.Row{{int64(0)}}, ""),
 				authTestAssertAsSuper("drop database restored_db;", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_backup('remove', 'bak2');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_backup('remove', 'bak2');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper(fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", authTestFireUrl("bak1")), []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_fetch('origin', 'main');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_fetch('origin', 'main');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_undrop('cloned_bak1');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_undrop('cloned_bak1');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select length(dolt_commit('-am', 'resolve conflicts')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-am', 'resolve conflicts')::text) = 32;", []sql.Row{{"t"}}, ""),
 				// TODO(elianddb): table test_table does not exist (also tried with public.test_table)
-				authTestSkipAsSuper("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_purge_dropped_databases();", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_purge_dropped_databases();", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_checkout('test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_checkout('test');", []sql.Row{{[]any{int64(0), "Switched to branch 'test'"}}}, ""),
 				authTestAssertAsSuper(
 					"select dolt_rebase('-i', 'main');",
-					[]sql.Row{{"{0,\"interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')\"}"}},
+					[]sql.Row{{[]any{int64(0), "interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')"}}},
 					""),
-				authTestAssertAsSuper("select dolt_rebase('--abort');", []sql.Row{{"{0,\"Interactive rebase aborted\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_rebase('--abort');", []sql.Row{{[]any{int64(0), "Interactive rebase aborted"}}}, ""),
 
 				authTestAssertAsSuper("create table to_rm (v int);", []sql.Row{}, ""),
-				authTestAssertAsSuper("select dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper("select length(dolt_commit('-m', 'clean state to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
-				authTestAssertAsSuper("select dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_add('to_rm');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-m', 'clean state to_rm')::text) = 32;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select dolt_rm('to_rm');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_gc('--shallow');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_gc('--shallow');", []sql.Row{{int64(0)}}, ""),
 
 				// The paths for files, memory addresses, and number of goroutines can be different per OS.
 				authTestAssertAsSuper("select instr(dolt_thread_dump()::text, 'goroutine') > 0;", []sql.Row{{"t"}}, ""),
 
-				authTestAssertAsSuper("select length(dolt_commit('-m', 'rm to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsSuper("select length(dolt_commit('-m', 'rm to_rm')::text) = 32;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsSuper(
 					"select dolt_push('origin', 'test');",
-					[]sql.Row{{fmt.Sprintf("{0,\"To %s\n * [new branch]          test -> test\"}", authTestFireUrl("bak1"))}},
+					[]sql.Row{{[]any{int64(0), fmt.Sprintf("To %s\n * [new branch]          test -> test", authTestFireUrl("bak1"))}}},
 					""),
-				authTestAssertAsSuper("select dolt_pull('origin', 'test');", []sql.Row{{"{0,0,\"Everything up-to-date\"}"}}, ""),
+				authTestAssertAsSuper("select dolt_pull('origin', 'test');", []sql.Row{{[]any{int64(0), int64(0), "Everything up-to-date"}}}, ""),
 
-				authTestAssertAsSuper("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{int64(0)}}, ""),
 				// TODO(elianddb): unsupported type int
-				authTestSkipAsSuper("select dolt_stash('push', 'to_rm');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_stash('push', 'to_rm');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsSuper("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsSuper("select dolt_verify_constraints('--all');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsSuper("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsSuper("select dolt_verify_constraints('--all');", []sql.Row{{int64(0)}}, ""),
 
 				// TODO(elianddb): provider does not implement ExtendedStatsProvider
-				authTestSkipAsSuper("select dolt_stats_info('--short');", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_wait();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_flush();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_gc();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_purge();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_restart();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAsSuper("select dolt_stats_once();", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAsSuper("select dolt_stats_info('--short');", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_wait();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_flush();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_gc();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_purge();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_restart();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAsSuper("select dolt_stats_once();", []sql.Row{{int64(0)}}, ""),
 			},
 		},
 		{
@@ -1482,39 +1482,39 @@ func TestAuthDoltProcedures(t *testing.T) {
 				// Grant user access to test_table before checkout to avoid merge conflict in later cherry-pick.
 				authTestGrantBasic("schema public", "all"),
 				authTestGrantBasic("test_table", "select", "insert", "delete", "update"),
-				authTestAssertAsBasic("select dolt_checkout('-b', 'test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('-b', 'test');", []sql.Row{{[]any{int64(0), "Switched to branch 'test'"}}}, ""),
 
-				authTestAssertAsBasic("select dolt_branch('new_branch');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_branch('new_branch');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic("insert into test_table values (2);", []sql.Row{}, ""),
-				authTestAssertAsBasic("select dolt_add('.');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsBasic("select length(dolt_commit('-m', 'amend test table')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select dolt_add('.');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-m', 'amend test table')::text) = 32;", []sql.Row{{"t"}}, ""),
 
-				authTestAssertAsBasic("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('main');", []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}}, ""),
 				authTestAssertAsBasic("select length(dolt_cherry_pick('test')::text);", []sql.Row{{40}}, ""),
 
-				authTestAssertAsBasic("select dolt_clean('--dry-run');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_clean('--dry-run');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic(fmt.Sprintf("select dolt_clone('%s', 'cloned_bak1');", authTestFireUrl("bak1")), nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 				authTestAssertAsBasic("create database cloned_bak1;", []sql.Row{}, ""),
 
 				authTestAssertAsBasic("set authtest.hash = '';", []sql.Row{}, ""),
 				// TODO(elianddb): variadic parameter support for Dolt stored procedures
-				authTestSkipAssertAsBasic("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_commit_hash_out('authtest.hash', '-am', 'add val 3 to test table');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsBasic("select dolt_checkout('-b', 'conflict');", []sql.Row{{"{0,\"Switched to branch 'conflict'\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('-b', 'conflict');", []sql.Row{{[]any{int64(0), "Switched to branch 'conflict'"}}}, ""),
 				authTestAssertAsBasic("update test_table set v = -1 where v = 1;", []sql.Row{}, ""),
-				authTestAssertAsBasic("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 34;", []sql.Row{{"t"}}, ""),
-				authTestAssertAsBasic("select dolt_checkout('main');", []sql.Row{{"{0,\"Switched to branch 'main'\"}"}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-am', 'amend 1 to -1')::text) = 32;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('main');", []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}}, ""),
 				authTestAssertAsBasic("update test_table set v = -2 where v = 1;", []sql.Row{}, ""),
-				authTestAssertAsBasic("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-am', 'amend 2 to -2')::text) = 32;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsBasic("set dolt_allow_commit_conflicts to 1;", []sql.Row{}, ""),
-				authTestAssertAsBasic("select dolt_merge('conflict');", []sql.Row{{`{"",0,1,"conflicts found"}`}}, ""),
+				authTestAssertAsBasic("select dolt_merge('conflict');", []sql.Row{{[]any{"", int64(0), int64(1), "conflicts found"}}}, ""),
 
-				authTestAssertAsBasic("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_conflicts_resolve('--theirs', 'test_table');", []sql.Row{{int64(0)}}, ""),
 
 				// TODO(elianddb): unsupported type uint64
-				authTestSkipAssertAsBasic("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_count_commits('--from=main', '--to=test');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic("select dolt_backup('remove', 'bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 				authTestAssertAsBasic("select dolt_backup('sync', 'bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
@@ -1526,47 +1526,47 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestAssertAsBasic("drop database cloned_bak1", []sql.Row{}, ""),
 				authTestAssertAsBasic("select dolt_undrop('cloned_bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("select length(dolt_commit('-am', 'resolve conflicts')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-am', 'resolve conflicts')::text) = 32;", []sql.Row{{"t"}}, ""),
 				// TODO(elianddb): table test_table does not exist (also tried with public.test_table)
-				authTestSkipAssertAsBasic("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_update_column_tag('test_table', 'v', '123');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic("select dolt_purge_dropped_databases();", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("select dolt_checkout('test');", []sql.Row{{"{0,\"Switched to branch 'test'\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_checkout('test');", []sql.Row{{[]any{int64(0), "Switched to branch 'test'"}}}, ""),
 				authTestAssertAsBasic(
 					"select dolt_rebase('-i', 'main');",
-					[]sql.Row{{"{0,\"interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')\"}"}},
+					[]sql.Row{{[]any{int64(0), "interactive rebase started on branch dolt_rebase_test; adjust the rebase plan in the dolt_rebase table, then continue rebasing by calling dolt_rebase('--continue')"}}},
 					""),
-				authTestAssertAsBasic("select dolt_rebase('--abort');", []sql.Row{{"{0,\"Interactive rebase aborted\"}"}}, ""),
+				authTestAssertAsBasic("select dolt_rebase('--abort');", []sql.Row{{[]any{int64(0), "Interactive rebase aborted"}}}, ""),
 
 				authTestAssertAsBasic("create table to_rm (v int);", []sql.Row{}, ""),
-				authTestAssertAsBasic("select dolt_add('to_rm');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsBasic("select length(dolt_commit('-m', 'clean state to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
-				authTestAssertAsBasic("select dolt_rm('to_rm');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_add('to_rm');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-m', 'clean state to_rm')::text) = 32;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select dolt_rm('to_rm');", []sql.Row{{int64(0)}}, ""),
 
 				authTestAssertAsBasic("select dolt_gc('--shallow');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				authTestAssertAsBasic("select dolt_thread_dump();", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("select length(dolt_commit('-m', 'rm to_rm')::text) = 34;", []sql.Row{{"t"}}, ""),
+				authTestAssertAsBasic("select length(dolt_commit('-m', 'rm to_rm')::text) = 32;", []sql.Row{{"t"}}, ""),
 				authTestAssertAsBasic("select dolt_push('origin', 'test');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 				authTestAssertAsBasic("select dolt_pull('origin', 'test');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_reset('--soft', 'HEAD~1');", []sql.Row{{int64(0)}}, ""),
 				// TODO(elianddb): unsupported type int
-				authTestSkipAssertAsBasic("select dolt_stash('push', 'to_rm');", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stash('push', 'to_rm');", []sql.Row{{int64(0)}}, ""),
 
-				authTestAssertAsBasic("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{"{0}"}}, ""),
-				authTestAssertAsBasic("select dolt_verify_constraints('--all');", []sql.Row{{"{0}"}}, ""),
+				authTestAssertAsBasic("select dolt_tag('-m', 'dolt_rm procedure', 'to_rm', 'HEAD');", []sql.Row{{int64(0)}}, ""),
+				authTestAssertAsBasic("select dolt_verify_constraints('--all');", []sql.Row{{int64(0)}}, ""),
 
 				// TODO(elianddb): provider does not implement ExtendedStatsProvider
-				authTestSkipAssertAsBasic("select dolt_stats_info('--short');", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_wait();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_flush();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_gc();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_purge();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_restart();", []sql.Row{{"{0}"}}, ""),
-				authTestSkipAssertAsBasic("select dolt_stats_once();", []sql.Row{{"{0}"}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_info('--short');", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_wait();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_flush();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_gc();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_purge();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_restart();", []sql.Row{{int64(0)}}, ""),
+				authTestSkipAssertAsBasic("select dolt_stats_once();", []sql.Row{{int64(0)}}, ""),
 			},
 		},
 	})

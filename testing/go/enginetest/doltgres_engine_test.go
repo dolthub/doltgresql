@@ -17,7 +17,6 @@ package enginetest
 import (
 	"context"
 	"os"
-	"regexp"
 	"runtime"
 	"testing"
 
@@ -119,39 +118,6 @@ func TestSchemaOverrides(t *testing.T) {
 	t.Skip()
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunSchemaOverridesTest(t, harness)
-}
-
-type doltCommitValidator struct{}
-
-var _ enginetest.CustomValueValidator = &doltCommitValidator{}
-
-// TODO: this custom validator is supposed to match only a commit hash, but we extend it to match the formatting
-//
-//	characters present in the Doltgres response for some calls. We can remove this when we support the syntax
-//	`select * from dolt_commit(...)`
-var hashRegex = regexp.MustCompile(`^\{?([0-9a-v]{32}).*$`)
-
-// Validate returns true if the value is a valid commit hash.
-func (dcv *doltCommitValidator) Validate(val interface{}) (bool, error) {
-	hash, ok := val.(string)
-	if !ok {
-		return false, nil
-	}
-	return hashRegex.MatchString(hash), nil
-}
-
-// CommitHash returns the commit hash from the value, if it is a valid commit hash.
-func (dcv *doltCommitValidator) CommitHash(val interface{}) (bool, string) {
-	hash, ok := val.(string)
-	if !ok {
-		return false, ""
-	}
-
-	matches := hashRegex.FindStringSubmatch(hash)
-	if len(matches) == 0 {
-		return false, ""
-	}
-	return true, matches[1]
 }
 
 // Convenience test for debugging a single query. Unskip and set to the desired query.

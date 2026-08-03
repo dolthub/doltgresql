@@ -255,7 +255,7 @@ func TestDoltRemote(t *testing.T) {
 			},
 			{
 				Query:    "select dolt_remote('remove', 'other');",
-				Expected: []sql.Row{{"{0}"}},
+				Expected: []sql.Row{{int64(0)}},
 			},
 			{
 				Query:    "select name from dolt_remotes;",
@@ -297,7 +297,7 @@ func TestDoltRemote(t *testing.T) {
 			},
 			{
 				Query:    "select dolt_pull('origin');",
-				Expected: []sql.Row{{`{1,0,"merge successful"}`}},
+				Expected: []sql.Row{{[]any{int64(1), int64(0), "merge successful"}}},
 			},
 			{
 				// pull must fast-forward the working branch to match the remote.
@@ -650,7 +650,7 @@ func TestDoltRemote(t *testing.T) {
 			{
 				// Divergent but non-conflicting: no fast-forward, no conflicts, and it merges automatically.
 				Query:    "select dolt_pull('origin');",
-				Expected: []sql.Row{{`{0,0,"merge successful"}`}},
+				Expected: []sql.Row{{[]any{int64(0), int64(0), "merge successful"}}},
 			},
 			{
 				Query:    "select id, v from t order by id;",
@@ -682,7 +682,7 @@ func TestDoltRemote(t *testing.T) {
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "select dolt_pull('origin');",
-				Expected: []sql.Row{{`{0,1,"merge has unresolved conflicts or constraint violations"}`}},
+				Expected: []sql.Row{{[]any{int64(0), int64(1), "merge has unresolved conflicts or constraint violations"}}},
 			},
 			{
 				Query:    "select base_v, our_v, their_v from dolt_conflicts_t;",

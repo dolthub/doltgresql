@@ -44,7 +44,7 @@ export function assertQueryResult(q, expected, data, matcher) {
   }
   if (q.toLowerCase().includes("dolt_commit")) {
     if (data.rows.length !== 1) return false;
-    const hash = data.rows[0].dolt_commit[0];
+    const hash = data.rows[0].dolt_commit;
     if (hash.length !== 32) {
       console.log("Invalid hash for dolt_commit:", hash);
       return false;

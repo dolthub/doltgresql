@@ -39,7 +39,7 @@ func TestIssues(t *testing.T) {
 				},
 				{
 					Query:    `select dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
 					Query:       `select dolt_commit("-m", "look ma");`,
@@ -47,7 +47,7 @@ func TestIssues(t *testing.T) {
 				},
 				{
 					Query:    `select length(dolt_commit('-m', 'look ma')::text);`,
-					Expected: []sql.Row{{34}},
+					Expected: []sql.Row{{32}},
 				},
 				{
 					Query:       `select dolt_branch("br1");`,
@@ -55,7 +55,7 @@ func TestIssues(t *testing.T) {
 				},
 				{
 					Query:    `select dolt_branch('br1');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 			},
 		},

@@ -593,7 +593,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "select dolt_add('.')",
 				Expected: []sql.Row{
-					{"{0}"},
+					{int64(0)},
 				},
 			},
 			{
@@ -706,7 +706,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "select dolt_add('.')",
 				Expected: []sql.Row{
-					{"{0}"},
+					{int64(0)},
 				},
 			},
 			{
@@ -809,7 +809,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:    "SELECT dolt_branch('newbranch')",
-				Expected: []sql.Row{{"{0}"}},
+				Expected: []sql.Row{{int64(0)}},
 			},
 			{
 				Query:    "USE 'postgres/newbranch'",

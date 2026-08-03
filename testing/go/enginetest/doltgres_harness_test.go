@@ -417,7 +417,6 @@ func (d *DoltgresHarness) EvaluateQueryResults(t *testing.T, expected []sql.Row,
 	}
 
 	switch true {
-	case convertExpectedResultsForDoltProcedures(t, q, widenedExpected, widenedRows):
 	case convertCountStarDoltLog(t, q, widenedExpected, widenedRows):
 	case convertShowCreateTableExpected(t, q, widenedExpected):
 	// widenedExpected modified in place
@@ -631,72 +630,6 @@ func widenExpectedRows(t *testing.T, q string, expected []sql.Row, sch sql.Schem
 			}
 		}
 	}
-}
-
-func convertExpectedResultsForDoltProcedures(t *testing.T, q string, widenedExpected []sql.Row, widenedActual []sql.Row) bool {
-	if doltProcedureCall.MatchString(q) {
-		// if this was a dolt procedure call, we need to convert the expected values to what doltgres currently outputs
-		// TODO: this can be removed when we support `select * from dolt_procedure_call(...)`
-		for i := range widenedExpected {
-			r := widenedExpected[i]
-			sb := strings.Builder{}
-			sb.WriteRune('{')
-			for j, val := range r {
-				if j > 0 {
-					sb.WriteRune(',')
-				}
-				switch v := val.(type) {
-				case string:
-					// Quoting here is wrong in several ways, but we need to match the current output
-					sb.WriteString("\"")
-					sb.WriteString(v)
-					sb.WriteString("\"")
-				case int64, uint64:
-					sb.WriteString(fmt.Sprintf("%d", v))
-				case float64:
-					sb.WriteString(fmt.Sprintf("%f", v))
-				case bool:
-					if v {
-						sb.WriteString("t")
-					} else {
-						sb.WriteString("f")
-					}
-				case time.Time:
-					sb.WriteString(v.Format("2006-01-02 15:04:05.999999999"))
-				case enginetest.CustomValueValidator:
-					// This is a hack, but in practice there's only a single implementation of this interface, used by dolt
-					v = &doltCommitValidator{}
-
-					actual := widenedActual[i][j]
-					ok, err := v.Validate(actual)
-					if err != nil {
-						t.Error(err.Error())
-					}
-					if !ok {
-						t.Errorf("Custom value validation, got %v", actual)
-					}
-					if dcv, ok := v.(*doltCommitValidator); ok {
-						ok, hash := dcv.CommitHash(actual)
-						if !ok {
-							t.Errorf("Custom value validation, got %v", actual)
-						}
-						sb.WriteString(hash)
-					} else {
-						sb.WriteString(fmt.Sprintf("%v", strings.Trim(actual.(string), "{}")))
-					}
-				default:
-					t.Fatalf("unexpected type %T", val)
-				}
-			}
-			sb.WriteRune('}')
-
-			widenedExpected[i] = []interface{}{sb.String()}
-		}
-
-		return true
-	}
-
-	return false
 }
 
 // EvaluateExpectedError is a harness extension that gives us more control over matching expected errors. Our error
@@ -1056,6 +989,12 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullString{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongBlob, Nullable: true})
+		case uint32(oid.T_record):
+			// Record values (e.g. a dolt_ function invoked in the SELECT list rather than the FROM clause) are
+			// compared using their text serialization, e.g. (0,"Switched to branch 'b1'")
+			colVal := gosql.NullString{}
+			columnVals = append(columnVals, &colVal)
+			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.LongText, Nullable: true})
 		default:
 			return nil, nil, errors.Errorf("Unhandled OID %d", field.DataTypeOID)
 		}

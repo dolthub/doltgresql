@@ -63,7 +63,7 @@ tests:
     - query: "SELECT dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   # Verify the standby received all rows, then promote it to primary.
   - on: server2
     retry_attempts: 100
@@ -76,7 +76,7 @@ tests:
     - query: "SELECT dolt_assume_cluster_role('primary', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   # Open a fresh connection to the new primary and confirm large values are intact.
   # Also insert two additional large rows to prove the new primary is writable.
   - on: server2

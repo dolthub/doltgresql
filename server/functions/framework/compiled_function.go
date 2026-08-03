@@ -464,15 +464,62 @@ func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter
 	if err != nil {
 		return nil, err
 	}
+	return rowIterForSRF(c.Name, eval, c.OutParametersSchema())
+}
 
+// rowIterForSRF converts the value returned by a set-returning function into the sql.RowIter used to expand it in a
+// SELECT list. A set-returning function with multiple OUT parameters produces one record value per row when invoked
+// in a SELECT list (as opposed to one column per OUT parameter when invoked in a FROM clause), so its rows are
+// collapsed into a single record column.
+func rowIterForSRF(funcName string, eval any, outParams sql.Schema) (sql.RowIter, error) {
 	switch v := eval.(type) {
 	case sql.RowIter:
+		if len(outParams) > 1 {
+			return &recordCollapsingRowIter{child: v, outParams: outParams}, nil
+		}
 		return v, nil
 	case nil:
 		return nil, nil
 	default:
-		return nil, cerrors.Errorf("function %s returned a value of type %T, which is not a RowIter", c.Name, eval)
+		return nil, cerrors.Errorf("function %s returned a value of type %T, which is not a RowIter", funcName, eval)
 	}
+}
+
+// recordCollapsingRowIter wraps the row iterator of a set-returning function with multiple OUT parameters, collapsing
+// each multi-column row into a single record value.
+type recordCollapsingRowIter struct {
+	child     sql.RowIter
+	outParams sql.Schema
+}
+
+var _ sql.RowIter = (*recordCollapsingRowIter)(nil)
+
+// Next implements the interface sql.RowIter.
+func (r *recordCollapsingRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	row, err := r.child.Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(row) != len(r.outParams) {
+		return nil, cerrors.Errorf("expected %d result columns, got %d", len(r.outParams), len(row))
+	}
+	values := make([]pgtypes.RecordValue, len(row))
+	for i := range row {
+		typ, ok := r.outParams[i].Type.(*pgtypes.DoltgresType)
+		if !ok {
+			return nil, cerrors.Errorf("expected a Doltgres type for OUT parameter %s, got %T", r.outParams[i].Name, r.outParams[i].Type)
+		}
+		values[i] = pgtypes.RecordValue{
+			Value: row[i],
+			Type:  typ,
+		}
+	}
+	return sql.Row{values}, nil
+}
+
+// Close implements the interface sql.RowIter.
+func (r *recordCollapsingRowIter) Close(ctx *sql.Context) error {
+	return r.child.Close(ctx)
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression

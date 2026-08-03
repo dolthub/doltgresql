@@ -109,15 +109,7 @@ func (q *QuickFunction1) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-
-	switch eval := eval.(type) {
-	case sql.RowIter:
-		return eval, nil
-	case nil:
-		return nil, nil
-	default:
-		return nil, errors.Errorf("function %s returned a value of type %T, which is not a RowIter", q.Name, eval)
-	}
+	return rowIterForSRF(q.Name, eval, q.function.GetOutParameters())
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression.
@@ -251,15 +243,7 @@ func (q *QuickFunction2) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-
-	switch eval := eval.(type) {
-	case sql.RowIter:
-		return eval, nil
-	case nil:
-		return nil, nil
-	default:
-		return nil, errors.Errorf("function %s returned a value of type %T, which is not a RowIter", q.Name, eval)
-	}
+	return rowIterForSRF(q.Name, eval, q.function.GetOutParameters())
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression.
@@ -394,15 +378,7 @@ func (q *QuickFunction3) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-
-	switch eval := eval.(type) {
-	case sql.RowIter:
-		return eval, nil
-	case nil:
-		return nil, nil
-	default:
-		return nil, errors.Errorf("function %s returned a value of type %T, which is not a RowIter", q.Name, eval)
-	}
+	return rowIterForSRF(q.Name, eval, q.function.GetOutParameters())
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression.

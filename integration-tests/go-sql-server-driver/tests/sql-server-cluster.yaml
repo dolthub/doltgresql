@@ -13,8 +13,10 @@
 #     refers to OTHER servers' ports (cluster.remotesapi.port and
 #     remote_url_template URLs).
 #   * Dolt's CALL DOLT_X(...) / SELECT DOLT_X() become SELECT dolt_x(...). The
-#     result column defaults to the function name and the value renders as a
-#     Postgres array, e.g. {0}.
+#     result column defaults to the function name and the value renders like a
+#     Postgres function with OUT parameters: a bare value for single-column
+#     results (e.g. 0) and a record for multi-column results (e.g.
+#     (0,"Switched to branch 'b1'")).
 #   * Backtick identifiers become double-quoted identifiers.
 #   * `select ... from dual` becomes `select ...`.
 #   * MySQL system-variable access becomes Postgres: `SELECT @@GLOBAL.x` ->
@@ -125,7 +127,7 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', '10')"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
     - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
         columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
@@ -133,7 +135,7 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', '12')"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
     - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
       result:
         columns: ["dolt_cluster_role","dolt_cluster_role_epoch"]
@@ -141,7 +143,7 @@ tests:
     - query: "select dolt_assume_cluster_role('primary', '13')"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
     # Connection should be broken now.
     - query: "select 2"
       error_match: "this connection can no longer be used"
@@ -483,7 +485,7 @@ tests:
     - query: "select dolt_assume_cluster_role('primary', 11)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server1
     queries:
     - exec: "use repo1"
@@ -553,7 +555,7 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', 11)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server1
     queries:
     - exec: "use repo1"
@@ -925,10 +927,14 @@ tests:
     - exec: "use repo1"
     - exec: 'create table vals (i int primary key)'
     - exec: 'insert into vals values (0),(1),(2),(3),(4)'
-    # Dolt asserts the procedure's per-database caught_up rows here. Doltgres exposes Dolt procedures as
-    # functions returning a single text-array value (first row only), which can't express that result, so
-    # assert the outcome instead: the transition succeeds and the server ends up a standby.
-    - exec: "select dolt_cluster_transition_to_standby('2', '1')"
+    - query: 'select * from dolt_cluster_transition_to_standby(2, 1) order by "database"'
+      result:
+        columns: ["caught_up", "database", "remote", "remote_url"]
+        rows:
+        - ["1", "dolt_branch_control", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "mysql", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "postgres", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}/postgres"]
+        - ["1", "repo1", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}/repo1"]
   - on: server1
     queries:
     - query: "select current_setting('dolt_cluster_role') AS dolt_cluster_role, current_setting('dolt_cluster_role_epoch') AS dolt_cluster_role_epoch"
@@ -1024,7 +1030,7 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - exec: 'use repo1'
@@ -1035,7 +1041,7 @@ tests:
     - query: "select dolt_assume_cluster_role('primary', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - exec: 'use repo1'
@@ -1043,7 +1049,7 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', 3)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server1
     queries:
     - exec: 'use repo1'
@@ -1054,7 +1060,7 @@ tests:
     - query: "select dolt_assume_cluster_role('primary', 3)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server1
     queries:
     - exec: 'use repo1'
@@ -1104,13 +1110,13 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server1
     queries:
     - query: "select dolt_assume_cluster_role('primary', 3)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     database: dolt_cluster
     queries:
@@ -1174,7 +1180,7 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - exec: 'use repo1'
@@ -1797,7 +1803,13 @@ tests:
         rows:
         - ["dolt_cluster"]
         - ["postgres"]
-    - exec: "select dolt_cluster_transition_to_standby('2', '1')"
+    - query: 'select * from dolt_cluster_transition_to_standby(2, 1) order by "database"'
+      result:
+        columns: ["caught_up", "database", "remote", "remote_url"]
+        rows:
+        - ["1", "dolt_branch_control", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "mysql", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}"]
+        - ["1", "postgres", "standby", "http://127.0.0.1:{{get_port \"server2_cluster\"}}/postgres"]
   - on: server2
     queries:
     - exec: "select dolt_assume_cluster_role('primary', '2')"
@@ -2327,13 +2339,13 @@ tests:
     - query: "select dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - query: "select dolt_assume_cluster_role('primary', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - exec: 'SET dolt_cluster_ack_writes_timeout_secs = 60'
