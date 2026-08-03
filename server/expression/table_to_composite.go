@@ -39,7 +39,7 @@ func NewTableToComposite(ctx *sql.Context, tableName string, fields []sql.Expres
 	if err != nil {
 		return nil, err
 	}
-	// TODO: we need to get the schema, but the GMS builder doesn't have that information
+	// TODO: tblSch is now provided by the GMS builder, but is not yet used to validate/construct the composite type
 	typ, err := coll.GetType(ctx, id.NewType("", tableName))
 	if err != nil {
 		return nil, err
