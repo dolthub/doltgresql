@@ -233,7 +233,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:           "SELECT * FROM test;",
-				ExpectedErr:     `table not found: test`, // TODO: `relation "notable" does not exist`
+				ExpectedErr:     `table not found: test`, // TODO: `relation "test" does not exist`
 				ExpectedErrCode: "42P01",
 			},
 			{
