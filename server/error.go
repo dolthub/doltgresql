@@ -18,8 +18,9 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 )
 
 // pgError is the error structure returned from calling a db library function for postgres
