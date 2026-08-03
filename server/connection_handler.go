@@ -31,6 +31,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -1170,11 +1171,16 @@ func (h *ConnectionHandler) endOfMessages(err error) {
 
 // sendError sends the given error to the client. This should generally never be called directly.
 func (h *ConnectionHandler) sendError(err error) {
-	fmt.Println(err.Error())
+	errMsg := err.Error()
+	fmt.Println(errMsg)
+	var code = pgcode.Internal // internal_error for now
+	if pgErr, ok := err.(*pgError); ok {
+		code = pgErr.State
+	}
 	if sendErr := h.send(&pgproto3.ErrorResponse{
 		Severity: string(ErrorResponseSeverity_Error),
-		Code:     "XX000", // internal_error for now
-		Message:  err.Error(),
+		Code:     code.String(),
+		Message:  errMsg,
 	}); sendErr != nil {
 		// If we're unable to send anything to the connection, then there's something wrong with the connection and
 		// we should terminate it. This will be caught in HandleConnection's defer block.
