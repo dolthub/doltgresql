@@ -339,7 +339,10 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 
 	// Iterate over all the built-in names for a relative match
 	var resolvedID id.Type
-	for _, typ := range pgtypes.GetAllBuitInTypes() {
+	for internalID, typ := range pgtypes.IDToBuiltInDoltgresType { // TODO: make a map by typeName?
+		if typ.ID == pgtypes.Unknown.ID && internalID.TypeName() != "unknown" {
+			continue
+		}
 		if strings.EqualFold(typeName, typ.ID.TypeName()) {
 			if len(schemaName) > 0 && !strings.EqualFold(schemaName, typ.ID.SchemaName()) {
 				continue
@@ -351,6 +354,9 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 			resolvedID = typ.ID
 		}
 	}
+
+	pgtypes.GetAllBuitInTypes()
+
 	// Iterate over the initialization cache in case this is during a type initialization loop
 	for _, typ := range pgs.initCache {
 		if strings.EqualFold(typeName, typ.ID.TypeName()) {
