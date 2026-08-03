@@ -123,6 +123,7 @@ func Init() {
 	initGenerateSubscripts()
 	initGetdatabaseencoding()
 	initHasDatabasePrivilege()
+	initHasSchemaPrivilege()
 	initInitcap()
 	initLcm()
 	initLeft()
