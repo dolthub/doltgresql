@@ -232,8 +232,9 @@ var SchemaTests = []ScriptTest{
 				Query: "INSERT INTO public.test VALUES (1, 1);",
 			},
 			{
-				Query:       "SELECT * FROM test;",
-				ExpectedErr: "table not found",
+				Query:           "SELECT * FROM test;",
+				ExpectedErr:     `table not found: test`, // TODO: `relation "notable" does not exist`
+				ExpectedErrCode: "42P01",
 			},
 			{
 				Query: "SELECT * FROM public.test;",

@@ -153,7 +153,7 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 
 	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback, formatCodes)
 	if err != nil {
-		err = CastSQLError(err)
+		err = castSQLError(err)
 	}
 
 	if h.sel != nil {
@@ -180,7 +180,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			fmt.Printf("unable to prepare query: %+v\n", err)
 		}
 		logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
-		return nil, nil, CastSQLError(err)
+		return nil, nil, castSQLError(err)
 	}
 	// Always attempt analysis to get correct column names for Describe(statement) responses.
 	// When bind variables are present the analyzer may fail or produce an inaccurate schema;
@@ -227,7 +227,7 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 
 	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback, nil)
 	if err != nil {
-		err = CastSQLError(err)
+		err = castSQLError(err)
 	}
 
 	if h.sel != nil {
