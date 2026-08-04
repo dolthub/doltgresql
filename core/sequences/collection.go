@@ -17,8 +17,13 @@ package sequences
 import (
 	"context"
 	"fmt"
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/globalstate/sequences"
+	"github.com/dolthub/dolt/go/store/hash"
+	"github.com/dolthub/dolt/go/store/prolly"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/doltgresql/utils"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
@@ -27,13 +32,6 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"sync"
-
-	"github.com/cockroachdb/errors"
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
-	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -193,7 +191,6 @@ type Sequence struct {
 	SequenceState
 	OwnerTable  id.Table
 	OwnerColumn string
-	mu          sync.Mutex
 }
 
 func (sequence *Sequence) GetSequenceState(ctx context.Context) (SequenceState, error) {
