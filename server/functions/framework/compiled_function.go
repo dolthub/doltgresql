@@ -337,30 +337,35 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	// Trick compiler to keeping slice on stack
 	var args []any
 	var exprTypes []*pgtypes.DoltgresType
-	switch c.overload.Function().(type) {
-	case Function0:
-	case Function1:
-		args = make([]any, 1)
-		exprTypes = make([]*pgtypes.DoltgresType, 1)
-	case Function2:
-		args = make([]any, 2)
-		exprTypes = make([]*pgtypes.DoltgresType, 2)
-	case Function3:
-		args = make([]any, 3)
-		exprTypes = make([]*pgtypes.DoltgresType, 3)
-	case Function4:
-		args = make([]any, 4)
-		exprTypes = make([]*pgtypes.DoltgresType, 4)
-	case Function5:
-		args = make([]any, 5)
-		exprTypes = make([]*pgtypes.DoltgresType, 5)
-	case Function6:
-		args = make([]any, 6)
-		exprTypes = make([]*pgtypes.DoltgresType, 6)
-	case Function7:
-		args = make([]any, 7)
-		exprTypes = make([]*pgtypes.DoltgresType, 7)
-	default:
+	if c.overload.params.variadic == -1 {
+		switch c.overload.Function().(type) {
+		case Function0:
+		case Function1:
+			args = make([]any, 1)
+			exprTypes = make([]*pgtypes.DoltgresType, 1)
+		case Function2:
+			args = make([]any, 2)
+			exprTypes = make([]*pgtypes.DoltgresType, 2)
+		case Function3:
+			args = make([]any, 3)
+			exprTypes = make([]*pgtypes.DoltgresType, 3)
+		case Function4:
+			args = make([]any, 4)
+			exprTypes = make([]*pgtypes.DoltgresType, 4)
+		case Function5:
+			args = make([]any, 5)
+			exprTypes = make([]*pgtypes.DoltgresType, 5)
+		case Function6:
+			args = make([]any, 6)
+			exprTypes = make([]*pgtypes.DoltgresType, 6)
+		case Function7:
+			args = make([]any, 7)
+			exprTypes = make([]*pgtypes.DoltgresType, 7)
+		default:
+			args = make([]any, len(c.Arguments))
+			exprTypes = make([]*pgtypes.DoltgresType, len(c.Arguments))
+		}
+	} else {
 		args = make([]any, len(c.Arguments))
 		exprTypes = make([]*pgtypes.DoltgresType, len(c.Arguments))
 	}
