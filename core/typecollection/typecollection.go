@@ -355,8 +355,6 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 		}
 	}
 
-	pgtypes.GetAllBuitInTypes()
-
 	// Iterate over the initialization cache in case this is during a type initialization loop
 	for _, typ := range pgs.initCache {
 		if strings.EqualFold(typeName, typ.ID.TypeName()) {
