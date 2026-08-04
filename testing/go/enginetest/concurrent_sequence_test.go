@@ -104,8 +104,7 @@ func TestConcurrentSequences(t *testing.T) {
 				failures = append(failures, fmt.Sprintf("%T: %v", err, err))
 				mu.Unlock()
 			}
-			_, err = conn.Exec(ctx,
-				fmt.Sprintf(`COMMIT`))
+			_, err = conn.Exec(ctx, `COMMIT`)
 			if err != nil {
 				mu.Lock()
 				failures = append(failures, fmt.Sprintf("%T: %v", err, err))
