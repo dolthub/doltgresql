@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/globalstate"
 	"math"
 	"strings"
 
@@ -196,7 +197,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if err != nil {
 		return nil, err
 	}
-	ait, err := dsess.GetSequenceTracker(ctx, db.(sqle.Database).GetGlobalState(), sequences.SequenceTrackerKey)
+	ait, err := dsess.GetSequenceTracker(ctx, db.(globalstate.GlobalStateProvider).GetGlobalState(), sequences.SequenceTrackerKey)
 	if err != nil {
 		return nil, err
 	}
