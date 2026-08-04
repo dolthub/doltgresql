@@ -6,10 +6,9 @@ From the creators of [Dolt](https://www.doltdb.com), the world's first version c
 database, comes [Doltgres](https://www.doltgres.com), the Postgres-flavored version of Dolt. It's a
 SQL database that you can branch and merge, fork and clone, push and pull just like a Git
 repository. Connect to your Doltgres server just like any Postgres database to read or modify schema
-and data. Version control functionality is exposed in SQL via system tables, functions, and
-procedures.
+and data. Version control functionality is exposed in SQL via system tables and functions.
 
-Git versions file, Doltgres versions tables. It's like Git and Postgres had a baby.
+Git versions files, Doltgres versions tables. It's like Git and Postgres had a baby.
 
 # Doltgres is Beta
 
@@ -37,7 +36,7 @@ Doltgres has a [documentation website](https://doltgres.com/docs) with extensive
 
 # Installation
 
-To install Doltgres on Linx or Mac based systems run this command in your terminal:
+To install Doltgres on Linux or Mac based systems run this command in your terminal:
 
 ```
 sudo bash -c 'curl -L https://github.com/dolthub/doltgresql/releases/latest/download/install.sh | bash'
@@ -95,8 +94,8 @@ export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
 -U postgres`. This will connect to the `postgres` database with the `postgres` user.
 
 ```bash
-$ PGPASSWORD=password psql -h localhost
-psql (15.4 (Homebrew), server 15.0)
+$ PGPASSWORD=password psql -h localhost -U postgres
+psql (15.4 (Homebrew), server 15.17 (Homebrew))
 Type "help" for help.
 
 postgres=>
@@ -110,7 +109,7 @@ postgres=> create database getting_started;
 (0 rows)
 
 postgres=> \c getting_started;
-psql (15.4 (Homebrew), server 15.0)
+psql (15.4 (Homebrew), server 15.17 (Homebrew))
 You are now connected to database "getting_started" as user "postgres".
 getting_started=> create table employees (
     id int8,
@@ -162,12 +161,13 @@ getting_started=> select dolt_add('teams', 'employees', 'employees_teams');
 ----------
         0
 (1 row)
+
 getting_started=> select * from dolt.status;
-   table_name          | staged |  status
------------------------+--------+-----------
-public.employees       | t      | new table
-public.employees_teams | t      | new table
-public.teams           | t      | new table
+   table_name           | staged |  status
+------------------------+--------+-----------
+ public.employees       | t      | new table
+ public.employees_teams | t      | new table
+ public.teams           | t      | new table
 (3 rows)
 
 getting_started=> select dolt_commit('-m', 'Created initial schema');
@@ -196,9 +196,9 @@ getting_started=> select * from dolt.log;
 - No [Git-style CLI](https://dolthub.com/docs/cli-reference/cli) for version control like in
   [Dolt](https://github.com/dolthub/dolt), only a SQL interface.
 - Can't push to DoltHub or DoltLab, only custom remotes (such as on the file system or to S3).
-- Backup and replication are a work in progress.
 - No GSSAPI support.
-- No extension support yet.
+- Limited support for Postgres extensions (`CREATE EXTENSION` can load a small set of extensions,
+  such as `uuid-ossp`).
 - Some Postgres syntax, types, functions, and features are not yet implemented. If you encounter a
   missing feature you need for your application, please [file an issue to let us
   know](https://github.com/dolthub/doltgresql/issues).
