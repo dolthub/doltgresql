@@ -38,6 +38,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mitchellh/go-ps"
@@ -46,6 +47,7 @@ import (
 	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/node"
@@ -1170,11 +1172,21 @@ func (h *ConnectionHandler) endOfMessages(err error) {
 
 // sendError sends the given error to the client. This should generally never be called directly.
 func (h *ConnectionHandler) sendError(err error) {
-	fmt.Println(err.Error())
+	var severity, code, errMsg string
+	if pgErr, ok := err.(*pgconn.PgError); ok {
+		severity = pgErr.Severity
+		code = pgErr.Code
+		errMsg = pgErr.Message
+	} else {
+		severity = string(ErrorResponseSeverity_Error)
+		code = pgcode.Internal.String() // internal_error for now
+		errMsg = err.Error()
+	}
+	fmt.Println(errMsg)
 	if sendErr := h.send(&pgproto3.ErrorResponse{
-		Severity: string(ErrorResponseSeverity_Error),
-		Code:     "XX000", // internal_error for now
-		Message:  err.Error(),
+		Severity: severity,
+		Code:     code,
+		Message:  errMsg,
 	}); sendErr != nil {
 		// If we're unable to send anything to the connection, then there's something wrong with the connection and
 		// we should terminate it. This will be caught in HandleConnection's defer block.
@@ -1297,4 +1309,56 @@ func hasReturningClause(statement sqlparser.Statement) bool {
 	}, statement)
 
 	return hasReturningClause
+}
+
+// castSQLError returns a *pgconn.PgError with the error SQL state code, populated for the specified error object.
+// Many tools (e.g. ORMs, SQL workbenches) rely on this error metadata to work correctly. If the specified error is nil,
+// nil will be returned. If the error is already of type *pgconn.PgError, the error will be returned as is.
+func castSQLError(err error) *pgconn.PgError {
+	if err == nil {
+		return nil
+	}
+	if pgErr, ok := err.(*pgconn.PgError); ok {
+		return pgErr
+	}
+
+	if w, ok := err.(sql.WrappedInsertError); ok {
+		return castSQLError(w.Cause)
+	}
+
+	if wm, ok := err.(sql.WrappedTypeConversionError); ok {
+		return castSQLError(wm.Err)
+	}
+
+	// TODO: map more errors case
+	// TODO: should update the error message to match Postgres
+	var code pgcode.Code
+	switch {
+	case sql.ErrCheckConstraintViolated.Is(err):
+		code = pgcode.CheckViolation
+	case sql.ErrDatabaseExists.Is(err):
+		code = pgcode.DuplicateDatabase
+	case sql.ErrDatabaseNotFound.Is(err):
+		code = pgcode.UndefinedDatabase
+	case sql.ErrDatabaseSchemaExists.Is(err):
+		code = pgcode.DuplicateSchema
+	case sql.ErrDatabaseSchemaNotFound.Is(err):
+		code = pgcode.UndefinedSchema
+	case sql.ErrForeignKeyChildViolation.Is(err):
+		code = pgcode.ForeignKeyViolation
+	case sql.ErrForeignKeyDuplicateName.Is(err):
+		code = pgcode.DuplicateObject
+	case sql.ErrTableNotFound.Is(err):
+		code = pgcode.UndefinedTable
+	case sql.ErrUniqueKeyViolation.Is(err):
+		code = pgcode.UniqueViolation
+	default:
+		code = pgcode.Internal
+	}
+
+	return &pgconn.PgError{
+		Severity: string(ErrorResponseSeverity_Error),
+		Code:     code.String(),
+		Message:  err.Error(),
+	}
 }
