@@ -17,6 +17,12 @@ package sequences
 import (
 	"context"
 	"fmt"
+	"io"
+	"iter"
+	"math"
+	"sort"
+	"strings"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
@@ -24,17 +30,12 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
-	"github.com/dolthub/doltgresql/utils"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
-	"io"
-	"iter"
-	"math"
-	"sort"
-	"strings"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // Collection contains a collection of sequences.

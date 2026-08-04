@@ -1,13 +1,14 @@
 package enginetest
 
 import (
-	"github.com/dolthub/dolt/go/libraries/utils/svcs"
-	"github.com/dolthub/doltgresql/server"
-	"github.com/stretchr/testify/require"
 	"math/rand"
 	"testing"
 	"time"
 
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/stretchr/testify/require"
+
+	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )

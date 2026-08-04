@@ -18,11 +18,12 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"

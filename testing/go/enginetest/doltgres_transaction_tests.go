@@ -1,11 +1,12 @@
 package enginetest
 
 import (
+	"testing"
+
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/sql"
-	"testing"
 )
 
 func RunDoltgresTransactionTests(t *testing.T, h denginetest.DoltEnginetestHarness, prepared bool) {

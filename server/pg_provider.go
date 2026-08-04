@@ -16,13 +16,15 @@ package server
 
 import (
 	"context"
+
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/tables"
-	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // DoltgresDatabaseProvider wraps DoltDatabaseProvider to enforce PostgreSQL specific
