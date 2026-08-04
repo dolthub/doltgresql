@@ -23,6 +23,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -51,6 +53,8 @@ type subqueryAnyExpr struct {
 // expressionAnyExpr represents the resolved comparison function for a sql.Expression.
 type expressionAnyExpr struct {
 	rightExpr     sql.Expression
+	arrCast       casts.Cast
+	arrType       *pgtypes.DoltgresType
 	staticLiteral *expression.Literal
 	arrayLiteral  *expression.Literal
 	compFunc      framework.Function
@@ -211,6 +215,13 @@ func (a *expressionAnyExpr) eval(ctx *sql.Context, row sql.Row, left interface{}
 
 	if rightInterface == nil {
 		return nil, nil
+	}
+
+	if rightType, ok := a.rightExpr.Type(ctx).(*pgtypes.DoltgresType); ok && rightType.ID == pgtypes.Unknown.ID && a.arrCast.ID.IsValid() {
+		rightInterface, err = a.arrCast.Eval(ctx, rightInterface, rightType, a.arrType)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	rightValues, ok := rightInterface.([]any)
@@ -395,31 +406,56 @@ func anyExpressionWithChildren(ctx *sql.Context, anyExpr *AnyExpr) (sql.Expressi
 	if !ok {
 		return nil, errors.Errorf("expected right child to be a DoltgresType but got `%T`", anyExpr.rightExpr)
 	}
+	leftType, ok := anyExpr.leftExpr.Type(ctx).(*pgtypes.DoltgresType)
+	if !ok {
+		return anyExpr, nil
+	}
+
+	var arrCast casts.Cast
+	var arrCastToType *pgtypes.DoltgresType
+	if arrType.ID == pgtypes.Unknown.ID {
+		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+		// if array type is Unknown, use the left expr type for reference
+		if leftType.ID == pgtypes.Unknown.ID {
+			// if left expr type is also unknown, it's likely text array - TODO double check
+			arrCastToType = pgtypes.TextArray
+		} else {
+			arrCastToType = leftType.ToArrayType()
+		}
+		arrCast, err = castsColl.GetImplicitCast(ctx, arrType, arrCastToType)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	rightType := arrType.ArrayBaseType()
 	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
 	if err != nil {
 		return nil, err
 	}
 
-	if leftType, ok := anyExpr.leftExpr.Type(ctx).(*pgtypes.DoltgresType); ok {
-		// Resolve comparison function once and reuse the function in Eval.
-		staticLiteral := expression.NewLiteral(nil, leftType)
-		arrayLiteral := expression.NewLiteral(nil, rightType)
-		compFunc := framework.GetBinaryFunction(op).Compile(ctx, "internal_any_comparison", staticLiteral, arrayLiteral)
-		if compFunc == nil || compFunc.StashedError() != nil {
-			return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
-		}
-		compFuncType := compFunc.Type(ctx)
-		if compFuncType.(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
-			// This should never happen, but this is just to be safe
-			return nil, errors.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
-		}
-		anyExpr.expressionAnyExpr = &expressionAnyExpr{
-			rightExpr:     anyExpr.rightExpr,
-			staticLiteral: staticLiteral,
-			arrayLiteral:  arrayLiteral,
-			compFunc:      compFunc,
-		}
+	// Resolve comparison function once and reuse the function in Eval.
+	staticLiteral := expression.NewLiteral(nil, leftType)
+	arrayLiteral := expression.NewLiteral(nil, rightType)
+	compFunc := framework.GetBinaryFunction(op).Compile(ctx, "internal_any_comparison", staticLiteral, arrayLiteral)
+	if compFunc == nil || compFunc.StashedError() != nil {
+		return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
+	}
+	compFuncType := compFunc.Type(ctx)
+	if compFuncType.(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
+		// This should never happen, but this is just to be safe
+		return nil, errors.Errorf("%T: found equality comparison that does not return a bool", anyExpr)
+	}
+	anyExpr.expressionAnyExpr = &expressionAnyExpr{
+		rightExpr:     anyExpr.rightExpr,
+		arrCast:       arrCast,
+		arrType:       arrCastToType,
+		staticLiteral: staticLiteral,
+		arrayLiteral:  arrayLiteral,
+		compFunc:      compFunc,
 	}
 
 	return anyExpr, nil
