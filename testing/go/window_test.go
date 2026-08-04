@@ -275,5 +275,64 @@ func TestWindowFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ntile and cume_dist ignore ties/frame and operate over the whole partition",
+			SetUpScript: []string{
+				"CREATE TABLE rank_ext (id INT PRIMARY KEY, grp INT, val INT);",
+				// grp 1 has a tied peer group (val=10 for id 1 and 2); grp 2 has no ties.
+				"INSERT INTO rank_ext VALUES (1,1,10),(2,1,10),(3,1,20),(4,1,30),(5,2,5),(6,2,15);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT id, ntile(2) OVER (PARTITION BY grp ORDER BY val) FROM rank_ext ORDER BY id",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 1},
+						{3, 2},
+						{4, 2},
+						{5, 1},
+						{6, 2},
+					},
+				},
+				{
+					Query: "SELECT id, cume_dist() OVER (PARTITION BY grp ORDER BY val) FROM rank_ext ORDER BY id",
+					Expected: []sql.Row{
+						{1, float64(0.5)},
+						{2, float64(0.5)},
+						{3, float64(0.75)},
+						{4, float64(1)},
+						{5, float64(0.5)},
+						{6, float64(1)},
+					},
+				},
+			},
+		},
+		{
+			Name: "nth_value respects the window's frame and returns the polymorphic argument type",
+			SetUpScript: []string{
+				"CREATE TABLE nv (id INT PRIMARY KEY, grp INT, val INT);",
+				"INSERT INTO nv VALUES (1,1,100),(2,1,200),(3,1,300),(4,2,999);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT id, nth_value(val, 2) OVER (PARTITION BY grp ORDER BY id) FROM nv ORDER BY id",
+					Expected: []sql.Row{
+						{1, nil},
+						{2, 200},
+						{3, 200},
+						{4, nil},
+					},
+				},
+				{
+					Query: "SELECT id, nth_value(val, 2) OVER (PARTITION BY grp ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) FROM nv ORDER BY id",
+					Expected: []sql.Row{
+						{1, 200},
+						{2, 200},
+						{3, 200},
+						{4, nil},
+					},
+				},
+			},
+		},
 	})
 }

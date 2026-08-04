@@ -704,3 +704,29 @@ func (f Func0Window) NewWindowFunc() NewWindowFunctionFn {
 		return f.NewWinFunc(window)
 	}
 }
+
+// Func1Window is a PostgreSQL function that takes one parameter and may only be used as a window function
+// (within an OVER(...) clause), such as ntile().
+type Func1Window struct {
+	Function1
+	NewWinFunc NewWindowFunctionFn
+}
+
+var _ WindowFunctionInterface = Func1Window{}
+
+func (f Func1Window) NewWindowFunc() NewWindowFunctionFn {
+	return f.NewWinFunc
+}
+
+// Func2Window is a PostgreSQL function that takes two parameters and may only be used as a window function
+// (within an OVER(...) clause), such as nth_value().
+type Func2Window struct {
+	Function2
+	NewWinFunc NewWindowFunctionFn
+}
+
+var _ WindowFunctionInterface = Func2Window{}
+
+func (f Func2Window) NewWindowFunc() NewWindowFunctionFn {
+	return f.NewWinFunc
+}
