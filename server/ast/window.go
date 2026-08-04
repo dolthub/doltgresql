@@ -20,6 +20,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 )
 
 // nodeWindow handles *tree.Window nodes.
@@ -84,9 +85,18 @@ func nodeWindowDef(ctx *Context, node *tree.WindowDef) (*vitess.WindowDef, error
 			default:
 				return nil, errors.Errorf("unknown window frame bound type")
 			}
-			boundExpr, err := nodeExpr(ctx, bound.OffsetExpr)
-			if err != nil {
-				return nil, err
+			var boundExpr vitess.Expr
+			if intervalOffset, ok := bound.OffsetExpr.(*tree.DInterval); ok {
+				// GMS's window framer only recognizes date+interval arithmetic via its
+				// expression.DeltaExpression hook. nodeExpr's usual interval-literal conversion doesn't
+				// implement that hook, so build the offset directly as *pgexprs.Interval instead.
+				boundExpr = vitess.InjectedExpr{Expression: pgexprs.NewInterval(intervalOffset.Duration)}
+			} else {
+				var err error
+				boundExpr, err = nodeExpr(ctx, bound.OffsetExpr)
+				if err != nil {
+					return nil, err
+				}
 			}
 			bounds[i] = &vitess.FrameBound{
 				Expr: boundExpr,

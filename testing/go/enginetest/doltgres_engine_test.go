@@ -814,19 +814,29 @@ func TestWindowRowFrames(t *testing.T) {
 }
 
 func TestWindowRangeFrames(t *testing.T) {
-	// TODO: RANGE frame offset boundaries (e.g. "RANGE 2 PRECEDING") are computed by GMS as float64,
-	// which panics against DoltgresType.Compare for an int32 column; named windows themselves work fine
-	// (see TestNamedWindows).
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// MySQL's unquoted numeric interval literal ("interval 1 DAY") isn't valid Postgres grammar
+		// (Postgres requires a quoted quantity, e.g. "interval '1' DAY"). The equivalent quoted-quantity
+		// form is exercised elsewhere in this same test (table c), so coverage isn't lost.
+		"range between interval 2 DAY preceding and interval 1 DAY preceding",
+		"range between interval 1 DAY preceding and interval 1 DAY following",
+		"range between interval 1 DAY following and interval 2 DAY following",
+		"range interval 1 DAY preceding",
+		"range between interval 1 DAY preceding and current row",
+		"range between interval 1 DAY preceding and unbounded following",
+		"range between unbounded preceding and interval 1 DAY following",
+
+		// Postgres's parser strictly validates interval literal syntax at parse time and correctly
+		// rejects "interval 'e' DAY" (not a valid unit/quantity) with a syntax error; MySQL parses
+		// malformed interval strings leniently, defaulting to 0. This is a real, intentional dialect
+		// difference (correct Postgres behavior), not a bug to fix.
+		"range interval 'e' DAY preceding",
+	})
 	defer h.Close()
 	enginetest.TestWindowRangeFrames(t, h)
 }
 
 func TestNamedWindows(t *testing.T) {
-	// TODO: only remaining failures are GMS's own mergeWindowDefs error messages using empty window
-	// names ("window '' cannot inherit ''" instead of the actual names) - cosmetic, not a correctness bug.
-	t.Skip()
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNamedWindows(t, h)
