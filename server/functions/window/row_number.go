@@ -28,6 +28,9 @@ func initRanking() {
 	framework.RegisterWindowFunction(rank)
 	framework.RegisterWindowFunction(denseRank)
 	framework.RegisterWindowFunction(percentRank)
+	framework.RegisterWindowFunction(cumeDist)
+	framework.RegisterWindowFunction(ntile)
+	framework.RegisterWindowFunction(nthValue)
 }
 
 // rowNumber represents the PostgreSQL row_number() window function, returning a bigint directly rather than
