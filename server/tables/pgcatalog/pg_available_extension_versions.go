@@ -21,8 +21,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -60,12 +60,7 @@ type pgAvailableExtensionVersion struct {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAvailableExtensionVersionsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	allExtensions, err := extensions.GetAllExtensions()
-	if err != nil {
-		// Extensions cannot be loaded when there is no local Postgres installation, so we report that no extensions
-		// are available rather than returning an error.
-		return emptyRowIter()
-	}
+	allExtensions := extensions.GetAll()
 	extCollection, err := core.GetExtensionsCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 	if err != nil {
 		return nil, err
@@ -73,31 +68,31 @@ func (p PgAvailableExtensionVersionsHandler) RowIter(ctx *sql.Context, partition
 	// TODO: Postgres lists a row for every version that has an installation script, but we only track the default
 	//  version for each extension.
 	extVersions := make([]pgAvailableExtensionVersion, 0, len(allExtensions))
-	for name, extFiles := range allExtensions {
+	for name, ext := range allExtensions {
 		extVersion := pgAvailableExtensionVersion{
 			name:        name,
-			version:     extFiles.Control.DefaultVersion.String(),
-			superuser:   extFiles.Control.Superuser,
-			trusted:     extFiles.Control.Trusted,
-			relocatable: extFiles.Control.Relocatable,
+			version:     ext.Control.DefaultVersion,
+			superuser:   ext.Control.Superuser,
+			trusted:     ext.Control.Trusted,
+			relocatable: ext.Control.Relocatable,
 		}
-		if len(extFiles.Control.Schema) > 0 {
-			extVersion.schema = extFiles.Control.Schema
+		if len(ext.Control.Schema) > 0 {
+			extVersion.schema = ext.Control.Schema
 		}
-		if len(extFiles.Control.Requires) > 0 {
-			requires := make([]any, len(extFiles.Control.Requires))
-			for i, req := range extFiles.Control.Requires {
+		if len(ext.Control.Requires) > 0 {
+			requires := make([]any, len(ext.Control.Requires))
+			for i, req := range ext.Control.Requires {
 				requires[i] = req
 			}
 			extVersion.requires = requires
 		}
-		if len(extFiles.Control.Comment) > 0 {
-			extVersion.comment = extFiles.Control.Comment
+		if len(ext.Control.Comment) > 0 {
+			extVersion.comment = ext.Control.Comment
 		}
 		if installed, err := extCollection.GetLoadedExtension(ctx, id.NewExtension(name)); err != nil {
 			return nil, err
 		} else if installed.ExtName.IsValid() {
-			extVersion.installed = installed.LibIdentifier.Version() == extFiles.Control.DefaultVersion
+			extVersion.installed = installed.Version == ext.Control.DefaultVersion
 		}
 		extVersions = append(extVersions, extVersion)
 	}

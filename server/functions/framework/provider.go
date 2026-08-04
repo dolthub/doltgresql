@@ -18,7 +18,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -82,14 +81,15 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 			}
 		}
 		if len(overload.ExtensionName) > 0 {
-			if err = overloadTree.Add(CFunction{
+			if err = overloadTree.Add(ExtensionFunction{
 				ID:                 overload.ID,
 				ReturnType:         returnType,
 				ParameterTypes:     paramTypes,
 				Variadic:           overload.Variadic,
 				IsNonDeterministic: overload.IsNonDeterministic,
 				Strict:             overload.Strict,
-				ExtensionName:      extensions.LibraryIdentifier(overload.ExtensionName),
+				SetOf:              overload.SetOf,
+				ExtensionName:      overload.ExtensionName,
 				ExtensionSymbol:    overload.ExtensionSymbol,
 			}); err != nil {
 				return nil, false

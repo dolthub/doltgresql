@@ -23,9 +23,9 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 )
 
@@ -125,24 +125,16 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 			return nil, err
 		}
 	}
-	var extName string
 	if len(c.ExtensionName) > 0 {
-		ext, err := extensions.GetExtension(c.ExtensionName)
-		if err != nil {
+		if _, err = extensions.GetFunction(c.ExtensionName, c.ExtensionSymbol); err != nil {
 			return nil, err
 		}
-		ident := extensions.CreateLibraryIdentifier(c.ExtensionName, ext.Control.DefaultVersion)
-		_, err = extensions.GetExtensionFunction(extensions.CreateLibraryIdentifier(c.ExtensionName, ext.Control.DefaultVersion), c.ExtensionSymbol)
-		if err != nil {
-			return nil, err
-		}
-		extName = string(ident)
 	}
 	err = procCollection.AddProcedure(ctx, procedures.Procedure{
 		ID:              procID,
 		AllParams:       allParams,
 		Definition:      c.Definition,
-		ExtensionName:   extName,
+		ExtensionName:   c.ExtensionName,
 		ExtensionSymbol: c.ExtensionSymbol,
 		Operations:      c.Statements,
 		SQLDefinition:   c.SqlDef,

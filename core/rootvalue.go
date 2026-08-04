@@ -254,9 +254,16 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 
 // FilterRootObjectNames implements the interface doltdb.RootValue.
 func (root *RootValue) FilterRootObjectNames(ctx context.Context, names []doltdb.TableName) ([]doltdb.TableName, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	colls, err := rootobject.LoadAllCollections(ctx, root)
+	if err != nil {
+		return nil, err
+	}
 	var returnNames []doltdb.TableName
 	for _, name := range names {
-		_, _, objID, err := rootobject.ResolveName(ctx, root, name)
+		_, _, objID, err := rootobject.ResolveNameOnCollections(ctx, colls, name)
 		if err != nil {
 			return nil, err
 		}

@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/cast"
 	"github.com/dolthub/doltgresql/server/config"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/aggregate"
 	"github.com/dolthub/doltgresql/server/functions/binary"
@@ -51,6 +52,7 @@ func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 	once.Do(func() {
 		core.Init()
 		rootobject.Init()
+		extensions.Init()
 		auth.Init(dEnv, cfg)
 		pgtypes.Init()
 		analyzer.Init()

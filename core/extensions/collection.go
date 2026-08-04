@@ -39,12 +39,12 @@ type Collection struct {
 	ns            tree.NodeStore
 }
 
-// Extension represents a loaded extension.
+// Extension represents an extension that has been installed into a database.
 type Extension struct {
-	ExtName       id.Extension
-	Namespace     id.Namespace
-	Relocatable   bool
-	LibIdentifier LibraryIdentifier
+	ExtName     id.Extension
+	Namespace   id.Namespace
+	Relocatable bool
+	Version     string
 	// TODO: keep track of what it references so I can later delete them
 }
 
@@ -201,12 +201,9 @@ func (pge *Collection) reloadCaches(ctx context.Context) error {
 	})
 }
 
-// CompareVersions compares the major and minor version of the extension versus the given extension.
+// CompareVersions compares the version of the extension versus the given extension, as opaque strings.
 func (ext Extension) CompareVersions(other Extension) int {
-	return cmp.Or(
-		cmp.Compare(ext.LibIdentifier.Version().Major(), other.LibIdentifier.Version().Major()),
-		cmp.Compare(ext.LibIdentifier.Version().Minor(), other.LibIdentifier.Version().Minor()),
-	)
+	return cmp.Compare(ext.Version, other.Version)
 }
 
 // GetID implements the interface objinterface.RootObject.

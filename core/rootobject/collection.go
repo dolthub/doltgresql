@@ -519,18 +519,20 @@ func RemoveRootObjectIfExists(ctx context.Context, root objinterface.RootValue, 
 
 // ResolveName returns the fully resolved name of the given item (if the item exists). Also returns the type of the item.
 func ResolveName(ctx context.Context, root objinterface.RootValue, name doltdb.TableName) (doltdb.TableName, id.Id, objinterface.RootObjectID, error) {
+	colls, err := LoadAllCollections(ctx, root)
+	if err != nil {
+		return doltdb.TableName{}, id.Null, objinterface.RootObjectID_None, err
+	}
+	return ResolveNameOnCollections(ctx, colls, name)
+}
+
+// ResolveNameOnCollections is ResolveName, but for collections that have already been loaded.
+func ResolveNameOnCollections(ctx context.Context, colls []objinterface.Collection, name doltdb.TableName) (doltdb.TableName, id.Id, objinterface.RootObjectID, error) {
 	var resolvedName doltdb.TableName
 	resolvedRawID := id.Null
 	resolvedObjID := objinterface.RootObjectID_None
 
-	for i, emptyColl := range globalCollections {
-		if emptyColl == nil || i == int(objinterface.RootObjectID_Conflicts) {
-			continue
-		}
-		coll, err := emptyColl.LoadCollection(ctx, root)
-		if err != nil {
-			return doltdb.TableName{}, id.Null, objinterface.RootObjectID_None, err
-		}
+	for _, coll := range colls {
 		if coll == nil {
 			continue
 		}
