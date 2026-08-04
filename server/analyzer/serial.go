@@ -189,7 +189,7 @@ func generateSequenceName(ctx *sql.Context, createTable *plan.CreateTable, col *
 // It parses schema and sequence names out of given expression.
 // There can be only one argument expression of string type.
 func authCheckSequenceFromExpr(ctx *sql.Context, ah sql.AuthorizationHandler, arg sql.Expression) error {
-	schemaName, seqName, err := functions.ParseRelationName(ctx, strings.Trim(arg.String(), "'"))
+	schemaName, seqName, err := functions.ParseRelationNameWithCurrentSchema(ctx, strings.Trim(arg.String(), "'"))
 	if err != nil {
 		return err
 	}

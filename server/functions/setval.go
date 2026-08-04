@@ -16,6 +16,7 @@ package functions
 
 import (
 	"fmt"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -75,13 +76,19 @@ var setval_text_int64_boolean = framework.Function3{
 		if err != nil {
 			return nil, err
 		}
-		sequenceName, sequence, found, err := resolve.Relation(ctx, root, relationName, sequences.SequenceSource{})
+		var sequenceName doltdb.TableName
+		relationBaseName, err := ParseRelationBaseName(ctx, relationName)
 		if err != nil {
-			return nil, err
+			return 0, err
+		}
+		sequenceName, sequence, found, err := resolve.Relation(ctx, root, relationBaseName, sequences.SequenceSource{})
+		if err != nil {
+			return 0, err
 		}
 		if !found {
-			return nil, fmt.Errorf("sequence %s not found", relationName)
+			return 0, errors.Errorf(`sequence "%s" does not exist`, relationName)
 		}
+
 		seqId := id.NewSequence(sequenceName.Schema, sequenceName.Name)
 		if err != nil {
 			return nil, err
@@ -122,9 +129,10 @@ var setval_text_int64_boolean = framework.Function3{
 	},
 }
 
-// ParseRelationName parses the schema and relation name from a relation name string, including trimming any
-// identifier quotes used in the name. For example, passing in 'public."MyTable"' would return 'public' and 'MyTable'.
-func ParseRelationName(ctx *sql.Context, name string) (schema string, relation string, err error) {
+// ParseRelationNameWithCurrentSchema parses the schema and relation name from a relation name string, including trimming any
+// identifier quotes used in the name. If the schema is not specified, the current schema is used.
+// For example, passing in 'public."MyTable"' would return 'public' and 'MyTable'.
+func ParseRelationNameWithCurrentSchema(ctx *sql.Context, name string) (schema string, relation string, err error) {
 	pathElems := strings.Split(name, ".")
 	switch len(pathElems) {
 	case 1:
@@ -132,6 +140,50 @@ func ParseRelationName(ctx *sql.Context, name string) (schema string, relation s
 		if err != nil {
 			return "", "", err
 		}
+		relation = pathElems[0]
+	case 2:
+		schema = pathElems[0]
+		relation = pathElems[1]
+	case 3:
+		// database is not used atm
+		schema = pathElems[1]
+		relation = pathElems[2]
+	default:
+		return "", "", errors.Errorf(`cannot parse relation: %s`, name)
+	}
+
+	// Trim any quotes from the schema and the relation name
+	schema = strings.Trim(schema, `"`)
+	relation = strings.Trim(relation, `"`)
+
+	return schema, relation, nil
+}
+
+func ParseRelationBaseName(ctx *sql.Context, name string) (string, error) {
+	pathElems := strings.Split(name, ".")
+	var relation string
+	switch len(pathElems) {
+	case 1:
+		relation = pathElems[0]
+	case 2:
+		relation = pathElems[1]
+	case 3:
+		// database is not used atm
+		relation = pathElems[2]
+	default:
+		return "", errors.Errorf(`cannot parse relation: %s`, relation)
+	}
+	return strings.Trim(relation, `"`), nil
+}
+
+// ParseRelationName parses the schema and relation name from a relation name string, including trimming any
+// identifier quotes used in the name. If the schema is not specified, an empty string is returned.
+// For example, passing in 'public."MyTable"' would return 'public' and 'MyTable'.
+func ParseRelationName(ctx *sql.Context, name string) (schema string, relation string, err error) {
+	pathElems := strings.Split(name, ".")
+	switch len(pathElems) {
+	case 1:
+		schema = ""
 		relation = pathElems[0]
 	case 2:
 		schema = pathElems[0]

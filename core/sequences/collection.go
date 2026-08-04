@@ -440,7 +440,7 @@ func (pgs *Collection) NextVal(ctx context.Context, name id.Sequence) (int64, er
 		return 0, err
 	}
 	if seq == nil {
-		return 0, errors.Errorf(`relation "%s" does not exist`, name.SequenceName())
+		return 0, errors.Errorf(`sequence "%s" does not exist`, name.SequenceName())
 	}
 	return seq.nextValForSequence()
 }
@@ -452,7 +452,7 @@ func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue in
 		return err
 	}
 	if seq == nil {
-		return errors.Errorf(`relation "%s" does not exist`, name.SequenceName())
+		return errors.Errorf(`sequence "%s" does not exist`, name.SequenceName())
 	}
 	if newValue < seq.Minimum || newValue > seq.Maximum {
 		return errors.Errorf(`setval: value %d is out of bounds for sequence "%s" (%d..%d)`,
