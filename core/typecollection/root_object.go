@@ -31,7 +31,7 @@ import (
 // DeserializeRootObject implements the interface objinterface.Collection.
 func (pgs *TypeCollection) DeserializeRootObject(ctx context.Context, data []byte) (objinterface.RootObject, error) {
 	sqlCtx, _ := ctx.(*sql.Context)
-	t, err := pgtypes.DeserializeType(sqlCtx, data)
+	t, err := pgtypes.DeserializeTypeFromCollection(sqlCtx, pgs, data)
 	if err != nil {
 		return nil, err
 	}
@@ -100,12 +100,12 @@ func (pgs *TypeCollection) IterAll(ctx context.Context, callback func(rootObj ob
 	if err := pgs.writeCache(ctx); err != nil {
 		return err
 	}
-	err := pgs.underlyingMap.IterAll(ctx, func(_ string, v hash.Hash) error {
-		data, err := pgs.ns.ReadBytes(ctx, v)
+	err := pgs.Contents().IterAll(ctx, func(_ string, v hash.Hash) error {
+		data, err := pgs.NodeStore().ReadBytes(ctx, v)
 		if err != nil {
 			return err
 		}
-		t, err := pgtypes.DeserializeType(sqlCtx, data)
+		t, err := pgtypes.DeserializeTypeFromCollection(sqlCtx, pgs, data)
 		if err != nil {
 			return err
 		}
@@ -129,7 +129,7 @@ func (pgs *TypeCollection) IterIDs(ctx context.Context, callback func(identifier
 	if err := pgs.writeCache(ctx); err != nil {
 		return err
 	}
-	err := pgs.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+	err := pgs.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 		stop, err := callback(id.Id(k))
 		if err != nil {
 			return err

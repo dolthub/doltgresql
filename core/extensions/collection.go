@@ -17,14 +17,10 @@ package extensions
 import (
 	"cmp"
 	"context"
-	"maps"
-	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -32,11 +28,9 @@ import (
 
 // Collection contains a collection of loaded extensions.
 type Collection struct {
-	accessCache   map[id.Extension]Extension // This cache is used for general access
-	idCache       []id.Extension             // This cache simply contains the name of every loaded extension
-	mapHash       hash.Hash                  // This is cached so that we don't have to calculate the hash every time
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
+	objinterface.RootObjectMap
+	accessCache map[id.Extension]Extension // This cache is used for general access
+	idCache     []id.Extension             // This cache simply contains the name of every loaded extension
 }
 
 // Extension represents an extension that has been installed into a database.
@@ -52,13 +46,10 @@ var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = Extension{}
 
 // NewCollection returns a new Collection.
-func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree.NodeStore) (*Collection, error) {
+func NewCollection(ctx context.Context, rom objinterface.RootObjectMap) (*Collection, error) {
 	collection := &Collection{
+		RootObjectMap: rom,
 		accessCache:   make(map[id.Extension]Extension),
-		idCache:       nil,
-		mapHash:       hash.Hash{},
-		underlyingMap: underlyingMap,
-		ns:            ns,
 	}
 	return collection, collection.reloadCaches(ctx)
 }
@@ -90,11 +81,11 @@ func (pge *Collection) AddLoadedExtension(ctx context.Context, ext Extension) er
 	if err != nil {
 		return err
 	}
-	h, err := pge.ns.WriteBytes(ctx, data)
+	h, err := pge.NodeStore().WriteBytes(ctx, data)
 	if err != nil {
 		return err
 	}
-	mapEditor := pge.underlyingMap.Editor()
+	mapEditor := pge.Contents().Editor()
 	if err = mapEditor.Add(ctx, string(ext.ExtName), h); err != nil {
 		return err
 	}
@@ -102,8 +93,7 @@ func (pge *Collection) AddLoadedExtension(ctx context.Context, ext Extension) er
 	if err != nil {
 		return err
 	}
-	pge.underlyingMap = newMap
-	pge.mapHash = pge.underlyingMap.HashOf()
+	pge.SetContents(newMap)
 	return pge.reloadCaches(ctx)
 }
 
@@ -122,7 +112,7 @@ func (pge *Collection) DropLoadedExtension(ctx context.Context, names ...id.Exte
 	}
 
 	// Now we'll remove the extensions from the map
-	mapEditor := pge.underlyingMap.Editor()
+	mapEditor := pge.Contents().Editor()
 	for _, name := range names {
 		err := mapEditor.Delete(ctx, string(name))
 		if err != nil {
@@ -133,61 +123,25 @@ func (pge *Collection) DropLoadedExtension(ctx context.Context, names ...id.Exte
 	if err != nil {
 		return err
 	}
-	pge.underlyingMap = newMap
-	pge.mapHash = pge.underlyingMap.HashOf()
+	pge.SetContents(newMap)
 	return pge.reloadCaches(ctx)
-}
-
-// Clone returns a new *Collection with the same contents as the original.
-func (pge *Collection) Clone(ctx context.Context) *Collection {
-	return &Collection{
-		accessCache:   maps.Clone(pge.accessCache),
-		idCache:       slices.Clone(pge.idCache),
-		mapHash:       pge.mapHash,
-		underlyingMap: pge.underlyingMap,
-		ns:            pge.ns,
-	}
-}
-
-// Map writes any cached sequences to the underlying map, and then returns the underlying map.
-func (pge *Collection) Map(ctx context.Context) (prolly.AddressMap, error) {
-	return pge.underlyingMap, nil
-}
-
-// DiffersFrom returns true when the hash that is associated with the underlying map for this collection is different
-// from the hash in the given root.
-func (pge *Collection) DiffersFrom(ctx context.Context, root objinterface.RootValue) bool {
-	hashOnGivenRoot, err := pge.LoadCollectionHash(ctx, root)
-	if err != nil {
-		return true
-	}
-	if pge.mapHash.Equal(hashOnGivenRoot) {
-		return false
-	}
-	// An empty map should match an uninitialized collection on the root
-	count, err := pge.underlyingMap.Count()
-	if err == nil && count == 0 && hashOnGivenRoot.IsEmpty() {
-		return false
-	}
-	return true
 }
 
 // reloadCaches writes the underlying map's contents to the caches.
 func (pge *Collection) reloadCaches(ctx context.Context) error {
-	count, err := pge.underlyingMap.Count()
+	count, err := pge.Contents().Count()
 	if err != nil {
 		return err
 	}
 
 	clear(pge.accessCache)
-	pge.mapHash = pge.underlyingMap.HashOf()
 	pge.idCache = make([]id.Extension, 0, count)
 
-	return pge.underlyingMap.IterAll(ctx, func(_ string, h hash.Hash) error {
+	return pge.Contents().IterAll(ctx, func(_ string, h hash.Hash) error {
 		if h.IsEmpty() {
 			return nil
 		}
-		data, err := pge.ns.ReadBytes(ctx, h)
+		data, err := pge.NodeStore().ReadBytes(ctx, h)
 		if err != nil {
 			return err
 		}

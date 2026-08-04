@@ -19,7 +19,6 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
-	"github.com/dolthub/dolt/go/store/hash"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/storage"
@@ -39,6 +38,7 @@ const (
 	RootObjectID_Conflicts
 	RootObjectID_Procedures
 	RootObjectID_Casts
+	RootObjectID_Count // This must always be last since it represents the count
 )
 
 const (
@@ -84,14 +84,16 @@ type Collection interface {
 	// updated field.
 	UpdateField(ctx context.Context, rootObject RootObject, fieldName string, newValue any) (RootObject, error)
 
+	// DiffersFrom returns whether the Collection has changes that the given root does not hold.
+	DiffersFrom(ctx context.Context, root RootValue) (bool, error)
 	// HandleMerge handles merging of two objects. It is guaranteed that "ours" and "theirs" will not be nil, however
 	// "ancestor" may or may not be nil.
 	HandleMerge(ctx context.Context, mro merge.MergeRootObject) (doltdb.RootObject, *merge.MergeStats, error)
+	// IsStale returns whether another writer has changed the Collection on the given root, which makes this Collection
+	// unusable.
+	IsStale(ctx context.Context, root RootValue) bool
 	// LoadCollection loads the Collection from the given root.
 	LoadCollection(ctx context.Context, root RootValue) (Collection, error)
-	// LoadCollectionHash loads the Collection hash from the given root. This does not load the entire collection from
-	// the root, and is therefore a bit more performant if only the hash is needed.
-	LoadCollectionHash(ctx context.Context, root RootValue) (hash.Hash, error)
 	// ResolveNameFromObjects finds the closest matching (or exact) ID for the given name. If an exact match is not
 	// found, then this may error if the name is ambiguous. This searches through the given root objects rather than the
 	// ones stored in the collection itself.
@@ -108,6 +110,10 @@ type RootValue interface {
 	doltdb.RootValue
 	// GetStorage returns the storage contained in the root.
 	GetStorage(context.Context) storage.RootStorage
+	// ReadOnlyCollections returns every Collection on the root, loading them on first use and reusing them after.
+	// These Collections are shared by every reader of this root, so they must not be modified.
+	// TODO: enforce that these are read-only variants
+	ReadOnlyCollections(context.Context) ([]Collection, error)
 	// WithStorage returns an updated RootValue with the given storage.
 	WithStorage(context.Context, storage.RootStorage) RootValue
 }
