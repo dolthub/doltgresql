@@ -73,28 +73,33 @@ type SequenceTracker = dsess.SequenceTracker[*Sequence, SequenceState, int64]
 // SequenceTrackerKey is the key to identify the SequenceTracker in the globalstate.GlobalState
 var SequenceTrackerKey dsess.TrackerKey[*SequenceTracker] = struct{}{}
 
-func (sequence SequenceState) Merge(otherSequenceState SequenceState) (merged SequenceState, ok bool) {
+func (sequence SequenceState) Merge(otherSequenceState SequenceState) (merged SequenceState) {
 	newSequenceState := sequence
-	// Handle the fields that are dependent on the increment direction.
-	// We'll always take the increment size that's the smallest for the most granularity, along with the one that
-	// has progressed the furthest.
-	// For opposing increment directions, we'll take whatever is in our collection.
-	if sequence.Increment >= 0 && otherSequenceState.Increment >= 0 {
+	thisIsIncrementing := sequence.Increment > 0
+	otherIsIncrementing := otherSequenceState.Increment > 0
+	if thisIsIncrementing != otherIsIncrementing {
+		// These states can't be merged.
+		// A zero-valued state is the "invalid" state.
+		return SequenceState{}
+	}
+	if thisIsIncrementing {
 		newSequenceState.Increment = utils.Min(sequence.Increment, otherSequenceState.Increment)
 		newSequenceState.Start = utils.Min(sequence.Start, otherSequenceState.Start)
-	} else if sequence.Increment < 0 && otherSequenceState.Increment < 0 {
+	} else {
 		newSequenceState.Increment = utils.Max(sequence.Increment, otherSequenceState.Increment)
 		newSequenceState.Start = utils.Max(sequence.Start, otherSequenceState.Start)
-	} else {
-		return SequenceState{}, false
 	}
 	if sequence.GreaterThan(otherSequenceState) {
 		newSequenceState.Current = sequence.Current
 	} else {
 		newSequenceState.Current = otherSequenceState.Current
 	}
-	// TODO: How to handle the remaining fields if they differ?
-	return newSequenceState, true
+	newSequenceState.Minimum = utils.Min(sequence.Minimum, otherSequenceState.Minimum)
+	newSequenceState.Maximum = utils.Max(sequence.Maximum, otherSequenceState.Maximum)
+	newSequenceState.Cycle = sequence.Cycle || otherSequenceState.Cycle
+	newSequenceState.IsAtEnd = sequence.IsAtEnd && otherSequenceState.IsAtEnd
+	newSequenceState.HasBeenCalled = sequence.HasBeenCalled || otherSequenceState.HasBeenCalled
+	return newSequenceState
 }
 
 var _ sequences.SequenceState[SequenceState, int64] = SequenceState{}
@@ -115,8 +120,6 @@ func (sequence SequenceState) WithSQLValue(ctx *sql.Context, v interface{}) (Seq
 }
 
 func (sequence SequenceState) GreaterThan(other SequenceState) bool {
-	// TODO: What to do if the two sequences move in different directions?
-	// Assume they move in the same direction.
 	// A sequence that has wrapped around is further along than a sequence that hasn't.
 	// Otherwise, we see which sequence is further alone, in the direction that it's incrementing.
 	if sequence.Increment > 0 {
@@ -598,7 +601,7 @@ func (sequence *Sequence) nextValForSequence() (int64, error) {
 // SequenceSource reads relations from a RootValue by reading its RootObjects
 type SequenceSource struct{}
 
-var _ dsess.RelationSource[*Sequence, SequenceState, int64] = SequenceSource{}
+var _ doltdb.RelationSource[*Sequence] = SequenceSource{}
 
 func (s SequenceSource) GetRelation(ctx context.Context, root doltdb.RootValue, tName doltdb.TableName) (relation *Sequence, resolvedName string, found bool, err error) {
 	obj, found, err := root.GetRootObject(ctx, tName)
