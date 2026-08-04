@@ -527,6 +527,11 @@ func convertValue(val sqlparser.Expr) tree.Expr {
 		return tree.DNull
 	case *sqlparser.FuncExpr:
 		return convertFuncExpr(val)
+	case sqlparser.BoolVal:
+		boolVal := tree.DBool(val)
+		return &boolVal
+	case *sqlparser.UnaryExpr:
+		return convertUnaryExpr(val)
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
 	}
