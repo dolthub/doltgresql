@@ -337,5 +337,14 @@ WHERE  indrelid = 1397286223::OID
 				},
 			},
 		},
+		{
+			Name: "tableoid hidden column support in order by clause",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select oid from pg_class where oid = 862653097 order by tableoid`,
+					Expected: []sql.Row{{862653097}},
+				},
+			},
+		},
 	})
 }

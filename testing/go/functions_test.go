@@ -3160,6 +3160,10 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Query:    `SELECT age(current_date::timestamp);`,
 					Expected: []sql.Row{{"00:00:00"}},
 				},
+				{
+					Query:    `SELECT age(timestamptz '2013-07-01 12:00:00', timestamptz '2013-03-01 12:00:00');`,
+					Expected: []sql.Row{{"4 mons"}},
+				},
 			},
 		},
 		{
@@ -4069,6 +4073,45 @@ func TestStringFunction(t *testing.T) {
 				{
 					Query:    `SELECT CONCAT(NULL);`,
 					Expected: []sql.Row{{""}},
+				},
+			},
+		},
+		{
+			Name:        "encode",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT encode('\x1234567890abcdef00'::bytea, 'hex');`,
+					Expected: []sql.Row{{"1234567890abcdef00"}},
+				},
+				{
+					Query:    `SELECT encode('\x1234567890abcdef00'::bytea, 'base64');`,
+					Expected: []sql.Row{{"EjRWeJCrze8A"}},
+				},
+				{
+					Skip:     true, // TODO fix
+					Query:    `SELECT encode('\x1234567890abcdef00'::bytea, 'escape');`,
+					Expected: []sql.Row{{`\x124Vx\220\253\315\357\000`}},
+				},
+				{
+					Query:    `SELECT encode(''::bytea, 'hex');`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT encode('hello'::bytea, 'escape');`,
+					Expected: []sql.Row{{"hello"}},
+				},
+				{
+					Query:    `SELECT encode('\x5c'::bytea, 'escape');`,
+					Expected: []sql.Row{{`\\`}},
+				},
+				{
+					Query:       `SELECT encode('hello'::bytea, 'bogus');`,
+					ExpectedErr: "unrecognized encoding",
+				},
+				{
+					Query:    `SELECT encode(NULL, 'hex');`,
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},

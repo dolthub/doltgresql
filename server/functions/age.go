@@ -26,8 +26,23 @@ import (
 
 // initAge registers the functions to the catalog.
 func initAge() {
+	framework.RegisterFunction(age_xid)
 	framework.RegisterFunction(age_timestamp_timestamp)
+	framework.RegisterFunction(age_timestamptz_timestamptz)
 	framework.RegisterFunction(age_timestamp)
+	framework.RegisterFunction(age_timestamptz)
+}
+
+// age_xid represents the PostgreSQL function of the same name, taking the same parameters.
+var age_xid = framework.Function1{
+	Name:       "age",
+	Return:     pgtypes.Int32,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Xid},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		// TODO
+		return nil, nil
+	},
 }
 
 // age_timestamp_timestamp represents the PostgreSQL date/time function.
@@ -44,11 +59,43 @@ var age_timestamp_timestamp = framework.Function2{
 	},
 }
 
-// age_timestamp_timestamp represents the PostgreSQL date/time function.
+// age_timestamptz_timestamptz represents the PostgreSQL date/time function.
+var age_timestamptz_timestamptz = framework.Function2{
+	Name:               "age",
+	Return:             pgtypes.Interval,
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.TimestampTZ},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
+		t1 := val1.(time.Time)
+		t2 := val2.(time.Time)
+		return diffTimes(t1, t2), nil
+	},
+}
+
+// age_timestamp represents the PostgreSQL date/time function.
 var age_timestamp = framework.Function1{
 	Name:               "age",
 	Return:             pgtypes.Interval,
 	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Timestamp},
+	IsNonDeterministic: true,
+	Strict:             true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		t := val.(time.Time)
+		// current_date (at midnight)
+		cur, err := time.Parse("2006-01-02", time.Now().Format("2006-01-02"))
+		if err != nil {
+			return nil, err
+		}
+		return diffTimes(cur, t), nil
+	},
+}
+
+// age_timestamptz represents the PostgreSQL date/time function.
+var age_timestamptz = framework.Function1{
+	Name:               "age",
+	Return:             pgtypes.Interval,
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.TimestampTZ},
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
