@@ -981,8 +981,7 @@ func TestSequences(t *testing.T) {
 			},
 		},
 		{
-			Name: "dolt_add, dolt_branch, dolt_checkout, dolt_commit, dolt_reset",
-			Skip: true,
+			Name: "sequences are globally tracked across dolt_add, dolt_branch, dolt_checkout, dolt_commit, dolt_reset",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "CREATE SEQUENCE test;",
@@ -1036,7 +1035,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT nextval('test');",
-					Expected: []sql.Row{{12}},
+					Expected: []sql.Row{{22}},
 				},
 				{
 					Query:    "SELECT dolt_reset('--hard');",
@@ -1044,7 +1043,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT nextval('test');",
-					Expected: []sql.Row{{12}},
+					Expected: []sql.Row{{23}},
 				},
 			},
 		},
