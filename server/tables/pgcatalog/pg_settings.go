@@ -15,10 +15,13 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
+	"sort"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +46,23 @@ func (p PgSettingsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgSettingsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_settings row iter
-	return emptyRowIter()
+	configParams := config.PostgresConfigParameters()
+	names := make([]string, 0, len(configParams))
+	for name := range configParams {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	params := make([]*config.Parameter, 0, len(names))
+	for _, name := range names {
+		if param, ok := configParams[name].(*config.Parameter); ok {
+			params = append(params, param)
+		}
+	}
+	return &pgSettingsRowIter{
+		params: params,
+		idx:    0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -76,15 +94,100 @@ var pgSettingsSchema = sql.Schema{
 	{Name: "pending_restart", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgSettingsName},
 }
 
+// pgSettingsVarType returns the pg_settings vartype string for the given configuration parameter type.
+// The system variable type structs in go-mysql-server are mostly unexported, so we rely on their stable
+// String() identifiers (e.g. "system_bool") to distinguish them.
+func pgSettingsVarType(t sql.Type) string {
+	switch t.String() {
+	case "system_bool":
+		return "bool"
+	case "system_int":
+		return "integer"
+	case "system_double":
+		return "real"
+	case "system_enum":
+		return "enum"
+	case "system_string":
+		return "string"
+	default:
+		return "string"
+	}
+}
+
+// formatSettingValue formats a configuration parameter value for display in pg_settings. Boolean
+// parameters are stored as int8 (or bool) values, but Postgres displays them as "on"/"off".
+func formatSettingValue(param *config.Parameter, val any) string {
+	if val == nil {
+		return ""
+	}
+	if pgSettingsVarType(param.Type) == "bool" {
+		switch v := val.(type) {
+		case bool:
+			if v {
+				return "on"
+			}
+			return "off"
+		case int8:
+			if v != 0 {
+				return "on"
+			}
+			return "off"
+		case int64:
+			if v != 0 {
+				return "on"
+			}
+			return "off"
+		}
+	}
+	return fmt.Sprintf("%v", val)
+}
+
+// currentSettingValue returns the current session value of the given configuration parameter,
+// falling back to the parameter's default value if the session value is unavailable.
+func currentSettingValue(ctx *sql.Context, param *config.Parameter) string {
+	val, err := ctx.GetSessionVariable(ctx, param.Name)
+	if err != nil || val == nil {
+		val = param.Default
+	}
+	return formatSettingValue(param, val)
+}
+
 // pgSettingsRowIter is the sql.RowIter for the pg_settings table.
 type pgSettingsRowIter struct {
+	params []*config.Parameter
+	idx    int
 }
 
 var _ sql.RowIter = (*pgSettingsRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgSettingsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.params) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	param := iter.params[iter.idx-1]
+
+	// TODO: fill in unit, extra_desc, min_val, max_val, and enumvals from the parameter definitions
+	return sql.Row{
+		param.Name,                               // name
+		currentSettingValue(ctx, param),          // setting
+		nil,                                      // unit
+		param.Category,                           // category
+		param.ShortDesc,                          // short_desc
+		nil,                                      // extra_desc
+		string(param.Context),                    // context
+		pgSettingsVarType(param.Type),            // vartype
+		string(param.Source),                     // source
+		nil,                                      // min_val
+		nil,                                      // max_val
+		nil,                                      // enumvals
+		formatSettingValue(param, param.Default), // boot_val
+		formatSettingValue(param, param.ResetVal), // reset_val
+		nil,   // sourcefile
+		nil,   // sourceline
+		false, // pending_restart
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

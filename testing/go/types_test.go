@@ -2070,6 +2070,16 @@ var typesTests = []ScriptTest{
 					{2, "556 778 223"},
 				},
 			},
+			{
+				Skip:     true, // TODO: should convert oidvector to oid[] and subscript but on special indexing of [0:1]
+				Query:    "select ('16 17'::oidvector)[1];",
+				Expected: []sql.Row{{17}},
+			},
+			{
+				Skip:     true, // TODO: support cast from oidvector to oid[]
+				Query:    "select '16 17'::oidvector::oid[];",
+				Expected: []sql.Row{{"[0:1]={16,17}"}},
+			},
 		},
 	},
 	{
@@ -2536,6 +2546,28 @@ var typesTests = []ScriptTest{
 			{
 				Query:       `SELECT '""acos'::regproc;`,
 				ExpectedErr: "invalid name syntax",
+			},
+			{
+				Query: `SELECT 'pg_catalog.acos'::regproc;`,
+				Expected: []sql.Row{
+					{"acos"},
+				},
+			},
+			{
+				Query: `SELECT typinput = 'pg_catalog.array_in'::regproc FROM pg_catalog.pg_type WHERE typname = 'int4';`,
+				Expected: []sql.Row{
+					{"f"},
+				},
+			},
+			{
+				Query: `SELECT typinput = 'pg_catalog.array_in'::regproc FROM pg_catalog.pg_type WHERE typname = '_int4';`,
+				Expected: []sql.Row{
+					{"t"},
+				},
+			},
+			{
+				Query:       `SELECT 'public.acos'::regproc;`,
+				ExpectedErr: "does not exist",
 			},
 		},
 	},
@@ -3986,6 +4018,35 @@ func TestShellTypes(t *testing.T) {
 				{
 					Query:    `DROP TYPE IF EXISTS undefined_type;`,
 					Expected: []sql.Row{},
+				},
+			},
+		},
+	})
+}
+
+func TestCompositeTypes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "composite type as subquery alias",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT 'session_stats' AS chart_name,
+       						pg_catalog.Row_to_json(t) AS chart_data FROM (
+							SELECT
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity) AS "Total",
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity
+									WHERE  state = 'active') AS "Active",
+								 (
+									SELECT Count(*)
+									FROM   pg_catalog.pg_stat_activity
+                            		WHERE  state = 'idle') AS "Idle" ) t;`,
+					ExpectedColNames: []string{"chart_name", "chart_data"},
+					// it actually displays `{"Total":1,"Active":1,"Idle":0}` in client, which is the correct result
+					Expected: []sql.Row{{"session_stats", `{"Active":1,"Idle":0,"Total":1}`}},
 				},
 			},
 		},

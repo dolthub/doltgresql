@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +44,12 @@ func (p PgTsTemplateHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTsTemplateHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_ts_template row iter
-	return emptyRowIter()
+	// TODO: this only includes the "simple" template, since the other built-in templates (ispell, snowball,
+	//  synonym, thesaurus) rely on dictionary support that Doltgres does not yet have
+	return &pgTsTemplateRowIter{
+		templates: defaultPostgresTsTemplates,
+		idx:       0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -60,22 +65,56 @@ var pgTsTemplateSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTsTemplateName},
 	{Name: "tmplname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgTsTemplateName},
 	{Name: "tmplnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTsTemplateName},
-	{Name: "tmplinit", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsTemplateName},   // TODO: regproc type
-	{Name: "tmpllexize", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsTemplateName}, // TODO: regproc type
+	{Name: "tmplinit", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsTemplateName},
+	{Name: "tmpllexize", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsTemplateName},
 }
 
 // pgTsTemplateRowIter is the sql.RowIter for the pg_ts_template table.
 type pgTsTemplateRowIter struct {
+	templates []tsTemplate
+	idx       int
 }
 
 var _ sql.RowIter = (*pgTsTemplateRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgTsTemplateRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.templates) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	template := iter.templates[iter.idx-1]
+
+	return sql.Row{
+		template.oid,       // oid
+		template.name,      // tmplname
+		template.namespace, // tmplnamespace
+		template.init,      // tmplinit
+		template.lexize,    // tmpllexize
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
 func (iter *pgTsTemplateRowIter) Close(ctx *sql.Context) error {
 	return nil
+}
+
+// tsTemplate represents a row in the pg_ts_template table.
+type tsTemplate struct {
+	oid       id.Id
+	name      string
+	namespace id.Id
+	init      id.Id
+	lexize    id.Id
+}
+
+// defaultPostgresTsTemplates is the list of built-in text search templates available in Postgres.
+var defaultPostgresTsTemplates = []tsTemplate{
+	{
+		oid:       id.NewId(id.Section_TextSearchTemplate, "pg_catalog", "simple"),
+		name:      "simple",
+		namespace: id.NewNamespace("pg_catalog").AsId(),
+		init:      id.NewFunction("pg_catalog", "dsimple_init", pgtypes.Internal.ID).AsId(),
+		lexize:    id.NewFunction("pg_catalog", "dsimple_lexize", pgtypes.Internal.ID).AsId(),
+	},
 }

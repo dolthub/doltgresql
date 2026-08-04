@@ -37,8 +37,10 @@ func allDatabasesWithNames(ctx *sql.Context, cat sql.Catalog, privCheck bool) ([
 			db = privDatabase.Unwrap()
 		}
 
+		// Some databases (e.g. the dolt_cluster system database) satisfy sql.SchemaDatabase
+		// without actually supporting schemas, and panic if AllSchemas is called.
 		sdb, ok := db.(sql.SchemaDatabase)
-		if ok {
+		if ok && sdb.SupportsDatabaseSchemas() {
 			var dbsForSchema []information_schema.DbWithNames
 			schemas, err := sdb.AllSchemas(ctx)
 			if err != nil {

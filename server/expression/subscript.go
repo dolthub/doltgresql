@@ -53,11 +53,14 @@ func (s Subscript) String() string {
 
 // Type implements the sql.Expression interface.
 func (s Subscript) Type(ctx *sql.Context) sql.Type {
+
 	dt, ok := s.Child.Type(ctx).(*types.DoltgresType)
 	if !ok {
-		panic(fmt.Sprintf("unexpected type %T for subscript", s.Child.Type(ctx)))
+		return types.Unknown
+		//panic(fmt.Sprintf("unexpected type %T for subscript", s.Child.Type(ctx)))
 	}
-	return dt.ArrayBaseType()
+	// can be either array type or vector type, so use its base type if it exists
+	return dt.BaseType()
 }
 
 // IsNullable implements the sql.Expression interface.

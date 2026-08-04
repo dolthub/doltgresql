@@ -778,6 +778,45 @@ func TestFunctionsMath(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "greatest/least",
+			SetUpScript: []string{
+				`create table t(a decimal(6, 2), b decimal(8, 5), c decimal(5, 1));`,
+				`insert into t values (2.75, 8.8, 3.1);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT GREATEST(25, 6, 7, 10, 20, 54);`,
+					ExpectedColNames: []string{"greatest"},
+					Expected:         []sql.Row{{54}},
+				},
+				{
+					Query:    `SELECT GREATEST(25, 6, 7, NULL, 20, 54);`,
+					Expected: []sql.Row{{54}},
+				},
+				{
+					Query:    `SELECT GREATEST(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:            `SELECT LEAST(25, 6, 7, 10, 20, 54);`,
+					ExpectedColNames: []string{"least"},
+					Expected:         []sql.Row{{6}},
+				},
+				{
+					Query:    `SELECT LEAST(25, 6, 7, NULL, 20, 54);`,
+					Expected: []sql.Row{{6}},
+				},
+				{
+					Query:    `SELECT LEAST(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `select greatest(a, b, c), least(a, b, c) from t;`,
+					Expected: []sql.Row{{Numeric("8.80000"), Numeric("2.75")}},
+				},
+			},
+		},
 	})
 }
 
@@ -1636,6 +1675,24 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_show_all_settings",
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: add all config parameters
+					Query: `SELECT name FROM pg_show_all_settings();`,
+					Expected: []sql.Row{
+						{"bytea_output"},
+					},
+				},
+				{
+					Query: `SELECT set_config('bytea_output','hex',false) FROM pg_show_all_settings() WHERE name = 'bytea_output';`,
+					Expected: []sql.Row{
+						{"hex"},
+					},
+				},
+			},
+		},
 	})
 }
 
@@ -2144,11 +2201,156 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "pg_collation_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_collation_is_visible(950);`, // C
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_collation_is_visible(100);`, // default
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_collation_is_visible(397);`, // an operator family, not a collation
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_collation_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_opclass_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_opclass_is_visible(15000);`, // btree array_ops
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_opclass_is_visible(397);`, // an operator family, not an operator class
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_opclass_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_opfamily_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_opfamily_is_visible(397);`, // btree array_ops
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_opfamily_is_visible(15000);`, // an operator class, not an operator family
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_opfamily_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_operator_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: built-in operators are not yet cataloged, so no OID refers to a visible operator
+					Query:    `SELECT pg_operator_is_visible(22);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_conversion_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: encoding conversions are not yet cataloged, so no OID refers to a visible conversion
+					Query:    `SELECT pg_conversion_is_visible(22);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_ts_config_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_ts_config_is_visible(3748);`, // simple
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_ts_config_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_ts_dict_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_ts_dict_is_visible(3765);`, // simple
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_ts_dict_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_ts_template_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_ts_template_is_visible(3727);`, // simple
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_ts_template_is_visible(22);`, // invalid
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name:        "pg_statistics_obj_is_visible",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// TODO: extended statistics objects are not yet supported, so no OID refers to a visible one
+					Query:    `SELECT pg_statistics_obj_is_visible(22);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
 	})
 }
 
 func TestSystemCatalogInformationFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name:        "getdatabaseencoding",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT getdatabaseencoding();`,
+					Expected: []sql.Row{
+						{"UTF8"},
+					},
+				},
+			},
+		},
 		{
 			Name:        "pg_encoding_to_char",
 			SetUpScript: []string{},
@@ -2162,14 +2364,115 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name:        "pg_get_functiondef",
+			Name:        "pg_char_to_encoding",
 			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT pg_char_to_encoding('UTF8');`,
+					Expected: []sql.Row{
+						{6},
+					},
+				},
+				{
+					Query: `SELECT pg_char_to_encoding('utf-8');`,
+					Expected: []sql.Row{
+						{6},
+					},
+				},
+				{
+					// TODO: only UTF8 is supported for now
+					Query: `SELECT pg_char_to_encoding('LATIN1');`,
+					Expected: []sql.Row{
+						{-1},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_get_function_arguments",
+			SetUpScript: []string{
+				`CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1';`,
+				`CREATE TABLE cp_test (a int, b text);`,
+				`CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)
+				LANGUAGE SQL
+				AS $$
+					INSERT INTO cp_test VALUES(a, b);
+					INSERT INTO cp_test VALUES(c, b);
+				$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT pg_get_function_arguments(22)`, // invalid
+					Expected: []sql.Row{
+						{""},
+					},
+				},
+				{
+					// caches the function and procedure OIDs so that they can be used below
+					Query: `SELECT oid, proname FROM pg_catalog.pg_proc WHERE proname = 'alt_func1' OR proname = 'ptest5';`,
+					Expected: []sql.Row{
+						{2891346960, "alt_func1"},
+						{1886569565, "ptest5"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_function_arguments(2891346960)`,
+					Expected: []sql.Row{
+						{"integer"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_function_arguments(1886569565)`,
+					Expected: []sql.Row{
+						{"a integer, b text, c integer DEFAULT 100"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_get_functiondef",
+			SetUpScript: []string{
+				`CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1';`,
+				`CREATE TABLE cp_test (a int, b text);`,
+				`CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)
+				LANGUAGE SQL
+				AS $$
+					INSERT INTO cp_test VALUES(a, b);
+					INSERT INTO cp_test VALUES(c, b);
+				$$;`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
 					// TODO: not supported yet
 					Query: `SELECT pg_get_functiondef(22)`,
 					Expected: []sql.Row{
 						{""},
+					},
+				},
+				{
+					Skip:  true, // TODO: fails to convert oid to function id because it hasn't been cached.
+					Query: `SELECT pg_get_functiondef(2891346960)`,
+					Expected: []sql.Row{
+						{"CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1'"},
+					},
+				},
+				{
+					Query: `SELECT oid, proname FROM pg_catalog.pg_proc WHERE proname = 'alt_func1' OR proname = 'ptest5';`,
+					Expected: []sql.Row{
+						{2891346960, "alt_func1"},
+						{1886569565, "ptest5"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_functiondef(2891346960)`,
+					Expected: []sql.Row{
+						{"CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1'"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_functiondef(1886569565)`,
+					Expected: []sql.Row{
+						{"CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)\n\t\t\t\tLANGUAGE SQL\n\t\t\t\tAS $$\n\t\t\t\t\tINSERT INTO cp_test VALUES(a, b);\n\t\t\t\t\tINSERT INTO cp_test VALUES(c, b);\n\t\t\t\t$$"},
 					},
 				},
 			},
@@ -4141,6 +4444,90 @@ func TestSetReturningFunctions(t *testing.T) {
 					{
 						Query:       `SELECT generate_series('1.2'::numeric,1.4,'NAN')`,
 						ExpectedErr: `step value cannot be NaN`,
+					},
+				},
+			},
+			{
+				Name: "generate_series as table function with column alias",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:            `SELECT * FROM generate_series(1,3) AS s(r)`,
+						Expected:         []sql.Row{{1}, {2}, {3}},
+						ExpectedColNames: []string{"r"},
+					},
+					{
+						Query:    `SELECT r FROM generate_series(1,3) AS s(r)`,
+						Expected: []sql.Row{{1}, {2}, {3}},
+					},
+					{
+						Query:    `SELECT r + 1 FROM generate_series(1,3) AS s(r) WHERE r > 1`,
+						Expected: []sql.Row{{3}, {4}},
+					},
+					{
+						Query:            `SELECT * FROM generate_series(1, array_upper(current_schemas(false), 1)) AS s(r)`,
+						Expected:         []sql.Row{{1}},
+						ExpectedColNames: []string{"r"},
+					},
+				},
+			},
+			{
+				Name: "set-returning function as join operand",
+				SetUpScript: []string{
+					"CREATE TABLE test1 (id INT PRIMARY KEY);",
+					"INSERT INTO test1 VALUES (1), (2), (4);",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:            `SELECT id, r FROM test1 LEFT JOIN generate_series(1,3) s(r) ON id = r ORDER BY id;`,
+						Expected:         []sql.Row{{1, 1}, {2, 2}, {4, nil}},
+						ExpectedColNames: []string{"id", "r"},
+					},
+					{
+						Query:    `SELECT id, r FROM test1 JOIN generate_series(1,3) AS s(r) ON id = s.r ORDER BY id;`,
+						Expected: []sql.Row{{1, 1}, {2, 2}},
+					},
+					{
+						Query:    `SELECT id, r FROM generate_series(1,3) s(r) LEFT JOIN test1 ON id = r ORDER BY r;`,
+						Expected: []sql.Row{{1, 1}, {2, 2}, {nil, 3}},
+					},
+				},
+			},
+			{
+				// Regression test for query used by DBeaver
+				Name: "generate_series as table function used in pgJDBC-style enum catalog query",
+				SetUpScript: []string{
+					"CREATE TYPE status_enum AS ENUM ('one', 'two', 'three');",
+					"CREATE TABLE test1 (id INT, status status_enum);",
+					"INSERT INTO test1 VALUES (1, 'one'), (2, 'two'), (3, 'three');",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: `SELECT
+    typinput = 'pg_catalog.array_in'::regproc AS is_array,
+    typtype,
+    typname
+FROM pg_catalog.pg_type
+LEFT JOIN (
+    SELECT ns.oid AS nspoid, ns.nspname, r.r
+    FROM pg_namespace AS ns
+    JOIN (
+        SELECT
+            s.r,
+            (current_schemas(false))[s.r] AS nspname
+        FROM generate_series(
+            1,
+            array_upper(current_schemas(false), 1)
+        ) AS s(r)
+    ) AS r USING (nspname)
+) AS sp ON sp.nspoid = typnamespace
+WHERE pg_type.oid = (
+    SELECT atttypid
+    FROM pg_attribute
+    WHERE attrelid = 'test1'::regclass
+      AND attname = 'status'
+)
+ORDER BY sp.r, pg_type.oid DESC;`,
+						Expected: []sql.Row{{"f", "e", "status_enum"}},
 					},
 				},
 			},

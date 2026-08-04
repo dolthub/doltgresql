@@ -21,8 +21,11 @@ import (
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/auth"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // nodeSelect handles *tree.Select nodes.
@@ -121,6 +124,30 @@ func nodeSelectExpr(ctx *Context, node tree.SelectExpr) (vitess.SelectExpr, erro
 				TableName: colName.Qualifier,
 			}, nil
 		}
+		// We currently handle Postgres' hidden columns by just returning their "zero" value since we don't support
+		// their underlying functionality
+		switch colName.Name.String() {
+		case "cmin", "cmax":
+			return &vitess.AliasedExpr{
+				Expr: vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(uint32(0), pgtypes.Cid)},
+				As:   vitess.NewColIdent(string(node.As)),
+			}, nil
+		case "ctid":
+			return &vitess.AliasedExpr{
+				Expr: vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(pgtypes.TidValue{}, pgtypes.Tid)},
+				As:   vitess.NewColIdent(string(node.As)),
+			}, nil
+		case "tableoid":
+			return &vitess.AliasedExpr{
+				Expr: vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(id.Null, pgtypes.Oid)},
+				As:   vitess.NewColIdent(string(node.As)),
+			}, nil
+		case "xmin", "xmax":
+			return &vitess.AliasedExpr{
+				Expr: vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(uint32(0), pgtypes.Xid)},
+				As:   vitess.NewColIdent(string(node.As)),
+			}, nil
+		}
 
 		// We don't set the InputExpression for ColName expressions. This matches the behavior in vitess's
 		// post-processing found in ast.go. Input expressions are load bearing for some parts of plan building
@@ -174,6 +201,9 @@ func inputExpressionForSelectExpr(node tree.SelectExpr) string {
 	inputExpression := tree.AsStringWithFlags(&node, tree.FmtOmitFunctionArgs)
 	// To be consistent with vitess handling, InputExpression always gets its outer quotes trimmed
 	if strings.HasPrefix(inputExpression, "'") && strings.HasSuffix(inputExpression, "'") {
+		inputExpression = inputExpression[1 : len(inputExpression)-1]
+	}
+	if strings.HasPrefix(inputExpression, "\"") && strings.HasSuffix(inputExpression, "\"") {
 		inputExpression = inputExpression[1 : len(inputExpression)-1]
 	}
 	return inputExpression

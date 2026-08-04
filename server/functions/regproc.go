@@ -56,18 +56,27 @@ var regprocin = framework.Function1{
 		if err = regproc_IoInputValidation(ctx, input, sections); err != nil {
 			return id.Null, err
 		}
+		var funcName string
 		switch len(sections) {
 		case 1:
-			// TODO: handle procedures, aggregate functions, and window functions
-			// TODO: this only handles built-in functions
-			funcInterfaces := framework.Catalog[sections[0]]
-			if len(funcInterfaces) == 1 {
-				return funcInterfaces[0].InternalID(), nil
+			funcName = sections[0]
+		case 3:
+			// TODO: All built-in functions are cataloged under pg_catalog; there's no support yet
+			// for resolving functions in other schemas (e.g. user-defined functions)
+			if sections[0] != "pg_catalog" {
+				return id.Null, errors.Errorf(`function "%s" does not exist`, input)
 			}
-			return id.Null, errors.Errorf(`"function "%s" does not exist"`, input)
+			funcName = sections[2]
 		default:
 			return id.Null, errors.Errorf("regproc failed validation")
 		}
+		// TODO: handle procedures, aggregate functions, and window functions
+		// TODO: this only handles built-in functions
+		funcInterfaces := framework.Catalog[funcName]
+		if len(funcInterfaces) == 1 {
+			return funcInterfaces[0].InternalID(), nil
+		}
+		return id.Null, errors.Errorf(`function "%s" does not exist`, input)
 	},
 }
 
@@ -82,7 +91,11 @@ var regprocout = framework.Function1{
 		if input.Section() == id.Section_OID {
 			return input.Segment(0), nil
 		}
-		return val.(id.Id).Segment(1), nil
+		res := val.(id.Id).Segment(1)
+		if res == "" {
+			return "-", nil
+		}
+		return res, nil
 	},
 }
 
@@ -125,7 +138,7 @@ func regproc_IoInputValidation(ctx *sql.Context, input string, sections []string
 		if sections[1] != "." {
 			return errors.Errorf("invalid name syntax")
 		}
-		return errors.Errorf("functions are not yet implemented in terms of the schema")
+		return nil
 	case 5:
 		if sections[1] != "." || sections[3] != "." {
 			return errors.Errorf("invalid name syntax")

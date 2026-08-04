@@ -44,6 +44,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/typecollection"
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
@@ -152,7 +153,7 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 
 	err := h.doQuery(ctx, conn, query, nil, analyzedPlan, h.executeBoundPlan, callback, formatCodes)
 	if err != nil {
-		err = sql.CastSQLError(err)
+		err = castSQLError(err)
 	}
 
 	if h.sel != nil {
@@ -179,7 +180,7 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 			fmt.Printf("unable to prepare query: %+v\n", err)
 		}
 		logrus.WithField("query", query).Errorf("unable to prepare query: %s", err.Error())
-		return nil, nil, sql.CastSQLError(err)
+		return nil, nil, castSQLError(err)
 	}
 	// Always attempt analysis to get correct column names for Describe(statement) responses.
 	// When bind variables are present the analyzer may fail or produce an inaccurate schema;
@@ -226,7 +227,7 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 
 	err := h.doQuery(ctx, c, query, parsed, nil, h.executeQuery, callback, nil)
 	if err != nil {
-		err = sql.CastSQLError(err)
+		err = castSQLError(err)
 	}
 
 	if h.sel != nil {
@@ -304,9 +305,15 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 	if err != nil {
 		return nil, err
 	}
-	typeColl, err := core.GetTypesCollectionFromContext(ctx, "")
-	if err != nil {
-		return nil, err
+	// The types collection is loaded lazily: fetching it requires the current database to be backed by a Doltgres
+	// root, which isn't the case for Dolt's synthetic databases (e.g. dolt_cluster), and statements without bind
+	// parameters never need it.
+	var typeColl *typecollection.TypeCollection
+	if len(values) > 0 {
+		typeColl, err = core.GetTypesCollectionFromContext(ctx, "")
+		if err != nil {
+			return nil, err
+		}
 	}
 	for i := range values {
 		formatCode := formatCodes[i]

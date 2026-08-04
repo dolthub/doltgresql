@@ -15,7 +15,7 @@ tests:
         cluster:
           standby_remotes:
           - name: standby
-            remote_url_template: http://localhost:{{get_port "server2_cluster"}}/{database}
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
           bootstrap_role: primary
           bootstrap_epoch: 1
           remotesapi:
@@ -34,7 +34,7 @@ tests:
         cluster:
           standby_remotes:
           - name: standby
-            remote_url_template: http://localhost:{{get_port "server1_cluster"}}/{database}
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
           bootstrap_role: standby
           bootstrap_epoch: 1
           remotesapi:
@@ -85,7 +85,7 @@ tests:
     - query: "SELECT dolt_assume_cluster_role('standby', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     retry_attempts: 100
     queries:
@@ -101,7 +101,7 @@ tests:
     - query: "SELECT dolt_assume_cluster_role('primary', 2)"
       result:
         columns: ["dolt_assume_cluster_role"]
-        rows: [["{0}"]]
+        rows: [["0"]]
   - on: server2
     queries:
     - exec: 'USE repo1'

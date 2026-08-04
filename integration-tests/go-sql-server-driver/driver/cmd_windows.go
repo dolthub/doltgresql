@@ -29,6 +29,14 @@ func ApplyCmdAttributes(cmd *exec.Cmd) {
 	}
 }
 
+// interruptCmd requests that |cmd| shut down gracefully, the same way a user
+// pressing Ctrl-C would. os.Interrupt cannot be sent with Process.Signal on
+// Windows, so a console ctrl-break event is used instead (the process was
+// placed in its own process group by ApplyCmdAttributes).
+func interruptCmd(cmd *exec.Cmd) error {
+	return windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(cmd.Process.Pid))
+}
+
 func (s *SqlServer) GracefulStop() error {
 	err := windows.GenerateConsoleCtrlEvent(windows.CTRL_BREAK_EVENT, uint32(s.Cmd.Process.Pid))
 	if err != nil {

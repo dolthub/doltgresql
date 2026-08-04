@@ -110,6 +110,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 					width = 1
 				}
 				doltgresType = pgtypes.InternalChar
+			case oid.T_cid:
+				doltgresType = pgtypes.Cid
 			case oid.T_date:
 				doltgresType = pgtypes.Date
 			case oid.T_float4:
@@ -153,6 +155,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 				doltgresType = pgtypes.Regtype
 			case oid.T_text:
 				doltgresType = pgtypes.Text
+			case oid.T_tid:
+				doltgresType = pgtypes.Tid
 			case oid.T_time:
 				doltgresType = pgtypes.Time
 			case oid.T_timestamp:

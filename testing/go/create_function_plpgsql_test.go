@@ -1026,15 +1026,15 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query: `CREATE OR REPLACE FUNCTION interpreted_as_of(input TEXT) RETURNS TEXT AS $$
@@ -1046,10 +1046,10 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1058,7 +1058,7 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    "SELECT dolt_checkout('main')",
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "SELECT interpreted_as_of('abcd');",
@@ -1091,15 +1091,15 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
-					Expected: []sql.Row{{`{0,"Switched to branch 'other'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query: `CREATE FUNCTION interpreted_merging(input INT4) RETURNS INT4 AS $$
@@ -1111,10 +1111,10 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1123,7 +1123,7 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    "SELECT dolt_checkout('main')",
-					Expected: []sql.Row{{`{0,"Switched to branch 'main'"}`}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query:    "INSERT INTO test VALUES (80);",
@@ -1131,10 +1131,10 @@ $$ LANGUAGE plpgsql;`,
 				},
 				{
 					Query:    `SELECT dolt_add('.');`,
-					Expected: []sql.Row{{"{0}"}},
+					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 34;",
+					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1703,6 +1703,74 @@ END; $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT * FROM test;",
 					Expected: []sql.Row{{1}, {2}},
+				},
+			},
+		},
+		{
+			Name: "function with single OUT parameter",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE OR REPLACE FUNCTION calculate_bonus(
+    IN current_salary NUMERIC,
+    OUT new_total_salary NUMERIC
+) AS $$
+BEGIN
+    -- Calculate the new total with a 10% bonus
+    new_total_salary := current_salary + current_salary * 0.10;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            "SELECT calculate_bonus(5000);",
+					ExpectedColNames: []string{"calculate_bonus"},
+					Expected:         []sql.Row{{Numeric("5500.00")}},
+				},
+				{
+					Query:            "SELECT * FROM calculate_bonus(5000);",
+					ExpectedColNames: []string{"new_total_salary"},
+					Expected:         []sql.Row{{Numeric("5500.00")}},
+				},
+				{
+					Query:            "SELECT new_total_salary FROM calculate_bonus(5000);",
+					ExpectedColNames: []string{"new_total_salary"},
+					Expected:         []sql.Row{{Numeric("5500.00")}},
+				},
+			},
+		},
+		{
+			Name: "function with multiple OUT parameter",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE OR REPLACE FUNCTION calculate_bonus(
+    IN current_salary NUMERIC,
+    OUT bonus_amount NUMERIC,
+    OUT new_total_salary NUMERIC
+) AS $$
+BEGIN
+    -- Calculate a 10% bonus
+    bonus_amount := current_salary * 0.10;
+    
+    -- Calculate the new total
+    new_total_salary := current_salary + bonus_amount;
+END;
+$$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            "SELECT calculate_bonus(5000);",
+					ExpectedColNames: []string{"calculate_bonus"},
+					Expected:         []sql.Row{{[]any{Numeric("500.00"), Numeric("5500.00")}}}, // displayed as (500.00,5500.00)
+				},
+				{
+					Query:            "SELECT * FROM calculate_bonus(5000);",
+					ExpectedColNames: []string{"bonus_amount", "new_total_salary"},
+					Expected:         []sql.Row{{Numeric("500.00"), Numeric("5500.00")}},
+				},
+				{
+					Query:            "SELECT bonus_amount FROM calculate_bonus(5000);",
+					ExpectedColNames: []string{"bonus_amount"},
+					Expected:         []sql.Row{{Numeric("500.00")}},
 				},
 			},
 		},

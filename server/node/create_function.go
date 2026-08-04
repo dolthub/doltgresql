@@ -32,7 +32,7 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// RoutineParam represents a routine parameter with parameter name, type and default value if exists.
+// RoutineParam represents a routine parameter with parameter mode, name, type and default value if exists.
 type RoutineParam struct {
 	Mode       procedures.ParameterMode
 	Name       string
@@ -114,14 +114,24 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if err != nil {
 		return nil, err
 	}
-	paramNames := make([]string, len(c.Parameters))
-	paramTypes := make([]id.Type, len(c.Parameters))
-	paramDefaults := make([]string, len(c.Parameters))
+	allParams := make([]procedures.Parameter, len(c.Parameters))
+	var inputParamTypes []id.Type
 	for i, param := range c.Parameters {
-		paramNames[i] = param.Name
-		paramTypes[i] = param.Type.ID
+		p := procedures.Parameter{
+			Mode: param.Mode,
+			Name: param.Name,
+			Type: param.Type.ID,
+		}
 		if param.Default != nil {
-			paramDefaults[i] = param.Default.String()
+			p.Default = param.Default.String()
+		}
+		allParams[i] = p
+		switch param.Mode {
+		case procedures.ParameterMode_IN, procedures.ParameterMode_VARIADIC:
+			inputParamTypes = append(inputParamTypes, param.Type.ID)
+		case procedures.ParameterMode_INOUT:
+			inputParamTypes = append(inputParamTypes, param.Type.ID)
+		case procedures.ParameterMode_OUT:
 		}
 	}
 
@@ -129,7 +139,7 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if err != nil {
 		return nil, err
 	}
-	funcID := id.NewFunction(schemaName, c.FunctionName, paramTypes...)
+	funcID := id.NewFunction(schemaName, c.FunctionName, inputParamTypes...)
 	if c.Replace && funcCollection.HasFunction(ctx, funcID) {
 		if err = funcCollection.DropFunction(ctx, funcID); err != nil {
 			return nil, err
@@ -151,9 +161,7 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	err = funcCollection.AddFunction(ctx, functions.Function{
 		ID:                 funcID,
 		ReturnType:         c.ReturnType.ID,
-		ParameterNames:     paramNames,
-		ParameterTypes:     paramTypes,
-		ParameterDefaults:  paramDefaults,
+		AllParams:          allParams,
 		Variadic:           false, // TODO: implement this
 		IsNonDeterministic: true,
 		Strict:             c.Strict,

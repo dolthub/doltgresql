@@ -43,7 +43,11 @@ func (p PgPreparedStatementsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPreparedStatementsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_prepared_statements row iter
+	// pg_prepared_statements is currently empty. Prepared statements are tracked per-connection in
+	// the wire protocol layer (ConnectionHandler.preparedStatements in server/connection_handler.go),
+	// which is not reachable from the SQL session that this table is queried from.
+	// TODO: fill this in once the connection handler's prepared statement registry is exposed to
+	// the SQL session
 	return emptyRowIter()
 }
 
@@ -60,8 +64,8 @@ var pgPreparedStatementsSchema = sql.Schema{
 	{Name: "name", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "statement", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "prepare_time", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
-	{Name: "parameter_types", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPreparedStatementsName}, // TODO: regtype[] type
-	{Name: "result_types", Type: pgtypes.Text, Default: nil, Nullable: true, Source: PgPreparedStatementsName},    // TODO: regtype[] type
+	{Name: "parameter_types", Type: pgtypes.RegtypeArray, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
+	{Name: "result_types", Type: pgtypes.RegtypeArray, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "from_sql", Type: pgtypes.Bool, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "generic_plans", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgPreparedStatementsName},
 	{Name: "custom_plans", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgPreparedStatementsName},

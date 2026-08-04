@@ -47,8 +47,15 @@ func TransformRecordFilter(
 		case *plan.ResolvedTable:
 			tblNode = child
 		case *plan.TableAlias:
-			tblNode, _ = child.Child.(sql.TableNode)
+			tblNode, ok = child.Child.(sql.TableNode)
+			if !ok {
+				// it can be table function wrapper
+				return n, transform.SameTree, nil
+			}
 		default:
+			return n, transform.SameTree, nil
+		}
+		if tblNode == nil {
 			return n, transform.SameTree, nil
 		}
 		// TODO: should only convert expressions when there's applicable index

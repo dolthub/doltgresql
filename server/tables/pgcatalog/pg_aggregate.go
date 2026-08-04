@@ -43,7 +43,8 @@ func (p PgAggregateHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAggregateHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_aggregate row iter
+	// pg_aggregate is currently empty, since built-in aggregate functions do not yet have pg_proc entries.
+	// TODO: fill this in alongside built-in function entries in pg_proc
 	return emptyRowIter()
 }
 
@@ -57,17 +58,17 @@ func (p PgAggregateHandler) PkSchema() sql.PrimaryKeySchema {
 
 // pgAggregateSchema is the schema for pg_aggregate.
 var pgAggregateSchema = sql.Schema{
-	{Name: "aggfnoid", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName}, // TODO: regproc type
+	{Name: "aggfnoid", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggkind", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggnumdirectargs", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAggregateName},
-	{Name: "aggtransfn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName},     // TODO: regproc type
-	{Name: "aggfinalfn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName},     // TODO: regproc type
-	{Name: "aggcombinefn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName},   // TODO: regproc type
-	{Name: "aggserialfn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName},    // TODO: regproc type
-	{Name: "aggdeserialfn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName},  // TODO: regproc type
-	{Name: "aggmtransfn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName},    // TODO: regproc type
-	{Name: "aggminvtransfn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName}, // TODO: regproc type
-	{Name: "aggmfinalfn", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAggregateName},    // TODO: regproc type
+	{Name: "aggtransfn", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggfinalfn", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggcombinefn", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggserialfn", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggdeserialfn", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggmtransfn", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggminvtransfn", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggmfinalfn", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggfinalextra", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggmfinalextra", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggfinalmodify", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAggregateName},

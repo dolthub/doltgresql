@@ -16,20 +16,20 @@ package functions
 
 import (
 	"context"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 
 	"github.com/dolthub/doltgresql/core/id"
 	pgmerge "github.com/dolthub/doltgresql/core/merge"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 const (
-	FIELD_NAME_PARAMETER_NAMES   = "parameter_names"
+	FIELD_NAME_PARAMETERS        = "parameters"
 	FIELD_NAME_RETURN_TYPE       = "return_type"
 	FIELD_NAME_NON_DETERMINISTIC = "non_deterministic"
 	FIELD_NAME_STRICT            = "strict"
@@ -54,18 +54,22 @@ func (pgf *Collection) DiffRootObjects(ctx context.Context, fromHash string, o o
 	ancestor, hasAncestor := a.(Function)
 	var diffs []objinterface.RootObjectDiff
 	{
-		ourParamNames := strings.Join(ours.ParameterNames, ",")
-		theirParamNames := strings.Join(theirs.ParameterNames, ",")
-		ancParamNames := strings.Join(ancestor.ParameterNames, ",")
+		ourParams := procedures.ParameterNamesAndModesToString(ours.AllParams)
+		theirParams := procedures.ParameterNamesAndModesToString(theirs.AllParams)
+		ancParams := procedures.ParameterNamesAndModesToString(ancestor.AllParams)
 		diff := objinterface.RootObjectDiff{
 			Type:      pgtypes.Text,
 			FromHash:  fromHash,
-			FieldName: FIELD_NAME_PARAMETER_NAMES,
+			FieldName: FIELD_NAME_PARAMETERS,
 		}
-		if pgmerge.DiffValues(&diff, ourParamNames, theirParamNames, ancParamNames, hasAncestor) {
+		if pgmerge.DiffValues(&diff, ourParams, theirParams, ancParams, hasAncestor) {
 			diffs = append(diffs, diff)
 		} else {
-			ours.ParameterNames = strings.Split(diff.OurValue.(string), ",")
+			newParams, err := procedures.ParameterNamesAndModesFromString(ours.AllParams, diff.OurValue.(string))
+			if err != nil {
+				return nil, nil, err
+			}
+			ours.AllParams = newParams
 		}
 	}
 	if ours.ReturnType != theirs.ReturnType {
@@ -178,7 +182,7 @@ func (pgf *Collection) DropRootObject(ctx context.Context, identifier id.Id) err
 // GetFieldType implements the interface objinterface.Collection.
 func (pgf *Collection) GetFieldType(ctx context.Context, fieldName string) *pgtypes.DoltgresType {
 	switch fieldName {
-	case FIELD_NAME_PARAMETER_NAMES:
+	case FIELD_NAME_PARAMETERS:
 		return pgtypes.Text
 	case FIELD_NAME_RETURN_TYPE:
 		return pgtypes.Text
@@ -294,8 +298,12 @@ func (pgf *Collection) TableNameToID(name doltdb.TableName) id.Id {
 func (pgf *Collection) UpdateField(ctx context.Context, rootObject objinterface.RootObject, fieldName string, newValue any) (objinterface.RootObject, error) {
 	function := rootObject.(Function)
 	switch fieldName {
-	case FIELD_NAME_PARAMETER_NAMES:
-		function.ParameterNames = strings.Split(newValue.(string), ",")
+	case FIELD_NAME_PARAMETERS:
+		newParams, err := procedures.ParameterNamesAndModesFromString(function.AllParams, newValue.(string))
+		if err != nil {
+			return nil, err
+		}
+		function.AllParams = newParams
 	case FIELD_NAME_RETURN_TYPE:
 		function.ReturnType = id.NewType(function.ReturnType.SchemaName(), newValue.(string))
 	case FIELD_NAME_NON_DETERMINISTIC:

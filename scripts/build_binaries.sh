@@ -72,8 +72,18 @@ for tuple in $OS_ARCH_TUPLES; do
   cp -r ./licenses "$o/licenses"
   cp LICENSE "$o/licenses"
   bin="doltgres"
+  tags="icu_static"
   if [ "$os" = windows ]; then
       bin="$bin.exe"
+      tags="$tags,pg_extension_embed"
+      for f in postgres.exe pg_extension.dll; do
+        if [ ! -f "core/extensions/pg_extension/output/$f" ]; then
+          echo "ERROR: core/extensions/pg_extension/output/$f is missing." >&2
+          echo "It is built by core/extensions/pg_extension/library/build_library.sh on a Windows host," >&2
+          echo "and is required by the pg_extension_embed build tag." >&2
+          exit 1
+        fi
+      done
   fi
   echo Building "$o/bin/$bin"
   CGO_ENABLED=1 \
@@ -85,7 +95,7 @@ for tuple in $OS_ARCH_TUPLES; do
       CGO_LDFLAGS="${platform_cgo_ldflags[${tuple}]}" \
       go build -buildvcs=false -trimpath \
       -ldflags="${platform_go_ldflags[${tuple}]}" \
-      -tags icu_static -o "$o/bin/$bin" \
+      -tags "$tags" -o "$o/bin/$bin" \
       ./cmd/doltgres
   if [ "$os" = windows ]; then
     (cd out && 7z a "doltgresql-$os-$arch.zip" "doltgresql-$os-$arch" && 7z a "doltgresql-$os-$arch.7z" "doltgresql-$os-$arch")

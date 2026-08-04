@@ -144,7 +144,7 @@ func TestDoltBackup(t *testing.T) {
 			},
 			{
 				Query:    "select dolt_backup('remove', 'backup_a');",
-				Expected: []sql.Row{{"{0}"}},
+				Expected: []sql.Row{{int64(0)}},
 			},
 			{
 				Query:    "select name from dolt.dolt_backups order by name;",
@@ -152,7 +152,7 @@ func TestDoltBackup(t *testing.T) {
 			},
 			{
 				Query:    "select dolt_backup('remove', 'backup_b');",
-				Expected: []sql.Row{{"{0}"}},
+				Expected: []sql.Row{{int64(0)}},
 			},
 			{
 				Query:    "select count(*) from dolt.dolt_backups;",
@@ -181,7 +181,7 @@ func TestDoltBackup(t *testing.T) {
 			},
 			{
 				Query:    fmt.Sprintf("select dolt_backup('restore', '--force', '%s', 'db_to_overwrite');", backupUrl),
-				Expected: []sql.Row{{"{0}"}},
+				Expected: []sql.Row{{int64(0)}},
 			},
 			{
 				Query: "USE db_to_overwrite;",
@@ -356,7 +356,7 @@ func TestDoltBackup(t *testing.T) {
 			},
 			{
 				Query:    "select dolt_backup('remove', 'mybackup');",
-				Expected: []sql.Row{{"{0}"}},
+				Expected: []sql.Row{{int64(0)}},
 			},
 		},
 	})

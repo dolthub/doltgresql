@@ -16,9 +16,12 @@ package pgcatalog
 
 import (
 	"io"
+	"sort"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +46,56 @@ func (p PgEnumHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgEnumHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_enum row iter
-	return emptyRowIter()
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.enumLabels == nil {
+		err = cachePgEnums(ctx, pgCatalogCache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pgEnumRowIter{
+		labels: pgCatalogCache.enumLabels,
+		idx:    0,
+	}, nil
+}
+
+// cachePgEnums caches the pg_enum data for the current database in the session.
+func cachePgEnums(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
+	var enumLabels []pgEnumLabel
+	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+		Type: func(ctx *sql.Context, schema functions.ItemSchema, typ functions.ItemType) (cont bool, err error) {
+			if len(typ.Item.EnumLabels) == 0 {
+				return true, nil
+			}
+			labels := make([]pgtypes.EnumLabel, 0, len(typ.Item.EnumLabels))
+			for _, label := range typ.Item.EnumLabels {
+				labels = append(labels, label)
+			}
+			sort.Slice(labels, func(i, j int) bool {
+				return labels[i].SortOrder < labels[j].SortOrder
+			})
+			for _, label := range labels {
+				enumLabels = append(enumLabels, pgEnumLabel{
+					oid:       label.ID.AsId(),
+					enumTypID: typ.Oid.AsId(),
+					sortOrder: label.SortOrder,
+					label:     label.ID.Label(),
+				})
+			}
+			return true, nil
+		},
+	})
+	if err != nil {
+		return err
+	}
+	pgCatalogCache.enumLabels = enumLabels
+	return nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -65,15 +116,35 @@ var pgEnumSchema = sql.Schema{
 
 // TODO: add unique constraint "pg_enum_typid_label_index"
 
+// pgEnumLabel represents a row in the pg_enum table.
+type pgEnumLabel struct {
+	oid       id.Id
+	enumTypID id.Id
+	sortOrder float32
+	label     string
+}
+
 // pgEnumRowIter is the sql.RowIter for the pg_enum table.
 type pgEnumRowIter struct {
+	labels []pgEnumLabel
+	idx    int
 }
 
 var _ sql.RowIter = (*pgEnumRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgEnumRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.labels) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	label := iter.labels[iter.idx-1]
+	return sql.Row{
+		label.oid,       // oid
+		label.enumTypID, // enumtypid
+		label.sortOrder, // enumsortorder
+		label.label,     // enumlabel
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

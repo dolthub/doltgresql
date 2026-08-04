@@ -261,6 +261,13 @@ func recursiveDeserializeType(ctx *sql.Context, typ *DoltgresType, typeColl Type
 	if !target.IsUnresolved {
 		return target, typeColl, nil
 	}
+
+	// If there is no Doltgres context/session yet, then we can't load types from the context.
+	// This can happen when Dolt's AutoIncrementTracker scans tables at db-load time.
+	if ctx == nil {
+		return target, typeColl, nil
+	}
+
 	var recursedType *DoltgresType
 	var err error
 	if typeColl == nil {

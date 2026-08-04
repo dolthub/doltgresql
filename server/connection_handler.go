@@ -25,7 +25,6 @@ import (
 	"net"
 	"os"
 	"runtime/debug"
-	"slices"
 	"strings"
 	"sync/atomic"
 
@@ -39,6 +38,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/mitchellh/go-ps"
@@ -47,6 +47,7 @@ import (
 	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/node"
@@ -226,6 +227,15 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 			return false, err
 		}
 		if err = h.chooseInitialParameters(sm); err != nil {
+			// A startup parameter (e.g. datestyle, timezone) failed validation. Without an explicit
+			// ErrorResponse here, the client only sees the connection drop as an unexpected EOF instead
+			// of the reason its StartupMessage was rejected.
+			_ = h.send(&pgproto3.ErrorResponse{
+				Severity: string(ErrorResponseSeverity_Fatal),
+				Code:     "22023", // invalid_parameter_value
+				Message:  err.Error(),
+				Routine:  "InitPostgres",
+			})
 			return false, err
 		}
 		return true, h.send(&pgproto3.ReadyForQuery{
@@ -297,6 +307,7 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 // chooseInitialParameters attempts to choose the initial parameter settings for the connection,
 // if one is specified in the startup message provided.
 func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.StartupMessage) error {
+	postgresParser := psql.PostgresParser{}
 	for name, value := range startupMessage.Parameters {
 		// TODO: handle other parameters defined in StartupMessage
 		switch strings.ToLower(name) {
@@ -305,16 +316,31 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 			if err != nil {
 				return err
 			}
+		case "timezone":
+			// timezone is set via a real SET statement rather than InitSessionParameterDefault because we want
+			// this value set for the current session, but NOT set as the default for all sessions.
+			setStmt := fmt.Sprintf("SET timezone TO '%s';", strings.ReplaceAll(value, "'", "''"))
+			parsed, err := postgresParser.ParseSimple(setStmt)
+			if err != nil {
+				return err
+			}
+			err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, setStmt, parsed, func(_ *sql.Context, _ *Result) error {
+				return nil
+			})
+			if err != nil {
+				return err
+			}
 		}
 	}
-	// set initial database
+	// Set the initial database. Postgres has no concept of a session without a current database: if the client
+	// doesn't specify one, it defaults to the username (matching libpq). Either way, if the resolved database
+	// doesn't exist we must reject the connection rather than proceed with a database-less session, which would
+	// break assumptions throughout the engine.
 	db, ok := startupMessage.Parameters["database"]
-	dbSpecified := ok && len(db) > 0
-	if !dbSpecified {
+	if !ok || len(db) == 0 {
 		db = h.mysqlConn.User
 	}
 	useStmt := fmt.Sprintf("SET database TO '%s';", db)
-	postgresParser := psql.PostgresParser{}
 	parsed, err := postgresParser.ParseSimple(useStmt)
 	if err != nil {
 		return err
@@ -322,13 +348,11 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 	err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, useStmt, parsed, func(_ *sql.Context, _ *Result) error {
 		return nil
 	})
-	// If a database isn't specified, then we attempt to connect to a database with the same name as the user,
-	// ignoring any error
-	if err != nil && dbSpecified {
+	if err != nil {
 		_ = h.send(&pgproto3.ErrorResponse{
 			Severity: string(ErrorResponseSeverity_Fatal),
 			Code:     "3D000",
-			Message:  fmt.Sprintf(`"database "%s" does not exist"`, db),
+			Message:  fmt.Sprintf(`database "%s" does not exist`, db),
 			Routine:  "InitPostgres",
 		})
 		return err
@@ -555,15 +579,26 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 	// A valid Parse message must have ParameterObjectIDs if there are any binding variables.
 	bindVarTypes := message.ParameterOIDs
 
-	// Clients can specify an OID of zero to indicate that the type should be inferred. If we
-	// see any zero OIDs, we fall back to extracting the bind var types from the plan.
-	if len(bindVarTypes) == 0 || slices.Contains(bindVarTypes, 0) {
-		// NOTE: This is used for Prepared Statement Tests only.
-		bindVarTypes, err = extractBindVarTypes(ctx, analyzedPlan)
-		if err != nil {
-			return err
+	// Clients can specify an OID of zero for a parameter, or omit trailing parameters from
+	// ParameterOIDs entirely (the Postgres protocol allows specifying types for only a prefix
+	// of the placeholders), to indicate that a parameter's type should be inferred. We always
+	// compute the plan-inferred types (we can't know whether bindVarTypes is missing
+	// trailing entries without first inspecting the analyzed plan) but only use an inferred
+	// type to fill a position the client left unspecified. An explicit, non-zero OID from the
+	// client must never be overwritten by an inferred type, since the client will encode that
+	// parameter's Bind value using its own declared type.
+	inferredTypes, err := extractBindVarTypes(ctx, analyzedPlan)
+	if err != nil {
+		return err
+	}
+	merged := make([]uint32, len(inferredTypes))
+	copy(merged, inferredTypes)
+	for i, oid := range bindVarTypes {
+		if oid != 0 && i < len(merged) {
+			merged[i] = oid
 		}
 	}
+	bindVarTypes = merged
 
 	h.preparedStatements[message.Name] = PreparedStatementData{
 		Query:        query,
@@ -1041,9 +1076,12 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 		}
 		sess.ClearNotices()
 
-		if returnsRow(query) {
+		// CALL statement does not return row unless the procedure has OUT parameter, then it returns single row result.
+		callWithRowReturned := query.StatementTag == "CALL" && res.RowsAffected != 0
+
+		if returnsRow(query) || callWithRowReturned {
 			// EXECUTE does not send RowDescription; instead it should be sent from DESCRIBE prior to it
-			if !isExecute && !hasSentRowDescription {
+			if (!isExecute && !hasSentRowDescription) || callWithRowReturned {
 				hasSentRowDescription = true
 				h.backend.Send(&pgproto3.RowDescription{
 					Fields: res.Fields,
@@ -1134,11 +1172,21 @@ func (h *ConnectionHandler) endOfMessages(err error) {
 
 // sendError sends the given error to the client. This should generally never be called directly.
 func (h *ConnectionHandler) sendError(err error) {
-	fmt.Println(err.Error())
+	var severity, code, errMsg string
+	if pgErr, ok := err.(*pgconn.PgError); ok {
+		severity = pgErr.Severity
+		code = pgErr.Code
+		errMsg = pgErr.Message
+	} else {
+		severity = string(ErrorResponseSeverity_Error)
+		code = pgcode.Internal.String() // internal_error for now
+		errMsg = err.Error()
+	}
+	fmt.Println(errMsg)
 	if sendErr := h.send(&pgproto3.ErrorResponse{
-		Severity: string(ErrorResponseSeverity_Error),
-		Code:     "XX000", // internal_error for now
-		Message:  err.Error(),
+		Severity: severity,
+		Code:     code,
+		Message:  errMsg,
 	}); sendErr != nil {
 		// If we're unable to send anything to the connection, then there's something wrong with the connection and
 		// we should terminate it. This will be caught in HandleConnection's defer block.
@@ -1261,4 +1309,56 @@ func hasReturningClause(statement sqlparser.Statement) bool {
 	}, statement)
 
 	return hasReturningClause
+}
+
+// castSQLError returns a *pgconn.PgError with the error SQL state code, populated for the specified error object.
+// Many tools (e.g. ORMs, SQL workbenches) rely on this error metadata to work correctly. If the specified error is nil,
+// nil will be returned. If the error is already of type *pgconn.PgError, the error will be returned as is.
+func castSQLError(err error) *pgconn.PgError {
+	if err == nil {
+		return nil
+	}
+	if pgErr, ok := err.(*pgconn.PgError); ok {
+		return pgErr
+	}
+
+	if w, ok := err.(sql.WrappedInsertError); ok {
+		return castSQLError(w.Cause)
+	}
+
+	if wm, ok := err.(sql.WrappedTypeConversionError); ok {
+		return castSQLError(wm.Err)
+	}
+
+	// TODO: map more errors case
+	// TODO: should update the error message to match Postgres
+	var code pgcode.Code
+	switch {
+	case sql.ErrCheckConstraintViolated.Is(err):
+		code = pgcode.CheckViolation
+	case sql.ErrDatabaseExists.Is(err):
+		code = pgcode.DuplicateDatabase
+	case sql.ErrDatabaseNotFound.Is(err):
+		code = pgcode.UndefinedDatabase
+	case sql.ErrDatabaseSchemaExists.Is(err):
+		code = pgcode.DuplicateSchema
+	case sql.ErrDatabaseSchemaNotFound.Is(err):
+		code = pgcode.UndefinedSchema
+	case sql.ErrForeignKeyChildViolation.Is(err):
+		code = pgcode.ForeignKeyViolation
+	case sql.ErrForeignKeyDuplicateName.Is(err):
+		code = pgcode.DuplicateObject
+	case sql.ErrTableNotFound.Is(err):
+		code = pgcode.UndefinedTable
+	case sql.ErrUniqueKeyViolation.Is(err):
+		code = pgcode.UniqueViolation
+	default:
+		code = pgcode.Internal
+	}
+
+	return &pgconn.PgError{
+		Severity: string(ErrorResponseSeverity_Error),
+		Code:     code.String(),
+		Message:  err.Error(),
+	}
 }

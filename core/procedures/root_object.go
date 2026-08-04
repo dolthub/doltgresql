@@ -29,8 +29,7 @@ import (
 )
 
 const (
-	FIELD_NAME_PARAMETER_NAMES  = "parameter_names"
-	FIELD_NAME_PARAMETER_MODES  = "parameter_argmodes"
+	FIELD_NAME_PARAMETERS       = "parameters"
 	FIELD_NAME_DEFINITION       = "definition"
 	FIELD_NAME_EXTENSION_NAME   = "extension_name"
 	FIELD_NAME_EXTENSION_SYMBOL = "extension_symbol"
@@ -51,37 +50,22 @@ func (pgp *Collection) DiffRootObjects(ctx context.Context, fromHash string, o o
 	ancestor, hasAncestor := a.(Procedure)
 	var diffs []objinterface.RootObjectDiff
 	{
-		ourParamNames := strings.Join(ours.ParameterNames, ",")
-		theirParamNames := strings.Join(theirs.ParameterNames, ",")
-		ancParamNames := strings.Join(ancestor.ParameterNames, ",")
+		ourParams := ParameterNamesAndModesToString(ours.AllParams)
+		theirParams := ParameterNamesAndModesToString(theirs.AllParams)
+		ancParams := ParameterNamesAndModesToString(ancestor.AllParams)
 		diff := objinterface.RootObjectDiff{
 			Type:      pgtypes.Text,
 			FromHash:  fromHash,
-			FieldName: FIELD_NAME_PARAMETER_NAMES,
+			FieldName: FIELD_NAME_PARAMETERS,
 		}
-		if pgmerge.DiffValues(&diff, ourParamNames, theirParamNames, ancParamNames, hasAncestor) {
+		if pgmerge.DiffValues(&diff, ourParams, theirParams, ancParams, hasAncestor) {
 			diffs = append(diffs, diff)
 		} else {
-			ours.ParameterNames = strings.Split(diff.OurValue.(string), ",")
-		}
-	}
-	{
-		ourModes := ours.ParameterModesAsString()
-		theirModes := theirs.ParameterModesAsString()
-		ancModes := ancestor.ParameterModesAsString()
-		diff := objinterface.RootObjectDiff{
-			Type:      pgtypes.Text,
-			FromHash:  fromHash,
-			FieldName: FIELD_NAME_PARAMETER_MODES,
-		}
-		if pgmerge.DiffValues(&diff, ourModes, theirModes, ancModes, hasAncestor) {
-			diffs = append(diffs, diff)
-		} else {
-			paramModes, err := ParameterModesFromString(diff.OurValue.(string))
+			newParams, err := ParameterNamesAndModesFromString(ours.AllParams, diff.OurValue.(string))
 			if err != nil {
 				return nil, nil, err
 			}
-			ours.ParameterModes = paramModes
+			ours.AllParams = newParams
 		}
 	}
 	if ours.Definition != theirs.Definition {
@@ -146,9 +130,7 @@ func (pgp *Collection) DropRootObject(ctx context.Context, identifier id.Id) err
 // GetFieldType implements the interface objinterface.Collection.
 func (pgp *Collection) GetFieldType(ctx context.Context, fieldName string) *pgtypes.DoltgresType {
 	switch fieldName {
-	case FIELD_NAME_PARAMETER_NAMES:
-		return pgtypes.Text
-	case FIELD_NAME_PARAMETER_MODES:
+	case FIELD_NAME_PARAMETERS:
 		return pgtypes.Text
 	case FIELD_NAME_DEFINITION:
 		return pgtypes.Text
@@ -256,14 +238,12 @@ func (pgp *Collection) TableNameToID(name doltdb.TableName) id.Id {
 func (pgp *Collection) UpdateField(ctx context.Context, rootObject objinterface.RootObject, fieldName string, newValue any) (objinterface.RootObject, error) {
 	procedure := rootObject.(Procedure)
 	switch fieldName {
-	case FIELD_NAME_PARAMETER_NAMES:
-		procedure.ParameterNames = strings.Split(newValue.(string), ",")
-	case FIELD_NAME_PARAMETER_MODES:
-		newModes, err := ParameterModesFromString(newValue.(string))
+	case FIELD_NAME_PARAMETERS:
+		newParams, err := ParameterNamesAndModesFromString(procedure.AllParams, newValue.(string))
 		if err != nil {
 			return nil, err
 		}
-		procedure.ParameterModes = newModes
+		procedure.AllParams = newParams
 	case FIELD_NAME_DEFINITION:
 		newDefinition := procedure.ReplaceDefinition(newValue.(string))
 		parsedBody, err := plpgsql.Parse(newDefinition)
@@ -282,4 +262,63 @@ func (pgp *Collection) UpdateField(ctx context.Context, rootObject objinterface.
 		return nil, errors.Newf("unknown field name: `%s`", fieldName)
 	}
 	return procedure, nil
+}
+
+// ParameterNamesAndModesToString returns a string that represents the parameter names and modes.
+// The string may be converted back to set parameter names and modes using ParameterNamesAndModesFromString.
+func ParameterNamesAndModesToString(params []Parameter) string {
+	var nameAndModes = make([]string, len(params))
+	for i, param := range params {
+		var mode string
+		switch param.Mode {
+		case ParameterMode_IN:
+			mode = "in"
+		case ParameterMode_OUT:
+			mode = "out"
+		case ParameterMode_INOUT:
+			mode = "inout"
+		case ParameterMode_VARIADIC:
+			mode = "variadic"
+		default:
+			panic("unhandled procedure parameter mode")
+		}
+		nameAndModes[i] = param.Name + " " + mode
+	}
+	return strings.Join(nameAndModes, ",")
+}
+
+// ParameterModeFromString returns a ParameterMode from the given string.
+func ParameterModeFromString(mode string) ParameterMode {
+	switch mode {
+	case "in":
+		return ParameterMode_IN
+	case "out":
+		return ParameterMode_OUT
+	case "inout":
+		return ParameterMode_INOUT
+	case "variadic":
+		return ParameterMode_VARIADIC
+	default:
+		panic("unhandled procedure parameter mode")
+	}
+}
+
+// ParameterNamesAndModesFromString parses parameter names and modes from the given string and updates the given parameters slice.
+func ParameterNamesAndModesFromString(params []Parameter, namesAndModes string) ([]Parameter, error) {
+	if namesAndModes == "" {
+		return params, nil
+	}
+	vals := strings.Split(namesAndModes, ",")
+	if len(vals) != len(params) {
+		return nil, errors.New("unhandled procedure parameter count")
+	}
+	for i, val := range vals {
+		nameAndMode := strings.Split(val, " ")
+		if len(nameAndMode) != 2 {
+			return nil, errors.New("invalid namesAndModes")
+		}
+		params[i].Name = nameAndMode[0]
+		params[i].Mode = ParameterModeFromString(nameAndMode[1])
+	}
+	return params, nil
 }

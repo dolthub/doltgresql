@@ -30,10 +30,44 @@ func IsValidPostgresConfigParameter(name string) bool {
 	return ok
 }
 
+// PostgresConfigParameters returns the full set of Postgres configuration parameters, keyed by lowercase
+// parameter name. The returned map is shared, so callers must not modify it (or the parameters within it).
+func PostgresConfigParameters() map[string]sql.SystemVariable {
+	return postgresConfigParameters
+}
+
 // IsValidDoltConfigParameter returns true if the given parameter name is a valid Dolt configuration parameter.
 func IsValidDoltConfigParameter(name string) bool {
 	_, ok := doltConfigParameters[strings.ToLower(name)]
 	return ok
+}
+
+// IsGlobalOnlySystemVariable returns true if the given name refers to a registered system variable that has no
+// session scope (e.g. Dolt's cluster replication variables such as dolt_cluster_role). Such variables can only
+// meaningfully be read from and written to the global scope: sessions snapshot system variables at creation time,
+// so a session copy would go stale (on read) or be invisible to the rest of the server (on write).
+func IsGlobalOnlySystemVariable(name string) bool {
+	_, ok := GlobalOnlySystemVariableScope(name)
+	return ok
+}
+
+// GlobalOnlySystemVariableScope returns the declared scope of the given system variable and true if the variable
+// is registered and has no session scope (Global, Persist, or PersistOnly). See IsGlobalOnlySystemVariable.
+func GlobalOnlySystemVariableScope(name string) (sql.MysqlSVScopeType, bool) {
+	sysVar, _, ok := sql.SystemVariables.GetGlobal(strings.ToLower(name))
+	if !ok {
+		return 0, false
+	}
+	msv, isMysqlVar := sysVar.(*sql.MysqlSystemVariable)
+	if !isMysqlVar || msv.Scope == nil {
+		return 0, false
+	}
+	switch msv.Scope.Type {
+	case sql.SystemVariableScope_Global, sql.SystemVariableScope_Persist, sql.SystemVariableScope_PersistOnly:
+		return msv.Scope.Type, true
+	default:
+		return 0, false
+	}
 }
 
 // postgresConfigParameters is a list of configuration parameters that can be used in SET statement.

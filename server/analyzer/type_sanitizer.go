@@ -75,9 +75,17 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		case sql.FunctionExpression:
 			// Compiled functions are Doltgres functions. We're only concerned with GMS functions.
 			if _, ok := expr.(framework.Function); !ok {
-				// Some aggregation functions cannot be wrapped due to expectations in the analyzer, so we exclude them here.
+				// Aggregation/window-only expressions (Sum, Avg, Count, BitAnd, Rank, ...) can't be
+				// Eval()'d directly - only via NewBuffer/NewWindowFunction - so wrapping one in
+				// GMSCast (which evaluates its child directly) breaks it.
+				// sql.WindowAdaptableExpression is the common parent interface for both sql.Aggregation
+				// and sql.WindowAggregation, so checking it covers every current and future case in one
+				// shot. Only the *outer* reference to an aggregate's result (a GetField, handled
+				// elsewhere in this function) still needs its declared type corrected.
+				if _, ok := expr.(sql.WindowAdaptableExpression); ok {
+					return expr, transform.SameTree, nil
+				}
 				switch expr.FunctionName() {
-				case "Count", "CountDistinct", "group_concat", "JSONObjectAgg", "Sum":
 				case "coalesce":
 					// Replace GMS Coalesce with a Doltgres-native implementation that uses
 					// Postgres type-resolution rules (FindCommonType) to infer the result type.

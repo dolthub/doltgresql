@@ -15,8 +15,6 @@
 package pgcatalog
 
 import (
-	"io"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/tables"
@@ -43,8 +41,21 @@ func (p PgStatBgwriterHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgStatBgwriterHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_stat_bgwriter row iter
-	return emptyRowIter()
+	// Doltgres does not have a background writer process, so this returns a single row with
+	// zero counters and a NULL stats_reset, matching what a freshly-started Postgres server reports.
+	return sql.RowsToRowIter(sql.Row{
+		int64(0),   // checkpoints_timed
+		int64(0),   // checkpoints_req
+		float64(0), // checkpoint_write_time
+		float64(0), // checkpoint_sync_time
+		int64(0),   // buffers_checkpoint
+		int64(0),   // buffers_clean
+		int64(0),   // maxwritten_clean
+		int64(0),   // buffers_backend
+		int64(0),   // buffers_backend_fsync
+		int64(0),   // buffers_alloc
+		nil,        // stats_reset
+	}), nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -68,20 +79,4 @@ var pgStatBgwriterSchema = sql.Schema{
 	{Name: "buffers_backend_fsync", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatBgwriterName},
 	{Name: "buffers_alloc", Type: pgtypes.Int64, Default: nil, Nullable: true, Source: PgStatBgwriterName},
 	{Name: "stats_reset", Type: pgtypes.TimestampTZ, Default: nil, Nullable: true, Source: PgStatBgwriterName},
-}
-
-// pgStatBgwriterRowIter is the sql.RowIter for the pg_stat_bgwriter table.
-type pgStatBgwriterRowIter struct {
-}
-
-var _ sql.RowIter = (*pgStatBgwriterRowIter)(nil)
-
-// Next implements the interface sql.RowIter.
-func (iter *pgStatBgwriterRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
-}
-
-// Close implements the interface sql.RowIter.
-func (iter *pgStatBgwriterRowIter) Close(ctx *sql.Context) error {
-	return nil
 }

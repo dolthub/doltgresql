@@ -100,22 +100,36 @@ type DoltgresBehaviorConfig struct {
 	// DoltTransactionCommit enables the @@dolt_transaction_commit system variable, which
 	// automatically creates a Dolt commit when any SQL transaction is committed.
 	DoltTransactionCommit *bool `yaml:"dolt_transaction_commit,omitempty" minver:"0.7.4"`
+	// AutoGCBehavior configures automatic background garbage collection.
+	AutoGCBehavior *DoltgresAutoGCBehaviorYAMLConfig `yaml:"auto_gc_behavior,omitempty" minver:"TBD"`
 }
 
-// DoltgresAutoGCBehavior implements Dolt's doltservercfg.AutoGCBehavior.
-type DoltgresAutoGCBehavior struct {
+// DoltgresAutoGCBehaviorYAMLConfig implements Dolt's doltservercfg.AutoGCBehavior.
+type DoltgresAutoGCBehaviorYAMLConfig struct {
+	Enable_              *bool   `yaml:"enable,omitempty" minver:"TBD"`
+	ArchiveLevel_        *int    `yaml:"archive_level,omitempty" minver:"TBD"`
+	IncrementalFileSize_ *uint64 `yaml:"incremental_file_size,omitempty" minver:"TBD"`
 }
 
-func (DoltgresAutoGCBehavior) Enable() bool {
-	return false
+func (a *DoltgresAutoGCBehaviorYAMLConfig) Enable() bool {
+	if a.Enable_ == nil {
+		return true
+	}
+	return *a.Enable_
 }
 
-func (DoltgresAutoGCBehavior) ArchiveLevel() int {
-	return 0
+func (a *DoltgresAutoGCBehaviorYAMLConfig) ArchiveLevel() int {
+	if a.ArchiveLevel_ == nil {
+		return 1
+	}
+	return *a.ArchiveLevel_
 }
 
-func (DoltgresAutoGCBehavior) IncrementalFileSize() uint64 {
-	return 0
+func (a *DoltgresAutoGCBehaviorYAMLConfig) IncrementalFileSize() uint64 {
+	if a.IncrementalFileSize_ == nil {
+		return 0
+	}
+	return *a.IncrementalFileSize_
 }
 
 type DoltgresUserConfig struct {
@@ -191,17 +205,16 @@ type DoltgresConfig struct {
 
 	PostgresReplicationConfig *PostgresReplicationConfig `yaml:"postgres_replication,omitempty" minver:"0.7.4"`
 
-	// ClusterConfig mirrors Dolt's cluster replication configuration. Cluster
-	// replication is not yet implemented in Doltgres; this is accepted so that
-	// cluster config files parse (the integration tests for cluster
-	// replication are ported but skipped until the feature lands). The shape
-	// mirrors Dolt's ClusterYAMLConfig.
+	// ClusterConfig mirrors Dolt's cluster replication configuration. The
+	// shape mirrors Dolt's ClusterYAMLConfig, and DoltgresConfig.ClusterConfig
+	// adapts it to Dolt's doltservercfg.ClusterConfig interface, which Dolt's
+	// shared server bootstrap (engine.NewSqlEngine) already wires up.
 	ClusterCfg *DoltgresClusterConfig `yaml:"cluster,omitempty" minver:"TBD"`
 }
 
-// DoltgresClusterConfig mirrors Dolt's cluster replication configuration so
-// that ported cluster config files parse under UnmarshalStrict. These fields
-// are accepted but not yet wired into the server.
+// DoltgresClusterConfig mirrors Dolt's cluster replication configuration YAML
+// shape. See DoltgresConfig.ClusterConfig for how this is adapted to Dolt's
+// doltservercfg.ClusterConfig interface.
 type DoltgresClusterConfig struct {
 	StandbyRemotes []DoltgresStandbyRemoteConfig   `yaml:"standby_remotes"`
 	BootstrapRole  string                          `yaml:"bootstrap_role"`
@@ -565,7 +578,90 @@ func (cfg *DoltgresConfig) MCPPassword() *string { return nil }
 func (cfg *DoltgresConfig) MCPDatabase() *string { return nil }
 
 func (cfg *DoltgresConfig) ClusterConfig() doltservercfg.ClusterConfig {
-	return nil
+	if cfg.ClusterCfg == nil {
+		return nil
+	}
+	return doltgresClusterConfig{cfg.ClusterCfg}
+}
+
+// doltgresClusterConfig implements Dolt's doltservercfg.ClusterConfig by
+// adapting the parsed DoltgresClusterConfig YAML struct.
+type doltgresClusterConfig struct {
+	cfg *DoltgresClusterConfig
+}
+
+var _ doltservercfg.ClusterConfig = doltgresClusterConfig{}
+
+func (c doltgresClusterConfig) StandbyRemotes() []doltservercfg.ClusterStandbyRemoteConfig {
+	remotes := make([]doltservercfg.ClusterStandbyRemoteConfig, len(c.cfg.StandbyRemotes))
+	for i, r := range c.cfg.StandbyRemotes {
+		remotes[i] = doltgresClusterStandbyRemoteConfig{r}
+	}
+	return remotes
+}
+
+func (c doltgresClusterConfig) BootstrapRole() string {
+	return c.cfg.BootstrapRole
+}
+
+func (c doltgresClusterConfig) BootstrapEpoch() int {
+	return c.cfg.BootstrapEpoch
+}
+
+func (c doltgresClusterConfig) RemotesAPIConfig() doltservercfg.ClusterRemotesAPIConfig {
+	return doltgresClusterRemotesAPIConfig{c.cfg.RemotesAPI}
+}
+
+// doltgresClusterStandbyRemoteConfig implements Dolt's
+// doltservercfg.ClusterStandbyRemoteConfig.
+type doltgresClusterStandbyRemoteConfig struct {
+	cfg DoltgresStandbyRemoteConfig
+}
+
+var _ doltservercfg.ClusterStandbyRemoteConfig = doltgresClusterStandbyRemoteConfig{}
+
+func (c doltgresClusterStandbyRemoteConfig) Name() string {
+	return c.cfg.Name
+}
+
+func (c doltgresClusterStandbyRemoteConfig) RemoteURLTemplate() string {
+	return c.cfg.RemoteURLTemplate
+}
+
+// doltgresClusterRemotesAPIConfig implements Dolt's
+// doltservercfg.ClusterRemotesAPIConfig.
+type doltgresClusterRemotesAPIConfig struct {
+	cfg DoltgresClusterRemotesAPIConfig
+}
+
+var _ doltservercfg.ClusterRemotesAPIConfig = doltgresClusterRemotesAPIConfig{}
+
+func (c doltgresClusterRemotesAPIConfig) Address() string {
+	return c.cfg.Addr
+}
+
+func (c doltgresClusterRemotesAPIConfig) Port() int {
+	return c.cfg.Port
+}
+
+func (c doltgresClusterRemotesAPIConfig) TLSKey() string {
+	return c.cfg.TLSKey
+}
+
+func (c doltgresClusterRemotesAPIConfig) TLSCert() string {
+	return c.cfg.TLSCert
+}
+
+func (c doltgresClusterRemotesAPIConfig) TLSCA() string {
+	return c.cfg.TLSCA
+}
+
+func (c doltgresClusterRemotesAPIConfig) ServerNameURLMatches() []string {
+	return c.cfg.URLMatches
+}
+
+func (c doltgresClusterRemotesAPIConfig) ServerNameDNSMatches() []string {
+	return c.cfg.DNSMatches
 }
 
 func (cfg *DoltgresConfig) EventSchedulerStatus() string {
@@ -573,7 +669,10 @@ func (cfg *DoltgresConfig) EventSchedulerStatus() string {
 }
 
 func (cfg *DoltgresConfig) AutoGCBehavior() doltservercfg.AutoGCBehavior {
-	return DoltgresAutoGCBehavior{}
+	if cfg.BehaviorConfig == nil || cfg.BehaviorConfig.AutoGCBehavior == nil {
+		return nil
+	}
+	return cfg.BehaviorConfig.AutoGCBehavior
 }
 
 func (cfg *DoltgresConfig) BranchActivityTracking() bool {

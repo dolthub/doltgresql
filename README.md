@@ -160,7 +160,7 @@ getting_started=> select * from dolt.status;
 getting_started=> select dolt_add('teams', 'employees', 'employees_teams');
  dolt_add
 ----------
- {0}
+        0
 (1 row)
 getting_started=> select * from dolt.status;
    table_name          | staged |  status
@@ -171,9 +171,9 @@ public.teams           | t      | new table
 (3 rows)
 
 getting_started=> select dolt_commit('-m', 'Created initial schema');
-            dolt_commit
-------------------------------------
- {peqq98e2dl5gscvfvic71e7j6ne34533}
+           dolt_commit
+----------------------------------
+ peqq98e2dl5gscvfvic71e7j6ne34533
 (1 row)
 ```
 

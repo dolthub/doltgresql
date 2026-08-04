@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -182,6 +183,13 @@ func (rs RepoStore) DoltDebug(debuggerPort int, args ...string) *exec.Cmd {
 // already exist, runs the optional |fn| against a connection to that database,
 // and then shuts the server down. This is the doltgres equivalent of
 // `dolt init` plus any pre-server setup such as adding remotes.
+//
+// The server always connects through the "postgres" bootstrap database to
+// issue CREATE DATABASE, rather than connecting directly to |name|: doltgres
+// only auto-creates a DOLTGRES_DB-named database when the data-dir is
+// completely empty, so a direct connection to |name| fails with "database
+// does not exist" for every database after the first one in a shared store
+// (e.g. the second-plus repo in a multi_repos test).
 func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 	port, err := freePort()
 	if err != nil {
@@ -199,33 +207,58 @@ func (rs RepoStore) initDatabase(name string, fn func(db *sql.DB) error) error {
 	defer os.Remove(cfgPath)
 
 	cmd := rs.DoltCmd("--data-dir=.", "--config="+cfgPath)
-	cmd.Env = append(cmd.Env, "DOLTGRES_DB="+name)
 	output := new(bytes.Buffer)
 	cmd.Stdout = output
 	cmd.Stderr = output
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+
+	stopped := false
+	stopServer := func() error {
+		if stopped {
+			return nil
+		}
+		stopped = true
+		if err := interruptCmd(cmd); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return fmt.Errorf("could not interrupt init server for %s: %w (output: %s)", name, err, output.String())
+		}
+		if err := cmd.Wait(); err != nil {
+			return fmt.Errorf("init server for %s did not exit cleanly: %w (output: %s)", name, err, output.String())
+		}
+		return nil
+	}
+	// Best-effort shutdown on error paths; the success path below calls
+	// stopServer explicitly and checks its result.
 	defer func() {
-		_ = cmd.Process.Signal(os.Interrupt)
-		_, _ = cmd.Process.Wait()
+		_ = stopServer()
 	}()
 
-	db, err := ConnectDB("postgres", "password", name, "127.0.0.1", port, nil)
+	db, err := ConnectDB("postgres", "password", "", "127.0.0.1", port, nil)
 	if err != nil {
 		return fmt.Errorf("could not connect to init server for %s: %w (output: %s)", name, err, output.String())
 	}
 	defer db.Close()
 
-	if _, err := db.Exec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, name)); err != nil {
-		return err
+	_, err = db.Exec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, name))
+	if err != nil {
+		return fmt.Errorf("could not create database %s: %w (output: %s)", name, err, output.String())
 	}
+
+	// Complete any requested setup
 	if fn != nil {
-		if err := fn(db); err != nil {
+		dbForName, err := ConnectDB("postgres", "password", name, "127.0.0.1", port, nil)
+		if err != nil {
+			return fmt.Errorf("could not connect to %s after creating it: %w", name, err)
+		}
+		defer dbForName.Close()
+		if err := fn(dbForName); err != nil {
 			return err
 		}
 	}
-	return nil
+
+	// Finally shutdown the server now that initialization is complete
+	return stopServer()
 }
 
 func sanitize(s string) string {
@@ -506,7 +539,18 @@ func (s *SqlServer) Connector(c Connection) (driver.Connector, error) {
 	if user == "" {
 		user = "postgres"
 	}
-	dsn := GetDSN(user, pass, s.DBName, "127.0.0.1", s.Port, c.DriverParams)
+	dbName := s.DBName
+	if c.Database != "" {
+		dbName = c.Database
+	}
+	if dbName == "" {
+		// Always request a database explicitly. When the client sends no database, doltgres attempts
+		// an implicit USE of the user's name and silently proceeds with a database-less session if it
+		// fails, breaking later queries.
+		// TODO: fix this in doltgres, reject connections with a missing user database instead of silently proceeding
+		dbName = user
+	}
+	dsn := GetDSN(user, pass, dbName, "127.0.0.1", s.Port, c.DriverParams)
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		return nil, err

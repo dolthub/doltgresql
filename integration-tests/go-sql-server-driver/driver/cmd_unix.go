@@ -18,12 +18,19 @@
 package driver
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
 
 func ApplyCmdAttributes(cmd *exec.Cmd) {
 	// nothing to do on unix / darwin
+}
+
+// interruptCmd requests that |cmd| shut down gracefully, the same way a user
+// pressing Ctrl-C would.
+func interruptCmd(cmd *exec.Cmd) error {
+	return cmd.Process.Signal(os.Interrupt)
 }
 
 func (s *SqlServer) GracefulStop() error {

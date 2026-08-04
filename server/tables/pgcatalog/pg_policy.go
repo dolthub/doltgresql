@@ -43,7 +43,8 @@ func (p PgPolicyHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgPolicyHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_policy row iter
+	// pg_policy is currently empty, since row-level security policies are not supported.
+	// TODO: fill this in when row-level security is supported
 	return emptyRowIter()
 }
 

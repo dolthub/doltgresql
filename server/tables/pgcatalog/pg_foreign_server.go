@@ -43,7 +43,9 @@ func (p PgForeignServerHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgForeignServerHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_foreign_server row iter
+	// pg_foreign_server is currently empty, since foreign data wrappers are not supported.
+	// This table is also empty in vanilla Postgres by default.
+	// TODO: fill this in when foreign data wrappers are supported
 	return emptyRowIter()
 }
 

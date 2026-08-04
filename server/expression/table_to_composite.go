@@ -34,18 +34,40 @@ type TableToComposite struct {
 var _ sql.Expression = (*TableToComposite)(nil)
 
 // NewTableToComposite creates a new composite table type.
-func NewTableToComposite(ctx *sql.Context, tableName string, fields []sql.Expression) (sql.Expression, error) {
+func NewTableToComposite(ctx *sql.Context, tableName string, fields []sql.Expression, tblSch []*sql.Column) (sql.Expression, error) {
 	coll, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	// TODO: we need to get the schema, but the GMS builder doesn't have that information
+	// TODO: tblSch is now provided by the GMS builder, but is not yet used to validate/construct the composite type
 	typ, err := coll.GetType(ctx, id.NewType("", tableName))
 	if err != nil {
 		return nil, err
 	}
 	if typ == nil {
-		return nil, errors.New(fmt.Sprintf(`could not create a composite type for table "%s"`, tableName))
+		if tblSch == nil {
+			return nil, errors.New(fmt.Sprintf(`could not create a composite type for table "%s"`, tableName))
+		}
+		// table is in subquery alias
+		schema := "public" // TODO: get correct schema name
+		typeID := id.NewType(schema, tableName)
+		relID := id.NewTable(schema, tableName).AsId()
+		arrayID := id.NewType(schema, "_"+tableName)
+		attrs := make([]pgtypes.CompositeAttribute, len(tblSch))
+		for i, col := range tblSch {
+			collation := "" // TODO: what should we use for the collation?
+			colType, ok := col.Type.(*pgtypes.DoltgresType)
+			if !ok {
+				colType, err = pgtypes.FromGmsTypeToDoltgresType(col.Type)
+				if err != nil {
+					return nil, err
+				}
+			}
+			attrs[i] = pgtypes.NewCompositeAttribute(ctx, relID, col.Name, colType, int16(i+1), collation)
+		}
+		tableType := pgtypes.NewCompositeType(ctx, relID, pgtypes.NewUnresolvedDoltgresTypeFromID(arrayID), typeID, attrs)
+		_ = pgtypes.CreateArrayTypeFromBaseType(tableType) // This sets the tableType's `Array` field as well
+		typ = tableType
 	}
 	return &TableToComposite{
 		fields: fields,
@@ -87,13 +109,17 @@ func (t *TableToComposite) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			return nil, err
 		}
 
-		typ, ok := expr.Type(ctx).(*pgtypes.DoltgresType)
-		if !ok {
-			return nil, fmt.Errorf("expected a DoltgresType, but got %T", expr.Type(ctx))
+		exprTyp := expr.Type(ctx)
+		if _, ok := exprTyp.(*pgtypes.DoltgresType); !ok {
+			// TODO: we don't support expressions like COUNT(*) in doltgres for now that it uses GMS type.
+			exprTyp, err = pgtypes.FromGmsTypeToDoltgresType(exprTyp)
+			if err != nil {
+				return nil, err
+			}
 		}
 		vals[i] = pgtypes.RecordValue{
 			Value: val,
-			Type:  typ,
+			Type:  exprTyp,
 		}
 	}
 

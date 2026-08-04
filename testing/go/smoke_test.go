@@ -276,7 +276,7 @@ func TestSmokeTests(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT DOLT_CHECKOUT('main');",
-					Expected: []sql.Row{{"{0,\"Switched to branch 'main'\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
 					Query: "SELECT * FROM test;",
@@ -287,7 +287,7 @@ func TestSmokeTests(t *testing.T) {
 				},
 				{
 					Query:    "SELECT DOLT_CHECKOUT('other');",
-					Expected: []sql.Row{{"{0,\"Switched to branch 'other'\"}"}},
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
 					Query: "SELECT * FROM test;",
@@ -648,7 +648,7 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT SUM(v1) FROM test WHERE v1 BETWEEN 3 AND 5;",
 					Expected: []sql.Row{
-						{12.0},
+						{int64(12)},
 					},
 				},
 				{
@@ -658,7 +658,26 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query: "SELECT SUM(v1) FROM test WHERE v1 BETWEEN 3 AND 5;",
 					Expected: []sql.Row{
-						{12.0},
+						{int64(12)},
+					},
+				},
+			},
+		},
+		{
+			Name: "ANY ROW",
+			// TODO: https://github.com/dolthub/doltgresql/issues/2936
+			Skip: true,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT ROW(NULL::int4) = ROW(NULL::int4);",
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
+					Query: "SELECT ROW(NULL::int4) = ANY(ARRAY[ROW(NULL::int4)]);",
+					Expected: []sql.Row{
+						{"t"},
 					},
 				},
 			},

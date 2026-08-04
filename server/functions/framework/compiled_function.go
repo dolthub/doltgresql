@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/extensions/pg_extension"
 	"github.com/dolthub/doltgresql/core/id"
+	procedures2 "github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -61,6 +62,7 @@ var _ sql.FunctionExpression = (*CompiledFunction)(nil)
 var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 var _ procedures.InterpreterExpr = (*CompiledFunction)(nil)
 var _ sql.RowIterExpression = (*CompiledFunction)(nil)
+var _ sql.ExtendedTableFunction = (*CompiledFunction)(nil)
 
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(ctx *sql.Context, name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
@@ -182,6 +184,32 @@ func (c *CompiledFunction) FunctionName() string {
 // Description implements the interface sql.Expression.
 func (c *CompiledFunction) Description() string {
 	return fmt.Sprintf("The PostgreSQL function `%s`", c.Name)
+}
+
+// OutParametersSchema implements the interface sql.ExtendedTableFunction.
+func (c *CompiledFunction) OutParametersSchema() sql.Schema {
+	if !c.overload.Valid() {
+		return nil
+	}
+	return c.overload.Function().GetOutParameters()
+}
+
+// Unwrap implements the interface sql.ExtendedTableFunction.
+func (c *CompiledFunction) Unwrap(v any) sql.Row {
+	if !c.overload.Valid() {
+		return sql.Row{v}
+	}
+	if rv, ok := v.([]pgtypes.RecordValue); ok {
+		if len(rv) == len(c.overload.Function().GetOutParameters()) {
+			var r sql.Row
+			for _, val := range rv {
+				r = append(r, val.Value)
+			}
+			return r
+		}
+		return sql.Row{v}
+	}
+	return sql.Row{v}
 }
 
 // Resolved implements the interface sql.Expression.
@@ -319,7 +347,10 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 			if err != nil {
 				return nil, err
 			}
-			args[i], _, _ = dt.Convert(ctx, args[i])
+			args[i], err = ConvertGMSValueToDoltgresValue(ctx, arg.Type(ctx), args[i])
+			if err != nil {
+				return nil, err
+			}
 			exprTypes[i] = dt
 		}
 		if args[i] == nil && isStrict {
@@ -433,15 +464,62 @@ func (c *CompiledFunction) EvalRowIter(ctx *sql.Context, r sql.Row) (sql.RowIter
 	if err != nil {
 		return nil, err
 	}
+	return rowIterForSRF(c.Name, eval, c.OutParametersSchema())
+}
 
+// rowIterForSRF converts the value returned by a set-returning function into the sql.RowIter used to expand it in a
+// SELECT list. A set-returning function with multiple OUT parameters produces one record value per row when invoked
+// in a SELECT list (as opposed to one column per OUT parameter when invoked in a FROM clause), so its rows are
+// collapsed into a single record column.
+func rowIterForSRF(funcName string, eval any, outParams sql.Schema) (sql.RowIter, error) {
 	switch v := eval.(type) {
 	case sql.RowIter:
+		if len(outParams) > 1 {
+			return &recordCollapsingRowIter{child: v, outParams: outParams}, nil
+		}
 		return v, nil
 	case nil:
 		return nil, nil
 	default:
-		return nil, cerrors.Errorf("function %s returned a value of type %T, which is not a RowIter", c.Name, eval)
+		return nil, cerrors.Errorf("function %s returned a value of type %T, which is not a RowIter", funcName, eval)
 	}
+}
+
+// recordCollapsingRowIter wraps the row iterator of a set-returning function with multiple OUT parameters, collapsing
+// each multi-column row into a single record value.
+type recordCollapsingRowIter struct {
+	child     sql.RowIter
+	outParams sql.Schema
+}
+
+var _ sql.RowIter = (*recordCollapsingRowIter)(nil)
+
+// Next implements the interface sql.RowIter.
+func (r *recordCollapsingRowIter) Next(ctx *sql.Context) (sql.Row, error) {
+	row, err := r.child.Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(row) != len(r.outParams) {
+		return nil, cerrors.Errorf("expected %d result columns, got %d", len(r.outParams), len(row))
+	}
+	values := make([]pgtypes.RecordValue, len(row))
+	for i := range row {
+		typ, ok := r.outParams[i].Type.(*pgtypes.DoltgresType)
+		if !ok {
+			return nil, cerrors.Errorf("expected a Doltgres type for OUT parameter %s, got %T", r.outParams[i].Name, r.outParams[i].Type)
+		}
+		values[i] = pgtypes.RecordValue{
+			Value: row[i],
+			Type:  typ,
+		}
+	}
+	return sql.Row{values}, nil
+}
+
+// Close implements the interface sql.RowIter.
+func (r *recordCollapsingRowIter) Close(ctx *sql.Context) error {
+	return r.child.Close(ctx)
 }
 
 // ReturnsRowIter implements the interface sql.RowIterExpression
@@ -473,16 +551,20 @@ func (c *CompiledFunction) SetStatementRunner(ctx *sql.Context, runner sql.State
 
 // GetQuickFunction returns the QuickFunction form of this function, if it exists. If one does not exist, then this
 // return nil.
-func (c *CompiledFunction) GetQuickFunction() QuickFunction {
+func (c *CompiledFunction) GetQuickFunction(ctx *sql.Context) QuickFunction {
 	if c.stashedErr != nil || !c.Resolved() || !c.overload.Valid() || c.overload.params.variadic != -1 ||
 		len(c.overload.casts) > 0 {
 		return nil
 	}
+	// QuickFunctions evaluate their argument expressions directly, without the GMS value conversion that
+	// CompiledFunction.Eval performs, so any GMS-typed arguments (e.g. columns of the dolt_* system tables) must be
+	// wrapped to convert their values.
+	args := castGMSArguments(ctx, append([]sql.Expression{}, c.Arguments...))
 	switch f := c.overload.Function().(type) {
 	case Function1:
 		return &QuickFunction1{
 			Name:         c.Name,
-			Argument:     c.Arguments[0],
+			Argument:     args[0],
 			IsStrict:     c.overload.Function().IsStrict(),
 			IsSRF:        c.IsSRF(),
 			callResolved: ([2]*pgtypes.DoltgresType)(c.callResolved),
@@ -491,7 +573,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 	case Function2:
 		return &QuickFunction2{
 			Name:         c.Name,
-			Arguments:    ([2]sql.Expression)(c.Arguments),
+			Arguments:    ([2]sql.Expression)(args),
 			IsStrict:     c.overload.Function().IsStrict(),
 			IsSRF:        c.IsSRF(),
 			callResolved: ([3]*pgtypes.DoltgresType)(c.callResolved),
@@ -500,7 +582,7 @@ func (c *CompiledFunction) GetQuickFunction() QuickFunction {
 	case Function3:
 		return &QuickFunction3{
 			Name:         c.Name,
-			Arguments:    ([3]sql.Expression)(c.Arguments),
+			Arguments:    ([3]sql.Expression)(args),
 			IsStrict:     c.overload.Function().IsStrict(),
 			IsSRF:        c.IsSRF(),
 			callResolved: ([4]*pgtypes.DoltgresType)(c.callResolved),
@@ -914,30 +996,44 @@ func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr fun
 		return nil
 	}
 
-	if len(c.Arguments) < len(sqlFunc.ParameterTypes) {
+	argCount := len(c.Arguments)
+	routineInputArgCount := sqlFunc.GetExpectedParameterCount()
+	if argCount < routineInputArgCount {
 		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 		if err != nil {
 			return err
 		}
-		for i, param := range sqlFunc.ParameterTypes {
-			if i < len(c.Arguments) {
-				if exprTypeId := c.Arguments[i].Type(ctx).(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && param.ID != exprTypeId {
+		inParamIdx := 0
+		for i, param := range sqlFunc.AllParams {
+			if param.Mode == procedures2.ParameterMode_OUT {
+				continue
+			}
+			if inParamIdx < argCount {
+				if exprTypeId := c.Arguments[inParamIdx].Type(ctx).(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && sqlFunc.AllTypes[i].ID != exprTypeId {
 					// if non-matching type, then skip appending defaults
 					break
 				}
-			} else if sqlFunc.ParameterDefaults[i] != "" {
+			} else if param.Default != "" {
 				// only if there is default, then append
-				cdv, err := getDefExpr(sqlFunc.ParameterDefaults[i])
+				cdv, err := getDefExpr(param.Default)
 				if err != nil {
 					return err
 				}
 				c.Arguments = append(c.Arguments, cdv)
-				implicitCast, err := castsColl.GetImplicitCast(ctx, cdv.Type(ctx).(*pgtypes.DoltgresType), sqlFunc.ParameterTypes[i])
+				argType := cdv.Type(ctx)
+				var implicitCast casts.Cast
+				dt, ok := argType.(*pgtypes.DoltgresType)
+				if !ok {
+					// null type
+					dt = pgtypes.Unknown
+				}
+				implicitCast, err = castsColl.GetImplicitCast(ctx, dt, sqlFunc.AllTypes[i])
 				if err != nil {
 					return err
 				}
 				c.overload.casts = append(c.overload.casts, implicitCast)
 			}
+			inParamIdx += 1
 		}
 	}
 

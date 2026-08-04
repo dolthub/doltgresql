@@ -95,6 +95,7 @@ type ScriptTestAssertion struct {
 	Expected        []sql.Row  // Expected or ExpectedRaw should be used, but not both at the same time
 	ExpectedRaw     [][][]byte // ExpectedRaw or Expected should be used, but not both at the same time
 	ExpectedErr     string
+	ExpectedErrCode string
 	ExpectedNotices []ExpectedNotice
 	Focus           bool
 
@@ -248,8 +249,15 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.CopyFromStdInFile != "" {
 				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile)
-			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" {
+			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" || assertion.ExpectedErrCode != "" {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
+				if assertion.ExpectedErrCode != "" {
+					pgErrCode := ""
+					if pgErr, ok := err.(*pgconn.PgError); ok {
+						pgErrCode = pgErr.Code
+					}
+					assert.Equal(t, pgErrCode, assertion.ExpectedErrCode)
+				}
 				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
 					assert.Contains(t, err.Error(), assertion.ExpectedErr)
@@ -734,15 +742,50 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 	return v
 }
 
+// NormalizeRecordValue is used within NormalizeArrayType to handle normalization of a record.
+func NormalizeRecordValue(val any) []types.RecordValue {
+	anyArray, ok := val.([]any)
+	if !ok {
+		panic("expected array of records to contain a nested slice")
+	}
+	newArray := make([]types.RecordValue, len(anyArray))
+	for anyArrayIdx, anyArrayElement := range anyArray {
+		anyArrayElement = NormalizeIntsAndFloats(anyArrayElement)
+		switch anyArrayElement.(type) {
+		case int64:
+			newArray[anyArrayIdx] = types.RecordValue{
+				Value: anyArrayElement,
+				Type:  types.Int64,
+			}
+		case float64:
+			newArray[anyArrayIdx] = types.RecordValue{
+				Value: anyArrayElement,
+				Type:  types.Float64,
+			}
+		case string:
+			newArray[anyArrayIdx] = types.RecordValue{
+				Value: anyArrayElement,
+				Type:  types.Text,
+			}
+		default:
+			panic("nested record element needs to be handled in this switch")
+		}
+	}
+	return newArray
+}
+
 // NormalizeArrayType normalizes array types by normalizing its elements first,
 // then to a string using the type IoOutput method.
 func NormalizeArrayType(dt *types.DoltgresType, arr []any) any {
 	newVal := make([]any, len(arr))
 	for i, el := range arr {
-		newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
+		if dt.ArrayBaseType().ID == types.Record.ID {
+			newVal[i] = NormalizeRecordValue(el)
+		} else {
+			newVal[i] = NormalizeVal(dt.ArrayBaseType(), el)
+		}
 	}
-	baseType := dt.ArrayBaseType()
-	if baseType.ID == types.Bool.ID {
+	if dt.ArrayBaseType().ID == types.Bool.ID {
 		sqlVal, err := dt.SQL(sql.NewEmptyContext(), nil, newVal)
 		if err != nil {
 			panic(err)

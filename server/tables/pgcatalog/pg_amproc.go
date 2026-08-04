@@ -43,7 +43,8 @@ func (p PgAmprocHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAmprocHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_amproc row iter
+	// pg_amproc is currently empty, since it requires a catalog of built-in support functions.
+	// TODO: fill this in together with pg_operator and built-in pg_proc entries
 	return emptyRowIter()
 }
 
@@ -62,7 +63,7 @@ var pgAmprocSchema = sql.Schema{
 	{Name: "amproclefttype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAmprocName},
 	{Name: "amprocrighttype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAmprocName},
 	{Name: "amprocnum", Type: pgtypes.Int16, Default: nil, Nullable: false, Source: PgAmprocName},
-	{Name: "amproc", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgAmprocName}, // TODO: regproc type
+	{Name: "amproc", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAmprocName},
 }
 
 // pgAmprocRowIter is the sql.RowIter for the pg_amproc table.

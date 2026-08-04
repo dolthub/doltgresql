@@ -66,6 +66,7 @@ func initBinaryGreaterThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, oidvectorgt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, textgtname)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, text_gt)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, tidgt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, time_gt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, timestamp_gt_date)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterThan, timestamp_gt)
@@ -434,6 +435,18 @@ var text_gt = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		res, err := pgtypes.Text.Compare(ctx, val1, val2)
+		return res == 1, err
+	},
+}
+
+// tidgt represents the PostgreSQL function of the same name, taking the same parameters.
+var tidgt = framework.Function2{
+	Name:       "tidgt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Tid, pgtypes.Tid},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := pgtypes.Tid.Compare(ctx, val1, val2)
 		return res == 1, err
 	},
 }

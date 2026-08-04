@@ -279,5 +279,19 @@ func TestRegressions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "xmin hidden column support",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `select N.oid::bigint as id, N.xmin as state_number, nspname as name, D.description, pg_catalog.pg_get_userbyid(N.nspowner) as "owner" from pg_catalog.pg_namespace N left join pg_catalog.pg_description D on N.oid = D.objoid order by case when nspname = pg_catalog.current_schema() then -1::bigint else N.oid::bigint end;`,
+					Expected: []sql.Row{
+						{2200, 0, "public", nil, "postgres"},
+						{11, 0, "pg_catalog", nil, "postgres"},
+						{13183, 0, "information_schema", nil, "postgres"},
+						{1882653564, 0, "dolt", nil, "postgres"},
+					},
+				},
+			},
+		},
 	})
 }

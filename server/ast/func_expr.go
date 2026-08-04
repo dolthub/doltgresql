@@ -121,6 +121,18 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 			},
 			OrderBy: orderBy,
 		}, nil
+	case "greatest":
+		return vitess.InjectedExpr{
+			Expression:         &pgexprs.Greatest{},
+			SelectExprChildren: exprs,
+			Auth:               vitess.AuthInformation{},
+		}, nil
+	case "least":
+		return vitess.InjectedExpr{
+			Expression:         &pgexprs.Least{},
+			SelectExprChildren: exprs,
+			Auth:               vitess.AuthInformation{},
+		}, nil
 	}
 
 	if len(node.OrderBy) > 0 {

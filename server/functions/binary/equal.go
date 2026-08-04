@@ -40,6 +40,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, bpchareq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, byteaeq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, chareq)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, cideq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, date_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, date_eq_timestamp)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, date_eq_timestamptz)
@@ -67,6 +68,7 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, texteqname)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, text_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, record_eq)
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, tideq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, time_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, timestamp_eq_date)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, timestamp_eq)
@@ -139,6 +141,21 @@ var chareq = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
 	Strict:     true,
 	Callable:   chareq_callable,
+}
+
+// cideq_callable is the callable logic for the cideq function.
+func cideq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	res, err := pgtypes.Cid.Compare(ctx, val1, val2)
+	return res == 0, err
+}
+
+// cideq represents the PostgreSQL function of the same name, taking the same parameters.
+var cideq = framework.Function2{
+	Name:       "cideq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Cid, pgtypes.Cid},
+	Strict:     true,
+	Callable:   cideq_callable,
 }
 
 // date_eq_callable is the callable logic for the date_eq function.
@@ -570,6 +587,21 @@ var record_eq = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Record, pgtypes.Record},
 	Strict:     true,
 	Callable:   record_eq_callable,
+}
+
+// tideq_callable is the callable logic for the tideq function.
+func tideq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	res, err := pgtypes.Tid.Compare(ctx, val1, val2)
+	return res == 0, err
+}
+
+// tideq represents the PostgreSQL function of the same name, taking the same parameters.
+var tideq = framework.Function2{
+	Name:       "tideq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Tid, pgtypes.Tid},
+	Strict:     true,
+	Callable:   tideq_callable,
 }
 
 // time_eq_callable is the callable logic for the time_eq function.

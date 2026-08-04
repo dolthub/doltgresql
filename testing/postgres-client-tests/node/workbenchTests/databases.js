@@ -18,7 +18,7 @@ export const databaseTests = [
       command: "SELECT",
       rowCount: 1,
       oid: null,
-      rows: [{ dolt_clean: ["0"] }],
+      rows: [{ dolt_clean: "0" }],
       fields: doltCleanFields,
     },
   },

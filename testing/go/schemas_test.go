@@ -232,8 +232,9 @@ var SchemaTests = []ScriptTest{
 				Query: "INSERT INTO public.test VALUES (1, 1);",
 			},
 			{
-				Query:       "SELECT * FROM test;",
-				ExpectedErr: "table not found",
+				Query:           "SELECT * FROM test;",
+				ExpectedErr:     `table not found: test`, // TODO: `relation "test" does not exist`
+				ExpectedErrCode: "42P01",
 			},
 			{
 				Query: "SELECT * FROM public.test;",
@@ -593,7 +594,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "select dolt_add('.')",
 				Expected: []sql.Row{
-					{"{0}"},
+					{int64(0)},
 				},
 			},
 			{
@@ -706,7 +707,7 @@ var SchemaTests = []ScriptTest{
 			{
 				Query: "select dolt_add('.')",
 				Expected: []sql.Row{
-					{"{0}"},
+					{int64(0)},
 				},
 			},
 			{
@@ -809,7 +810,7 @@ var SchemaTests = []ScriptTest{
 			},
 			{
 				Query:    "SELECT dolt_branch('newbranch')",
-				Expected: []sql.Row{{"{0}"}},
+				Expected: []sql.Row{{int64(0)}},
 			},
 			{
 				Query:    "USE 'postgres/newbranch'",

@@ -28,6 +28,7 @@ import (
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 )
@@ -46,9 +47,7 @@ type Collection struct {
 type Function struct {
 	ID                 id.Function
 	ReturnType         id.Type
-	ParameterNames     []string
-	ParameterTypes     []id.Type
-	ParameterDefaults  []string
+	AllParams          []procedures.Parameter
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
@@ -377,12 +376,23 @@ func (function Function) GetID() id.Id {
 func (function Function) GetInnerDefinition() string {
 	// TODO: right now we're hardcode searching for $$, which will fail for some definition strings
 	start := strings.Index(function.Definition, "$$")
-	end := strings.LastIndex(function.Definition, "$$")
-	if start == -1 || end == -1 {
-		// Return the whole definition for now
-		return function.Definition
+	if start != -1 {
+		end := strings.LastIndex(function.Definition, "$$")
+		if end != -1 {
+			return strings.TrimSpace(function.Definition[start+2 : end])
+		}
 	}
-	return strings.TrimSpace(function.Definition[start+2 : end])
+
+	asQuote := strings.Index(strings.ToLower(function.Definition), "as '")
+	if asQuote != -1 {
+		endQuote := strings.LastIndex(function.Definition, "'")
+		if endQuote != -1 {
+			return strings.TrimSpace(function.Definition[asQuote+4 : endQuote])
+		}
+	}
+
+	// Return the whole definition for now
+	return function.Definition
 }
 
 // ReplaceDefinition returns a new definition with the inner portion replaced with the given string.

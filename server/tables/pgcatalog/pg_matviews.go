@@ -43,7 +43,9 @@ func (p PgMatviewsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgMatviewsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_matviews row iter
+	// pg_matviews is currently empty, since Doltgres does not yet support materialized views
+	// (CREATE MATERIALIZED VIEW returns an error, see server/ast/create_materialized_view.go).
+	// TODO: fill this in when materialized views are supported
 	return emptyRowIter()
 }
 

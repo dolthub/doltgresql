@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -44,7 +45,7 @@ var pg_get_indexdef_oid = framework.Function1{
 		result := ""
 		err := RunCallback(ctx, oidVal, Callbacks{
 			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
-				result = buildIndexDef(index.Item, schema.Item.SchemaName())
+				result = buildIndexDef(ctx, index.Item, table.Item, schema.Item.SchemaName())
 				return false, nil
 			},
 		})
@@ -56,7 +57,7 @@ var pg_get_indexdef_oid = framework.Function1{
 }
 
 // buildIndexDef generates a CREATE INDEX DDL statement for the given index.
-func buildIndexDef(index sql.Index, schemaName string) string {
+func buildIndexDef(ctx *sql.Context, index sql.Index, table sql.Table, schemaName string) string {
 	name := index.ID()
 	using := strings.ToLower(index.IndexType())
 	unique := ""
@@ -66,6 +67,11 @@ func buildIndexDef(index sql.Index, schemaName string) string {
 
 	cols := make([]string, len(index.Expressions()))
 	for i, expr := range index.Expressions() {
+		if exprText, ok := RenderHiddenIndexColumnExpr(plan.GetColumnFromIndexExpr(ctx, expr, table)); ok {
+			cols[i] = exprText
+			continue
+		}
+
 		split := strings.Split(expr, ".")
 		if len(split) > 1 {
 			cols[i] = split[1]
@@ -80,6 +86,20 @@ func buildIndexDef(index sql.Index, schemaName string) string {
 		def += " WHERE (" + pi.Predicate() + ")"
 	}
 	return def
+}
+
+// RenderHiddenIndexColumnExpr returns the original SQL text of the functional expression backing
+// |col|, a hidden system column created for an indexed functional expression (e.g. `upper(name)`
+// rather than that column's internal identifier, `!hidden!idx1!0!0`). ok is false if col is nil or
+// isn't such a column (e.g. it's a plain, user-visible column), in which case expr is "".
+func RenderHiddenIndexColumnExpr(col *sql.Column) (expr string, ok bool) {
+	if col == nil || !col.HiddenSystem || col.Generated == nil {
+		return "", false
+	}
+	if unresolved, isUnresolved := col.Generated.Expr.(*sql.UnresolvedColumnDefault); isUnresolved {
+		return unresolved.String(), true
+	}
+	return col.Generated.String(), true
 }
 
 // pg_get_indexdef_oid_integer_bool represents the PostgreSQL system catalog information function.

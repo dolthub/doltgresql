@@ -109,7 +109,7 @@ func dropProcedure(ctx *sql.Context, procColl *procedures.Collection, fn *Routin
 	}
 
 	var procId = id.NewProcedure(schema, fn.RoutineName)
-	if len(fn.Args) == 0 {
+	if fn.NoArgDefined {
 		procs, err := procColl.GetProcedureOverloads(ctx, procId)
 		if err != nil {
 			return err

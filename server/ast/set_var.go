@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -66,9 +67,23 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 	}
 
 	if node.Namespace == "" {
+		// Postgres's SET has no GLOBAL scope syntax, so system variables that have no session scope (e.g.
+		// Dolt's cluster replication variables) are routed to their declared scope directly, symmetric with
+		// current_setting() reading them from the global scope.
+		scope := vitess.SetScope_Session
+		if svScope, ok := config.GlobalOnlySystemVariableScope(node.Name); ok {
+			switch svScope {
+			case sql.SystemVariableScope_Persist:
+				scope = vitess.SetScope_Persist
+			case sql.SystemVariableScope_PersistOnly:
+				scope = vitess.SetScope_PersistOnly
+			default:
+				scope = vitess.SetScope_Global
+			}
+		}
 		return &vitess.Set{
 			Exprs: vitess.SetVarExprs{&vitess.SetVarExpr{
-				Scope: vitess.SetScope_Session,
+				Scope: scope,
 				Name: &vitess.ColName{
 					Name: vitess.NewColIdent(node.Name),
 				},

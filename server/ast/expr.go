@@ -479,7 +479,10 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 				Children:   vitess.Exprs{left, right},
 			}, nil
 		case tree.All:
-			return nil, errors.Errorf("ALL is not yet supported")
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewAllExpr(node.SubOperator.String()),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		default:
 			return nil, errors.Errorf("unknown comparison operator used")
 		}

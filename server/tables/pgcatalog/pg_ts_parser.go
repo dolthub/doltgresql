@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,8 +44,10 @@ func (p PgTsParserHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgTsParserHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// TODO: Implement pg_ts_parser row iter
-	return emptyRowIter()
+	return &pgTsParserRowIter{
+		parsers: defaultPostgresTsParsers,
+		idx:     0,
+	}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -60,25 +63,68 @@ var pgTsParserSchema = sql.Schema{
 	{Name: "oid", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTsParserName},
 	{Name: "prsname", Type: pgtypes.Name, Default: nil, Nullable: false, Source: PgTsParserName},
 	{Name: "prsnamespace", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgTsParserName},
-	{Name: "prsstart", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName},    // TODO: regproc type
-	{Name: "prstoken", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName},    // TODO: regproc type
-	{Name: "prsend", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName},      // TODO: regproc type
-	{Name: "prsheadline", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName}, // TODO: regproc type
-	{Name: "prslextype", Type: pgtypes.Text, Default: nil, Nullable: false, Source: PgTsParserName},  // TODO: regproc type
+	{Name: "prsstart", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
+	{Name: "prstoken", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
+	{Name: "prsend", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
+	{Name: "prsheadline", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
+	{Name: "prslextype", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgTsParserName},
 }
 
 // pgTsParserRowIter is the sql.RowIter for the pg_ts_parser table.
 type pgTsParserRowIter struct {
+	parsers []tsParser
+	idx     int
 }
 
 var _ sql.RowIter = (*pgTsParserRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgTsParserRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.parsers) {
+		return nil, io.EOF
+	}
+	iter.idx++
+	parser := iter.parsers[iter.idx-1]
+
+	return sql.Row{
+		parser.oid,       // oid
+		parser.name,      // prsname
+		parser.namespace, // prsnamespace
+		parser.start,     // prsstart
+		parser.token,     // prstoken
+		parser.end,       // prsend
+		parser.headline,  // prsheadline
+		parser.lextype,   // prslextype
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.
 func (iter *pgTsParserRowIter) Close(ctx *sql.Context) error {
 	return nil
+}
+
+// tsParser represents a row in the pg_ts_parser table.
+type tsParser struct {
+	oid       id.Id
+	name      string
+	namespace id.Id
+	start     id.Id
+	token     id.Id
+	end       id.Id
+	headline  id.Id
+	lextype   id.Id
+}
+
+// defaultPostgresTsParsers is the list of built-in text search parsers available in Postgres.
+var defaultPostgresTsParsers = []tsParser{
+	{
+		oid:       id.NewId(id.Section_TextSearchParser, "pg_catalog", "default"),
+		name:      "default",
+		namespace: id.NewNamespace("pg_catalog").AsId(),
+		start:     id.NewFunction("pg_catalog", "prsd_start", pgtypes.Internal.ID).AsId(),
+		token:     id.NewFunction("pg_catalog", "prsd_nexttoken", pgtypes.Internal.ID).AsId(),
+		end:       id.NewFunction("pg_catalog", "prsd_end", pgtypes.Internal.ID).AsId(),
+		headline:  id.NewFunction("pg_catalog", "prsd_headline", pgtypes.Internal.ID).AsId(),
+		lextype:   id.NewFunction("pg_catalog", "prsd_lextype", pgtypes.Internal.ID).AsId(),
+	},
 }
