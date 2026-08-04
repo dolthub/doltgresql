@@ -15,9 +15,11 @@
 package functions
 
 import (
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"fmt"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/globalstate"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/doltgresql/core/sequences"
 	"strings"
 
@@ -65,23 +67,27 @@ var setval_text_int64_boolean = framework.Function3{
 		if err != nil {
 			return nil, err
 		}
-		schema, relation, err := ParseRelationName(ctx, relationName)
-		if err != nil {
-			return nil, err
-		}
-		seqId := id.NewSequence(schema, relation)
-		sequenceName := doltdb.TableName{Name: relation, Schema: schema}
-		sequence, err := collection.GetSequence(ctx, seqId)
-		if err != nil {
-			return nil, err
-		}
-		// TODO: this should take a regclass as the parameter to determine the schema
-
 		db, err := getDb(ctx)
 		if err != nil {
 			return nil, err
 		}
-		ait, err := dsess.GetSequenceTracker(ctx, db.GetGlobalState(), sequences.SequenceTrackerKey)
+		root, err := db.GetRoot(ctx)
+		if err != nil {
+			return nil, err
+		}
+		sequenceName, sequence, found, err := resolve.Relation(ctx, root, relationName, sequences.SequenceSource{})
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("sequence %s not found", relationName)
+		}
+		seqId := id.NewSequence(sequenceName.Schema, sequenceName.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		sequenceTracker, err := dsess.GetSequenceTracker(ctx, db.GetGlobalState(), sequences.SequenceTrackerKey)
 		if err != nil {
 			return nil, err
 		}
@@ -99,19 +105,20 @@ var setval_text_int64_boolean = framework.Function3{
 			}
 		}
 
-		newSequeneable, err := ait.Set(ctx, sequenceName, sequence, ws.Ref(), nextState)
-		_ = newSequeneable
+		// Set the global state for the sequence.
+		// This returns a new Sequence object, but we don't need it.
+		_, err = sequenceTracker.Set(ctx, sequenceName, sequence, ws.Ref(), nextState)
+
 		if err != nil {
 			return nil, err
 		}
 
+		// Set the state on the local version of the sequence too.
 		err = collection.SetVal(ctx, seqId, val2.(int64), false, val3.(bool))
 		if err != nil {
 			return nil, err
 		}
-		// TODO: What to do with the returned value?
-		// DO we need to pass in the entire sequenceable to SetVal, or is it guarenteed to be the old one?
-		return newVal, nil // collection.SetVal(ctx, seqId, val2.(int64), val3.(bool))
+		return newVal, nil
 	},
 }
 
@@ -150,8 +157,11 @@ func getSequenceTracker(ctx *sql.Context) (*sequences.SequenceTracker, error) {
 	if err != nil {
 		return nil, err
 	}
-	db2 := db.(sqle.Database)
-	return dsess.GetSequenceTracker(ctx, db2.GetGlobalState(), sequences.SequenceTrackerKey)
+	globalStateProvider, ok := db.(globalstate.GlobalStateProvider)
+	if !ok {
+		return nil, fmt.Errorf("database %s does not implement globalstate.GlobalStateProvider", db.Name())
+	}
+	return dsess.GetSequenceTracker(ctx, globalStateProvider.GetGlobalState(), sequences.SequenceTrackerKey)
 }
 
 func getDb(ctx *sql.Context) (sqle.Database, error) {
