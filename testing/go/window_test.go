@@ -305,6 +305,20 @@ func TestWindowFunctions(t *testing.T) {
 						{6, float64(1)},
 					},
 				},
+				{
+					// cume_dist (and the other window-only functions with no required arguments) must reject a
+					// bare call with a clean error rather than reaching execution with a nil window.
+					Query:       "SELECT cume_dist() FROM rank_ext",
+					ExpectedErr: "requires an OVER clause",
+				},
+				{
+					Query:       "SELECT row_number() FROM rank_ext",
+					ExpectedErr: "requires an OVER clause",
+				},
+				{
+					Query:       "SELECT rank() FROM rank_ext",
+					ExpectedErr: "requires an OVER clause",
+				},
 			},
 		},
 		{
