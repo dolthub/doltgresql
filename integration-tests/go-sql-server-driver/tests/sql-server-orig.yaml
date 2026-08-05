@@ -311,6 +311,7 @@ tests:
         columns: ["table_name"]
         rows: [["test"]]
 - name: auto increment for a table should reset between drops
+  skip: "https://github.com/dolthub/doltgresql/issues/3033"
   repos:
   - name: repo1
     server:
