@@ -49,19 +49,12 @@ func TestConcurrentSequences(t *testing.T) {
 	// batched setup below can be executed verbatim.
 	openDB := func(database string) *pgx.Conn {
 		dsn := fmt.Sprintf("postgres://%s:%s@localhost:%d", doltgresConfig.User(), doltgresConfig.Password(), doltgresConfig.Port())
-		//dsn := fmt.Sprintf("postgres://localhost:%d", doltgresConfig.Port())
-
-		// Connect to the server and create the default database with the given name.
-
-		//dsn := servercfg.ConnectionString(doltgresConfig, database)
-		//dsn = "postgres://" + dsn
 		if strings.Contains(dsn, "?") {
 			dsn += "&multiStatements=true"
 		} else {
 			dsn += "?multiStatements=true"
 		}
 		db, err := pgx.Connect(ctx, dsn)
-		//db, err := gosql.Open("postgres", dsn)
 		require.NoError(t, err)
 		return db
 	}
