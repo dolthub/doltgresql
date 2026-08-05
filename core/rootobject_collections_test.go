@@ -88,7 +88,7 @@ func TestEmptiedCollectionMatchesUnwrittenCollection(t *testing.T) {
 	seqID := id.NewSequence("public", "seq")
 	coll, err := sequences.LoadSequences(ctx, root)
 	require.NoError(t, err)
-	require.NoError(t, coll.CreateSequence(ctx, &sequences.Sequence{Id: seqID, Start: 1, Current: 1, Increment: 1}))
+	require.NoError(t, coll.CreateSequence(ctx, &sequences.Sequence{SequenceState: sequences.SequenceState{Id: seqID, Start: 1, Current: 1, Increment: 1}}))
 
 	differs, err := coll.DiffersFrom(ctx, root)
 	require.NoError(t, err)
@@ -122,9 +122,8 @@ func TestCollectionStaleness(t *testing.T) {
 	// A second collection loaded from the same root writes a sequence to it, standing in for any other writer.
 	theirs, err := sequences.LoadSequences(ctx, root)
 	require.NoError(t, err)
-	require.NoError(t, theirs.CreateSequence(ctx, &sequences.Sequence{
-		Id: id.NewSequence("public", "theirs"), Start: 1, Current: 1, Increment: 1,
-	}))
+	require.NoError(t, theirs.CreateSequence(ctx,
+		&sequences.Sequence{SequenceState: sequences.SequenceState{Id: id.NewSequence("public", "theirs"), Start: 1, Current: 1, Increment: 1}}))
 	written, err := theirs.UpdateRoot(ctx, root)
 	require.NoError(t, err)
 
