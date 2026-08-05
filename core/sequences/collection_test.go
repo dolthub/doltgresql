@@ -21,11 +21,11 @@ import (
 	"testing"
 
 	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 )
 
 // TestMap_RemainsUsableAfterFlushFailure asserts that Collection.Map
@@ -76,12 +76,11 @@ func TestDropSequence_RemainsUsableAfterFlushFailure(t *testing.T) {
 // address map.
 func newTestCollection(t *testing.T, ns tree.NodeStore) *Collection {
 	t.Helper()
-	addrMap, err := prolly.NewEmptyAddressMap(ns)
+	rom, err := objinterface.NewDetachedRootObjectMap(storage, ns)
 	require.NoError(t, err)
 	return &Collection{
+		RootObjectMap: rom,
 		accessedMap:   map[id.Sequence]*Sequence{},
-		underlyingMap: addrMap,
-		ns:            ns,
 	}
 }
 

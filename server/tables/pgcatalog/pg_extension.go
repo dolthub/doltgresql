@@ -122,14 +122,14 @@ func (iter *pgExtensionRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	iter.idx++
 	ext := iter.extensions[iter.idx-1]
 	return sql.Row{
-		ext.ExtName.AsId(),                   // oid
-		ext.ExtName.Name(),                   // extname
-		id.Null,                              // extowner // TODO: extension owner is not yet tracked
-		ext.Namespace.AsId(),                 // extnamespace
-		ext.Relocatable,                      // extrelocatable
-		ext.LibIdentifier.Version().String(), // extversion
-		nil,                                  // extconfig
-		nil,                                  // extcondition
+		ext.ExtName.AsId(),   // oid
+		ext.ExtName.Name(),   // extname
+		id.Null,              // extowner // TODO: extension owner is not yet tracked
+		ext.Namespace.AsId(), // extnamespace
+		ext.Relocatable,      // extrelocatable
+		ext.Version,          // extversion
+		nil,                  // extconfig
+		nil,                  // extcondition
 	}, nil
 }
 

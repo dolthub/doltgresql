@@ -26,10 +26,9 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/casts"
-	"github.com/dolthub/doltgresql/core/extensions"
-	"github.com/dolthub/doltgresql/core/extensions/pg_extension"
 	"github.com/dolthub/doltgresql/core/id"
 	procedures2 "github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -323,6 +322,68 @@ func (c *CompiledFunction) IsVariadic() bool {
 	return true
 }
 
+func evalArg(ctx *sql.Context, row sql.Row, arg sql.Expression, cast *casts.Cast, targetTyp *pgtypes.DoltgresType) (any, error) {
+	res, err := arg.Eval(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+
+	var dt *pgtypes.DoltgresType
+	var ok bool
+	typ := arg.Type(ctx)
+	if dt, ok = typ.(*pgtypes.DoltgresType); !ok {
+		dt, err = pgtypes.FromGmsTypeToDoltgresType(typ)
+		if err != nil {
+			return nil, err
+		}
+		res, err = ConvertGMSValueToDoltgresValue(ctx, typ, res)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if cast != nil {
+		res, err = cast.Eval(ctx, res, dt, targetTyp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (c *CompiledFunction) func2FastPath(ctx *sql.Context, f Function2, row sql.Row, isStrict bool) (any, bool, error) {
+	var cast0, cast1 *casts.Cast
+	var tTyp0, tTyp1 *pgtypes.DoltgresType
+	if len(c.overload.casts) == 2 {
+		cast0, cast1 = &c.overload.casts[0], &c.overload.casts[1]
+		tTyp0, tTyp1 = c.overload.params.paramTypes[0], c.overload.params.paramTypes[1]
+		if tTyp0.ID == pgtypes.AnyArray.ID || tTyp1.ID == pgtypes.AnyArray.ID {
+			return nil, false, nil
+		}
+	}
+	arg0, err := evalArg(ctx, row, c.Arguments[0], cast0, tTyp0)
+	if err != nil {
+		return nil, false, err
+	}
+	if isStrict && arg0 == nil {
+		return nil, false, nil
+	}
+
+	arg1, err := evalArg(ctx, row, c.Arguments[1], cast1, tTyp1)
+	if err != nil {
+		return nil, false, err
+	}
+	if isStrict && arg1 == nil {
+		return nil, false, nil
+	}
+
+	res, err := f.Callable(ctx, ([3]*pgtypes.DoltgresType)(c.callResolved), arg0, arg1)
+	if err != nil {
+		return nil, false, err
+	}
+	return res, true, nil
+}
+
 // Eval implements the interface sql.Expression.
 func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	// If we have a stashed error, then we should return that now. Errors are stashed when they're supposed to be
@@ -330,12 +391,23 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 	if c.stashedErr != nil {
 		return nil, c.stashedErr
 	}
+	oFunc := c.overload.Function()
+	isStrict := oFunc.IsStrict()
+	// Fast path for Function2 without variadic parameters
+	if f2, ok := oFunc.(Function2); ok && len(c.Arguments) == 2 && c.overload.params.variadic == -1 {
+		res, ok, err := c.func2FastPath(ctx, f2, row, isStrict)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return res, nil
+		}
+	}
 
 	// Evaluate all arguments, returning immediately if we encounter a null argument and the function is marked STRICT
 	var err error
-	isStrict := c.overload.Function().IsStrict()
 	args := make([]any, len(c.Arguments))
-	exprTypes := make([]*pgtypes.DoltgresType, len(args))
+	exprTypes := make([]*pgtypes.DoltgresType, len(c.Arguments))
 	for i, arg := range c.Arguments {
 		args[i], err = arg.Eval(ctx, row)
 		if err != nil {
@@ -421,36 +493,12 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 		return f.Callable(ctx, ([8]*pgtypes.DoltgresType)(c.callResolved), args[0], args[1], args[2], args[3], args[4], args[5], args[6])
 	case InterpretedFunction:
 		return plpgsql.Call(ctx, f, c.runner, c.callResolved, args)
-	case CFunction:
-		cfunc, err := extensions.GetExtensionFunction(f.ExtensionName, f.ExtensionSymbol)
+	case ExtensionFunction:
+		extFunc, err := extensions.GetFunction(f.ExtensionName, f.ExtensionSymbol)
 		if err != nil {
 			return nil, err
 		}
-		cargs := make([]pg_extension.NullableDatum, len(args))
-		for i, argType := range f.ParameterTypes { // TODO: ParameterTypes does not account for variadic parameters
-			cConvFunc, ok := cConversionToDatumMap[argType.ID]
-			if !ok {
-				return nil, cerrors.Errorf("no conversion function from Go to C for `%s`", argType.ID.TypeName())
-			}
-			cargs[i], err = cConvFunc(args[i])
-			if err != nil {
-				return nil, err
-			}
-		}
-		result, isNotNull := pg_extension.CallFmgrFunction(cfunc.Ptr, cargs...)
-		if isNotNull {
-			cConvFunc, ok := cConversionFromDatumMap[f.ReturnType.ID]
-			if !ok {
-				return nil, cerrors.Errorf("no conversion function from C to Go for `%s`", f.ReturnType.ID.TypeName())
-			}
-			retVal, err := cConvFunc(result)
-			if err != nil {
-				return nil, err
-			}
-			return retVal, nil
-		} else {
-			return nil, nil
-		}
+		return extFunc(ctx, args...)
 	case SQLFunction:
 		return CallSqlFunction(ctx, f, c.runner, args)
 	default:

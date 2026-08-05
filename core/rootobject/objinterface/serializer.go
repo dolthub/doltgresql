@@ -16,8 +16,8 @@ package objinterface
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/cockroachdb/errors"
 	doltserial "github.com/dolthub/dolt/go/gen/fb/serial"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
@@ -25,7 +25,6 @@ import (
 	"github.com/dolthub/dolt/go/store/types"
 	flatbuffers "github.com/dolthub/flatbuffers/v23/go"
 
-	"github.com/dolthub/doltgresql/core/storage"
 	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
 
@@ -35,66 +34,71 @@ type RootObjectSerializer struct {
 	RootValueAdd func(builder *flatbuffers.Builder, sequences flatbuffers.UOffsetT)
 }
 
-// CreateProllyMap creates and returns a new, empty Prolly map.
-func (serializer RootObjectSerializer) CreateProllyMap(ctx context.Context, root RootValue) (prolly.AddressMap, error) {
-	return prolly.NewEmptyAddressMap(root.NodeStore())
-}
-
-// GetProllyMap loads the Prolly map from the given root, using the internal serialization functions.
-func (serializer RootObjectSerializer) GetProllyMap(ctx context.Context, root RootValue) (prolly.AddressMap, bool, error) {
-	val, ok, err := serializer.getValue(ctx, root)
-	if err != nil || !ok {
-		return prolly.AddressMap{}, ok, err
-	}
-	serialMessage := val.(types.SerialMessage)
-	node, fileId, err := tree.NodeFromBytes(serialMessage)
+// CanonicalHash returns the hash that represents the given contents on a root. Contents with no entries are represented
+// by the empty hash, so that an emptied collection and one that was never written are the same state.
+func CanonicalHash(contents prolly.AddressMap) (hash.Hash, error) {
+	count, err := contents.Count()
 	if err != nil {
-		return prolly.AddressMap{}, false, err
+		return hash.Hash{}, err
 	}
-	if fileId != doltserial.AddressMapFileID {
-		return prolly.AddressMap{}, false, fmt.Errorf("invalid address map identifier, expected %s, got %s", doltserial.AddressMapFileID, fileId)
+	if count == 0 {
+		return hash.Hash{}, nil
 	}
-	addressMap, err := prolly.NewAddressMap(node, root.NodeStore())
-	return addressMap, err == nil, err
+	return contents.HashOf(), nil
 }
 
-// WriteProllyMap writes the given Prolly map to the root, returning the updated root.
-func (serializer RootObjectSerializer) WriteProllyMap(ctx context.Context, root RootValue, val prolly.AddressMap) (RootValue, error) {
-	return serializer.writeValue(ctx, root, tree.ValueFromNode(val.Node()))
-}
-
-// getValue loads the value from the given root, using the internal serialization functions.
-func (serializer RootObjectSerializer) getValue(ctx context.Context, root RootValue) (types.Value, bool, error) {
-	hashBytes := serializer.Bytes(root.GetStorage(ctx).SRV)
-	if len(hashBytes) == 0 {
-		return nil, false, nil
-	}
-	h := hash.New(hashBytes)
+// LoadProllyMap loads the contents of this serializer's collection from the given root.
+func (serializer RootObjectSerializer) LoadProllyMap(ctx context.Context, root RootValue) (prolly.AddressMap, error) {
+	h := serializer.RootHash(ctx, root)
 	if h.IsEmpty() {
-		return nil, false, nil
+		return prolly.NewEmptyAddressMap(root.NodeStore())
 	}
 	val, err := root.VRW().ReadValue(ctx, h)
-	return val, err == nil && val != nil, err
-}
-
-// setHash writes the given hash to storage, returning the updated storage.
-func (serializer RootObjectSerializer) setHash(ctx context.Context, st storage.RootStorage, h hash.Hash) (storage.RootStorage, error) {
-	if len(serializer.Bytes(st.SRV)) > 0 {
-		ret := st.Clone()
-		copy(serializer.Bytes(ret.SRV), h[:])
-		return ret, nil
-	} else {
-		return st.Clone(), nil
+	if err != nil {
+		return prolly.AddressMap{}, err
 	}
+	if val == nil {
+		return prolly.NewEmptyAddressMap(root.NodeStore())
+	}
+	node, fileId, err := tree.NodeFromBytes(val.(types.SerialMessage))
+	if err != nil {
+		return prolly.AddressMap{}, err
+	}
+	if fileId != doltserial.AddressMapFileID {
+		return prolly.AddressMap{}, errors.Errorf("invalid address map identifier, expected %s, got %s",
+			doltserial.AddressMapFileID, fileId)
+	}
+	return prolly.NewAddressMap(node, root.NodeStore())
 }
 
-// writeValue writes the given value to the root, returning the updated root.
-func (serializer RootObjectSerializer) writeValue(ctx context.Context, root RootValue, val types.Value) (RootValue, error) {
-	ref, err := root.VRW().WriteValue(ctx, val)
+// RootHash returns the hash that the given root holds for this serializer's collection, without reading its contents.
+// An empty hash means that the root holds no contents for the collection.
+func (serializer RootObjectSerializer) RootHash(ctx context.Context, root RootValue) hash.Hash {
+	hashBytes := serializer.Bytes(root.GetStorage(ctx).SRV)
+	if len(hashBytes) != hash.ByteLen {
+		return hash.Hash{}
+	}
+	return hash.New(hashBytes)
+}
+
+// WriteProllyMap writes the given contents to the root, returning the updated root. The root is returned unchanged when
+// it already holds these contents.
+func (serializer RootObjectSerializer) WriteProllyMap(ctx context.Context, root RootValue, contents prolly.AddressMap) (RootValue, error) {
+	h, err := CanonicalHash(contents)
 	if err != nil {
 		return nil, err
 	}
-	newStorage, err := serializer.setHash(ctx, root.GetStorage(ctx), ref.TargetHash())
+	if h.Equal(serializer.RootHash(ctx, root)) {
+		return root, nil
+	}
+	if !h.IsEmpty() {
+		ref, err := root.VRW().WriteValue(ctx, tree.ValueFromNode(contents.Node()))
+		if err != nil {
+			return nil, err
+		}
+		h = ref.TargetHash()
+	}
+	newStorage, err := root.GetStorage(ctx).SetRootObjectHash(ctx, serializer.Bytes, h)
 	if err != nil {
 		return nil, err
 	}
