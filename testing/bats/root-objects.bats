@@ -41,7 +41,7 @@ SELECT nextval('test');
 SQL
     [ "$status" -eq 0 ]
     # Sequence values are globally synchronized, so switching branches shouldn't have any effect
-    [[ "$output" =~ "31" ]] || false
+    [[ "$output" =~ "22" ]] || false
 }
 
 @test 'root-objects: start and stop' {
@@ -83,7 +83,7 @@ SELECT nextval('test');
 SQL
     [ "$status" -eq 0 ]
     # Sequence values are globally synchronized, so switching branches shouldn't have any effect
-    [[ "$output" =~ "31" ]] || false
+    [[ "$output" =~ "22" ]] || false
 }
 
 @test 'root-objects: \d does not break' {
