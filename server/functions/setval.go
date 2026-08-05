@@ -80,12 +80,18 @@ var setval_text_int64_boolean = framework.Function3{
 		var sequence *sequences.Sequence
 		var seqId id.Sequence
 		schema, relationBaseName, err := ParseRelationName(ctx, relationName)
+		if err != nil {
+			return nil, err
+		}
 		if schema != "" {
 			sequenceName = doltdb.TableName{Schema: schema, Name: relationBaseName}
 			seqId = id.NewSequence(sequenceName.Schema, sequenceName.Name)
 			sequence, err = collection.GetSequence(ctx, seqId)
 			if err != nil {
 				return nil, err
+			}
+			if sequence == nil {
+				return 0, errors.Errorf(`sequence "%s" does not exist`, relationName)
 			}
 		} else {
 			var found bool
