@@ -77,21 +77,26 @@ var setval_text_int64_boolean = framework.Function3{
 			return nil, err
 		}
 		var sequenceName doltdb.TableName
-		relationBaseName, err := ParseRelationBaseName(ctx, relationName)
-		if err != nil {
-			return 0, err
-		}
-		sequenceName, sequence, found, err := resolve.Relation(ctx, root, relationBaseName, sequences.SequenceSource{})
-		if err != nil {
-			return 0, err
-		}
-		if !found {
-			return 0, errors.Errorf(`sequence "%s" does not exist`, relationName)
-		}
-
-		seqId := id.NewSequence(sequenceName.Schema, sequenceName.Name)
-		if err != nil {
-			return nil, err
+		var sequence *sequences.Sequence
+		var seqId id.Sequence
+		schema, relationBaseName, err := ParseRelationName(ctx, relationName)
+		if schema != "" {
+			sequenceName = doltdb.TableName{Schema: schema, Name: relationBaseName}
+			seqId = id.NewSequence(sequenceName.Schema, sequenceName.Name)
+			sequence, err = collection.GetSequence(ctx, seqId)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			var found bool
+			sequenceName, sequence, found, err = resolve.Relation(ctx, root, relationName, sequences.SequenceSource{})
+			if err != nil {
+				return 0, err
+			}
+			if !found {
+				return 0, errors.Errorf(`sequence "%s" does not exist`, relationName)
+			}
+			seqId = id.NewSequence(sequenceName.Schema, sequenceName.Name)
 		}
 
 		sequenceTracker, err := dsess.GetSequenceTracker(ctx, db.GetGlobalState(), sequences.SequenceTrackerKey)
