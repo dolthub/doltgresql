@@ -1547,7 +1547,7 @@ func translateRefAction(action sqlparser.ReferenceAction) tree.RefAction {
 		}
 	case sqlparser.DefaultAction:
 		return tree.RefAction{
-			Action: tree.Restrict, // is this correct?
+			Action: tree.NoAction,
 		}
 	default:
 		panic(fmt.Sprintf("unhandled on delete action: %v", action))
@@ -2474,7 +2474,7 @@ func TestAlterTableConversion(t *testing.T) {
 		{
 			input: "ALTER TABLE foo ADD CONSTRAINT my_fk FOREIGN KEY (a) REFERENCES bar(b)",
 			expected: []string{
-				"ALTER TABLE foo ADD FOREIGN KEY (a) REFERENCES bar (b) ON DELETE RESTRICT ON UPDATE RESTRICT",
+				"ALTER TABLE foo ADD FOREIGN KEY (a) REFERENCES bar (b)",
 			},
 		},
 		{

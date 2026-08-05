@@ -1662,8 +1662,18 @@ func TestLegacyUpdateScripts(t *testing.T) {
 }
 
 func TestNonlocalTable(t *testing.T) {
-	t.Skip("port test from Dolt")
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// MySQL auto-names unnamed FKs "<table>_ibfk_<n>"; postgres uses "<table>_<col>_fkey". The generated name
+		// therefore differs from the shared (MySQL-authored) expected value in these ported assertions.
+		"show create table local_table",
+		`insert into local_table values ("fdnfjfjf")`,
+		// TODO: DOLT_VERIFY_CONSTRAINTS('--all') re-verifies constraints via a root merge, and the merge machinery
+		//  doesn't currently carry the "dolt" namespace schema (where dolt_nonlocal_tables lives under Doltgres's
+		//  schema/search-path model) through to the merged root, so FKs referencing a nonlocal table can't be
+		//  resolved there. Regular (non-nonlocal) FKs are unaffected.
+		"call dolt_verify_constraints",
+		"select violation_type from dolt_constraint_violations_local_table",
+	})
 	denginetest.RunNonlocalTableTests(t, h)
 }
 
