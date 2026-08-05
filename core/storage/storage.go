@@ -87,6 +87,25 @@ func (r RootStorage) SetCollation(ctx context.Context, collation schema.Collatio
 	return ret, nil
 }
 
+// SetRootObjectHash sets the hash of the root object collection read by the given accessor, returning a new storage
+// object. Roots written before a root object existed have no field for it, so the root value is rebuilt first.
+func (r RootStorage) SetRootObjectHash(ctx context.Context, bytes func(*serial.RootValue) []byte, h hash.Hash) (RootStorage, error) {
+	ret := r.Clone()
+	if len(bytes(ret.SRV)) == 0 {
+		dbSchemas, err := r.GetSchemas(ctx)
+		if err != nil {
+			return RootStorage{}, err
+		}
+		msg, err := r.serializeRootValue(r.SRV.TablesBytes(), dbSchemas)
+		if err != nil {
+			return RootStorage{}, err
+		}
+		ret = RootStorage{msg}
+	}
+	copy(bytes(ret.SRV), h[:])
+	return ret, nil
+}
+
 // GetSchemas returns all schemas.
 func (r RootStorage) GetSchemas(ctx context.Context) ([]schema.DatabaseSchema, error) {
 	numSchemas := r.SRV.SchemasLength()

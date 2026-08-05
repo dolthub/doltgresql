@@ -26,6 +26,3 @@ scripts/mini_sysbench
 # ignore doltgres db created
 doltgres
 auth.db
-
-# ignore extensions output
-core/extensions/pg_extension/output

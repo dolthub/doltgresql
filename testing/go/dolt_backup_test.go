@@ -16,9 +16,7 @@ package _go
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -714,27 +712,27 @@ func TestDoltBackup(t *testing.T) {
 		},
 	})
 
-	// TODO: Extension loading in Windows CI environments don't work currently
-	if !(runtime.GOOS == "windows" && os.Getenv("CI") != "") {
-		backupUrl = localBackupUrl(t, "backup")
-		runBackupTest(t, ScriptTest{
-			Name: "extension is preserved across backup and restore",
-			SetUpScript: []string{
-				`create extension "uuid-ossp";`,
-				fmt.Sprintf("select dolt_backup('sync-url', '%s');", backupUrl),
-				fmt.Sprintf("select dolt_backup('restore', '%s', 'restored_ext');", backupUrl),
-				"USE restored_ext",
+	backupUrl = localBackupUrl(t, "backup")
+	runBackupTest(t, ScriptTest{
+		Name: "extension is preserved across backup and restore",
+		SetUpScript: []string{
+			`create extension "uuid-ossp";`,
+			fmt.Sprintf("select dolt_backup('sync-url', '%s');", backupUrl),
+			fmt.Sprintf("select dolt_backup('restore', '%s', 'restored_ext');", backupUrl),
+			"USE restored_ext",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "select extname, extversion from pg_catalog.pg_extension;",
+				Expected: []sql.Row{{"uuid-ossp", "1.1"}},
 			},
-			Assertions: []ScriptTestAssertion{
-				{
-					// pg_extension is an unimplemented stub; calling the extension function is the best available proof.
-					// uuid_generate_v4() returns a 36-character UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
-					Query:    "select length(uuid_generate_v4()::text) = 36;",
-					Expected: []sql.Row{{"t"}},
-				},
+			{
+				// uuid_generate_v4() returns a 36-character UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
+				Query:    "select length(uuid_generate_v4()::text) = 36;",
+				Expected: []sql.Row{{"t"}},
 			},
-		})
-	}
+		},
+	})
 
 	backupUrl = localBackupUrl(t, "backup")
 	runBackupTest(t, ScriptTest{

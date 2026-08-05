@@ -122,6 +122,18 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				}
 			}
 			return node, transform.NewTree, nil
+		case *pgnodes.CreateType:
+			for i, attr := range n.AsTypes {
+				if !attr.Typ.IsResolvedType() {
+					attrType, err := resolveType(ctx, db, attr.Typ)
+					if err != nil {
+						return nil, transform.NewTree, err
+					}
+					same = transform.NewTree
+					n.AsTypes[i].Typ = attrType
+				}
+			}
+			return node, same, nil
 		case *plan.CreateTable:
 			for _, col := range n.TargetSchema() {
 				if rt, ok := col.Type.(*pgtypes.DoltgresType); ok && !rt.IsResolvedType() {

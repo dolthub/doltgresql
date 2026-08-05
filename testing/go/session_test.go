@@ -102,3 +102,86 @@ func TestRollback(t *testing.T) {
 		},
 	})
 }
+
+func TestSessionStateAfterQueryError(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Test failed query does not pin the session to a stale root",
+			SetUpScript: []string{
+				`CREATE TABLE test (a INT PRIMARY KEY)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SELECT * FROM doesnotexist",
+					ExpectedErr: "table not found",
+				},
+				{
+					Username: "postgres",
+					Password: "password",
+					Query:    "INSERT INTO test VALUES (1)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "Test failed root object lookup does not pin the session to a stale root",
+			SetUpScript: []string{
+				`CREATE TABLE test (a INT PRIMARY KEY)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SELECT doesnotexist()",
+					ExpectedErr: "'doesnotexist' not found",
+				},
+				{
+					Username: "postgres",
+					Password: "password",
+					Query:    "CREATE SEQUENCE seq",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT nextval('seq')",
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "Test failed query inside a transaction leaves the transaction in place",
+			SetUpScript: []string{
+				`CREATE TABLE test (a INT PRIMARY KEY)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "START TRANSACTION",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT * FROM doesnotexist",
+					ExpectedErr: "table not found",
+				},
+				{
+					Username: "postgres",
+					Password: "password",
+					Query:    "INSERT INTO test VALUES (1)",
+					Expected: []sql.Row{},
+				},
+				{ // The transaction still isolates the session from the other session's write.
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "COMMIT",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+	})
+}

@@ -23,7 +23,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -72,14 +71,14 @@ func ResolveProcedureDefaults(ctx *sql.Context, a *analyzer.Analyzer, node sql.N
 			// TODO: we should probably have procedure equivalents instead of converting these to functions
 			//  probably fine for now since we don't implement/support the differing functionality between the two just yet
 			if len(overload.ExtensionName) > 0 {
-				if err = overloadTree.Add(framework.CFunction{
+				if err = overloadTree.Add(framework.ExtensionFunction{
 					ID:                 id.Function(overload.ID),
 					ReturnType:         pgtypes.Void,
 					ParameterTypes:     paramTypes,
 					Variadic:           false,
 					IsNonDeterministic: true,
 					Strict:             false,
-					ExtensionName:      extensions.LibraryIdentifier(overload.ExtensionName),
+					ExtensionName:      overload.ExtensionName,
 					ExtensionSymbol:    overload.ExtensionSymbol,
 				}); err != nil {
 					return nil, transform.SameTree, err

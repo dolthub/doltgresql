@@ -25,11 +25,12 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
+	coreextensions "github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/extensions"
 )
 
 // CreateExtension implements CREATE EXTENSION.
@@ -89,80 +90,55 @@ func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 		}
 		return nil, errors.Errorf(`extension "%s" already exists`, c.Name)
 	}
-	ext, err := extensions.GetExtension(c.Name)
-	if err != nil {
-		return nil, err
-	}
-	// The returned files are in their proper order of execution, so we can iterate and execute
-	sqlFiles, err := ext.LoadSQLFiles()
-	if err != nil {
-		return nil, err
-	}
-	// save the current search_path
-	originalSchema, err := ctx.GetSessionVariable(ctx, "search_path")
+	// TODO: install the extensions named by Control.Requires, once an emulated extension declares any
+	ext, err := extensions.Get(c.Name)
 	if err != nil {
 		return nil, err
 	}
 
 	if c.SchemaName != "" {
-		defer func() {
-			_ = ctx.SetSessionVariable(ctx, "search_path", originalSchema)
-		}()
-
-		spErr := ctx.SetSessionVariable(ctx, "search_path", c.SchemaName)
-		if spErr != nil {
-			return nil, spErr
-		}
-	}
-
-	for _, sqlFile := range sqlFiles {
-		// Remove echo PSQL control statements
-		for {
-			echoStartIdx := strings.Index(sqlFile, `\echo`)
-			if echoStartIdx == -1 {
-				break
-			}
-			echoEndIdx := strings.Index(sqlFile[echoStartIdx:], "\n")
-			if echoEndIdx != -1 {
-				// Set the correct absolute position if there is a newline
-				echoEndIdx += echoStartIdx
-			} else {
-				// Set the position at the end of the file if there's no newline (comment appears before EOF)
-				echoEndIdx = len(sqlFile)
-			}
-			sqlFile = strings.Replace(sqlFile, sqlFile[echoStartIdx:echoEndIdx], "", 1)
-		}
-		statements, err := parser.Parse(sqlFile)
+		// save the current search_path
+		originalSearchPath, err := ctx.GetSessionVariable(ctx, "search_path")
 		if err != nil {
 			return nil, err
 		}
-		for _, statement := range statements {
-			statementSQL := statement.SQL
-			if _, ok := statement.AST.(*tree.CreateFunction); ok {
-				statementSQL = strings.ReplaceAll(statementSQL, `'MODULE_PATHNAME'`, fmt.Sprintf(`'%s'`, c.Name))
-			}
-			_, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) ([]sql.Row, error) {
-				_, rowIter, _, err := c.Runner.Runner.QueryWithBindings(subCtx, statementSQL, nil, nil, nil)
-				if err != nil {
-					return nil, err
-				}
-				return sql.RowIterToRows(subCtx, rowIter)
-			})
+		defer func() {
+			_ = ctx.SetSessionVariable(ctx, "search_path", originalSearchPath)
+		}()
+		if err = ctx.SetSessionVariable(ctx, "search_path", c.SchemaName); err != nil {
+			return nil, err
+		}
+	}
+	statements, err := parser.Parse(ext.Script)
+	if err != nil {
+		return nil, err
+	}
+	for _, statement := range statements {
+		statementSQL := statement.SQL
+		if _, ok := statement.AST.(*tree.CreateFunction); ok {
+			statementSQL = strings.ReplaceAll(statementSQL, `'MODULE_PATHNAME'`, fmt.Sprintf(`'%s'`, c.Name))
+		}
+		_, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) ([]sql.Row, error) {
+			_, rowIter, _, err := c.Runner.Runner.QueryWithBindings(subCtx, statementSQL, nil, nil, nil)
 			if err != nil {
 				return nil, err
 			}
+			return sql.RowIterToRows(subCtx, rowIter)
+		})
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	namespace := id.NullNamespace
-	if len(ext.Control.Schema) > 0 {
-		namespace = id.NewNamespace(ext.Control.Schema)
+	schemaName, err := core.GetSchemaName(ctx, nil, c.SchemaName)
+	if err != nil {
+		return nil, err
 	}
-	err = extCollection.AddLoadedExtension(ctx, extensions.Extension{
-		ExtName:       id.NewExtension(c.Name),
-		Namespace:     namespace,
-		Relocatable:   ext.Control.Relocatable,
-		LibIdentifier: extensions.CreateLibraryIdentifier(c.Name, ext.Control.DefaultVersion),
+	err = extCollection.AddLoadedExtension(ctx, coreextensions.Extension{
+		ExtName:     id.NewExtension(c.Name),
+		Namespace:   id.NewNamespace(schemaName),
+		Relocatable: ext.Control.Relocatable,
+		Version:     ext.Control.DefaultVersion,
 	})
 	if err != nil {
 		return nil, err

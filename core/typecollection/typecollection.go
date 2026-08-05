@@ -24,7 +24,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -42,10 +41,9 @@ const anonymousCompositeSuffix = ")"
 
 // TypeCollection is a collection of all types (both built-in and user defined).
 type TypeCollection struct {
-	accessedMap   map[id.Type]*pgtypes.DoltgresType
-	initCache     map[id.Type]*pgtypes.DoltgresType // This is only used by the function `WithCachedType`
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
+	objinterface.RootObjectMap
+	accessedMap map[id.Type]*pgtypes.DoltgresType
+	initCache   map[id.Type]*pgtypes.DoltgresType // This is only used by the function `WithCachedType`
 }
 
 // TypeWrapper is a wrapper around a type that allows it to be used as a root object.
@@ -68,7 +66,7 @@ func (pgs *TypeCollection) CreateType(ctx context.Context, typ *pgtypes.Doltgres
 	if _, ok := pgs.accessedMap[typ.ID]; ok {
 		return pgtypes.ErrTypeAlreadyExists.New(typ.Name())
 	}
-	if ok, err := pgs.underlyingMap.Has(ctx, string(typ.ID)); err != nil {
+	if ok, err := pgs.Contents().Has(ctx, string(typ.ID)); err != nil {
 		return err
 	} else if ok {
 		return pgtypes.ErrTypeAlreadyExists.New(typ.Name())
@@ -93,21 +91,25 @@ func (pgs *TypeCollection) DropType(ctx context.Context, names ...id.Type) (err 
 		return err
 	}
 	for _, name := range names {
-		if ok, err := pgs.underlyingMap.Has(ctx, string(name)); err != nil {
+		if ok, err := pgs.Contents().Has(ctx, string(name)); err != nil {
 			return err
 		} else if !ok {
 			return pgtypes.ErrTypeDoesNotExist.New(name.TypeName())
 		}
 	}
 	// Now we'll remove the types from the underlying map
-	mapEditor := pgs.underlyingMap.Editor()
+	mapEditor := pgs.Contents().Editor()
 	for _, name := range names {
 		if err = mapEditor.Delete(ctx, string(name)); err != nil {
 			return err
 		}
 	}
-	pgs.underlyingMap, err = mapEditor.Flush(ctx)
-	return err
+	flushed, err := mapEditor.Flush(ctx)
+	if err != nil {
+		return err
+	}
+	pgs.SetContents(flushed)
+	return nil
 }
 
 // GetAllTypes returns a map containing all types in the collection, grouped by the schema they're contained in.
@@ -174,7 +176,7 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 		return nil, errors.New("type collection requires a SQL context")
 	}
 	// The initial load is from the internal map
-	h, err := pgs.underlyingMap.Get(ctx, string(name))
+	h, err := pgs.Contents().Get(ctx, string(name))
 	if err != nil {
 		return nil, err
 	}
@@ -205,11 +207,11 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 		}
 		return pgs.tableToType(sqlCtx, tbl, schema)
 	}
-	data, err := pgs.ns.ReadBytes(ctx, h)
+	data, err := pgs.NodeStore().ReadBytes(ctx, h)
 	if err != nil {
 		return nil, err
 	}
-	t, err := pgtypes.DeserializeType(sqlCtx, data)
+	t, err := pgtypes.DeserializeTypeFromCollection(sqlCtx, pgs, data)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +317,7 @@ func (pgs *TypeCollection) HasType(ctx context.Context, name id.Type) bool {
 	if _, ok := pgs.accessedMap[name]; ok {
 		return true
 	}
-	ok, err := pgs.underlyingMap.Has(ctx, string(name))
+	ok, err := pgs.Contents().Has(ctx, string(name))
 	if err == nil && ok {
 		return true
 	}
@@ -375,7 +377,7 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 	}
 
 	// Check for an exact match in the underlying map
-	ok, err := pgs.underlyingMap.Has(ctx, string(inputID))
+	ok, err := pgs.Contents().Has(ctx, string(inputID))
 	if err != nil {
 		return id.NullType, err
 	} else if ok {
@@ -384,7 +386,7 @@ func (pgs *TypeCollection) resolveName(ctx context.Context, schemaName string, t
 	}
 
 	// Iterate over all the names in the map
-	err = pgs.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+	err = pgs.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 		typeID := id.Type(k)
 		if strings.EqualFold(typeName, typeID.TypeName()) {
 			if len(schemaName) > 0 && !strings.EqualFold(schemaName, typeID.SchemaName()) {
@@ -423,12 +425,12 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 	if err := pgs.writeCache(ctx); err != nil {
 		return err
 	}
-	err := pgs.underlyingMap.IterAll(ctx, func(_ string, v hash.Hash) error {
-		data, err := pgs.ns.ReadBytes(ctx, v)
+	err := pgs.Contents().IterAll(ctx, func(_ string, v hash.Hash) error {
+		data, err := pgs.NodeStore().ReadBytes(ctx, v)
 		if err != nil {
 			return err
 		}
-		t, err := pgtypes.DeserializeType(sqlCtx, data)
+		t, err := pgtypes.DeserializeTypeFromCollection(sqlCtx, pgs, data)
 		if err != nil {
 			return err
 		}
@@ -444,26 +446,12 @@ func (pgs *TypeCollection) IterateTypes(ctx context.Context, f func(typ *pgtypes
 	return err
 }
 
-// Clone returns a new *TypeCollection with the same contents as the original.
-func (pgs *TypeCollection) Clone(ctx context.Context) *TypeCollection {
-	newCollection := &TypeCollection{
-		accessedMap:   make(map[id.Type]*pgtypes.DoltgresType),
-		initCache:     make(map[id.Type]*pgtypes.DoltgresType),
-		underlyingMap: pgs.underlyingMap,
-		ns:            pgs.ns,
-	}
-	for typeID, t := range pgs.accessedMap {
-		newCollection.accessedMap[typeID] = t
-	}
-	return newCollection
-}
-
-// Map writes any cached types to the underlying map, and then returns the underlying map.
+// Map writes any cached types to the collection's contents, and then returns those contents.
 func (pgs *TypeCollection) Map(ctx context.Context) (prolly.AddressMap, error) {
 	if err := pgs.writeCache(ctx); err != nil {
 		return prolly.AddressMap{}, err
 	}
-	return pgs.underlyingMap, nil
+	return pgs.Contents(), nil
 }
 
 // GetID implements the interface objinterface.RootObject.
@@ -511,10 +499,10 @@ func (pgs *TypeCollection) writeCache(ctx context.Context) (err error) {
 	if len(pgs.accessedMap) == 0 {
 		return nil
 	}
-	mapEditor := pgs.underlyingMap.Editor()
+	mapEditor := pgs.Contents().Editor()
 	for _, t := range pgs.accessedMap {
 		data := t.Serialize()
-		h, err := pgs.ns.WriteBytes(ctx, data)
+		h, err := pgs.NodeStore().WriteBytes(ctx, data)
 		if err != nil {
 			return err
 		}
@@ -522,13 +510,13 @@ func (pgs *TypeCollection) writeCache(ctx context.Context) (err error) {
 			return err
 		}
 	}
-	// Assign underlyingMap only after the error check. Flush returns a
+	// Set the contents only after the error check. Flush returns a
 	// zero AddressMap on failure, which would corrupt the TypeCollection.
 	flushed, err := mapEditor.Flush(ctx)
 	if err != nil {
 		return err
 	}
-	pgs.underlyingMap = flushed
+	pgs.SetContents(flushed)
 	clear(pgs.accessedMap)
 	return nil
 }

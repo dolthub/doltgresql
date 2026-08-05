@@ -17,15 +17,12 @@ package procedures
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -52,12 +49,10 @@ type Parameter struct {
 
 // Collection contains a collection of procedures.
 type Collection struct {
+	objinterface.RootObjectMap
 	accessCache   map[id.Procedure]Procedure      // This cache is used for general access when you know the exact ID
 	overloadCache map[id.Procedure][]id.Procedure // This cache is used to find overloads if you know the name
 	idCache       []id.Procedure                  // This cache simply contains the name of every procedure
-	mapHash       hash.Hash                       // This is cached so that we don't have to calculate the hash every time
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
 }
 
 // Procedure represents a created procedure.
@@ -75,14 +70,11 @@ var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = Procedure{}
 
 // NewCollection returns a new Collection.
-func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree.NodeStore) (*Collection, error) {
+func NewCollection(ctx context.Context, rom objinterface.RootObjectMap) (*Collection, error) {
 	collection := &Collection{
+		RootObjectMap: rom,
 		accessCache:   make(map[id.Procedure]Procedure),
 		overloadCache: make(map[id.Procedure][]id.Procedure),
-		idCache:       nil,
-		mapHash:       hash.Hash{},
-		underlyingMap: underlyingMap,
-		ns:            ns,
 	}
 	return collection, collection.reloadCaches(ctx)
 }
@@ -128,11 +120,11 @@ func (pgp *Collection) AddProcedure(ctx context.Context, proc Procedure) error {
 	if err != nil {
 		return err
 	}
-	h, err := pgp.ns.WriteBytes(ctx, data)
+	h, err := pgp.NodeStore().WriteBytes(ctx, data)
 	if err != nil {
 		return err
 	}
-	mapEditor := pgp.underlyingMap.Editor()
+	mapEditor := pgp.Contents().Editor()
 	if err = mapEditor.Add(ctx, string(proc.ID), h); err != nil {
 		return err
 	}
@@ -140,8 +132,7 @@ func (pgp *Collection) AddProcedure(ctx context.Context, proc Procedure) error {
 	if err != nil {
 		return err
 	}
-	pgp.underlyingMap = newMap
-	pgp.mapHash = pgp.underlyingMap.HashOf()
+	pgp.SetContents(newMap)
 	return pgp.reloadCaches(ctx)
 }
 
@@ -158,7 +149,7 @@ func (pgp *Collection) DropProcedure(ctx context.Context, procIDs ...id.Procedur
 	}
 
 	// Now we'll remove the procedure from the map
-	mapEditor := pgp.underlyingMap.Editor()
+	mapEditor := pgp.Contents().Editor()
 	for _, procID := range procIDs {
 		err := mapEditor.Delete(ctx, string(procID))
 		if err != nil {
@@ -169,8 +160,7 @@ func (pgp *Collection) DropProcedure(ctx context.Context, procIDs ...id.Procedur
 	if err != nil {
 		return err
 	}
-	pgp.underlyingMap = newMap
-	pgp.mapHash = pgp.underlyingMap.HashOf()
+	pgp.SetContents(newMap)
 	return pgp.reloadCaches(ctx)
 }
 
@@ -280,58 +270,27 @@ func (pgp *Collection) IterateProcedures(_ context.Context, callback func(p Proc
 	return nil
 }
 
-// Clone returns a new *Collection with the same contents as the original.
-func (pgp *Collection) Clone(_ context.Context) *Collection {
-	return &Collection{
-		accessCache:   maps.Clone(pgp.accessCache),
-		overloadCache: maps.Clone(pgp.overloadCache),
-		idCache:       slices.Clone(pgp.idCache),
-		mapHash:       pgp.mapHash,
-		underlyingMap: pgp.underlyingMap,
-		ns:            pgp.ns,
-	}
-}
-
 // Map returns the underlying map.
 func (pgp *Collection) Map(_ context.Context) (prolly.AddressMap, error) {
-	return pgp.underlyingMap, nil
-}
-
-// DiffersFrom returns true when the hash that is associated with the underlying map for this collection is different
-// from the hash in the given root.
-func (pgp *Collection) DiffersFrom(ctx context.Context, root objinterface.RootValue) bool {
-	hashOnGivenRoot, err := pgp.LoadCollectionHash(ctx, root)
-	if err != nil {
-		return true
-	}
-	if pgp.mapHash.Equal(hashOnGivenRoot) {
-		return false
-	}
-	// An empty map should match an uninitialized collection on the root
-	count, err := pgp.underlyingMap.Count()
-	if err == nil && count == 0 && hashOnGivenRoot.IsEmpty() {
-		return false
-	}
-	return true
+	return pgp.Contents(), nil
 }
 
 // reloadCaches writes the underlying map's contents to the caches.
 func (pgp *Collection) reloadCaches(ctx context.Context) error {
-	count, err := pgp.underlyingMap.Count()
+	count, err := pgp.Contents().Count()
 	if err != nil {
 		return err
 	}
 
 	clear(pgp.accessCache)
 	clear(pgp.overloadCache)
-	pgp.mapHash = pgp.underlyingMap.HashOf()
 	pgp.idCache = make([]id.Procedure, 0, count)
 
-	return pgp.underlyingMap.IterAll(ctx, func(_ string, h hash.Hash) error {
+	return pgp.Contents().IterAll(ctx, func(_ string, h hash.Hash) error {
 		if h.IsEmpty() {
 			return nil
 		}
-		data, err := pgp.ns.ReadBytes(ctx, h)
+		data, err := pgp.NodeStore().ReadBytes(ctx, h)
 		if err != nil {
 			return err
 		}

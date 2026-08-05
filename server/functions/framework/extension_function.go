@@ -1,4 +1,4 @@
-// Copyright 2025 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,81 +17,82 @@ package framework
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// CFunction is the implementation of functions that host their logic in a shared library.
-type CFunction struct {
+// ExtensionFunction is the implementation of functions that an extension provides, looked up in
+// server/extensions by extension name and symbol.
+type ExtensionFunction struct {
 	ID                 id.Function
 	ReturnType         *pgtypes.DoltgresType
 	ParameterTypes     []*pgtypes.DoltgresType
 	Variadic           bool
 	IsNonDeterministic bool
 	Strict             bool
-	ExtensionName      extensions.LibraryIdentifier
+	SetOf              bool
+	ExtensionName      string
 	ExtensionSymbol    string
 }
 
-var _ FunctionInterface = CFunction{}
+var _ FunctionInterface = ExtensionFunction{}
 
 // GetExpectedParameterCount implements the interface FunctionInterface.
-func (cFunc CFunction) GetExpectedParameterCount() int {
-	return len(cFunc.ParameterTypes)
+func (extFunc ExtensionFunction) GetExpectedParameterCount() int {
+	return len(extFunc.ParameterTypes)
 }
 
 // GetName implements the interface FunctionInterface.
-func (cFunc CFunction) GetName() string {
-	return cFunc.ID.FunctionName()
+func (extFunc ExtensionFunction) GetName() string {
+	return extFunc.ID.FunctionName()
 }
 
 // GetOutParameters implements the interface FunctionInterface.
-func (cFunc CFunction) GetOutParameters() sql.Schema {
+func (extFunc ExtensionFunction) GetOutParameters() sql.Schema {
 	return nil
 }
 
 // GetInputParameterTypes implements the interface FunctionInterface.
-func (cFunc CFunction) GetInputParameterTypes() []*pgtypes.DoltgresType {
-	return cFunc.ParameterTypes
+func (extFunc ExtensionFunction) GetInputParameterTypes() []*pgtypes.DoltgresType {
+	return extFunc.ParameterTypes
 }
 
 // GetReturn implements the interface FunctionInterface.
-func (cFunc CFunction) GetReturn() *pgtypes.DoltgresType {
-	return cFunc.ReturnType
+func (extFunc ExtensionFunction) GetReturn() *pgtypes.DoltgresType {
+	return extFunc.ReturnType
 }
 
 // InternalID implements the interface FunctionInterface.
-func (cFunc CFunction) InternalID() id.Id {
-	return cFunc.ID.AsId()
+func (extFunc ExtensionFunction) InternalID() id.Id {
+	return extFunc.ID.AsId()
 }
 
 // IsStrict implements the interface FunctionInterface.
-func (cFunc CFunction) IsStrict() bool {
-	return cFunc.Strict
+func (extFunc ExtensionFunction) IsStrict() bool {
+	return extFunc.Strict
 }
 
 // NonDeterministic implements the interface FunctionInterface.
-func (cFunc CFunction) NonDeterministic() bool {
-	return cFunc.IsNonDeterministic
+func (extFunc ExtensionFunction) NonDeterministic() bool {
+	return extFunc.IsNonDeterministic
 }
 
 // IsCVariadic implements the FunctionInterface interface.
-func (cFunc CFunction) IsCVariadic() bool {
+func (extFunc ExtensionFunction) IsCVariadic() bool {
 	// TODO: implement c-language variadic
 	return false
 }
 
 // VariadicIndex implements the interface FunctionInterface.
-func (cFunc CFunction) VariadicIndex() int {
+func (extFunc ExtensionFunction) VariadicIndex() int {
 	// TODO: implement variadic
 	return -1
 }
 
 // IsSRF implements the interface FunctionInterface.
-func (cFunc CFunction) IsSRF() bool {
-	return false
+func (extFunc ExtensionFunction) IsSRF() bool {
+	return extFunc.SetOf
 }
 
 // enforceInterfaceInheritance implements the interface FunctionInterface.
-func (cFunc CFunction) enforceInterfaceInheritance(error) {}
+func (extFunc ExtensionFunction) enforceInterfaceInheritance(error) {}

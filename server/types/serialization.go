@@ -45,14 +45,19 @@ func SerializeType(ctx *sql.Context, extendedType sql.ExtendedType) ([]byte, err
 }
 
 // DeserializeType is able to deserialize the given serialized type into an appropriate extended type. All extended
-// types will be defined by DoltgreSQL.
+// types will be defined by DoltgreSQL. This will use the TypeCollection defined in the context.
 func DeserializeType(ctx *sql.Context, serializedType []byte) (sql.ExtendedType, error) {
+	return DeserializeTypeFromCollection(ctx, nil, serializedType)
+}
+
+// DeserializeTypeFromCollection is able to deserialize the given serialized type into an appropriate extended type. All
+// extended types will be defined by DoltgreSQL.
+func DeserializeTypeFromCollection(ctx *sql.Context, typeColl TypeCollection, serializedType []byte) (sql.ExtendedType, error) {
 	if len(serializedType) == 0 {
 		return nil, errors.Errorf("deserializing empty type data")
 	}
 
 	typ := &DoltgresType{}
-	var typeColl TypeCollection
 	reader := utils.NewReader(serializedType)
 	version := reader.VariableUint()
 	if version != 0 {
