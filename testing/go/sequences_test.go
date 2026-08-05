@@ -1389,5 +1389,26 @@ ORDER BY 1,2;`,
 				},
 			},
 		},
+		{
+			Name: "Error when branches contain incompatible sequence definitions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE SEQUENCE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT DOLT_CHECKOUT('-b', 'other');",
+					Expected: []sql.Row{{0}, {"Switched to branch 'other'"}},
+				},
+				{
+					Query:    "CREATE SEQUENCE test INCREMENT -1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT nextval('test');",
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
 	})
 }

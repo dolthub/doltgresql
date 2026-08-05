@@ -145,6 +145,11 @@ func (sequence SequenceState) AtEnd() bool {
 }
 
 func (sequence SequenceState) Next() (sqlVal int64, hasNext bool, nextState SequenceState, err error) {
+	// The zero valued state indicates that two incompatible sequences were merged. For now, attempting to advance this
+	// state results in an error.
+	if (sequence == SequenceState{}) {
+		return 0, false, SequenceState{}, fmt.Errorf("unable to advance sequence state, possibly due to having incompatible state on different branches", sequence.Id.AsId().String())
+	}
 	// First we'll check if we've reached the end, and cycle or error as necessary
 	sequence.HasBeenCalled = true
 	if sequence.IsAtEnd {
