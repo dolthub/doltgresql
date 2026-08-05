@@ -143,6 +143,7 @@ func Init() {
 	initNow()
 	initObjDescription()
 	initOctetLength()
+	initPgAvailableExtensionVersions()
 	initPgBackendPid()
 	initPgCharToEncoding()
 	initPgCollationIsVisible()
