@@ -21,8 +21,8 @@ func Ptr[T any](v T) *T {
 
 // startServer will start sql-server with given host, unix socket file path and whether to use specific port, which is defined randomly.
 func startServer(t *testing.T, host string, unixSocketPath string) (*svcs.Controller, *servercfg.DoltgresConfig) {
-	rand.Seed(time.Now().UnixNano())
-	port := 15403 + rand.Intn(25)
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	port := 15403 + rng.Intn(25)
 
 	doltgresConfig := servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
