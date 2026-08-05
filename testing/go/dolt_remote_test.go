@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -826,29 +825,29 @@ func TestDoltRemote(t *testing.T) {
 		},
 	})
 
-	// TODO: Extension loading in Windows CI environments don't work currently
-	if !(runtime.GOOS == "windows" && os.Getenv("CI") != "") {
-		remoteUrl = localRemoteUrl(t, "remote")
-		runRemoteTest(t, ScriptTest{
-			Name: "extension is preserved across push and clone",
-			SetUpScript: []string{
-				`create extension "uuid-ossp";`,
-				"select dolt_commit('-Am', 'seed extension');",
-				fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", remoteUrl),
-				"select dolt_push('origin', 'main');",
-				fmt.Sprintf("select dolt_clone('%s', 'cloned_ext');", remoteUrl),
-				"USE cloned_ext",
+	remoteUrl = localRemoteUrl(t, "remote")
+	runRemoteTest(t, ScriptTest{
+		Name: "extension is preserved across push and clone",
+		SetUpScript: []string{
+			`create extension "uuid-ossp";`,
+			"select dolt_commit('-Am', 'seed extension');",
+			fmt.Sprintf("select dolt_remote('add', 'origin', '%s');", remoteUrl),
+			"select dolt_push('origin', 'main');",
+			fmt.Sprintf("select dolt_clone('%s', 'cloned_ext');", remoteUrl),
+			"USE cloned_ext",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "select extname, extversion from pg_catalog.pg_extension;",
+				Expected: []sql.Row{{"uuid-ossp", "1.1"}},
 			},
-			Assertions: []ScriptTestAssertion{
-				{
-					// pg_extension is an unimplemented stub; calling the extension function is the best available proof.
-					// uuid_generate_v4() returns a 36-character UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
-					Query:    "select length(uuid_generate_v4()::text) = 36;",
-					Expected: []sql.Row{{"t"}},
-				},
+			{
+				// uuid_generate_v4() returns a 36-character UUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
+				Query:    "select length(uuid_generate_v4()::text) = 36;",
+				Expected: []sql.Row{{"t"}},
 			},
-		})
-	}
+		},
+	})
 
 	remoteUrl = localRemoteUrl(t, "remote")
 	runRemoteTest(t, ScriptTest{

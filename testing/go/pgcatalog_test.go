@@ -439,11 +439,16 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 		{
 			Name: "pg_available_extension_versions",
 			Assertions: []ScriptTestAssertion{
-				{ // The set of available extensions depends on the local Postgres installation, so we filter on a
-					// name that will never exist to keep the results deterministic across environments.
+				{ // Only the extensions that Doltgres emulates are available
 					Query:            `SELECT * FROM "pg_catalog"."pg_available_extension_versions" WHERE name = 'doltgres_no_such_extension';`,
 					Expected:         []sql.Row{},
 					ExpectedColNames: []string{"name", "version", "installed", "superuser", "trusted", "relocatable", "schema", "requires", "comment"},
+				},
+				{
+					Query: `SELECT name, version, installed, superuser, trusted, relocatable, schema, requires, comment FROM "pg_catalog"."pg_available_extension_versions" ORDER BY name;`,
+					Expected: []sql.Row{
+						{"uuid-ossp", "1.1", "f", "t", "t", "t", nil, nil, "generate universally unique identifiers (UUIDs)"},
+					},
 				},
 				{ // No extensions are installed by default
 					Query:    `SELECT name, version FROM "pg_catalog"."pg_available_extension_versions" WHERE installed = true;`,
@@ -463,6 +468,18 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_available_extension_versions with an installed extension",
+			SetUpScript: []string{
+				`CREATE EXTENSION "uuid-ossp";`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT name, version FROM "pg_catalog"."pg_available_extension_versions" WHERE installed = true;`,
+					Expected: []sql.Row{{"uuid-ossp", "1.1"}},
+				},
+			},
+		},
 	})
 }
 
@@ -471,11 +488,16 @@ func TestPgAvailableExtensions(t *testing.T) {
 		{
 			Name: "pg_available_extensions",
 			Assertions: []ScriptTestAssertion{
-				{ // The set of available extensions depends on the local Postgres installation, so we filter on a
-					// name that will never exist to keep the results deterministic across environments.
+				{ // Only the extensions that Doltgres emulates are available
 					Query:            `SELECT * FROM "pg_catalog"."pg_available_extensions" WHERE name = 'doltgres_no_such_extension';`,
 					Expected:         []sql.Row{},
 					ExpectedColNames: []string{"name", "default_version", "installed_version", "comment"},
+				},
+				{
+					Query: `SELECT name, default_version, installed_version, comment FROM "pg_catalog"."pg_available_extensions" ORDER BY name;`,
+					Expected: []sql.Row{
+						{"uuid-ossp", "1.1", nil, "generate universally unique identifiers (UUIDs)"},
+					},
 				},
 				{ // No extensions are installed by default
 					Query:    `SELECT name, installed_version FROM "pg_catalog"."pg_available_extensions" WHERE installed_version IS NOT NULL;`,
@@ -492,6 +514,18 @@ func TestPgAvailableExtensions(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT name FROM PG_catalog.pg_AVAILABLE_EXTENSIONS WHERE name = 'doltgres_no_such_extension' ORDER BY name;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "pg_available_extensions with an installed extension",
+			SetUpScript: []string{
+				`CREATE EXTENSION "uuid-ossp";`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT name, installed_version FROM "pg_catalog"."pg_available_extensions" WHERE installed_version IS NOT NULL;`,
+					Expected: []sql.Row{{"uuid-ossp", "1.1"}},
 				},
 			},
 		},
@@ -1439,9 +1473,9 @@ func TestPgExtension(t *testing.T) {
 		{
 			Name: "pg_extension",
 			Assertions: []ScriptTestAssertion{
-				{ // No extensions are installed in a fresh database
-					// TODO: install an extension (CREATE EXTENSION requires a local Postgres installation, which is
-					//  not available in every test environment) and assert its row here
+				{
+					// TODO: Postgres installs plpgsql automatically, while it's built-in for us
+					//  We need to return it as a row as though it were installed
 					Query:            `SELECT * FROM "pg_catalog"."pg_extension";`,
 					Expected:         []sql.Row{},
 					ExpectedColNames: []string{"oid", "extname", "extowner", "extnamespace", "extrelocatable", "extversion", "extconfig", "extcondition"},
@@ -1457,6 +1491,22 @@ func TestPgExtension(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT extname FROM PG_catalog.pg_EXTENSION ORDER BY extname;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "pg_extension with an installed extension",
+			SetUpScript: []string{
+				`CREATE EXTENSION "uuid-ossp";`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT extname, extrelocatable, extversion, extconfig, extcondition FROM "pg_catalog"."pg_extension";`,
+					Expected: []sql.Row{{"uuid-ossp", "t", "1.1", nil, nil}},
+				},
+				{
+					Query:    `SELECT e.extname, n.nspname FROM "pg_catalog"."pg_extension" e, "pg_catalog"."pg_namespace" n WHERE n.oid = e.extnamespace;`,
+					Expected: []sql.Row{{"uuid-ossp", "public"}},
 				},
 			},
 		},

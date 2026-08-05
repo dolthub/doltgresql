@@ -106,9 +106,9 @@ func RegisterWindowFunction(f WindowFunctionInterface) {
 	if initializedFunctions {
 		panic("attempted to register a function after the init() phase")
 	}
-	switch f := f.(type) {
-	case Func0Window:
-		name := strings.ToLower(f.Name)
+	switch f.(type) {
+	case Func0Window, Func1Window, Func2Window:
+		name := strings.ToLower(f.GetName())
 		WindowCatalog[name] = append(WindowCatalog[name], f)
 	default:
 		panic(fmt.Sprintf("unhandled function type %T", f))

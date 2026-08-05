@@ -20,11 +20,11 @@ import (
 	"testing"
 
 	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -58,13 +58,12 @@ func TestMap_RemainsUsableAfterFlushFailure(t *testing.T) {
 // empty address map.
 func newTestTypeCollection(t *testing.T, ns tree.NodeStore) *TypeCollection {
 	t.Helper()
-	addrMap, err := prolly.NewEmptyAddressMap(ns)
+	rom, err := objinterface.NewDetachedRootObjectMap(storage, ns)
 	require.NoError(t, err)
 	return &TypeCollection{
+		RootObjectMap: rom,
 		accessedMap:   map[id.Type]*pgtypes.DoltgresType{},
 		initCache:     map[id.Type]*pgtypes.DoltgresType{},
-		underlyingMap: addrMap,
-		ns:            ns,
 	}
 }
 

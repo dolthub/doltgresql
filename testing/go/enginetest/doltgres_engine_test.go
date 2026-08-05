@@ -1539,7 +1539,6 @@ func TestDoltForeignKeyTests(t *testing.T) {
 }
 
 func TestDoltHelpSystemTable(t *testing.T) {
-	t.Skip("port test from Dolt")
 	harness := newDoltgresServerHarness(t)
 	defer harness.Close()
 	denginetest.RunDoltHelpSystemTableTests(t, harness)
@@ -1600,7 +1599,6 @@ func TestJsonDiffTableFunction(t *testing.T) {
 }
 
 func TestJsonValueScripts(t *testing.T) {
-	t.Skip("port test from Dolt")
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunJsonValueScriptsTest(t, harness)
 }
@@ -1622,7 +1620,6 @@ func TestLegacyDeleteScripts(t *testing.T) {
 }
 
 func TestLegacyDropTableScripts(t *testing.T) {
-	t.Skip("port test from Dolt")
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunLegacyDropTableScripts(t, harness)
 }
@@ -1640,13 +1637,18 @@ func TestLegacyInsertScripts(t *testing.T) {
 }
 
 func TestLegacyJoinScripts(t *testing.T) {
-	t.Skip("port test from Dolt")
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunLegacyJoinScripts(t, harness)
 }
 
 func TestLegacyReplaceScripts(t *testing.T) {
-	t.Skip("port test from Dolt")
+	// TODO: two remaining root causes:
+	//  - REPLACE INTO with a multi-row VALUES list (with or without a column list) bails
+	//    to raw/untranslated SQL text, which the postgres parser then rejects outright
+	//    ("at or near "replace": syntax error") since REPLACE isn't valid postgres syntax.
+	//  - is_married is BIGINT (MySQL boolean-as-int convention); postgres's strict typing
+	//    rejects assigning a boolean literal to it (ASSIGNMENT_CAST error).
+	t.Skip()
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunLegacyReplaceScripts(t, harness)
 }
@@ -1658,8 +1660,12 @@ func TestLegacySelectScripts(t *testing.T) {
 }
 
 func TestLegacyUpdateScripts(t *testing.T) {
-	t.Skip("port test from Dolt")
-	harness := newDoltgresServerHarness(t)
+	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		// postgres strict typing rejects MySQL coercions: is_married is BIGINT (MySQL boolean-as-int
+		// convention), and postgres's ASSIGNMENT_CAST rejects assigning a boolean literal to it.
+		"update one row, all cols, non-primary key where clause",
+		"update one row, set columns to existing values",
+	})
 	denginetest.RunLegacyUpdateScripts(t, harness)
 }
 
@@ -1670,8 +1676,9 @@ func TestNonlocalTable(t *testing.T) {
 }
 
 func TestNumericErrorScripts(t *testing.T) {
-	t.Skip("port test from Dolt")
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"insert into ui16 values (65535)", // postgres has no unsigned types; ui16 maps to smallint (max 32767), so 65535 legitimately overflows
+	})
 	defer h.Close()
 	enginetest.TestNumericErrorScripts(t, h)
 }

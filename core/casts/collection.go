@@ -23,8 +23,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/store/hash"
-	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/procedures"
@@ -36,9 +34,7 @@ import (
 
 // Collection contains a collection of casts.
 type Collection struct {
-	mapHash       hash.Hash // This is cached so that we don't have to calculate the hash every time
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
+	objinterface.RootObjectMap
 }
 
 // CastType is the type of the cast, indicating which contexts it may be called in.
@@ -68,13 +64,8 @@ var _ objinterface.Collection = (*Collection)(nil)
 var _ objinterface.RootObject = Cast{}
 
 // NewCollection returns a new Collection.
-func NewCollection(ctx context.Context, underlyingMap prolly.AddressMap, ns tree.NodeStore) (*Collection, error) {
-	collection := &Collection{
-		mapHash:       underlyingMap.HashOf(),
-		underlyingMap: underlyingMap,
-		ns:            ns,
-	}
-	return collection, nil
+func NewCollection(rom objinterface.RootObjectMap) *Collection {
+	return &Collection{RootObjectMap: rom}
 }
 
 // GetExplicitCast returns the explicit type cast function that will cast the source type to the target type. Returns
@@ -219,7 +210,7 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 	if c, ok := builtInCasts[castID]; ok {
 		return c, nil
 	}
-	h, err := pgc.underlyingMap.Get(ctx, string(castID))
+	h, err := pgc.Contents().Get(ctx, string(castID))
 	if err != nil {
 		return Cast{}, err
 	}
@@ -285,7 +276,7 @@ func (pgc *Collection) getCast(ctx context.Context, castID id.Cast, sourceType *
 		}
 		return Cast{}, nil
 	}
-	data, err := pgc.ns.ReadBytes(ctx, h)
+	data, err := pgc.NodeStore().ReadBytes(ctx, h)
 	if err != nil {
 		return Cast{}, err
 	}
@@ -415,7 +406,7 @@ func (pgc *Collection) HasCast(ctx context.Context, castID id.Cast) bool {
 	if _, ok := builtInCasts[castID]; ok {
 		return true
 	}
-	ok, err := pgc.underlyingMap.Has(ctx, string(castID))
+	ok, err := pgc.Contents().Has(ctx, string(castID))
 	if err == nil && ok {
 		return true
 	}
@@ -439,11 +430,11 @@ func (pgc *Collection) AddCast(ctx context.Context, cast Cast) error {
 	if err != nil {
 		return err
 	}
-	h, err := pgc.ns.WriteBytes(ctx, data)
+	h, err := pgc.NodeStore().WriteBytes(ctx, data)
 	if err != nil {
 		return err
 	}
-	mapEditor := pgc.underlyingMap.Editor()
+	mapEditor := pgc.Contents().Editor()
 	if err = mapEditor.Add(ctx, string(cast.ID), h); err != nil {
 		return err
 	}
@@ -451,8 +442,7 @@ func (pgc *Collection) AddCast(ctx context.Context, cast Cast) error {
 	if err != nil {
 		return err
 	}
-	pgc.underlyingMap = newMap
-	pgc.mapHash = pgc.underlyingMap.HashOf()
+	pgc.SetContents(newMap)
 	return nil
 }
 
@@ -467,7 +457,7 @@ func (pgc *Collection) DropCast(ctx context.Context, castIDs ...id.Cast) error {
 			return errors.Errorf(`cannot delete built-in cast from type %s to type %s`,
 				castID.SourceType().TypeName(), castID.TargetType().TypeName())
 		}
-		if ok, err := pgc.underlyingMap.Has(ctx, string(castID)); err != nil {
+		if ok, err := pgc.Contents().Has(ctx, string(castID)); err != nil {
 			return err
 		} else if !ok {
 			return errors.Errorf(`cast from type %s to type %s does not exist`,
@@ -476,7 +466,7 @@ func (pgc *Collection) DropCast(ctx context.Context, castIDs ...id.Cast) error {
 	}
 
 	// Now we'll remove the casts from the map
-	mapEditor := pgc.underlyingMap.Editor()
+	mapEditor := pgc.Contents().Editor()
 	for _, castID := range castIDs {
 		err := mapEditor.Delete(ctx, string(castID))
 		if err != nil {
@@ -487,8 +477,7 @@ func (pgc *Collection) DropCast(ctx context.Context, castIDs ...id.Cast) error {
 	if err != nil {
 		return err
 	}
-	pgc.underlyingMap = newMap
-	pgc.mapHash = pgc.underlyingMap.HashOf()
+	pgc.SetContents(newMap)
 	return nil
 }
 
@@ -533,8 +522,8 @@ func (pgc *Collection) IterateCasts(ctx context.Context, callback func(c Cast) (
 			return nil
 		}
 	}
-	return pgc.underlyingMap.IterAll(ctx, func(_ string, v hash.Hash) error {
-		data, err := pgc.ns.ReadBytes(ctx, v)
+	return pgc.Contents().IterAll(ctx, func(_ string, v hash.Hash) error {
+		data, err := pgc.NodeStore().ReadBytes(ctx, v)
 		if err != nil {
 			return err
 		}
@@ -553,20 +542,6 @@ func (pgc *Collection) IterateCasts(ctx context.Context, callback func(c Cast) (
 	})
 }
 
-// Clone returns a new *Collection with the same contents as the original.
-func (pgc *Collection) Clone(ctx context.Context) *Collection {
-	return &Collection{
-		mapHash:       pgc.mapHash,
-		underlyingMap: pgc.underlyingMap,
-		ns:            pgc.ns,
-	}
-}
-
-// Map writes any cached sequences to the underlying map, and then returns the underlying map.
-func (pgc *Collection) Map(ctx context.Context) (prolly.AddressMap, error) {
-	return pgc.underlyingMap, nil
-}
-
 // tableNameToID returns the ID that was encoded via the Name() call, as the returned TableName contains additional
 // information (which this is able to process).
 func (pgc *Collection) tableNameToID(schemaName string, formattedName string) id.Cast {
@@ -580,24 +555,6 @@ func (pgc *Collection) tableNameToID(schemaName string, formattedName string) id
 // GetID implements the interface objinterface.RootObject.
 func (cast Cast) GetID() id.Id {
 	return cast.ID.AsId()
-}
-
-// DiffersFrom returns true when the hash that is associated with the underlying map for this collection is different
-// from the hash in the given root.
-func (pgc *Collection) DiffersFrom(ctx context.Context, root objinterface.RootValue) bool {
-	hashOnGivenRoot, err := pgc.LoadCollectionHash(ctx, root)
-	if err != nil {
-		return true
-	}
-	if pgc.mapHash.Equal(hashOnGivenRoot) {
-		return false
-	}
-	// An empty map should match an uninitialized collection on the root
-	count, err := pgc.underlyingMap.Count()
-	if err == nil && count == 0 && hashOnGivenRoot.IsEmpty() {
-		return false
-	}
-	return true
 }
 
 // GetRootObjectID implements the interface objinterface.RootObject.

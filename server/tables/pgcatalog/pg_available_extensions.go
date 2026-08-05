@@ -21,8 +21,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -55,29 +55,24 @@ type pgAvailableExtension struct {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAvailableExtensionsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	allExtensions, err := extensions.GetAllExtensions()
-	if err != nil {
-		// Extensions cannot be loaded when there is no local Postgres installation, so we report that no extensions
-		// are available rather than returning an error.
-		return emptyRowIter()
-	}
+	allExtensions := extensions.GetAll()
 	extCollection, err := core.GetExtensionsCollectionFromContext(ctx, ctx.GetCurrentDatabase())
 	if err != nil {
 		return nil, err
 	}
 	availableExtensions := make([]pgAvailableExtension, 0, len(allExtensions))
-	for name, extFiles := range allExtensions {
+	for name, ext := range allExtensions {
 		availableExtension := pgAvailableExtension{
 			name:           name,
-			defaultVersion: extFiles.Control.DefaultVersion.String(),
+			defaultVersion: ext.Control.DefaultVersion,
 		}
-		if len(extFiles.Control.Comment) > 0 {
-			availableExtension.comment = extFiles.Control.Comment
+		if len(ext.Control.Comment) > 0 {
+			availableExtension.comment = ext.Control.Comment
 		}
 		if installed, err := extCollection.GetLoadedExtension(ctx, id.NewExtension(name)); err != nil {
 			return nil, err
 		} else if installed.ExtName.IsValid() {
-			availableExtension.installedVersion = installed.LibIdentifier.Version().String()
+			availableExtension.installedVersion = installed.Version
 		}
 		availableExtensions = append(availableExtensions, availableExtension)
 	}

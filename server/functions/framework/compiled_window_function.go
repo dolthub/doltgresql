@@ -149,6 +149,13 @@ func (c *CompiledWindowFunction) WithId(id sql.ColumnId) sql.IdExpression {
 
 // NewWindowFunction implements the interface sql.WindowAdaptableExpression.
 func (c *CompiledWindowFunction) NewWindowFunction(ctx *sql.Context) (sql.WindowFunction, error) {
+	// c.window is only ever nil when WithWindow was called with a nil *sql.WindowDefinition, which the
+	// planbuilder does exactly when the call has no OVER clause at all (an empty `OVER ()` still produces a
+	// non-nil, zero-value definition). Window-only functions like cume_dist() have no scalar evaluation path,
+	// so without this check a bare call reaches GMS's windowToIter with a nil window and panics.
+	if c.window == nil {
+		return nil, cerrors.Errorf("window function %s() requires an OVER clause", c.Name)
+	}
 	fn, err := c.windowOverload()
 	if err != nil {
 		return nil, err

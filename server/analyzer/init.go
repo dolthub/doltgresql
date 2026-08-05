@@ -144,6 +144,13 @@ var postgresOnlyAggregateFuncNames = map[string]bool{
 	"bool_or":   true,
 }
 
+// postgresOnlyWindowFuncNames holds Postgres functions that may only be used as window functions (i.e.
+// within an OVER(...) clause) with no MySQL equivalent and no GROUP BY aggregate form.
+var postgresOnlyWindowFuncNames = map[string]bool{
+	"cume_dist": true,
+	"nth_value": true,
+}
+
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by
 // MySQL plus some postgres specific ones.
 func IsAggregateFunc(name string) bool {
@@ -153,7 +160,7 @@ func IsAggregateFunc(name string) bool {
 // IsWindowFunc checks if the given function name is a window function. This is the entire set supported by
 // MySQL plus some postgres specific ones.
 func IsWindowFunc(name string) bool {
-	return planbuilder.IsMySQLWindowFuncName(name) || postgresOnlyAggregateFuncNames[name]
+	return planbuilder.IsMySQLWindowFuncName(name) || postgresOnlyAggregateFuncNames[name] || postgresOnlyWindowFuncNames[name]
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.

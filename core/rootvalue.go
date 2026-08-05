@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -29,7 +30,6 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
-	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/id"
@@ -45,12 +45,13 @@ var DoltgresFeatureVersion = doltdb.DoltFeatureVersion + 0
 
 // RootValue is Doltgres' implementation of doltdb.RootValue.
 type RootValue struct {
-	vrw   types.ValueReadWriter
-	ns    tree.NodeStore
-	st    storage.RootStorage
-	fkc   *doltdb.ForeignKeyCollection // cache the first load
-	hash  hash.Hash                    // cache the first load
-	colls []objinterface.Collection    // cache the first load
+	vrw       types.ValueReadWriter
+	ns        tree.NodeStore
+	st        storage.RootStorage
+	fkc       *doltdb.ForeignKeyCollection // cache the first load
+	hash      hash.Hash                    // cache the first load
+	colls     []objinterface.Collection    // cache the first load
+	collsLock sync.Mutex                   // guards colls, which may be loaded from multiple sessions sharing this root
 }
 
 var _ doltdb.RootValue = (*RootValue)(nil)
@@ -254,9 +255,16 @@ func (root *RootValue) DebugString(ctx context.Context, transitive bool) string 
 
 // FilterRootObjectNames implements the interface doltdb.RootValue.
 func (root *RootValue) FilterRootObjectNames(ctx context.Context, names []doltdb.TableName) ([]doltdb.TableName, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	colls, err := root.ReadOnlyCollections(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var returnNames []doltdb.TableName
 	for _, name := range names {
-		_, _, objID, err := rootobject.ResolveName(ctx, root, name)
+		_, _, objID, err := rootobject.ResolveNameOnCollections(ctx, colls, name)
 		if err != nil {
 			return nil, err
 		}
@@ -293,7 +301,7 @@ func (root *RootValue) GetAllTableNames(ctx context.Context, includeRootObjects 
 		}
 	}
 	if includeRootObjects {
-		colls, err := rootobject.LoadAllCollections(ctx, root)
+		colls, err := root.ReadOnlyCollections(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -444,13 +452,11 @@ func (root *RootValue) GetTableNames(ctx context.Context, schemaName string, inc
 		return nil, err
 	}
 	if includeRootObjects {
-		if root.colls == nil {
-			root.colls, err = rootobject.LoadAllCollections(ctx, root)
-			if err != nil {
-				return nil, err
-			}
+		colls, err := root.ReadOnlyCollections(ctx)
+		if err != nil {
+			return nil, err
 		}
-		for _, coll := range root.colls {
+		for _, coll := range colls {
 			err = coll.IterIDs(ctx, func(identifier id.Id) (stop bool, err error) {
 				tName := coll.IDToTableName(identifier)
 				if tName.Schema == schemaName {
@@ -638,7 +644,6 @@ func (root *RootValue) RemoveTables(
 	}
 
 	tableMaps := make(map[string]storage.RootTableMap)
-	deletedObjIds := make(map[objinterface.RootObjectID]struct{})
 	var tables []doltdb.TableName
 	var rootObjNames []struct {
 		rawID id.Id
@@ -675,7 +680,6 @@ func (root *RootValue) RemoveTables(
 			rawID id.Id
 			objID objinterface.RootObjectID
 		}{rawID: rawID, objID: objID})
-		deletedObjIds[objID] = struct{}{}
 	}
 	newRoot := root
 
@@ -703,7 +707,6 @@ func (root *RootValue) RemoveTables(
 			}
 			if len(seqs) > 0 {
 				for _, seq := range seqs {
-					deletedObjIds[objinterface.RootObjectID_Sequences] = struct{}{}
 					if err = seqColl.DropSequence(ctx, seq.Id); err != nil {
 						return nil, err
 					}
@@ -729,7 +732,6 @@ func (root *RootValue) RemoveTables(
 		}
 		for _, tableName := range tables {
 			for _, trigID := range trigColl.GetTriggerIDsForTable(ctx, id.NewTable(tableName.Schema, tableName.Name)) {
-				deletedObjIds[objinterface.RootObjectID_Triggers] = struct{}{}
 				if err = trigColl.DropTrigger(ctx, trigID); err != nil {
 					return nil, err
 				}
@@ -778,15 +780,6 @@ func (root *RootValue) RemoveTables(
 		newRoot = newRootInt.(*RootValue)
 	}
 
-	// We're not updating the cached values for the deleted object IDs, so we'll remove them
-	if sqlCtx, ok := ctx.(*sql.Context); ok && len(deletedObjIds) > 0 {
-		if cv, err := getContextValues(sqlCtx); err == nil {
-			for deletedObjId := range deletedObjIds {
-				cv.clear(deletedObjId)
-			}
-		}
-	}
-
 	return newRoot, nil
 }
 
@@ -826,6 +819,20 @@ func (root *RootValue) RenameTable(ctx context.Context, oldName, newName doltdb.
 		}
 		return coll.UpdateRoot(ctx, root)
 	}
+}
+
+// ResolutionCollections implements the interface objinterface.RootValue.
+func (root *RootValue) ReadOnlyCollections(ctx context.Context) ([]objinterface.Collection, error) {
+	root.collsLock.Lock()
+	defer root.collsLock.Unlock()
+	if root.colls == nil {
+		colls, err := rootobject.LoadAllCollections(ctx, root)
+		if err != nil {
+			return nil, err
+		}
+		root.colls = colls
+	}
+	return root.colls, nil
 }
 
 // ResolveRootValue implements the interface doltdb.RootValue.

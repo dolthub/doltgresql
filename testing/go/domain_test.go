@@ -294,6 +294,28 @@ func TestDomain(t *testing.T) {
 			},
 		},
 		{
+			Name: "composite type with a domain attribute",
+			SetUpScript: []string{
+				`CREATE DOMAIN ct_posint AS int4 CHECK (VALUE > 0);`,
+				`CREATE TYPE ct_comp AS (f1 ct_posint, f2 text);`,
+				`CREATE TABLE ct_test (id int PRIMARY KEY, v ct_comp);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `INSERT INTO ct_test VALUES (1, '(5,abc)');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id, v FROM ct_test ORDER BY id;`,
+					Expected: []sql.Row{{1, "(5,abc)"}},
+				},
+				{
+					Query:    `SELECT (v).f1, (v).f2 FROM ct_test ORDER BY id;`,
+					Expected: []sql.Row{{5, "abc"}},
+				},
+			},
+		},
+		{
 			Name: "explicit cast to domain type",
 			SetUpScript: []string{
 				`CREATE DOMAIN year_not_null AS integer NOT NULL CONSTRAINT year_check CHECK (((VALUE >= 1901) AND (VALUE <= 2155)));`,

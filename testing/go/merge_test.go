@@ -149,5 +149,31 @@ func TestMerge(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "merge a branch that created a type",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (a INT PRIMARY KEY)",
+				"SELECT DOLT_COMMIT('-Am', 'initial commit')",
+				"SELECT DOLT_CHECKOUT('-b', 'branch1')",
+				"CREATE TYPE type1 AS ENUM ('a', 'b')",
+				"CREATE TABLE t2 (a INT PRIMARY KEY, b type1)",
+				"INSERT INTO t2 VALUES (1, 'a')",
+				"SELECT DOLT_COMMIT('-Am', 'added type1')",
+				"SELECT DOLT_CHECKOUT('main')",
+				"INSERT INTO t1 VALUES (1)",
+				"SELECT DOLT_COMMIT('-Am', 'added 1')",
+				"SELECT DOLT_MERGE('branch1')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM t2",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:    "SELECT 'b'::type1",
+					Expected: []sql.Row{{"b"}},
+				},
+			},
+		},
 	})
 }

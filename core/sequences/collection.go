@@ -29,7 +29,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/globalstate/sequences"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly"
-	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 
@@ -40,9 +39,8 @@ import (
 
 // Collection contains a collection of sequences.
 type Collection struct {
-	accessedMap   map[id.Sequence]*Sequence // Whenever a sequence is accessed, it is added to the access map for faster retrieval
-	underlyingMap prolly.AddressMap
-	ns            tree.NodeStore
+	objinterface.RootObjectMap
+	accessedMap map[id.Sequence]*Sequence // Whenever a sequence is accessed, it is added to the access map for faster retrieval
 }
 
 // Persistence controls the persistence of a Sequence.
@@ -292,7 +290,7 @@ func (pgs *Collection) HasSequence(ctx context.Context, name id.Sequence) bool {
 		return true
 	}
 	// The initial load is from the internal map
-	ok, err := pgs.underlyingMap.Has(ctx, string(name))
+	ok, err := pgs.Contents().Has(ctx, string(name))
 	if err == nil && ok {
 		return true
 	}
@@ -305,7 +303,7 @@ func (pgs *Collection) CreateSequence(ctx context.Context, seq *Sequence) error 
 	if _, ok := pgs.accessedMap[seq.Id]; ok {
 		return errors.Errorf(`relation "%s" already exists`, seq.Id.SequenceName())
 	}
-	if ok, err := pgs.underlyingMap.Has(ctx, string(seq.Id)); err != nil {
+	if ok, err := pgs.Contents().Has(ctx, string(seq.Id)); err != nil {
 		return err
 	} else if ok {
 		return errors.Errorf(`relation "%s" already exists`, seq.Id.SequenceName())
@@ -322,14 +320,14 @@ func (pgs *Collection) DropSequence(ctx context.Context, names ...id.Sequence) (
 		return err
 	}
 	for _, name := range names {
-		if ok, err := pgs.underlyingMap.Has(ctx, string(name)); err != nil {
+		if ok, err := pgs.Contents().Has(ctx, string(name)); err != nil {
 			return err
 		} else if !ok {
 			return errors.Errorf(`sequence "%s" does not exist`, name.SequenceName())
 		}
 	}
 	// Now we'll remove the sequences from the underlying map
-	mapEditor := pgs.underlyingMap.Editor()
+	mapEditor := pgs.Contents().Editor()
 	for _, name := range names {
 		if err = mapEditor.Delete(ctx, string(name)); err != nil {
 			return err
@@ -339,7 +337,7 @@ func (pgs *Collection) DropSequence(ctx context.Context, names ...id.Sequence) (
 	if err != nil {
 		return err
 	}
-	pgs.underlyingMap = flushed
+	pgs.SetContents(flushed)
 	return nil
 }
 
@@ -348,14 +346,14 @@ func (pgs *Collection) resolveName(ctx context.Context, schemaName string, seque
 	if err := pgs.writeCache(ctx); err != nil {
 		return id.NullSequence, err
 	}
-	count, err := pgs.underlyingMap.Count()
+	count, err := pgs.Contents().Count()
 	if err != nil || count == 0 {
 		return id.NullSequence, err
 	}
 
 	// First check for an exact match
 	inputID := id.NewSequence(schemaName, sequenceName)
-	ok, err := pgs.underlyingMap.Has(ctx, string(inputID))
+	ok, err := pgs.Contents().Has(ctx, string(inputID))
 	if err != nil {
 		return id.NullSequence, err
 	} else if ok {
@@ -365,7 +363,7 @@ func (pgs *Collection) resolveName(ctx context.Context, schemaName string, seque
 	// Now we'll iterate over all the names
 	var resolvedID id.Sequence
 	if len(schemaName) > 0 {
-		err = pgs.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+		err = pgs.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 			seqID := id.Sequence(k)
 			if strings.EqualFold(sequenceName, seqID.SequenceName()) &&
 				strings.EqualFold(schemaName, seqID.SchemaName()) {
@@ -381,7 +379,7 @@ func (pgs *Collection) resolveName(ctx context.Context, schemaName string, seque
 			return id.NullSequence, err
 		}
 	} else {
-		err = pgs.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+		err = pgs.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 			seqID := id.Sequence(k)
 			if strings.EqualFold(sequenceName, seqID.SequenceName()) {
 				if resolvedID.IsValid() {
@@ -404,7 +402,7 @@ func (pgs *Collection) iterateIDs(ctx context.Context, f func(seqID id.Sequence)
 	if err = pgs.writeCache(ctx); err != nil {
 		return err
 	}
-	return pgs.underlyingMap.IterAll(ctx, func(k string, _ hash.Hash) error {
+	return pgs.Contents().IterAll(ctx, func(k string, _ hash.Hash) error {
 		seqID := id.Sequence(k)
 		stop, err := f(seqID)
 		if err != nil {
@@ -468,25 +466,12 @@ func (pgs *Collection) SetVal(ctx context.Context, name id.Sequence, newValue in
 	return nil
 }
 
-// Clone returns a new *Collection with the same contents as the original.
-func (pgs *Collection) Clone(ctx context.Context) *Collection {
-	newCollection := &Collection{
-		accessedMap:   make(map[id.Sequence]*Sequence),
-		underlyingMap: pgs.underlyingMap,
-		ns:            pgs.ns,
-	}
-	for seqID, seq := range pgs.accessedMap {
-		newCollection.accessedMap[seqID] = seq
-	}
-	return newCollection
-}
-
-// Map writes any cached sequences to the underlying map, and then returns the underlying map.
+// Map writes any cached sequences to the collection's contents, and then returns those contents.
 func (pgs *Collection) Map(ctx context.Context) (prolly.AddressMap, error) {
 	if err := pgs.writeCache(ctx); err != nil {
 		return prolly.AddressMap{}, err
 	}
-	return pgs.underlyingMap, nil
+	return pgs.Contents(), nil
 }
 
 // GetID implements the interface objinterface.RootObject.
@@ -523,13 +508,13 @@ func (pgs *Collection) cacheAllSequences(ctx context.Context) error {
 	for seqID := range pgs.accessedMap {
 		found[seqID] = struct{}{}
 	}
-	return pgs.underlyingMap.IterAll(ctx, func(k string, v hash.Hash) error {
+	return pgs.Contents().IterAll(ctx, func(k string, v hash.Hash) error {
 		seqID := id.Sequence(k)
 		if _, ok := found[seqID]; ok {
 			return nil
 		}
 		found[seqID] = struct{}{}
-		data, err := pgs.ns.ReadBytes(ctx, v)
+		data, err := pgs.NodeStore().ReadBytes(ctx, v)
 		if err != nil {
 			return err
 		}
@@ -549,11 +534,11 @@ func (pgs *Collection) getSequence(ctx context.Context, name id.Sequence) (*Sequ
 		return seq, nil
 	}
 	// The initial load is from the internal map
-	h, err := pgs.underlyingMap.Get(ctx, string(name))
+	h, err := pgs.Contents().Get(ctx, string(name))
 	if err != nil || h.IsEmpty() {
 		return nil, err
 	}
-	data, err := pgs.ns.ReadBytes(ctx, h)
+	data, err := pgs.NodeStore().ReadBytes(ctx, h)
 	if err != nil {
 		return nil, err
 	}
@@ -570,13 +555,13 @@ func (pgs *Collection) writeCache(ctx context.Context) (err error) {
 	if len(pgs.accessedMap) == 0 {
 		return nil
 	}
-	mapEditor := pgs.underlyingMap.Editor()
+	mapEditor := pgs.Contents().Editor()
 	for _, seq := range pgs.accessedMap {
 		data, err := seq.Serialize(ctx)
 		if err != nil {
 			return err
 		}
-		h, err := pgs.ns.WriteBytes(ctx, data)
+		h, err := pgs.NodeStore().WriteBytes(ctx, data)
 		if err != nil {
 			return err
 		}
@@ -584,13 +569,13 @@ func (pgs *Collection) writeCache(ctx context.Context) (err error) {
 			return err
 		}
 	}
-	// Assign underlyingMap only after the error check. Flush returns a
+	// Set the contents only after the error check. Flush returns a
 	// zero AddressMap on failure, which would corrupt the Collection.
 	flushed, err := mapEditor.Flush(ctx)
 	if err != nil {
 		return err
 	}
-	pgs.underlyingMap = flushed
+	pgs.SetContents(flushed)
 	clear(pgs.accessedMap)
 	return nil
 }
