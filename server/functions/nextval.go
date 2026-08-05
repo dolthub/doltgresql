@@ -57,7 +57,7 @@ func nextval(ctx *sql.Context, ait *sequences.SequenceTracker, relationName stri
 		sequenceName = doltdb.TableName{Schema: schema, Name: relationBaseName}
 	} else {
 		var found bool
-		sequenceName, _, found, err = resolve.Relation(ctx, root, relationName, sequences.SequenceSource{})
+		sequenceName, _, found, err = resolve.Relation(ctx, root, relationBaseName, sequences.SequenceSource{})
 		if err != nil {
 			return 0, err
 		}

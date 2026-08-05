@@ -95,7 +95,7 @@ var setval_text_int64_boolean = framework.Function3{
 			}
 		} else {
 			var found bool
-			sequenceName, sequence, found, err = resolve.Relation(ctx, root, relationName, sequences.SequenceSource{})
+			sequenceName, sequence, found, err = resolve.Relation(ctx, root, relationBaseName, sequences.SequenceSource{})
 			if err != nil {
 				return 0, err
 			}

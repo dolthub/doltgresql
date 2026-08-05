@@ -689,7 +689,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test_pk_seq');",
-					ExpectedErr: `relation "test_pk_seq" does not exist`,
+					ExpectedErr: `sequence "test_pk_seq" does not exist`,
 				},
 				{
 					Query: "SELECT nextval('myschema.test_pk_seq');",
