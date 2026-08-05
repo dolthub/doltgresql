@@ -301,6 +301,10 @@ WHERE  nsp.oid = 2200::OID;`,
 				ExpectedColNames: []string{"schema_name", "is_catalog", "db_support"},
 				Expected:         []sql.Row{{"public", "f", "t"}},
 			},
+			{
+				Query:    `select oid from pg_class join pg_index on pg_class.oid = ANY(indclass);`, // oid = ANY(oidvector)
+				Expected: []sql.Row{},
+			},
 		},
 	},
 }

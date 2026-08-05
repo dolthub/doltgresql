@@ -412,13 +412,13 @@ func anyExpressionWithChildren(ctx *sql.Context, anyExpr *AnyExpr) (sql.Expressi
 	}
 
 	var arrCast casts.Cast
-	var arrCastToType *pgtypes.DoltgresType
 	if arrType.ID == pgtypes.Unknown.ID {
 		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 		if err != nil {
 			return nil, err
 		}
 		// if array type is Unknown, use the left expr type for reference
+		var arrCastToType *pgtypes.DoltgresType
 		if leftType.ID == pgtypes.Unknown.ID {
 			// if left expr type is also unknown, it's likely text array - TODO double check
 			arrCastToType = pgtypes.TextArray
@@ -429,9 +429,10 @@ func anyExpressionWithChildren(ctx *sql.Context, anyExpr *AnyExpr) (sql.Expressi
 		if err != nil {
 			return nil, err
 		}
+		arrType = arrCastToType
 	}
 
-	rightType := arrType.ArrayBaseType()
+	rightType := arrType.BaseType()
 	op, err := framework.GetOperatorFromString(anyExpr.subOperator)
 	if err != nil {
 		return nil, err
@@ -452,7 +453,7 @@ func anyExpressionWithChildren(ctx *sql.Context, anyExpr *AnyExpr) (sql.Expressi
 	anyExpr.expressionAnyExpr = &expressionAnyExpr{
 		rightExpr:     anyExpr.rightExpr,
 		arrCast:       arrCast,
-		arrType:       arrCastToType,
+		arrType:       arrType,
 		staticLiteral: staticLiteral,
 		arrayLiteral:  arrayLiteral,
 		compFunc:      compFunc,

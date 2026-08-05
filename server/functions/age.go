@@ -145,6 +145,7 @@ func diffTimes(t1, t2 time.Time) duration.Duration {
 		days--
 	}
 	if days < 0 {
+		// TODO use days of the month of given date
 		days += 30
 		months--
 	}
