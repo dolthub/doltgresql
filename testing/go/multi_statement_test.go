@@ -57,6 +57,8 @@ func TestMultipleStatements(t *testing.T) {
 		`DROP TABLE IF EXISTS animals;`,
 		`CREATE TABLE IF NOT EXISTS migrations (file_name TEXT NOT NULL, file_hash TEXT NOT NULL);`,
 		`CREATE TABLE IF NOT EXISTS animals (id SERIAL PRIMARY KEY NOT NULL, name TEXT NOT NULL);`,
+		// Manually set the sequence state to work around https://github.com/dolthub/doltgresql/issues/3033
+		`SELECT setval(pg_get_serial_sequence('animals', 'id'), 1);`,
 		`;`, // This should be ignored in the output
 		`INSERT INTO migrations (file_name, file_hash) VALUES ('2021-09-07T154500-create-animals-table.sql', '42331f4277227d09e9bb32eeaf7e04d9c7fe320160e05372ed0ef010cfbf666b');`,
 		`INSERT INTO animals(name) VALUES('Alpaca');`,
@@ -154,6 +156,23 @@ var testMultipleStatementsResults = []pgconn.Result{
 	{CommandTag: pgconn.NewCommandTag("DROP TABLE")},
 	{CommandTag: pgconn.NewCommandTag("CREATE TABLE")},
 	{CommandTag: pgconn.NewCommandTag("CREATE TABLE")},
+	{
+		FieldDescriptions: []pgconn.FieldDescription{
+			{
+				Name:         "setval",
+				DataTypeOID:  20,
+				DataTypeSize: 8,
+				TypeModifier: -1,
+				Format:       0,
+			},
+		},
+		Rows: [][][]byte{
+			{
+				[]byte("1"),
+			},
+		},
+		CommandTag: pgconn.NewCommandTag("SELECT 1"),
+	},
 	{CommandTag: pgconn.NewCommandTag("INSERT 0 1")},
 	{CommandTag: pgconn.NewCommandTag("INSERT 0 1")},
 	{CommandTag: pgconn.NewCommandTag("INSERT 0 1")},
@@ -207,15 +226,15 @@ var testMultipleStatementsResults = []pgconn.Result{
 		},
 		Rows: [][][]byte{
 			{
-				[]byte("1"),
+				[]byte("2"),
 				[]byte("Alpaca"),
 			},
 			{
-				[]byte("2"),
+				[]byte("3"),
 				[]byte("Highland cow"),
 			},
 			{
-				[]byte("3"),
+				[]byte("4"),
 				[]byte("Aardvark"),
 			},
 		},
