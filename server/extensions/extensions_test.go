@@ -30,16 +30,14 @@ func testFunction(ctx *sql.Context, args ...any) (any, error) {
 
 func TestRegistry(t *testing.T) {
 	register(&extdef.Extension{
-		Name:    "doltgres_test",
-		Control: extdef.Control{DefaultVersion: "2.5", Comment: "a test extension", Relocatable: true},
-		Script: "\\echo Use \"CREATE EXTENSION doltgres_test\" to load this file. \\quit\n" +
-			`CREATE FUNCTION alpha() RETURNS uuid AS 'MODULE_PATHNAME', 'alpha' LANGUAGE C;`,
-		Functions: map[string]extdef.Function{"alpha": testFunction},
+		Name:     "doltgres_test",
+		Control:  extdef.Control{DefaultVersion: "2.5", Comment: "a test extension", Relocatable: true},
+		Routines: []extdef.Routine{{Name: "alpha", Symbol: "alpha", Returns: "uuid", Impl: testFunction}},
 	})
 
 	ext, err := Get("doltgres_test")
 	require.NoError(t, err)
-	require.Equal(t, `CREATE FUNCTION alpha() RETURNS uuid AS 'MODULE_PATHNAME', 'alpha' LANGUAGE C;`, ext.Script)
+	require.Equal(t, "alpha", ext.Routines[0].Name)
 	require.Equal(t, "2.5", ext.Control.DefaultVersion)
 	require.Equal(t, "a test extension", ext.Control.Comment)
 	require.True(t, ext.Control.Relocatable)
@@ -64,5 +62,15 @@ func TestRegistry(t *testing.T) {
 	// Registering the same extension twice would silently replace the first, so it panics instead
 	require.Panics(t, func() {
 		register(&extdef.Extension{Name: "doltgres_test", Control: extdef.Control{DefaultVersion: "2.5"}})
+	})
+	// A symbol may only back one routine, since it is what dispatches a call to its implementation
+	require.Panics(t, func() {
+		register(&extdef.Extension{
+			Name: "doltgres_test_symbols",
+			Routines: []extdef.Routine{
+				{Name: "alpha", Symbol: "alpha", Impl: testFunction},
+				{Name: "beta", Symbol: "alpha", Impl: testFunction},
+			},
+		})
 	})
 }

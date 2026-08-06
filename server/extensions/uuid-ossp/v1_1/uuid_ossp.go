@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package uuid_ossp
+package v1_1
 
 import (
-	_ "embed"
-
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -24,8 +22,8 @@ import (
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
 )
 
-//go:embed uuid-ossp--1.1.sql
-var script string
+// namespaceParams are the parameters that uuid_generate_v3 and uuid_generate_v5 share.
+var namespaceParams = []extdef.Parameter{{Name: "namespace", Type: "uuid"}, {Name: "name", Type: "text"}}
 
 // Extension returns the definition of the emulated extension.
 func Extension() *extdef.Extension {
@@ -38,18 +36,17 @@ func Extension() *extdef.Extension {
 			Trusted:        true,
 			Relocatable:    true,
 		},
-		Script: script,
-		Functions: map[string]extdef.Function{
-			"uuid_nil":           uuidNil,
-			"uuid_ns_dns":        uuidNsDns,
-			"uuid_ns_url":        uuidNsURL,
-			"uuid_ns_oid":        uuidNsOID,
-			"uuid_ns_x500":       uuidNsX500,
-			"uuid_generate_v1":   uuidGenerateV1,
-			"uuid_generate_v1mc": uuidGenerateV1mc,
-			"uuid_generate_v3":   uuidGenerateV3,
-			"uuid_generate_v4":   uuidGenerateV4,
-			"uuid_generate_v5":   uuidGenerateV5,
+		Routines: []extdef.Routine{
+			{Name: "uuid_nil", Symbol: "uuid_nil", Returns: "uuid", Strict: true, Impl: uuidNil},
+			{Name: "uuid_ns_dns", Symbol: "uuid_ns_dns", Returns: "uuid", Strict: true, Impl: uuidNsDns},
+			{Name: "uuid_ns_url", Symbol: "uuid_ns_url", Returns: "uuid", Strict: true, Impl: uuidNsURL},
+			{Name: "uuid_ns_oid", Symbol: "uuid_ns_oid", Returns: "uuid", Strict: true, Impl: uuidNsOID},
+			{Name: "uuid_ns_x500", Symbol: "uuid_ns_x500", Returns: "uuid", Strict: true, Impl: uuidNsX500},
+			{Name: "uuid_generate_v1", Symbol: "uuid_generate_v1", Returns: "uuid", Strict: true, Impl: uuidGenerateV1},
+			{Name: "uuid_generate_v1mc", Symbol: "uuid_generate_v1mc", Returns: "uuid", Strict: true, Impl: uuidGenerateV1mc},
+			{Name: "uuid_generate_v3", Symbol: "uuid_generate_v3", Parameters: namespaceParams, Returns: "uuid", Strict: true, Impl: uuidGenerateV3},
+			{Name: "uuid_generate_v4", Symbol: "uuid_generate_v4", Returns: "uuid", Strict: true, Impl: uuidGenerateV4},
+			{Name: "uuid_generate_v5", Symbol: "uuid_generate_v5", Parameters: namespaceParams, Returns: "uuid", Strict: true, Impl: uuidGenerateV5},
 		},
 	}
 }
