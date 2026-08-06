@@ -18,51 +18,10 @@ import (
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/expression/function/aggregation"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
-
-// windowFramerState holds the sql.WindowFramer setup shared by every native window-function implementation
-// in this package, regardless of accumulator type: bind a framer from the window's explicit frame clause if
-// one was given, otherwise fall back to Postgres's default (unbounded preceding to current row). None of
-// this touches the per-row hot path (StartPartition/DefaultFramer/Dispose all run once per partition, not
-// once per row), so unlike the accumulator itself, it's free to share via embedding across every T.
-type windowFramerState struct {
-	framer sql.WindowFramer
-}
-
-// bindFramer builds and stores this window's framer, if it declared an explicit frame clause; with no
-// explicit frame, DefaultFramer's fallback applies instead.
-func (s *windowFramerState) bindFramer(window *sql.WindowDefinition) error {
-	if window == nil || window.Frame == nil {
-		return nil
-	}
-	framer, err := window.Frame.NewFramer(window)
-	if err != nil {
-		return err
-	}
-	s.framer = framer
-	return nil
-}
-
-// StartPartition implements the sql.WindowFunction interface.
-func (s *windowFramerState) StartPartition(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) error {
-	return nil
-}
-
-// DefaultFramer implements the sql.WindowFunction interface; with no explicit frame, this supplies
-// Postgres's default (unbounded preceding to current row).
-func (s *windowFramerState) DefaultFramer() sql.WindowFramer {
-	if s.framer != nil {
-		return s.framer
-	}
-	return aggregation.NewUnboundedPrecedingToCurrentRowFramer()
-}
-
-// Dispose implements the sql.WindowFunction interface.
-func (s *windowFramerState) Dispose(ctx *sql.Context) {}
 
 // int64ToDecimal converts an int64 sum to *apd.Decimal, for use as the decimalConvert of a decimalSumBuffer/
 // decimalAvgBuffer instantiated over int64 (i.e. sum(int8)/avg(int8), whose accumulator needs to be decimal
@@ -152,7 +111,7 @@ func (b *intSumBuffer[T]) Update(ctx *sql.Context, row sql.Row) error {
 
 // intSumWindowFunction is the sql.WindowFunction used for sum(int2)/sum(int4) within an OVER(...) clause.
 type intSumWindowFunction[T int16 | int32] struct {
-	windowFramerState
+	framework.WindowFramerState
 	expr sql.Expression
 }
 
@@ -160,7 +119,7 @@ var _ sql.WindowFunction = (*intSumWindowFunction[int32])(nil)
 
 func newIntSumWindowFunction[T int16 | int32](exprs []sql.Expression, window *sql.WindowDefinition) (sql.WindowFunction, error) {
 	wf := &intSumWindowFunction[T]{expr: exprs[0]}
-	if err := wf.bindFramer(window); err != nil {
+	if err := wf.BindFramer(window); err != nil {
 		return nil, err
 	}
 	return wf, nil
@@ -247,7 +206,7 @@ func (b *decimalSumBuffer[T]) Update(ctx *sql.Context, row sql.Row) error {
 // decimalSumWindowFunction is the sql.WindowFunction used for sum(int8)/sum(numeric) within an OVER(...)
 // clause.
 type decimalSumWindowFunction[T int64 | *apd.Decimal] struct {
-	windowFramerState
+	framework.WindowFramerState
 	expr    sql.Expression
 	convert func(T) *apd.Decimal
 }
@@ -257,7 +216,7 @@ var _ sql.WindowFunction = (*decimalSumWindowFunction[int64])(nil)
 func newDecimalSumWindowFunction[T int64 | *apd.Decimal](convert func(T) *apd.Decimal) framework.NewWindowFunctionFn {
 	return func(exprs []sql.Expression, window *sql.WindowDefinition) (sql.WindowFunction, error) {
 		wf := &decimalSumWindowFunction[T]{expr: exprs[0], convert: convert}
-		if err := wf.bindFramer(window); err != nil {
+		if err := wf.BindFramer(window); err != nil {
 			return nil, err
 		}
 		return wf, nil
@@ -341,7 +300,7 @@ func (b *floatSumBuffer[T]) Update(ctx *sql.Context, row sql.Row) error {
 // floatSumWindowFunction is the sql.WindowFunction used for sum(float4)/sum(float8) within an OVER(...)
 // clause.
 type floatSumWindowFunction[T float32 | float64] struct {
-	windowFramerState
+	framework.WindowFramerState
 	expr sql.Expression
 }
 
@@ -349,7 +308,7 @@ var _ sql.WindowFunction = (*floatSumWindowFunction[float64])(nil)
 
 func newFloatSumWindowFunction[T float32 | float64](exprs []sql.Expression, window *sql.WindowDefinition) (sql.WindowFunction, error) {
 	wf := &floatSumWindowFunction[T]{expr: exprs[0]}
-	if err := wf.bindFramer(window); err != nil {
+	if err := wf.BindFramer(window); err != nil {
 		return nil, err
 	}
 	return wf, nil

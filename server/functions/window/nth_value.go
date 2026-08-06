@@ -44,7 +44,7 @@ var nthValue = framework.Func2Window{
 // UNBOUNDED PRECEDING to CURRENT ROW), so it embeds windowFramerState the same way the native sum/avg
 // window functions do.
 type nthValueWindowFunction struct {
-	windowFramerState
+	framework.WindowFramerState
 	valueExpr sql.Expression
 	nExpr     sql.Expression
 }
@@ -54,7 +54,7 @@ var _ sql.WindowFunction = (*nthValueWindowFunction)(nil)
 // newNthValueWindowFunction creates the sql.WindowFunction for nth_value().
 func newNthValueWindowFunction(exprs []sql.Expression, window *sql.WindowDefinition) (sql.WindowFunction, error) {
 	wf := &nthValueWindowFunction{valueExpr: exprs[0], nExpr: exprs[1]}
-	if err := wf.bindFramer(window); err != nil {
+	if err := wf.BindFramer(window); err != nil {
 		return nil, err
 	}
 	return wf, nil

@@ -205,6 +205,54 @@ func (t *DoltgresType) CollationCoercibility(ctx *sql.Context) (collation sql.Co
 	return sql.Collation_binary, 5
 }
 
+// compareMismatchedNumeric compares two numeric values of possibly-different Go kinds by widening both to
+// float64. See Compare's call site below for why the mismatch can happen.
+func compareMismatchedNumeric(v1, v2 interface{}) (int, error) {
+	a, ok := numericAsFloat64(v1)
+	if !ok {
+		return 0, errors.Errorf("cannot compare mismatched types %T and %T", v1, v2)
+	}
+	b, ok := numericAsFloat64(v2)
+	if !ok {
+		return 0, errors.Errorf("cannot compare mismatched types %T and %T", v1, v2)
+	}
+	return cmp.Compare(a, b), nil
+}
+
+// numericAsFloat64 widens any of the Go numeric kinds DoltgresType or GMS's generic expressions may
+// produce to a float64.
+func numericAsFloat64(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case bool:
+		if n {
+			return 1, true
+		}
+		return 0, true
+	case int8:
+		return float64(n), true
+	case int16:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case uint8:
+		return float64(n), true
+	case uint16:
+		return float64(n), true
+	case uint32:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	case float32:
+		return float64(n), true
+	case float64:
+		return n, true
+	default:
+		return 0, false
+	}
+}
+
 // Compare implements the types.ExtendedType interface.
 func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface{}) (int, error) {
 	// TODO: for some large types, we could do this much faster by doing it chunk-by-chunk, rather than eagerly loading
@@ -253,6 +301,14 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 			return 0, err
 		}
 		return int(i.(int32)), nil
+	}
+
+	// A value crossing in from GMS's own generic machinery without going through DoltgresType.Convert
+	// first can arrive as a different (but still numeric) Go type than v1. Detect that up front.
+	if reflect.TypeOf(v1) != reflect.TypeOf(v2) {
+		if _, ok := numericAsFloat64(v1); ok {
+			return compareMismatchedNumeric(v1, v2)
+		}
 	}
 
 	switch ab := v1.(type) {
