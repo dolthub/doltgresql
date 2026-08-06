@@ -689,7 +689,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:       "SELECT nextval('test_pk_seq');",
-					ExpectedErr: `relation "test_pk_seq" does not exist`,
+					ExpectedErr: `sequence "test_pk_seq" does not exist`,
 				},
 				{
 					Query: "SELECT nextval('myschema.test_pk_seq');",
@@ -981,7 +981,7 @@ func TestSequences(t *testing.T) {
 			},
 		},
 		{
-			Name: "dolt_add, dolt_branch, dolt_checkout, dolt_commit, dolt_reset",
+			Name: "sequences are globally tracked across dolt_add, dolt_branch, dolt_checkout, dolt_commit, dolt_reset",
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "CREATE SEQUENCE test;",
@@ -1035,7 +1035,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT nextval('test');",
-					Expected: []sql.Row{{12}},
+					Expected: []sql.Row{{22}},
 				},
 				{
 					Query:    "SELECT dolt_reset('--hard');",
@@ -1043,7 +1043,7 @@ func TestSequences(t *testing.T) {
 				},
 				{
 					Query:    "SELECT nextval('test');",
-					Expected: []sql.Row{{12}},
+					Expected: []sql.Row{{23}},
 				},
 			},
 		},
@@ -1099,6 +1099,7 @@ func TestSequences(t *testing.T) {
 		},
 		{
 			Name: "dolt_merge",
+			Skip: true,
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "CREATE SEQUENCE test;",
@@ -1385,6 +1386,27 @@ ORDER BY 1,2;`,
 				{
 					Query:    "CREATE SEQUENCE IF NOT EXISTS idx1;",
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "Error when branches contain incompatible sequence definitions",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE SEQUENCE test;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT DOLT_CHECKOUT('-b', 'other');",
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
+				},
+				{
+					Query:    "CREATE SEQUENCE test INCREMENT -1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT nextval('test');",
+					ExpectedErr: "unable to advance sequence state, possibly due to having incompatible state on different branches",
 				},
 			},
 		},

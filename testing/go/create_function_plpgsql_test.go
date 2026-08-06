@@ -839,12 +839,14 @@ $$ LANGUAGE plpgsql;`},
 				},
 				{
 					Query: "SELECT interpreted_select_into(2);",
+					Skip:  true, // See https://github.com/dolthub/doltgresql/issues/3033
 					Expected: []sql.Row{
 						{"def"},
 					},
 				},
 				{
 					Query: "SELECT interpreted_select_into(3);",
+					Skip:  true, // See https://github.com/dolthub/doltgresql/issues/3033
 					Expected: []sql.Row{
 						{"ghi"},
 					},

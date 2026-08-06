@@ -15,11 +15,15 @@
 package server
 
 import (
+	"context"
+
+	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/tables"
 )
 
@@ -31,6 +35,7 @@ type DoltgresDatabaseProvider struct {
 }
 
 var _ sql.DatabaseProvider = (*DoltgresDatabaseProvider)(nil)
+var _ dsess.DoltDatabaseProvider = (*DoltgresDatabaseProvider)(nil)
 
 // Database overrides DoltDatabaseProvider.Database to wrap the returned sql.Database
 // with PgDatabase, enabling relation-name uniqueness enforcement.
@@ -68,12 +73,34 @@ type DoltgresProviderFactory struct {
 
 var _ sqle.ProviderFactory = DoltgresProviderFactory{}
 
+func initSequenceTracker(ctx context.Context, db sqle.Database) error {
+	sequenceTracker, err := dsess.NewSequenceTracker(ctx, db.Name(), db.GetDoltDB(), sequences.SequenceSource{})
+	if err != nil {
+		return err
+	}
+	return db.GetGlobalState().AddSequenceTracker(ctx, sequences.SequenceTrackerKey, sequenceTracker)
+}
+
 // NewProvider overrides DoltProviderFactory.NewProvider to wrap the created provider in
 // DoltgresDatabaseProvider before returning it.
-func (f DoltgresProviderFactory) NewProvider(defaultBranch string, fs filesys.Filesys, databases []dsess.SqlDatabase, locations []filesys.Filesys, overrides sql.EngineOverrides) (sql.DatabaseProvider, error) {
-	inner, err := f.DoltProviderFactory.NewProvider(defaultBranch, fs, databases, locations, overrides)
+func (f DoltgresProviderFactory) NewProvider(ctx context.Context, defaultBranch string, fs filesys.Filesys, databases []dsess.SqlDatabase, locations []filesys.Filesys, overrides sql.EngineOverrides) (sql.DatabaseProvider, error) {
+	inner, err := f.DoltProviderFactory.NewProvider(ctx, defaultBranch, fs, databases, locations, overrides)
 	if err != nil {
 		return nil, err
 	}
-	return &DoltgresDatabaseProvider{inner.(*sqle.DoltDatabaseProvider)}, nil
+	innerDoltDatabaseProvider := inner.(*sqle.DoltDatabaseProvider)
+	doltgresProvider := &DoltgresDatabaseProvider{innerDoltDatabaseProvider}
+	for _, database := range innerDoltDatabaseProvider.DoltDatabases() {
+		if sqleDatabase, ok := database.(sqle.Database); ok {
+			err = initSequenceTracker(ctx, sqleDatabase)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	innerDoltDatabaseProvider.AddInitDatabaseHook(func(ctx *sql.Context, pro *sqle.DoltDatabaseProvider, name string, env *env.DoltEnv, db dsess.SqlDatabase) error {
+		sqleDatabase := db.(sqle.Database)
+		return initSequenceTracker(ctx, sqleDatabase)
+	})
+	return doltgresProvider, nil
 }

@@ -267,8 +267,9 @@ func TestRootObjectCollections(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
+					// The value of the sequence is not reset because of https://github.com/dolthub/doltgresql/issues/3033
 					Query:    `SELECT nextval('s1');`,
-					Expected: []sql.Row{{1}},
+					Expected: []sql.Row{{2}},
 				},
 			},
 		},

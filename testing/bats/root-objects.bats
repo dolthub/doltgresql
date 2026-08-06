@@ -40,7 +40,8 @@ SELECT dolt_checkout('other');
 SELECT nextval('test');
 SQL
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "12" ]] || false
+    # Sequence values are globally synchronized, so switching branches shouldn't have any effect
+    [[ "$output" =~ "22" ]] || false
 }
 
 @test 'root-objects: start and stop' {
@@ -81,7 +82,8 @@ SELECT dolt_checkout('other');
 SELECT nextval('test');
 SQL
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "12" ]] || false
+    # Sequence values are globally synchronized, so switching branches shouldn't have any effect
+    [[ "$output" =~ "22" ]] || false
 }
 
 @test 'root-objects: \d does not break' {

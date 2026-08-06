@@ -15,11 +15,14 @@
 package functions
 
 import (
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
 
-	"github.com/dolthub/doltgresql/core/id"
-
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/sequences"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -28,6 +31,52 @@ import (
 func initNextVal() {
 	framework.RegisterFunction(nextval_text)
 	framework.RegisterFunction(nextval_regclass)
+}
+
+func nextval(ctx *sql.Context, ait *sequences.SequenceTracker, relationName string) (int64, error) {
+	// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
+	collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return 0, err
+	}
+
+	db, err := getDb(ctx)
+	if err != nil {
+		return 0, err
+	}
+	root, err := db.GetRoot(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var sequenceName doltdb.TableName
+	schema, relationBaseName, err := ParseRelationName(ctx, relationName)
+	if err != nil {
+		return 0, err
+	}
+	if schema != "" {
+		sequenceName = doltdb.TableName{Schema: schema, Name: relationBaseName}
+	} else {
+		var found bool
+		sequenceName, _, found, err = resolve.Relation(ctx, root, relationBaseName, sequences.SequenceSource{})
+		if err != nil {
+			return 0, err
+		}
+		if !found {
+			return 0, errors.Errorf(`sequence "%s" does not exist`, relationName)
+		}
+	}
+	sequenceId := id.NewSequence(sequenceName.Schema, sequenceName.Name)
+
+	next, err := ait.Next(ctx, sequenceName, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	err = collection.SetVal(ctx, sequenceId, next, true, true)
+	if err != nil {
+		return 0, err
+	}
+	return next, err
 }
 
 // nextval_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -43,17 +92,11 @@ var nextval_text = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		schema, sequence, err := ParseRelationName(ctx, val.(string))
+		ait, err := getSequenceTracker(ctx)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-
-		// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
-		collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
-		if err != nil {
-			return nil, err
-		}
-		return collection.NextVal(ctx, id.NewSequence(schema, sequence))
+		return nextval(ctx, ait, val.(string))
 	},
 }
 
@@ -69,17 +112,10 @@ var nextval_regclass = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-
-		schema, sequence, err := ParseRelationName(ctx, relationName)
+		ait, err := getSequenceTracker(ctx)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-
-		// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
-		collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
-		if err != nil {
-			return nil, err
-		}
-		return collection.NextVal(ctx, id.NewSequence(schema, sequence))
+		return nextval(ctx, ait, relationName)
 	},
 }

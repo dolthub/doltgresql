@@ -685,12 +685,6 @@ type DoltgresQueryEngine struct {
 
 var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
 
-// Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
-// a const value without assigning to an intermediate variable.
-func Ptr[T any](v T) *T {
-	return &v
-}
-
 const port = 5433
 
 func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQueryEngine {
