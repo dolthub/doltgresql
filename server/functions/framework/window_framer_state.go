@@ -12,23 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package window
+package framework
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression/function/aggregation"
 )
 
-// windowFramerState holds the sql.WindowFramer setup for a window function that respects an explicit
-// frame clause rather than always operating over the whole partition or peer group - e.g. nth_value().
-type windowFramerState struct {
+// WindowFramerState holds the sql.WindowFramer setup shared by every native window-function implementation
+// that respects an explicit frame clause rather than always operating over the whole partition - e.g. the
+// native sum/avg aggregates and nth_value(). Bind a framer from the window's explicit frame clause if one
+// was given; with no explicit frame, DefaultFramer supplies Postgres's default frame: RANGE UNBOUNDED
+// PRECEDING TO CURRENT ROW when the window has an ORDER BY (so rows tied on the ORDER BY value share a
+// peer group), otherwise the whole partition.
+type WindowFramerState struct {
 	framer sql.WindowFramer
 	window *sql.WindowDefinition
 }
 
-// bindFramer builds and stores this window's framer, if it declared an explicit frame clause; with no
+// BindFramer builds and stores this window's framer, if it declared an explicit frame clause; with no
 // explicit frame, DefaultFramer's fallback applies instead.
-func (s *windowFramerState) bindFramer(window *sql.WindowDefinition) error {
+func (s *WindowFramerState) BindFramer(window *sql.WindowDefinition) error {
 	s.window = window
 	if window == nil || window.Frame == nil {
 		return nil
@@ -42,14 +46,14 @@ func (s *windowFramerState) bindFramer(window *sql.WindowDefinition) error {
 }
 
 // StartPartition implements the sql.WindowFunction interface.
-func (s *windowFramerState) StartPartition(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) error {
+func (s *WindowFramerState) StartPartition(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) error {
 	return nil
 }
 
 // DefaultFramer implements the sql.WindowFunction interface; with no explicit frame, this supplies
 // Postgres's default frame: RANGE UNBOUNDED PRECEDING TO CURRENT ROW when the window has an ORDER BY (so
 // rows tied on the ORDER BY value share a peer group), otherwise the whole partition.
-func (s *windowFramerState) DefaultFramer() sql.WindowFramer {
+func (s *WindowFramerState) DefaultFramer() sql.WindowFramer {
 	if s.framer != nil {
 		return s.framer
 	}
@@ -61,4 +65,4 @@ func (s *windowFramerState) DefaultFramer() sql.WindowFramer {
 }
 
 // Dispose implements the sql.WindowFunction interface.
-func (s *windowFramerState) Dispose(ctx *sql.Context) {}
+func (s *WindowFramerState) Dispose(ctx *sql.Context) {}
