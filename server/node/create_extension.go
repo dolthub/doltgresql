@@ -16,21 +16,22 @@ package node
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
 	coreextensions "github.com/dolthub/doltgresql/core/extensions"
+	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/postgres/parser/parser"
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
-	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/core/typecollection"
 	"github.com/dolthub/doltgresql/server/extensions"
+	"github.com/dolthub/doltgresql/server/extensions/extdef"
+	"github.com/dolthub/doltgresql/server/types"
 )
 
 // CreateExtension implements CREATE EXTENSION.
@@ -40,11 +41,9 @@ type CreateExtension struct {
 	SchemaName  string
 	Version     string
 	Cascade     bool
-	Runner      pgexprs.StatementRunner
 }
 
 var _ sql.ExecSourceRel = (*CreateExtension)(nil)
-var _ sql.Expressioner = (*CreateExtension)(nil)
 var _ vitess.Injectable = (*CreateExtension)(nil)
 
 // NewCreateExtension returns a new *CreateExtension.
@@ -63,11 +62,6 @@ func (c *CreateExtension) Children() []sql.Node {
 	return nil
 }
 
-// Expressions implements the interface sql.Expressioner.
-func (c *CreateExtension) Expressions() []sql.Expression {
-	return []sql.Expression{c.Runner}
-}
-
 // IsReadOnly implements the interface sql.ExecSourceRel.
 func (c *CreateExtension) IsReadOnly() bool {
 	return false
@@ -80,6 +74,10 @@ func (c *CreateExtension) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	typColl, err := core.GetTypesCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
 	extCollection, err := core.GetExtensionsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
@@ -96,42 +94,11 @@ func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 		return nil, err
 	}
 
-	if c.SchemaName != "" {
-		// save the current search_path
-		originalSearchPath, err := ctx.GetSessionVariable(ctx, "search_path")
-		if err != nil {
-			return nil, err
-		}
-		defer func() {
-			_ = ctx.SetSessionVariable(ctx, "search_path", originalSearchPath)
-		}()
-		if err = ctx.SetSessionVariable(ctx, "search_path", c.SchemaName); err != nil {
-			return nil, err
-		}
-	}
-	statements, err := parser.Parse(ext.Script)
+	schemaName, err := core.GetSchemaName(ctx, nil, c.SchemaName)
 	if err != nil {
 		return nil, err
 	}
-	for _, statement := range statements {
-		statementSQL := statement.SQL
-		if _, ok := statement.AST.(*tree.CreateFunction); ok {
-			statementSQL = strings.ReplaceAll(statementSQL, `'MODULE_PATHNAME'`, fmt.Sprintf(`'%s'`, c.Name))
-		}
-		_, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) ([]sql.Row, error) {
-			_, rowIter, _, err := c.Runner.Runner.QueryWithBindings(subCtx, statementSQL, nil, nil, nil)
-			if err != nil {
-				return nil, err
-			}
-			return sql.RowIterToRows(subCtx, rowIter)
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	schemaName, err := core.GetSchemaName(ctx, nil, c.SchemaName)
-	if err != nil {
+	if err = (extensionObjects{ext: ext, schemaName: schemaName}).materialize(ctx, typColl); err != nil {
 		return nil, err
 	}
 	err = extCollection.AddLoadedExtension(ctx, coreextensions.Extension{
@@ -161,20 +128,79 @@ func (c *CreateExtension) WithChildren(ctx *sql.Context, children ...sql.Node) (
 	return plan.NillaryWithChildren(c, children...)
 }
 
-// WithExpressions implements the interface sql.Expressioner.
-func (c *CreateExtension) WithExpressions(ctx *sql.Context, expressions ...sql.Expression) (sql.Node, error) {
-	if len(expressions) != 1 {
-		return nil, sql.ErrInvalidChildrenNumber.New(c, len(expressions), 1)
-	}
-	newC := *c
-	newC.Runner = expressions[0].(pgexprs.StatementRunner)
-	return &newC, nil
-}
-
 // WithResolvedChildren implements the interface vitess.Injectable.
 func (c *CreateExtension) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}
 	return c, nil
+}
+
+// extensionObjects materializes the objects that an extension declares.
+type extensionObjects struct {
+	ext        *extdef.Extension
+	schemaName string
+}
+
+// materialize writes every object that the extension declares.
+func (e extensionObjects) materialize(ctx *sql.Context, typColl *typecollection.TypeCollection) error {
+	if len(e.ext.Routines) == 0 {
+		return nil
+	}
+	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, routine := range e.ext.Routines {
+		returnType, err := e.typeID(ctx, typColl, routine.Returns)
+		if err != nil {
+			return err
+		}
+		paramTypes, err := e.parameterTypes(ctx, typColl, routine.Parameters)
+		if err != nil {
+			return err
+		}
+		allParams := make([]procedures.Parameter, len(routine.Parameters))
+		for i, param := range routine.Parameters {
+			allParams[i] = procedures.Parameter{Name: param.Name, Type: paramTypes[i]}
+		}
+		err = funcCollection.AddFunction(ctx, functions.Function{
+			ID:                 id.NewFunction(e.schemaName, routine.Name, paramTypes...),
+			ReturnType:         returnType,
+			AllParams:          allParams,
+			IsNonDeterministic: true,
+			Strict:             routine.Strict,
+			ExtensionName:      e.ext.Name,
+			ExtensionSymbol:    routine.Symbol,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// typeID returns the type ID matching the given name.
+func (e extensionObjects) typeID(ctx *sql.Context, typColl *typecollection.TypeCollection, name string) (id.Type, error) {
+	_, typeID, err := typColl.ResolveName(ctx, doltdb.TableName{Name: name})
+	if err != nil {
+		return id.NullType, err
+	}
+	if !typeID.IsValid() {
+		return id.NullType, types.ErrTypeDoesNotExist.New(name)
+	}
+	return id.Type(typeID), nil
+}
+
+// parameterTypes returns the type IDs of the given parameters.
+func (e extensionObjects) parameterTypes(ctx *sql.Context, typColl *typecollection.TypeCollection, params []extdef.Parameter) ([]id.Type, error) {
+	paramTypes := make([]id.Type, len(params))
+	for i, param := range params {
+		paramType, err := e.typeID(ctx, typColl, param.Type)
+		if err != nil {
+			return nil, err
+		}
+		paramTypes[i] = paramType
+	}
+	return paramTypes, nil
 }

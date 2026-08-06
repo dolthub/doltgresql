@@ -35,8 +35,23 @@ type Control struct {
 
 // Extension is a Postgres extension that Doltgres emulates.
 type Extension struct {
-	Name      string
-	Control   Control
-	Script    string
-	Functions map[string]Function
+	Name     string
+	Control  Control
+	Routines []Routine
+}
+
+// Routine is a function that an extension provides. Symbol is its C link symbol, which is unique within the extension.
+type Routine struct {
+	Name       string
+	Symbol     string
+	Parameters []Parameter
+	Returns    string
+	Strict     bool
+	Impl       Function
+}
+
+// Parameter is a single input parameter of a routine.
+type Parameter struct {
+	Name string
+	Type string
 }
