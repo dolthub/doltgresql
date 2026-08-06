@@ -247,4 +247,64 @@ var AllQuantifierTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "any expression with array in string format",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: `SELECT 'i' = ANY('{information_schema, something}');`,
+				Expected: []sql.Row{
+					{"f"},
+				},
+			},
+			{
+				Query: `SELECT 'somedb' = ANY('{information_schema, somedb}');`,
+				Expected: []sql.Row{
+					{"t"},
+				},
+			},
+			{
+				Query: `SELECT 'somedb' = SOME('{information_schema, somedb}');`,
+				Expected: []sql.Row{
+					{"t"},
+				},
+			},
+			{
+				Query: `SELECT 'somedb' = ALL('{information_schema, somedb}');`,
+				Expected: []sql.Row{
+					{"f"},
+				},
+			},
+			{
+				Query: `SELECT nsp.nspname AS schema_name,
+       (nsp.nspname = 'pg_catalog'
+        AND EXISTS (SELECT 1
+                    FROM   pg_catalog.pg_class
+                    WHERE  relname = 'pg_class'
+                           AND relnamespace = nsp.oid LIMIT 1))
+       OR (nsp.nspname = 'pgagent'
+           AND EXISTS (SELECT 1
+                       FROM   pg_catalog.pg_class
+                       WHERE  relname = 'pga_job'
+                              AND relnamespace = nsp.oid LIMIT 1))
+       OR (nsp.nspname = 'information_schema'
+           AND EXISTS (SELECT 1
+                       FROM   pg_catalog.pg_class
+                       WHERE  relname = 'tables'
+                              AND relnamespace = nsp.oid LIMIT 1)) AS is_catalog,
+       CASE
+         WHEN nsp.nspname = ANY('{information_schema}')
+         THEN FALSE
+         ELSE TRUE
+       END AS db_support
+FROM   pg_catalog.pg_namespace nsp
+WHERE  nsp.oid = 2200::OID;`,
+				ExpectedColNames: []string{"schema_name", "is_catalog", "db_support"},
+				Expected:         []sql.Row{{"public", "f", "t"}},
+			},
+			{
+				Query:    `select oid from pg_class join pg_index on pg_class.oid = ANY(indclass);`, // oid = ANY(oidvector)
+				Expected: []sql.Row{},
+			},
+		},
+	},
 }
