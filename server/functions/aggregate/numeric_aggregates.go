@@ -26,16 +26,19 @@ import (
 
 // windowFramerState holds the sql.WindowFramer setup shared by every native window-function implementation
 // in this package, regardless of accumulator type: bind a framer from the window's explicit frame clause if
-// one was given, otherwise fall back to Postgres's default (unbounded preceding to current row). None of
-// this touches the per-row hot path (StartPartition/DefaultFramer/Dispose all run once per partition, not
-// once per row), so unlike the accumulator itself, it's free to share via embedding across every T.
+// one was given, otherwise fall back to Postgres's default (RANGE UNBOUNDED PRECEDING TO CURRENT ROW when
+// the window has an ORDER BY, else the whole partition). None of this touches the per-row hot path
+// (StartPartition/DefaultFramer/Dispose all run once per partition, not once per row), so unlike the
+// accumulator itself, it's free to share via embedding across every T.
 type windowFramerState struct {
 	framer sql.WindowFramer
+	window *sql.WindowDefinition
 }
 
 // bindFramer builds and stores this window's framer, if it declared an explicit frame clause; with no
 // explicit frame, DefaultFramer's fallback applies instead.
 func (s *windowFramerState) bindFramer(window *sql.WindowDefinition) error {
+	s.window = window
 	if window == nil || window.Frame == nil {
 		return nil
 	}
@@ -53,12 +56,17 @@ func (s *windowFramerState) StartPartition(ctx *sql.Context, interval sql.Window
 }
 
 // DefaultFramer implements the sql.WindowFunction interface; with no explicit frame, this supplies
-// Postgres's default (unbounded preceding to current row).
+// Postgres's default frame: RANGE UNBOUNDED PRECEDING TO CURRENT ROW when the window has an ORDER BY (so
+// rows tied on the ORDER BY value share a peer group), otherwise the whole partition.
 func (s *windowFramerState) DefaultFramer() sql.WindowFramer {
 	if s.framer != nil {
 		return s.framer
 	}
-	return aggregation.NewUnboundedPrecedingToCurrentRowFramer()
+	if s.window == nil || len(s.window.OrderBy) < 1 {
+		return aggregation.NewPartitionFramer()
+	}
+	framer, _ := aggregation.NewRangeUnboundedPrecedingToCurrentRowFramer(nil, s.window)
+	return framer
 }
 
 // Dispose implements the sql.WindowFunction interface.

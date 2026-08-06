@@ -23,11 +23,13 @@ import (
 // frame clause rather than always operating over the whole partition or peer group - e.g. nth_value().
 type windowFramerState struct {
 	framer sql.WindowFramer
+	window *sql.WindowDefinition
 }
 
 // bindFramer builds and stores this window's framer, if it declared an explicit frame clause; with no
 // explicit frame, DefaultFramer's fallback applies instead.
 func (s *windowFramerState) bindFramer(window *sql.WindowDefinition) error {
+	s.window = window
 	if window == nil || window.Frame == nil {
 		return nil
 	}
@@ -45,12 +47,17 @@ func (s *windowFramerState) StartPartition(ctx *sql.Context, interval sql.Window
 }
 
 // DefaultFramer implements the sql.WindowFunction interface; with no explicit frame, this supplies
-// Postgres's default (unbounded preceding to current row).
+// Postgres's default frame: RANGE UNBOUNDED PRECEDING TO CURRENT ROW when the window has an ORDER BY (so
+// rows tied on the ORDER BY value share a peer group), otherwise the whole partition.
 func (s *windowFramerState) DefaultFramer() sql.WindowFramer {
 	if s.framer != nil {
 		return s.framer
 	}
-	return aggregation.NewUnboundedPrecedingToCurrentRowFramer()
+	if s.window == nil || len(s.window.OrderBy) < 1 {
+		return aggregation.NewPartitionFramer()
+	}
+	framer, _ := aggregation.NewRangeUnboundedPrecedingToCurrentRowFramer(nil, s.window)
+	return framer
 }
 
 // Dispose implements the sql.WindowFunction interface.
