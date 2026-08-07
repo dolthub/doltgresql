@@ -48,7 +48,7 @@ import (
 // Version should have a new line that follows, else the formatter will fail the PR created by the release GH action
 
 const (
-	Version = "0.57.3"
+	Version = "1.0.0"
 
 	DefUserName         = "postres"
 	DefUserEmail        = "postgres@somewhere.com"
