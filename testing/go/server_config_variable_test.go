@@ -55,6 +55,29 @@ func TestServerConfigVariableStatement(t *testing.T) {
 		}()
 	}
 
+	t.Run("show global-only configuration variable", func(t *testing.T) {
+		runScript(t, ctx, ScriptTest{
+			Name:        "show global-only configuration variable",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// dolt_skip_replication_errors has no session scope, so SHOW must read it from the
+					// global scope rather than erroring out.
+					Query:    "SHOW dolt_skip_replication_errors",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT current_setting('dolt_skip_replication_errors')",
+					Expected: []sql.Row{{"0"}},
+				},
+				{
+					Query:    "SHOW DOLT_SKIP_REPLICATION_ERRORS",
+					Expected: []sql.Row{{0}},
+				},
+			},
+		}, conn, true)
+	})
+
 	t.Run("show 'port' configuration variable", func(t *testing.T) {
 		runScript(t, ctx, ScriptTest{
 			Name:        "set 'port' configuration variable",
