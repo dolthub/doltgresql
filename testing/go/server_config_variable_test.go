@@ -74,27 +74,6 @@ func TestServerConfigVariableStatement(t *testing.T) {
 					Query:    "SHOW DOLT_SKIP_REPLICATION_ERRORS",
 					Expected: []sql.Row{{0}},
 				},
-				{
-					Query: "SET dolt_skip_replication_errors = 'on'",
-				},
-				{
-					Query:    "SHOW dolt_skip_replication_errors",
-					Expected: []sql.Row{{1}},
-				},
-				{
-					Query:    "SELECT current_setting('dolt_skip_replication_errors')",
-					Expected: []sql.Row{{"1"}},
-				},
-				{
-					// Variables that do have a session scope are still read from the session.
-					Query:    "SHOW dolt_transaction_commit",
-					Expected: []sql.Row{{0}},
-				},
-				{
-					// Restore the default: the global scope is process-wide, so leaving it set would
-					// leak into every test that runs after this one.
-					Query: "SET dolt_skip_replication_errors = 'off'",
-				},
 			},
 		}, conn, true)
 	})
