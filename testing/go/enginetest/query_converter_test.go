@@ -649,6 +649,8 @@ func convertExpr(expr sqlparser.Expr) tree.Expr {
 	case sqlparser.BoolVal:
 		boolVal := tree.DBool(bool(val))
 		return &boolVal
+	case *sqlparser.Default:
+		return tree.DefaultVal{}
 	default:
 		panic(fmt.Sprintf("unhandled type: %T", val))
 	}
@@ -2513,6 +2515,8 @@ func TestExpressionConversionRobustness(t *testing.T) {
 		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b AND b",
 		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b OR b",
 		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = b DIV 2",
+		// https://github.com/dolthub/doltgresql/issues/3045
+		"INSERT INTO foo (a, b) VALUES (1, 2) ON DUPLICATE KEY UPDATE a = DEFAULT",
 	}
 
 	for _, q := range queries {
