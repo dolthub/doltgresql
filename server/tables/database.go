@@ -16,6 +16,7 @@ package tables
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/globalstate"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/utils"
@@ -54,4 +55,8 @@ func (d Database) Name() string {
 
 func (d Database) SchemaName() string {
 	return d.db.SchemaName()
+}
+
+func (d Database) GetGlobalState() globalstate.GlobalState {
+	return d.db.GetGlobalState()
 }

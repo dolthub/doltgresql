@@ -122,7 +122,7 @@ func (b *intAvgBuffer[T]) Update(ctx *sql.Context, row sql.Row) error {
 
 // intAvgWindowFunction is the sql.WindowFunction used for avg(int2)/avg(int4) within an OVER(...) clause.
 type intAvgWindowFunction[T int16 | int32] struct {
-	windowFramerState
+	framework.WindowFramerState
 	expr sql.Expression
 }
 
@@ -130,7 +130,7 @@ var _ sql.WindowFunction = (*intAvgWindowFunction[int32])(nil)
 
 func newIntAvgWindowFunction[T int16 | int32](exprs []sql.Expression, window *sql.WindowDefinition) (sql.WindowFunction, error) {
 	wf := &intAvgWindowFunction[T]{expr: exprs[0]}
-	if err := wf.bindFramer(window); err != nil {
+	if err := wf.BindFramer(window); err != nil {
 		return nil, err
 	}
 	return wf, nil
@@ -208,7 +208,7 @@ func (b *decimalAvgBuffer[T]) Update(ctx *sql.Context, row sql.Row) error {
 // decimalAvgWindowFunction is the sql.WindowFunction used for avg(int8)/avg(numeric) within an OVER(...)
 // clause.
 type decimalAvgWindowFunction[T int64 | *apd.Decimal] struct {
-	windowFramerState
+	framework.WindowFramerState
 	expr    sql.Expression
 	convert func(T) *apd.Decimal
 }
@@ -218,7 +218,7 @@ var _ sql.WindowFunction = (*decimalAvgWindowFunction[int64])(nil)
 func newDecimalAvgWindowFunction[T int64 | *apd.Decimal](convert func(T) *apd.Decimal) framework.NewWindowFunctionFn {
 	return func(exprs []sql.Expression, window *sql.WindowDefinition) (sql.WindowFunction, error) {
 		wf := &decimalAvgWindowFunction[T]{expr: exprs[0], convert: convert}
-		if err := wf.bindFramer(window); err != nil {
+		if err := wf.BindFramer(window); err != nil {
 			return nil, err
 		}
 		return wf, nil
@@ -297,7 +297,7 @@ func (b *floatAvgBuffer[T]) Update(ctx *sql.Context, row sql.Row) error {
 // floatAvgWindowFunction is the sql.WindowFunction used for avg(float4)/avg(float8) within an OVER(...)
 // clause.
 type floatAvgWindowFunction[T float32 | float64] struct {
-	windowFramerState
+	framework.WindowFramerState
 	expr sql.Expression
 }
 
@@ -305,7 +305,7 @@ var _ sql.WindowFunction = (*floatAvgWindowFunction[float64])(nil)
 
 func newFloatAvgWindowFunction[T float32 | float64](exprs []sql.Expression, window *sql.WindowDefinition) (sql.WindowFunction, error) {
 	wf := &floatAvgWindowFunction[T]{expr: exprs[0]}
-	if err := wf.bindFramer(window); err != nil {
+	if err := wf.BindFramer(window); err != nil {
 		return nil, err
 	}
 	return wf, nil

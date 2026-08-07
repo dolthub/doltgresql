@@ -276,6 +276,25 @@ func TestWindowFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "RANGE frame with INTERVAL month boundary is calendar-correct",
+			SetUpScript: []string{
+				"CREATE TABLE month_edge (d DATE, v INT);",
+				"INSERT INTO month_edge VALUES ('2022-01-31', 1), ('2022-02-28', 2), ('2022-03-01', 3);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Jan 31 + 1 month clamps to Feb 28 (2022 isn't a leap year), so the window for the
+					// Jan 31 row must include Feb 28 but NOT Mar 1.
+					Query: "SELECT sum(v) OVER (ORDER BY d RANGE BETWEEN UNBOUNDED PRECEDING AND INTERVAL '1' MONTH FOLLOWING) FROM month_edge ORDER BY d",
+					Expected: []sql.Row{
+						{int64(3)},
+						{int64(6)},
+						{int64(6)},
+					},
+				},
+			},
+		},
+		{
 			Name: "ntile and cume_dist ignore ties/frame and operate over the whole partition",
 			SetUpScript: []string{
 				"CREATE TABLE rank_ext (id INT PRIMARY KEY, grp INT, val INT);",
@@ -318,6 +337,36 @@ func TestWindowFunctions(t *testing.T) {
 				{
 					Query:       "SELECT rank() FROM rank_ext",
 					ExpectedErr: "requires an OVER clause",
+				},
+			},
+		},
+		{
+			Name: "multiple differently-framed numeric RANGE windows in one SELECT don't collide",
+			SetUpScript: []string{
+				"CREATE TABLE boundary_2 (id INT PRIMARY KEY, val INT);",
+				"INSERT INTO boundary_2 VALUES (1,10),(2,20),(3,30);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT
+					  sum(val) over (order by id range between 0 preceding and 0 following) as r0,
+					  sum(val) over (order by id range between current row and 1 following) as r1foll,
+					  sum(val) over (order by id range between unbounded preceding and current row) as runbndprec,
+					  sum(val) over (order by id range between current row and unbounded following) as runbndfoll
+					FROM boundary_2 ORDER BY id`,
+					Expected: []sql.Row{
+						{int64(10), int64(30), int64(10), int64(60)},
+						{int64(20), int64(50), int64(30), int64(50)},
+						{int64(30), int64(30), int64(60), int64(30)},
+					},
+				},
+				{
+					Query: "SELECT row_number() over (order by id) as rn1, row_number() over (order by id desc) as rn2 FROM boundary_2 ORDER BY id",
+					Expected: []sql.Row{
+						{int64(1), int64(3)},
+						{int64(2), int64(2)},
+						{int64(3), int64(1)},
+					},
 				},
 			},
 		},

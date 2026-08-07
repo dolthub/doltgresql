@@ -110,6 +110,10 @@ SQL
 
     # No further pull happens after this, so it's now safe to call nextval() directly: must
     # continue from 150 (next is 200), proving the synced state drives future values correctly too.
+    # Note: because of https://github.com/dolthub/dolt/issues/11387, we need to restart the server
+    # so that the global sequence tracker will detect the change
+    stop_sql_server
+    start_sql_server
     run query_server_for_db cloned -c "SELECT nextval('counter');"
     [ "$status" -eq 0 ]
     [[ "$output" =~ "200" ]] || false

@@ -529,7 +529,7 @@ func (*CreateMaterializedView) StatementTag() string { return "CREATE MATERIALIZ
 func (*CreateProcedure) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*CreateProcedure) StatementTag() string { return "CREATE VIEW" }
+func (*CreateProcedure) StatementTag() string { return "CREATE PROCEDURE" }
 
 // StatementType implements the Statement interface.
 func (n *CreateSchema) StatementType() StatementType { return DDL }

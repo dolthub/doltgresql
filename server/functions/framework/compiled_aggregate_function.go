@@ -213,3 +213,16 @@ func (c *CompiledAggregateFunction) WithWindow(ctx *sql.Context, window *sql.Win
 func (c *CompiledAggregateFunction) Window() *sql.WindowDefinition {
 	return c.window
 }
+
+// String implements the interface sql.Expression. This must include the bound window/OVER clause (not just
+// the function name and arguments, which is all CompiledFunction.String() returns): GMS's planbuilder
+// deduplicates the window select-list by this string (see buildWindow in sql/planbuilder/aggregates.go), so
+// two calls to the same aggregate that differ only in their OVER clause (partition/order/frame) would
+// otherwise collide and silently collapse into a single computed column.
+func (c *CompiledAggregateFunction) String() string {
+	s := c.CompiledFunction.String()
+	if c.window != nil {
+		s += " " + c.window.String()
+	}
+	return s
+}

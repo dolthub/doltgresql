@@ -23,6 +23,8 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/globalstate"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -190,6 +192,21 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if err = collection.CreateSequence(ctx, c.sequence); err != nil {
 		return nil, err
 	}
+	sess := dsess.DSessFromSess(ctx.Session)
+	db, err := sess.Provider().Database(ctx, sess.GetCurrentDatabase())
+	if err != nil {
+		return nil, err
+	}
+	sequenceTracker, err := dsess.GetSequenceTracker(ctx, db.(globalstate.GlobalStateProvider).GetGlobalState(), sequences.SequenceTrackerKey)
+	if err != nil {
+		return nil, err
+	}
+	seqState := c.sequence.SequenceState
+	seqName := doltdb.TableName{Name: c.sequence.Id.SequenceName(), Schema: c.sequence.Id.SchemaName()}
+	err = sequenceTracker.AddNewRelation(seqName, seqState)
+	if err != nil {
+		return nil, err
+	}
 	if c.fromAlter {
 		if tableColumn == nil {
 			// This check is to satisfy the linter
@@ -205,8 +222,7 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		}
 		// TODO: Do we need to convert to a TableName and then call String? Are we reliant on the specific way it's formatted?
 		//  This is how it's done in the analyzer for SERIAL types, so assuming it's for a good reason.
-		seqName := doltdb.TableName{Name: c.sequence.Id.SequenceName(), Schema: c.sequence.Id.SchemaName()}.String()
-		nextVal, foundFunc, err := framework.GetFunction(ctx, "nextval", pgexprs.NewTextLiteral(seqName))
+		nextVal, foundFunc, err := framework.GetFunction(ctx, "nextval", pgexprs.NewTextLiteral(seqName.String()))
 		if err != nil {
 			return nil, err
 		}

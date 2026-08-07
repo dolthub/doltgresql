@@ -235,8 +235,14 @@ func TestDoltRemote(t *testing.T) {
 				Expected: []sql.Row{{1, "widget"}},
 			},
 			{
+				Query:    "SELECT schemaname, sequencename, start_value, min_value, max_value, increment_by, cycle, cache_size, last_value FROM pg_sequences;",
+				Expected: []sql.Row{{"public", "counter", 1, 1, 9223372036854775807, 5, "f", 1, 1}},
+			},
+			{
 				Query:    "select nextval('counter');",
 				Expected: []sql.Row{{int64(6)}},
+				// TODO(https://github.com/dolthub/dolt/issues/11387): Update global state after pulling.
+				Skip: true,
 			},
 		},
 	})

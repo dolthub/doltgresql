@@ -186,17 +186,19 @@ func nodeCreateSequence(ctx *Context, node *tree.CreateSequence) (vitess.Stateme
 	// Returns the stored procedure call with all options
 	return vitess.InjectedStatement{
 		Statement: pgnodes.NewCreateSequence(node.IfNotExists, name.SchemaQualifier.String(), fromAlter, &sequences.Sequence{
-			Id:          id.NewSequence("", name.Name.String()),
 			DataTypeID:  dataType.ID,
 			Persistence: sequences.Persistence_Permanent,
-			Start:       start,
-			Current:     start,
-			Increment:   increment,
-			Minimum:     minValue,
-			Maximum:     maxValue,
-			Cache:       1,
-			Cycle:       cycle,
-			IsAtEnd:     false,
+			SequenceState: sequences.SequenceState{
+				Id:        id.NewSequence("", name.Name.String()),
+				Start:     start,
+				Current:   start,
+				Increment: increment,
+				Minimum:   minValue,
+				Maximum:   maxValue,
+				Cache:     1,
+				Cycle:     cycle,
+				IsAtEnd:   false,
+			},
 			OwnerTable:  id.NewTable("", ownerTableName),
 			OwnerColumn: ownerColumnName,
 		}),

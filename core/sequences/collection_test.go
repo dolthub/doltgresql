@@ -88,13 +88,15 @@ func newTestCollection(t *testing.T, ns tree.NodeStore) *Collection {
 // through Serialize and Deserialize. The exact values are not significant.
 func newTestSequence(schema, name string) *Sequence {
 	return &Sequence{
-		Id:        id.NewSequence(schema, name),
-		Start:     1,
-		Current:   1,
-		Increment: 1,
-		Minimum:   1,
-		Maximum:   math.MaxInt64,
-		Cache:     1,
+		SequenceState: SequenceState{
+			Id:        id.NewSequence(schema, name),
+			Start:     1,
+			Current:   1,
+			Increment: 1,
+			Minimum:   1,
+			Maximum:   math.MaxInt64,
+			Cache:     1,
+		},
 	}
 }
 

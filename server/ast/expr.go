@@ -866,7 +866,26 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		if node.Star {
 			return nil, errors.Errorf("* syntax is not yet supported in this context")
 		}
-		return unresolvedNameToColName(node)
+
+		colName, err := unresolvedNameToColName(node)
+		if err != nil {
+			return nil, err
+		}
+
+		// We currently handle Postgres' hidden columns by just returning their "zero" value since we don't support
+		// their underlying functionality
+		switch colName.Name.String() {
+		case "cmin", "cmax":
+			return vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(uint32(0), pgtypes.Cid)}, nil
+		case "ctid":
+			return vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(pgtypes.TidValue{}, pgtypes.Tid)}, nil
+		case "tableoid":
+			return vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(id.Null, pgtypes.Oid)}, nil
+		case "xmin", "xmax":
+			return vitess.InjectedExpr{Expression: pgexprs.NewUnsafeLiteral(uint32(0), pgtypes.Xid)}, nil
+		}
+
+		return colName, nil
 	case nil:
 		return nil, nil
 	default:

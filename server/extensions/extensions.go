@@ -12,48 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package extensions holds the registry of every Postgres extension that Doltgres emulates. Each
-// emulated extension lives in its own subdirectory and is registered from Init().
 package extensions
 
 import (
-	"strings"
-
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
-	uuid_ossp "github.com/dolthub/doltgresql/server/extensions/uuid-ossp"
+	uuid_ossp "github.com/dolthub/doltgresql/server/extensions/uuid-ossp/v1_1"
 )
 
 // registry holds every extension that Doltgres emulates, keyed by its case-sensitive name.
 var registry = map[string]*extdef.Extension{}
+
+// implementations holds every registered extension's routines, keyed by the extension's name and the routine's symbol.
+var implementations = map[string]map[string]extdef.Function{}
 
 // Init adds every emulated extension to the registry, making them installable through CREATE EXTENSION.
 func Init() {
 	register(uuid_ossp.Extension())
 }
 
-// register adds the given extension to the registry, and strips the psql meta-commands from its Script.
+// register adds the given extension to the registry.
 func register(ext *extdef.Extension) {
 	if _, ok := registry[ext.Name]; ok {
 		panic(errors.Errorf(`extension "%s" has already been registered`, ext.Name))
 	}
-	ext.Script = stripMetaCommands(ext.Script)
-	registry[ext.Name] = ext
-}
-
-// stripMetaCommands removes the psql meta-command lines from an installation script, such as the
-// `\echo ... \quit` guard that nearly every script Postgres ships opens with.
-func stripMetaCommands(script string) string {
-	lines := strings.Split(script, "\n")
-	kept := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if strings.HasPrefix(line, `\`) {
-			continue
+	symbols := make(map[string]extdef.Function, len(ext.Routines))
+	for _, routine := range ext.Routines {
+		if _, ok := symbols[routine.Symbol]; ok {
+			panic(errors.Errorf(`extension "%s" declares the symbol "%s" twice`, ext.Name, routine.Symbol))
 		}
-		kept = append(kept, line)
+		symbols[routine.Symbol] = routine.Impl
 	}
-	return strings.Join(kept, "\n")
+	registry[ext.Name] = ext
+	implementations[ext.Name] = symbols
 }
 
 // Get returns the emulated extension with the given name, or an error if Doltgres does not emulate it.
@@ -72,11 +64,11 @@ func GetAll() map[string]*extdef.Extension {
 
 // GetFunction returns the implementation of the given symbol within the given extension.
 func GetFunction(extensionName string, symbol string) (extdef.Function, error) {
-	ext, err := Get(extensionName)
-	if err != nil {
-		return nil, err
+	symbols, ok := implementations[extensionName]
+	if !ok {
+		return nil, errors.Errorf(`extension "%s" is not available`, extensionName)
 	}
-	f, ok := ext.Functions[symbol]
+	f, ok := symbols[symbol]
 	if !ok {
 		return nil, errors.Errorf(`extension "%s" does not declare the function "%s"`, extensionName, symbol)
 	}
