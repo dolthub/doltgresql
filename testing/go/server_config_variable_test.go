@@ -55,6 +55,50 @@ func TestServerConfigVariableStatement(t *testing.T) {
 		}()
 	}
 
+	t.Run("show global-only configuration variable", func(t *testing.T) {
+		runScript(t, ctx, ScriptTest{
+			Name:        "show global-only configuration variable",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					// dolt_skip_replication_errors has no session scope, so SHOW must read it from the
+					// global scope rather than erroring out.
+					Query:    "SHOW dolt_skip_replication_errors",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT current_setting('dolt_skip_replication_errors')",
+					Expected: []sql.Row{{"0"}},
+				},
+				{
+					Query:    "SHOW DOLT_SKIP_REPLICATION_ERRORS",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query: "SET dolt_skip_replication_errors = 'on'",
+				},
+				{
+					Query:    "SHOW dolt_skip_replication_errors",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT current_setting('dolt_skip_replication_errors')",
+					Expected: []sql.Row{{"1"}},
+				},
+				{
+					// Variables that do have a session scope are still read from the session.
+					Query:    "SHOW dolt_transaction_commit",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					// Restore the default: the global scope is process-wide, so leaving it set would
+					// leak into every test that runs after this one.
+					Query: "SET dolt_skip_replication_errors = 'off'",
+				},
+			},
+		}, conn, true)
+	})
+
 	t.Run("show 'port' configuration variable", func(t *testing.T) {
 		runScript(t, ctx, ScriptTest{
 			Name:        "set 'port' configuration variable",
