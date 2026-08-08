@@ -16,13 +16,20 @@ package auth
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/utils"
 )
 
 // PersistChanges will save the state of the global database to disk (assuming we are not using the pure in-memory
-// implementation).
-func PersistChanges() error {
+// implementation). When cluster replication is enabled, the new state is also offered to the standby replicas, and
+// the replication-ack waiters are appended to |rsc|. Callers must hold the write lock, and should pass |rsc| to
+// WaitForReplication once the lock is released.
+func PersistChanges(ctx *sql.Context, rsc *doltdb.ReplicationStatusController) error {
+	if clusterReplicator != nil {
+		return clusterReplicator.PersistNoWait(ctx, globalDatabase.serialize(), rsc)
+	}
 	if fileSystem != nil {
 		return fileSystem.WriteFile(authFileName, globalDatabase.serialize(), 0644)
 	}
@@ -61,14 +68,33 @@ func (db *Database) deserialize(data []byte) error {
 	}
 	reader := utils.NewReader(data)
 	version := reader.Uint32()
+	var err error
 	switch version {
 	case 0:
-		return db.deserializeV0(reader)
+		err = db.deserializeV0(reader)
 	case 1:
-		return db.deserializeV1(reader)
+		err = db.deserializeV1(reader)
 	default:
 		return errors.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
 	}
+	if err != nil {
+		return err
+	}
+	// Advance the role ID counter past every persisted role. Without this, IDs minted after loading serialized
+	// state collide with existing roles, which SetRole then silently replaces.
+	var maxID uint64
+	for id := range db.rolesByID {
+		if uint64(id) > maxID {
+			maxID = uint64(id)
+		}
+	}
+	for {
+		current := userIDCounter.Load()
+		if current >= maxID || userIDCounter.CompareAndSwap(current, maxID) {
+			break
+		}
+	}
+	return nil
 }
 
 // deserializeV0 creates a Database from a byte slice. Expects a reader that has already read the version.

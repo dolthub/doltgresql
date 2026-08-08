@@ -96,6 +96,7 @@ func (g *Grant) Resolved() bool {
 // RowIter implements the interface sql.ExecSourceRel.
 func (g *Grant) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var err error
+	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		switch {
 		case g.GrantTable != nil:
@@ -126,11 +127,12 @@ func (g *Grant) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 			err = errors.Errorf("GRANT statement is not yet supported")
 			return
 		}
-		err = auth.PersistChanges()
+		err = auth.PersistChanges(ctx, &rsc)
 	})
 	if err != nil {
 		return nil, err
 	}
+	auth.WaitForReplication(ctx, rsc)
 	return sql.RowsToRowIter(), nil
 }
 

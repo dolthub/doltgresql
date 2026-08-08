@@ -24,6 +24,8 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	gmserrors "gopkg.in/src-d/go-errors.v1"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+
 	"github.com/dolthub/doltgresql/server/auth"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -163,13 +165,15 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		}
 	}
 	var err error
+	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		auth.SetRole(role)
-		err = auth.PersistChanges()
+		err = auth.PersistChanges(ctx, &rsc)
 	})
 	if err != nil {
 		return nil, err
 	}
+	auth.WaitForReplication(ctx, rsc)
 	return sql.RowsToRowIter(), nil
 }
 
