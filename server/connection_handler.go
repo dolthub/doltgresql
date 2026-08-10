@@ -513,6 +513,15 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (handled bool, endOfMessages bool, err error) {
 	switch stmt := query.AST.(type) {
 	case *sqlparser.Begin:
+		if h.inTransaction {
+			// Postgres treats a BEGIN issued while already inside a transaction block as a no-op
+			// (after emitting a warning): the existing transaction, and its original characteristics
+			// (isolation level, read/write mode), continue unchanged. If we forwarded this statement
+			// to the engine instead, it would start a brand new transaction using this statement's
+			// characteristics, silently discarding the active one (e.g. a READ WRITE transaction could
+			// be replaced by a READ ONLY one, causing writes to be rejected and changes to be lost).
+			return true, true, h.send(makeCommandComplete(query.StatementTag, 0))
+		}
 		h.inTransaction = true
 	case *sqlparser.Commit:
 		h.inTransaction = false

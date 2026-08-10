@@ -129,6 +129,35 @@ func TestBeginIsolationLevel(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Postgres treats a BEGIN issued while already inside a transaction as a no-op.
+			Name: "A duplicate BEGIN does not change the active transaction's characteristics",
+			SetUpScript: []string{
+				`CREATE TABLE test (a INT PRIMARY KEY)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN ISOLATION LEVEL SERIALIZABLE, READ WRITE",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test VALUES (1)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "COMMIT",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
 	})
 }
 
