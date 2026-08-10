@@ -158,6 +158,34 @@ func TestBeginIsolationLevel(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "ROLLBACK clears the in-transaction flag so a following BEGIN is honored",
+			SetUpScript: []string{
+				`CREATE TABLE test_rollback (a INT)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN READ WRITE",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "BEGIN READ ONLY",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ROLLBACK",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "BEGIN READ ONLY",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO test_rollback VALUES (1)",
+					ExpectedErr: "READ ONLY",
+				},
+			},
+		},
 	})
 }
 

@@ -66,7 +66,7 @@ type ConnectionHandler struct {
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
 	// COPY DATA messages from the client to import data into tables.
 	copyFromStdinState *copyFromStdinState
-	// inTransaction is set to true with BEGIN query and false with COMMIT query.
+	// inTransaction is set to true with BEGIN query and false with COMMIT or ROLLBACK query.
 	inTransaction bool
 }
 
@@ -524,6 +524,8 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 		}
 		h.inTransaction = true
 	case *sqlparser.Commit:
+		h.inTransaction = false
+	case *sqlparser.Rollback:
 		h.inTransaction = false
 	case *sqlparser.Deallocate:
 		return true, true, h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
