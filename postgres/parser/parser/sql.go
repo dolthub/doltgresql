@@ -30928,25 +30928,25 @@ sqldefault:
 		sqlDollar = sqlS[sqlpt-2 : sqlpt+1]
 //line sql-gen.y:6297
 		{
-			sqlVAL.union.val = tree.SerializableIsolation
+			sqlVAL.union.val = tree.ReadUncommittedIsolation
 		}
 	case 1110:
 		sqlDollar = sqlS[sqlpt-2 : sqlpt+1]
 //line sql-gen.y:6301
 		{
-			sqlVAL.union.val = tree.SerializableIsolation
+			sqlVAL.union.val = tree.ReadCommittedIsolation
 		}
 	case 1111:
 		sqlDollar = sqlS[sqlpt-1 : sqlpt+1]
 //line sql-gen.y:6305
 		{
-			sqlVAL.union.val = tree.SerializableIsolation
+			sqlVAL.union.val = tree.SnapshotIsolation
 		}
 	case 1112:
 		sqlDollar = sqlS[sqlpt-2 : sqlpt+1]
 //line sql-gen.y:6309
 		{
-			sqlVAL.union.val = tree.SerializableIsolation
+			sqlVAL.union.val = tree.RepeatableReadIsolation
 		}
 	case 1113:
 		sqlDollar = sqlS[sqlpt-1 : sqlpt+1]
