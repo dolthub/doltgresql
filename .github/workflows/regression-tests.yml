@@ -84,6 +84,14 @@ jobs:
           fi
           exit "$test_status"
 
+      - name: Fail if PR regression process deadlocked
+        run: |
+          LOG=testing/go/regression/out/pr-go-test.log
+          if [ -f "$LOG" ] && grep -q "panic: test timed out" "$LOG"; then
+            echo "::error::The PR regression test process hung and was killed by the 90m go test timeout. This is NOT a normal per-query test failure -- something deadlocked. See the goroutine dump in pr-go-test.log (uploaded as an artifact) to find what was stuck."
+            exit 1
+          fi
+
       - name: Upload PR regression artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -136,6 +144,14 @@ jobs:
             cp ../out/results.trackers ../out/results1.trackers
           fi
           exit "$test_status"
+
+      - name: Fail if main regression process deadlocked
+        run: |
+          LOG=testing/go/regression/out/main-go-test.log
+          if [ -f "$LOG" ] && grep -q "panic: test timed out" "$LOG"; then
+            echo "::error::The main regression test process hung and was killed by the 90m go test timeout. This is NOT a normal per-query test failure -- something deadlocked. See the goroutine dump in main-go-test.log (uploaded as an artifact) to find what was stuck."
+            exit 1
+          fi
 
       - name: Upload main regression artifacts
         if: always()
