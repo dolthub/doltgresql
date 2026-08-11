@@ -70,6 +70,125 @@ func TestDiscard(t *testing.T) {
 	})
 }
 
+// TestBeginIsolationLevel asserts that BEGIN statements accept any transaction isolation level clause.
+func TestBeginIsolationLevel(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "BEGIN with any isolation level clause is accepted as a no-op",
+			SetUpScript: []string{
+				`CREATE TABLE test (a INT PRIMARY KEY)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test VALUES (1)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "COMMIT",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "BEGIN ISOLATION LEVEL READ UNCOMMITTED",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "ROLLBACK",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "COMMIT",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "BEGIN ISOLATION LEVEL REPEATABLE READ, READ WRITE",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "COMMIT",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			// Postgres treats a BEGIN issued while already inside a transaction as a no-op.
+			Name: "A duplicate BEGIN does not change the active transaction's characteristics",
+			SetUpScript: []string{
+				`CREATE TABLE test (a INT PRIMARY KEY)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN ISOLATION LEVEL SERIALIZABLE, READ WRITE",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO test VALUES (1)",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "COMMIT",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "ROLLBACK clears the in-transaction flag so a following BEGIN is honored",
+			SetUpScript: []string{
+				`CREATE TABLE test_rollback (a INT)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN READ WRITE",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "BEGIN READ ONLY",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ROLLBACK",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "BEGIN READ ONLY",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO test_rollback VALUES (1)",
+					ExpectedErr: "READ ONLY",
+				},
+			},
+		},
+	})
+}
+
 func TestRollback(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
