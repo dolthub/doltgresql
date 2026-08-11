@@ -66,8 +66,19 @@ type ConnectionHandler struct {
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
 	// COPY DATA messages from the client to import data into tables.
 	copyFromStdinState *copyFromStdinState
-	// inTransaction is set to true with BEGIN query and false with COMMIT or ROLLBACK query.
+	// inTransaction is true while an explicit transaction block, opened by a BEGIN statement, is in progress.
+	// It is set to false when the block is closed by a COMMIT or ROLLBACK statement.
 	inTransaction bool
+	// implicitTransaction is true while an implicit transaction block is in progress. The handler starts an
+	// implicit transaction block for the statements of a multi-statement Query message, and for statements
+	// executed via the extended query protocol. An implicit transaction block is committed at the end of the
+	// Query message (or by the next Sync message, for the extended query protocol), rolled back if an error
+	// occurs, and converted into an explicit transaction block if a BEGIN statement is executed within it.
+	// See https://www.postgresql.org/docs/current/protocol-flow.html for the full ruleset.
+	implicitTransaction bool
+	// transactionFailed is true when an error occurred inside an explicit transaction block. In this state, all
+	// statements are rejected until the client ends the transaction block, and the ReadyForQuery status is 'E'.
+	transactionFailed bool
 }
 
 // Set this env var to disable panic handling in the connection, which is useful when debugging a panic
@@ -427,7 +438,14 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMess
 		return true, false, nil
 	case *pgproto3.Sync:
 		h.waitForSync = false
-		return false, true, nil
+		// Sync closes an implicit transaction block, committing it. An explicit transaction block (opened with
+		// BEGIN) is not affected by Sync, and remains open.
+		return false, true, h.commitImplicitTransaction()
+	case *pgproto3.Flush:
+		// Flush requests that the server deliver any output it has pending in its buffers. Since we flush our
+		// output buffer after every message we send, there is never any pending output and this is a no-op.
+		// Unlike Sync, Flush does not close an implicit transaction block or produce a ReadyForQuery response.
+		return false, false, nil
 	case *pgproto3.Query:
 		endOfMessages, err = h.handleQuery(message)
 		return false, endOfMessages, err
@@ -483,6 +501,9 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		if queries[0].AST == nil {
 			return true, h.send(&pgproto3.EmptyQueryResponse{})
 		}
+		if err = h.rejectStatementIfTransactionFailed(queries[0]); err != nil {
+			return true, err
+		}
 		handled, endOfMessages, err = h.handleQueryOutsideEngine(queries[0])
 		if handled {
 			return endOfMessages, err
@@ -490,7 +511,17 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		return true, h.query(queries[0])
 	}
 
+	// Multiple statements in a single Query message run in an implicit transaction block, which is committed
+	// after the last statement and rolled back if any statement errors (in which case the remaining statements
+	// are never executed). Transaction control statements within the message alter this behavior: see
+	// handleQueryOutsideEngine for how BEGIN, COMMIT, and ROLLBACK interact with implicit transaction blocks.
 	for _, query := range queries {
+		if err = h.rejectStatementIfTransactionFailed(query); err != nil {
+			return true, err
+		}
+		if err = h.startImplicitTransaction(query); err != nil {
+			return true, err
+		}
 		handled, _, err = h.handleQueryOutsideEngine(query)
 		if err != nil {
 			return true, err
@@ -503,7 +534,8 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 			return true, err
 		}
 	}
-	return true, nil
+	// The end of the Query message closes (commits) an implicit transaction block that is still in progress
+	return true, h.commitImplicitTransaction()
 }
 
 // handleQueryOutsideEngine handles any queries that should be handled by the handler directly, rather than being
@@ -522,11 +554,57 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 			// be replaced by a READ ONLY one, causing writes to be rejected and changes to be lost).
 			return true, true, h.send(makeCommandComplete(query.StatementTag, 0))
 		}
+		if h.implicitTransaction {
+			// A BEGIN inside an implicit transaction block converts it into a regular (explicit) transaction
+			// block: the statements already executed in the implicit block are NOT committed, but instead are
+			// retroactively included in the new explicit block. The engine transaction backing the implicit
+			// block simply continues as the explicit block's transaction, so we don't involve the engine here.
+			h.implicitTransaction = false
+			h.inTransaction = true
+			return true, true, h.send(makeCommandComplete(query.StatementTag, 0))
+		}
 		h.inTransaction = true
 	case *sqlparser.Commit:
+		if h.transactionFailed {
+			// A COMMIT issued inside a failed transaction block ends the block by rolling it back, and reports
+			// ROLLBACK to the client to indicate that the transaction's effects were discarded.
+			h.inTransaction = false
+			h.implicitTransaction = false
+			h.transactionFailed = false
+			if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
+				return true, true, err
+			}
+			return true, true, h.send(&pgproto3.CommandComplete{CommandTag: []byte("ROLLBACK")})
+		}
+		// A COMMIT closes the current transaction block, whether explicit or implicit. Any statements that
+		// follow it in the same Query message (or extended-query batch) run in a new implicit transaction block.
 		h.inTransaction = false
+		h.implicitTransaction = false
 	case *sqlparser.Rollback:
+		// Like COMMIT, a ROLLBACK closes the current transaction block, whether explicit or implicit, and
+		// clears the failed state of an explicit transaction block.
 		h.inTransaction = false
+		h.implicitTransaction = false
+		h.transactionFailed = false
+	case *sqlparser.Savepoint:
+		// Savepoints are only allowed inside explicit transaction blocks: in an implicit transaction block they
+		// would conflict with the block's automatic closure on any error, so Postgres rejects them.
+		if !h.inTransaction {
+			return true, true, noActiveTransactionError("SAVEPOINT")
+		}
+	case *sqlparser.RollbackSavepoint:
+		if !h.inTransaction {
+			return true, true, noActiveTransactionError("ROLLBACK TO SAVEPOINT")
+		}
+		// Rolling back to a savepoint recovers a failed transaction block: the effects of the statements after
+		// the savepoint are discarded, and the session can once again execute statements in the block. If the
+		// engine fails to roll back to the savepoint (e.g. it doesn't exist), the error path will put the
+		// transaction block back into the failed state.
+		h.transactionFailed = false
+	case *sqlparser.ReleaseSavepoint:
+		if !h.inTransaction {
+			return true, true, noActiveTransactionError("RELEASE SAVEPOINT")
+		}
 	case *sqlparser.Deallocate:
 		return true, true, h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
 	case sqlparser.InjectedStatement:
@@ -564,6 +642,10 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 		return errors.Errorf("cannot insert multiple commands into a prepared statement")
 	}
 	query := queries[0]
+
+	if err = h.rejectStatementIfTransactionFailed(query); err != nil {
+		return err
+	}
 
 	if query.AST == nil {
 		// special case: empty query
@@ -660,6 +742,10 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 		return errors.Errorf("prepared statement %s does not exist", message.PreparedStatement)
 	}
 
+	if err := h.rejectStatementIfTransactionFailed(preparedData.Query); err != nil {
+		return err
+	}
+
 	if preparedData.Query.AST == nil {
 		// special case: empty query
 		h.portals[message.DestinationPortal] = PortalData{
@@ -717,6 +803,16 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 
 	if portalData.IsEmptyQuery {
 		return h.send(&pgproto3.EmptyQueryResponse{})
+	}
+
+	if err := h.rejectStatementIfTransactionFailed(query); err != nil {
+		return err
+	}
+
+	// Statements executed via the extended query protocol run in an implicit transaction block, which is
+	// closed (committed on success, rolled back on error) by the next Sync message
+	if err := h.startImplicitTransaction(query); err != nil {
+		return err
 	}
 
 	// Certain statement types get handled directly by the handler instead of being passed to the engine
@@ -1006,6 +1102,115 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 	return false, true, nil
 }
 
+// startImplicitTransaction starts an implicit transaction block for the given statement, unless a transaction
+// block (implicit or explicit) is already in progress, or the statement is itself a transaction control
+// statement. Transaction control statements manage transaction blocks themselves: a BEGIN with no block in
+// progress starts an explicit block, while a COMMIT or ROLLBACK with no block in progress is a warned no-op.
+func (h *ConnectionHandler) startImplicitTransaction(query ConvertedQuery) error {
+	if h.inTransaction || h.implicitTransaction {
+		return nil
+	}
+	switch query.AST.(type) {
+	case *sqlparser.Begin, *sqlparser.Commit, *sqlparser.Rollback:
+		return nil
+	}
+	if err := h.runEngineTransactionControl("BEGIN"); err != nil {
+		return err
+	}
+	h.implicitTransaction = true
+	return nil
+}
+
+// commitImplicitTransaction commits the implicit transaction block in progress, if there is one. If the commit
+// fails, the transaction is rolled back instead, and the commit error is returned.
+func (h *ConnectionHandler) commitImplicitTransaction() error {
+	if !h.implicitTransaction {
+		return nil
+	}
+	h.implicitTransaction = false
+	if h.engineTransactionEnded() {
+		return nil
+	}
+	if err := h.runEngineTransactionControl("COMMIT"); err != nil {
+		if rollbackErr := h.runEngineTransactionControl("ROLLBACK"); rollbackErr != nil {
+			logrus.Warnf("error rolling back implicit transaction after failed commit: %s", rollbackErr)
+		}
+		return err
+	}
+	return nil
+}
+
+// rollbackImplicitTransaction rolls back the implicit transaction block in progress, if there is one. This is
+// called on the error path, so a rollback failure is logged rather than returned: the original error is the one
+// that should be reported to the client.
+func (h *ConnectionHandler) rollbackImplicitTransaction() {
+	if !h.implicitTransaction {
+		return
+	}
+	h.implicitTransaction = false
+	if h.engineTransactionEnded() {
+		return
+	}
+	if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
+		logrus.Warnf("error rolling back implicit transaction: %s", err)
+	}
+}
+
+// engineTransactionEnded returns whether the session no longer has an engine transaction in progress. Some
+// statements end the transaction themselves as a side effect of executing (e.g. dolt_assume_cluster_role, which
+// also poisons the session against any further use), in which case there is nothing left for an implicit
+// transaction block to commit or roll back, and attempting to would error.
+func (h *ConnectionHandler) engineTransactionEnded() bool {
+	ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return false
+	}
+	return ctx.GetTransaction() == nil
+}
+
+// runEngineTransactionControl runs the given transaction control statement (BEGIN, COMMIT, or ROLLBACK) through
+// the engine without sending any response messages to the client. This is used to manage the engine transaction
+// backing an implicit transaction block, which is invisible to the client.
+func (h *ConnectionHandler) runEngineTransactionControl(statement string) error {
+	queries, err := h.convertQuery(statement)
+	if err != nil {
+		return err
+	}
+	return h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, queries[0].String, queries[0].AST,
+		func(*sql.Context, *Result) error {
+			return nil
+		})
+}
+
+// rejectStatementIfTransactionFailed returns an error if the current transaction block is in a failed state and
+// the given statement is not one that ends the transaction block. Once an error has occurred inside an explicit
+// transaction block, all statements other than COMMIT, ROLLBACK, and ROLLBACK TO SAVEPOINT are rejected until
+// the block is ended.
+func (h *ConnectionHandler) rejectStatementIfTransactionFailed(query ConvertedQuery) error {
+	if !h.transactionFailed || query.AST == nil {
+		return nil
+	}
+	switch query.AST.(type) {
+	case *sqlparser.Commit, *sqlparser.Rollback, *sqlparser.RollbackSavepoint:
+		return nil
+	}
+	return &pgconn.PgError{
+		Severity: string(ErrorResponseSeverity_Error),
+		Code:     pgcode.InFailedSQLTransaction.String(),
+		Message:  "current transaction is aborted, commands ignored until end of transaction block",
+	}
+}
+
+// noActiveTransactionError returns the error that Postgres reports when the given transaction-block-only command
+// (e.g. SAVEPOINT) is used outside of an explicit transaction block.
+func noActiveTransactionError(commandName string) error {
+	return &pgconn.PgError{
+		Severity: string(ErrorResponseSeverity_Error),
+		Code:     pgcode.NoActiveSQLTransaction.String(),
+		Message:  fmt.Sprintf("%s can only be used in transaction blocks", commandName),
+	}
+}
+
 // startTransactionIfNecessary checks to see if the current session has a transaction started yet or not, and if not,
 // creates a read/write transaction for the session to use. This is necessary for handling commands that alter
 // data without going through the GMS engine.
@@ -1166,11 +1371,21 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 // query. A nil error should be provided if this is being called naturally.
 func (h *ConnectionHandler) endOfMessages(err error) {
 	if err != nil {
-		// TODO: is ReadyForQueryTransactionIndicator_FailedTransactionBlock used here?
+		// An error rolls back any implicit transaction block in progress, discarding the effects of every
+		// statement executed in it. An explicit transaction block is not rolled back: it enters a failed state
+		// in which all further statements are rejected until the client ends the block with ROLLBACK (or
+		// COMMIT, which also rolls back).
+		if h.implicitTransaction {
+			h.rollbackImplicitTransaction()
+		} else if h.inTransaction {
+			h.transactionFailed = true
+		}
 		h.sendError(err)
 	}
 	ti := ReadyForQueryTransactionIndicator_Idle
-	if h.inTransaction {
+	if h.transactionFailed {
+		ti = ReadyForQueryTransactionIndicator_FailedTransactionBlock
+	} else if h.inTransaction || h.implicitTransaction {
 		ti = ReadyForQueryTransactionIndicator_TransactionBlock
 	}
 	if sendErr := h.send(&pgproto3.ReadyForQuery{

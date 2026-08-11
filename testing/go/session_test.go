@@ -269,7 +269,7 @@ func TestSessionStateAfterQueryError(t *testing.T) {
 			},
 		},
 		{
-			Name: "Test failed query inside a transaction leaves the transaction in place",
+			Name: "Test failed query inside a transaction aborts the transaction",
 			SetUpScript: []string{
 				`CREATE TABLE test (a INT PRIMARY KEY)`,
 			},
@@ -288,15 +288,15 @@ func TestSessionStateAfterQueryError(t *testing.T) {
 					Query:    "INSERT INTO test VALUES (1)",
 					Expected: []sql.Row{},
 				},
-				{ // The transaction still isolates the session from the other session's write.
-					Query:    "SELECT * FROM test",
-					Expected: []sql.Row{},
+				{ // The failed transaction rejects all statements until it is ended
+					Query:       "SELECT * FROM test",
+					ExpectedErr: "current transaction is aborted",
 				},
-				{
-					Query:    "COMMIT",
-					Expected: []sql.Row{},
+				{ // COMMIT ends the failed transaction by rolling it back
+					Query:       "COMMIT",
+					ExpectedTag: "ROLLBACK",
 				},
-				{
+				{ // With the failed transaction ended, the other session's write is visible
 					Query:    "SELECT * FROM test",
 					Expected: []sql.Row{{1}},
 				},

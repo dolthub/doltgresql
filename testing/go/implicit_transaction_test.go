@@ -298,6 +298,42 @@ func TestImplicitTransactionsSimpleProtocol(t *testing.T) {
 			},
 		},
 		{
+			Name:        "ROLLBACK TO SAVEPOINT recovers a failed transaction block",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:               "BEGIN; INSERT INTO mytable VALUES (1); SAVEPOINT sp1;",
+					Expected:            []StatementResult{{Tag: "BEGIN"}, {Tag: "INSERT 0 1"}, {Tag: "SAVEPOINT"}},
+					ExpectedReadyStatus: 'T',
+				},
+				SimpleQuery{
+					Query:               "SELECT 1/0;",
+					ExpectedErr:         "division by zero",
+					ExpectedReadyStatus: 'E',
+				},
+				// Rolling back to the savepoint recovers the failed transaction block, and the work done before
+				// the savepoint is preserved
+				SimpleQuery{
+					Query:               "ROLLBACK TO sp1;",
+					Expected:            []StatementResult{{Tag: "ROLLBACK"}},
+					ExpectedReadyStatus: 'T',
+				},
+				SimpleQuery{
+					Query:               "SELECT * FROM mytable ORDER BY i;",
+					Expected:            []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"1"}}}},
+					ExpectedReadyStatus: 'T',
+				},
+				SimpleQuery{
+					Query:    "COMMIT;",
+					Expected: []StatementResult{{Tag: "COMMIT"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+			},
+		},
+		{
 			Name:        "savepoints are not allowed in an implicit transaction block",
 			SetUpScript: setup,
 			Steps: []FlowStep{
