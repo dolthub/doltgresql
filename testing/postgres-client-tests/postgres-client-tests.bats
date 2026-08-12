@@ -30,6 +30,10 @@ teardown() {
     node $BATS_TEST_DIRNAME/node/index.js $USER $PORT
 }
 
+@test "node postgres client, error codes" {
+    node $BATS_TEST_DIRNAME/node/errors.js $USER $PORT
+}
+
 @test "knex node postgres client" {
     DOLTGRES_VERSION=$( doltgres --version | sed -nre 's/^[^0-9]*(([0-9]+\.)*[0-9]+).*/\1/p' )
     echo $DOLTGRES_VERSION
@@ -53,6 +57,10 @@ teardown() {
 
 @test "ruby Sequel client" {
     ruby $BATS_TEST_DIRNAME/ruby/sequel-test.rb $USER $PORT
+}
+
+@test "ruby Sequel client, serialization failure retry" {
+    ruby $BATS_TEST_DIRNAME/ruby/sequel-retry-test.rb $USER $PORT
 }
 
 @test "ruby ActiveRecord client" {
