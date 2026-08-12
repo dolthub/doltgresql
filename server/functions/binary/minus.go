@@ -114,7 +114,7 @@ var int2mi = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) - int64(val2.(int16))
 		if result > math.MaxInt16 || result < math.MinInt16 {
-			return nil, errors.Errorf("smallint out of range")
+			return nil, pgtypes.ErrOutOfRange.New("smallint")
 		}
 		return int16(result), nil
 	},
@@ -129,7 +129,7 @@ var int24mi = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int16)) - int64(val2.(int32))
 		if result > math.MaxInt16 || result < math.MinInt16 {
-			return nil, errors.Errorf("integer out of range")
+			return nil, pgtypes.ErrOutOfRange.New("integer")
 		}
 		return int32(result), nil
 	},
@@ -155,7 +155,7 @@ var int4mi = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) - int64(val2.(int32))
 		if result > math.MaxInt32 || result < math.MinInt32 {
-			return nil, errors.Errorf("integer out of range")
+			return nil, pgtypes.ErrOutOfRange.New("integer")
 		}
 		return int32(result), nil
 	},
@@ -170,7 +170,7 @@ var int42mi = framework.Function2{
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		result := int64(val1.(int32)) - int64(val2.(int16))
 		if result > math.MaxInt32 || result < math.MinInt32 {
-			return nil, errors.Errorf("integer out of range")
+			return nil, pgtypes.ErrOutOfRange.New("integer")
 		}
 		return int32(result), nil
 	},
@@ -418,11 +418,11 @@ var timetz_mi_interval = framework.Function2{
 func minusOverflow(val1 int64, val2 int64) (any, error) {
 	if val2 > 0 {
 		if val1 < math.MinInt64+val2 {
-			return nil, errors.Errorf("bigint out of range")
+			return nil, pgtypes.ErrOutOfRange.New("bigint")
 		}
 	} else {
 		if val1 > math.MaxInt64+val2 {
-			return nil, errors.Errorf("bigint out of range")
+			return nil, pgtypes.ErrOutOfRange.New("bigint")
 		}
 	}
 	return val1 - val2, nil

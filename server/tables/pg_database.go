@@ -24,6 +24,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
 
 // PgDatabase wraps a sqle.Database to add PostgreSQL-specific behavior.
@@ -198,7 +200,7 @@ func (d *PgDatabase) ValidateNewIndexName(ctx *sql.Context, newIndexName string,
 		return true, nil
 	}
 
-	return nameAlreadyUsed, fmt.Errorf(`relation "%s" already exists`, newIndexName)
+	return nameAlreadyUsed, pgerror.WithCandidateCode(fmt.Errorf(`relation "%s" already exists`, newIndexName), pgcode.DuplicateRelation)
 }
 
 // ValidateNewSequenceName implements the sql.SchemaObjectNameValidator interface
@@ -216,7 +218,7 @@ func (d *PgDatabase) ValidateNewSequenceName(ctx *sql.Context, newSequenceName s
 		return true, nil
 	}
 
-	return nameAlreadyUsed, fmt.Errorf(`relation "%s" already exists`, newSequenceName)
+	return nameAlreadyUsed, pgerror.WithCandidateCode(fmt.Errorf(`relation "%s" already exists`, newSequenceName), pgcode.DuplicateRelation)
 }
 
 // ValidateNewViewName implements the sql.SchemaObjectNameValidator interface
@@ -239,7 +241,7 @@ func (d *PgDatabase) ValidateNewViewName(ctx *sql.Context, newViewName string, r
 		}
 	}
 
-	return fmt.Errorf(`relation "%s" already exists`, newViewName)
+	return pgerror.WithCandidateCode(fmt.Errorf(`relation "%s" already exists`, newViewName), pgcode.DuplicateRelation)
 }
 
 // ValidateNewTableName implements the sql.SchemaObjectNameValidator interface
@@ -257,7 +259,7 @@ func (d *PgDatabase) ValidateNewTableName(ctx *sql.Context, newTableName string,
 		return true, nil
 	}
 
-	return true, fmt.Errorf(`relation "%s" already exists`, newTableName)
+	return true, pgerror.WithCandidateCode(fmt.Errorf(`relation "%s" already exists`, newTableName), pgcode.DuplicateRelation)
 }
 
 // GenerateIndexName implements the sql.IndexNameGenerator interface with PostgreSQL-compatible naming conventions:

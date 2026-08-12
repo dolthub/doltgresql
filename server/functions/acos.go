@@ -17,7 +17,6 @@ package functions
 import (
 	"math"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -38,7 +37,7 @@ var acos_float64 = framework.Function1{
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		r := math.Acos(val1.(float64))
 		if math.IsNaN(r) {
-			return nil, errors.Errorf("input is out of range")
+			return nil, pgtypes.ErrInputOutOfRange.New()
 		}
 		return r, nil
 	},
