@@ -37,7 +37,7 @@ import (
 
 // TypeSanitizer converts all GMS types into Doltgres types. Some places, such as parameter binding, will always default
 // to GMS types, so by taking care of all conversions here, we can ensure that Doltgres only needs to worry about its
-// own types.
+// own types. *plan.ExistsSubquery is deliberately NOT handled here (see TypeSanitizeExistsSubquery).
 func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	// TODO: this probably should not be opaque, we should let the analyzer dig into subqueries and analyze them when
 	//  it chooses. Doing all type transformations upfront like this masks bugs where certain tyupe conversion errors
@@ -119,8 +119,6 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 					}
 				}
 			}
-		case *plan.ExistsSubquery:
-			return pgexprs.NewExplicitCast(pgexprs.NewGMSCast(expr), pgtypes.Bool), transform.NewTree, nil
 		case *sql.ColumnDefaultValue:
 			// Due to how interfaces work, we sometimes pass (*ColumnDefaultValue)(nil), so we have to check for it
 			if expr != nil && expr.Expr != nil {
@@ -139,6 +137,19 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				newDefault, err := sql.NewColumnDefaultValue(defaultExpr, outType, expr.Literal, expr.Parenthesized, expr.ReturnNil)
 				return newDefault, transform.NewTree, err
 			}
+		}
+		return expr, transform.SameTree, nil
+	})
+}
+
+// TypeSanitizeExistsSubquery casts any *plan.ExistsSubquery node still present in the tree into
+// Doltgres's boolean type. It must run after the unnestExistsSubqueries rule, so that it only ever
+// sees the [NOT] EXISTS subqueries that couldn't be decorrelated into a semi/anti join.
+// See TypeSanitizer's doc comment for why this must not run any earlier.
+func TypeSanitizeExistsSubquery(ctx *sql.Context, _ *analyzer.Analyzer, node sql.Node, _ *plan.Scope, _ analyzer.RuleSelector, _ *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+	return pgtransform.NodeExprsWithNodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		if esq, ok := expr.(*plan.ExistsSubquery); ok {
+			return pgexprs.NewExplicitCast(pgexprs.NewGMSCast(esq), pgtypes.Bool), transform.NewTree, nil
 		}
 		return expr, transform.SameTree, nil
 	})
