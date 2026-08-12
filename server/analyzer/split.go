@@ -17,6 +17,7 @@ package analyzer
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -37,6 +38,9 @@ func splitConjunction(ctx *sql.Context, expr sql.Expression) []sql.Expression {
 		// We should check to see if we need to preserve the cast on each child individually
 		split := splitConjunction(ctx, expr.Child())
 		for i := range split {
+			if isDeferredExistsSubquery(split[i]) {
+				continue
+			}
 			if _, ok := split[i].Type(ctx).(*pgtypes.DoltgresType); !ok {
 				split[i] = pgexprs.NewGMSCast(split[i])
 			}
@@ -45,6 +49,19 @@ func splitConjunction(ctx *sql.Context, expr sql.Expression) []sql.Expression {
 	default:
 		return []sql.Expression{expr}
 	}
+}
+
+// isDeferredExistsSubquery returns true for a [NOT] EXISTS(...) conjunct whose Doltgres boolean cast is
+// intentionally deferred until after decorrelation runs.
+func isDeferredExistsSubquery(expr sql.Expression) bool {
+	if _, ok := expr.(*plan.ExistsSubquery); ok {
+		return true
+	}
+	if not, ok := expr.(*expression.Not); ok {
+		_, ok = not.Child.(*plan.ExistsSubquery)
+		return ok
+	}
+	return false
 }
 
 // LogicTreeWalker is a walker that removes GMSCast and other Doltgres specific expression nodes from
