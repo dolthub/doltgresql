@@ -466,6 +466,128 @@ func TestImplicitTransactionsSimpleProtocol(t *testing.T) {
 			},
 		},
 		{
+			Name:        "errors do not poison the session outside of explicit transaction blocks",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				// A parse error in a single-statement message
+				SimpleQuery{
+					Query:       "SELCT 1;",
+					ExpectedErr: "syntax error",
+				},
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (1);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+				// An analysis error in a single-statement message
+				SimpleQuery{
+					Query:       "SELECT * FROM doesnotexist;",
+					ExpectedErr: "table not found",
+				},
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (2);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}, {"2"}},
+				},
+				// Several errors in a row, of different kinds
+				SimpleQuery{
+					Query:       "SELECT 1/0;",
+					ExpectedErr: "division by zero",
+				},
+				SimpleQuery{
+					Query:       "INSERT INTO mytable VALUES (1);",
+					ExpectedErr: "duplicate primary key",
+				},
+				SimpleQuery{
+					Query:       "SELCT 1;",
+					ExpectedErr: "syntax error",
+				},
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (3);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}, {"2"}, {"3"}},
+				},
+				// An error in a multi-statement message
+				SimpleQuery{
+					Query:       "INSERT INTO mytable VALUES (4); SELECT 1/0;",
+					Expected:    []StatementResult{{Tag: "INSERT 0 1"}},
+					ExpectedErr: "division by zero",
+				},
+				SimpleQuery{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: []StatementResult{{Tag: "SELECT 3", Rows: [][]string{{"1"}, {"2"}, {"3"}}}},
+				},
+			},
+		},
+		{
+			Name:        "errors in a transaction block do not poison the session after the block is ended",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				// This is the shape of many Postgres regression test scripts: a transaction block around a few
+				// statements, ended by a ROLLBACK. An error inside the block fails the block, but the ROLLBACK
+				// must fully restore the session for the statements that follow.
+				SimpleQuery{
+					Query:               "begin;",
+					Expected:            []StatementResult{{Tag: "BEGIN"}},
+					ExpectedReadyStatus: 'T',
+				},
+				SimpleQuery{
+					Query:               "SELECT * FROM doesnotexist;",
+					ExpectedErr:         "table not found",
+					ExpectedReadyStatus: 'E',
+				},
+				SimpleQuery{
+					Query:               "SELECT 1;",
+					ExpectedErr:         "current transaction is aborted",
+					ExpectedReadyStatus: 'E',
+				},
+				SimpleQuery{
+					Query:    "rollback;",
+					Expected: []StatementResult{{Tag: "ROLLBACK"}},
+				},
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (1);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+				// The same, but opened with BEGIN WORK and ended with COMMIT (which rolls back)
+				SimpleQuery{
+					Query:               "begin work;",
+					Expected:            []StatementResult{{Tag: "BEGIN"}},
+					ExpectedReadyStatus: 'T',
+				},
+				SimpleQuery{
+					Query:               "SELECT 1/0;",
+					ExpectedErr:         "division by zero",
+					ExpectedReadyStatus: 'E',
+				},
+				SimpleQuery{
+					Query:    "commit;",
+					Expected: []StatementResult{{Tag: "ROLLBACK"}},
+				},
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (2);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}, {"2"}},
+				},
+			},
+		},
+		{
 			Name:        "single-statement Query messages commit immediately and are visible to other connections",
 			SetUpScript: setup,
 			Steps: []FlowStep{
