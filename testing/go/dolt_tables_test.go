@@ -574,12 +574,26 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"test"}},
 				},
 				{
+					// The expected errors below abort the open transaction, so we set a savepoint and roll back
+					// to it after each one to recover the transaction, preserving its merge conflict state.
+					Query:    `SAVEPOINT probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM public.conflicts`,
 					ExpectedErr: "table not found",
 				},
 				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM conflicts`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `CREATE TABLE conflicts (id INT PRIMARY KEY)`,
@@ -662,12 +676,26 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"a"}},
 				},
 				{
+					// The expected errors below abort the open transaction, so we set a savepoint and roll back
+					// to it after each one to recover the transaction, preserving its merge conflict state.
+					Query:    `SAVEPOINT probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM other.dolt_conflicts_test`,
 					ExpectedErr: "table not found",
 				},
 				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM public.dolt_conflicts_none`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `DELETE FROM public.dolt_conflicts_test`,
@@ -706,8 +734,16 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Query:    `SAVEPOINT probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM dolt_conflicts_test`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT * FROM public.dolt_conflicts_test`,
@@ -718,8 +754,16 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 				},
 				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM newschema.dolt_conflicts_test`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
 				},
 				{
 					// Same name as table in public schema
@@ -782,12 +826,26 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"test"}},
 				},
 				{
+					// The expected errors below abort the open transaction, so we set a savepoint and roll back
+					// to it after each one to recover the transaction, preserving its merge state.
+					Query:    `SAVEPOINT probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM public.constraint_violations`,
 					ExpectedErr: "table not found",
 				},
 				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM constraint_violations`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `CREATE TABLE constraint_violations (id INT PRIMARY KEY)`,
@@ -878,12 +936,26 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"unique index"}, {"unique index"}},
 				},
 				{
+					// The expected errors below abort the open transaction, so we set a savepoint and roll back
+					// to it after each one to recover the transaction, preserving its merge state.
+					Query:    `SAVEPOINT probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM other.dolt_constraint_violations_test`,
 					ExpectedErr: "table not found",
 				},
 				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM public.dolt_constraint_violations_none`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `DELETE FROM public.dolt_constraint_violations_test`,
@@ -922,8 +994,16 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Query:    `SAVEPOINT probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM dolt_constraint_violations_test`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT * FROM public.dolt_constraint_violations_test`,
@@ -934,8 +1014,16 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 				},
 				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM newschema.dolt_constraint_violations_test`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
 				},
 				{
 					// Same name as table in public schema
@@ -2517,12 +2605,26 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{"test"}},
 				},
 				{
+					// The expected errors below abort the open transaction, so we set a savepoint and roll back
+					// to it after each one to recover the transaction, preserving its schema conflict state.
+					Query:    `SAVEPOINT probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM public.schema_conflicts`,
 					ExpectedErr: "table not found",
 				},
 				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
+				},
+				{
 					Query:       `SELECT * FROM schema_conflicts`,
 					ExpectedErr: "table not found",
+				},
+				{
+					Query:    `ROLLBACK TO probe`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `CREATE TABLE schema_conflicts (id INT PRIMARY KEY)`,
