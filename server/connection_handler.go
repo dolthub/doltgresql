@@ -528,13 +528,12 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 	// after the last statement and rolled back if any statement errors (in which case the remaining statements
 	// are never executed). Transaction control statements within the message alter this behavior: see
 	// handleQueryOutsideEngine for how BEGIN, COMMIT, and ROLLBACK interact with implicit transaction blocks.
-	for _, query := range queries {
+	implicitTransactionControl := len(queries) > 1
+	for i, query := range queries {
 		if err = h.rejectStatementIfTransactionFailed(query); err != nil {
 			return true, err
 		}
-		if err = h.startImplicitTransaction(query); err != nil {
-			return true, err
-		}
+
 		handled, _, err = h.handleQueryOutsideEngine(query)
 		if err != nil {
 			return true, err
@@ -542,13 +541,46 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		if handled {
 			continue
 		}
+
+		// Single statements will always be auto-committed, unless they are inside an explicit transaction block.
+		// For multi-statement queries, we start an implicit transaction block before the first statement and commit
+		// it on the last statement. This involves manipulating the session's auto-commit behavior so that the engine
+		// automatically commits only the final statement. This is cheaper than running BEGIN and COMMIT statements
+		// separately through the engine, and has the same effect.
+		if implicitTransactionControl {
+			if err = h.startImplicitTransaction(query); err != nil {
+				return true, err
+			}
+			if i == len(queries)-1 && !h.transactionState.inExplicitTransactionBlock() {
+				ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+				if err != nil {
+					return false, err
+				}
+				ctx.SetIgnoreAutoCommit(false)
+			}
+		}
+
 		err = h.query(query)
 		if err != nil {
+			if implicitTransactionControl {
+				rollbackErr := h.runEngineTransactionControl("ROLLBACK")
+				if rollbackErr != nil {
+					return false, rollbackErr
+				}
+			}
 			return true, err
 		}
 	}
+
 	// The end of the Query message closes (commits) an implicit transaction block that is still in progress
-	return true, h.commitImplicitTransaction()
+	if implicitTransactionControl {
+		err = h.commitImplicitTransaction()
+		if err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
 }
 
 // handleQueryOutsideEngine handles any queries that should be handled by the handler directly, rather than being
@@ -1110,8 +1142,7 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 
 // startImplicitTransaction starts an implicit transaction block for the given statement, unless a transaction
 // block (implicit or explicit) is already in progress, or the statement is itself a transaction control
-// statement. Transaction control statements manage transaction blocks themselves: a BEGIN with no block in
-// progress starts an explicit block, while a COMMIT or ROLLBACK with no block in progress is a warned no-op.
+// statement.
 func (h *ConnectionHandler) startImplicitTransaction(query ConvertedQuery) error {
 	if h.transactionState != idleTransactionState {
 		return nil
@@ -1120,9 +1151,13 @@ func (h *ConnectionHandler) startImplicitTransaction(query ConvertedQuery) error
 	case *sqlparser.Begin, *sqlparser.Commit, *sqlparser.Rollback:
 		return nil
 	}
-	if err := h.runEngineTransactionControl("BEGIN"); err != nil {
+
+	ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
 		return err
 	}
+
+	ctx.SetIgnoreAutoCommit(true)
 	h.transactionState = implicitTransactionState
 	return nil
 }
