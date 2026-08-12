@@ -455,9 +455,7 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMess
 		// BEGIN) is not affected by Sync, and remains open.
 		return false, true, h.commitImplicitTransaction()
 	case *pgproto3.Flush:
-		// Flush requests that the server deliver any output it has pending in its buffers. Since we flush our
-		// output buffer after every message we send, there is never any pending output and this is a no-op.
-		// Unlike Sync, Flush does not close an implicit transaction block or produce a ReadyForQuery response.
+		// We don't buffer output, so Flush is a no-op
 		return false, false, nil
 	case *pgproto3.Query:
 		endOfMessages, err = h.handleQuery(message)
@@ -562,13 +560,11 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 
 		err = h.query(query)
 		if err != nil {
-			// The error path (endOfMessages) rolls back an implicit transaction block, or fails an explicit
-			// one, based on the current transaction state
 			return true, err
 		}
 	}
 
-	// The end of the Query message closes (commits) an implicit transaction block that is still in progress
+	// For some statement sequences, a final implicit COMMIT may be necessary
 	if implicitTransactionControl {
 		err = h.commitImplicitTransaction()
 		if err != nil {
@@ -621,8 +617,6 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 		// Like COMMIT, a ROLLBACK closes the current transaction block, whether explicit, implicit, or failed.
 		h.transactionState = idleTransactionState
 	case *sqlparser.Savepoint:
-		// Savepoints are only allowed inside explicit transaction blocks: in an implicit transaction block they
-		// would conflict with the block's automatic closure on any error, so Postgres rejects them.
 		if !h.transactionState.inExplicitTransactionBlock() {
 			return true, true, noActiveTransactionError("SAVEPOINT")
 		}
@@ -630,10 +624,6 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 		if !h.transactionState.inExplicitTransactionBlock() {
 			return true, true, noActiveTransactionError("ROLLBACK TO SAVEPOINT")
 		}
-		// Rolling back to a savepoint recovers a failed transaction block: the effects of the statements after
-		// the savepoint are discarded, and the session can once again execute statements in the block. If the
-		// engine fails to roll back to the savepoint (e.g. it doesn't exist), the error path will put the
-		// transaction block back into the failed state.
 		h.transactionState = explicitTransactionState
 	case *sqlparser.ReleaseSavepoint:
 		if !h.transactionState.inExplicitTransactionBlock() {
@@ -1177,9 +1167,7 @@ func (h *ConnectionHandler) commitImplicitTransaction() error {
 	return nil
 }
 
-// rollbackImplicitTransaction rolls back the implicit transaction block in progress, if there is one. This is
-// called on the error path, so a rollback failure is logged rather than returned: the original error is the one
-// that should be reported to the client.
+// rollbackImplicitTransaction rolls back the implicit transaction block in progress, if there is one
 func (h *ConnectionHandler) rollbackImplicitTransaction() {
 	if h.transactionState != implicitTransactionState {
 		return
@@ -1227,9 +1215,7 @@ func (h *ConnectionHandler) runEngineTransactionControl(statement string) error 
 }
 
 // rejectStatementIfTransactionFailed returns an error if the current transaction block is in a failed state and
-// the given statement is not one that ends the transaction block. Once an error has occurred inside an explicit
-// transaction block, all statements other than COMMIT, ROLLBACK, and ROLLBACK TO SAVEPOINT are rejected until
-// the block is ended.
+// the given statement is not one that ends the transaction block.
 func (h *ConnectionHandler) rejectStatementIfTransactionFailed(query ConvertedQuery) error {
 	if h.transactionState != failedTransactionState || query.AST == nil {
 		return nil
@@ -1415,10 +1401,6 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 // query. A nil error should be provided if this is being called naturally.
 func (h *ConnectionHandler) endOfMessages(err error) {
 	if err != nil {
-		// An error rolls back any implicit transaction block in progress, discarding the effects of every
-		// statement executed in it. An explicit transaction block is not rolled back: it enters a failed state
-		// in which all further statements are rejected until the client ends the block with ROLLBACK (or
-		// COMMIT, which also rolls back).
 		switch h.transactionState {
 		case implicitTransactionState:
 			h.rollbackImplicitTransaction()

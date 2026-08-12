@@ -735,6 +735,12 @@ func TestImplicitTransactionsExtendedProtocol(t *testing.T) {
 				Parse{Name: "commit", Query: "COMMIT"},
 				Bind{PreparedStatement: "commit"},
 				Execute{Tag: "COMMIT"},
+				// Flush is required to avoid a race (execute only sends bytes to the server without waiting on a response)
+				Flush{},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
 				Sync{},
 				QueryOnOtherConnection{
 					Query:    "SELECT * FROM mytable ORDER BY i;",
