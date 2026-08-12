@@ -348,6 +348,153 @@ func TestImplicitTransactionsSimpleProtocol(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "error on the final statement rolls back the entire implicit transaction",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:       "INSERT INTO mytable VALUES (1); INSERT INTO mytable VALUES (2); SELECT 1/0;",
+					Expected:    []StatementResult{{Tag: "INSERT 0 1"}, {Tag: "INSERT 0 1"}},
+					ExpectedErr: "division by zero",
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+			},
+		},
+		{
+			Name:        "error part way through the final statement's results rolls back the entire implicit transaction",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				// Unlike SELECT 1/0, which fails before returning any rows, this SELECT scans the table and
+				// fails part way through its result set, exercising the engine's streaming result path
+				SimpleQuery{
+					Query:       "INSERT INTO mytable VALUES (1); INSERT INTO mytable VALUES (2); SELECT i / (i - 2) FROM mytable ORDER BY i;",
+					Expected:    []StatementResult{{Tag: "INSERT 0 1"}, {Tag: "INSERT 0 1"}},
+					ExpectedErr: "division by zero",
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+			},
+		},
+		{
+			Name:        "explicit COMMIT as the final statement commits the implicit transaction",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query: "INSERT INTO mytable VALUES (1); INSERT INTO mytable VALUES (2); COMMIT;",
+					Expected: []StatementResult{
+						{Tag: "INSERT 0 1"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "COMMIT"},
+					},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}, {"2"}},
+				},
+			},
+		},
+		{
+			Name:        "explicit ROLLBACK as the final statement discards the implicit transaction",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query: "INSERT INTO mytable VALUES (1); INSERT INTO mytable VALUES (2); ROLLBACK;",
+					Expected: []StatementResult{
+						{Tag: "INSERT 0 1"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "ROLLBACK"},
+					},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+			},
+		},
+		{
+			Name:        "error on the final statement of an explicit transaction block preserves the block",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:               "BEGIN; INSERT INTO mytable VALUES (1); SAVEPOINT sp1; SELECT 1/0;",
+					Expected:            []StatementResult{{Tag: "BEGIN"}, {Tag: "INSERT 0 1"}, {Tag: "SAVEPOINT"}},
+					ExpectedErr:         "division by zero",
+					ExpectedReadyStatus: 'E',
+				},
+				// The error must not roll back the explicit transaction block: rolling back to the savepoint
+				// recovers it, with the work done before the savepoint intact
+				SimpleQuery{
+					Query:               "ROLLBACK TO sp1;",
+					Expected:            []StatementResult{{Tag: "ROLLBACK"}},
+					ExpectedReadyStatus: 'T',
+				},
+				SimpleQuery{
+					Query:               "SELECT * FROM mytable ORDER BY i;",
+					Expected:            []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"1"}}}},
+					ExpectedReadyStatus: 'T',
+				},
+				SimpleQuery{
+					Query:    "COMMIT;",
+					Expected: []StatementResult{{Tag: "COMMIT"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+			},
+		},
+		{
+			Name:        "statement handled outside the engine as the final statement still commits the block",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				// DEALLOCATE is handled by the connection handler directly rather than being passed to the
+				// engine, so the implicit transaction block must be committed by the end of the message instead
+				// of by the final statement's execution
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (1); DEALLOCATE ALL;",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}, {}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+			},
+		},
+		{
+			Name:        "single-statement Query messages commit immediately and are visible to other connections",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (1);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+				SimpleQuery{
+					Query:    "UPDATE mytable SET i = 2;",
+					Expected: []StatementResult{{Tag: "UPDATE 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"2"}},
+				},
+				SimpleQuery{
+					Query:    "DELETE FROM mytable;",
+					Expected: []StatementResult{{Tag: "DELETE 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+			},
+		},
 	})
 }
 
@@ -501,6 +648,115 @@ func TestImplicitTransactionsExtendedProtocol(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "error on the final Execute of a batch rolls back the whole batch",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Parse{Name: "ins1", Query: "INSERT INTO mytable VALUES (1)"},
+				Bind{PreparedStatement: "ins1"},
+				Execute{Tag: "INSERT 0 1"},
+				Parse{Name: "ins2", Query: "INSERT INTO mytable VALUES (2)"},
+				Bind{PreparedStatement: "ins2"},
+				Execute{Tag: "INSERT 0 1"},
+				Parse{Name: "boom", Query: "SELECT 1/0"},
+				Bind{PreparedStatement: "boom"},
+				Execute{ExpectedErr: "division by zero"},
+				Sync{},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+			},
+		},
+		{
+			Name:        "explicit COMMIT as the final statement of a batch commits before Sync",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Parse{Name: "ins1", Query: "INSERT INTO mytable VALUES (1)"},
+				Bind{PreparedStatement: "ins1"},
+				Execute{Tag: "INSERT 0 1"},
+				Parse{Name: "commit", Query: "COMMIT"},
+				Bind{PreparedStatement: "commit"},
+				Execute{Tag: "COMMIT"},
+				// Flush proves the server has executed the messages above; the COMMIT takes effect when it
+				// executes, so the work is visible to other connections even before the Sync
+				Flush{},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+				Sync{},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+			},
+		},
+		{
+			Name:        "explicit ROLLBACK as the final statement of a batch discards it",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Parse{Name: "ins1", Query: "INSERT INTO mytable VALUES (1)"},
+				Bind{PreparedStatement: "ins1"},
+				Execute{Tag: "INSERT 0 1"},
+				Parse{Name: "rb", Query: "ROLLBACK"},
+				Bind{PreparedStatement: "rb"},
+				Execute{Tag: "ROLLBACK"},
+				Sync{},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+			},
+		},
+		{
+			Name:        "a batch handled entirely outside the engine does not disable autocommit for later statements",
+			SetUpScript: setup,
+			// TODO: DEALLOCATE cannot currently be executed via the extended query protocol: the engine errors
+			//  at Bind with "Unknown prepared statement handler () given to EXECUTE". This is unrelated to
+			//  transaction handling; unskip this test when that is fixed.
+			Skip: true,
+			Steps: []FlowStep{
+				// DEALLOCATE is handled by the connection handler without ever starting an engine transaction,
+				// so this batch's implicit transaction block has nothing to commit at Sync
+				Parse{Name: "da", Query: "DEALLOCATE ALL"},
+				Bind{PreparedStatement: "da"},
+				Execute{},
+				Sync{},
+				// The session must return to normal autocommit behavior afterwards: a single-statement Query
+				// message commits immediately and is visible to other connections
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (1);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+			},
+		},
+		{
+			Name:        "DDL committed by the engine mid-batch does not disable autocommit for later statements",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				// The engine currently commits DDL statements as soon as they execute (they cannot be part of a
+				// transaction block), which ends the batch's implicit transaction early
+				Parse{Name: "ct", Query: "CREATE TABLE other (j BIGINT)"},
+				Bind{PreparedStatement: "ct"},
+				Execute{Tag: "CREATE TABLE"},
+				Sync{},
+				// The session must return to normal autocommit behavior afterwards: a single-statement Query
+				// message commits immediately and is visible to other connections
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (1);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable ORDER BY i;",
+					Expected: [][]string{{"1"}},
+				},
+			},
+		},
 	})
 }
 
@@ -529,6 +785,8 @@ type FlowStep interface {
 	// runStep executes the step, failing the test if the server's responses don't match the step's
 	// expectations.
 	runStep(r *messageFlowRunner)
+	// describe returns a short human-readable description of the step, used to name its subtest.
+	describe() string
 }
 
 // StatementResult is the expected result of a single statement within a SimpleQuery message.
@@ -687,7 +945,14 @@ func RunMessageFlowTest(t *testing.T, test MessageFlowTest) {
 		}
 		for i, step := range test.Steps {
 			runner.stepIdx = i
-			step.runStep(runner)
+			// Each step runs as its own subtest, so that a failure identifies the exact step that failed. Any
+			// failure aborts the rest of the flow, since the protocol conversation is in an unknown state and
+			// later steps would just fail confusingly.
+			if !runner.runSubtest(fmt.Sprintf("step %d %s", i, step.describe()), func() {
+				step.runStep(runner)
+			}) {
+				t.Fatalf("aborting message flow after step %d failed", i)
+			}
 		}
 		require.Empty(t, runner.pending, "test ended with extended-query messages awaiting a Sync or Flush")
 	})
@@ -713,6 +978,18 @@ type messageFlowRunner struct {
 type pendingFlowStep struct {
 	idx  int
 	step FlowStep
+}
+
+// runSubtest runs the given function as a named subtest of the runner's current test, temporarily pointing the
+// runner's assertions at the subtest, and returns whether the subtest passed.
+func (r *messageFlowRunner) runSubtest(name string, f func()) bool {
+	parent := r.t
+	defer func() { r.t = parent }()
+	return parent.Run(name, func(t *testing.T) {
+		r.t = t
+		defer func() { r.t = parent }()
+		f()
+	})
 }
 
 // send sends the given message to the server, failing the test on a connection error.
@@ -742,6 +1019,74 @@ var _ FlowStep = Execute{}
 var _ FlowStep = Sync{}
 var _ FlowStep = Flush{}
 var _ FlowStep = QueryOnOtherConnection{}
+
+// describe implements FlowStep.
+func (s SimpleQuery) describe() string {
+	return "Query " + summarizeQuery(s.Query)
+}
+
+// describe implements FlowStep.
+func (s Parse) describe() string {
+	name := s.Name
+	if name == "" {
+		name = "(unnamed)"
+	}
+	return fmt.Sprintf("Parse %s %s", name, summarizeQuery(s.Query))
+}
+
+// describe implements FlowStep.
+func (s Bind) describe() string {
+	name := s.PreparedStatement
+	if name == "" {
+		name = "(unnamed)"
+	}
+	return "Bind " + name
+}
+
+// describe implements FlowStep.
+func (s Describe) describe() string {
+	objectType := "statement"
+	if s.ObjectType == 'P' {
+		objectType = "portal"
+	}
+	name := s.Name
+	if name == "" {
+		name = "(unnamed)"
+	}
+	return fmt.Sprintf("Describe %s %s", objectType, name)
+}
+
+// describe implements FlowStep.
+func (s Execute) describe() string {
+	name := s.Portal
+	if name == "" {
+		name = "(unnamed)"
+	}
+	return "Execute " + name
+}
+
+// describe implements FlowStep.
+func (s Sync) describe() string {
+	return "Sync"
+}
+
+// describe implements FlowStep.
+func (s Flush) describe() string {
+	return "Flush"
+}
+
+// describe implements FlowStep.
+func (s QueryOnOtherConnection) describe() string {
+	return "OtherConnection " + summarizeQuery(s.Query)
+}
+
+// summarizeQuery shortens the given query string for use in a subtest name.
+func summarizeQuery(query string) string {
+	if len(query) > 60 {
+		return query[:57] + "..."
+	}
+	return query
+}
 
 // runStep implements FlowStep.
 func (s SimpleQuery) runStep(r *messageFlowRunner) {
@@ -890,23 +1235,30 @@ func (r *messageFlowRunner) validatePendingResponses() bool {
 		if errored {
 			continue
 		}
-		switch s := p.step.(type) {
-		case Parse:
-			errored = r.expectAck(p.idx, s.ExpectedErr, "ParseComplete", func(msg pgproto3.BackendMessage) bool {
-				_, ok := msg.(*pgproto3.ParseComplete)
-				return ok
-			})
-		case Bind:
-			errored = r.expectAck(p.idx, s.ExpectedErr, "BindComplete", func(msg pgproto3.BackendMessage) bool {
-				_, ok := msg.(*pgproto3.BindComplete)
-				return ok
-			})
-		case Describe:
-			errored = r.expectDescribeResponse(p.idx, s)
-		case Execute:
-			errored = r.expectExecuteResponse(p.idx, s)
-		default:
-			r.t.Fatalf("step %d: unhandled pending step type %T", p.idx, p.step)
+		// Each pending message's responses are validated in their own nested subtest, so that a failure
+		// identifies the exact message whose response was wrong. A failure aborts the enclosing Sync or Flush
+		// step, since the response stream is now in an unknown position.
+		if !r.runSubtest(fmt.Sprintf("step %d %s", p.idx, p.step.describe()), func() {
+			switch s := p.step.(type) {
+			case Parse:
+				errored = r.expectAck(p.idx, s.ExpectedErr, "ParseComplete", func(msg pgproto3.BackendMessage) bool {
+					_, ok := msg.(*pgproto3.ParseComplete)
+					return ok
+				})
+			case Bind:
+				errored = r.expectAck(p.idx, s.ExpectedErr, "BindComplete", func(msg pgproto3.BackendMessage) bool {
+					_, ok := msg.(*pgproto3.BindComplete)
+					return ok
+				})
+			case Describe:
+				errored = r.expectDescribeResponse(p.idx, s)
+			case Execute:
+				errored = r.expectExecuteResponse(p.idx, s)
+			default:
+				r.t.Fatalf("step %d: unhandled pending step type %T", p.idx, p.step)
+			}
+		}) {
+			r.t.FailNow()
 		}
 	}
 	return errored

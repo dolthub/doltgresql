@@ -562,12 +562,8 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 
 		err = h.query(query)
 		if err != nil {
-			if implicitTransactionControl {
-				rollbackErr := h.runEngineTransactionControl("ROLLBACK")
-				if rollbackErr != nil {
-					return false, rollbackErr
-				}
-			}
+			// The error path (endOfMessages) rolls back an implicit transaction block, or fails an explicit
+			// one, based on the current transaction state
 			return true, err
 		}
 	}
@@ -1169,7 +1165,7 @@ func (h *ConnectionHandler) commitImplicitTransaction() error {
 		return nil
 	}
 	h.transactionState = idleTransactionState
-	if h.engineTransactionEnded() {
+	if h.restoredAutoCommitWithoutTransaction() {
 		return nil
 	}
 	if err := h.runEngineTransactionControl("COMMIT"); err != nil {
@@ -1189,7 +1185,7 @@ func (h *ConnectionHandler) rollbackImplicitTransaction() {
 		return
 	}
 	h.transactionState = idleTransactionState
-	if h.engineTransactionEnded() {
+	if h.restoredAutoCommitWithoutTransaction() {
 		return
 	}
 	if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
@@ -1197,16 +1193,23 @@ func (h *ConnectionHandler) rollbackImplicitTransaction() {
 	}
 }
 
-// engineTransactionEnded returns whether the session no longer has an engine transaction in progress. Some
-// statements end the transaction themselves as a side effect of executing (e.g. dolt_assume_cluster_role, which
-// also poisons the session against any further use), in which case there is nothing left for an implicit
-// transaction block to commit or roll back, and attempting to would error.
-func (h *ConnectionHandler) engineTransactionEnded() bool {
+// restoredAutoCommitWithoutTransaction returns whether the session no longer has an engine transaction in
+// progress, restoring the session's autocommit behavior if so. Some statements end the engine transaction
+// themselves as a side effect of executing (e.g. dolt_assume_cluster_role, which also poisons the session
+// against any further use), and some never start one at all (e.g. DEALLOCATE, which is handled by this handler
+// without involving the engine). In either case there is nothing left for an implicit transaction block to
+// commit or roll back, but autocommit must still be restored, since no COMMIT or ROLLBACK statement will run
+// through the engine to do it for us.
+func (h *ConnectionHandler) restoredAutoCommitWithoutTransaction() bool {
 	ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
 	if err != nil {
 		return false
 	}
-	return ctx.GetTransaction() == nil
+	if ctx.GetTransaction() != nil {
+		return false
+	}
+	ctx.SetIgnoreAutoCommit(false)
+	return true
 }
 
 // runEngineTransactionControl runs the given transaction control statement (BEGIN, COMMIT, or ROLLBACK) through
