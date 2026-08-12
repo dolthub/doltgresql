@@ -15,7 +15,6 @@
 package functions
 
 import (
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
