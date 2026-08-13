@@ -1430,7 +1430,6 @@ func (h *ConnectionHandler) endOfMessages(err error) {
 // sendError sends the given error to the client. This should generally never be called directly.
 func (h *ConnectionHandler) sendError(err error) {
 	pgErr := castSQLError(err)
-	fmt.Println(pgErr.Message)
 	if sendErr := h.send(&pgproto3.ErrorResponse{
 		Severity: pgErr.Severity,
 		Code:     pgErr.Code,
