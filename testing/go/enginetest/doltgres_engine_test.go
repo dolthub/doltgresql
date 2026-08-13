@@ -252,6 +252,7 @@ func TestInsertInto(t *testing.T) {
 		"insert on duplicate key with incorrect row alias",                                                                                        // column "c" could not be found in any table in scope
 		"insert on duplicate key update errors",                                                                                                   // failing
 		"INSERT INTO ... SELECT with TEXT types",                                                                                                  // typecasts needed
+		"insert duplicate key doesn't prevent other updates, autocommit off",                                                                      // MySQL semantics: postgres aborts a transaction on any error, rejecting further statements
 	})
 	defer h.Close()
 	enginetest.TestInsertInto(t, h)
@@ -1070,6 +1071,8 @@ func TestDoltMerge(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"dolt_preview_merge_conflicts_summary(", // returns schema qualified table names
 		"CALL DOLT_MERGE with schema conflicts can be correctly resolved using dolt_conflicts_resolve when autocommit is off", // alter table
+		"CALL DOLT_MERGE fails on non-branch revision",                      // MySQL semantics: postgres aborts a transaction on any error, rejecting further statements
+		"CALL DOLT_MERGE complains when a merge overrides local changes",    // MySQL semantics: postgres aborts a transaction on any error, rejecting further statements
 		"merge conflicts prevent new branch creation",                       // different error message
 		"Drop and add primary key on two branches converges to same schema", // alter table
 		"insert two tables with the same name and different schema",
