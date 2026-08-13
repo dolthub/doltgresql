@@ -16,26 +16,19 @@ package auth
 
 import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/cluster"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// ClusterReplicator replicates serialized auth database payloads to cluster standbys. It is implemented by the
-// persister returned from dolt's cluster.Controller.HookAuthPersister.
-type ClusterReplicator interface {
-	// PersistNoWait persists |data| locally and begins replicating it to the standbys, appending the
-	// replication-ack waiters to |rsc| instead of blocking on them.
-	PersistNoWait(ctx *sql.Context, data []byte, rsc *doltdb.ReplicationStatusController) error
-}
-
 // clusterReplicator, when non-nil, takes over persistence of the auth database: local writes flow through it so
 // that they are also replicated to cluster standbys.
-var clusterReplicator ClusterReplicator
+var clusterReplicator cluster.ReplicatingAuthPersister
 
 // SetClusterReplicator routes all subsequent auth database persistence through |replicator|, which persists the
 // serialized state locally and replicates it to cluster standbys. Called during server startup when cluster
 // replication is configured.
-func SetClusterReplicator(replicator ClusterReplicator) {
+func SetClusterReplicator(replicator cluster.ReplicatingAuthPersister) {
 	clusterReplicator = replicator
 }
 

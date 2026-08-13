@@ -28,6 +28,7 @@ import (
 type authDbPersister struct{}
 
 var _ cluster.AuthDbPersister = authDbPersister{}
+var _ cluster.ReplicaAuthPersister = authDbPersister{}
 
 // Persist implements cluster.AuthDbPersister. It receives the payload that was just serialized from the live
 // auth database and writes it to the auth database file.
@@ -43,27 +44,20 @@ func (authDbPersister) LoadData(context.Context) ([]byte, error) {
 	return auth.ReadSerializedDatabase()
 }
 
-// authDbPersistence implements cluster.AuthPersistence: it applies an auth payload replicated from the cluster
-// primary to this standby, replacing the in-memory state and the auth database file.
-type authDbPersistence struct{}
-
-var _ cluster.AuthPersistence = authDbPersistence{}
-
-// SaveData implements cluster.AuthPersistence.
-func (authDbPersistence) SaveData(_ *sql.Context, contents []byte) error {
+// SaveData implements cluster.ReplicaAuthPersister.
+func (authDbPersister) SaveData(_ *sql.Context, contents []byte) error {
 	return auth.OverwriteDatabase(contents)
 }
 
-// hookAuthReplication takes over cluster auth replication from the default users-and-grants implementation
-// installed by dolt: Doltgres stores auth data in auth.db rather than in the engine's mysql database. Local auth
-// writes are routed through the controller's replicating persister so that they reach the standbys, and payloads
-// replicated from a primary are applied to auth.db. The initial LoadData seeds replication with the current auth
-// state, so that a primary pushes its full auth database to the standbys at startup.
-func hookAuthReplication(ctx context.Context, controller *cluster.Controller) error {
+// configureAuthReplication installs doltgres's auth.db persister for cluster replication
+func configureAuthReplication(ctx context.Context, controller *cluster.Controller) error {
 	if controller == nil {
 		return nil
 	}
-	replicator := controller.HookAuthPersister(authDbPersister{}, authDbPersistence{})
+
+	var persister authDbPersister
+
+	replicator := controller.SetAuthReplicator(persister, persister)
 	auth.SetClusterReplicator(replicator)
 	_, err := replicator.LoadData(ctx)
 	return err

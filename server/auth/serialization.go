@@ -28,7 +28,7 @@ import (
 // WaitForReplication once the lock is released.
 func PersistChanges(ctx *sql.Context, rsc *doltdb.ReplicationStatusController) error {
 	if clusterReplicator != nil {
-		return clusterReplicator.PersistNoWait(ctx, globalDatabase.serialize(), rsc)
+		return clusterReplicator.SendToReplicas(ctx, globalDatabase.serialize(), rsc)
 	}
 	if fileSystem != nil {
 		return fileSystem.WriteFile(authFileName, globalDatabase.serialize(), 0644)

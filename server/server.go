@@ -212,7 +212,7 @@ var _ sqlserver.EngineInitializer = doltgresEngineInitializer{}
 
 // InitializeEngine implements sqlserver.EngineInitializer.
 func (i doltgresEngineInitializer) InitializeEngine(ctx context.Context, se *engine.SqlEngine) error {
-	if err := hookAuthReplication(ctx, se.ClusterController()); err != nil {
+	if err := configureAuthReplication(ctx, se.ClusterController()); err != nil {
 		return err
 	}
 	if i.createDefaultDatabase {
