@@ -65,7 +65,7 @@ var to_timestamp_float8 = framework.Function1{
 
 		// Check for valid timestamp range (PostgreSQL limits)
 		if timestamp < -210866803200 || timestamp > 9223372036.854775 {
-			return nil, errors.Errorf("timestamp out of range")
+			return nil, pgtypes.ErrOutOfRange.New("timestamp")
 		}
 
 		return time.Unix(sec, nsec).UTC(), nil
