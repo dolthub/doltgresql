@@ -144,11 +144,11 @@ func TestSelect(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:       "select 1 limit 18446744073709551615",
-					ExpectedErr: "limit/offset value is outside of int64 range: 18446744073709551615",
+					ExpectedErr: "limit/offset 18446744073709551615 value is outside of int64 range",
 				},
 				{
 					Query:       "select 1 limit -18446744073709551616",
-					ExpectedErr: "limit/offset value is outside of int64 range: -18446744073709551616",
+					ExpectedErr: "limit/offset -18446744073709551616 value is outside of int64 range",
 				},
 			},
 		},

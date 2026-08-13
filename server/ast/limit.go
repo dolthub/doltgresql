@@ -98,7 +98,7 @@ func int64ValueForLimit(l any) (int64, error) {
 		var err error
 		limitValue, err = l.Int64()
 		if err != nil {
-			return 0, errors.Errorf("limit/offset value is outside of int64 range: %s", l.String())
+			return 0, errors.Errorf("limit/offset value %s is outside of int64 range", l.String())
 		}
 	default:
 		return 0, errors.Errorf("unsupported limit/offset value type %T", l)
