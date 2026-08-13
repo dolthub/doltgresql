@@ -596,26 +596,10 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
-	t.mutex.Lock()
-	if t.castCache == nil {
-		t.castCache = make(map[*DoltgresType]Cast)
+	cast, err := t.getOrBuildCast(ctx, dt, convTyp)
+	if err != nil {
+		return nil, sql.InRange, err
 	}
-	var cast Cast
-	if cast, ok = t.castCache[dt]; !ok {
-		var err error
-		getCastFunc, err := GetCastFunc(ctx, convTyp)
-		if err != nil {
-			t.mutex.Unlock()
-			return nil, sql.InRange, err
-		}
-		cast, _, err = getCastFunc(dt, t)
-		if err != nil {
-			t.mutex.Unlock()
-			return nil, sql.InRange, err
-		}
-		t.castCache[dt] = cast
-	}
-	t.mutex.Unlock()
 
 	if cast == nil {
 		// In the case that we have an unknown type string literal, we attempt to parse it with the target type's
@@ -648,6 +632,28 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 	}
 
 	return castResult, sql.InRange, nil
+}
+
+// getOrBuildCast returns the cached Cast for converting to |dt|, building and caching it first if necessary.
+func (t *DoltgresType) getOrBuildCast(ctx *sql.Context, dt *DoltgresType, convTyp byte) (Cast, error) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	if t.castCache == nil {
+		t.castCache = make(map[*DoltgresType]Cast)
+	}
+	if cast, ok := t.castCache[dt]; ok {
+		return cast, nil
+	}
+	getCastFunc, err := GetCastFunc(ctx, convTyp)
+	if err != nil {
+		return nil, err
+	}
+	cast, _, err := getCastFunc(dt, t)
+	if err != nil {
+		return nil, err
+	}
+	t.castCache[dt] = cast
+	return cast, nil
 }
 
 // DomainUnderlyingBaseType returns an underlying base type of this domain type.
@@ -722,24 +728,9 @@ func (t *DoltgresType) IoInput(ctx *sql.Context, input string) (any, error) {
 
 // IoOutput converts given type value to output string.
 func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
-	var o any
-	var err error
+	outFunc := t.getOrResolveOutFunc(ctx)
 
-	var outFunc QuickFunction
-	t.mutex.Lock()
-	if t.outFunc == nil || t.outFuncID != t.OutputFunc {
-		t.outFuncID = t.OutputFunc
-		t.outFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
-		if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
-			resTypes := t.outFunc.ResolvedTypes()
-			resTypes[0] = t
-			t.outFunc = t.outFunc.WithResolvedTypes(resTypes).(QuickFunction)
-		}
-	}
-	outFunc = t.outFunc
-	t.mutex.Unlock()
-
-	o, err = outFunc.CallVariadic(ctx, val)
+	o, err := outFunc.CallVariadic(ctx, val)
 	if err != nil {
 		return "", err
 	}
@@ -749,6 +740,23 @@ func (t *DoltgresType) IoOutput(ctx *sql.Context, val any) (string, error) {
 		return "", errors.Errorf("unexpected type for io output, expected string, got %T", val)
 	}
 	return os, err
+}
+
+// getOrResolveOutFunc returns the cached output QuickFunction for this type, resolving and caching it first if
+// necessary.
+func (t *DoltgresType) getOrResolveOutFunc(ctx *sql.Context) QuickFunction {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	if t.outFunc == nil || t.outFuncID != t.OutputFunc {
+		t.outFuncID = t.OutputFunc
+		t.outFunc = globalFunctionRegistry.GetFunction(ctx, t.OutputFunc)
+		if t.ModInFunc != 0 || t.IsArrayType() || t.IsCompositeType() {
+			resTypes := t.outFunc.ResolvedTypes()
+			resTypes[0] = t
+			t.outFunc = t.outFunc.WithResolvedTypes(resTypes).(QuickFunction)
+		}
+	}
+	return t.outFunc
 }
 
 // IsArrayType returns true if the type is of 'array' type.

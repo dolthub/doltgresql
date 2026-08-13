@@ -27,9 +27,12 @@ func nodeBeginTransaction(ctx *Context, node *tree.BeginTransaction) (*vitess.Be
 	if node == nil {
 		return nil, nil
 	}
-	if node.Modes.Isolation != tree.UnspecifiedIsolation {
-		return nil, errors.Errorf("isolation levels are not yet supported")
-	}
+
+	// TODO: When Dolt supports additional transaction isolation levels, we can plug them
+	//       in here based on what the user has set in node.Modes.Isolation
+	//       For now, we follow Dolt's lead and support the syntax for isolation levels, but
+	//       always use REPEATABLE READ semantics.
+
 	if node.Modes.UserPriority != tree.UnspecifiedUserPriority {
 		return nil, errors.Errorf("user priority is not yet supported")
 	}

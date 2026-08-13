@@ -48,9 +48,12 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/node"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // ConnectionHandler is responsible for the entire lifecycle of a user connection: receiving messages they send,
@@ -66,8 +69,31 @@ type ConnectionHandler struct {
 	// copyFromStdinState is set when this connection is in the COPY FROM STDIN mode, meaning it is waiting on
 	// COPY DATA messages from the client to import data into tables.
 	copyFromStdinState *copyFromStdinState
-	// inTransaction is set to true with BEGIN query and false with COMMIT query.
-	inTransaction bool
+
+	// transactionState is the current transaction state of the connection, which is one of:
+	// Idle (no transaction block is in progress)
+	// Explicit (an explicit transaction block is in progress, opened by a BEGIN statement)
+	// Implicit (an implicit transaction block is in progress, opened by a multi-statement Query message or an extended query protocol)
+	// Failed (an error occurred inside an explicit transaction block, and all statements are rejected until the client ends the transaction block)
+	// See https://www.postgresql.org/docs/current/protocol-flow.html for the full ruleset.
+	transactionState transactionState
+}
+
+// transactionState is the transaction block state of a connection. See the field of the same name on
+// ConnectionHandler for a description of the states.
+type transactionState byte
+
+const (
+	idleTransactionState     transactionState = 0
+	explicitTransactionState transactionState = 'X'
+	implicitTransactionState transactionState = 'T'
+	failedTransactionState   transactionState = 'E'
+)
+
+// inExplicitTransactionBlock returns whether this state is inside an explicit transaction block. A failed
+// transaction block is still an explicit transaction block: it remains open until the client ends it.
+func (s transactionState) inExplicitTransactionBlock() bool {
+	return s == explicitTransactionState || s == failedTransactionState
 }
 
 // Set this env var to disable panic handling in the connection, which is useful when debugging a panic
@@ -131,6 +157,7 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.Serve
 		portals:            portals,
 		doltgresHandler:    doltgresHandler,
 		backend:            pgproto3.NewBackend(conn, conn),
+		transactionState:   idleTransactionState,
 	}
 }
 
@@ -427,7 +454,12 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMess
 		return true, false, nil
 	case *pgproto3.Sync:
 		h.waitForSync = false
-		return false, true, nil
+		// Sync closes an implicit transaction block, committing it. An explicit transaction block (opened with
+		// BEGIN) is not affected by Sync, and remains open.
+		return false, true, h.commitImplicitTransaction()
+	case *pgproto3.Flush:
+		// We don't buffer output, so Flush is a no-op
+		return false, false, nil
 	case *pgproto3.Query:
 		endOfMessages, err = h.handleQuery(message)
 		return false, endOfMessages, err
@@ -483,6 +515,9 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		if queries[0].AST == nil {
 			return true, h.send(&pgproto3.EmptyQueryResponse{})
 		}
+		if err = h.rejectStatementIfTransactionFailed(queries[0]); err != nil {
+			return true, err
+		}
 		handled, endOfMessages, err = h.handleQueryOutsideEngine(queries[0])
 		if handled {
 			return endOfMessages, err
@@ -490,7 +525,16 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		return true, h.query(queries[0])
 	}
 
-	for _, query := range queries {
+	// Multiple statements in a single Query message run in an implicit transaction block, which is committed
+	// after the last statement and rolled back if any statement errors (in which case the remaining statements
+	// are never executed). Transaction control statements within the message alter this behavior: see
+	// handleQueryOutsideEngine for how BEGIN, COMMIT, and ROLLBACK interact with implicit transaction blocks.
+	implicitTransactionControl := len(queries) > 1
+	for i, query := range queries {
+		if err = h.rejectStatementIfTransactionFailed(query); err != nil {
+			return true, err
+		}
+
 		handled, _, err = h.handleQueryOutsideEngine(query)
 		if err != nil {
 			return true, err
@@ -498,11 +542,39 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		if handled {
 			continue
 		}
+
+		// Single statements will always be auto-committed, unless they are inside an explicit transaction block.
+		// For multi-statement queries, we start an implicit transaction block before the first statement and commit
+		// it on the last statement. This involves manipulating the session's auto-commit behavior so that the engine
+		// automatically commits only the final statement. This is cheaper than running BEGIN and COMMIT statements
+		// separately through the engine, and has the same effect.
+		if implicitTransactionControl {
+			if err = h.startImplicitTransaction(query); err != nil {
+				return true, err
+			}
+			if i == len(queries)-1 && !h.transactionState.inExplicitTransactionBlock() {
+				ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+				if err != nil {
+					return false, err
+				}
+				ctx.SetIgnoreAutoCommit(false)
+			}
+		}
+
 		err = h.query(query)
 		if err != nil {
 			return true, err
 		}
 	}
+
+	// For some statement sequences, a final implicit COMMIT may be necessary
+	if implicitTransactionControl {
+		err = h.commitImplicitTransaction()
+		if err != nil {
+			return false, err
+		}
+	}
+
 	return true, nil
 }
 
@@ -513,9 +585,53 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (handled bool, endOfMessages bool, err error) {
 	switch stmt := query.AST.(type) {
 	case *sqlparser.Begin:
-		h.inTransaction = true
+		if h.transactionState == explicitTransactionState {
+			// Postgres treats a BEGIN issued while already inside a transaction block as a no-op
+			// (after emitting a warning): the existing transaction, and its original characteristics
+			// (isolation level, read/write mode), continue unchanged. If we forwarded this statement
+			// to the engine instead, it would start a brand new transaction using this statement's
+			// characteristics, silently discarding the active one (e.g. a READ WRITE transaction could
+			// be replaced by a READ ONLY one, causing writes to be rejected and changes to be lost).
+			return true, true, h.send(makeCommandComplete(query.StatementTag, 0))
+		}
+		if h.transactionState == implicitTransactionState {
+			// A BEGIN inside an implicit transaction block converts it into a regular (explicit) transaction
+			// block: the statements already executed in the implicit block are NOT committed, but instead are
+			// retroactively included in the new explicit block. The engine transaction backing the implicit
+			// block simply continues as the explicit block's transaction, so we don't involve the engine here.
+			h.transactionState = explicitTransactionState
+			return true, true, h.send(makeCommandComplete(query.StatementTag, 0))
+		}
+		h.transactionState = explicitTransactionState
 	case *sqlparser.Commit:
-		h.inTransaction = false
+		if h.transactionState == failedTransactionState {
+			// A COMMIT issued inside a failed transaction block ends the block by rolling it back, and reports
+			// ROLLBACK to the client to indicate that the transaction's effects were discarded.
+			h.transactionState = idleTransactionState
+			if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
+				return true, true, err
+			}
+			return true, true, h.send(&pgproto3.CommandComplete{CommandTag: []byte("ROLLBACK")})
+		}
+		// A COMMIT closes the current transaction block, whether explicit or implicit. Any statements that
+		// follow it in the same Query message (or extended-query batch) run in a new implicit transaction block.
+		h.transactionState = idleTransactionState
+	case *sqlparser.Rollback:
+		// Like COMMIT, a ROLLBACK closes the current transaction block, whether explicit, implicit, or failed.
+		h.transactionState = idleTransactionState
+	case *sqlparser.Savepoint:
+		if !h.transactionState.inExplicitTransactionBlock() {
+			return true, true, noActiveTransactionError("SAVEPOINT")
+		}
+	case *sqlparser.RollbackSavepoint:
+		if !h.transactionState.inExplicitTransactionBlock() {
+			return true, true, noActiveTransactionError("ROLLBACK TO SAVEPOINT")
+		}
+		h.transactionState = explicitTransactionState
+	case *sqlparser.ReleaseSavepoint:
+		if !h.transactionState.inExplicitTransactionBlock() {
+			return true, true, noActiveTransactionError("RELEASE SAVEPOINT")
+		}
 	case *sqlparser.Deallocate:
 		return true, true, h.deallocatePreparedStatement(stmt.Name, h.preparedStatements, query, h.Conn())
 	case sqlparser.InjectedStatement:
@@ -553,6 +669,10 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 		return errors.Errorf("cannot insert multiple commands into a prepared statement")
 	}
 	query := queries[0]
+
+	if err = h.rejectStatementIfTransactionFailed(query); err != nil {
+		return err
+	}
 
 	if query.AST == nil {
 		// special case: empty query
@@ -649,6 +769,10 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 		return errors.Errorf("prepared statement %s does not exist", message.PreparedStatement)
 	}
 
+	if err := h.rejectStatementIfTransactionFailed(preparedData.Query); err != nil {
+		return err
+	}
+
 	if preparedData.Query.AST == nil {
 		// special case: empty query
 		h.portals[message.DestinationPortal] = PortalData{
@@ -706,6 +830,16 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 
 	if portalData.IsEmptyQuery {
 		return h.send(&pgproto3.EmptyQueryResponse{})
+	}
+
+	if err := h.rejectStatementIfTransactionFailed(query); err != nil {
+		return err
+	}
+
+	// Statements executed via the extended query protocol run in an implicit transaction block, which is
+	// closed (committed on success, rolled back on error) by the next Sync message
+	if err := h.startImplicitTransaction(query); err != nil {
+		return err
 	}
 
 	// Certain statement types get handled directly by the handler instead of being passed to the engine
@@ -995,6 +1129,121 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 	return false, true, nil
 }
 
+// startImplicitTransaction starts an implicit transaction block for the given statement, unless a transaction
+// block (implicit or explicit) is already in progress, or the statement is itself a transaction control
+// statement.
+func (h *ConnectionHandler) startImplicitTransaction(query ConvertedQuery) error {
+	if h.transactionState != idleTransactionState {
+		return nil
+	}
+	switch query.AST.(type) {
+	case *sqlparser.Begin, *sqlparser.Commit, *sqlparser.Rollback:
+		return nil
+	}
+
+	ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return err
+	}
+
+	ctx.SetIgnoreAutoCommit(true)
+	h.transactionState = implicitTransactionState
+	return nil
+}
+
+// commitImplicitTransaction commits the implicit transaction block in progress, if there is one. If the commit
+// fails, the transaction is rolled back instead, and the commit error is returned.
+func (h *ConnectionHandler) commitImplicitTransaction() error {
+	if h.transactionState != implicitTransactionState {
+		return nil
+	}
+	h.transactionState = idleTransactionState
+	if h.restoredAutoCommitWithoutTransaction() {
+		return nil
+	}
+	if err := h.runEngineTransactionControl("COMMIT"); err != nil {
+		if rollbackErr := h.runEngineTransactionControl("ROLLBACK"); rollbackErr != nil {
+			logrus.Warnf("error rolling back implicit transaction after failed commit: %s", rollbackErr)
+		}
+		return err
+	}
+	return nil
+}
+
+// rollbackImplicitTransaction rolls back the implicit transaction block in progress, if there is one
+func (h *ConnectionHandler) rollbackImplicitTransaction() {
+	if h.transactionState != implicitTransactionState {
+		return
+	}
+	h.transactionState = idleTransactionState
+	if h.restoredAutoCommitWithoutTransaction() {
+		return
+	}
+	if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
+		logrus.Warnf("error rolling back implicit transaction: %s", err)
+	}
+}
+
+// restoredAutoCommitWithoutTransaction returns whether the session no longer has an engine transaction in
+// progress, restoring the session's autocommit behavior if so. Some statements end the engine transaction
+// themselves as a side effect of executing (e.g. dolt_assume_cluster_role, which also poisons the session
+// against any further use), and some never start one at all (e.g. DEALLOCATE, which is handled by this handler
+// without involving the engine). In either case there is nothing left for an implicit transaction block to
+// commit or roll back, but autocommit must still be restored, since no COMMIT or ROLLBACK statement will run
+// through the engine to do it for us.
+func (h *ConnectionHandler) restoredAutoCommitWithoutTransaction() bool {
+	ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		return false
+	}
+	if ctx.GetTransaction() != nil {
+		return false
+	}
+	ctx.SetIgnoreAutoCommit(false)
+	return true
+}
+
+// runEngineTransactionControl runs the given transaction control statement (BEGIN, COMMIT, or ROLLBACK) through
+// the engine without sending any response messages to the client. This is used to manage the engine transaction
+// backing an implicit transaction block, which is invisible to the client.
+func (h *ConnectionHandler) runEngineTransactionControl(statement string) error {
+	queries, err := h.convertQuery(statement)
+	if err != nil {
+		return err
+	}
+	return h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, queries[0].String, queries[0].AST,
+		func(*sql.Context, *Result) error {
+			return nil
+		})
+}
+
+// rejectStatementIfTransactionFailed returns an error if the current transaction block is in a failed state and
+// the given statement is not one that ends the transaction block.
+func (h *ConnectionHandler) rejectStatementIfTransactionFailed(query ConvertedQuery) error {
+	if h.transactionState != failedTransactionState || query.AST == nil {
+		return nil
+	}
+	switch query.AST.(type) {
+	case *sqlparser.Commit, *sqlparser.Rollback, *sqlparser.RollbackSavepoint:
+		return nil
+	}
+	return &pgconn.PgError{
+		Severity: string(ErrorResponseSeverity_Error),
+		Code:     pgcode.InFailedSQLTransaction.String(),
+		Message:  "current transaction is aborted, commands ignored until end of transaction block",
+	}
+}
+
+// noActiveTransactionError returns the error that Postgres reports when the given transaction-block-only command
+// (e.g. SAVEPOINT) is used outside of an explicit transaction block.
+func noActiveTransactionError(commandName string) error {
+	return &pgconn.PgError{
+		Severity: string(ErrorResponseSeverity_Error),
+		Code:     pgcode.NoActiveSQLTransaction.String(),
+		Message:  fmt.Sprintf("%s can only be used in transaction blocks", commandName),
+	}
+}
+
 // startTransactionIfNecessary checks to see if the current session has a transaction started yet or not, and if not,
 // creates a read/write transaction for the session to use. This is necessary for handling commands that alter
 // data without going through the GMS engine.
@@ -1155,11 +1404,19 @@ func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) 
 // query. A nil error should be provided if this is being called naturally.
 func (h *ConnectionHandler) endOfMessages(err error) {
 	if err != nil {
-		// TODO: is ReadyForQueryTransactionIndicator_FailedTransactionBlock used here?
+		switch h.transactionState {
+		case implicitTransactionState:
+			h.rollbackImplicitTransaction()
+		case explicitTransactionState:
+			h.transactionState = failedTransactionState
+		}
 		h.sendError(err)
 	}
 	ti := ReadyForQueryTransactionIndicator_Idle
-	if h.inTransaction {
+	switch h.transactionState {
+	case failedTransactionState:
+		ti = ReadyForQueryTransactionIndicator_FailedTransactionBlock
+	case explicitTransactionState, implicitTransactionState:
 		ti = ReadyForQueryTransactionIndicator_TransactionBlock
 	}
 	if sendErr := h.send(&pgproto3.ReadyForQuery{
@@ -1172,21 +1429,11 @@ func (h *ConnectionHandler) endOfMessages(err error) {
 
 // sendError sends the given error to the client. This should generally never be called directly.
 func (h *ConnectionHandler) sendError(err error) {
-	var severity, code, errMsg string
-	if pgErr, ok := err.(*pgconn.PgError); ok {
-		severity = pgErr.Severity
-		code = pgErr.Code
-		errMsg = pgErr.Message
-	} else {
-		severity = string(ErrorResponseSeverity_Error)
-		code = pgcode.Internal.String() // internal_error for now
-		errMsg = err.Error()
-	}
-	fmt.Println(errMsg)
+	pgErr := castSQLError(err)
 	if sendErr := h.send(&pgproto3.ErrorResponse{
-		Severity: severity,
-		Code:     code,
-		Message:  errMsg,
+		Severity: pgErr.Severity,
+		Code:     pgErr.Code,
+		Message:  pgErr.Message,
 	}); sendErr != nil {
 		// If we're unable to send anything to the connection, then there's something wrong with the connection and
 		// we should terminate it. This will be caught in HandleConnection's defer block.
@@ -1330,12 +1577,68 @@ func castSQLError(err error) *pgconn.PgError {
 		return castSQLError(wm.Err)
 	}
 
-	// TODO: map more errors case
+	// Errors originating in our Postgres-derived parser already carry a candidate SQLSTATE (e.g. 42601
+	// for syntax errors, 0A000 for unimplemented syntax); report that code directly when present.
+	if pgerror.HasCandidateCode(err) {
+		if code := pgerror.GetPGCode(err); code != pgcode.Uncategorized {
+			return &pgconn.PgError{
+				Severity: string(ErrorResponseSeverity_Error),
+				Code:     code.String(),
+				Message:  err.Error(),
+			}
+		}
+	}
+
+	// Errors that reach a client with an XX-class (internal error) code are more than cosmetic: some
+	// clients (e.g. Npgsql) treat XX-class errors as critical failures and close the connection, so any
+	// error a client can provoke should be mapped to its proper SQLSTATE here.
 	// TODO: should update the error message to match Postgres
 	var code pgcode.Code
 	switch {
-	case sql.ErrCheckConstraintViolated.Is(err):
+	// Class 0A — Feature Not Supported
+	case sql.ErrUnsupportedFeature.Is(err), sql.ErrUnsupportedSyntax.Is(err):
+		code = pgcode.FeatureNotSupported
+	// Class 21 — Cardinality Violation
+	case sql.ErrExpectedSingleRow.Is(err), sql.ErrMoreThanOneRow.Is(err):
+		code = pgcode.CardinalityViolation
+	// Class 22 — Data Exception
+	case pgtypes.ErrDivisionByZero.Is(err):
+		code = pgcode.DivisionByZero
+	case sql.ErrValueOutOfRange.Is(err), pgtypes.ErrValueIsOutOfRangeForType.Is(err),
+		pgtypes.ErrOutOfRange.Is(err), pgtypes.ErrInputOutOfRange.Is(err),
+		errors.Is(err, pgtypes.ErrCastOutOfRange):
+		code = pgcode.NumericValueOutOfRange
+	case pgtypes.ErrInvalidSyntaxForType.Is(err), sql.ErrInvalidValue.Is(err):
+		code = pgcode.InvalidTextRepresentation
+	case pgtypes.ErrWrongLengthBit.Is(err), pgtypes.ErrVarBitLengthExceeded.Is(err):
+		code = pgcode.StringDataLengthMismatch
+	case sql.ErrInvalidTimeZone.Is(err), sql.ErrInvalidArgument.Is(err), sql.ErrInvalidArgumentDetails.Is(err):
+		code = pgcode.InvalidParameterValue
+	// Class 23 — Integrity Constraint Violation
+	case sql.ErrPrimaryKeyViolation.Is(err), sql.ErrUniqueKeyViolation.Is(err),
+		sql.ErrDuplicateEntry.Is(err), sql.ErrDuplicateEntrySet.Is(err):
+		code = pgcode.UniqueViolation
+	case sql.ErrForeignKeyChildViolation.Is(err), sql.ErrForeignKeyParentViolation.Is(err),
+		sql.ErrForeignKeyNotResolved.Is(err):
+		code = pgcode.ForeignKeyViolation
+	case sql.ErrCheckConstraintViolated.Is(err), pgtypes.ErrDomainValueViolatesCheckConstraint.Is(err):
 		code = pgcode.CheckViolation
+	case sql.ErrInsertIntoNonNullableProvidedNull.Is(err), sql.ErrInsertIntoNonNullableDefaultNullColumn.Is(err),
+		sql.ErrColumnDefaultReturnedNull.Is(err), pgtypes.ErrDomainDoesNotAllowNullValues.Is(err):
+		code = pgcode.NotNullViolation
+	// Class 25 — Invalid Transaction State
+	case sql.ErrReadOnly.Is(err), sql.ErrReadOnlyTransaction.Is(err):
+		code = pgcode.ReadOnlySQLTransaction
+	// Classes 26, 34, 3B — statement, cursor, and savepoint names
+	case sql.ErrUnknownPreparedStatement.Is(err):
+		code = pgcode.InvalidSQLStatementName
+	case sql.ErrCursorNotFound.Is(err):
+		code = pgcode.InvalidCursorName
+	case sql.ErrCursorAlreadyOpen.Is(err):
+		code = pgcode.DuplicateCursor
+	case sql.ErrSavepointDoesNotExist.Is(err):
+		code = pgcode.InvalidSavepointSpecification
+	// Classes 3D, 3F — catalog and schema names
 	case sql.ErrDatabaseExists.Is(err):
 		code = pgcode.DuplicateDatabase
 	case sql.ErrDatabaseNotFound.Is(err):
@@ -1344,14 +1647,37 @@ func castSQLError(err error) *pgconn.PgError {
 		code = pgcode.DuplicateSchema
 	case sql.ErrDatabaseSchemaNotFound.Is(err):
 		code = pgcode.UndefinedSchema
-	case sql.ErrForeignKeyChildViolation.Is(err):
-		code = pgcode.ForeignKeyViolation
-	case sql.ErrForeignKeyDuplicateName.Is(err):
-		code = pgcode.DuplicateObject
-	case sql.ErrTableNotFound.Is(err):
+	// Class 40 — Transaction Rollback. Dolt reports commit-time transaction conflicts as ErrLockDeadlock.
+	case sql.ErrLockDeadlock.Is(err):
+		code = pgcode.SerializationFailure
+	// Class 42 — Syntax or Access Rule Violation
+	case sql.ErrSyntaxError.Is(err), sql.ErrInvalidSyntax.Is(err), sql.ErrColValCountMismatch.Is(err),
+		sql.ErrInsertIntoMismatchValueCount.Is(err), sql.ErrColumnNumberDoesNotMatch.Is(err):
+		code = pgcode.Syntax
+	case sql.ErrPrivilegeCheckFailed.Is(err), sql.ErrDatabaseAccessDeniedForUser.Is(err),
+		sql.ErrTableAccessDeniedForUser.Is(err):
+		code = pgcode.InsufficientPrivilege
+	case sql.ErrNonAggregatedColumnWithoutGroupBy.Is(err):
+		code = pgcode.Grouping
+	case sql.ErrTableNotFound.Is(err), sql.ErrUnknownTable.Is(err), sql.ErrViewDoesNotExist.Is(err):
 		code = pgcode.UndefinedTable
-	case sql.ErrUniqueKeyViolation.Is(err):
-		code = pgcode.UniqueViolation
+	case sql.ErrTableAlreadyExists.Is(err), sql.ErrExistingView.Is(err):
+		code = pgcode.DuplicateRelation
+	case sql.ErrColumnNotFound.Is(err), sql.ErrTableColumnNotFound.Is(err), sql.ErrUnknownColumn.Is(err),
+		sql.ErrKeyColumnDoesNotExist.Is(err):
+		code = pgcode.UndefinedColumn
+	case sql.ErrColumnExists.Is(err), sql.ErrDuplicateColumn.Is(err), sql.ErrColumnSpecifiedTwice.Is(err):
+		code = pgcode.DuplicateColumn
+	case sql.ErrAmbiguousColumnName.Is(err), sql.ErrAmbiguousColumnOrAliasName.Is(err),
+		sql.ErrAmbiguousColumnInOrderBy.Is(err):
+		code = pgcode.AmbiguousColumn
+	case sql.ErrFunctionNotFound.Is(err), sql.ErrTableFunctionNotFound.Is(err),
+		sql.ErrInvalidArgumentNumber.Is(err), framework.ErrFunctionDoesNotExist.Is(err):
+		code = pgcode.UndefinedFunction
+	case sql.ErrForeignKeyDuplicateName.Is(err), pgtypes.ErrTypeAlreadyExists.Is(err):
+		code = pgcode.DuplicateObject
+	case sql.ErrUnknownSystemVariable.Is(err), sql.ErrUnknownConstraint.Is(err), pgtypes.ErrTypeDoesNotExist.Is(err):
+		code = pgcode.UndefinedObject
 	default:
 		code = pgcode.Internal
 	}

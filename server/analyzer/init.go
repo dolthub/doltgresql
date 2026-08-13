@@ -53,6 +53,7 @@ const (
 	ruleId_ResolveValuesTypes                                            // resolveValuesTypes
 	ruleId_ResolveProcedureDefaults                                      // resolveProcedureDefaults
 	ruleId_SetRunner                                                     // setRunner
+	ruleId_TypeSanitizeExistsSubquery                                    // typeSanitizeExistsSubquery
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -105,6 +106,9 @@ func Init() {
 	analyzer.OnceAfterDefault = append(analyzer.OnceAfterDefault,
 		analyzer.Rule{Id: ruleId_ReplaceSerial, Apply: ReplaceSerial},
 		analyzer.Rule{Id: ruleId_ReplaceArithmeticExpressions, Apply: ReplaceArithmeticExpressions},
+		// Must run after GMS's unnestExistsSubqueries rule, so decorrelation gets a chance to see
+		// a bare *plan.ExistsSubquery before it's cast-wrapped.
+		analyzer.Rule{Id: ruleId_TypeSanitizeExistsSubquery, Apply: TypeSanitizeExistsSubquery},
 	)
 
 	// The auto-commit rule writes the contents of the context, so we need to insert our finalizer before that.
