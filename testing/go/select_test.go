@@ -148,7 +148,7 @@ func TestSelect(t *testing.T) {
 				},
 				{
 					Query:       "select 1 limit -18446744073709551616",
-					ExpectedErr: "limit/offset -18446744073709551616 value is outside of int64 range",
+					ExpectedErr: "limit/offset value -18446744073709551616 is outside of int64 range",
 				},
 			},
 		},
