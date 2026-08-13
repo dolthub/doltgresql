@@ -490,11 +490,6 @@ func (h *ConnectionHandler) handleMessage(msg pgproto3.Message) (stop, endOfMess
 // expected as part of this query, in which case the server will send a READY FOR QUERY message back to the client so
 // that it can send its next query.
 func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages bool, err error) {
-	handled, err := h.handledPSQLCommands(message.String)
-	if handled || err != nil {
-		return true, err
-	}
-
 	queries, err := h.convertQuery(message.String)
 	if err != nil {
 		if printErrorStackTraces {
@@ -507,6 +502,7 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 	delete(h.preparedStatements, "")
 	delete(h.portals, "")
 
+	var handled bool
 	if len(queries) == 1 {
 		// empty query special case
 		if queries[0].AST == nil {
@@ -1374,25 +1370,6 @@ func (h *ConnectionHandler) sendDescribeResponse(fields []pgproto3.FieldDescript
 	} else {
 		return h.send(&pgproto3.NoData{})
 	}
-}
-
-// handledPSQLCommands handles the special PSQL commands, such as \l and \dt.
-func (h *ConnectionHandler) handledPSQLCommands(statement string) (bool, error) {
-	statement = strings.ToLower(statement)
-	// Command: \d table_name
-	if strings.HasPrefix(statement, "select c.oid,\n  n.nspname,\n  c.relname\nfrom pg_catalog.pg_class c\n     left join pg_catalog.pg_namespace n on n.oid = c.relnamespace\nwhere c.relname operator(pg_catalog.~) '^(") && strings.HasSuffix(statement, ")$' collate pg_catalog.default\n  and pg_catalog.pg_table_is_visible(c.oid)\norder by 2, 3;") {
-		// There are >at least< 15 separate statements sent for this command, which is far too much to validate and
-		// implement, so we'll just return an error for now
-		return true, errors.Errorf("PSQL command not yet supported")
-	}
-	// Command: \df
-	if statement == "select n.nspname as \"schema\",\n  p.proname as \"name\",\n  pg_catalog.pg_get_function_result(p.oid) as \"result data type\",\n  pg_catalog.pg_get_function_arguments(p.oid) as \"argument data types\",\n case p.prokind\n  when 'a' then 'agg'\n  when 'w' then 'window'\n  when 'p' then 'proc'\n  else 'func'\n end as \"type\"\nfrom pg_catalog.pg_proc p\n     left join pg_catalog.pg_namespace n on n.oid = p.pronamespace\nwhere pg_catalog.pg_function_is_visible(p.oid)\n      and n.nspname <> 'pg_catalog'\n      and n.nspname <> 'information_schema'\norder by 1, 2, 4;" {
-		return true, h.query(ConvertedQuery{
-			String:       `SELECT '' AS "Schema", '' AS "Name", '' AS "Result data type", '' AS "Argument data types", '' AS "Type" LIMIT 0;`,
-			StatementTag: "SELECT",
-		})
-	}
-	return false, nil
 }
 
 // endOfMessages should be called from HandleConnection or a function within HandleConnection. This represents the end

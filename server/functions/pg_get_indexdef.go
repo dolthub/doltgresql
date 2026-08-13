@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
@@ -59,12 +58,29 @@ var pg_get_indexdef_oid = framework.Function1{
 // buildIndexDef generates a CREATE INDEX DDL statement for the given index.
 func buildIndexDef(ctx *sql.Context, index sql.Index, table sql.Table, schemaName string) string {
 	name := index.ID()
+	if name == "PRIMARY" {
+		// Primary key indexes are displayed with their postgres-convention name, matching pg_class
+		name = fmt.Sprintf("%s_pkey", index.Table())
+	}
 	using := strings.ToLower(index.IndexType())
 	unique := ""
 	if index.IsUnique() {
 		unique = " UNIQUE"
 	}
 
+	colsStr := strings.Join(indexColumnExprs(ctx, index, table), ", ")
+
+	def := fmt.Sprintf("CREATE%s INDEX %s ON %s.%s USING %s (%s)", unique, name, schemaName, index.Table(), using, colsStr)
+	if pi, ok := index.(sql.PartialIndex); ok && pi.Predicate() != "" {
+		def += " WHERE (" + pi.Predicate() + ")"
+	}
+	return def
+}
+
+// indexColumnExprs returns the rendered text of each column of the given index, in index column
+// order. Plain columns render as the bare column name, functional expressions as their original
+// SQL text.
+func indexColumnExprs(ctx *sql.Context, index sql.Index, table sql.Table) []string {
 	cols := make([]string, len(index.Expressions()))
 	for i, expr := range index.Expressions() {
 		if exprText, ok := RenderHiddenIndexColumnExpr(plan.GetColumnFromIndexExpr(ctx, expr, table)); ok {
@@ -79,13 +95,7 @@ func buildIndexDef(ctx *sql.Context, index sql.Index, table sql.Table, schemaNam
 			cols[i] = expr
 		}
 	}
-	colsStr := strings.Join(cols, ", ")
-
-	def := fmt.Sprintf("CREATE%s INDEX %s ON %s.%s USING %s (%s)", unique, name, schemaName, index.Table(), using, colsStr)
-	if pi, ok := index.(sql.PartialIndex); ok && pi.Predicate() != "" {
-		def += " WHERE (" + pi.Predicate() + ")"
-	}
-	return def
+	return cols
 }
 
 // RenderHiddenIndexColumnExpr returns the original SQL text of the functional expression backing
@@ -112,23 +122,27 @@ var pg_get_indexdef_oid_integer_bool = framework.Function3{
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
 		oidVal := val1.(id.Id)
 		colNo := val2.(int32)
-		pretty := val3.(bool)
-		if pretty {
-			return "", errors.Errorf("pretty printing is not yet supported")
-		}
+		// The pretty flag only affects the formatting of expressions, which we don't reproduce, so
+		// we return the same text either way.
+		result := ""
 		err := RunCallback(ctx, oidVal, Callbacks{
 			Index: func(ctx *sql.Context, schema ItemSchema, table ItemTable, index ItemIndex) (cont bool, err error) {
-				exprs := index.Item.Expressions()
-				if int(colNo) >= len(exprs) {
-					return false, errors.Errorf("column not found")
+				if colNo == 0 {
+					result = buildIndexDef(ctx, index.Item, table.Item, schema.Item.SchemaName())
+					return false, nil
 				}
-				// TODO: make `create index` statement
+				// A non-zero column number selects just that column's definition, or an empty
+				// string if the index has no such column.
+				cols := indexColumnExprs(ctx, index.Item, table.Item)
+				if colNo >= 1 && int(colNo) <= len(cols) {
+					result = cols[colNo-1]
+				}
 				return false, nil
 			},
 		})
 		if err != nil {
 			return "", err
 		}
-		return "", nil
+		return result, nil
 	},
 }

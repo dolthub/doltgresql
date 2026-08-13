@@ -2033,17 +2033,63 @@ func TestArrayFunctions(t *testing.T) {
 func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Skip:        true, // TODO: not supported
-			Name:        "pg_function_is_visible",
-			SetUpScript: []string{},
+			Name: "pg_function_is_visible",
+			SetUpScript: []string{
+				"CREATE SCHEMA myschema;",
+				"SET search_path TO myschema;",
+				"CREATE FUNCTION myfunc(a int) RETURNS int LANGUAGE sql AS 'SELECT a + 1';",
+				"CREATE PROCEDURE myproc() LANGUAGE sql AS $$ SELECT 1 $$;",
+				"CREATE SCHEMA testschema;",
+				"SET search_path TO testschema;",
+				"CREATE FUNCTION test_func(a int) RETURNS int LANGUAGE sql AS 'SELECT a + 2';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT pg_function_is_visible(1342177280);`,
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'test_func';`,
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `SELECT pg_function_is_visible(22);`, // invalid
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myfunc';`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					// Procedures are also subject to visibility checks
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myproc';`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SET search_path = 'myschema';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myfunc';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myproc';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'test_func';`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					// Built-in functions live in pg_catalog, which is always on the search path.
+					// OID 31 is byteaout.
+					Query:    `SELECT pg_function_is_visible(31);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(22);`, // not a function OID
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(845743985);`, // OID does not exist
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(NULL);`,
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},
@@ -2473,6 +2519,93 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Query: `SELECT pg_get_functiondef(1886569565)`,
 					Expected: []sql.Row{
 						{"CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)\n\t\t\t\tLANGUAGE SQL\n\t\t\t\tAS $$\n\t\t\t\t\tINSERT INTO cp_test VALUES(a, b);\n\t\t\t\t\tINSERT INTO cp_test VALUES(c, b);\n\t\t\t\t$$"},
+					},
+				},
+			},
+		},
+		{
+			Name: "pg_get_indexdef",
+			SetUpScript: []string{
+				`CREATE TABLE idx_test (pk INT PRIMARY KEY, a INT, b INT, c TEXT);`,
+				`CREATE UNIQUE INDEX idx_ab ON idx_test (a, b);`,
+				`CREATE INDEX idx_c ON idx_test (c);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// OID does not exist
+					Query:            `SELECT pg_get_indexdef(845743985);`,
+					ExpectedColNames: []string{"pg_get_indexdef"},
+					Expected:         []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_test_pkey'::regclass::oid);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_test_pkey ON public.idx_test USING btree (pk)"}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+				},
+				{
+					// A column number of 0 returns the whole definition, same as the one-argument form
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 0, true);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 0, false);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+				},
+				{
+					// A non-zero column number returns just that column's definition
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 1, true);`,
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 2, false);`,
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					// Out-of-range column numbers return an empty string
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 3, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, -1, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_c'::regclass::oid, 1, true);`,
+					Expected: []sql.Row{{"c"}},
+				},
+				{
+					// OID does not exist
+					Query:    `SELECT pg_get_indexdef(845743985, 0, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef(845743985, 1, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					// NULL arguments produce a NULL result
+					Query:    `SELECT pg_get_indexdef(NULL, 1, true);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, NULL, true);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// The index listing query issued by psql's \d command
+					Query: `SELECT c2.relname, i.indisprimary, i.indisunique, i.indisclustered, i.indisvalid, pg_catalog.pg_get_indexdef(i.indexrelid, 0, true),
+  pg_catalog.pg_get_constraintdef(con.oid, true), contype, condeferrable, condeferred, i.indisreplident, c2.reltablespace
+FROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i
+  LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN ('p','u','x'))
+WHERE c.oid = 'idx_test'::regclass AND c.oid = i.indrelid AND i.indexrelid = c2.oid
+ORDER BY i.indisprimary DESC, c2.relname;`,
+					Expected: []sql.Row{
+						{"idx_test_pkey", "t", "t", "f", "t", "CREATE UNIQUE INDEX idx_test_pkey ON public.idx_test USING btree (pk)", "PRIMARY KEY (pk)", "p", "f", "f", "f", 0},
+						{"idx_ab", "f", "t", "f", "t", "CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)", "UNIQUE (a, b)", "u", "f", "f", "f", 0},
+						{"idx_c", "f", "f", "f", "t", "CREATE INDEX idx_c ON public.idx_test USING btree (c)", nil, nil, nil, nil, "f", 0},
 					},
 				},
 			},
