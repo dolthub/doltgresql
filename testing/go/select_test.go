@@ -140,6 +140,15 @@ func TestSelect(t *testing.T) {
 			},
 		},
 		{
+			Name: "select large limit",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "select 1 limit 18446744073709551615",
+					ExpectedErr: "greater than max int64",
+				},
+			},
+		},
+		{
 			Name: "select values",
 			Assertions: []ScriptTestAssertion{
 				{
