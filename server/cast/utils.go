@@ -20,13 +20,12 @@ import (
 	"unicode/utf8"
 
 	cerrors "github.com/cockroachdb/errors"
-	"gopkg.in/src-d/go-errors.v1"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // errOutOfRange is returned when a value is out of range for a given type.
-var errOutOfRange = errors.NewKind("%s out of range")
+var errOutOfRange = pgtypes.ErrOutOfRange
 
 // handleStringCast handles casts to the string types that may have length restrictions. Returns an error if other types
 // are passed in. Will always return the correct string, even on error, as some contexts may ignore the error.

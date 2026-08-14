@@ -28,6 +28,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	parsertypes "github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -240,7 +242,7 @@ func (pgs *TypeCollection) ResolveType(ctx context.Context, name id.Type) (*pgty
 		return nil, err
 	}
 	if !t.IsResolvedType() {
-		return nil, errors.Errorf("unable to resolve type `%s`", name.TypeName())
+		return nil, pgerror.WithCandidateCode(errors.Errorf("unable to resolve type `%s`", name.TypeName()), pgcode.UndefinedObject)
 	}
 	return t, nil
 }

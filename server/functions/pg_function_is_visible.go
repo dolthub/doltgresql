@@ -46,6 +46,8 @@ var pg_function_is_visible_oid = framework.Function1{
 		if err != nil {
 			return false, err
 		}
+
+		// This is either id.Function or id.Procedure, so the first segment is the schema name
 		schemaName := oidVal.Segment(0)
 		inPath := false
 		for _, path := range paths {

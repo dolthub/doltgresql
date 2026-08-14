@@ -1101,7 +1101,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 				{
 					Query:       `SELECT current_catalog();`,
-					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE XX000)`,
+					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE 42601)`,
 				},
 				// // TODO: Implement table function for current_catalog
 				{
@@ -1113,7 +1113,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 				{
 					Query:       `SELECT * FROM current_catalog();`,
-					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE XX000)`,
+					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE 42601)`,
 				},
 			},
 		},
