@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -163,13 +164,15 @@ func (c *AlterRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 		}
 	}
 	var err error
+	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		auth.SetRole(role)
-		err = auth.PersistChanges()
+		err = auth.PersistChanges(ctx, &rsc)
 	})
 	if err != nil {
 		return nil, err
 	}
+	auth.WaitForReplication(ctx, rsc)
 	return sql.RowsToRowIter(), nil
 }
 

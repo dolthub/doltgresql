@@ -101,6 +101,7 @@ func (r *Revoke) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
 	}
 
 	var err error
+	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		switch {
 		case r.RevokeTable != nil:
@@ -131,11 +132,12 @@ func (r *Revoke) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
 			err = errors.Errorf("REVOKE statement is not yet supported")
 			return
 		}
-		err = auth.PersistChanges()
+		err = auth.PersistChanges(ctx, &rsc)
 	})
 	if err != nil {
 		return nil, err
 	}
+	auth.WaitForReplication(ctx, rsc)
 	return sql.RowsToRowIter(), nil
 }
 

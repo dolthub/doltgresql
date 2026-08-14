@@ -148,13 +148,13 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return true, nil
 	})
 
-	// When we need to create the default database, do so via an engine initializer, which runs after the engine is
-	// constructed but before the server accepts any connections. This is necessary due to the fact that
-	// `CREATE DATABASE` is non-transactional and non-atomic, so other clients could connect to a partially-created
-	// database otherwise. This problem exists in Dolt as well, but Dolt doesn't auto-create a database on init.
-	var engineInitializer sqlserver.EngineInitializer
-	if initializeDefaultDatabase {
-		engineInitializer = defaultDatabaseInitializer{}
+	// Doltgres-specific engine initialization runs after the engine is constructed but before the server accepts
+	// any connections: hooking auth (auth.db) into cluster replication, and creating the default database on a
+	// first run. The latter must happen before connections are accepted because `CREATE DATABASE` is
+	// non-transactional and non-atomic, so other clients could connect to a partially-created database otherwise.
+	// This problem exists in Dolt as well, but Dolt doesn't auto-create a database on init.
+	engineInitializer := doltgresEngineInitializer{
+		createDefaultDatabase: initializeDefaultDatabase,
 	}
 
 	controller := svcs.NewController()
@@ -199,15 +199,30 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 	return controller, nil
 }
 
-// defaultDatabaseInitializer creates the default database on a first run against an empty data dir. It runs via
+// doltgresEngineInitializer performs Doltgres-specific engine initialization. It runs via
 // sqlserver.Config.EngineInitializer, after the engine has been constructed but before the server accepts any
-// connections, so no client can observe (or interfere with) a partially created default database.
-type defaultDatabaseInitializer struct{}
+// connections. It hooks the Doltgres auth database into cluster replication when cluster replication is
+// configured, and creates the default database on a first run against an empty data dir (so that no client can
+// observe, or interfere with, a partially created default database).
+type doltgresEngineInitializer struct {
+	createDefaultDatabase bool
+}
 
-var _ sqlserver.EngineInitializer = defaultDatabaseInitializer{}
+var _ sqlserver.EngineInitializer = doltgresEngineInitializer{}
 
 // InitializeEngine implements sqlserver.EngineInitializer.
-func (defaultDatabaseInitializer) InitializeEngine(ctx context.Context, se *engine.SqlEngine) error {
+func (i doltgresEngineInitializer) InitializeEngine(ctx context.Context, se *engine.SqlEngine) error {
+	if err := configureAuthReplication(ctx, se.ClusterController()); err != nil {
+		return err
+	}
+	if i.createDefaultDatabase {
+		return initializeDefaultDatabase(ctx, se)
+	}
+	return nil
+}
+
+// initializeDefaultDatabase creates the default database on a first run against an empty data dir.
+func initializeDefaultDatabase(ctx context.Context, se *engine.SqlEngine) error {
 	user, _ := auth.GetSuperUserAndPassword()
 	dbName := getDefaultDatabaseName(user)
 
