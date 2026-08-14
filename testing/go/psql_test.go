@@ -127,6 +127,34 @@ ORDER BY 1, 2, 4;`,
 			},
 		},
 		{
+			Name: `\d tablename triggers`,
+			SetUpScript: []string{
+				"CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);",
+				"CREATE FUNCTION trig_fn() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER test_trig BEFORE INSERT ON test_table FOR EACH ROW EXECUTE FUNCTION trig_fn();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The trigger listing query issued by psql's \d command
+					Query: `SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled, t.tgisinternal,
+  CASE WHEN t.tgparentid != 0 THEN
+    (SELECT u.tgrelid::pg_catalog.regclass
+     FROM pg_catalog.pg_trigger AS u,
+          pg_catalog.pg_partition_ancestors(t.tgrelid) WITH ORDINALITY AS a(relid, depth)
+     WHERE u.tgname = t.tgname AND u.tgrelid = a.relid
+           AND u.tgparentid = 0
+     ORDER BY a.depth LIMIT 1)
+  END AS parent
+FROM pg_catalog.pg_trigger t
+WHERE t.tgrelid = 'test_table'::regclass AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
+ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"test_trig", "CREATE TRIGGER test_trig BEFORE INSERT ON test_table FOR EACH ROW EXECUTE FUNCTION trig_fn()", "O", "f", nil},
+					},
+				},
+			},
+		},
+		{
 			Name: `\d tablename`,
 			SetUpScript: []string{
 				"CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT);",

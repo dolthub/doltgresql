@@ -823,6 +823,29 @@ func TestFunctionsMath(t *testing.T) {
 func TestFunctionsOID(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "oid comparisons",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// A raw OID of 0 given by a client and an internal null OID are the same value
+					Query:    `SELECT 0::oid = 0, 0::oid <> 0, 0::oid < 1::oid, 845743985::oid = 845743985::oid, 845743985::oid = 845743986::oid;`,
+					Expected: []sql.Row{{"t", "f", "t", "t", "f"}},
+				},
+				{
+					// conparentid is a null OID internally, and clients compare it against a raw 0
+					Query:    `SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 'testing'::regclass AND conparentid = 0;`,
+					Expected: []sql.Row{{"testing_pkey"}},
+				},
+				{
+					// A relation's cached OID and the same OID given as a numeric literal are equal
+					Query:    `SELECT ('testing'::regclass::oid)::text::oid = 'testing'::regclass::oid;`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+		{
 			Name: "to_regclass",
 			SetUpScript: []string{
 				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
@@ -2624,14 +2647,37 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 			},
 		},
 		{
-			Name:        "pg_get_triggerdef",
-			SetUpScript: []string{},
+			Name: "pg_get_triggerdef",
+			SetUpScript: []string{
+				"CREATE TABLE trig_test (pk INT PRIMARY KEY, v1 INT);",
+				"CREATE FUNCTION trig_fn() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn();",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: triggers are not supported yet
+					// not a trigger OID
 					Query: `SELECT pg_get_triggerdef(22)`,
 					Expected: []sql.Row{
 						{""},
+					},
+				},
+				{
+					Query: `SELECT pg_get_triggerdef(t.oid) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
+					Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
+					},
+				},
+				{
+					// The pretty flag only affects expression formatting, so both variants return the same text
+					Query: `SELECT pg_get_triggerdef(t.oid, true) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
+					Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_triggerdef(t.oid, false) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
+					Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
 					},
 				},
 			},
@@ -4648,6 +4694,78 @@ func TestSetReturningFunctions(t *testing.T) {
 						Query:            `SELECT * FROM generate_series(1, array_upper(current_schemas(false), 1)) AS s(r)`,
 						Expected:         []sql.Row{{1}},
 						ExpectedColNames: []string{"r"},
+					},
+				},
+			},
+			{
+				Name: "table function WITH ORDINALITY",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT * FROM generate_series(2,4) WITH ORDINALITY`,
+						Expected: []sql.Row{{2, 1}, {3, 2}, {4, 3}},
+					},
+					{
+						Query:            `SELECT * FROM generate_series(2,4) WITH ORDINALITY AS a(n, ord)`,
+						Expected:         []sql.Row{{2, 1}, {3, 2}, {4, 3}},
+						ExpectedColNames: []string{"n", "ord"},
+					},
+					{
+						Query:    `SELECT ord, n FROM generate_series(2,4) WITH ORDINALITY AS a(n, ord) ORDER BY ord DESC`,
+						Expected: []sql.Row{{3, 4}, {2, 3}, {1, 2}},
+					},
+					{
+						Query:    `SELECT n FROM generate_series(5,7) WITH ORDINALITY AS a(n, ord) WHERE ord = 2`,
+						Expected: []sql.Row{{6}},
+					},
+				},
+			},
+			{
+				Name: "pg_partition_ancestors",
+				SetUpScript: []string{
+					"CREATE TABLE anc_test (pk INT PRIMARY KEY, v1 INT);",
+					"CREATE VIEW anc_view AS SELECT pk FROM anc_test;",
+					"CREATE TABLE anc_child (pk INT PRIMARY KEY, apk INT REFERENCES anc_test(pk));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						// Partitioning is not supported, so a relation's only ancestor is itself
+						Query:            `SELECT * FROM pg_partition_ancestors('anc_test'::regclass);`,
+						Expected:         []sql.Row{{"anc_test"}},
+						ExpectedColNames: []string{"relid"},
+					},
+					{
+						Query:    `SELECT * FROM pg_partition_ancestors('anc_test'::regclass) WITH ORDINALITY AS a(relid, depth);`,
+						Expected: []sql.Row{{"anc_test", 1}},
+					},
+					{
+						// Relations that aren't tables or indexes return an empty set
+						Query:    `SELECT * FROM pg_partition_ancestors('anc_view'::regclass);`,
+						Expected: []sql.Row{},
+					},
+					{
+						// OID does not exist
+						Query:    `SELECT * FROM pg_partition_ancestors(845743985);`,
+						Expected: []sql.Row{},
+					},
+					{
+						// The foreign-key listing query issued by psql's \d command
+						Query: `SELECT conrelid = 'anc_child'::pg_catalog.regclass AS sametable,
+       conname, pg_catalog.pg_get_constraintdef(oid, true) AS condef, conrelid::pg_catalog.regclass::text AS ontable
+FROM pg_catalog.pg_constraint, pg_catalog.pg_partition_ancestors('anc_child'::regclass)
+WHERE conrelid = relid AND contype = 'f' AND conparentid = 0
+ORDER BY sametable DESC, conname;`,
+						Expected: []sql.Row{{"t", "anc_child_apk_fkey", "FOREIGN KEY (apk) REFERENCES anc_test(pk)", "anc_child"}},
+					},
+					{
+						// The referenced-by listing query issued by psql's \d command
+						Query: `SELECT conname, conrelid::pg_catalog.regclass::text AS ontable,
+       pg_catalog.pg_get_constraintdef(oid, true) AS condef
+FROM pg_catalog.pg_constraint c
+WHERE confrelid IN (SELECT pg_catalog.pg_partition_ancestors('anc_test'::regclass)
+                    UNION ALL VALUES ('anc_test'::pg_catalog.regclass))
+      AND contype = 'f' AND conparentid = 0
+ORDER BY conname;`,
+						Expected: []sql.Row{{"anc_child_apk_fkey", "anc_child", "FOREIGN KEY (apk) REFERENCES anc_test(pk)"}},
 					},
 				},
 			},

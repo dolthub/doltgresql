@@ -114,6 +114,8 @@ var btoidcmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		return int32(cmp.Compare(val1.(id.Id), val2.(id.Id))), nil
+		// Postgres compares OIDs numerically, and different internal IDs can map to the same OID (e.g. a raw
+		// numeric OID given by a client and the cached ID it refers to)
+		return int32(cmp.Compare(id.Cache().ToOID(val1.(id.Id)), id.Cache().ToOID(val2.(id.Id)))), nil
 	},
 }

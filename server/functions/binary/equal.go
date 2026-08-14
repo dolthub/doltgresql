@@ -499,7 +499,12 @@ var oideq = framework.Function2{
 		// This method doesn't use DoltgresType.Compare because it's on the critical path for many tooling queries that
 		// examine the pg_catalog tables.
 		val1id, val2id := val1.(id.Id), val2.(id.Id)
-		return val1id == val2id, nil
+		if val1id == val2id {
+			return true, nil
+		}
+		// Different internal IDs can still map to the same OID: an OID given to us by a client resolves to a raw
+		// numeric ID unless its assignment is already cached, and a raw OID of 0 is a distinct value from id.Null.
+		return id.Cache().ToOID(val1id) == id.Cache().ToOID(val2id), nil
 	},
 }
 

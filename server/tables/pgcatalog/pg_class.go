@@ -22,7 +22,9 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/index"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/triggers"
 	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -84,7 +86,22 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 	nameIdx := NewUniqueInMemIndexStorage[*pgClass](lessName)
 	oidIdx := NewUniqueInMemIndexStorage[*pgClass](lessOid)
 
-	err := functions.IterateCurrentDatabase(ctx, functions.Callbacks{
+	// Tables with triggers report relhastriggers, which clients like psql rely on to decide
+	// whether to look for triggers and foreign keys (which Postgres enforces via system triggers).
+	triggerTables := make(map[id.Table]struct{})
+	trigCollection, err := core.GetTriggersCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return err
+	}
+	err = trigCollection.IterateTriggers(ctx, func(t triggers.Trigger) (stop bool, err error) {
+		triggerTables[id.NewTable(t.ID.SchemaName(), t.ID.TableName())] = struct{}{}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	err = functions.IterateCurrentDatabase(ctx, functions.Callbacks{
 		Index: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable, index functions.ItemIndex) (cont bool, err error) {
 			tableHasIndexes[id.Cache().ToOID(table.OID.AsId())] = struct{}{}
 			schemaOid := schema.OID
@@ -105,11 +122,32 @@ func cachePgClasses(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 		},
 		Table: func(ctx *sql.Context, schema functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 			_, hasIndexes := tableHasIndexes[id.Cache().ToOID(table.OID.AsId())]
+			_, hasTriggers := triggerTables[table.OID]
+			if !hasTriggers {
+				// Postgres enforces foreign keys with system triggers on both the referencing and
+				// the referenced table, so both report relhastriggers
+				if fkTable, ok := table.Item.(sql.ForeignKeyTable); ok {
+					declared, err := fkTable.GetDeclaredForeignKeys(ctx)
+					if err != nil {
+						return false, err
+					}
+					if len(declared) > 0 {
+						hasTriggers = true
+					} else {
+						referenced, err := fkTable.GetReferencedForeignKeys(ctx)
+						if err != nil {
+							return false, err
+						}
+						hasTriggers = len(referenced) > 0
+					}
+				}
+			}
 			class := &pgClass{
 				oid:             table.OID.AsId(),
 				oidNative:       id.Cache().ToOID(table.OID.AsId()),
 				name:            table.Item.Name(),
 				hasIndexes:      hasIndexes,
+				hasTriggers:     hasTriggers,
 				kind:            "r",
 				schemaOid:       schema.OID.AsId(),
 				schemaOidNative: id.Cache().ToOID(schema.OID.AsId()),
@@ -378,6 +416,7 @@ type pgClass struct {
 	schemaOid       id.Id
 	schemaOidNative uint32
 	hasIndexes      bool
+	hasTriggers     bool
 	kind            string // r = ordinary table, i = index, S = sequence, t = TOAST table, v = view, m = materialized view, c = composite type, f = foreign table, p = partitioned table, I = partitioned index
 	relType         id.Id
 }
@@ -425,39 +464,39 @@ func pgClassToRow(class *pgClass) sql.Row {
 
 	// TODO: Fill in the rest of the pg_class columns
 	return sql.Row{
-		class.oid,        // oid
-		class.name,       // relname
-		class.schemaOid,  // relnamespace
-		class.relType,    // reltype
-		id.Null,          // reloftype
-		id.Null,          // relowner
-		relam,            // relam
-		id.Null,          // relfilenode
-		id.Null,          // reltablespace
-		int32(0),         // relpages
-		float32(0),       // reltuples
-		int32(0),         // relallvisible
-		id.Null,          // reltoastrelid
-		class.hasIndexes, // relhasindex
-		false,            // relisshared
-		"p",              // relpersistence
-		class.kind,       // relkind
-		int16(0),         // relnatts
-		int16(0),         // relchecks
-		false,            // relhasrules
-		false,            // relhastriggers
-		false,            // relhassubclass
-		false,            // relrowsecurity
-		false,            // relforcerowsecurity
-		true,             // relispopulated
-		"d",              // relreplident
-		false,            // relispartition
-		id.Null,          // relrewrite
-		uint32(0),        // relfrozenxid
-		uint32(0),        // relminmxid
-		nil,              // relacl
-		nil,              // reloptions
-		nil,              // relpartbound
+		class.oid,         // oid
+		class.name,        // relname
+		class.schemaOid,   // relnamespace
+		class.relType,     // reltype
+		id.Null,           // reloftype
+		id.Null,           // relowner
+		relam,             // relam
+		id.Null,           // relfilenode
+		id.Null,           // reltablespace
+		int32(0),          // relpages
+		float32(0),        // reltuples
+		int32(0),          // relallvisible
+		id.Null,           // reltoastrelid
+		class.hasIndexes,  // relhasindex
+		false,             // relisshared
+		"p",               // relpersistence
+		class.kind,        // relkind
+		int16(0),          // relnatts
+		int16(0),          // relchecks
+		false,             // relhasrules
+		class.hasTriggers, // relhastriggers
+		false,             // relhassubclass
+		false,             // relrowsecurity
+		false,             // relforcerowsecurity
+		true,              // relispopulated
+		"d",               // relreplident
+		false,             // relispartition
+		id.Null,           // relrewrite
+		uint32(0),         // relfrozenxid
+		uint32(0),         // relminmxid
+		nil,               // relacl
+		nil,               // reloptions
+		nil,               // relpartbound
 	}
 }
 

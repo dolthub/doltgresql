@@ -169,6 +169,7 @@ func Init() {
 	initPgOpclassIsVisible()
 	initPgOperatorIsVisible()
 	initPgOpfamilyIsVisible()
+	initPgPartitionAncestors()
 	initPgPostmasterStartTime()
 	initPgRelationIsPublishable()
 	initPgRelationSize()
