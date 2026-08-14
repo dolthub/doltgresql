@@ -1321,6 +1321,46 @@ func TestDoltDiff(t *testing.T) {
 				},
 			},
 		},
+		{
+			// The commit columns of the dolt_diff() and dolt_log() table functions have GMS types
+			// rather than Doltgres types. IN expressions over them used to fail to resolve their
+			// comparison functions, erroring with "plan is not resolved because of node '*plan.Project'".
+			Name: "IN expressions over table function commit columns",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY, val INT)",
+				"INSERT INTO test VALUES (1, 1)",
+				"SELECT dolt_commit('-Am', 'commit 1')",
+				"INSERT INTO test VALUES (2, 2)",
+				"SELECT dolt_commit('-Am', 'commit 2')",
+				"UPDATE test SET val = 3 WHERE id = 1",
+				"SELECT dolt_commit('-Am', 'commit 3')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The two-point form of dolt_diff() reports the revision strings it was called
+					// with in from_commit/to_commit, so 'HEAD' matches and commit hashes do not
+					Query:    `SELECT to_commit, from_commit, to_id FROM dolt_diff('HEAD~2', 'HEAD', 'test') WHERE to_commit IN ('HEAD', 'WORKING') ORDER BY to_id`,
+					Expected: []sql.Row{{"HEAD", "HEAD~2", 1}, {"HEAD", "HEAD~2", 2}},
+				},
+				{
+					Query:    `SELECT to_id FROM dolt_diff('HEAD~2', 'HEAD', 'test') WHERE to_commit IN (HASHOF('HEAD'), HASHOF('HEAD~1'))`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT to_id FROM dolt_diff('HEAD~2', 'HEAD', 'test') WHERE to_commit NOT IN ('HEAD') ORDER BY to_id`,
+					Expected: []sql.Row{},
+				},
+				{
+					// dolt_log() reports real commit hashes in commit_hash
+					Query:    `SELECT count(*) FROM dolt_log('HEAD') WHERE commit_hash IN (HASHOF('HEAD'), HASHOF('HEAD~1'))`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT count(*) FROM dolt_log('HEAD') WHERE commit_hash IN ('not_a_hash')`,
+					Expected: []sql.Row{{0}},
+				},
+			},
+		},
 	})
 }
 

@@ -116,5 +116,5 @@ func (n *Not) IndexScanOperation() (sql.IndexScanOp, sql.Expression, sql.Express
 		return 0, nil, nil, false
 	}
 
-	return sql.IndexScanOpNotInSet, it.Left(), it.Right(), true
+	return sql.IndexScanOpNotInSet, unwrapIndexScanTarget(it.Left()), it.Right(), true
 }

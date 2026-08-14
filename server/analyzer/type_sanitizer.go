@@ -50,8 +50,20 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			switch n := n.(type) {
 			case *plan.Project, *plan.Filter, *plan.GroupBy:
 				child := n.Children()[0]
-				// Some dolt_ tables do not have doltgres types for their columns, so we convert them here
-				if rt, ok := child.(*plan.ResolvedTable); ok && strings.HasPrefix(rt.Name(), "dolt_") {
+				// Table functions are wrapped in an alias node bearing the function's name
+				if alias, ok := child.(*plan.TableAlias); ok {
+					child = alias.Child
+				}
+				// Some dolt_ tables and table functions do not have doltgres types for their columns,
+				// so we convert them here
+				var name string
+				switch child := child.(type) {
+				case *plan.ResolvedTable:
+					name = child.Name()
+				case sql.TableFunction:
+					name = child.Name()
+				}
+				if strings.HasPrefix(strings.ToLower(name), "dolt_") {
 					// This is a projection on a table, so we can safely convert the type
 					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
 						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
