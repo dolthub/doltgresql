@@ -22,6 +22,18 @@ import (
 	"testing"
 )
 
+// TestDumpTrackers is a debugging tool rather than a unit test: it converts a binary .trackers file (produced by
+// TestRegressionTests) into a human-readable text report, containing overall pass/fail counts, per-file pass rates
+// sorted by failure count, and every failed or partially-successful query along with its expected and received
+// errors. The text form is convenient for grepping and for bulk failure analysis (e.g. categorizing failures by
+// error message to find common root causes).
+//
+// It only runs when the DUMP_TRACKERS environment variable is set, and asserts nothing. Usage:
+//
+//	DUMP_TRACKERS=/path/to/report.txt go test -run TestDumpTrackers
+//
+// By default it reads out/results.trackers (the file the regression run writes); set DUMP_TRACKERS_IN to dump a
+// different trackers file, such as a saved baseline or one downloaded from a CI artifact.
 func TestDumpTrackers(t *testing.T) {
 	outPath, ok := os.LookupEnv("DUMP_TRACKERS")
 	if !ok {
