@@ -469,7 +469,11 @@ func (c *CompiledFunction) Eval(ctx *sql.Context, row sql.Row) (interface{}, err
 
 	args = c.overload.params.coalesceVariadicValues(args)
 
-	// Call the function
+	return c.callFunction(ctx, args)
+}
+
+// callFunction invokes the resolved overload with the given argument values.
+func (c *CompiledFunction) callFunction(ctx *sql.Context, args []any) (interface{}, error) {
 	switch f := c.overload.Function().(type) {
 	case Function0:
 		return f.Callable(ctx)

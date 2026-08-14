@@ -178,7 +178,7 @@ func (c *CreateFunction) Schema(ctx *sql.Context) sql.Schema {
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateFunction) String() string {
 	// TODO: fully implement this
-	return "CREATE FUNCTION"
+	return fmt.Sprintf("CREATE FUNCTION %s", c.FunctionName)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.

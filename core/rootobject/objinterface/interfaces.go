@@ -38,6 +38,8 @@ const (
 	RootObjectID_Conflicts
 	RootObjectID_Procedures
 	RootObjectID_Casts
+	RootObjectID_Operators
+	RootObjectID_Aggregates
 	RootObjectID_Count // This must always be last since it represents the count
 )
 

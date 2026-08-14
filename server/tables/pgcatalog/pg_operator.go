@@ -19,6 +19,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/operators"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,9 +46,20 @@ func (p PgOperatorHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgOperatorHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// pg_operator is currently empty, since built-in operators are not yet cataloged with stable OIDs.
 	// TODO: fill this in from the operator framework's built-in operators
-	return emptyRowIter()
+	operatorCollection, err := core.GetOperatorsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	var ops []operators.Operator
+	err = operatorCollection.IterateOperators(ctx, func(o operators.Operator) (stop bool, err error) {
+		ops = append(ops, o)
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pgOperatorRowIter{ops: ops}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -77,13 +91,44 @@ var pgOperatorSchema = sql.Schema{
 
 // pgOperatorRowIter is the sql.RowIter for the pg_operator table.
 type pgOperatorRowIter struct {
+	ops []operators.Operator
+	idx int
 }
 
 var _ sql.RowIter = (*pgOperatorRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgOperatorRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.ops) {
+		return nil, io.EOF
+	}
+	op := iter.ops[iter.idx]
+	iter.idx++
+	commutator := id.Null
+	if len(op.Commutator) > 0 {
+		commutator = id.NewOperator(op.ID.SchemaName(), op.Commutator, op.ID.RightType(), op.ID.LeftType()).AsId()
+	}
+	negator := id.Null
+	if len(op.Negator) > 0 {
+		negator = id.NewOperator(op.ID.SchemaName(), op.Negator, op.ID.LeftType(), op.ID.RightType()).AsId()
+	}
+	return sql.Row{
+		op.ID.AsId(),   // oid
+		op.ID.Symbol(), // oprname
+		id.NewNamespace(op.ID.SchemaName()).AsId(), // oprnamespace
+		id.Null,                  // oprowner
+		"b",                      // oprkind
+		op.Merges,                // oprcanmerge
+		op.Hashes,                // oprcanhash
+		op.ID.LeftType().AsId(),  // oprleft
+		op.ID.RightType().AsId(), // oprright
+		op.ReturnType.AsId(),     // oprresult
+		commutator,               // oprcom
+		negator,                  // oprnegate
+		op.Function.AsId(),       // oprcode
+		id.Null,                  // oprrest
+		id.Null,                  // oprjoin
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

@@ -526,6 +526,12 @@ func (*CreateMaterializedView) StatementType() StatementType { return DDL }
 func (*CreateMaterializedView) StatementTag() string { return "CREATE MATERIALIZED VIEW" }
 
 // StatementType implements the Statement interface.
+func (*CreateOperator) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateOperator) StatementTag() string { return "CREATE OPERATOR" }
+
+// StatementType implements the Statement interface.
 func (*CreateProcedure) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -669,6 +675,12 @@ func (*DropLanguage) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*DropLanguage) StatementTag() string { return "DROP LANGUAGE" }
+
+// StatementType implements the Statement interface.
+func (*DropOperator) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropOperator) StatementTag() string { return "DROP OPERATOR" }
 
 // StatementType implements the Statement interface.
 func (*DropProcedure) StatementType() StatementType { return DDL }
@@ -1238,6 +1250,7 @@ func (n *CreateFunction) String() string            { return AsString(n) }
 func (n *CreateIndex) String() string               { return AsString(n) }
 func (n *CreateLanguage) String() string            { return AsString(n) }
 func (n *CreateMaterializedView) String() string    { return AsString(n) }
+func (n *CreateOperator) String() string            { return AsString(n) }
 func (n *CreateProcedure) String() string           { return AsString(n) }
 func (n *CreateRole) String() string                { return AsString(n) }
 func (n *CreateTable) String() string               { return AsString(n) }
@@ -1257,6 +1270,7 @@ func (n *DropExtension) String() string             { return AsString(n) }
 func (n *DropFunction) String() string              { return AsString(n) }
 func (n *DropIndex) String() string                 { return AsString(n) }
 func (n *DropLanguage) String() string              { return AsString(n) }
+func (n *DropOperator) String() string              { return AsString(n) }
 func (n *DropProcedure) String() string             { return AsString(n) }
 func (n *DropSchema) String() string                { return AsString(n) }
 func (n *DropTable) String() string                 { return AsString(n) }

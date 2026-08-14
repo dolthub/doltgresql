@@ -288,38 +288,6 @@ func (pgf *Collection) reloadCaches(ctx context.Context) error {
 	})
 }
 
-// tableNameToID returns the ID that was encoded via the Name() call, as the returned TableName contains additional
-// information (which this is able to process).
-func (pgf *Collection) tableNameToID(schemaName string, formattedName string) id.Function {
-	leftParenIndex := strings.IndexByte(formattedName, '(')
-	if leftParenIndex == -1 {
-		return id.NullFunction
-	}
-	if formattedName[len(formattedName)-1] != ')' {
-		return id.NullFunction
-	}
-	functionName := strings.TrimSpace(formattedName[:leftParenIndex])
-	var typeIDs []id.Type
-	typePortion := strings.TrimSpace(formattedName[leftParenIndex+1 : len(formattedName)-1])
-	if len(typePortion) > 0 {
-		// If the type portion is just an empty string, then we don't want any type IDs
-		typeStrings := strings.Split(strings.TrimSpace(formattedName[leftParenIndex+1:len(formattedName)-1]), ",")
-		typeIDs = make([]id.Type, len(typeStrings))
-		for i, typeString := range typeStrings {
-			typeParts := strings.Split(typeString, ".")
-			switch len(typeParts) {
-			case 1:
-				typeIDs[i] = id.NewType("", strings.TrimSpace(typeParts[0]))
-			case 2:
-				typeIDs[i] = id.NewType(strings.TrimSpace(typeParts[0]), strings.TrimSpace(typeParts[1]))
-			default:
-				return id.NullFunction
-			}
-		}
-	}
-	return id.NewFunction(schemaName, functionName, typeIDs...)
-}
-
 // GetID implements the interface objinterface.RootObject.
 func (function Function) GetID() id.Id {
 	return function.ID.AsId()
@@ -370,6 +338,38 @@ func (function Function) HashOf(ctx context.Context) (hash.Hash, error) {
 // Name implements the interface objinterface.RootObject.
 func (function Function) Name() doltdb.TableName {
 	return FunctionIDToTableName(function.ID)
+}
+
+// TableNameToFunctionID returns the ID that was encoded via the Name() call, as the returned TableName contains
+// additional information (which this is able to process).
+func TableNameToFunctionID(schemaName string, formattedName string) id.Function {
+	leftParenIndex := strings.IndexByte(formattedName, '(')
+	if leftParenIndex == -1 {
+		return id.NullFunction
+	}
+	if formattedName[len(formattedName)-1] != ')' {
+		return id.NullFunction
+	}
+	functionName := strings.TrimSpace(formattedName[:leftParenIndex])
+	var typeIDs []id.Type
+	typePortion := strings.TrimSpace(formattedName[leftParenIndex+1 : len(formattedName)-1])
+	if len(typePortion) > 0 {
+		// If the type portion is just an empty string, then we don't want any type IDs
+		typeStrings := strings.Split(strings.TrimSpace(formattedName[leftParenIndex+1:len(formattedName)-1]), ",")
+		typeIDs = make([]id.Type, len(typeStrings))
+		for i, typeString := range typeStrings {
+			typeParts := strings.Split(typeString, ".")
+			switch len(typeParts) {
+			case 1:
+				typeIDs[i] = id.NewType("", strings.TrimSpace(typeParts[0]))
+			case 2:
+				typeIDs[i] = id.NewType(strings.TrimSpace(typeParts[0]), strings.TrimSpace(typeParts[1]))
+			default:
+				return id.NullFunction
+			}
+		}
+	}
+	return id.NewFunction(schemaName, functionName, typeIDs...)
 }
 
 // FunctionIDToTableName returns the ID in a format that's better for user consumption.

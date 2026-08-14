@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 
+	"github.com/dolthub/doltgresql/core"
 	pgexpression "github.com/dolthub/doltgresql/server/expression"
 )
 
@@ -157,23 +158,37 @@ var postgresOnlyWindowFuncNames = map[string]bool{
 }
 
 // IsAggregateFunc checks if the given function name is an aggregate function. This is the entire set supported by
-// MySQL plus some postgres specific ones.
+// MySQL plus some postgres specific ones, along with every user-defined aggregate.
 func IsAggregateFunc(ctx *sql.Context, name string) (bool, error) {
 	isAggregate, err := planbuilder.IsMySQLAggregateFuncName(ctx, name)
 	if err != nil {
 		return false, err
 	}
-	return isAggregate || postgresOnlyAggregateFuncNames[name], nil
+	if isAggregate || postgresOnlyAggregateFuncNames[name] {
+		return true, nil
+	}
+	collection, err := core.GetAggregatesCollectionFromContext(ctx, "")
+	if err != nil {
+		return false, err
+	}
+	return collection.HasAggregateName(ctx, name)
 }
 
 // IsWindowFunc checks if the given function name is a window function. This is the entire set supported by
-// MySQL plus some postgres specific ones.
+// MySQL plus some postgres specific ones, along with every user-defined aggregate.
 func IsWindowFunc(ctx *sql.Context, name string) (bool, error) {
 	isWindow, err := planbuilder.IsMySQLWindowFuncName(ctx, name)
 	if err != nil {
 		return false, err
 	}
-	return isWindow || postgresOnlyAggregateFuncNames[name] || postgresOnlyWindowFuncNames[name], nil
+	if isWindow || postgresOnlyAggregateFuncNames[name] || postgresOnlyWindowFuncNames[name] {
+		return true, nil
+	}
+	collection, err := core.GetAggregatesCollectionFromContext(ctx, "")
+	if err != nil {
+		return false, err
+	}
+	return collection.HasAggregateName(ctx, name)
 }
 
 // insertAnalyzerRules inserts the given rule(s) before or after the given analyzer.RuleId, returning an updated slice.

@@ -439,3 +439,27 @@ func (q *QuickFunction3) WithChildren(ctx *sql.Context, children ...sql.Expressi
 
 // specificFuncImpl implements the interface sql.Expression.
 func (*QuickFunction3) specificFuncImpl() {}
+
+// quickUserFunction adapts a user-defined function to the QuickFunction interface.
+type quickUserFunction struct {
+	call *UserFunctionCall
+}
+
+var _ pgtypes.QuickFunction = (*quickUserFunction)(nil)
+
+// CallVariadic implements the interface pgtypes.QuickFunction.
+func (q *quickUserFunction) CallVariadic(ctx *sql.Context, args ...any) (interface{}, error) {
+	return q.call.Call(ctx, args...)
+}
+
+// ResolvedTypes implements the interface pgtypes.QuickFunction.
+func (q *quickUserFunction) ResolvedTypes() []*pgtypes.DoltgresType {
+	return q.call.compiled.callResolved
+}
+
+// WithResolvedTypes implements the interface pgtypes.QuickFunction.
+func (q *quickUserFunction) WithResolvedTypes(newTypes []*pgtypes.DoltgresType) any {
+	newCompiled := *q.call.compiled
+	newCompiled.callResolved = newTypes
+	return &quickUserFunction{call: &UserFunctionCall{compiled: &newCompiled, strict: q.call.strict}}
+}

@@ -87,22 +87,33 @@ func (r RootStorage) SetCollation(ctx context.Context, collation schema.Collatio
 	return ret, nil
 }
 
-// SetRootObjectHash sets the hash of the root object collection read by the given accessor, returning a new storage
-// object. Roots written before a root object existed have no field for it, so the root value is rebuilt first.
-func (r RootStorage) SetRootObjectHash(ctx context.Context, bytes func(*serial.RootValue) []byte, h hash.Hash) (RootStorage, error) {
+// SetRootObjectHash sets the hash of the root object collection handled by the given serialization, returning a new
+// storage object.
+func (r RootStorage) SetRootObjectHash(ctx context.Context, serialization RootObjectSerialization, h hash.Hash) (RootStorage, error) {
 	ret := r.Clone()
-	if len(bytes(ret.SRV)) == 0 {
-		dbSchemas, err := r.GetSchemas(ctx)
-		if err != nil {
-			return RootStorage{}, err
+	fieldBytes := serialization.Bytes(ret.SRV)
+	if len(fieldBytes) == hash.ByteLen {
+		copy(fieldBytes, h[:])
+		if !h.IsEmpty() {
+			return ret, nil
 		}
-		msg, err := r.serializeRootValue(r.SRV.TablesBytes(), dbSchemas)
-		if err != nil {
-			return RootStorage{}, err
-		}
-		ret = RootStorage{msg}
+	} else if h.IsEmpty() {
+		return ret, nil
 	}
-	copy(bytes(ret.SRV), h[:])
+	dbSchemas, err := ret.GetSchemas(ctx)
+	if err != nil {
+		return RootStorage{}, err
+	}
+	var newRootObjAdd func(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT)
+	if !h.IsEmpty() {
+		newRootObjAdd = serialization.RootValueAdd
+	}
+	msg, err := ret.serializeRootValue(ret.SRV.TablesBytes(), dbSchemas, newRootObjAdd)
+	if err != nil {
+		return RootStorage{}, err
+	}
+	ret = RootStorage{msg}
+	copy(serialization.Bytes(ret.SRV), h[:])
 	return ret, nil
 }
 
@@ -127,7 +138,7 @@ func (r RootStorage) GetSchemas(ctx context.Context) ([]schema.DatabaseSchema, e
 
 // SetSchemas sets the given schemas and returns a new storage object.
 func (r RootStorage) SetSchemas(ctx context.Context, dbSchemas []schema.DatabaseSchema) (RootStorage, error) {
-	msg, err := r.serializeRootValue(r.SRV.TablesBytes(), dbSchemas)
+	msg, err := r.serializeRootValue(r.SRV.TablesBytes(), dbSchemas, nil)
 	if err != nil {
 		return RootStorage{}, err
 	}
@@ -259,7 +270,7 @@ func (r RootStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWrite
 		return RootStorage{}, err
 	}
 
-	msg, err := r.serializeRootValue(ambytes, dbSchemas)
+	msg, err := r.serializeRootValue(ambytes, dbSchemas, nil)
 	if err != nil {
 		return RootStorage{}, err
 	}
@@ -267,19 +278,22 @@ func (r RootStorage) EditTablesMap(ctx context.Context, vrw types.ValueReadWrite
 }
 
 // serializeRootValue serializes a new serial.RootValue object.
-func (r RootStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []schema.DatabaseSchema) (*serial.RootValue, error) {
+func (r RootStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []schema.DatabaseSchema, newRootObjAdd func(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT)) (*serial.RootValue, error) {
 	builder := flatbuffers.NewBuilder(80)
 	tablesOffset := builder.CreateByteVector(addressMapBytes)
 	schemasOffset := serializeDatabaseSchemas(builder, dbSchemas)
 	fkOffset := builder.CreateByteVector(r.SRV.ForeignKeyAddrBytes())
 	rootObjOffsets := make([]flatbuffers.UOffsetT, len(RootObjectSerializations))
 	for i := range RootObjectSerializations {
-		rootObjOffset := RootObjectSerializations[i].Bytes(r.SRV)
-		if len(rootObjOffset) == 0 {
-			h := hash.Hash{}
-			rootObjOffset = h[:]
+		fieldBytes := RootObjectSerializations[i].Bytes(r.SRV)
+		if len(fieldBytes) != hash.ByteLen || hash.New(fieldBytes).IsEmpty() {
+			continue
 		}
-		rootObjOffsets[i] = builder.CreateByteVector(rootObjOffset)
+		rootObjOffsets[i] = builder.CreateByteVector(fieldBytes)
+	}
+	var newRootObjOffset flatbuffers.UOffsetT
+	if newRootObjAdd != nil {
+		newRootObjOffset = builder.CreateByteVector(make([]byte, hash.ByteLen))
 	}
 
 	serial.RootValueStart(builder)
@@ -288,7 +302,12 @@ func (r RootStorage) serializeRootValue(addressMapBytes []byte, dbSchemas []sche
 	serial.RootValueAddTables(builder, tablesOffset)
 	serial.RootValueAddForeignKeyAddr(builder, fkOffset)
 	for i := range RootObjectSerializations {
-		RootObjectSerializations[i].RootValueAdd(builder, rootObjOffsets[i])
+		if rootObjOffsets[i] > 0 {
+			RootObjectSerializations[i].RootValueAdd(builder, rootObjOffsets[i])
+		}
+	}
+	if newRootObjAdd != nil {
+		newRootObjAdd(builder, newRootObjOffset)
 	}
 	if schemasOffset > 0 {
 		serial.RootValueAddSchemas(builder, schemasOffset)

@@ -291,7 +291,7 @@ func (pgf *Collection) ResolveName(ctx context.Context, name doltdb.TableName) (
 
 // TableNameToID implements the interface objinterface.Collection.
 func (pgf *Collection) TableNameToID(name doltdb.TableName) id.Id {
-	return pgf.tableNameToID(name.Schema, name.Name).AsId()
+	return TableNameToFunctionID(name.Schema, name.Name).AsId()
 }
 
 // UpdateField implements the interface objinterface.Collection.

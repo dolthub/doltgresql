@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -152,7 +153,7 @@ func (c *CreateProcedure) Schema(ctx *sql.Context) sql.Schema {
 
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateProcedure) String() string {
-	return "CREATE PROCEDURE"
+	return fmt.Sprintf("CREATE PROCEDURE %s", c.ProcedureName)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.

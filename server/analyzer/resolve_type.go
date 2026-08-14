@@ -65,6 +65,26 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				col.Type = dt
 			}
 			return node, same, nil
+		case *pgnodes.CreateAggregate:
+			if !n.SType.IsResolvedType() {
+				sType, err := resolveType(ctx, db, n.SType)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				n.SType = sType
+			}
+			for i, argType := range n.ArgTypes {
+				if !argType.IsResolvedType() {
+					dt, err := resolveType(ctx, db, argType)
+					if err != nil {
+						return nil, transform.NewTree, err
+					}
+					same = transform.NewTree
+					n.ArgTypes[i] = dt
+				}
+			}
+			return node, same, nil
 		case *pgnodes.CreateCast:
 			if !n.Source.IsResolvedType() {
 				source, err := resolveType(ctx, db, n.Source)
@@ -111,6 +131,24 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 					same = transform.NewTree
 					n.Parameters[i].Type = paramType
 				}
+			}
+			return node, same, nil
+		case *pgnodes.CreateOperator:
+			if n.Left != nil && !n.Left.IsResolvedType() {
+				left, err := resolveType(ctx, db, n.Left)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				n.Left = left
+			}
+			if !n.Right.IsResolvedType() {
+				right, err := resolveType(ctx, db, n.Right)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				n.Right = right
 			}
 			return node, same, nil
 		case *pgnodes.CreateProcedure:
@@ -161,6 +199,20 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				}
 			}
 			return node, same, nil
+		case *pgnodes.DropAggregate:
+			for _, agg := range n.Aggregates {
+				for i, argType := range agg.ArgTypes {
+					if !argType.IsResolvedType() {
+						dt, err := resolveType(ctx, db, argType)
+						if err != nil {
+							return nil, transform.NewTree, err
+						}
+						same = transform.NewTree
+						agg.ArgTypes[i] = dt
+					}
+				}
+			}
+			return node, same, nil
 		case *pgnodes.DropCast:
 			if !n.Source.IsResolvedType() {
 				source, err := resolveType(ctx, db, n.Source)
@@ -191,6 +243,26 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 						same = transform.NewTree
 						r.Args[j].Type = dt
 					}
+				}
+			}
+			return node, same, nil
+		case *pgnodes.DropOperator:
+			for _, op := range n.Operators {
+				if op.Left != nil && !op.Left.IsResolvedType() {
+					left, err := resolveType(ctx, db, op.Left)
+					if err != nil {
+						return nil, transform.NewTree, err
+					}
+					same = transform.NewTree
+					op.Left = left
+				}
+				if !op.Right.IsResolvedType() {
+					right, err := resolveType(ctx, db, op.Right)
+					if err != nil {
+						return nil, transform.NewTree, err
+					}
+					same = transform.NewTree
+					op.Right = right
 				}
 			}
 			return node, same, nil

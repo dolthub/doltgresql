@@ -29,11 +29,11 @@ var implementations = map[string]map[string]extdef.Function{}
 
 // Init adds every emulated extension to the registry, making them installable through CREATE EXTENSION.
 func Init() {
-	register(uuid_ossp.Extension())
+	Register(uuid_ossp.Extension())
 }
 
-// register adds the given extension to the registry.
-func register(ext *extdef.Extension) {
+// Register adds the given extension to the registry.
+func Register(ext *extdef.Extension) {
 	if _, ok := registry[ext.Name]; ok {
 		panic(errors.Errorf(`extension "%s" has already been registered`, ext.Name))
 	}

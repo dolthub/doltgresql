@@ -681,6 +681,18 @@ func (u *sqlSymUnion) createAggOptions() []tree.CreateAggOption {
 func (u *sqlSymUnion) aggregatesToDrop() []tree.AggregateToDrop {
     return u.val.([]tree.AggregateToDrop)
 }
+func (u *sqlSymUnion) createOperatorOption() tree.CreateOperatorOption {
+    return u.val.(tree.CreateOperatorOption)
+}
+func (u *sqlSymUnion) createOperatorOptions() []tree.CreateOperatorOption {
+    return u.val.([]tree.CreateOperatorOption)
+}
+func (u *sqlSymUnion) operatorToDrop() tree.OperatorToDrop {
+    return u.val.(tree.OperatorToDrop)
+}
+func (u *sqlSymUnion) operatorsToDrop() []tree.OperatorToDrop {
+    return u.val.([]tree.OperatorToDrop)
+}
 func (u *sqlSymUnion) vacuumOptions() tree.VacuumOptions {
     return u.val.(tree.VacuumOptions)
 }
@@ -705,6 +717,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> TYPECAST TYPEANNOTATE DOT_DOT
 %token <str> LESS_EQUALS GREATER_EQUALS NOT_EQUALS
 %token <str> NOT_REGMATCH REGIMATCH NOT_REGIMATCH
+%token <str> L1_DISTANCE L2_DISTANCE COSINE_DISTANCE NEG_INNER_PRODUCT JACCARD_DISTANCE HAMMING_DISTANCE
 %token <str> TEXTSEARCHMATCH
 %token <str> ERROR
 
@@ -726,7 +739,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> CHANGEFEED BPCHAR CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
 %token <str> CLUSTER COALESCE COLLATABLE COLLATE COLLATION COLLATION_VERSION COLUMN COLUMNS COMBINEFUNC COMMENT COMMENTS
 %token <str> BLOCK_COMMENT HINT
-%token <str> COMMIT COMMITTED COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
+%token <str> COMMIT COMMITTED COMMUTATOR COMPACT COMPLETE COMPRESSION CONCAT CONCURRENTLY CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONNECT CONNECTION CONSTRAINT CONSTRAINTS CONTAINS CONTROLCHANGEFEED
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COST CREATE CREATEDB CREATELOGIN CREATEROLE
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
@@ -751,7 +764,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
 %token <str> GLOBAL GRANT GRANTED GRANTS GREATEST GROUP GROUPING GROUPS
 
-%token <str> HANDLER HASH HAVING HIGH HISTOGRAM HOUR HYPOTHETICAL
+%token <str> HANDLER HASH HASHES HAVING HIGH HISTOGRAM HOUR HYPOTHETICAL
 
 %token <str> ICU_LOCALE ICU_RULES IDENTITY
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMPLICIT IMMUTABLE IMPORT
@@ -765,16 +778,16 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> KEY KEYS KMS KV
 
 %token <str> LANGUAGE LARGE LAST LATERAL LATEST LC_CTYPE LC_COLLATE
-%token <str> LEADING LEAKPROOF LEASE LEAST LEFT LESS LEVEL LIKE LIMIT
+%token <str> LEADING LEAKPROOF LEASE LEAST LEFT LEFTARG LESS LEVEL LIKE LIMIT
 %token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM LIST
 %token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGGED LOGIN LOOKUP LOW LSHIFT
 
-%token <str> MAIN MATCH MATERIALIZED MAXVALUE MERGE METHOD MFINALFUNC MFINALFUNC_EXTRA MFINALFUNC_MODIFY
+%token <str> MAIN MATCH MATERIALIZED MAXVALUE MERGE MERGES METHOD MFINALFUNC MFINALFUNC_EXTRA MFINALFUNC_MODIFY
 %token <str> MINITCOND MINUTE MINVALUE MINVFUNC MODIFYCLUSTERSETTING MODULUS MONTH MSFUNC MSPACE MSSPACE MSTYPE
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM MULTIPOINT MULTIPOINTM
 %token <str> MULTIPOINTZ MULTIPOINTZM MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM MULTIRANGE_TYPE_NAME
 
-%token <str> NAN NAME NAMES NATURAL NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
+%token <str> NAN NAME NAMES NATURAL NEGATOR NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
 %token <str> NOBYPASSRLS NOCREATEDB NOCREATELOGIN NOCREATEROLE NOINHERIT NOLOGIN NOMODIFYCLUSTERSETTING NOREPLICATION NOSUPERUSER NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOVIEWACTIVITY NOWAIT NULL NULLIF NULLS NUMERIC YES
 
@@ -791,7 +804,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> RANGE RANGES READ READ_ONLY READ_WRITE REAL RECEIVE RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
 %token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA REPLICATION RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
-%token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT
+%token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT RIGHTARG
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
 %token <str> SAFE SAVEPOINT SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY
@@ -946,6 +959,9 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> create_aggregate_args_only_stmt
 %type <tree.Statement> create_aggregate_order_by_args_stmt
 %type <tree.Statement> create_aggregate_old_syntax_stmt
+
+%type <tree.Statement> create_operator_stmt
+%type <tree.Statement> drop_operator_stmt
 
 %type <tree.Statement> create_stats_stmt
 %type <*tree.CreateStatsOptions> opt_create_stats_options
@@ -1110,6 +1126,10 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.CreateAggOption> create_agg_args_only_option create_agg_order_by_args_option
 %type <tree.CreateAggOption> create_agg_old_syntax_option create_agg_common_option create_agg_parallel_option
 %type <[]tree.CreateAggOption> create_agg_args_only_option_list create_agg_order_by_args_option_list create_agg_old_syntax_option_list
+%type <tree.CreateOperatorOption> create_operator_option
+%type <[]tree.CreateOperatorOption> create_operator_option_list
+%type <tree.OperatorToDrop> operator_to_drop
+%type <[]tree.OperatorToDrop> drop_operators
 %type <[]tree.AggregateToDrop> drop_aggregates
 %type <tree.CreateCastScope> create_cast_scope_opt
 
@@ -1441,6 +1461,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %nonassoc  UNBOUNDED         // ideally should have same precedence as IDENT
 %nonassoc  IDENT NULL PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
 %left      CONCAT FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH REMOVE_PATH  // multi-character ops
+%left      L1_DISTANCE L2_DISTANCE COSINE_DISTANCE NEG_INNER_PRODUCT JACCARD_DISTANCE HAMMING_DISTANCE
 %left      '|'
 %left      '#'
 %left      '&'
@@ -4060,6 +4081,7 @@ create_stmt:
 | create_language_stmt  // EXTEND WITH HELP: CREATE LANGUAGE
 | create_aggregate_stmt // EXTEND WITH HELP: CREATE AGGREGATE
 | create_cast_stmt      // EXTEND WITH HELP: CREATE CAST
+| create_operator_stmt  // EXTEND WITH HELP: CREATE OPERATOR
 | create_unsupported   {}
 | CREATE error         // SHOW HELP: CREATE
 
@@ -4067,7 +4089,8 @@ create_unsupported:
   CREATE CONVERSION error { return unimplemented(sqllex, "create conversion") }
 | CREATE DEFAULT CONVERSION error { return unimplemented(sqllex, "create def conv") }
 | CREATE FOREIGN TABLE error { return unimplemented(sqllex, "create foreign table") }
-| CREATE OPERATOR error { return unimplemented(sqllex, "create operator") }
+| CREATE OPERATOR CLASS error { return unimplemented(sqllex, "create operator class") }
+| CREATE OPERATOR FAMILY error { return unimplemented(sqllex, "create operator family") }
 | CREATE PUBLICATION error { return unimplemented(sqllex, "create publication") }
 | CREATE opt_or_replace RULE error { return unimplemented(sqllex, "create rule") }
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
@@ -4189,6 +4212,49 @@ create_agg_parallel_option:
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeParallel, Parallel: tree.ParallelRestricted} }
 | PARALLEL '=' UNSAFE
   { $$.val = tree.CreateAggOption{Option: tree.AggOptTypeParallel, Parallel: tree.ParallelSafe} }
+
+// %Help: CREATE OPERATOR - define a new operator
+// %Category: DDL
+// %Text: CREATE OPERATOR name (
+//          {FUNCTION|PROCEDURE} = function_name
+//          [, LEFTARG = left_type ] [, RIGHTARG = right_type ]
+//          [, COMMUTATOR = com_op ] [, NEGATOR = neg_op ]
+//          [, RESTRICT = res_proc ] [, JOIN = join_proc ]
+//          [, HASHES ] [, MERGES ]
+//        )
+// %SeeAlso: WEBDOCS/sql-createoperator.html
+create_operator_stmt:
+  CREATE OPERATOR operator '(' create_operator_option_list ')'
+  { $$.val = &tree.CreateOperator{Name: $3.op(), Options: $5.createOperatorOptions()} }
+| CREATE OPERATOR error // SHOW HELP: CREATE OPERATOR
+
+create_operator_option_list:
+  create_operator_option
+  { $$.val = []tree.CreateOperatorOption{$1.createOperatorOption()} }
+| create_operator_option_list ',' create_operator_option
+  { $$.val = append($1.createOperatorOptions(), $3.createOperatorOption()) }
+
+create_operator_option:
+  FUNCTION '=' routine_name
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeFunction, FuncName: $3.unresolvedObjectName()} }
+| PROCEDURE '=' routine_name
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeFunction, FuncName: $3.unresolvedObjectName()} }
+| LEFTARG '=' type_name
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeLeftArg, TypeVal: $3.typeReference()} }
+| RIGHTARG '=' type_name
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeRightArg, TypeVal: $3.typeReference()} }
+| COMMUTATOR '=' operator
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeCommutator, OpVal: $3.op()} }
+| NEGATOR '=' operator
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeNegator, OpVal: $3.op()} }
+| RESTRICT '=' routine_name
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeRestrict, FuncName: $3.unresolvedObjectName()} }
+| JOIN '=' routine_name
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeJoin, FuncName: $3.unresolvedObjectName()} }
+| HASHES
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeHashes} }
+| MERGES
+  { $$.val = tree.CreateOperatorOption{Option: tree.OperatorOptTypeMerges} }
 
 // %Help: CREATE CAST - define a new cast
 // %Category: DDL
@@ -4742,7 +4808,8 @@ drop_unsupported:
 | DROP CONVERSION error { return unimplemented(sqllex, "drop conversion") }
 | DROP FOREIGN TABLE error { return unimplemented(sqllex, "drop foreign table") }
 | DROP FOREIGN DATA error { return unimplemented(sqllex, "drop fdw") }
-| DROP OPERATOR error { return unimplemented(sqllex, "drop operator") }
+| DROP OPERATOR CLASS error { return unimplemented(sqllex, "drop operator class") }
+| DROP OPERATOR FAMILY error { return unimplemented(sqllex, "drop operator family") }
 | DROP PUBLICATION error { return unimplemented(sqllex, "drop publication") }
 | DROP RULE error { return unimplemented(sqllex, "drop rule") }
 | DROP SERVER error { return unimplemented(sqllex, "drop server") }
@@ -4767,6 +4834,37 @@ drop_aggregates:
 | drop_aggregates ',' aggregate_name '(' aggregate_signature ')'
   {
     $$.val = append($1.aggregatesToDrop(), tree.AggregateToDrop{Name: $3.unresolvedObjectName(), AggSig: $5.aggregateSignature()})
+  }
+
+// %Help: DROP OPERATOR - remove an operator
+// %Category: DDL
+// %Text: DROP OPERATOR [ IF EXISTS ] name ( { left_type | NONE } , right_type ) [, ...] [ CASCADE | RESTRICT ]
+// %SeeAlso: WEBDOCS/sql-dropoperator.html
+drop_operator_stmt:
+  DROP OPERATOR drop_operators opt_drop_behavior
+  {
+    $$.val = &tree.DropOperator{Operators: $3.operatorsToDrop(), DropBehavior: $4.dropBehavior()}
+  }
+| DROP OPERATOR IF EXISTS drop_operators opt_drop_behavior
+  {
+    $$.val = &tree.DropOperator{Operators: $5.operatorsToDrop(), IfExists: true, DropBehavior: $6.dropBehavior()}
+  }
+| DROP OPERATOR error // SHOW HELP: DROP OPERATOR
+
+drop_operators:
+  operator_to_drop
+  {
+    $$.val = []tree.OperatorToDrop{$1.operatorToDrop()}
+  }
+| drop_operators ',' operator_to_drop
+  {
+    $$.val = append($1.operatorsToDrop(), $3.operatorToDrop())
+  }
+
+operator_to_drop:
+  operator '(' typename ',' typename ')'
+  {
+    $$.val = tree.OperatorToDrop{Op: $1.op(), Left: tree.OperatorArgType($3.typeReference()), Right: tree.OperatorArgType($5.typeReference())}
   }
 
 drop_domain_stmt:
@@ -5047,6 +5145,7 @@ drop_stmt:
 | drop_extension_stmt // EXTEND WITH HELP: DROP EXTENSION
 | drop_language_stmt  // EXTEND WITH HELP: DROP LANGUAGE
 | drop_aggregate_stmt // EXTEND WITH HELP: DROP AGGREGATE
+| drop_operator_stmt  // EXTEND WITH HELP: DROP OPERATOR
 | drop_unsupported   {}
 | DROP error         // SHOW HELP: DROP
 
@@ -12625,6 +12724,30 @@ a_expr:
   {
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction("json_remove_path"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
   }
+| a_expr L2_DISTANCE a_expr
+  {
+    $$.val = &tree.BinaryExpr{Operator: tree.L2Distance, Left: $1.expr(), Right: $3.expr()}
+  }
+| a_expr L1_DISTANCE a_expr
+  {
+    $$.val = &tree.BinaryExpr{Operator: tree.L1Distance, Left: $1.expr(), Right: $3.expr()}
+  }
+| a_expr COSINE_DISTANCE a_expr
+  {
+    $$.val = &tree.BinaryExpr{Operator: tree.CosineDistance, Left: $1.expr(), Right: $3.expr()}
+  }
+| a_expr NEG_INNER_PRODUCT a_expr
+  {
+    $$.val = &tree.BinaryExpr{Operator: tree.NegInnerProduct, Left: $1.expr(), Right: $3.expr()}
+  }
+| a_expr JACCARD_DISTANCE a_expr
+  {
+    $$.val = &tree.BinaryExpr{Operator: tree.JaccardDistance, Left: $1.expr(), Right: $3.expr()}
+  }
+| a_expr HAMMING_DISTANCE a_expr
+  {
+    $$.val = &tree.BinaryExpr{Operator: tree.HammingDistance, Left: $1.expr(), Right: $3.expr()}
+  }
 | a_expr INET_CONTAINED_BY_OR_EQUALS a_expr
   {
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction("inet_contained_by_or_equals"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
@@ -13878,6 +14001,12 @@ operator:
 | FETCHTEXT_PATH { $$.val = tree.JSONFetchTextPath }
 | AND_AND { $$.val = tree.Overlaps }
 | TEXTSEARCHMATCH { $$.val = tree.TextSearchMatch }
+| L2_DISTANCE { $$.val = tree.L2Distance }
+| L1_DISTANCE { $$.val = tree.L1Distance }
+| COSINE_DISTANCE { $$.val = tree.CosineDistance }
+| NEG_INNER_PRODUCT { $$.val = tree.NegInnerProduct }
+| JACCARD_DISTANCE { $$.val = tree.JaccardDistance }
+| HAMMING_DISTANCE { $$.val = tree.HammingDistance }
 
 math_op:
   '+' { $$.val = tree.Plus  }
@@ -14863,6 +14992,7 @@ unreserved_keyword:
 | COMMENTS
 | COMMIT
 | COMMITTED
+| COMMUTATOR
 | COMPACT
 | COMPLETE
 | COMPRESSION
@@ -14960,6 +15090,7 @@ unreserved_keyword:
 | GROUPS
 | HANDLER
 | HASH
+| HASHES
 | HEADER
 | HIGH
 | HISTOGRAM
@@ -15009,6 +15140,7 @@ unreserved_keyword:
 | LC_CTYPE
 | LEAKPROOF
 | LEASE
+| LEFTARG
 | LESS
 | LEVEL
 | LINESTRING
@@ -15026,6 +15158,7 @@ unreserved_keyword:
 | MATERIALIZED
 | MAXVALUE
 | MERGE
+| MERGES
 | METHOD
 | MFINALFUNC
 | MFINALFUNC_EXTRA
@@ -15057,6 +15190,7 @@ unreserved_keyword:
 | NAME
 | NAMES
 | NAN
+| NEGATOR
 | NEVER
 | NEW
 | NEXT
@@ -15162,6 +15296,7 @@ unreserved_keyword:
 | RETURNS
 | REVISION_HISTORY
 | REVOKE
+| RIGHTARG
 | ROLE
 | ROLES
 | ROLLBACK
