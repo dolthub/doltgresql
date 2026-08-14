@@ -823,6 +823,29 @@ func TestFunctionsMath(t *testing.T) {
 func TestFunctionsOID(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "oid comparisons",
+			SetUpScript: []string{
+				`CREATE TABLE testing (pk INT primary key, v1 INT);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// A raw OID of 0 given by a client and an internal null OID are the same value
+					Query:    `SELECT 0::oid = 0, 0::oid <> 0, 0::oid < 1::oid, 845743985::oid = 845743985::oid, 845743985::oid = 845743986::oid;`,
+					Expected: []sql.Row{{"t", "f", "t", "t", "f"}},
+				},
+				{
+					// conparentid is a null OID internally, and clients compare it against a raw 0
+					Query:    `SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 'testing'::regclass AND conparentid = 0;`,
+					Expected: []sql.Row{{"testing_pkey"}},
+				},
+				{
+					// A relation's cached OID and the same OID given as a numeric literal are equal
+					Query:    `SELECT ('testing'::regclass::oid)::text::oid = 'testing'::regclass::oid;`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+		{
 			Name: "to_regclass",
 			SetUpScript: []string{
 				`CREATE TABLE testing (pk INT primary key, v1 INT UNIQUE);`,
@@ -2033,17 +2056,63 @@ func TestArrayFunctions(t *testing.T) {
 func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Skip:        true, // TODO: not supported
-			Name:        "pg_function_is_visible",
-			SetUpScript: []string{},
+			Name: "pg_function_is_visible",
+			SetUpScript: []string{
+				"CREATE SCHEMA myschema;",
+				"SET search_path TO myschema;",
+				"CREATE FUNCTION myfunc(a int) RETURNS int LANGUAGE sql AS 'SELECT a + 1';",
+				"CREATE PROCEDURE myproc() LANGUAGE sql AS $$ SELECT 1 $$;",
+				"CREATE SCHEMA testschema;",
+				"SET search_path TO testschema;",
+				"CREATE FUNCTION test_func(a int) RETURNS int LANGUAGE sql AS 'SELECT a + 2';",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT pg_function_is_visible(1342177280);`,
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'test_func';`,
 					Expected: []sql.Row{{"t"}},
 				},
 				{
-					Query:    `SELECT pg_function_is_visible(22);`, // invalid
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myfunc';`,
 					Expected: []sql.Row{{"f"}},
+				},
+				{
+					// Procedures are also subject to visibility checks
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myproc';`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SET search_path = 'myschema';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myfunc';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'myproc';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(p.oid) FROM pg_catalog.pg_proc p WHERE p.proname = 'test_func';`,
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					// Built-in functions live in pg_catalog, which is always on the search path.
+					// OID 31 is byteaout.
+					Query:    `SELECT pg_function_is_visible(31);`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(22);`, // not a function OID
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(845743985);`, // OID does not exist
+					Expected: []sql.Row{{"f"}},
+				},
+				{
+					Query:    `SELECT pg_function_is_visible(NULL);`,
+					Expected: []sql.Row{{nil}},
 				},
 			},
 		},
@@ -2478,6 +2547,93 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "pg_get_indexdef",
+			SetUpScript: []string{
+				`CREATE TABLE idx_test (pk INT PRIMARY KEY, a INT, b INT, c TEXT);`,
+				`CREATE UNIQUE INDEX idx_ab ON idx_test (a, b);`,
+				`CREATE INDEX idx_c ON idx_test (c);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// OID does not exist
+					Query:            `SELECT pg_get_indexdef(845743985);`,
+					ExpectedColNames: []string{"pg_get_indexdef"},
+					Expected:         []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_test_pkey'::regclass::oid);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_test_pkey ON public.idx_test USING btree (pk)"}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+				},
+				{
+					// A column number of 0 returns the whole definition, same as the one-argument form
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 0, true);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 0, false);`,
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+				},
+				{
+					// A non-zero column number returns just that column's definition
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 1, true);`,
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 2, false);`,
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					// Out-of-range column numbers return an empty string
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 3, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, -1, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_c'::regclass::oid, 1, true);`,
+					Expected: []sql.Row{{"c"}},
+				},
+				{
+					// OID does not exist
+					Query:    `SELECT pg_get_indexdef(845743985, 0, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef(845743985, 1, true);`,
+					Expected: []sql.Row{{""}},
+				},
+				{
+					// NULL arguments produce a NULL result
+					Query:    `SELECT pg_get_indexdef(NULL, 1, true);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, NULL, true);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// The index listing query issued by psql's \d command
+					Query: `SELECT c2.relname, i.indisprimary, i.indisunique, i.indisclustered, i.indisvalid, pg_catalog.pg_get_indexdef(i.indexrelid, 0, true),
+  pg_catalog.pg_get_constraintdef(con.oid, true), contype, condeferrable, condeferred, i.indisreplident, c2.reltablespace
+FROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i
+  LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN ('p','u','x'))
+WHERE c.oid = 'idx_test'::regclass AND c.oid = i.indrelid AND i.indexrelid = c2.oid
+ORDER BY i.indisprimary DESC, c2.relname;`,
+					Expected: []sql.Row{
+						{"idx_test_pkey", "t", "t", "f", "t", "CREATE UNIQUE INDEX idx_test_pkey ON public.idx_test USING btree (pk)", "PRIMARY KEY (pk)", "p", "f", "f", "f", 0},
+						{"idx_ab", "f", "t", "f", "t", "CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)", "UNIQUE (a, b)", "u", "f", "f", "f", 0},
+						{"idx_c", "f", "f", "f", "t", "CREATE INDEX idx_c ON public.idx_test USING btree (c)", nil, nil, nil, nil, "f", 0},
+					},
+				},
+			},
+		},
+		{
 			Name:        "pg_get_function_result",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
@@ -2491,14 +2647,37 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 			},
 		},
 		{
-			Name:        "pg_get_triggerdef",
-			SetUpScript: []string{},
+			Name: "pg_get_triggerdef",
+			SetUpScript: []string{
+				"CREATE TABLE trig_test (pk INT PRIMARY KEY, v1 INT);",
+				"CREATE FUNCTION trig_fn() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn();",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: triggers are not supported yet
+					// not a trigger OID
 					Query: `SELECT pg_get_triggerdef(22)`,
 					Expected: []sql.Row{
 						{""},
+					},
+				},
+				{
+					Query: `SELECT pg_get_triggerdef(t.oid) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
+					Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
+					},
+				},
+				{
+					// The pretty flag only affects expression formatting, so both variants return the same text
+					Query: `SELECT pg_get_triggerdef(t.oid, true) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
+					Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
+					},
+				},
+				{
+					Query: `SELECT pg_get_triggerdef(t.oid, false) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
+					Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
 					},
 				},
 			},
@@ -4515,6 +4694,78 @@ func TestSetReturningFunctions(t *testing.T) {
 						Query:            `SELECT * FROM generate_series(1, array_upper(current_schemas(false), 1)) AS s(r)`,
 						Expected:         []sql.Row{{1}},
 						ExpectedColNames: []string{"r"},
+					},
+				},
+			},
+			{
+				Name: "table function WITH ORDINALITY",
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    `SELECT * FROM generate_series(2,4) WITH ORDINALITY`,
+						Expected: []sql.Row{{2, 1}, {3, 2}, {4, 3}},
+					},
+					{
+						Query:            `SELECT * FROM generate_series(2,4) WITH ORDINALITY AS a(n, ord)`,
+						Expected:         []sql.Row{{2, 1}, {3, 2}, {4, 3}},
+						ExpectedColNames: []string{"n", "ord"},
+					},
+					{
+						Query:    `SELECT ord, n FROM generate_series(2,4) WITH ORDINALITY AS a(n, ord) ORDER BY ord DESC`,
+						Expected: []sql.Row{{3, 4}, {2, 3}, {1, 2}},
+					},
+					{
+						Query:    `SELECT n FROM generate_series(5,7) WITH ORDINALITY AS a(n, ord) WHERE ord = 2`,
+						Expected: []sql.Row{{6}},
+					},
+				},
+			},
+			{
+				Name: "pg_partition_ancestors",
+				SetUpScript: []string{
+					"CREATE TABLE anc_test (pk INT PRIMARY KEY, v1 INT);",
+					"CREATE VIEW anc_view AS SELECT pk FROM anc_test;",
+					"CREATE TABLE anc_child (pk INT PRIMARY KEY, apk INT REFERENCES anc_test(pk));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						// Partitioning is not supported, so a relation's only ancestor is itself
+						Query:            `SELECT * FROM pg_partition_ancestors('anc_test'::regclass);`,
+						Expected:         []sql.Row{{"anc_test"}},
+						ExpectedColNames: []string{"relid"},
+					},
+					{
+						Query:    `SELECT * FROM pg_partition_ancestors('anc_test'::regclass) WITH ORDINALITY AS a(relid, depth);`,
+						Expected: []sql.Row{{"anc_test", 1}},
+					},
+					{
+						// Relations that aren't tables or indexes return an empty set
+						Query:    `SELECT * FROM pg_partition_ancestors('anc_view'::regclass);`,
+						Expected: []sql.Row{},
+					},
+					{
+						// OID does not exist
+						Query:    `SELECT * FROM pg_partition_ancestors(845743985);`,
+						Expected: []sql.Row{},
+					},
+					{
+						// The foreign-key listing query issued by psql's \d command
+						Query: `SELECT conrelid = 'anc_child'::pg_catalog.regclass AS sametable,
+       conname, pg_catalog.pg_get_constraintdef(oid, true) AS condef, conrelid::pg_catalog.regclass::text AS ontable
+FROM pg_catalog.pg_constraint, pg_catalog.pg_partition_ancestors('anc_child'::regclass)
+WHERE conrelid = relid AND contype = 'f' AND conparentid = 0
+ORDER BY sametable DESC, conname;`,
+						Expected: []sql.Row{{"t", "anc_child_apk_fkey", "FOREIGN KEY (apk) REFERENCES anc_test(pk)", "anc_child"}},
+					},
+					{
+						// The referenced-by listing query issued by psql's \d command
+						Query: `SELECT conname, conrelid::pg_catalog.regclass::text AS ontable,
+       pg_catalog.pg_get_constraintdef(oid, true) AS condef
+FROM pg_catalog.pg_constraint c
+WHERE confrelid IN (SELECT pg_catalog.pg_partition_ancestors('anc_test'::regclass)
+                    UNION ALL VALUES ('anc_test'::pg_catalog.regclass))
+      AND contype = 'f' AND conparentid = 0
+ORDER BY conname;`,
+						Expected: []sql.Row{{"anc_child_apk_fkey", "anc_child", "FOREIGN KEY (apk) REFERENCES anc_test(pk)"}},
 					},
 				},
 			},

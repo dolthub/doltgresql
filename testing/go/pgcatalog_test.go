@@ -666,6 +666,30 @@ func TestPgClass(t *testing.T) {
 			},
 		},
 		{
+			Name: "pg_class relhastriggers",
+			SetUpScript: []string{
+				`CREATE TABLE plain (pk INT primary key);`,
+				`CREATE TABLE fk_parent (pk INT primary key);`,
+				`CREATE TABLE fk_child (pk INT primary key, ppk INT REFERENCES fk_parent(pk));`,
+				`CREATE TABLE trig_table (pk INT primary key);`,
+				`CREATE FUNCTION trig_fn() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;`,
+				`CREATE TRIGGER trig BEFORE INSERT ON trig_table FOR EACH ROW EXECUTE FUNCTION trig_fn();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Postgres enforces foreign keys with system triggers on both tables of the
+					// constraint, so tables on either side report relhastriggers
+					Query: `SELECT relname, relhastriggers FROM pg_catalog.pg_class WHERE relname IN ('plain', 'fk_parent', 'fk_child', 'trig_table') ORDER BY relname;`,
+					Expected: []sql.Row{
+						{"fk_child", "t"},
+						{"fk_parent", "t"},
+						{"plain", "f"},
+						{"trig_table", "t"},
+					},
+				},
+			},
+		},
+		{
 			Name: "pg_class with regclass",
 			SetUpScript: []string{
 				`CREATE SCHEMA testschema;`,
