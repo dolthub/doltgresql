@@ -45,10 +45,10 @@ func (om *OIDMap) Get(recorded uint32) (uint32, bool) {
 	return mapped, ok
 }
 
-// LearnAll records all of the given recorded-to-replay OID pairs. Later learnings overwrite earlier ones, since a
+// PutAll records all of the given recorded-to-replay OID pairs. Later learnings overwrite earlier ones, since a
 // dropped and recreated object may reuse an OID on one side only.
-func (om *OIDMap) LearnAll(candidates map[uint32]uint32) {
-	for recorded, actual := range candidates {
+func (om *OIDMap) PutAll(replacements map[uint32]uint32) {
+	for recorded, actual := range replacements {
 		om.oids[recorded] = actual
 	}
 }

@@ -25,7 +25,7 @@ import (
 
 func TestOIDMapRewriteQuery(t *testing.T) {
 	om := NewOIDMap()
-	om.LearnAll(map[uint32]uint32{159776: 21005, 159780: 21009})
+	om.PutAll(map[uint32]uint32{159776: 21005, 159780: 21009})
 	assert.Equal(t, `SELECT 1 WHERE c.oid = '21005'`, om.RewriteQuery(`SELECT 1 WHERE c.oid = '159776'`))
 	assert.Equal(t, `SELECT 1 WHERE c.oid = 21005 AND i.indexrelid = 21009`,
 		om.RewriteQuery(`SELECT 1 WHERE c.oid = 159776 AND i.indexrelid = 159780`))
@@ -34,7 +34,7 @@ func TestOIDMapRewriteQuery(t *testing.T) {
 		om.RewriteQuery(`SELECT 159777, 1597, col159776, tbl_159776x FROM t`))
 	// A replacement value is never rescanned as another recorded OID
 	om2 := NewOIDMap()
-	om2.LearnAll(map[uint32]uint32{100001: 100002, 100002: 100003})
+	om2.PutAll(map[uint32]uint32{100001: 100002, 100002: 100003})
 	assert.Equal(t, `100002 100003`, om2.RewriteQuery(`100001 100002`))
 	// The query is returned as-is when the map is empty
 	empty := NewOIDMap()

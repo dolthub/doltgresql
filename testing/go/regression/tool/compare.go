@@ -42,14 +42,14 @@ func CompareRowsOrdered(oidMap *OIDMap, aRowDesc, bRowDesc *pgproto3.RowDescript
 	aReadRows := ReadRows(aRowDesc, aRows)
 	bReadRows := ReadRows(bRowDesc, bRows)
 	oidCols := oidColumns(aRowDesc)
-	candidates := make(map[uint32]uint32)
+	oidReplacements := make(map[uint32]uint32)
 	for rowIdx := range aReadRows {
 		if len(aReadRows[rowIdx]) != len(bReadRows[rowIdx]) {
 			return errors.Errorf("expected a row column count of %d but received %d",
 				len(aReadRows[rowIdx]), len(bReadRows[rowIdx]))
 		}
 		for colIdx := range aReadRows[rowIdx] {
-			if !cellsMatch(aReadRows[rowIdx][colIdx], bReadRows[rowIdx][colIdx], oidCols[colIdx], oidMap, candidates) {
+			if !cellsMatch(aReadRows[rowIdx][colIdx], bReadRows[rowIdx][colIdx], oidCols[colIdx], oidMap, oidReplacements) {
 				if len(aReadRows)+len(bReadRows) < 8 {
 					return errors.Errorf("row sets differ:\n%s", rowsToErrorString(aReadRows, bReadRows))
 				} else {
@@ -60,7 +60,7 @@ func CompareRowsOrdered(oidMap *OIDMap, aRowDesc, bRowDesc *pgproto3.RowDescript
 		}
 	}
 	if oidMap != nil {
-		oidMap.LearnAll(candidates)
+		oidMap.PutAll(oidReplacements)
 	}
 	return nil
 }
@@ -81,7 +81,7 @@ func oidColumns(rowDesc *pgproto3.RowDescription) []bool {
 // user-object OIDs are matched through the OIDMap: a previously learned mapping must agree, while a brand new pair is
 // tentatively accepted and added to candidates (the caller commits candidates to the map only if the entire
 // comparison succeeds, which keeps OID relationships consistent within a result set).
-func cellsMatch(aVal, bVal interface{}, isOIDCol bool, oidMap *OIDMap, candidates map[uint32]uint32) bool {
+func cellsMatch(aVal, bVal interface{}, isOIDCol bool, oidMap *OIDMap, oidReplacements map[uint32]uint32) bool {
 	if aVal == bVal {
 		return true
 	}
@@ -93,12 +93,12 @@ func cellsMatch(aVal, bVal interface{}, isOIDCol bool, oidMap *OIDMap, candidate
 	if !aOK || !bOK || aOID < minUserOID || bOID == 0 {
 		return false
 	}
-	if mapped, ok := candidates[aOID]; ok {
+	if mapped, ok := oidReplacements[aOID]; ok {
 		return mapped == bOID
 	}
 	// Unknown pairing (or the object was dropped and recreated on one side): tentatively accept it. OID values are
 	// implementation-specific, so requiring consistency within the result set is the strongest meaningful check.
-	candidates[aOID] = bOID
+	oidReplacements[aOID] = bOID
 	return true
 }
 
@@ -135,18 +135,18 @@ func CompareRowsUnordered(oidMap *OIDMap, aRowDesc, bRowDesc *pgproto3.RowDescri
 	if err != nil && oidMap != nil && hasOIDCols && len(aReadRows) <= 2000 {
 		// The multiset comparison may have failed only because the result contains OIDs we haven't learned yet, so
 		// attempt a matching that is allowed to learn new mappings. The original error is kept if that fails too.
-		if compareRowsUnorderedLearning(oidMap, oidCols, aReadRows, bReadRows) {
+		if compareRowsUnorderedWithOidReplacement(oidMap, oidCols, aReadRows, bReadRows) {
 			return nil
 		}
 	}
 	return err
 }
 
-// compareRowsUnorderedLearning greedily matches each recorded row to a replayed row under OID-lenient equality,
+// compareRowsUnorderedWithOidReplacement greedily matches each recorded row to a replayed row under OID-lenient equality,
 // accumulating tentative OID mappings as it goes. Returns whether a complete matching was found, in which case the
 // tentative mappings are committed to the map.
-func compareRowsUnorderedLearning(oidMap *OIDMap, oidCols []bool, aReadRows, bReadRows []sql.Row) bool {
-	candidates := make(map[uint32]uint32)
+func compareRowsUnorderedWithOidReplacement(oidMap *OIDMap, oidCols []bool, aReadRows, bReadRows []sql.Row) bool {
+	oidReplacements := make(map[uint32]uint32)
 	used := make([]bool, len(bReadRows))
 	for _, aRow := range aReadRows {
 		matched := false
@@ -156,8 +156,8 @@ func compareRowsUnorderedLearning(oidMap *OIDMap, oidCols []bool, aReadRows, bRe
 				continue
 			}
 			// Trial-match against a copy so that a failed row match doesn't pollute the accumulated candidates
-			trial := make(map[uint32]uint32, len(candidates))
-			for k, v := range candidates {
+			trial := make(map[uint32]uint32, len(oidReplacements))
+			for k, v := range oidReplacements {
 				trial[k] = v
 			}
 			for colIdx := range aRow {
@@ -165,7 +165,7 @@ func compareRowsUnorderedLearning(oidMap *OIDMap, oidCols []bool, aReadRows, bRe
 					continue BRows
 				}
 			}
-			candidates = trial
+			oidReplacements = trial
 			used[bIdx] = true
 			matched = true
 			break
@@ -174,7 +174,7 @@ func compareRowsUnorderedLearning(oidMap *OIDMap, oidCols []bool, aReadRows, bRe
 			return false
 		}
 	}
-	oidMap.LearnAll(candidates)
+	oidMap.PutAll(oidReplacements)
 	return true
 }
 
