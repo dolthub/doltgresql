@@ -30,6 +30,18 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
+// ErrDivisionByZero is returned when dividing by zero. It is defined as an error kind (rather than each
+// division site creating its own error) so that the server can report it with SQLSTATE 22012.
+var ErrDivisionByZero = errors.NewKind(`division by zero`)
+
+// ErrOutOfRange is returned when a value overflows the given type (e.g. "integer out of range").
+// It is defined as an error kind so that the server can report it with SQLSTATE 22003.
+var ErrOutOfRange = errors.NewKind(`%s out of range`)
+
+// ErrInputOutOfRange is returned by math functions whose input is outside the function's valid domain.
+// It is defined as an error kind so that the server can report it with SQLSTATE 22003.
+var ErrInputOutOfRange = errors.NewKind(`input is out of range`)
+
 // ErrTypeAlreadyExists is returned when creating given type when it already exists.
 var ErrTypeAlreadyExists = errors.NewKind(`type "%s" already exists`)
 

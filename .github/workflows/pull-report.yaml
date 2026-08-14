@@ -34,20 +34,37 @@ jobs:
           github-token: ${{ secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             const { ACTOR, FORMAT, ISSUE_NUMBER, GITHUB_WORKSPACE } = process.env;
-            const issue_number = parseInt(ISSUE_NUMBER, 10);
             const { owner, repo } = context.repo;
-            fs = require('fs');
-            fs.readFile(`${GITHUB_WORKSPACE}/results.log`, 'utf8', function (err,data) {
-              if (err) {
-                return console.log(err);
-              }
-              return github.rest.issues.createComment({
-                issue_number,
-                owner,
-                repo,
-                body: `@${ACTOR} ${FORMAT}\n ${data}`
-              });
+            const issue_number = parseInt(ISSUE_NUMBER, 10);
+
+            const fs = require('fs').promises;
+            const resData = await fs.readFile(`${GITHUB_WORKSPACE}/results.log`, 'utf8');
+
+            const commentMarker = '<!-- go-run-output-sysbench -->';
+
+            // List comments on the PR
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: issue_number,
+              owner: context.repo.owner,
+              repo: context.repo.repo
             });
+
+            // Check if a comment already exists
+            const comment = comments.find(comment => comment.body.includes(commentMarker))
+                comment_id: comment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `${commentMarker}\n@${ACTOR} ${FORMAT}\n${resData}`
+              })
+            } else {
+              // Create a new comment
+              await github.rest.issues.createComment({
+                issue_number: issue_number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `${commentMarker}\n@${ACTOR} ${FORMAT}\n${resData}`
+              });
+            }
         env:
           ACTOR: ${{ github.event.client_payload.actor }}
           ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}

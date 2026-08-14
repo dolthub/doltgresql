@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/apd/v3"
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
@@ -52,7 +51,7 @@ func initBinaryDivide() {
 // float4div_callable is the callable logic for the float4div function.
 func float4div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float32) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(float32) / val2.(float32), nil
 }
@@ -69,7 +68,7 @@ var float4div = framework.Function2{
 // float48div_callable is the callable logic for the float48div function.
 func float48div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float64) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return float64(val1.(float32)) / val2.(float64), nil
 }
@@ -86,7 +85,7 @@ var float48div = framework.Function2{
 // float8div_callable is the callable logic for the float8div function.
 func float8div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float64) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(float64) / val2.(float64), nil
 }
@@ -103,7 +102,7 @@ var float8div = framework.Function2{
 // float84div_callable is the callable logic for the float84div function.
 func float84div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float32) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(float64) / float64(val2.(float32)), nil
 }
@@ -120,7 +119,7 @@ var float84div = framework.Function2{
 // int2div_callable is the callable logic for the int2div function.
 func int2div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int16) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(int16) / val2.(int16), nil
 }
@@ -137,7 +136,7 @@ var int2div = framework.Function2{
 // int24div_callable is the callable logic for the int24div function.
 func int24div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int32) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return int32(val1.(int16)) / val2.(int32), nil
 }
@@ -154,7 +153,7 @@ var int24div = framework.Function2{
 // int28div_callable is the callable logic for the int28div function.
 func int28div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int64) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return int64(val1.(int16)) / val2.(int64), nil
 }
@@ -171,7 +170,7 @@ var int28div = framework.Function2{
 // int4div_callable is the callable logic for the int4div function.
 func int4div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int32) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(int32) / val2.(int32), nil
 }
@@ -188,7 +187,7 @@ var int4div = framework.Function2{
 // int42div_callable is the callable logic for the int42div function.
 func int42div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int16) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(int32) / int32(val2.(int16)), nil
 }
@@ -205,7 +204,7 @@ var int42div = framework.Function2{
 // int48div_callable is the callable logic for the int48div function.
 func int48div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int64) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return int64(val1.(int32)) / val2.(int64), nil
 }
@@ -222,7 +221,7 @@ var int48div = framework.Function2{
 // int8div_callable is the callable logic for the int8div function.
 func int8div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int64) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(int64) / val2.(int64), nil
 }
@@ -239,7 +238,7 @@ var int8div = framework.Function2{
 // int82div_callable is the callable logic for the int82div function.
 func int82div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int16) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(int64) / int64(val2.(int16)), nil
 }
@@ -256,7 +255,7 @@ var int82div = framework.Function2{
 // int84div_callable is the callable logic for the int84div function.
 func int84div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int32) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(int64) / int64(val2.(int32)), nil
 }
@@ -273,7 +272,7 @@ var int84div = framework.Function2{
 // interval_div_callable is the callable logic for the interval_div function.
 func interval_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(float64) == 0 {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	return val1.(duration.Duration).DivFloat(val2.(float64)), nil
 }
@@ -296,7 +295,7 @@ func numeric_div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any
 		return pgtypes.NumericNaN, nil
 	}
 	if num2.IsZero() {
-		return nil, errors.Errorf("division by zero")
+		return nil, pgtypes.ErrDivisionByZero.New()
 	}
 	if num1.Form == apd.Infinite {
 		return num1, nil

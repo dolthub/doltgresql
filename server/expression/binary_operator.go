@@ -188,19 +188,34 @@ func (b *BinaryOperator) Right() sql.Expression {
 
 // IndexScanOperation implements the sql.IndexComparisonExpression interface.
 func (b *BinaryOperator) IndexScanOperation() (sql.IndexScanOp, sql.Expression, sql.Expression, bool) {
+	left := unwrapIndexScanTarget(b.Left())
+	right := unwrapIndexScanTarget(b.Right())
 	switch b.operator {
 	case framework.Operator_BinaryEqual:
-		return sql.IndexScanOpEq, b.Left(), b.Right(), true
+		return sql.IndexScanOpEq, left, right, true
 	case framework.Operator_BinaryLessThan:
-		return sql.IndexScanOpLt, b.Left(), b.Right(), true
+		return sql.IndexScanOpLt, left, right, true
 	case framework.Operator_BinaryLessOrEqual:
-		return sql.IndexScanOpLte, b.Left(), b.Right(), true
+		return sql.IndexScanOpLte, left, right, true
 	case framework.Operator_BinaryGreaterThan:
-		return sql.IndexScanOpGt, b.Left(), b.Right(), true
+		return sql.IndexScanOpGt, left, right, true
 	case framework.Operator_BinaryGreaterOrEqual:
-		return sql.IndexScanOpGte, b.Left(), b.Right(), true
+		return sql.IndexScanOpGte, left, right, true
 	case framework.Operator_BinaryNotEqual:
-		return sql.IndexScanOpNotEq, b.Left(), b.Right(), true
+		return sql.IndexScanOpNotEq, left, right, true
 	}
 	return 0, nil, nil, false
+}
+
+// unwrapIndexScanTarget removes a GMSCast wrapper from an expression when the cast wraps a GetField.
+// The analyzer wraps GMS-typed columns (e.g. the to_commit/from_commit columns of the dolt_diff_*
+// system tables) in a GMSCast so that they may be used by the Doltgres function framework, but index
+// scan costing only recognizes bare GetFields as index targets.
+func unwrapIndexScanTarget(expr sql.Expression) sql.Expression {
+	if cast, ok := expr.(*GMSCast); ok {
+		if gf, ok := cast.Child().(*expression.GetField); ok {
+			return gf
+		}
+	}
+	return expr
 }

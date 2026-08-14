@@ -1420,6 +1420,111 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			// The dolt_diff_<table> tables are indexed on to_commit and from_commit, allowing queries
+			// that filter to a single (from_commit, to_commit) pair to read just those commits instead
+			// of scanning every commit in history. These tests check both the results and the plans of
+			// such queries.
+			Name: "dolt diff with tablename commit index lookups",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY, val INT)",
+				"INSERT INTO test VALUES (1, 1)",
+				"SELECT dolt_commit('-Am', 'commit 1')",
+				"INSERT INTO test VALUES (2, 2)",
+				"SELECT dolt_commit('-Am', 'commit 2')",
+				"UPDATE test SET val = 3 WHERE id = 1",
+				"SELECT dolt_commit('-Am', 'commit 3')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Filtering to a single (from_commit, to_commit) pair returns only that commit's diff
+					Query:    `SELECT from_id, to_id, to_val, diff_type FROM dolt_diff_test WHERE from_commit = HASHOF('HEAD~1') AND to_commit = HASHOF('HEAD')`,
+					Expected: []sql.Row{{1, 1, 3, "modified"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, to_val, diff_type FROM dolt_diff_test WHERE from_commit = HASHOF('HEAD~2') AND to_commit = HASHOF('HEAD~1')`,
+					Expected: []sql.Row{{nil, 2, 2, "added"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, to_val, diff_type FROM dolt_diff_test WHERE to_commit = HASHOF('HEAD')`,
+					Expected: []sql.Row{{1, 1, 3, "modified"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, to_val, diff_type FROM dolt_diff_test WHERE from_commit = HASHOF('HEAD~1')`,
+					Expected: []sql.Row{{1, 1, 3, "modified"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, to_val, diff_type FROM dolt_diff_test WHERE to_commit IN (HASHOF('HEAD'), HASHOF('HEAD~1')) ORDER BY to_id`,
+					Expected: []sql.Row{{1, 1, 3, "modified"}, {nil, 2, 2, "added"}},
+				},
+				{
+					Query:    `SELECT from_id, to_id, to_val, diff_type FROM dolt_diff_test WHERE to_commit NOT IN (HASHOF('HEAD'), 'WORKING') ORDER BY to_id`,
+					Expected: []sql.Row{{nil, 1, 1, "added"}, {nil, 2, 2, "added"}},
+				},
+				{
+					// The to_commit filter must be pushed into an index lookup rather than scanning
+					// every commit in history
+					Query: `EXPLAIN SELECT to_id FROM dolt_diff_test WHERE to_commit = '0123456789abcdefghij0123456789ab'`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [dolt_diff_test.to_id]"},
+						{" └─ Filter"},
+						{"     ├─ to_commit = '0123456789abcdefghij0123456789ab'"},
+						{"     └─ IndexedTableAccess(dolt_diff_test)"},
+						{"         ├─ index: [dolt_diff_test.to_commit]"},
+						{"         └─ filters: [{[0123456789abcdefghij0123456789ab, 0123456789abcdefghij0123456789ab]}]"},
+					},
+				},
+				{
+					// A (from_commit, to_commit) pair also uses a commit index lookup
+					Query: `EXPLAIN SELECT to_id FROM dolt_diff_test WHERE from_commit = '0123456789abcdefghij0123456789ab' AND to_commit = 'ab0123456789abcdefghij0123456789'`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [dolt_diff_test.to_id]"},
+						{" └─ Filter"},
+						{"     ├─ (from_commit = '0123456789abcdefghij0123456789ab' AND to_commit = 'ab0123456789abcdefghij0123456789')"},
+						{"     └─ IndexedTableAccess(dolt_diff_test)"},
+						{"         ├─ index: [dolt_diff_test.from_commit]"},
+						{"         └─ filters: [{[0123456789abcdefghij0123456789ab, 0123456789abcdefghij0123456789ab]}]"},
+					},
+				},
+				{
+					// Ordering comparisons on commit hash columns intentionally do NOT use the commit
+					// index: commit hashes are content-addressed and unordered, and the commit index
+					// only supports point lookups (see CommitIndex.CanSupport in Dolt). The planner
+					// falls back to a filtered scan, matching Dolt's behavior for the same query.
+					Query: `EXPLAIN SELECT to_id FROM dolt_diff_test WHERE to_commit < '0123456789abcdefghij0123456789ab'`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [dolt_diff_test.to_id]"},
+						{" └─ Filter"},
+						{"     ├─ to_commit < '0123456789abcdefghij0123456789ab'"},
+						{"     └─ Table"},
+						{"         └─ name: dolt_diff_test"},
+					},
+				},
+				{
+					Query: `EXPLAIN SELECT to_id FROM dolt_diff_test WHERE to_commit >= '0123456789abcdefghij0123456789ab'`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [dolt_diff_test.to_id]"},
+						{" └─ Filter"},
+						{"     ├─ to_commit >= '0123456789abcdefghij0123456789ab'"},
+						{"     └─ Table"},
+						{"         └─ name: dolt_diff_test"},
+					},
+				},
+				{
+					Query:    `INSERT INTO test VALUES (4, 4)`,
+					Expected: []sql.Row{},
+				},
+				{
+					// WORKING resolves through the to_commit index lookup as well
+					Query:    `SELECT from_id, to_id, to_val, diff_type FROM dolt_diff_test WHERE to_commit = 'WORKING'`,
+					Expected: []sql.Row{{nil, 4, 4, "added"}},
+				},
+			},
+		},
+		{
 			Name: "dolt history with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
