@@ -1321,6 +1321,64 @@ func TestDoltDiff(t *testing.T) {
 				},
 			},
 		},
+		{
+			// TODO: WITH ORDINALITY is currently only supported for set-returning functions, which are expanded in a
+			//  select list. Dolt system table functions are GMS table functions that can only appear in a FROM
+			//  clause, so these all error with "is a table function and must be used in a FROM clause".
+			Name: "dolt table functions WITH ORDINALITY",
+			Skip: true,
+			SetUpScript: []string{
+				"CREATE TABLE t1 (pk INT4 PRIMARY KEY, v1 TEXT);",
+				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
+				"INSERT INTO t1 VALUES (1, 'one'), (2, 'two');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT diff_type, from_pk, to_pk, ordinality FROM dolt_diff('HEAD', 'WORKING', 't1') WITH ORDINALITY;",
+					Expected: []sql.Row{
+						{"added", nil, 1, 1},
+						{"added", nil, 2, 2},
+					},
+				},
+				{
+					Query: "SELECT ord, to_pk1 FROM dolt_diff('HEAD', 'WORKING', 't1') WITH ORDINALITY AS a(to_pk1, to_v11, to_commit1, to_commit_date1, from_pk1, from_v11, from_commit1, from_commit_date1, diff_type1, ord);",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 2},
+					},
+				},
+				{
+					Query: "SELECT message, ordinality FROM dolt_log() WITH ORDINALITY LIMIT 1;",
+					Expected: []sql.Row{
+						{"initial", 1},
+					},
+				},
+				{
+					Query: "SELECT table_name, ordinality FROM dolt_diff_stat('HEAD', 'WORKING') WITH ORDINALITY;",
+					Expected: []sql.Row{
+						{"public.t1", 1},
+					},
+				},
+				{
+					Query: "SELECT to_table_name, diff_type, ordinality FROM dolt_diff_summary('HEAD', 'WORKING') WITH ORDINALITY;",
+					Expected: []sql.Row{
+						{"public.t1", "modified", 1},
+					},
+				},
+				{
+					Query: "SELECT table_name, diff_type, ordinality FROM dolt_patch('HEAD', 'WORKING') WITH ORDINALITY;",
+					Expected: []sql.Row{
+						{"public.t1", "data", 1},
+						{"public.t1", "data", 2},
+					},
+				},
+				{
+					// No schema changes in the working set, so ordinality over an empty result is empty
+					Query:    "SELECT * FROM dolt_schema_diff('HEAD', 'WORKING') WITH ORDINALITY;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
 
