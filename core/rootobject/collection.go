@@ -23,11 +23,13 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
 
+	"github.com/dolthub/doltgresql/core/aggregates"
 	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/conflicts"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/operators"
 	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
@@ -48,6 +50,8 @@ var (
 		&conflicts.Collection{},
 		&procedures.Collection{},
 		&casts.Collection{},
+		&operators.Collection{},
+		&aggregates.Collection{},
 	}
 )
 

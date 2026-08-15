@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -148,7 +149,7 @@ func (c *CreateTrigger) Schema(ctx *sql.Context) sql.Schema {
 
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateTrigger) String() string {
-	return "CREATE TRIGGER"
+	return fmt.Sprintf("CREATE TRIGGER %s", c.Name)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.

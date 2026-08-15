@@ -19,6 +19,9 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/aggregates"
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,9 +46,20 @@ func (p PgAggregateHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgAggregateHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// pg_aggregate is currently empty, since built-in aggregate functions do not yet have pg_proc entries.
 	// TODO: fill this in alongside built-in function entries in pg_proc
-	return emptyRowIter()
+	aggregateCollection, err := core.GetAggregatesCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	var aggs []aggregates.Aggregate
+	err = aggregateCollection.IterateAggregates(ctx, func(a aggregates.Aggregate) (stop bool, err error) {
+		aggs = append(aggs, a)
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pgAggregateRowIter{aggs: aggs}, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -71,8 +85,8 @@ var pgAggregateSchema = sql.Schema{
 	{Name: "aggmfinalfn", Type: pgtypes.Regproc, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggfinalextra", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggmfinalextra", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAggregateName},
-	{Name: "aggfinalmodify", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAggregateName},
-	{Name: "aggmfinalmodify", Type: pgtypes.Bool, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggfinalmodify", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAggregateName},
+	{Name: "aggmfinalmodify", Type: pgtypes.InternalChar, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggsortop", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggtranstype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgAggregateName},
 	{Name: "aggtransspace", Type: pgtypes.Int32, Default: nil, Nullable: false, Source: PgAggregateName},
@@ -84,13 +98,47 @@ var pgAggregateSchema = sql.Schema{
 
 // pgAggregateRowIter is the sql.RowIter for the pg_aggregate table.
 type pgAggregateRowIter struct {
+	aggs []aggregates.Aggregate
+	idx  int
 }
 
 var _ sql.RowIter = (*pgAggregateRowIter)(nil)
 
 // Next implements the interface sql.RowIter.
 func (iter *pgAggregateRowIter) Next(ctx *sql.Context) (sql.Row, error) {
-	return nil, io.EOF
+	if iter.idx >= len(iter.aggs) {
+		return nil, io.EOF
+	}
+	agg := iter.aggs[iter.idx]
+	iter.idx++
+	var initVal any
+	if agg.HasInitCond {
+		initVal = agg.InitCond
+	}
+	return sql.Row{
+		agg.ID.AsId(),          // aggfnoid
+		"n",                    // aggkind
+		int16(0),               // aggnumdirectargs
+		agg.SFunc.AsId(),       // aggtransfn
+		agg.FinalFunc.AsId(),   // aggfinalfn
+		agg.CombineFunc.AsId(), // aggcombinefn
+		id.Null,                // aggserialfn
+		id.Null,                // aggdeserialfn
+		id.Null,                // aggmtransfn
+		id.Null,                // aggminvtransfn
+		id.Null,                // aggmfinalfn
+		false,                  // aggfinalextra
+		false,                  // aggmfinalextra
+		"r",                    // aggfinalmodify
+		"r",                    // aggmfinalmodify
+		id.Null,                // aggsortop
+		agg.SType.AsId(),       // aggtranstype
+		int32(0),               // aggtransspace
+		id.Null,                // aggmtranstype
+		int32(0),               // aggmtransspace
+		initVal,                // agginitval
+		nil,                    // aggminitval
+	}, nil
 }
 
 // Close implements the interface sql.RowIter.

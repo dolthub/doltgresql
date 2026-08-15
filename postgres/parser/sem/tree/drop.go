@@ -90,6 +90,65 @@ func (node *DropAggregate) Format(ctx *FmtCtx) {
 	}
 }
 
+var _ Statement = &DropOperator{}
+
+// DropOperator represents a DROP OPERATOR statement.
+type DropOperator struct {
+	Operators    []OperatorToDrop
+	IfExists     bool
+	DropBehavior DropBehavior
+}
+
+// OperatorToDrop is a single operator listed in a DROP OPERATOR statement.
+type OperatorToDrop struct {
+	Op Operator
+	// Left is nil when the statement writes NONE, denoting a prefix operator
+	Left  ResolvableTypeReference
+	Right ResolvableTypeReference
+}
+
+// OperatorArgType returns the given operator operand type, converting the NONE keyword (which parses as a type named
+// "none") to nil.
+func OperatorArgType(typ ResolvableTypeReference) ResolvableTypeReference {
+	if uon, ok := typ.(*UnresolvedObjectName); ok && uon.NumParts == 1 && uon.Parts[0] == "none" {
+		return nil
+	}
+	return typ
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropOperator) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP OPERATOR ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+	}
+	for i, op := range node.Operators {
+		if i != 0 {
+			ctx.WriteString(" , ")
+		}
+		ctx.WriteString(OperatorSymbol(op.Op))
+		ctx.WriteString(" ( ")
+		if op.Left != nil {
+			ctx.WriteString(op.Left.SQLString())
+		} else {
+			ctx.WriteString("NONE")
+		}
+		ctx.WriteString(" , ")
+		if op.Right != nil {
+			ctx.WriteString(op.Right.SQLString())
+		} else {
+			ctx.WriteString("NONE")
+		}
+		ctx.WriteString(" )")
+	}
+	switch node.DropBehavior {
+	case DropDefault:
+	default:
+		ctx.WriteByte(' ')
+		ctx.WriteString(dropBehaviorName[node.DropBehavior])
+	}
+}
+
 // DropCast represents a DROP CAST statement.
 type DropCast struct {
 	Source   ResolvableTypeReference

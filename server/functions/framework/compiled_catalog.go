@@ -58,7 +58,10 @@ func (d dummyExpression) WithChildren(ctx *sql.Context, children ...sql.Expressi
 
 // getQuickFunctionForTypes is used by the types package to load quick functions. This is declared here to work around
 // import cycles. Returns nil if a QuickFunction could not be constructed.
-func getQuickFunctionForTypes(ctx *sql.Context, functionName string, params []*pgtypes.DoltgresType) any {
+func getQuickFunctionForTypes(ctx *sql.Context, schemaName string, functionName string, params []*pgtypes.DoltgresType) any {
+	if schemaName != "pg_catalog" {
+		return getQuickFunctionFromProvider(ctx, schemaName, functionName, params)
+	}
 	exprs := make([]sql.Expression, len(params))
 	for i := range params {
 		exprs[i] = dummyExpression{t: params[i]}
@@ -68,4 +71,13 @@ func getQuickFunctionForTypes(ctx *sql.Context, functionName string, params []*p
 		return nil
 	}
 	return cf.GetQuickFunction(ctx)
+}
+
+// getQuickFunctionFromProvider resolves a user-defined function. Returns nil if it could not be resolved.
+func getQuickFunctionFromProvider(ctx *sql.Context, schemaName string, functionName string, params []*pgtypes.DoltgresType) any {
+	call := NewUserFunctionCall(ctx, schemaName, functionName, params)
+	if call == nil {
+		return nil
+	}
+	return &quickUserFunction{call: call}
 }

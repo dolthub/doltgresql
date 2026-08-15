@@ -43,6 +43,10 @@ table RootValue {
   procedures:[ubyte]; // Serialized AddressMap.
 
   casts:[ubyte]; // Serialized AddressMap.
+
+  operators:[ubyte]; // Serialized AddressMap.
+
+  aggregates:[ubyte]; // Serialized AddressMap.
 }
 
 table DatabaseSchema {

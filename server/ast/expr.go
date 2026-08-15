@@ -195,6 +195,18 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			operator = framework.Operator_BinaryJSONExtractPathJson
 		case tree.JSONFetchTextPath:
 			operator = framework.Operator_BinaryJSONExtractPathText
+		case tree.L2Distance:
+			operator = framework.Operator_BinaryL2Distance
+		case tree.L1Distance:
+			operator = framework.Operator_BinaryL1Distance
+		case tree.CosineDistance:
+			operator = framework.Operator_BinaryCosineDistance
+		case tree.NegInnerProduct:
+			operator = framework.Operator_BinaryNegInnerProduct
+		case tree.JaccardDistance:
+			operator = framework.Operator_BinaryJaccardDistance
+		case tree.HammingDistance:
+			operator = framework.Operator_BinaryHammingDistance
 		default:
 			return nil, errors.Errorf("the binary operator used is not yet supported")
 		}

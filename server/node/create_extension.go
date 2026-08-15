@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -24,9 +25,12 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/aggregates"
+	"github.com/dolthub/doltgresql/core/casts"
 	coreextensions "github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/operators"
 	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/typecollection"
 	"github.com/dolthub/doltgresql/server/extensions"
@@ -98,7 +102,7 @@ func (c *CreateExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, err
 	if err != nil {
 		return nil, err
 	}
-	if err = (extensionObjects{ext: ext, schemaName: schemaName}).materialize(ctx, typColl); err != nil {
+	if err = (extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl}).materialize(ctx); err != nil {
 		return nil, err
 	}
 	err = extCollection.AddLoadedExtension(ctx, coreextensions.Extension{
@@ -120,7 +124,7 @@ func (c *CreateExtension) Schema(ctx *sql.Context) sql.Schema {
 
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateExtension) String() string {
-	return "CREATE EXTENSION"
+	return fmt.Sprintf("CREATE EXTENSION %s", c.Name)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
@@ -140,10 +144,62 @@ func (c *CreateExtension) WithResolvedChildren(ctx context.Context, children []a
 type extensionObjects struct {
 	ext        *extdef.Extension
 	schemaName string
+	typColl    *typecollection.TypeCollection
 }
 
 // materialize writes every object that the extension declares.
-func (e extensionObjects) materialize(ctx *sql.Context, typColl *typecollection.TypeCollection) error {
+func (e extensionObjects) materialize(ctx *sql.Context) error {
+	if err := e.materializeTypes(ctx); err != nil {
+		return err
+	}
+	if err := e.materializeRoutines(ctx); err != nil {
+		return err
+	}
+	if err := e.materializeOperators(ctx); err != nil {
+		return err
+	}
+	if err := e.materializeCasts(ctx); err != nil {
+		return err
+	}
+	return e.materializeAggregates(ctx)
+}
+
+// materializeTypes writes the declared types into the types collection.
+func (e extensionObjects) materializeTypes(ctx *sql.Context) error {
+	for _, declared := range e.ext.Types {
+		var err error
+		def := declared.Definition
+		if def.InputFunc, err = e.supportFuncID(ctx, declared.Input); err != nil {
+			return err
+		}
+		if def.OutputFunc, err = e.supportFuncID(ctx, declared.Output); err != nil {
+			return err
+		}
+		if def.ReceiveFunc, err = e.supportFuncID(ctx, declared.Receive); err != nil {
+			return err
+		}
+		if def.SendFunc, err = e.supportFuncID(ctx, declared.Send); err != nil {
+			return err
+		}
+		if def.ModInFunc, err = e.supportFuncID(ctx, declared.ModIn); err != nil {
+			return err
+		}
+		if def.ModOutFunc, err = e.supportFuncID(ctx, declared.ModOut); err != nil {
+			return err
+		}
+		newType := types.NewBaseType(ctx, id.NewType(e.schemaName, declared.Name), def)
+		if err = e.typColl.CreateType(ctx, newType); err != nil {
+			return err
+		}
+		if err = e.typColl.CreateType(ctx, types.CreateArrayTypeFromBaseType(newType)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// materializeRoutines writes the declared routines into the functions collection.
+func (e extensionObjects) materializeRoutines(ctx *sql.Context) error {
 	if len(e.ext.Routines) == 0 {
 		return nil
 	}
@@ -152,11 +208,11 @@ func (e extensionObjects) materialize(ctx *sql.Context, typColl *typecollection.
 		return err
 	}
 	for _, routine := range e.ext.Routines {
-		returnType, err := e.typeID(ctx, typColl, routine.Returns)
+		returnType, err := e.typeID(ctx, routine.Returns)
 		if err != nil {
 			return err
 		}
-		paramTypes, err := e.parameterTypes(ctx, typColl, routine.Parameters)
+		paramTypes, err := e.parameterTypes(ctx, routine.Parameters)
 		if err != nil {
 			return err
 		}
@@ -180,9 +236,146 @@ func (e extensionObjects) materialize(ctx *sql.Context, typColl *typecollection.
 	return nil
 }
 
+// materializeOperators writes the declared operators into the operators collection.
+func (e extensionObjects) materializeOperators(ctx *sql.Context) error {
+	if len(e.ext.Operators) == 0 {
+		return nil
+	}
+	opCollection, err := core.GetOperatorsCollectionFromContext(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, declared := range e.ext.Operators {
+		leftType, err := e.typeID(ctx, declared.Left)
+		if err != nil {
+			return err
+		}
+		rightType, err := e.typeID(ctx, declared.Right)
+		if err != nil {
+			return err
+		}
+		routine, err := e.routine(declared.Routine)
+		if err != nil {
+			return err
+		}
+		returnType, err := e.typeID(ctx, routine.Returns)
+		if err != nil {
+			return err
+		}
+		funcID, err := e.routineID(ctx, routine)
+		if err != nil {
+			return err
+		}
+		err = opCollection.AddOperator(ctx, operators.Operator{
+			ID:         id.NewOperator(e.schemaName, declared.Symbol, leftType, rightType),
+			Function:   funcID,
+			ReturnType: returnType,
+			Commutator: declared.Commutator,
+			Negator:    declared.Negator,
+			Hashes:     declared.Hashes,
+			Merges:     declared.Merges,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// materializeCasts writes the declared casts into the casts collection.
+func (e extensionObjects) materializeCasts(ctx *sql.Context) error {
+	if len(e.ext.Casts) == 0 {
+		return nil
+	}
+	castCollection, err := core.GetCastsCollectionFromContext(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, declared := range e.ext.Casts {
+		sourceType, err := e.typeID(ctx, declared.Source)
+		if err != nil {
+			return err
+		}
+		targetType, err := e.typeID(ctx, declared.Target)
+		if err != nil {
+			return err
+		}
+		funcID, err := e.optionalRoutineID(ctx, declared.Routine)
+		if err != nil {
+			return err
+		}
+		err = castCollection.AddCast(ctx, casts.Cast{
+			ID:       id.NewCast(sourceType, targetType),
+			CastType: declared.CastType,
+			Function: funcID,
+			UseInOut: !funcID.IsValid(),
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// materializeAggregates writes the declared aggregates into the aggregates collection.
+func (e extensionObjects) materializeAggregates(ctx *sql.Context) error {
+	if len(e.ext.Aggregates) == 0 {
+		return nil
+	}
+	aggCollection, err := core.GetAggregatesCollectionFromContext(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, declared := range e.ext.Aggregates {
+		returnType, err := e.typeID(ctx, declared.Returns)
+		if err != nil {
+			return err
+		}
+		stateType, err := e.typeID(ctx, declared.StateType)
+		if err != nil {
+			return err
+		}
+		paramTypes, err := e.parameterTypes(ctx, declared.Parameters)
+		if err != nil {
+			return err
+		}
+		transitionFunc, err := e.optionalRoutineID(ctx, declared.Transition)
+		if err != nil {
+			return err
+		}
+		finalFunc, err := e.optionalRoutineID(ctx, declared.Final)
+		if err != nil {
+			return err
+		}
+		combineFunc, err := e.optionalRoutineID(ctx, declared.Combine)
+		if err != nil {
+			return err
+		}
+		err = aggCollection.AddAggregate(ctx, aggregates.Aggregate{
+			ID:          id.NewFunction(e.schemaName, declared.Name, paramTypes...),
+			ReturnType:  returnType,
+			SFunc:       transitionFunc,
+			SType:       stateType,
+			FinalFunc:   finalFunc,
+			CombineFunc: combineFunc,
+			InitCond:    declared.InitCond,
+			HasInitCond: declared.HasInitCond,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // typeID returns the type ID matching the given name.
-func (e extensionObjects) typeID(ctx *sql.Context, typColl *typecollection.TypeCollection, name string) (id.Type, error) {
-	_, typeID, err := typColl.ResolveName(ctx, doltdb.TableName{Name: name})
+func (e extensionObjects) typeID(ctx *sql.Context, name string) (id.Type, error) {
+	for _, declared := range e.ext.Types {
+		if declared.Name == name {
+			return id.NewType(e.schemaName, name), nil
+		}
+	}
+	_, typeID, err := e.typColl.ResolveName(ctx, doltdb.TableName{Name: name})
 	if err != nil {
 		return id.NullType, err
 	}
@@ -193,14 +386,55 @@ func (e extensionObjects) typeID(ctx *sql.Context, typColl *typecollection.TypeC
 }
 
 // parameterTypes returns the type IDs of the given parameters.
-func (e extensionObjects) parameterTypes(ctx *sql.Context, typColl *typecollection.TypeCollection, params []extdef.Parameter) ([]id.Type, error) {
+func (e extensionObjects) parameterTypes(ctx *sql.Context, params []extdef.Parameter) ([]id.Type, error) {
 	paramTypes := make([]id.Type, len(params))
 	for i, param := range params {
-		paramType, err := e.typeID(ctx, typColl, param.Type)
+		paramType, err := e.typeID(ctx, param.Type)
 		if err != nil {
 			return nil, err
 		}
 		paramTypes[i] = paramType
 	}
 	return paramTypes, nil
+}
+
+// routine returns the routine that the extension declares under the given symbol.
+func (e extensionObjects) routine(symbol string) (extdef.Routine, error) {
+	for _, routine := range e.ext.Routines {
+		if routine.Symbol == symbol {
+			return routine, nil
+		}
+	}
+	return extdef.Routine{}, errors.Errorf(`extension "%s" does not declare the function "%s"`, e.ext.Name, symbol)
+}
+
+// routineID returns the ID that the given routine is materialized under.
+func (e extensionObjects) routineID(ctx *sql.Context, routine extdef.Routine) (id.Function, error) {
+	paramTypes, err := e.parameterTypes(ctx, routine.Parameters)
+	if err != nil {
+		return id.NullFunction, err
+	}
+	return id.NewFunction(e.schemaName, routine.Name, paramTypes...), nil
+}
+
+// optionalRoutineID returns the ID of the routine with the given symbol, or a null ID when the declaration omitted it.
+func (e extensionObjects) optionalRoutineID(ctx *sql.Context, symbol string) (id.Function, error) {
+	if len(symbol) == 0 {
+		return id.NullFunction, nil
+	}
+	routine, err := e.routine(symbol)
+	if err != nil {
+		return id.NullFunction, err
+	}
+	return e.routineID(ctx, routine)
+}
+
+// supportFuncID returns the function registry ID of the routine with the given symbol, or zero when the type omitted
+// it.
+func (e extensionObjects) supportFuncID(ctx *sql.Context, symbol string) (uint32, error) {
+	funcID, err := e.optionalRoutineID(ctx, symbol)
+	if err != nil || !funcID.IsValid() {
+		return 0, err
+	}
+	return types.ToFuncID(funcID), nil
 }
