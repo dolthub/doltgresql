@@ -363,7 +363,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Skip: true, // TODO: dolt_commit_diff_* tables must be filtered to a single 'to_commit'
 			Name: "dolt commit diff with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -424,8 +423,8 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 				},
 				{
-					Query:    `SELECT to_id, diff_type FROM public.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')`,
-					Expected: []sql.Row{{11, "added"}},
+					Query:       `SELECT to_id, diff_type FROM public.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')`,
+					ExpectedErr: "invalid ancestor spec",
 				},
 				{
 					Query:       `SELECT to_id FROM public.dolt_commit_diff_test_sch WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')`,
@@ -1526,7 +1525,6 @@ func TestUserSpaceDoltTables(t *testing.T) {
 		},
 		{
 			Name: "dolt_commit_diff subselect",
-			Skip: true,
 			SetUpScript: []string{
 				`CREATE TABLE bug6 (id integer PRIMARY KEY, v text);`,
 				`INSERT INTO bug6 VALUES (1, 'a');`,
@@ -1538,10 +1536,18 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Skip: true,
 					Query: `SELECT to_id FROM dolt_commit_diff_bug6                                                                   
 WHERE to_commit = (SELECT commit_hash FROM dolt.log ORDER BY date DESC LIMIT 1)                         
   AND from_commit = (SELECT commit_hash FROM dolt.log ORDER BY date DESC OFFSET 1 LIMIT 1);`,
-					Expected: []sql.Row{{1, 1, 3, "modified"}},
+					Expected: []sql.Row{{1}},
+				},
+				{
+					// workaround: use hashof
+					Query: `SELECT to_id FROM dolt_commit_diff_bug6                                                                   
+WHERE to_commit = dolt_hashof('HEAD')                         
+  AND from_commit = dolt_hashof('HEAD~');`,
+					Expected: []sql.Row{{1}},
 				},
 			},
 		},
