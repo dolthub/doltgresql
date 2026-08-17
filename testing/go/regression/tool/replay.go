@@ -40,6 +40,10 @@ type ReplayOptions struct {
 func Replay(options ReplayOptions) (*ReplayTracker, error) {
 	tracker := NewReplayTracker(options.File)
 	reader := NewMessageReader(FilterMessages(options.Messages))
+	// Clients read OIDs from catalog queries and embed them in follow-up queries, so we track the mapping between
+	// the OIDs in the recorded session and the OIDs the Doltgres server actually assigned. The map persists across
+	// the file's connections, since the recorded session's objects do too.
+	oidMap := NewOIDMap()
 
 	t := time.Now()
 	fmt.Println("-------------------- ", tracker.File, " --------------------")
@@ -223,7 +227,14 @@ ListenerLoop:
 					}
 				}
 			case *pgproto3.FunctionCall:
-				if err = connection.Send(message); err != nil {
+				sendFunctionCall := message
+				if mapped, ok := oidMap.Get(message.Function); ok {
+					// The recorded function OID belongs to the original session; translate it to the replay's OID
+					dup := *message
+					dup.Function = mapped
+					sendFunctionCall = &dup
+				}
+				if err = connection.Send(sendFunctionCall); err != nil {
 					tracker.Failed++
 					tracker.AddFailure(ReplayTrackerItem{
 						Query:           fmt.Sprintf("Function OID: %d", message.Function),
@@ -344,7 +355,15 @@ ListenerLoop:
 					}
 				}
 			case *pgproto3.Parse:
-				connection.Queue(message)
+				sendParse := message
+				if rewritten := oidMap.RewriteQuery(message.Query); rewritten != message.Query {
+					// Send the OID-translated text, but keep reporting the recorded text in the tracker so that
+					// cross-run comparisons see stable query strings
+					dup := *message
+					dup.Query = rewritten
+					sendParse = &dup
+				}
+				connection.Queue(sendParse)
 				if sync, ok := reader.Peek().(*pgproto3.Sync); ok {
 					_ = reader.Next()
 					connection.Queue(sync)
@@ -467,7 +486,13 @@ ListenerLoop:
 						continue MessageLoop
 					}
 				}
-				if err = connection.Send(message); err != nil {
+				sendQuery := message
+				if rewritten := oidMap.RewriteQuery(message.String); rewritten != message.String {
+					// Send the OID-translated text, but keep reporting the recorded text in the tracker so that
+					// cross-run comparisons see stable query strings
+					sendQuery = &pgproto3.Query{String: rewritten}
+				}
+				if err = connection.Send(sendQuery); err != nil {
 					tracker.Failed++
 					tracker.AddFailure(ReplayTrackerItem{
 						Query:           message.String,
@@ -614,7 +639,7 @@ ListenerLoop:
 					}
 					if strings.Contains(strings.ToLower(message.String), "order by") {
 						// There's an ORDER BY, so we need to check based on the order
-						if err = CompareRowsOrdered(expectedRowDesc, responseRowDesc, expectedDataRows, responseDataRows); err != nil {
+						if err = CompareRowsOrdered(oidMap, expectedRowDesc, responseRowDesc, expectedDataRows, responseDataRows); err != nil {
 							tracker.Failed++
 							tracker.AddFailure(ReplayTrackerItem{
 								Query:           message.String,
@@ -624,7 +649,7 @@ ListenerLoop:
 						}
 					} else {
 						// There's no ORDER BY, so our native row order may differ from Postgres.
-						if err = CompareRowsUnordered(expectedRowDesc, responseRowDesc, expectedDataRows, responseDataRows); err != nil {
+						if err = CompareRowsUnordered(oidMap, expectedRowDesc, responseRowDesc, expectedDataRows, responseDataRows); err != nil {
 							tracker.Failed++
 							tracker.AddFailure(ReplayTrackerItem{
 								Query:           message.String,

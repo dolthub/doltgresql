@@ -31,20 +31,25 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
-// CompareRowsOrdered compares the two rows, enforcing that the order matches between the two rows.
-func CompareRowsOrdered(aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bRows []*pgproto3.DataRow) error {
+// CompareRowsOrdered compares the two rows, enforcing that the order matches between the two rows. The aRowDesc and
+// aRows are always the recorded Postgres responses, while bRowDesc and bRows are the Doltgres responses. User-object
+// OIDs in `oid`-typed columns are compared through the given OIDMap (see OIDMap for details), and any new mappings
+// are learned when the comparison succeeds.
+func CompareRowsOrdered(oidMap *OIDMap, aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bRows []*pgproto3.DataRow) error {
 	if len(aRows) != len(bRows) {
 		return errors.Errorf("expected a row count of %d but received %d", len(aRows), len(bRows))
 	}
 	aReadRows := ReadRows(aRowDesc, aRows)
 	bReadRows := ReadRows(bRowDesc, bRows)
+	oidCols := oidColumns(aRowDesc)
+	oidReplacements := make(map[uint32]uint32)
 	for rowIdx := range aReadRows {
 		if len(aReadRows[rowIdx]) != len(bReadRows[rowIdx]) {
 			return errors.Errorf("expected a row column count of %d but received %d",
 				len(aReadRows[rowIdx]), len(bReadRows[rowIdx]))
 		}
 		for colIdx := range aReadRows[rowIdx] {
-			if aReadRows[rowIdx][colIdx] != bReadRows[rowIdx][colIdx] {
+			if !cellsMatch(aReadRows[rowIdx][colIdx], bReadRows[rowIdx][colIdx], oidCols[colIdx], oidMap, oidReplacements) {
 				if len(aReadRows)+len(bReadRows) < 8 {
 					return errors.Errorf("row sets differ:\n%s", rowsToErrorString(aReadRows, bReadRows))
 				} else {
@@ -54,21 +59,132 @@ func CompareRowsOrdered(aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bRow
 			}
 		}
 	}
+	if oidMap != nil {
+		oidMap.PutAll(oidReplacements)
+	}
 	return nil
 }
 
+// oidColumns returns, for each column in the recorded row description, whether the column is of the `oid` type.
+func oidColumns(rowDesc *pgproto3.RowDescription) []bool {
+	if rowDesc == nil {
+		return nil
+	}
+	cols := make([]bool, len(rowDesc.Fields))
+	for i, field := range rowDesc.Fields {
+		cols[i] = field.DataTypeOID == pgtype.OIDOID
+	}
+	return cols
+}
+
+// cellsMatch returns whether the recorded cell matches the replayed cell. Cells in `oid`-typed columns that hold
+// user-object OIDs are matched through the OIDMap: a previously learned mapping must agree, while a brand new pair is
+// tentatively accepted and added to candidates (the caller commits candidates to the map only if the entire
+// comparison succeeds, which keeps OID relationships consistent within a result set).
+func cellsMatch(aVal, bVal interface{}, isOIDCol bool, oidMap *OIDMap, oidReplacements map[uint32]uint32) bool {
+	if aVal == bVal {
+		return true
+	}
+	if !isOIDCol || oidMap == nil {
+		return false
+	}
+	aOID, aOK := cellToOID(aVal)
+	bOID, bOK := cellToOID(bVal)
+	if !aOK || !bOK || aOID < minUserOID || bOID == 0 {
+		return false
+	}
+	if mapped, ok := oidReplacements[aOID]; ok {
+		return mapped == bOID
+	}
+	// Unknown pairing (or the object was dropped and recreated on one side): tentatively accept it. OID values are
+	// implementation-specific, so requiring consistency within the result set is the strongest meaningful check.
+	oidReplacements[aOID] = bOID
+	return true
+}
+
 // CompareRowsUnordered compares the two rows. Order is not enforced, however if there are any duplicate rows, then it
-// is expected that the duplicate counts match.
-func CompareRowsUnordered(aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bRows []*pgproto3.DataRow) error {
+// is expected that the duplicate counts match. As with CompareRowsOrdered, the a-side is the recorded Postgres
+// response and the b-side is the Doltgres response, with user-object OIDs matched through the given OIDMap.
+func CompareRowsUnordered(oidMap *OIDMap, aRowDesc, bRowDesc *pgproto3.RowDescription, aRows, bRows []*pgproto3.DataRow) error {
 	if len(aRows) != len(bRows) {
 		return errors.Errorf("expected a row count of %d but received %d", len(aRows), len(bRows))
 	}
+	aReadRows := ReadRows(aRowDesc, aRows)
+	bReadRows := ReadRows(bRowDesc, bRows)
+	oidCols := oidColumns(aRowDesc)
+	hasOIDCols := false
+	for _, isOID := range oidCols {
+		hasOIDCols = hasOIDCols || isOID
+	}
+	// Translate already-learned OID mappings in the recorded rows so that the multiset comparison sees replay OIDs.
+	if oidMap != nil && hasOIDCols {
+		for _, row := range aReadRows {
+			for colIdx := range row {
+				if !oidCols[colIdx] {
+					continue
+				}
+				if oid, ok := cellToOID(row[colIdx]); ok && oid >= minUserOID {
+					if mapped, ok := oidMap.Get(oid); ok {
+						row[colIdx] = mapped
+					}
+				}
+			}
+		}
+	}
+	err := compareRowsMultiset(aReadRows, bReadRows)
+	if err != nil && oidMap != nil && hasOIDCols && len(aReadRows) <= 2000 {
+		// The multiset comparison may have failed only because the result contains OIDs we haven't learned yet, so
+		// attempt a matching that is allowed to learn new mappings. The original error is kept if that fails too.
+		if compareRowsUnorderedWithOidReplacement(oidMap, oidCols, aReadRows, bReadRows) {
+			return nil
+		}
+	}
+	return err
+}
+
+// compareRowsUnorderedWithOidReplacement greedily matches each recorded row to a replayed row under OID-lenient equality,
+// accumulating tentative OID mappings as it goes. Returns whether a complete matching was found, in which case the
+// tentative mappings are committed to the map.
+func compareRowsUnorderedWithOidReplacement(oidMap *OIDMap, oidCols []bool, aReadRows, bReadRows []sql.Row) bool {
+	oidReplacements := make(map[uint32]uint32)
+	used := make([]bool, len(bReadRows))
+	for _, aRow := range aReadRows {
+		matched := false
+	BRows:
+		for bIdx, bRow := range bReadRows {
+			if used[bIdx] || len(aRow) != len(bRow) {
+				continue
+			}
+			// Trial-match against a copy so that a failed row match doesn't pollute the accumulated candidates
+			trial := make(map[uint32]uint32, len(oidReplacements))
+			for k, v := range oidReplacements {
+				trial[k] = v
+			}
+			for colIdx := range aRow {
+				if !cellsMatch(aRow[colIdx], bRow[colIdx], oidCols[colIdx], oidMap, trial) {
+					continue BRows
+				}
+			}
+			oidReplacements = trial
+			used[bIdx] = true
+			matched = true
+			break
+		}
+		if !matched {
+			return false
+		}
+	}
+	oidMap.PutAll(oidReplacements)
+	return true
+}
+
+// compareRowsMultiset compares the two sets of decoded rows as multisets, using each row's string form as its
+// identity.
+func compareRowsMultiset(aReadRows, bReadRows []sql.Row) error {
 	// It's possible that two different rows can hash to the same result, but we're not concerned with that.
 	// The same row will always output the same hash, and that's the only property that we really care about.
 	aMap := make(map[string]int)
 	bMap := make(map[string]int)
-	aReadRows := ReadRows(aRowDesc, aRows)
-	bReadRows := ReadRows(bRowDesc, bRows)
 	for rowIdx := range aReadRows {
 		// Column counts should always match, so this is a sanity check
 		if len(aReadRows[rowIdx]) != len(bReadRows[rowIdx]) {
