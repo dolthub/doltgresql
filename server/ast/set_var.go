@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -42,9 +43,9 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 	if node.Namespace == "" && !config.IsValidPostgresConfigParameter(node.Name) && !config.IsValidDoltConfigParameter(node.Name) {
 		return nil, errors.Errorf(`ERROR: unrecognized configuration parameter "%s"`, node.Name)
 	}
-	if node.IsLocal {
-		// TODO: takes effect for only the current transaction rather than the current session.
-		return nil, errors.Errorf("SET LOCAL is not yet supported")
+	if node.IsLocal && node.Namespace != "" {
+		// TODO: support transaction-local values for custom (namespaced) parameters, which are session user vars
+		return nil, errors.Errorf("SET LOCAL is not yet supported for customized options")
 	}
 	var expr vitess.Expr
 	var err error
@@ -71,7 +72,11 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 		// Dolt's cluster replication variables) are routed to their declared scope directly, symmetric with
 		// current_setting() reading them from the global scope.
 		scope := vitess.SetScope_Session
-		if svScope, ok := config.GlobalOnlySystemVariableScope(node.Name); ok {
+		if node.IsLocal {
+			// SET LOCAL only applies for the duration of the current transaction; the connection handler restores
+			// the session values when the transaction ends. Global-only variables are rejected by the engine.
+			scope = planbuilder.SetScope_TransactionLocal
+		} else if svScope, ok := config.GlobalOnlySystemVariableScope(node.Name); ok {
 			switch svScope {
 			case sql.SystemVariableScope_Persist:
 				scope = vitess.SetScope_Persist
