@@ -2294,7 +2294,7 @@ WHERE to_commit = (SELECT commit_hash FROM dolt.log ORDER BY date DESC LIMIT 1)
 			},
 		},
 		{
-			Name: "dolt procedures",
+			Name:        "dolt procedures",
 			SetUpScript: []string{
 				// TODO: Create procedure when supported
 			},
