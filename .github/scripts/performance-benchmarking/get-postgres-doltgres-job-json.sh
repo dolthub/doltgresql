@@ -2,8 +2,8 @@
 
 set -e
 
-if [ "$#" -lt 9 ]; then
-    echo  "Usage: ./get-job-json.sh <jobname> <fromServer> <fromVersion> <toServer> <toVersion> <timeprefix> <actorprefix> <format> <issueNumber> <initBigRepo> <nomsBinFormat> <withTpcc>"
+if [ "$#" -lt 10 ]; then
+    echo  "Usage: ./get-job-json.sh <jobname> <fromServer> <fromVersion> <toServer> <toVersion> <timeprefix> <actorprefix> <format> <issueNumber> <initBigRepo> <nomsBinFormat> <sysbenchTestTime> <withTpcc>"
     exit 1
 fi
 
@@ -18,7 +18,8 @@ format="$8"
 issueNumber="$9"
 initBigRepo="${10}"
 nomsBinFormat="${11}"
-withTpcc="${12}"
+sysbenchTestTime="${12}"
+withTpcc="${13}"
 precision="1"
 tpccRegex="tpcc%"
 
@@ -28,6 +29,10 @@ fi
 
 if [ -n "$nomsBinFormat" ]; then
   nomsBinFormat="\"--noms-bin-format=$nomsBinFormat\","
+fi
+
+if [ -n "$sysbenchTestTime" ]; then
+  sysbenchTestTime="\"--sysbench-test-time=$sysbenchTestTime\","
 fi
 
 if [ -n "$withTpcc" ]; then
@@ -101,6 +106,7 @@ echo '
               "--region=us-west-2",
               "--results-dir='$timeprefix'",
               "--results-prefix='$actorprefix'",
+              '"$sysbenchTestTime"'
               '"$withTpcc"'
               '"$initBigRepo"'
               '"$nomsBinFormat"'
