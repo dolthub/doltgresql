@@ -30,14 +30,13 @@ type QuickFunction interface {
 	WithResolvedTypes(newTypes []*DoltgresType) any
 }
 
-// LoadFunctionFromCatalog returns the function matching the given name and parameter types. This is intended solely for
-// functions that are used for types, as the returned functions are not valid using the Eval function.
-var LoadFunctionFromCatalog func(ctx *sql.Context, funcName string, parameterTypes []*DoltgresType) any
+// LoadFunctionFromCatalog returns the function matching the given schema, name and parameter types. This is intended
+// solely for functions that are used for types, as the returned functions are not valid using the Eval function.
+var LoadFunctionFromCatalog func(ctx *sql.Context, schemaName string, funcName string, parameterTypes []*DoltgresType) any
 
 // functionRegistry is a local registry that holds a mapping from ID to QuickFunction. This is done as types are now
-// passed by struct, meaning that we need to cache the loading of functions somewhere. In addition, we don't yet support
-// deleting built-in functions, so we can make a global cache. This makes a hard assumption that all functions being
-// referenced actually exist, which should be true until built-in function deletion is implemented.
+// passed by struct, meaning that we need to cache the loading of functions somewhere. Only the functions in pg_catalog
+// are cached, since a user-defined function may be replaced or dropped, and it may differ between databases.
 //
 // In a way, one can view this as associated an OID to a function. With a proper OID system, this would not need to
 // exist. It should be removed once OIDs are figured out.
@@ -46,7 +45,7 @@ type functionRegistry struct {
 	counter    uint32
 	mapping    map[id.Function]uint32
 	revMapping map[uint32]id.Function
-	functions  [256]QuickFunction // Arbitrary number, big enough for now to fit every function in it
+	functions  []QuickFunction
 }
 
 // globalFunctionRegistry is the global functionRegistry. Only one needs to exist since we do not yet allow deleting
@@ -56,6 +55,7 @@ var globalFunctionRegistry = functionRegistry{
 	counter:    1,
 	mapping:    map[id.Function]uint32{id.NullFunction: 0},
 	revMapping: map[uint32]id.Function{0: id.NullFunction},
+	functions:  make([]QuickFunction, 1, 256),
 }
 
 // InternalToRegistryID returns an ID for the given Internal ID.
@@ -65,11 +65,9 @@ func (r *functionRegistry) InternalToRegistryID(functionID id.Function) uint32 {
 	if registryID, ok := r.mapping[functionID]; ok {
 		return registryID
 	}
-	if r.counter >= uint32(len(r.functions)) {
-		panic("max function count reached in static array")
-	}
 	r.mapping[functionID] = r.counter
 	r.revMapping[r.counter] = functionID
+	r.functions = append(r.functions, nil)
 	r.counter++
 	return r.counter - 1
 }
@@ -122,13 +120,18 @@ func (r *functionRegistry) loadFunction(ctx *sql.Context, id uint32) QuickFuncti
 	if !functionID.IsValid() {
 		return nil
 	}
-	funcName, types := r.toFuncSignature(functionID)
-	potentialFunction := LoadFunctionFromCatalog(ctx, funcName, types)
+	funcName, types, ok := r.toFuncSignature(ctx, functionID)
+	if !ok {
+		return nil
+	}
+	potentialFunction := LoadFunctionFromCatalog(ctx, functionID.SchemaName(), funcName, types)
 	if potentialFunction == nil {
 		return nil
 	}
 	f = potentialFunction.(QuickFunction)
-	r.functions[id] = f
+	if functionID.SchemaName() == "pg_catalog" {
+		r.functions[id] = f
+	}
 	return f
 }
 
@@ -140,14 +143,33 @@ func (*functionRegistry) nameWithoutParams(functionID id.Function) string {
 	return functionID.FunctionName()
 }
 
-// toFuncSignature returns a function signature for the given Internal ID.
-func (*functionRegistry) toFuncSignature(functionID id.Function) (string, []*DoltgresType) {
+// toFuncSignature returns a function signature for the given Internal ID. Returns false when a parameter names a type
+// that cannot be resolved, which may happen when a user-defined type has been dropped.
+func (*functionRegistry) toFuncSignature(ctx *sql.Context, functionID id.Function) (string, []*DoltgresType, bool) {
 	internalParams := functionID.Parameters()
 	params := make([]*DoltgresType, len(internalParams))
+	var collection TypeCollection
 	for i, internalParam := range internalParams {
-		params[i] = IDToBuiltInDoltgresType[internalParam]
+		if builtIn, ok := IDToBuiltInDoltgresType[internalParam]; ok {
+			params[i] = builtIn
+			continue
+		}
+		if collection == nil {
+			if GetTypesCollectionFromContext == nil {
+				return "", nil, false
+			}
+			var err error
+			if collection, err = GetTypesCollectionFromContext(ctx, ""); err != nil {
+				return "", nil, false
+			}
+		}
+		param, err := collection.GetType(ctx, internalParam)
+		if err != nil || param == nil {
+			return "", nil, false
+		}
+		params[i] = param
 	}
-	return functionID.FunctionName(), params
+	return functionID.FunctionName(), params, true
 }
 
 // toFuncID creates a valid function string for the given name and parameters, then registers the name with the
@@ -156,7 +178,12 @@ func toFuncID(functionName string, params ...id.Type) uint32 {
 	if functionName == "-" || len(functionName) == 0 {
 		return 0
 	}
-	functionID := id.NewFunction("pg_catalog", functionName, params...)
+	return ToFuncID(id.NewFunction("pg_catalog", functionName, params...))
+}
+
+// ToFuncID registers the given function with the global function registry, and returns the ID it was given. Primarily
+// used by extensions.
+func ToFuncID(functionID id.Function) uint32 {
 	return globalFunctionRegistry.InternalToRegistryID(functionID)
 }
 

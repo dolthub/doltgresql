@@ -1,0 +1,469 @@
+# Tests that authorization information (roles, passwords, privileges, role
+# membership) created through Postgres-dialect statements (CREATE ROLE / GRANT /
+# REVOKE / ALTER ROLE / DROP ROLE) is replicated from a cluster primary to its
+# standby.
+#
+# Doltgres stores this information in the auth.db file (server/auth package),
+# which is separate from the versioned chunk store that cluster replication
+# pushes. Dolt replicates its equivalent (mysql.db) over a dedicated
+# UpdateMySQLDb RPC; these tests assert that doltgres provides the same
+# guarantee for its auth data.
+#
+# Conventions:
+#   * Assertions on the standby that wait for (asynchronous) auth replication
+#     use retry_attempts so they pass with an eventually-consistent
+#     implementation and fail in bounded time when replication never happens.
+#   * Each test first exercises the new role on the PRIMARY, so a failure on
+#     the standby-side assertions isolates the problem to replication rather
+#     than auth setup.
+parallel: true
+tests:
+- name: role and privileges replicate to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "SET dolt_cluster_ack_writes_timeout_secs = 10"
+    - exec: "create database repo1"
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (0),(1),(2)"
+    - exec: "create user reader password 'readerpass'"
+    - exec: "grant select on vals to reader"
+  # Sanity check: the role and grant work on the primary itself.
+  - on: server1
+    user: reader
+    password: readerpass
+    database: repo1
+    queries:
+    # Plain select: non-superusers currently need EXECUTE on routines to call
+    # functions like count(), which is out of scope for this test.
+    - query: "select i from vals order by i"
+      result:
+        columns: ["i"]
+        rows: [["0"], ["1"], ["2"]]
+  # The role must exist on the standby.
+  - on: server2
+    queries:
+    - query: "select count(*) as count from pg_roles where rolname = 'reader'"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+      retry_attempts: 100
+  # And it must be able to log in there and use its granted privileges.
+  - on: server2
+    user: reader
+    password: readerpass
+    database: repo1
+    retry_attempts: 5
+    queries:
+    - query: "select i from vals order by i"
+      result:
+        columns: ["i"]
+        rows: [["0"], ["1"], ["2"]]
+- name: revoked privileges replicate to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "SET dolt_cluster_ack_writes_timeout_secs = 10"
+    - exec: "create database repo1"
+    - exec: "use repo1"
+    - exec: "create table t1 (i int primary key)"
+    - exec: "create table t2 (i int primary key)"
+    - exec: "insert into t1 values (1)"
+    - exec: "insert into t2 values (2)"
+    - exec: "create user revokee password 'revokeepass'"
+    - exec: "grant select on t1 to revokee"
+    - exec: "grant select on t2 to revokee"
+  # Both grants replicate and work on the standby.
+  - on: server2
+    user: revokee
+    password: revokeepass
+    database: repo1
+    retry_attempts: 5
+    queries:
+    - query: "select i from t1"
+      result:
+        columns: ["i"]
+        rows: [["1"]]
+    - query: "select i from t2"
+      result:
+        columns: ["i"]
+        rows: [["2"]]
+  # Revoke one of the grants on the primary.
+  - on: server1
+    queries:
+    - exec: "use repo1"
+    - exec: "revoke select on t2 from revokee"
+  # The revoke replicates: t1 stays readable, t2 becomes inaccessible.
+  - on: server2
+    user: revokee
+    password: revokeepass
+    database: repo1
+    queries:
+    - query: "select i from t1"
+      result:
+        columns: ["i"]
+        rows: [["1"]]
+    - query: "select i from t2"
+      error_match: "permission denied for table t2"
+      retry_attempts: 100
+- name: role membership replicates to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "SET dolt_cluster_ack_writes_timeout_secs = 10"
+    - exec: "create database repo1"
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (0),(1),(2)"
+    - exec: "create role readers"
+    - exec: "grant select on vals to readers"
+    - exec: "create user member password 'memberpass'"
+    - exec: "grant readers to member"
+  # Sanity check: membership grants privileges on the primary.
+  - on: server1
+    user: member
+    password: memberpass
+    database: repo1
+    queries:
+    - query: "select i from vals order by i"
+      result:
+        columns: ["i"]
+        rows: [["0"], ["1"], ["2"]]
+  # Both roles exist on the standby.
+  - on: server2
+    queries:
+    - query: "select count(*) as count from pg_roles where rolname in ('readers', 'member')"
+      result:
+        columns: ["count"]
+        rows: [["2"]]
+      retry_attempts: 100
+  # Membership works on the standby: member can read via the readers role.
+  - on: server2
+    user: member
+    password: memberpass
+    database: repo1
+    retry_attempts: 5
+    queries:
+    - query: "select i from vals order by i"
+      result:
+        columns: ["i"]
+        rows: [["0"], ["1"], ["2"]]
+- name: password changes replicate to standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "create user pwuser password 'firstpass'"
+  - on: server2
+    queries:
+    - query: "select count(*) as count from pg_roles where rolname = 'pwuser'"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+      retry_attempts: 100
+  # The original password works on the standby.
+  - on: server2
+    user: pwuser
+    password: firstpass
+    database: postgres
+    retry_attempts: 5
+    queries:
+    - query: "select 1 as one"
+      result:
+        columns: ["one"]
+        rows: [["1"]]
+  # Change the password on the primary.
+  - on: server1
+    queries:
+    - exec: "alter role pwuser password 'secondpass'"
+  # The new password works on the standby.
+  - on: server2
+    user: pwuser
+    password: secondpass
+    database: postgres
+    retry_attempts: 5
+    queries:
+    - query: "select 1 as one"
+      result:
+        columns: ["one"]
+        rows: [["1"]]
+- name: dropped role is removed on standby
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "create user doomed password 'doomedpass'"
+  # The role appears on the standby...
+  - on: server2
+    queries:
+    - query: "select count(*) as count from pg_roles where rolname = 'doomed'"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
+      retry_attempts: 100
+  - on: server1
+    queries:
+    - exec: "drop user doomed"
+  # ...and disappears from the standby after the drop.
+  - on: server2
+    queries:
+    - query: "select count(*) as count from pg_roles where rolname = 'doomed'"
+      result:
+        columns: ["count"]
+        rows: [["0"]]
+      retry_attempts: 100
+- name: roles and privileges usable after failover
+  multi_repos:
+  - name: server1
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server2_cluster"}}/{database}
+          bootstrap_role: primary
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server1_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server1
+  - name: server2
+    with_files:
+    - name: server.yaml
+      contents: |
+        log_level: trace
+        cluster:
+          standby_remotes:
+          - name: standby
+            remote_url_template: http://127.0.0.1:{{get_port "server1_cluster"}}/{database}
+          bootstrap_role: standby
+          bootstrap_epoch: 1
+          remotesapi:
+            port: {{get_port "server2_cluster"}}
+    server:
+      args: ["--config", "server.yaml"]
+      dynamic_port: server2
+  connections:
+  - on: server1
+    queries:
+    - exec: "SET dolt_cluster_ack_writes_timeout_secs = 10"
+    - exec: "create database repo1"
+    - exec: "use repo1"
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (0),(1)"
+    - exec: "create user writer password 'writerpass'"
+    - exec: "grant select, insert on vals to writer"
+  # Sanity check: writer can write on the current primary.
+  - on: server1
+    user: writer
+    password: writerpass
+    database: repo1
+    queries:
+    - exec: "insert into vals values (2)"
+    - query: "select i from vals order by i"
+      result:
+        columns: ["i"]
+        rows: [["0"], ["1"], ["2"]]
+  # Wait for the standby to be fully caught up, then fail over.
+  - on: server1
+    queries:
+    - exec: "use dolt_cluster"
+    - query: "select count(*) as not_caught_up from dolt_cluster_status where replication_lag_millis is null or replication_lag_millis <> 0"
+      result:
+        columns: ["not_caught_up"]
+        rows: [["0"]]
+      retry_attempts: 100
+    - exec: "use repo1"
+    - query: "select dolt_assume_cluster_role('standby', '2')"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  - on: server2
+    queries:
+    - query: "select dolt_assume_cluster_role('primary', '2')"
+      result:
+        columns: ["dolt_assume_cluster_role"]
+        rows: [["0"]]
+  # The replicated role can log in and write on the new primary.
+  - on: server2
+    user: writer
+    password: writerpass
+    database: repo1
+    retry_attempts: 5
+    queries:
+    - query: "select i from vals order by i"
+      result:
+        columns: ["i"]
+        rows: [["0"], ["1"], ["2"]]
+    - exec: "insert into vals values (3),(4)"
+    - query: "select i from vals order by i"
+      result:
+        columns: ["i"]
+        rows: [["0"], ["1"], ["2"], ["3"], ["4"]]

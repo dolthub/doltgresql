@@ -77,9 +77,9 @@ func TestClusterRootObjects(t *testing.T) {
 	RunTestsFile(t, "tests/sql-server-cluster-root-objects.yaml")
 }
 
-func TestClusterUsersAndGrants(t *testing.T) {
+func TestClusterAuthReplication(t *testing.T) {
 	t.Parallel()
-	RunTestsFile(t, "tests/sql-server-cluster-users-and-grants.yaml")
+	RunTestsFile(t, "tests/sql-server-cluster-auth-replication.yaml")
 }
 
 func TestRemotesAPI(t *testing.T) {

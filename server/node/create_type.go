@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -167,7 +168,7 @@ func (c *CreateType) Schema(ctx *sql.Context) sql.Schema {
 
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateType) String() string {
-	return "CREATE TYPE"
+	return fmt.Sprintf("CREATE TYPE %s", c.Name)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.

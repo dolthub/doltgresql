@@ -19,6 +19,8 @@ import (
 
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/core/aggregates"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/server/functions"
@@ -224,6 +226,38 @@ func cachePgProcs(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			})
 			return true, nil
 		},
+	})
+	if err != nil {
+		return err
+	}
+
+	aggCollection, err := core.GetAggregatesCollectionFromContext(ctx, "")
+	if err != nil {
+		return err
+	}
+	err = aggCollection.IterateAggregates(ctx, func(a aggregates.Aggregate) (stop bool, err error) {
+		var argTypes any
+		params := a.ID.Parameters()
+		if len(params) > 0 {
+			types := make([]any, len(params))
+			for i, param := range params {
+				types[i] = param.AsId()
+			}
+			argTypes = types
+		}
+		pprocs = append(pprocs, &pgProc{
+			oid:       a.ID.AsId(),
+			name:      a.ID.FunctionName(),
+			schemaOid: id.NewNamespace(a.ID.SchemaName()).AsId(),
+			variadic:  id.Null,
+			kind:      "a",
+			volatile:  "i",
+			nArgs:     int16(len(params)),
+			retTyp:    a.ReturnType.AsId(),
+			argTypes:  argTypes,
+			src:       "aggregate_dummy",
+		})
+		return false, nil
 	})
 	if err != nil {
 		return err

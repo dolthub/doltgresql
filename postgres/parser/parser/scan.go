@@ -272,7 +272,13 @@ func (s *scanner) scan(lval *sqlSymType) {
 			s.pos++
 			lval.id = NOT_EQUALS
 			return
-		case '=': // <=
+		case '=':
+			if s.peekN(1) == '>' { // <=>
+				s.pos += 2
+				lval.id = COSINE_DISTANCE
+				return
+			}
+			// <=
 			s.pos++
 			lval.id = LESS_EQUALS
 			return
@@ -280,6 +286,36 @@ func (s *scanner) scan(lval *sqlSymType) {
 			s.pos++
 			lval.id = CONTAINED_BY
 			return
+		case '-':
+			if s.peekN(1) == '>' { // <->
+				s.pos += 2
+				lval.id = L2_DISTANCE
+				return
+			}
+		case '+':
+			if s.peekN(1) == '>' { // <+>
+				s.pos += 2
+				lval.id = L1_DISTANCE
+				return
+			}
+		case '#':
+			if s.peekN(1) == '>' { // <#>
+				s.pos += 2
+				lval.id = NEG_INNER_PRODUCT
+				return
+			}
+		case '%':
+			if s.peekN(1) == '>' { // <%>
+				s.pos += 2
+				lval.id = JACCARD_DISTANCE
+				return
+			}
+		case '~':
+			if s.peekN(1) == '>' { // <~>
+				s.pos += 2
+				lval.id = HAMMING_DISTANCE
+				return
+			}
 		}
 		return
 

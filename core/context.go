@@ -27,9 +27,11 @@ import (
 	"github.com/dolthub/dolt/go/store/types"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/aggregates"
 	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/extensions"
 	"github.com/dolthub/doltgresql/core/functions"
+	"github.com/dolthub/doltgresql/core/operators"
 	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
@@ -352,6 +354,26 @@ func GetCastsCollectionFromContext(ctx *sql.Context, database string) (*casts.Co
 		return nil, err
 	}
 	return coll.(*casts.Collection), nil
+}
+
+// GetAggregatesCollectionFromContext returns the given aggregates collection from the context.
+// Will always return a collection if no error is returned.
+func GetAggregatesCollectionFromContext(ctx *sql.Context, database string) (*aggregates.Collection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Aggregates)
+	if err != nil {
+		return nil, err
+	}
+	return coll.(*aggregates.Collection), nil
+}
+
+// GetOperatorsCollectionFromContext returns the given operators collection from the context.
+// Will always return a collection if no error is returned.
+func GetOperatorsCollectionFromContext(ctx *sql.Context, database string) (*operators.Collection, error) {
+	coll, err := collectionFromContext(ctx, database, objinterface.RootObjectID_Operators)
+	if err != nil {
+		return nil, err
+	}
+	return coll.(*operators.Collection), nil
 }
 
 // GetExtensionsCollectionFromContext returns the extensions collection from the given context. Will always return a

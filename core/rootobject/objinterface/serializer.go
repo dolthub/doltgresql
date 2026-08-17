@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/dolt/go/store/types"
 	flatbuffers "github.com/dolthub/flatbuffers/v23/go"
 
+	"github.com/dolthub/doltgresql/core/storage"
 	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
 
@@ -98,7 +99,7 @@ func (serializer RootObjectSerializer) WriteProllyMap(ctx context.Context, root 
 		}
 		h = ref.TargetHash()
 	}
-	newStorage, err := root.GetStorage(ctx).SetRootObjectHash(ctx, serializer.Bytes, h)
+	newStorage, err := root.GetStorage(ctx).SetRootObjectHash(ctx, storage.RootObjectSerialization(serializer), h)
 	if err != nil {
 		return nil, err
 	}

@@ -19,10 +19,12 @@ import (
 	"os"
 	"testing"
 
+	doltserial "github.com/dolthub/dolt/go/gen/fb/serial"
 	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
+	flatbuffers "github.com/dolthub/flatbuffers/v23/go"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/core/casts"
@@ -30,6 +32,8 @@ import (
 	"github.com/dolthub/doltgresql/core/rootobject"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/core/storage"
+	"github.com/dolthub/doltgresql/flatbuffers/gen/serial"
 )
 
 func TestMain(m *testing.M) {
@@ -48,8 +52,8 @@ func TestLoadAndSaveEmptyCollectionsPreserveRoot(t *testing.T) {
 			root: newTestRoot,
 		},
 		{
-			name: "root with empty root object fields",
-			root: newTestRootWithFields,
+			name: "legacy root with zero-hash root object fields",
+			root: newLegacyTestRoot,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -81,7 +85,7 @@ func TestLoadAndSaveEmptyCollectionsPreserveRoot(t *testing.T) {
 func TestEmptiedCollectionMatchesUnwrittenCollection(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	root := newTestRootWithFields(t, ctx)
+	root := newTestRootWithSchema(t, ctx)
 	startHash, err := root.HashOf()
 	require.NoError(t, err)
 
@@ -113,7 +117,7 @@ func TestEmptiedCollectionMatchesUnwrittenCollection(t *testing.T) {
 func TestCollectionStaleness(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	root := newTestRootWithFields(t, ctx)
+	root := newTestRootWithSchema(t, ctx)
 
 	ours, err := sequences.LoadSequences(ctx, root)
 	require.NoError(t, err)
@@ -142,7 +146,7 @@ func TestCollectionStaleness(t *testing.T) {
 func TestResolutionCollectionsAreReused(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	root := newTestRootWithFields(t, ctx)
+	root := newTestRootWithSchema(t, ctx)
 
 	first, err := root.ReadOnlyCollections(ctx)
 	require.NoError(t, err)
@@ -191,10 +195,38 @@ func newTestRoot(t testing.TB, ctx context.Context) *RootValue {
 	return root.(*RootValue)
 }
 
-// newTestRootWithFields returns an empty in-memory root that has every root object field written as empty.
-func newTestRootWithFields(t testing.TB, ctx context.Context) *RootValue {
+// newTestRootWithSchema returns an empty in-memory root that has a database schema and no root object fields.
+func newTestRootWithSchema(t testing.TB, ctx context.Context) *RootValue {
 	t.Helper()
 	root, err := newTestRoot(t, ctx).CreateDatabaseSchema(ctx, schema.DatabaseSchema{Name: "public"})
+	require.NoError(t, err)
+	require.Empty(t, root.(*RootValue).st.SRV.CastsBytes())
+	return root.(*RootValue)
+}
+
+// newLegacyTestRoot returns an empty in-memory root with every root object field written as a zero hash, matching
+// the roots that the previous version serialized.
+func newLegacyTestRoot(t testing.TB, ctx context.Context) *RootValue {
+	t.Helper()
+	base := newTestRoot(t, ctx)
+	builder := flatbuffers.NewBuilder(80)
+	tablesOffset := builder.CreateByteVector(base.st.SRV.TablesBytes())
+	fkOffset := builder.CreateByteVector(base.st.SRV.ForeignKeyAddrBytes())
+	var empty hash.Hash
+	rootObjOffsets := make([]flatbuffers.UOffsetT, len(storage.RootObjectSerializations))
+	for i := range storage.RootObjectSerializations {
+		rootObjOffsets[i] = builder.CreateByteVector(empty[:])
+	}
+	serial.RootValueStart(builder)
+	serial.RootValueAddFeatureVersion(builder, base.st.SRV.FeatureVersion())
+	serial.RootValueAddCollation(builder, base.st.SRV.Collation())
+	serial.RootValueAddTables(builder, tablesOffset)
+	serial.RootValueAddForeignKeyAddr(builder, fkOffset)
+	for i := range storage.RootObjectSerializations {
+		storage.RootObjectSerializations[i].RootValueAdd(builder, rootObjOffsets[i])
+	}
+	bs := doltserial.FinishMessage(builder, serial.RootValueEnd(builder), []byte(doltserial.DoltgresRootValueFileID))
+	root, err := newRootValue(ctx, base.vrw, base.ns, types.SerialMessage(bs))
 	require.NoError(t, err)
 	require.Len(t, root.(*RootValue).st.SRV.CastsBytes(), hash.ByteLen)
 	return root.(*RootValue)

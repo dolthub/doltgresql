@@ -83,6 +83,7 @@ var KeywordsCategories = map[string]string{
 	"comments":                     "U",
 	"commit":                       "U",
 	"committed":                    "U",
+	"commutator":                   "U",
 	"compact":                      "U",
 	"complete":                     "U",
 	"compression":                  "U",
@@ -221,6 +222,7 @@ var KeywordsCategories = map[string]string{
 	"groups":                       "U",
 	"handler":                      "U",
 	"hash":                         "U",
+	"hashes":                       "U",
 	"having":                       "R",
 	"header":                       "U",
 	"high":                         "U",
@@ -294,6 +296,7 @@ var KeywordsCategories = map[string]string{
 	"lease":                        "U",
 	"least":                        "C",
 	"left":                         "T",
+	"leftarg":                      "U",
 	"less":                         "U",
 	"level":                        "U",
 	"like":                         "T",
@@ -315,6 +318,7 @@ var KeywordsCategories = map[string]string{
 	"materialized":                 "U",
 	"maxvalue":                     "U",
 	"merge":                        "U",
+	"merges":                       "U",
 	"method":                       "U",
 	"mfinalfunc":                   "U",
 	"mfinalfunc_extra":             "U",
@@ -347,6 +351,7 @@ var KeywordsCategories = map[string]string{
 	"names":                        "U",
 	"nan":                          "U",
 	"natural":                      "T",
+	"negator":                      "U",
 	"never":                        "U",
 	"new":                          "U",
 	"next":                         "U",
@@ -478,6 +483,7 @@ var KeywordsCategories = map[string]string{
 	"revision_history":             "U",
 	"revoke":                       "U",
 	"right":                        "T",
+	"rightarg":                     "U",
 	"role":                         "U",
 	"roles":                        "U",
 	"rollback":                     "U",
@@ -723,6 +729,7 @@ var KeywordNames = []string{
 	"comments",
 	"commit",
 	"committed",
+	"commutator",
 	"compact",
 	"complete",
 	"compression",
@@ -861,6 +868,7 @@ var KeywordNames = []string{
 	"groups",
 	"handler",
 	"hash",
+	"hashes",
 	"having",
 	"header",
 	"high",
@@ -934,6 +942,7 @@ var KeywordNames = []string{
 	"lease",
 	"least",
 	"left",
+	"leftarg",
 	"less",
 	"level",
 	"like",
@@ -955,6 +964,7 @@ var KeywordNames = []string{
 	"materialized",
 	"maxvalue",
 	"merge",
+	"merges",
 	"method",
 	"mfinalfunc",
 	"mfinalfunc_extra",
@@ -987,6 +997,7 @@ var KeywordNames = []string{
 	"names",
 	"nan",
 	"natural",
+	"negator",
 	"never",
 	"new",
 	"next",
@@ -1118,6 +1129,7 @@ var KeywordNames = []string{
 	"revision_history",
 	"revoke",
 	"right",
+	"rightarg",
 	"role",
 	"roles",
 	"rollback",
@@ -1448,6 +1460,8 @@ func GetKeywordID(k string) int32 {
 		return COMMIT
 	case "committed":
 		return COMMITTED
+	case "commutator":
+		return COMMUTATOR
 	case "compact":
 		return COMPACT
 	case "complete":
@@ -1724,6 +1738,8 @@ func GetKeywordID(k string) int32 {
 		return HANDLER
 	case "hash":
 		return HASH
+	case "hashes":
+		return HASHES
 	case "having":
 		return HAVING
 	case "header":
@@ -1870,6 +1886,8 @@ func GetKeywordID(k string) int32 {
 		return LEAST
 	case "left":
 		return LEFT
+	case "leftarg":
+		return LEFTARG
 	case "less":
 		return LESS
 	case "level":
@@ -1912,6 +1930,8 @@ func GetKeywordID(k string) int32 {
 		return MAXVALUE
 	case "merge":
 		return MERGE
+	case "merges":
+		return MERGES
 	case "method":
 		return METHOD
 	case "mfinalfunc":
@@ -1976,6 +1996,8 @@ func GetKeywordID(k string) int32 {
 		return NAN
 	case "natural":
 		return NATURAL
+	case "negator":
+		return NEGATOR
 	case "never":
 		return NEVER
 	case "new":
@@ -2238,6 +2260,8 @@ func GetKeywordID(k string) int32 {
 		return REVOKE
 	case "right":
 		return RIGHT
+	case "rightarg":
+		return RIGHTARG
 	case "role":
 		return ROLE
 	case "roles":

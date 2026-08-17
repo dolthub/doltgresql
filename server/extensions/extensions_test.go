@@ -29,7 +29,7 @@ func testFunction(ctx *sql.Context, args ...any) (any, error) {
 }
 
 func TestRegistry(t *testing.T) {
-	register(&extdef.Extension{
+	Register(&extdef.Extension{
 		Name:     "doltgres_test",
 		Control:  extdef.Control{DefaultVersion: "2.5", Comment: "a test extension", Relocatable: true},
 		Routines: []extdef.Routine{{Name: "alpha", Symbol: "alpha", Returns: "uuid", Impl: testFunction}},
@@ -61,11 +61,11 @@ func TestRegistry(t *testing.T) {
 
 	// Registering the same extension twice would silently replace the first, so it panics instead
 	require.Panics(t, func() {
-		register(&extdef.Extension{Name: "doltgres_test", Control: extdef.Control{DefaultVersion: "2.5"}})
+		Register(&extdef.Extension{Name: "doltgres_test", Control: extdef.Control{DefaultVersion: "2.5"}})
 	})
 	// A symbol may only back one routine, since it is what dispatches a call to its implementation
 	require.Panics(t, func() {
-		register(&extdef.Extension{
+		Register(&extdef.Extension{
 			Name: "doltgres_test_symbols",
 			Routines: []extdef.Routine{
 				{Name: "alpha", Symbol: "alpha", Impl: testFunction},

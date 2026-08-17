@@ -109,6 +109,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeCreateIndex(ctx, stmt)
 	case *tree.CreateMaterializedView:
 		return nodeCreateMaterializedView(ctx, stmt)
+	case *tree.CreateOperator:
+		return nodeCreateOperator(ctx, stmt)
 	case *tree.CreateProcedure:
 		return nodeCreateProcedure(ctx, stmt)
 	case *tree.CreateRole:
@@ -147,6 +149,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDropFunction(ctx, stmt)
 	case *tree.DropIndex:
 		return nodeDropIndex(ctx, stmt)
+	case *tree.DropOperator:
+		return nodeDropOperator(ctx, stmt)
 	case *tree.DropProcedure:
 		return nodeDropProcedure(ctx, stmt)
 	case *tree.DropRole:

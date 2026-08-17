@@ -139,7 +139,7 @@ func (c *CreateDomain) Schema(ctx *sql.Context) sql.Schema {
 
 // String implements the interface sql.ExecSourceRel.
 func (c *CreateDomain) String() string {
-	return "CREATE DOMAIN"
+	return fmt.Sprintf("CREATE DOMAIN %s", c.Name)
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.

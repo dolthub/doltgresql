@@ -62,6 +62,9 @@ type Namespace Id
 // Oid is an Id wrapper for OIDs. This wrapper must not be returned to the client.
 type Oid Id
 
+// Operator is an Id wrapper for operators. This wrapper must not be returned to the client.
+type Operator Id
+
 // Procedure is an Id wrapper for procedures. This wrapper must not be returned to the client.
 type Procedure Id
 
@@ -196,6 +199,14 @@ func NewNamespace(schemaName string) Namespace {
 // NewOID returns a new Oid. This wrapper must not be returned to the client.
 func NewOID(val uint32) Oid {
 	return Oid(NewId(Section_OID, strconv.FormatUint(uint64(val), 10)))
+}
+
+// NewOperator returns a new Operator. This wrapper must not be returned to the client.
+func NewOperator(schemaName string, symbol string, leftType Type, rightType Type) Operator {
+	if len(symbol) == 0 {
+		return NullOperator
+	}
+	return Operator(NewId(Section_Operator, schemaName, symbol, string(leftType), string(rightType)))
 }
 
 // NewProcedure returns a new Procedure. This wrapper must not be returned to the client.
@@ -419,6 +430,26 @@ func (id Oid) OID() uint32 {
 	return uint32(val)
 }
 
+// LeftType returns the type of the operator's left operand.
+func (id Operator) LeftType() Type {
+	return Type(Id(id).Segment(2))
+}
+
+// RightType returns the type of the operator's right operand.
+func (id Operator) RightType() Type {
+	return Type(Id(id).Segment(3))
+}
+
+// SchemaName returns the name of the schema that the operator belongs to.
+func (id Operator) SchemaName() string {
+	return Id(id).Segment(0)
+}
+
+// Symbol returns the operator's symbol.
+func (id Operator) Symbol() string {
+	return Id(id).Segment(1)
+}
+
 // ProcedureName returns the procedure's name.
 func (id Procedure) ProcedureName() string {
 	return Id(id).Segment(1)
@@ -547,6 +578,9 @@ func (id Namespace) IsValid() bool { return Id(id).IsValid() }
 func (id Oid) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
+func (id Operator) IsValid() bool { return Id(id).IsValid() }
+
+// IsValid returns whether the ID is valid.
 func (id Procedure) IsValid() bool { return Id(id).IsValid() }
 
 // IsValid returns whether the ID is valid.
@@ -608,6 +642,9 @@ func (id Namespace) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id Oid) AsId() Id { return Id(id) }
+
+// AsId returns the unwrapped ID.
+func (id Operator) AsId() Id { return Id(id) }
 
 // AsId returns the unwrapped ID.
 func (id Procedure) AsId() Id { return Id(id) }

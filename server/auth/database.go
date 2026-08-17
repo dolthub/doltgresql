@@ -148,16 +148,7 @@ func LockWrite(f func()) {
 // dbInit handle the global database initialization. Panics if an error occurs, since it points to something going
 // terribly wrong.
 func dbInit(dEnv *env.DoltEnv, cfg Config) {
-	globalDatabase = Database{
-		rolesByName:        make(map[string]RoleID),
-		rolesByID:          make(map[RoleID]Role),
-		databasePrivileges: NewDatabasePrivileges(),
-		schemaPrivileges:   NewSchemaPrivileges(),
-		tablePrivileges:    NewTablePrivileges(),
-		sequencePrivileges: NewSequencePrivileges(),
-		routinePrivileges:  NewRoutinePrivileges(),
-		roleMembership:     NewRoleMembership(),
-	}
+	globalDatabase = newEmptyDatabase()
 	globalLock = &sync.RWMutex{}
 	if dEnv != nil {
 		if _, ok := dEnv.FS.(*filesys.InMemFS); !ok {
@@ -184,6 +175,20 @@ func dbInit(dEnv *env.DoltEnv, cfg Config) {
 		}
 	} else {
 		dbInitDefault()
+	}
+}
+
+// newEmptyDatabase returns a Database with all of its collections initialized and empty.
+func newEmptyDatabase() Database {
+	return Database{
+		rolesByName:        make(map[string]RoleID),
+		rolesByID:          make(map[RoleID]Role),
+		databasePrivileges: NewDatabasePrivileges(),
+		schemaPrivileges:   NewSchemaPrivileges(),
+		tablePrivileges:    NewTablePrivileges(),
+		sequencePrivileges: NewSequencePrivileges(),
+		routinePrivileges:  NewRoutinePrivileges(),
+		roleMembership:     NewRoleMembership(),
 	}
 }
 

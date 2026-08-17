@@ -21,9 +21,12 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/procedures"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/functions/framework"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // BinaryOperator represents a VALUE OPERATOR VALUE expression.
@@ -37,6 +40,7 @@ var _ sql.Expression = (*BinaryOperator)(nil)
 var _ expression.BinaryExpression = (*BinaryOperator)(nil)
 var _ expression.Equality = (*BinaryOperator)(nil)
 var _ sql.IndexComparisonExpression = (*BinaryOperator)(nil)
+var _ procedures.InterpreterExpr = (*BinaryOperator)(nil)
 
 // NewBinaryOperator returns a new *BinaryOperator.
 func NewBinaryOperator(operator framework.Operator) *BinaryOperator {
@@ -66,6 +70,18 @@ func (b *BinaryOperator) RepresentsEquality() bool {
 // Resolved implements the sql.Expression interface.
 func (b *BinaryOperator) Resolved() bool {
 	return b.compiledFunc.Resolved()
+}
+
+// SetStatementRunner implements the procedures.InterpreterExpr interface.
+func (b *BinaryOperator) SetStatementRunner(ctx *sql.Context, runner sql.StatementRunner) sql.Expression {
+	interpreterExpr, ok := b.compiledFunc.(procedures.InterpreterExpr)
+	if !ok {
+		return b
+	}
+	return &BinaryOperator{
+		operator:     b.operator,
+		compiledFunc: interpreterExpr.SetStatementRunner(ctx, runner).(framework.Function),
+	}
 }
 
 // String implements the sql.Expression interface.
@@ -144,7 +160,21 @@ func (b *BinaryOperator) WithResolvedChildren(ctx context.Context, children []an
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
 	}
 	funcName := "internal_binary_operator_func_" + b.operator.String()
-	compiledFunc := framework.GetBinaryFunction(b.operator).Compile(sqlCtx, funcName, left, right)
+	var compiledFunc framework.Function
+	builtInFunc := framework.GetBinaryFunction(b.operator).Compile(sqlCtx, funcName, left, right)
+	if builtInFunc != nil && builtInFunc.StashedError() == nil {
+		compiledFunc = builtInFunc
+	} else {
+		userFunc, err := getUserDefinedOperator(sqlCtx, b.operator, left, right)
+		if err != nil {
+			return nil, err
+		}
+		if userFunc != nil {
+			compiledFunc = userFunc
+		} else if builtInFunc != nil {
+			compiledFunc = builtInFunc
+		}
+	}
 	if compiledFunc == nil {
 		return nil, errors.Errorf("operator does not exist: %s %s %s",
 			left.Type(sqlCtx).String(), b.operator.String(), right.Type(sqlCtx).String())
@@ -218,4 +248,37 @@ func unwrapIndexScanTarget(expr sql.Expression) sql.Expression {
 		}
 	}
 	return expr
+}
+
+// getUserDefinedOperator returns the function for the user-defined operator matching the given operands. Returns nil if
+// an operator is not found.
+func getUserDefinedOperator(ctx *sql.Context, operator framework.Operator, left sql.Expression, right sql.Expression) (framework.Function, error) {
+	leftType, ok := left.Type(ctx).(*pgtypes.DoltgresType)
+	if !ok {
+		return nil, nil
+	}
+	rightType, ok := right.Type(ctx).(*pgtypes.DoltgresType)
+	if !ok {
+		return nil, nil
+	}
+	operatorCollection, err := core.GetOperatorsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	searchPath, err := core.SearchPath(ctx)
+	if err != nil {
+		return nil, err
+	}
+	op, ok, err := operatorCollection.ResolveOperator(ctx, searchPath, operator.String(), leftType.ID, rightType.ID)
+	if err != nil || !ok {
+		return nil, err
+	}
+	userFunc, err := framework.GetUserFunction(ctx, op.Function.SchemaName(), op.Function.FunctionName(), left, right)
+	if err != nil {
+		return nil, err
+	}
+	if userFunc == nil {
+		return nil, sql.ErrFunctionNotFound.New(op.Function.FunctionName())
+	}
+	return userFunc, nil
 }

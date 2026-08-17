@@ -16,6 +16,9 @@ package extdef
 
 import (
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/casts"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Function is the Go implementation of a single function that an extension provides.
@@ -35,9 +38,26 @@ type Control struct {
 
 // Extension is a Postgres extension that Doltgres emulates.
 type Extension struct {
-	Name     string
-	Control  Control
-	Routines []Routine
+	Name       string
+	Control    Control
+	Types      []Type
+	Routines   []Routine
+	Operators  []Operator
+	Casts      []Cast
+	Aggregates []Aggregate
+}
+
+// Type is a base type that an extension provides. Definition carries every option except the support functions, which
+// are named here.
+type Type struct {
+	Name       string
+	Definition pgtypes.BaseTypeDefinition
+	Input      string
+	Output     string
+	Receive    string
+	Send       string
+	ModIn      string
+	ModOut     string
 }
 
 // Routine is a function that an extension provides. Symbol is its C link symbol, which is unique within the extension.
@@ -54,4 +74,37 @@ type Routine struct {
 type Parameter struct {
 	Name string
 	Type string
+}
+
+// Operator is an operator that an extension provides.
+type Operator struct {
+	Symbol     string
+	Left       string
+	Right      string
+	Routine    string
+	Commutator string
+	Negator    string
+	Hashes     bool
+	Merges     bool
+}
+
+// Cast is a cast that an extension provides.
+type Cast struct {
+	Source   string
+	Target   string
+	Routine  string
+	CastType casts.CastType
+}
+
+// Aggregate is an aggregate function that an extension provides.
+type Aggregate struct {
+	Name        string
+	Parameters  []Parameter
+	Returns     string
+	StateType   string
+	Transition  string
+	Final       string
+	Combine     string
+	InitCond    string
+	HasInitCond bool
 }

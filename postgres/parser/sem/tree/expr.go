@@ -1101,6 +1101,12 @@ const (
 	JSONFetchText
 	JSONFetchValPath
 	JSONFetchTextPath
+	L2Distance
+	L1Distance
+	CosineDistance
+	NegInnerProduct
+	JaccardDistance
+	HammingDistance
 
 	NumBinaryOperators
 )
@@ -1125,6 +1131,12 @@ var binaryOpName = [...]string{
 	JSONFetchText:     "->>",
 	JSONFetchValPath:  "#>",
 	JSONFetchTextPath: "#>>",
+	L2Distance:        "<->",
+	L1Distance:        "<+>",
+	CosineDistance:    "<=>",
+	NegInnerProduct:   "<#>",
+	JaccardDistance:   "<%>",
+	HammingDistance:   "<~>",
 }
 
 // binaryOpPrio follows the precedence order in the grammar. Used for pretty-printing.
@@ -1137,6 +1149,8 @@ var binaryOpPrio = [...]int{
 	Bitxor: 6,
 	Bitor:  7,
 	Concat: 8, JSONFetchVal: 8, JSONFetchText: 8, JSONFetchValPath: 8, JSONFetchTextPath: 8,
+	L2Distance: 8, L1Distance: 8, CosineDistance: 8, NegInnerProduct: 8, JaccardDistance: 8,
+	HammingDistance: 8,
 }
 
 // binaryOpFullyAssoc indicates whether an operator is fully associative.
