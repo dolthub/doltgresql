@@ -97,6 +97,12 @@ func (p *Parameter) GetSessionScope() sql.SystemVariableScope {
 	return GetPgsqlScope(PsqlScopeSession)
 }
 
+// GetLocalScope implements sql.SystemVariable. Any parameter that can be set at session scope can also be set with
+// transaction-local scope (SET LOCAL).
+func (p *Parameter) GetLocalScope() sql.SystemVariableScope {
+	return GetPgsqlScope(PsqlScopeLocal)
+}
+
 // SetDefault implements sql.SystemVariable.
 func (p *Parameter) SetDefault(a any) {
 	if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
@@ -223,8 +229,9 @@ func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 		err := ctx.SetSessionVariable(ctx, name, val)
 		return err
 	case PsqlScopeLocal:
-		// TODO: support LOCAL scope
-		return cerrors.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
+		// Reset any cached variables in ContextValues, same as the session scope
+		_ = core.SetDateStyleOutputFormat(ctx, "")
+		return ctx.Session.SetTransactionLocalVariable(ctx, name, val)
 	default:
 		return cerrors.Errorf("unable to set `%s` due to unknown scope `%v`", name, p.Type)
 	}
@@ -240,8 +247,12 @@ func (p *PgsqlScope) GetValue(ctx *sql.Context, name string, _ sql.CollationID) 
 		}
 		return val, nil
 	case PsqlScopeLocal:
-		// TODO: support LOCAL scope
-		return nil, cerrors.Errorf("unsupported scope `%v` on configuration parameter `%s`", p.Type, name)
+		// The session value already reflects any transaction-local override
+		val, err := ctx.GetSessionVariable(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return val, nil
 	default:
 		return nil, cerrors.Errorf("unknown scope `%v` on configuration parameter `%s`", p.Type, name)
 	}
