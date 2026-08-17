@@ -1525,6 +1525,27 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "dolt_commit_diff subselect",
+			Skip: true,
+			SetUpScript: []string{
+				`CREATE TABLE bug6 (id integer PRIMARY KEY, v text);`,
+				`INSERT INTO bug6 VALUES (1, 'a');`,
+				`SELECT dolt_add('-A');`,
+				`SELECT dolt_commit('--all', '--message', 'base', '--author', 'A <a@example.com>');`,
+				`UPDATE bug6 SET v = 'b' WHERE id = 1;`,
+				`SELECT dolt_add('-A');`,
+				`SELECT dolt_commit('--all', '--message', 'change', '--author', 'A <a@example.com>');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT to_id FROM dolt_commit_diff_bug6                                                                   
+WHERE to_commit = (SELECT commit_hash FROM dolt.log ORDER BY date DESC LIMIT 1)                         
+  AND from_commit = (SELECT commit_hash FROM dolt.log ORDER BY date DESC OFFSET 1 LIMIT 1);`,
+					Expected: []sql.Row{{1, 1, 3, "modified"}},
+				},
+			},
+		},
+		{
 			Name: "dolt history with tablename",
 			SetUpScript: []string{
 				"CREATE TABLE test (id INT PRIMARY KEY)",
@@ -2273,7 +2294,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 			},
 		},
 		{
-			Name:        "dolt procedures",
+			Name: "dolt procedures",
 			SetUpScript: []string{
 				// TODO: Create procedure when supported
 			},
