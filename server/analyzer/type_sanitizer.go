@@ -16,11 +16,11 @@ package analyzer
 
 import (
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression"
@@ -54,16 +54,19 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 				if alias, ok := child.(*plan.TableAlias); ok {
 					child = alias.Child
 				}
-				// Some dolt_ tables and table functions do not have doltgres types for their columns,
-				// so we convert them here
-				var name string
+				// Dolt system tables and table functions do not have doltgres types for their columns, so we
+				// convert them here.
+				var name, schemaName string
 				switch child := child.(type) {
 				case *plan.ResolvedTable:
 					name = child.Name()
+					if dbSchema, ok := child.Database().(sql.DatabaseSchema); ok {
+						schemaName = dbSchema.SchemaName()
+					}
 				case sql.TableFunction:
 					name = child.Name()
 				}
-				if strings.HasPrefix(strings.ToLower(name), "dolt_") {
+				if doltdb.IsSystemTable(doltdb.TableName{Name: name, Schema: schemaName}) {
 					// This is a projection on a table, so we can safely convert the type
 					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
 						return pgexprs.NewGMSCast(expr), transform.NewTree, nil

@@ -118,6 +118,19 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Query:    `SELECT "dolt_branches"."name" FROM "dolt_branches" WHERE "dolt_branches"."name" IN ('main') ORDER BY "dolt_branches"."name" DESC LIMIT 21;`,
 					Expected: []sql.Row{{"main"}},
 				},
+				{
+					// https://github.com/dolthub/doltgresql/issues/3115
+					Query:    `SELECT name FROM dolt.branches WHERE name IN ('main')`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.branches WHERE name IN ('main', 'nonexistent')`,
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.branches WHERE name NOT IN ('nonexistent')`,
+					Expected: []sql.Row{{"main"}},
+				},
 			},
 		},
 		{
@@ -1853,6 +1866,10 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{2}},
 				},
 				{
+					Query:    `SELECT count(*) FROM dolt.log WHERE message IN ('Initialize data repository')`,
+					Expected: []sql.Row{{1}},
+				},
+				{
 					Query:       `SELECT * FROM public.log`,
 					ExpectedErr: "table not found",
 				},
@@ -2645,6 +2662,10 @@ WHERE to_commit = dolt_hashof('HEAD')
 				},
 				{
 					Query:    `SELECT dolt_remotes.name FROM dolt_remotes`,
+					Expected: []sql.Row{{"origin"}},
+				},
+				{
+					Query:    `SELECT name FROM dolt.remotes WHERE name IN ('origin')`,
 					Expected: []sql.Row{{"origin"}},
 				},
 				{
