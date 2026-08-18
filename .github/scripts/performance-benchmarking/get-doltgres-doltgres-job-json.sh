@@ -63,7 +63,7 @@ echo '
           "alert_recipients": "'$ACTOR_EMAIL'"
         },
         "labels": {
-          "app": "performance-benchmarking"
+          "app": "performance-benchmarking",
           "k8s-liquidata-inc-monitored-job": "created-by-static-config"
         }
       },
