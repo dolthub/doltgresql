@@ -410,6 +410,24 @@ func TestBinaryLogic(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3096
+			Name: "IS DISTINCT FROM and IS NOT DISTINCT FROM inside a subquery",
+			SetUpScript: []string{
+				`CREATE TABLE t_indf (id INT PRIMARY KEY, v TEXT);`,
+				`INSERT INTO t_indf VALUES (1, 'a'), (2, NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*) FROM t_indf o WHERE EXISTS (SELECT 1 FROM t_indf i WHERE i.v IS NOT DISTINCT FROM o.v);`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    `SELECT count(*) FROM t_indf o WHERE EXISTS (SELECT 1 FROM t_indf i WHERE i.v IS DISTINCT FROM o.v);`,
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
 	})
 }
 
