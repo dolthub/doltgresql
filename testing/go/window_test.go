@@ -492,5 +492,33 @@ func TestWindowFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "variance/stddev over a real column, as GROUP BY aggregates and window functions",
+			SetUpScript: []string{
+				"CREATE TABLE t3038r (id INT PRIMARY KEY, grp VARCHAR(10), val REAL);",
+				"INSERT INTO t3038r VALUES (1,'a',10), (2,'a',20), (3,'b',30), (4,'b',5), (5,'c',15), (6,'c',25);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT grp, VAR_POP(val), VAR_SAMP(val), STDDEV_POP(val), STDDEV_SAMP(val) FROM t3038r GROUP BY grp ORDER BY grp;",
+					Expected: []sql.Row{
+						{"a", float64(25), float64(50), float64(5), float64(7.0710678118654755)},
+						{"b", float64(156.25), float64(312.5), float64(12.5), float64(17.67766952966369)},
+						{"c", float64(25), float64(50), float64(5), float64(7.0710678118654755)},
+					},
+				},
+				{
+					Query: "SELECT id, VAR_POP(val) OVER (ORDER BY grp) FROM t3038r ORDER BY id;",
+					Expected: []sql.Row{
+						{1, float64(25)},
+						{2, float64(25)},
+						{3, float64(92.1875)},
+						{4, float64(92.1875)},
+						{5, float64(72.91666666666667)},
+						{6, float64(72.91666666666667)},
+					},
+				},
+			},
+		},
 	})
 }
