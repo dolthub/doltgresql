@@ -168,7 +168,6 @@ func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 			return "f", nil
 		}
 	}
-	// This is a comment
 	return t.IoOutput(ctx, val)
 }
 
