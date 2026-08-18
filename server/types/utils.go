@@ -169,7 +169,7 @@ func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 			return "f", nil
 		}
 	}
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(100 * time.Nanosecond)
 	return t.IoOutput(ctx, val)
 }
 
