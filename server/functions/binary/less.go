@@ -36,6 +36,7 @@ import (
 
 // initBinaryLessThan registers the functions to the catalog.
 func initBinaryLessThan() {
+	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, array_lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, boollt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, bpcharlt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, bytealt)
@@ -77,6 +78,18 @@ func initBinaryLessThan() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, timetz_lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, record_lt)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryLessThan, uuid_lt)
+}
+
+// array_lt represents the PostgreSQL function of the same name, taking the same parameters.
+var array_lt = framework.Function2{
+	Name:       "array_lt",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := t[0].Compare(ctx, val1, val2)
+		return res < 0, err
+	},
 }
 
 // boollt represents the PostgreSQL function of the same name, taking the same parameters.

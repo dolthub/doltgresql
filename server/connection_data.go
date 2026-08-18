@@ -229,6 +229,10 @@ func checkCompatibleTypes(ctx *sql.Context, existingOid, newOid uint32, newName 
 	var err error
 	existing := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(existingOid)))
 	newType := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(newOid)))
+	if existing == nil || newType == nil {
+		//TODO: user-defined types are not in the built-in map, so their compatibility is not checked
+		return nil
+	}
 	if _, _, err = framework.FindCommonType(ctx, []*pgtypes.DoltgresType{existing, newType}); err != nil {
 		err = errors.Errorf("parameter %s is used for incompatible types: %s and %s", newName, existing.String(), newType.String())
 	}

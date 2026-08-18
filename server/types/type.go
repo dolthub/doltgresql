@@ -92,6 +92,7 @@ type DoltgresType struct {
 	// Below are not stored
 	IsSerial            bool    // used for serial types only (e.g.: smallserial)
 	IsUnresolved        bool    // used internally to know if a type has been resolved
+	UnresolvedTypmods   []any   // used internally to carry type modifiers until the type is resolved
 	BaseTypeForInternal id.Type // used for INTERNAL type only
 	SerializationFunc   internalSerializationFunc
 	DeserializationFunc internalDeserializationFunc
@@ -480,6 +481,17 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 			return 1, nil
 		}
 	default:
+		if t.CompareFunc != 0 {
+			sqlCtx, ok := ctx.(*sql.Context)
+			if !ok {
+				sqlCtx = sql.NewEmptyContext()
+			}
+			i, err := globalFunctionRegistry.GetFunction(sqlCtx, t.CompareFunc).CallVariadic(nil, v1, v2)
+			if err != nil {
+				return 0, err
+			}
+			return int(i.(int32)), nil
+		}
 		return 0, errors.Errorf("unhandled type %T in Compare", v1)
 	}
 }

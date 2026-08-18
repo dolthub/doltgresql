@@ -55,7 +55,7 @@ var bitin = framework.Function3{
 			return nil, err
 		}
 
-		if array.BitLen() != uint(typmod) {
+		if typmod != -1 && array.BitLen() != uint(typmod) {
 			return nil, pgtypes.ErrWrongLengthBit.New(len(input), typmod)
 		}
 
@@ -123,12 +123,13 @@ var bitsend = framework.Function1{
 		}
 		// We process bits in chunks of 8, so we append zeroes until our string is evenly divisible by 8
 		bitString := val.(string)
+		bitLength := int32(len(bitString))
 		if len(bitString)%8 != 0 {
 			bitString += strings.Repeat("0", 8-(len(bitString)%8))
 		}
 		writer := utils.NewWireWriter()
 		writer.Reserve(uint64(4 + (len(bitString) / 8)))
-		writer.WriteInt32(t[0].GetAttTypMod())
+		writer.WriteInt32(bitLength)
 		for bufIdx := 0; bufIdx < len(bitString); bufIdx += 8 {
 			parsedByte, err := strconv.ParseUint(bitString[bufIdx:bufIdx+8], 2, 8)
 			if err != nil {

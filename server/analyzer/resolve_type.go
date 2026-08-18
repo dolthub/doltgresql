@@ -354,16 +354,27 @@ func resolveType(ctx *sql.Context, db sql.Database, typ *pgtypes.DoltgresType) (
 
 	// schema name can be empty
 	schema, _ := core.GetSchemaName(ctx, db, typ.ID.SchemaName())
-	resolvedType, _ := typs.GetType(ctx, id.NewType(schema, typ.ID.TypeName()))
+	resolvedType, err := typs.GetTypeWithTypmod(ctx, id.NewType(schema, typ.ID.TypeName()), typ.UnresolvedTypmods)
+	if err != nil {
+		return nil, err
+	}
 	if resolvedType == nil {
-		// If a blank schema is provided, then we'll also try the pg_catalog, since a type is most likely to be there
 		if typ.ID.SchemaName() == "" {
-			resolvedType, err = typs.GetType(ctx, id.NewType("pg_catalog", typ.ID.TypeName()))
+			searchPath, err := core.SearchPath(ctx)
 			if err != nil {
 				return nil, err
 			}
-			if resolvedType != nil && (typ.ID.TypeName() == "unknown" || resolvedType.ID != pgtypes.Unknown.ID) {
-				return resolvedType, nil
+			for _, pathSchema := range searchPath {
+				if pathSchema == schema {
+					continue
+				}
+				resolvedType, err = typs.GetTypeWithTypmod(ctx, id.NewType(pathSchema, typ.ID.TypeName()), typ.UnresolvedTypmods)
+				if err != nil {
+					return nil, err
+				}
+				if resolvedType != nil && (typ.ID.TypeName() == "unknown" || resolvedType.ID != pgtypes.Unknown.ID) {
+					return resolvedType, nil
+				}
 			}
 		}
 		return nil, pgtypes.ErrTypeDoesNotExist.New(typ.Name())

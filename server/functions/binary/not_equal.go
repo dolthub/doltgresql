@@ -35,6 +35,7 @@ import (
 
 // initBinaryNotEqual registers the functions to the catalog.
 func initBinaryNotEqual() {
+	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, array_ne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, boolne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, bpcharne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, byteane)
@@ -77,6 +78,18 @@ func initBinaryNotEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, uuid_ne)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, xidneqint4)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryNotEqual, xidneq)
+}
+
+// array_ne represents the PostgreSQL function of the same name, taking the same parameters.
+var array_ne = framework.Function2{
+	Name:       "array_ne",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := t[0].Compare(ctx, val1, val2)
+		return res != 0, err
+	},
 }
 
 // boolne represents the PostgreSQL function of the same name, taking the same parameters.
