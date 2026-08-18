@@ -35,9 +35,21 @@ var replace_text_text_text = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, str any, from any, to any) (any, error) {
-		if len(from.(string)) == 0 {
+		fromStr, err := framework.UnwrapString(ctx, from)
+		if err != nil {
+			return nil, err
+		}
+		if len(fromStr) == 0 {
 			return str, nil
 		}
-		return strings.ReplaceAll(str.(string), from.(string), to.(string)), nil
+		strStr, err := framework.UnwrapString(ctx, str)
+		if err != nil {
+			return nil, err
+		}
+		toStr, err := framework.UnwrapString(ctx, to)
+		if err != nil {
+			return nil, err
+		}
+		return strings.ReplaceAll(strStr, fromStr, toStr), nil
 	},
 }

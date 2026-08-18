@@ -39,7 +39,7 @@ var textin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return val.(string), nil
+		return framework.UnwrapString(ctx, val)
 	},
 }
 
@@ -99,8 +99,14 @@ var bttextcmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(string)
-		bb := val2.(string)
+		ab, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		bb, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		if ab == bb {
 			return int32(0), nil
 		} else if ab < bb {
@@ -118,8 +124,14 @@ var bttextnamecmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(string)
-		bb := val2.(string)
+		ab, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		bb, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		if ab == bb {
 			return int32(0), nil
 		} else if ab < bb {

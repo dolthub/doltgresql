@@ -35,7 +35,10 @@ var domain_in = framework.Function3{
 	Return:     pgtypes.Any,
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		str := val1.(string)
+		str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		baseTypeOid := val2.(id.Id)
 		t := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
 		typmod := val3.(int32)

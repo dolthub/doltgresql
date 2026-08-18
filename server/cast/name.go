@@ -36,14 +36,22 @@ func nameAssignment(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Name,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 	framework.MustAddAssignmentTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Name,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 }

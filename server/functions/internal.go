@@ -34,7 +34,11 @@ var internal_in = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
-		return []byte(val.(string)), nil
+		str, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(str), nil
 	},
 }
 

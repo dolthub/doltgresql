@@ -35,7 +35,10 @@ func varBitImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.VarBit,
 		ToType:   pgtypes.Bit,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			input := val.(string)
+			input, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
 				return nil, err
@@ -51,7 +54,10 @@ func varBitImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.VarBit,
 		ToType:   pgtypes.VarBit,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			input := val.(string)
+			input, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
 				return nil, err

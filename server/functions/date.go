@@ -43,10 +43,12 @@ var date_in = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		formatsInOrder := getDateStyleInputFormat(ctx)
 		var date pgdate.Date
-		var err error
 		for _, format := range formatsInOrder {
 			date, _, err = pgdate.ParseDate(time.Now(), format, input)
 			if err == nil {

@@ -44,7 +44,10 @@ var array_in = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		input := val1.(string)
+		input, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		baseTypeOid := val2.(id.Id)
 		baseType := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
 		if baseType == nil {
@@ -67,7 +70,6 @@ var array_in = framework.Function3{
 		// We'll remove the surrounding braces since we've already verified that they're there
 		input = input[1 : len(input)-1]
 		var values []any
-		var err error
 		sb := strings.Builder{}
 		quoteStartCount := 0
 		quoteEndCount := 0

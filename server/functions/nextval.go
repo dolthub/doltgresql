@@ -96,7 +96,11 @@ var nextval_text = framework.Function1{
 		if err != nil {
 			return 0, err
 		}
-		return nextval(ctx, ait, val.(string))
+		relationName, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return 0, err
+		}
+		return nextval(ctx, ait, relationName)
 	},
 }
 

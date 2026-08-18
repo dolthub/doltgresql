@@ -42,7 +42,10 @@ var byteain = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if strings.HasPrefix(input, `\x`) {
 			return hex.DecodeString(input[2:])
 		} else {

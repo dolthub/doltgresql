@@ -100,7 +100,7 @@ var booleq = framework.Function2{
 
 // bpchareq_callable is the callable logic for the bpchareq function.
 func bpchareq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.BpChar.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.BpChar.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 
@@ -130,7 +130,7 @@ var byteaeq = framework.Function2{
 
 // chareq_callable is the callable logic for the chareq function.
 func chareq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.InternalChar.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.InternalChar.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 
@@ -446,7 +446,7 @@ var jsonb_eq = framework.Function2{
 
 // nameeq_callable is the callable logic for the nameeq function.
 func nameeq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.Name.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.Name.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 
@@ -461,7 +461,7 @@ var nameeq = framework.Function2{
 
 // nameeqtext_callable is the callable logic for the nameeqtext function.
 func nameeqtext_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.Text.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 
@@ -522,7 +522,7 @@ var oidvectoreq = framework.Function2{
 
 // texteqname_callable is the callable logic for the texteqname function.
 func texteqname_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.Text.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 

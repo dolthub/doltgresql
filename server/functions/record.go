@@ -179,8 +179,14 @@ var btrecordcmp = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		// TODO
-		ab := val1.(string)
-		bb := val2.(string)
+		ab, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		bb, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		if ab == bb {
 			return int32(0), nil
 		} else if ab < bb {

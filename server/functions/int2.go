@@ -43,7 +43,10 @@ var int2in = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		iVal, err := strconv.ParseInt(strings.TrimSpace(input), 10, 16)
 		if err != nil {
 			return nil, pgtypes.ErrInvalidSyntaxForType.New("int2", input)

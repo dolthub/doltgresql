@@ -46,9 +46,17 @@ var ltrim_text_text = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, str any, characters any) (any, error) {
-		runes := []rune(str.(string))
+		strStr, err := framework.UnwrapString(ctx, str)
+		if err != nil {
+			return nil, err
+		}
+		charactersStr, err := framework.UnwrapString(ctx, characters)
+		if err != nil {
+			return nil, err
+		}
+		runes := []rune(strStr)
 		trimChars := make(map[rune]struct{})
-		for _, c := range characters.(string) {
+		for _, c := range charactersStr {
 			trimChars[c] = struct{}{}
 		}
 		trimIdx := 0

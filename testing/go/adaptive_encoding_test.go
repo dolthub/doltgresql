@@ -15,7 +15,9 @@
 package _go
 
 import (
+	"crypto/md5"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
@@ -220,6 +222,101 @@ func TestAdaptiveEncodingText(t *testing.T) {
 								{"HT", halfSizeString},
 								{"TT", tinyString},
 							},
+						},
+					},
+				},
+			})
+		})
+	}
+}
+
+// TestStringFunctionsOnOutOfBandValues checks that functions, operators, and casts taking string arguments work when
+// the argument is a large value stored out-of-band (represented in memory as a wrapper such as *val.TextStorage,
+// rather than a string).
+func TestStringFunctionsOnOutOfBandValues(t *testing.T) {
+	bigString := strings.Repeat("x", 20000)
+	bigStringMd5 := fmt.Sprintf("%x", md5.Sum([]byte(bigString)))
+	for _, columnType := range []string{"varchar", "text"} {
+		t.Run(columnType, func(t *testing.T) {
+			RunScripts(t, []ScriptTest{
+				{
+					Name: "string functions on out-of-band values",
+					SetUpScript: setup.SetupScript{
+						fmt.Sprintf(`create table t_big (id int primary key, body %s);`, columnType),
+						`insert into t_big values (1, repeat('x', 20000));`,
+					},
+					Assertions: []ScriptTestAssertion{
+						{
+							Query:    "select length(body) from t_big;",
+							Expected: []sql.Row{{int32(20000)}},
+						},
+						{
+							Query:    "select length(replace(body, 'x', 'y')) from t_big;",
+							Expected: []sql.Row{{int32(20000)}},
+						},
+						{
+							Query:    "select length(upper(body)), length(lower(body)) from t_big;",
+							Expected: []sql.Row{{int32(20000), int32(20000)}},
+						},
+						{
+							Query:    "select left(body, 3), right(body, 3) from t_big;",
+							Expected: []sql.Row{{"xxx", "xxx"}},
+						},
+						{
+							Query:    "select ascii(body) from t_big;",
+							Expected: []sql.Row{{int32(120)}},
+						},
+						{
+							Query:    "select strpos(body, 'x') from t_big;",
+							Expected: []sql.Row{{int32(1)}},
+						},
+						{
+							Query:    "select length(reverse(body)) from t_big;",
+							Expected: []sql.Row{{int32(20000)}},
+						},
+						{
+							Query:    "select length(translate(body, 'x', 'z')) from t_big;",
+							Expected: []sql.Row{{int32(20000)}},
+						},
+						{
+							Query:    "select length(ltrim(body, 'x')), length(rtrim(body, 'x')), length(btrim(body, 'x')) from t_big;",
+							Expected: []sql.Row{{int32(0), int32(0), int32(0)}},
+						},
+						{
+							Query:    "select length(split_part(body, ',', 1)) from t_big;",
+							Expected: []sql.Row{{int32(20000)}},
+						},
+						{
+							Query:    "select length(repeat(body, 1)) from t_big;",
+							Expected: []sql.Row{{int32(20000)}},
+						},
+						{
+							Query:    "select md5(body) from t_big;",
+							Expected: []sql.Row{{bigStringMd5}},
+						},
+						{
+							Query:    "select octet_length(body) from t_big;",
+							Expected: []sql.Row{{int32(20000)}},
+						},
+						{
+							Query:    "select initcap(left(body, 3)) from t_big;",
+							Expected: []sql.Row{{"Xxx"}},
+						},
+						{
+							Query:    "select body::varchar(5) from t_big;",
+							Expected: []sql.Row{{"xxxxx"}},
+						},
+						{
+							Query:    "select length(body || 'y') from t_big;",
+							Expected: []sql.Row{{int32(20001)}},
+						},
+						{
+							Query:    "select body = repeat('x', 20000) from t_big;",
+							Expected: []sql.Row{{"t"}},
+						},
+						{
+							Query:    "select body < repeat('y', 5) from t_big;",
+							Expected: []sql.Row{{"t"}},
 						},
 					},
 				},

@@ -46,7 +46,10 @@ var numeric_in = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		input := val1.(string)
+		input, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		typmod := val3.(int32)
 		dec, _, err := apd.NewFromString(strings.TrimSpace(input))
 		if err != nil {
@@ -277,14 +280,22 @@ var numerictypmodin = framework.Function1{
 			return nil, pgtypes.ErrInvalidTypMod.New("NUMERIC")
 		}
 
-		p, err := strconv.ParseInt(arr[0].(string), 10, 32)
+		precisionStr, err := framework.UnwrapString(ctx, arr[0])
+		if err != nil {
+			return nil, err
+		}
+		p, err := strconv.ParseInt(precisionStr, 10, 32)
 		if err != nil {
 			return nil, err
 		}
 		precision := int32(p)
 		scale := int32(0)
 		if len(arr) == 2 {
-			s, err := strconv.ParseInt(arr[1].(string), 10, 32)
+			scaleStr, err := framework.UnwrapString(ctx, arr[1])
+			if err != nil {
+				return nil, err
+			}
+			s, err := strconv.ParseInt(scaleStr, 10, 32)
 			if err != nil {
 				return nil, err
 			}

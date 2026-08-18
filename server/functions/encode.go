@@ -39,7 +39,10 @@ var encode = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		data := val1.([]byte)
-		format := val2.(string)
+		format, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		switch strings.ToLower(format) {
 		case "hex":
 			return hex.EncodeToString(data), nil

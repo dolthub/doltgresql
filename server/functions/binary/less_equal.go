@@ -98,7 +98,7 @@ var bpcharle = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.BpChar.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.BpChar.Compare(ctx, val1, val2)
 		return res <= 0, err
 	},
 }
@@ -122,7 +122,7 @@ var charle = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.InternalChar, pgtypes.InternalChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.InternalChar.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.InternalChar.Compare(ctx, val1, val2)
 		return res <= 0, err
 	},
 }
@@ -362,7 +362,7 @@ var namele = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Name},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Name.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.Name.Compare(ctx, val1, val2)
 		return res <= 0, err
 	},
 }
@@ -374,7 +374,7 @@ var nameletext = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.Text.Compare(ctx, val1, val2)
 		return res <= 0, err
 	},
 }
@@ -422,7 +422,7 @@ var textlename = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Name},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.Text.Compare(ctx, val1, val2)
 		return res <= 0, err
 	},
 }
@@ -434,7 +434,7 @@ var text_le = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+		res, err := pgtypes.Text.Compare(ctx, val1, val2)
 		return res <= 0, err
 	},
 }

@@ -56,9 +56,12 @@ var json_in = framework.Function1{
 }
 
 func json_in_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-	input := val.(string)
+	input, err := framework.UnwrapString(ctx, val)
+	if err != nil {
+		return nil, err
+	}
 	var jsonVal any
-	err := json.Unmarshal(unsafe.Slice(unsafe.StringData(input), len(input)), &jsonVal)
+	err = json.Unmarshal(unsafe.Slice(unsafe.StringData(input), len(input)), &jsonVal)
 	if err != nil {
 		if len(input) > 10 {
 			input = input[:10] + "..."
@@ -216,7 +219,7 @@ var json_build_object = framework.Function1{
 }
 
 func json_build_object_callable(ctx *sql.Context, argTypes [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-	json, err := buildJsonObject("json_build_object", argTypes, val1)
+	json, err := buildJsonObject(ctx, "json_build_object", argTypes, val1)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +227,7 @@ func json_build_object_callable(ctx *sql.Context, argTypes [2]*pgtypes.DoltgresT
 }
 
 // buildJsonObject constructs a json object from the input array provided, which are alternating keys and values.
-func buildJsonObject(fnName string, _ [2]*pgtypes.DoltgresType, val1 any) (types.JSONDocument, error) {
+func buildJsonObject(ctx *sql.Context, fnName string, _ [2]*pgtypes.DoltgresType, val1 any) (types.JSONDocument, error) {
 	inputArray := val1.([]any)
 	if len(inputArray)%2 != 0 {
 		return types.JSONDocument{}, sql.ErrInvalidArgumentNumber.New(fnName, "even number of arguments", len(inputArray))
@@ -234,7 +237,11 @@ func buildJsonObject(fnName string, _ [2]*pgtypes.DoltgresType, val1 any) (types
 	for i, e := range inputArray {
 		if i%2 == 0 {
 			var ok bool
-			key, ok = e.(string)
+			var err error
+			key, ok, err = sql.Unwrap[string](ctx, e)
+			if err != nil {
+				return types.JSONDocument{}, err
+			}
 			if !ok {
 				// TODO: This isn't correct for every type we might use as a value. To get better type info to transform
 				//  every value into its string format, we need to pass detailed arg type info for the vararg params (the

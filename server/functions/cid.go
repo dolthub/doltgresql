@@ -40,7 +40,10 @@ var cidin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		uVal, err := strconv.ParseUint(strings.TrimSpace(input), 10, 32)
 		if err != nil {
 			return uint32(0), err

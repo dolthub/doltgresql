@@ -259,7 +259,10 @@ var jsonb_object_field = framework.Function2{
 		if !ok {
 			return nil, nil
 		}
-		key := val2.(string)
+		key, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		// Fast path: for a ComparableJSON wrapper backed by an indexed JSON
 		// object, use Lookup to fetch the value without materializing the
 		// entire document.
@@ -432,7 +435,10 @@ func jsonb_extract_path_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, v
 		if cur == nil {
 			return nil, nil
 		}
-		textPath, ok := path.(string)
+		textPath, ok, err := sql.Unwrap[string](ctx, path)
+		if err != nil {
+			return nil, err
+		}
 		if !ok {
 			return nil, nil
 		}
@@ -637,7 +643,10 @@ var jsonb_exists = framework.Function2{
 		if !ok {
 			return false, nil
 		}
-		key := val2.(string)
+		key, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		// Fast path: for an indexed JSON object, use Lookup to test for the
 		// key without materializing the document.
 		if isObj, err := isComparableJsonObject(ctx, wrapper); err != nil {
@@ -698,13 +707,21 @@ var jsonb_exists_any = framework.Function2{
 			return false, nil
 		}
 		keys := val2.([]interface{})
+		keyStrs := make([]string, len(keys))
+		for i, key := range keys {
+			keyStr, err := framework.UnwrapString(ctx, key)
+			if err != nil {
+				return nil, err
+			}
+			keyStrs[i] = keyStr
+		}
 		// Fast path: for an indexed JSON object, test each key with Lookup
 		// instead of materializing the document.
 		if isObj, err := isComparableJsonObject(ctx, wrapper); err != nil {
 			return nil, err
 		} else if isObj {
-			for _, key := range keys {
-				found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key.(string)))
+			for _, key := range keyStrs {
+				found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key))
 				if err != nil {
 					return nil, err
 				}
@@ -720,24 +737,24 @@ var jsonb_exists_any = framework.Function2{
 		}
 		switch v := value.(type) {
 		case map[string]interface{}:
-			for _, key := range keys {
-				if _, ok := v[key.(string)]; ok {
+			for _, key := range keyStrs {
+				if _, ok := v[key]; ok {
 					return true, nil
 				}
 			}
 			return false, nil
 		case []interface{}:
-			for _, key := range keys {
+			for _, key := range keyStrs {
 				for _, item := range v {
-					if s, ok := item.(string); ok && s == key.(string) {
+					if s, ok := item.(string); ok && s == key {
 						return true, nil
 					}
 				}
 			}
 			return false, nil
 		case string:
-			for _, key := range keys {
-				if v == key.(string) {
+			for _, key := range keyStrs {
+				if v == key {
 					return true, nil
 				}
 			}
@@ -760,13 +777,21 @@ var jsonb_exists_all = framework.Function2{
 			return false, nil
 		}
 		keys := val2.([]interface{})
+		keyStrs := make([]string, len(keys))
+		for i, key := range keys {
+			keyStr, err := framework.UnwrapString(ctx, key)
+			if err != nil {
+				return nil, err
+			}
+			keyStrs[i] = keyStr
+		}
 		// Fast path: for an indexed JSON object, test each key with Lookup
 		// instead of materializing the document.
 		if isObj, err := isComparableJsonObject(ctx, wrapper); err != nil {
 			return nil, err
 		} else if isObj {
-			for _, key := range keys {
-				found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key.(string)))
+			for _, key := range keyStrs {
+				found, err := types.LookupJSONValue(ctx, wrapper, makeObjectKeyPath(key))
 				if err != nil {
 					return nil, err
 				}
@@ -782,17 +807,17 @@ var jsonb_exists_all = framework.Function2{
 		}
 		switch v := value.(type) {
 		case map[string]interface{}:
-			for _, key := range keys {
-				if _, ok := v[key.(string)]; !ok {
+			for _, key := range keyStrs {
+				if _, ok := v[key]; !ok {
 					return false, nil
 				}
 			}
 			return true, nil
 		case []interface{}:
-			for _, key := range keys {
+			for _, key := range keyStrs {
 				found := false
 				for _, item := range v {
-					if s, ok := item.(string); ok && s == key.(string) {
+					if s, ok := item.(string); ok && s == key {
 						found = true
 						break
 					}
@@ -803,8 +828,8 @@ var jsonb_exists_all = framework.Function2{
 			}
 			return true, nil
 		case string:
-			for _, key := range keys {
-				if v != key.(string) {
+			for _, key := range keyStrs {
+				if v != key {
 					return false, nil
 				}
 			}

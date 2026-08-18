@@ -40,7 +40,11 @@ var boolin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		val = strings.TrimSpace(strings.ToLower(val.(string)))
+		valStr, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		val = strings.TrimSpace(strings.ToLower(valStr))
 		if val == "true" || val == "t" || val == "yes" || val == "on" || val == "1" {
 			return true, nil
 		} else if val == "false" || val == "f" || val == "no" || val == "off" || val == "0" {
