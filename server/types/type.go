@@ -160,13 +160,19 @@ func (t *DoltgresType) AnalyzeFuncName() string {
 
 // ArrayBaseType returns the base type of an array type.
 func (t *DoltgresType) ArrayBaseType() *DoltgresType {
-	if !t.IsArrayType() {
-		return t
-	}
 	// Some array types have no declared element type for pg_catalog compatibility, but still have a logical type
 	// we return for analysis.
 	if t.ID == AnyArray.ID {
 		return AnyElement
+	}
+	// TODO: IsArrayType() currently conflates different meanings (iterable via t.Elem, array versus
+	// vector output formatting, how ToArrayType() checks if a type is already an array type).
+	// Types like int2vector and oidvector have meanings that diverge for some of those
+	// and need to be handled differently. Longer term, we should probably untangle these different
+	// traits into separate APIs that can be queried for types, but for now, we just check if Elem
+	// is the NULL type here to determine if the type contains a nested element type or not.
+	if t.Elem.ID == id.NullType {
+		return t
 	}
 	return t.Elem.WithAttTypMod(t.attTypMod)
 }

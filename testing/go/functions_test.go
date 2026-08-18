@@ -1945,6 +1945,28 @@ func TestArrayFunctions(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3108
+			Name: "array_to_string on vector types (int2vector, oidvector)",
+			SetUpScript: []string{
+				`CREATE TABLE vectest (pk INT PRIMARY KEY, a INT, b INT);`,
+				`CREATE INDEX vectest_ab ON vectest (a, b);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT array_to_string(indkey, ',') FROM pg_index WHERE indexrelid = 'vectest_ab'::regclass;`,
+					Expected: []sql.Row{{"2,3"}},
+				},
+				{
+					Query:    `SELECT array_to_string(indkey, ',') FROM pg_index WHERE indexrelid = 'vectest_pkey'::regclass;`,
+					Expected: []sql.Row{{"1"}},
+				},
+				{
+					Query:    `SELECT array_to_string(indclass, ',') FROM pg_index WHERE indexrelid = 'vectest_ab'::regclass;`,
+					Expected: []sql.Row{{""}},
+				},
+			},
+		},
+		{
 			Name: "array_upper",
 			Assertions: []ScriptTestAssertion{
 				{
