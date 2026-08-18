@@ -179,7 +179,10 @@ var array_recv = framework.Function3{
 
 // array_recv_callable is the function definition of array_recv.
 func array_recv_callable(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-	data := val1.([]byte)
+	data, err := framework.UnwrapBytes(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
 	if data == nil {
 		return nil, nil
 	}

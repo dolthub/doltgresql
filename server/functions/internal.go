@@ -50,6 +50,10 @@ var internal_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO
-		return string(val.([]byte)), nil
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		return string(data), nil
 	},
 }

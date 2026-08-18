@@ -77,12 +77,15 @@ var date_recv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}
 		var out pgtype.Date
-		err := out.DecodeBinary(nil, data)
+		err = out.DecodeBinary(nil, data)
 		if err != nil {
 			return nil, err
 		}

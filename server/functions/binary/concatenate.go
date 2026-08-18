@@ -124,8 +124,14 @@ var array_prepend = framework.Function2{
 
 // byteacat_callable is the callable logic for the byteacat function.
 func byteacat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	v1 := val1.([]byte)
-	v2 := val2.([]byte)
+	v1, err := framework.UnwrapBytes(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := framework.UnwrapBytes(ctx, val2)
+	if err != nil {
+		return nil, err
+	}
 	copied := make([]byte, len(v1)+len(v2))
 	copy(copied, v1)
 	copy(copied[len(v1):], v2)

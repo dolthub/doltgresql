@@ -32,3 +32,17 @@ func UnwrapString(ctx *sql.Context, val any) (string, error) {
 	}
 	return str, nil
 }
+
+// UnwrapBytes converts a bytes-typed function argument into a []byte. Large bytea values may arrive as a wrapper
+// (e.g. *val.ByteArray) whose contents are stored out-of-band, in which case this loads the full value into memory.
+// An error is returned if the value is neither a []byte nor a wrapper around one.
+func UnwrapBytes(ctx *sql.Context, val any) ([]byte, error) {
+	data, ok, err := sql.Unwrap[[]byte](ctx, val)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.Errorf("expected []byte value, got %T", val)
+	}
+	return data, nil
+}

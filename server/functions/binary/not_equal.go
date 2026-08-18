@@ -110,7 +110,7 @@ var byteane = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res, err := pgtypes.Bytea.Compare(ctx, val1.([]byte), val2.([]byte))
+		res, err := pgtypes.Bytea.Compare(ctx, val1, val2)
 		return res != 0, err
 	},
 }

@@ -61,7 +61,11 @@ var byteaout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bytea},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return `\x` + hex.EncodeToString(val.([]byte)), nil
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		return `\x` + hex.EncodeToString(data), nil
 	},
 }
 
@@ -106,6 +110,14 @@ var byteacmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Bytea, pgtypes.Bytea},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		return int32(bytes.Compare(val1.([]byte), val2.([]byte))), nil
+		val1Bytes, err := framework.UnwrapBytes(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		val2Bytes, err := framework.UnwrapBytes(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
+		return int32(bytes.Compare(val1Bytes, val2Bytes)), nil
 	},
 }

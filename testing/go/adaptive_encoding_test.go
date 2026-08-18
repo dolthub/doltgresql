@@ -325,6 +325,53 @@ func TestStringFunctionsOnOutOfBandValues(t *testing.T) {
 	}
 }
 
+// TestByteaFunctionsOnOutOfBandValues checks that functions, operators, and casts taking bytea arguments work when
+// the argument is a large value stored out-of-band (represented in memory as a wrapper such as *val.ByteArray,
+// rather than a []byte).
+func TestByteaFunctionsOnOutOfBandValues(t *testing.T) {
+	bigBytes := []byte(strings.Repeat("x", 20000))
+	bigBytesHexLiteral := "'\\x" + strings.Repeat("78", 20000) + "'"
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "bytea functions on out-of-band values",
+			SetUpScript: setup.SetupScript{
+				`create table t_bytes (id int primary key, body bytea);`,
+				"insert into t_bytes values (1, " + bigBytesHexLiteral + ");",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select body from t_bytes;",
+					Expected: []sql.Row{{bigBytes}},
+				},
+				{
+					Query:    "select length(encode(body, 'hex')) from t_bytes;",
+					Expected: []sql.Row{{int32(40000)}},
+				},
+				{
+					Query:    "select left(encode(body, 'hex'), 4) from t_bytes;",
+					Expected: []sql.Row{{"7878"}},
+				},
+				{
+					Query:    "select length(encode(body || '\\x79', 'hex')) from t_bytes;",
+					Expected: []sql.Row{{int32(40002)}},
+				},
+				{
+					Query:    "select body = " + bigBytesHexLiteral + " from t_bytes;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "select body <= '\\x79', body <> '\\x78', body >= '\\x78' from t_bytes;",
+					Expected: []sql.Row{{"t", "t", "t"}},
+				},
+				{
+					Query:    "select byteacmp(body, '\\x79') from t_bytes;",
+					Expected: []sql.Row{{int32(-1)}},
+				},
+			},
+		},
+	})
+}
+
 func TestAdaptiveEncodingVarbit(t *testing.T) {
 	columnType := "varbit"
 	RunScripts(t, []ScriptTest{
