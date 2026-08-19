@@ -317,6 +317,74 @@ bar`, "baz"},
 			},
 		},
 		{
+			Name: "binary from stdin",
+			SetUpScript: []string{
+				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:             "COPY tbl3 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "copy-to-basic.bin",
+				},
+				{
+					Query: "SELECT * FROM tbl3 ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "foo", "t"},
+						{2, nil, "f"},
+						{3, "", nil},
+						{4, "héllo", "t"},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary from file",
+			SetUpScript: []string{
+				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       fmt.Sprintf("COPY tbl3 FROM '%s' (FORMAT BINARY);", filepath.Join(absTestDataDir, "copy-to-basic.bin")),
+					ExpectedTag: "COPY 4",
+				},
+				{
+					Query: "SELECT * FROM tbl3 ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "foo", "t"},
+						{2, nil, "f"},
+						{3, "", nil},
+						{4, "héllo", "t"},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary errors",
+			SetUpScript: []string{
+				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "COPY tbl3 FROM STDIN (FORMAT BINARY, HEADER);",
+					ExpectedErr: "cannot specify HEADER in BINARY mode",
+				},
+				{
+					Query:       "COPY tbl3 FROM STDIN (FORMAT BINARY, DELIMITER '|');",
+					ExpectedErr: "cannot specify DELIMITER in BINARY mode",
+				},
+				{
+					// A text file is not valid binary COPY input
+					Query:       fmt.Sprintf("COPY tbl3 FROM '%s' (FORMAT BINARY);", filepath.Join(absTestDataDir, "copy-to-basic.txt")),
+					ExpectedErr: "COPY file signature not recognized",
+				},
+				{
+					// Binary data that ends without the file trailer indicates truncation
+					Query:       fmt.Sprintf("COPY tbl3 FROM '%s' (FORMAT BINARY);", filepath.Join(absTestDataDir, "copy-from-missing-trailer.bin")),
+					ExpectedErr: "missing file trailer",
+				},
+			},
+		},
+		{
 			Name: "file not found",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk int primary key);",

@@ -1122,7 +1122,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		case tree.CopyFormatCsv:
 			dataLoader, err = dataloader.NewCsvDataLoader(insertNode.ColumnNames, tbl.Schema(sqlCtx), copyFromStdinNode.CopyOptions.Delimiter, copyFromStdinNode.CopyOptions.Header)
 		case tree.CopyFormatBinary:
-			err = errors.Errorf("BINARY format is not supported for COPY FROM")
+			dataLoader, err = dataloader.NewBinaryDataLoader(insertNode.ColumnNames, tbl.Schema(sqlCtx))
 		default:
 			err = errors.Errorf("unknown format specified for COPY FROM: %v",
 				copyFromStdinNode.CopyOptions.CopyFormat)

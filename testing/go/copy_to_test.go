@@ -197,6 +197,81 @@ func TestCopyTo(t *testing.T) {
 			},
 		},
 		{
+			Name:        "binary round trip",
+			SetUpScript: setup,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "CREATE TABLE tbl1_copy (pk int primary key, c1 varchar(100), c2 int);",
+					SkipResultsCheck: true,
+				},
+				{
+					// Unlike the text format, the binary format round-trips embedded newlines, so all rows survive
+					Query:                   "COPY tbl1 TO STDOUT (FORMAT BINARY);",
+					CopyRoundTripStdInQuery: "COPY tbl1_copy FROM STDIN (FORMAT BINARY);",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl1 t1 JOIN tbl1_copy t2 ON t1.pk = t2.pk WHERE t1.c1 IS NOT DISTINCT FROM t2.c1 AND t1.c2 IS NOT DISTINCT FROM t2.c2;",
+					Expected: []sql.Row{
+						{7},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary round trip over multiple chunks",
+			SetUpScript: []string{
+				"CREATE TABLE big (pk int primary key, c1 text);",
+				// Roughly 220KB of data, so that the client splits the COPY FROM STDIN stream into multiple
+				// CopyData chunks and tuples land across chunk boundaries
+				"INSERT INTO big SELECT i, repeat('x', 200) || i FROM generate_series(1, 1000) g(i);",
+				"CREATE TABLE big_copy (pk int primary key, c1 text);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:                   "COPY big TO STDOUT (FORMAT BINARY);",
+					CopyRoundTripStdInQuery: "COPY big_copy FROM STDIN (FORMAT BINARY);",
+				},
+				{
+					Query: "SELECT count(*) FROM big t1 JOIN big_copy t2 ON t1.pk = t2.pk WHERE t1.c1 = t2.c1;",
+					Expected: []sql.Row{
+						{1000},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary round trip with various types",
+			SetUpScript: []string{
+				`CREATE TABLE typed (pk int primary key, i2 int2, i8 int8, f4 float4, f8 float8, n numeric(10,2),
+					d date, ts timestamp, u uuid, by bytea, b boolean);`,
+				`INSERT INTO typed VALUES
+					(1, 32767, 9223372036854775807, 1.5, -2.25, 12345.67, '2025-01-01', '2025-01-01 12:34:56',
+					 '1077f506-a6fc-4cb2-aed2-9dea9351ed9c', '\xdeadbeef', true),
+					(2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+					(3, -32768, -9223372036854775808, 0.0, 1e10, -0.01, '1999-12-31', '1999-12-31 23:59:59',
+					 '428d0815-d95b-4cfc-89af-9fca38585dcc', '\x00', false);`,
+				`CREATE TABLE typed_copy (pk int primary key, i2 int2, i8 int8, f4 float4, f8 float8, n numeric(10,2),
+					d date, ts timestamp, u uuid, by bytea, b boolean);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:                   "COPY typed TO STDOUT (FORMAT BINARY);",
+					CopyRoundTripStdInQuery: "COPY typed_copy FROM STDIN (FORMAT BINARY);",
+				},
+				{
+					Query: `SELECT count(*) FROM typed t1 JOIN typed_copy t2 ON t1.pk = t2.pk
+						WHERE t1.i2 IS NOT DISTINCT FROM t2.i2 AND t1.i8 IS NOT DISTINCT FROM t2.i8
+						AND t1.f4 IS NOT DISTINCT FROM t2.f4 AND t1.f8 IS NOT DISTINCT FROM t2.f8
+						AND t1.n IS NOT DISTINCT FROM t2.n AND t1.d IS NOT DISTINCT FROM t2.d
+						AND t1.ts IS NOT DISTINCT FROM t2.ts AND t1.u IS NOT DISTINCT FROM t2.u
+						AND t1.by IS NOT DISTINCT FROM t2.by AND t1.b IS NOT DISTINCT FROM t2.b;`,
+					Expected: []sql.Row{
+						{3},
+					},
+				},
+			},
+		},
+		{
 			Name:        "errors",
 			SetUpScript: setup,
 			Assertions: []ScriptTestAssertion{
