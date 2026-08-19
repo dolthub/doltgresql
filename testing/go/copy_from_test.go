@@ -338,6 +338,37 @@ bar`, "baz"},
 			},
 		},
 		{
+			Name: "binary load multiple chunks",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 text);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// binary-load-multi-chunk.bin is ~230KB, so the client splits it into multiple CopyData
+					// chunks and tuples land across chunk boundaries. It holds 2000 rows of (pk, c1) where c1
+					// is 'x' repeated (pk % 211) times, except that every 100th row is NULL.
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-multi-chunk.bin",
+				},
+				{
+					Query: "SELECT count(*), count(c1), sum(length(c1)) FROM tbl1;",
+					Expected: []sql.Row{
+						{2000, 1980, 202536},
+					},
+				},
+				{
+					// pk = 211 is an empty string, which must stay distinct from NULL
+					Query: "SELECT pk, length(c1) FROM tbl1 WHERE pk IN (99, 211, 300, 1999) ORDER BY pk;",
+					Expected: []sql.Row{
+						{99, 99},
+						{211, 0},
+						{300, nil},
+						{1999, 100},
+					},
+				},
+			},
+		},
+		{
 			Name: "binary from file",
 			SetUpScript: []string{
 				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
