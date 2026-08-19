@@ -972,14 +972,21 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 		colNames[i] = col.Name
 	}
 
+	// For the binary format, we ask the engine for values in each type's binary send format by setting the format
+	// code for every column to 1 (binary). The text and CSV formats use the default text encoding (format code 0).
 	var dataWriter dataloader.DataWriter
+	var formatCodes []int16
 	switch copyTo.CopyOptions.CopyFormat {
 	case tree.CopyFormatText:
 		dataWriter = dataloader.NewTabularDataWriter(colNames, copyTo.CopyOptions.Delimiter, "", copyTo.CopyOptions.Header)
 	case tree.CopyFormatCsv:
 		dataWriter = dataloader.NewCsvDataWriter(colNames, copyTo.CopyOptions.Delimiter, copyTo.CopyOptions.Header)
 	case tree.CopyFormatBinary:
-		return errors.Errorf("BINARY format is not supported for COPY TO")
+		dataWriter = dataloader.NewBinaryDataWriter()
+		formatCodes = make([]int16, len(sch))
+		for i := range formatCodes {
+			formatCodes[i] = 1
+		}
 	default:
 		return errors.Errorf("unknown format specified for COPY TO: %v", copyTo.CopyOptions.CopyFormat)
 	}
@@ -989,9 +996,17 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 	var writeRow func(data []byte) error
 	var flush func() error
 	if copyTo.Stdout {
+		var overallFormat byte
+		columnFormatCodes := make([]uint16, len(sch))
+		if copyTo.CopyOptions.CopyFormat == tree.CopyFormatBinary {
+			overallFormat = 1
+			for i := range columnFormatCodes {
+				columnFormatCodes[i] = 1
+			}
+		}
 		if err = h.send(&pgproto3.CopyOutResponse{
-			OverallFormat:     0,
-			ColumnFormatCodes: make([]uint16, len(sch)),
+			OverallFormat:     overallFormat,
+			ColumnFormatCodes: columnFormatCodes,
 		}); err != nil {
 			return err
 		}
@@ -1045,8 +1060,18 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 		return flush()
 	}
 
-	if err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY TO", analyzedNode, nil, callback); err != nil {
+	if err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY TO", analyzedNode, formatCodes, callback); err != nil {
 		return err
+	}
+
+	footerData, err := dataWriter.WriteFooter()
+	if err != nil {
+		return err
+	}
+	if footerData != nil {
+		if err = writeRow(footerData); err != nil {
+			return err
+		}
 	}
 	if err = flush(); err != nil {
 		return err

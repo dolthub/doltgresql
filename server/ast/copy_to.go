@@ -30,7 +30,12 @@ func nodeCopyTo(ctx *Context, node *tree.CopyTo) (vitess.Statement, error) {
 		return nil, nil
 	}
 	if node.Options.CopyFormat == tree.CopyFormatBinary {
-		return nil, errors.Errorf("COPY TO does not support format BINARY")
+		if node.Options.Header {
+			return nil, errors.Errorf("cannot specify HEADER in BINARY mode")
+		}
+		if node.Options.Delimiter != "" {
+			return nil, errors.Errorf("cannot specify DELIMITER in BINARY mode")
+		}
 	}
 
 	// We create a stub select statement for the COPY TO statement, which the connection handler will build a plan

@@ -81,6 +81,11 @@ func (tdw *TabularDataWriter) WriteRow(vals [][]byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// WriteFooter implements the DataWriter interface.
+func (tdw *TabularDataWriter) WriteFooter() ([]byte, error) {
+	return nil, nil
+}
+
 // writeEscaped writes the value given to the buffer, escaping any control characters, backslashes, and delimiter
 // characters with a backslash, matching the escaping performed by Postgres for the text format.
 func (tdw *TabularDataWriter) writeEscaped(buf *bytes.Buffer, val []byte) {

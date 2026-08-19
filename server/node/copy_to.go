@@ -51,10 +51,8 @@ func NewCopyTo(
 	selectStub vitess.SelectStatement,
 ) *CopyTo {
 	switch options.CopyFormat {
-	case tree.CopyFormatCsv, tree.CopyFormatText:
+	case tree.CopyFormatCsv, tree.CopyFormatText, tree.CopyFormatBinary:
 		// no-op
-	case tree.CopyFormatBinary:
-		panic("BINARY format is not supported for COPY TO")
 	default:
 		panic(fmt.Sprintf("unknown COPY TO format: %d", options.CopyFormat))
 	}

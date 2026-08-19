@@ -134,6 +134,31 @@ func TestCopyTo(t *testing.T) {
 			},
 		},
 		{
+			Name: "binary to stdout",
+			SetUpScript: []string{
+				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
+				`INSERT INTO tbl3 VALUES (1, 'foo', true), (2, NULL, false), (3, '', NULL), (4, 'héllo', true);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "COPY tbl3 TO STDOUT (FORMAT BINARY);",
+					CopyToStdOutFile: "copy-to-basic.bin",
+				},
+				{
+					Query:            "COPY tbl3 TO STDOUT BINARY;",
+					CopyToStdOutFile: "copy-to-basic.bin",
+				},
+				{
+					Query:            "COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT (FORMAT BINARY);",
+					CopyToStdOutFile: "copy-to-basic.bin",
+				},
+				{
+					Query:       fmt.Sprintf("COPY tbl3 TO '%s' (FORMAT BINARY);", filepath.Join(tempDir, "binary.bin")),
+					ExpectedTag: "COPY 4",
+				},
+			},
+		},
+		{
 			Name:        "csv to file round trip",
 			SetUpScript: setup,
 			Assertions: []ScriptTestAssertion{
@@ -195,8 +220,12 @@ func TestCopyTo(t *testing.T) {
 					ExpectedErr: "column \"c3\" could not be found",
 				},
 				{
-					Query:       "COPY tbl1 TO STDOUT (FORMAT BINARY);",
-					ExpectedErr: "COPY TO does not support format BINARY",
+					Query:       "COPY tbl1 TO STDOUT (FORMAT BINARY, HEADER);",
+					ExpectedErr: "cannot specify HEADER in BINARY mode",
+				},
+				{
+					Query:       "COPY tbl1 TO STDOUT (FORMAT BINARY, DELIMITER '|');",
+					ExpectedErr: "cannot specify DELIMITER in BINARY mode",
 				},
 			},
 		},

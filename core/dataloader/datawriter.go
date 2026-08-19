@@ -22,7 +22,11 @@ type DataWriter interface {
 	// WriteHeader returns the encoded header line for the data, or nil if no header was requested.
 	WriteHeader() ([]byte, error)
 
-	// WriteRow returns the encoded bytes for the row given. |vals| contains the text-encoded value of each column,
-	// with nil indicating a NULL value.
+	// WriteRow returns the encoded bytes for the row given. |vals| contains the encoded value of each column
+	// (text-encoded for the text and CSV formats, binary-encoded for the binary format), with nil indicating a
+	// NULL value.
 	WriteRow(vals [][]byte) ([]byte, error)
+
+	// WriteFooter returns the encoded footer for the data, or nil if this format has no footer.
+	WriteFooter() ([]byte, error)
 }

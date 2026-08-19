@@ -76,6 +76,11 @@ func (cdw *CsvDataWriter) WriteRow(vals [][]byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// WriteFooter implements the DataWriter interface.
+func (cdw *CsvDataWriter) WriteFooter() ([]byte, error) {
+	return nil, nil
+}
+
 // writeField writes a single field value to the buffer, quoting it if necessary. |singleColumn| indicates that this
 // field makes up the entire row, in which case a value matching the end-of-data marker must be quoted so that it
 // isn't misinterpreted when read back.
