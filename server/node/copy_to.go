@@ -26,12 +26,11 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// CopyTo handles the COPY ... TO ... statement.
+// CopyTo handles the COPY ... TO STDOUT statement. Copying to a server-side file is not supported, as a security
+// measure.
 type CopyTo struct {
 	DatabaseName string
 	TableName    doltdb.TableName
-	File         string
-	Stdout       bool
 	Columns      tree.NameList
 	CopyOptions  tree.CopyOptions
 	SelectStub   vitess.SelectStatement
@@ -45,8 +44,6 @@ func NewCopyTo(
 	databaseName string,
 	tableName doltdb.TableName,
 	options tree.CopyOptions,
-	fileName string,
-	stdout bool,
 	columns tree.NameList,
 	selectStub vitess.SelectStatement,
 ) *CopyTo {
@@ -60,8 +57,6 @@ func NewCopyTo(
 	return &CopyTo{
 		DatabaseName: databaseName,
 		TableName:    tableName,
-		File:         fileName,
-		Stdout:       stdout,
 		Columns:      columns,
 		CopyOptions:  options,
 		SelectStub:   selectStub,
@@ -97,11 +92,7 @@ func (ct *CopyTo) Schema(ctx *sql.Context) sql.Schema {
 
 // String implements the interface sql.ExecSourceRel.
 func (ct *CopyTo) String() string {
-	target := "STDOUT"
-	if ct.File != "" {
-		target = fmt.Sprintf("'%s'", ct.File)
-	}
-	return fmt.Sprintf("COPY TO %s", target)
+	return "COPY TO STDOUT"
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.

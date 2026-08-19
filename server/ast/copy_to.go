@@ -29,6 +29,10 @@ func nodeCopyTo(ctx *Context, node *tree.CopyTo) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
+	if !node.Stdout {
+		// Writing files on the server is a security liability we have chosen not to support.
+		return nil, errors.Errorf("COPY TO a server-side file is not supported, use COPY TO STDOUT instead")
+	}
 	if node.Options.CopyFormat == tree.CopyFormatBinary {
 		if node.Options.Header {
 			return nil, errors.Errorf("cannot specify HEADER in BINARY mode")
@@ -39,8 +43,8 @@ func nodeCopyTo(ctx *Context, node *tree.CopyTo) (vitess.Statement, error) {
 	}
 
 	// We create a stub select statement for the COPY TO statement, which the connection handler will build a plan
-	// for at execution time, streaming the results back to the client (or to a file). When copying a table, we
-	// construct a simple SELECT over the columns named (or all columns when none were).
+	// for at execution time, streaming the results back to the client. When copying a table, we construct a simple
+	// SELECT over the columns named (or all columns when none were).
 	selectStmt := node.Statement
 	if selectStmt == nil {
 		var selectExprs tree.SelectExprs
@@ -75,8 +79,6 @@ func nodeCopyTo(ctx *Context, node *tree.CopyTo) (vitess.Statement, error) {
 				Schema: node.Table.Schema(),
 			},
 			node.Options,
-			node.File,
-			node.Stdout,
 			node.Columns,
 			selectStub,
 		),

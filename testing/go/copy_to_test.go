@@ -15,20 +15,10 @@
 package _go
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/stretchr/testify/require"
 )
 
 func TestCopyTo(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "copy_to_test")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
 	// The setup script used by most of the tests below, exercising NULLs, empty strings, and values that need
 	// escaping or quoting in the output.
 	setup := []string{
@@ -161,59 +151,6 @@ func TestCopyTo(t *testing.T) {
 					Query:            `COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT (FORMAT "binary");`,
 					CopyToStdOutFile: "copy-to-basic.bin",
 				},
-				{
-					Query:       fmt.Sprintf("COPY tbl3 TO '%s' (FORMAT BINARY);", filepath.Join(tempDir, "binary.bin")),
-					ExpectedTag: "COPY 4",
-				},
-			},
-		},
-		{
-			Name:        "csv to file round trip",
-			SetUpScript: setup,
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:       fmt.Sprintf("COPY tbl1 TO '%s' (FORMAT CSV, HEADER);", filepath.Join(tempDir, "round-trip.csv")),
-					ExpectedTag: "COPY 7",
-				},
-				{
-					Query:            "CREATE TABLE tbl1_copy (pk int primary key, c1 varchar(100), c2 int);",
-					SkipResultsCheck: true,
-				},
-				{
-					Query:       fmt.Sprintf("COPY tbl1_copy FROM '%s' (FORMAT CSV, HEADER);", filepath.Join(tempDir, "round-trip.csv")),
-					ExpectedTag: "COPY 7",
-				},
-				{
-					Query: "SELECT count(*) FROM tbl1 t1 JOIN tbl1_copy t2 ON t1.pk = t2.pk WHERE t1.c1 IS NOT DISTINCT FROM t2.c1 AND t1.c2 IS NOT DISTINCT FROM t2.c2;",
-					Expected: []sql.Row{
-						{7},
-					},
-				},
-			},
-		},
-		{
-			Name:        "tab delimited to file round trip",
-			SetUpScript: setup,
-			Assertions: []ScriptTestAssertion{
-				{
-					// The tabular loader doesn't handle escaped newlines, so exclude that row from the round trip
-					Query:       fmt.Sprintf("COPY (SELECT * FROM tbl1 WHERE pk < 5) TO '%s';", filepath.Join(tempDir, "round-trip.txt")),
-					ExpectedTag: "COPY 4",
-				},
-				{
-					Query:            "CREATE TABLE tbl1_copy (pk int primary key, c1 varchar(100), c2 int);",
-					SkipResultsCheck: true,
-				},
-				{
-					Query:       fmt.Sprintf("COPY tbl1_copy FROM '%s';", filepath.Join(tempDir, "round-trip.txt")),
-					ExpectedTag: "COPY 4",
-				},
-				{
-					Query: "SELECT count(*) FROM tbl1 t1 JOIN tbl1_copy t2 ON t1.pk = t2.pk WHERE t1.c1 IS NOT DISTINCT FROM t2.c1 AND t1.c2 IS NOT DISTINCT FROM t2.c2;",
-					Expected: []sql.Row{
-						{4},
-					},
-				},
 			},
 		},
 		{
@@ -239,6 +176,11 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:       `COPY tbl1 TO STDOUT (FORMAT "nonsense");`,
 					ExpectedErr: `COPY format "nonsense" not recognized`,
+				},
+				{
+					// Writing files on the server is deliberately unsupported, as a security measure
+					Query:       "COPY tbl1 TO '/tmp/copy-to-out.csv' (FORMAT CSV);",
+					ExpectedErr: "COPY TO a server-side file is not supported",
 				},
 			},
 		},

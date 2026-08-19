@@ -645,8 +645,8 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 				return true, true, h.copyFromFileQuery(injectedStmt)
 			}
 		case *node.CopyTo:
-			// Unlike COPY FROM STDIN, the entire COPY TO flow (for both STDOUT and file targets) is driven by the
-			// server, so it completes within a single message and the server is ready for the next query afterward.
+			// Unlike COPY FROM STDIN, the entire COPY TO STDOUT flow is driven by the server, so it completes
+			// within a single message and the server is ready for the next query afterward.
 			return true, true, h.handleCopyTo(injectedStmt)
 		}
 	}
@@ -932,9 +932,9 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 	})
 }
 
-// handleCopyTo handles a COPY ... TO statement, streaming the results of the underlying SELECT statement back to
-// the client as COPY DATA messages (for COPY TO STDOUT), or writing them to a file on the server (for COPY TO
-// ... 'file'). Returns any error that occurs.
+// handleCopyTo handles a COPY ... TO STDOUT statement, streaming the results of the underlying SELECT statement
+// back to the client as COPY DATA messages. Copying to a server-side file is rejected during AST conversion, as a
+// security measure. Returns any error that occurs.
 func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "COPY TO")
 	if err != nil {
@@ -1055,9 +1055,7 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 		return err
 	}
 
-	if copyTo.Stdout {
-		h.backend.Send(&pgproto3.CopyDone{})
-	}
+	h.backend.Send(&pgproto3.CopyDone{})
 	return h.send(makeCommandComplete("COPY", int32(numRows)))
 }
 
