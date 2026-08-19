@@ -461,6 +461,104 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #3116",
+			SetUpScript: []string{
+				"CREATE TABLE t3116 (id INT PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The bare projection was already handled before this issue was filed; the shapes below,
+					// with a filter or sort between the projection and the system table, were not.
+					Query:            `SELECT dirty FROM dolt.branches;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches WHERE name = 'main';`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches ORDER BY name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches WHERE dirty = true;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT b.dirty FROM dolt.branches b ORDER BY b.name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					// Other dolt system tables expose boolean columns with the same problem
+					Query:            `SELECT staged FROM dolt.status ORDER BY table_name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f"}},
+				},
+				{
+					Query:            `SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID, pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f", "t"}},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'commit for issue 3116');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches WHERE name = 'main';`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f"}},
+				},
+			},
+		},
+	})
+}
+
+// TestIssue3116WireFormat asserts, over the simple query protocol, that boolean columns of dolt system
+// tables are sent in Postgres's text format ('t'/'f') rather than MySQL's ('1'/'0'), including when a
+// filter or sort sits between the projection and the system table. Clients like psycopg2 use the simple
+// protocol with text-format results and fail to parse '0'/'1' for a column whose declared type is boolean.
+// The ScriptTest above cannot cover this: pgx negotiates binary-format results, which took a different
+// (working) code path while the text path was broken.
+func TestIssue3116WireFormat(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "Issue #3116: dolt system table booleans over the wire",
+			SetUpScript: []string{
+				"CREATE TABLE t3116 (id INT PRIMARY KEY);",
+			},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches WHERE name = 'main';",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches ORDER BY name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches WHERE dirty = true;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT staged FROM dolt.status ORDER BY table_name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f", "t"}}}},
+				},
+			},
+		},
 	})
 }
 
