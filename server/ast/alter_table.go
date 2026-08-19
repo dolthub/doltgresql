@@ -55,6 +55,9 @@ func nodeAlterTable(ctx *Context, node *tree.AlterTable) (vitess.Statement, erro
 				Children: nil,
 			}, nil
 		}
+		if tcmd, ok := node.Cmds[0].(*tree.AlterTableAlterColumnType); ok && tcmd.Using != nil {
+			return nodeAlterTableAlterColumnTypeUsing(ctx, tcmd, tableName, node.IfExists)
+		}
 	}
 	statements, noOps, err := nodeAlterTableCmds(ctx, node.Cmds, tableName, node.IfExists)
 	if err != nil {
@@ -344,7 +347,9 @@ func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColum
 	}
 
 	if node.Using != nil {
-		return nil, errors.Errorf("ALTER TABLE with USING is not supported yet")
+		// The USING form is handled by a dedicated node (see nodeAlterTableAlterColumnTypeUsing), which only supports
+		// a single command per ALTER TABLE statement.
+		return nil, errors.Errorf("ALTER TABLE ... ALTER COLUMN ... TYPE ... USING is not supported in a multi-action ALTER TABLE statement")
 	}
 
 	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType, false)
@@ -370,6 +375,35 @@ func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColum
 				Charset:      convertType.Charset,
 			},
 		},
+	}, nil
+}
+
+// nodeAlterTableAlterColumnTypeUsing converts a tree.AlterTableAlterColumnType instance that includes a USING clause
+// into a vitess.InjectedStatement wrapping a pgnodes.AlterTableColumnTypeUsing node. The USING form computes each
+// row's new value by evaluating the given expression, rather than converting the existing values directly.
+func nodeAlterTableAlterColumnTypeUsing(ctx *Context, node *tree.AlterTableAlterColumnType, tableName vitess.TableName, ifExists bool) (vitess.Statement, error) {
+	if node.Collation != "" {
+		return nil, errors.Errorf("ALTER TABLE with COLLATE is not supported yet")
+	}
+
+	_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType, false)
+	if err != nil {
+		return nil, err
+	}
+	if resolvedType == pgtypes.Record {
+		return nil, errors.Errorf(`column "%s" has pseudo-type record`, node.Column.String())
+	}
+
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewAlterTableColumnTypeUsing(
+			tableName.SchemaQualifier.String(),
+			tableName.Name.String(),
+			bareIdentifier(node.Column),
+			resolvedType,
+			tree.AsString(node.Using),
+			ifExists,
+		),
+		Children: nil,
 	}, nil
 }
 
