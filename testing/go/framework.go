@@ -138,6 +138,11 @@ type ScriptTestAssertion struct {
 	// CopyToStdOutFile is used to test the COPY TO STDOUT command. It names a file in the testdata directory whose
 	// contents are the expected output of the COPY TO STDOUT query.
 	CopyToStdOutFile string
+
+	// CopyRoundTripStdInQuery is used to test that COPY TO STDOUT output can be read back in by COPY FROM STDIN.
+	// The bytes the server sends for Query (a COPY ... TO STDOUT statement) are piped directly into this
+	// COPY ... FROM STDIN statement, without touching the filesystem.
+	CopyRoundTripStdInQuery string
 }
 
 // EmptyCommandTag is special command tag placeholder to check for the empty string
@@ -254,6 +259,8 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.CopyFromStdInFile != "" {
 				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile)
+			} else if assertion.CopyRoundTripStdInQuery != "" {
+				copyRoundTrip(t, conn.Current, assertion.Query, assertion.CopyRoundTripStdInQuery)
 			} else if assertion.CopyToStdOutFile != "" {
 				copyToStdout(t, conn.Current, assertion.Query, assertion.CopyToStdOutFile)
 			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" || assertion.ExpectedErrCode != "" {
@@ -377,6 +384,16 @@ func copyToStdout(t *testing.T, conn *pgx.Conn, query string, filename string) {
 	_, err = conn.PgConn().CopyTo(context.Background(), &buf, query)
 	require.NoError(t, err)
 	assert.Equal(t, string(expected), buf.String())
+}
+
+// copyRoundTrip runs the COPY TO STDOUT statement given and pipes the data the server sends back into the given
+// COPY FROM STDIN statement, verifying that COPY output can be read back in without touching the filesystem.
+func copyRoundTrip(t *testing.T, conn *pgx.Conn, copyToQuery string, copyFromQuery string) {
+	var buf bytes.Buffer
+	_, err := conn.PgConn().CopyTo(context.Background(), &buf, copyToQuery)
+	require.NoError(t, err)
+	_, err = conn.PgConn().CopyFrom(context.Background(), &buf, copyFromQuery)
+	require.NoError(t, err)
 }
 
 // RunScripts runs the given collection of scripts. This normalizes all rows before comparing them.

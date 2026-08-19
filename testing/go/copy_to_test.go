@@ -16,6 +16,8 @@ package _go
 
 import (
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestCopyTo(t *testing.T) {
@@ -150,6 +152,47 @@ func TestCopyTo(t *testing.T) {
 					// DuckDB's postgres extension sends the format name as a quoted identifier
 					Query:            `COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT (FORMAT "binary");`,
 					CopyToStdOutFile: "copy-to-basic.bin",
+				},
+			},
+		},
+		{
+			Name:        "csv round trip",
+			SetUpScript: setup,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "CREATE TABLE tbl1_copy (pk int primary key, c1 varchar(100), c2 int);",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:                   "COPY tbl1 TO STDOUT (FORMAT CSV, HEADER);",
+					CopyRoundTripStdInQuery: "COPY tbl1_copy FROM STDIN (FORMAT CSV, HEADER);",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl1 t1 JOIN tbl1_copy t2 ON t1.pk = t2.pk WHERE t1.c1 IS NOT DISTINCT FROM t2.c1 AND t1.c2 IS NOT DISTINCT FROM t2.c2;",
+					Expected: []sql.Row{
+						{7},
+					},
+				},
+			},
+		},
+		{
+			Name:        "tab delimited round trip",
+			SetUpScript: setup,
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "CREATE TABLE tbl1_copy (pk int primary key, c1 varchar(100), c2 int);",
+					SkipResultsCheck: true,
+				},
+				{
+					// The tabular loader doesn't handle escaped newlines, so exclude that row from the round trip
+					Query:                   "COPY (SELECT * FROM tbl1 WHERE pk < 5) TO STDOUT;",
+					CopyRoundTripStdInQuery: "COPY tbl1_copy FROM STDIN;",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl1 t1 JOIN tbl1_copy t2 ON t1.pk = t2.pk WHERE t1.c1 IS NOT DISTINCT FROM t2.c1 AND t1.c2 IS NOT DISTINCT FROM t2.c2;",
+					Expected: []sql.Row{
+						{4},
+					},
 				},
 			},
 		},
