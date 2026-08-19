@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
@@ -231,6 +231,15 @@ select
   round(to_tps / (from_tps + .000001), $precision) as percent_change
 from
   result;"
+
+# Replace new lines with spaces, so it is valid JSON later
+medianLatencyMultiplierReadsQuery=${medianLatencyMultiplierReadsQuery//$'\n'/ }
+meanMultiplierReadsQuery = ${meanMultiplierReadsQuery//$'\n'/ }
+medianLatencyMultiplierWritesQuery = ${medianLatencyMultiplierWritesQuery//$'\n'/ }
+meanMultiplierWritesQuery = ${meanMultiplierWritesQuery//$'\n'/ }
+meanMultiplierOverallQuery = ${meanMultiplierOverallQuery//$'\n'/ }
+tpccLatencyQuery = ${tpccLatencyQuery//$'\n'/ }
+tpccTpsQuery = ${tpccTpsQuery//$'\n'/ }
 
 echo '
 {
