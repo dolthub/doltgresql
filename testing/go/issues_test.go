@@ -462,6 +462,29 @@ limit 1`,
 			},
 		},
 		{
+			Name: "Issue #3138",
+			SetUpScript: []string{
+				"CREATE TABLE bug16_parent (id integer PRIMARY KEY);",
+				"CREATE TABLE bug16_child  (id integer PRIMARY KEY, parent_id integer REFERENCES bug16_parent(id));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT c.conname,
+       array(SELECT colid FROM unnest(c.conkey) WITH ORDINALITY cols(colid, arridx) ORDER BY cols.arridx)
+FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 'bug16_child' ORDER BY c.conname;`,
+					Expected: []sql.Row{
+						{"bug16_child_parent_id_fkey", "{2}"},
+						{"bug16_child_pkey", "{1}"},
+					},
+				},
+				{
+					// non-correlated WITH ORDINALITY should still number rows correctly
+					Query:    `SELECT colid, arridx FROM unnest(ARRAY[1,2]) WITH ORDINALITY cols(colid, arridx);`,
+					Expected: []sql.Row{{1, 1}, {2, 2}},
+				},
+			},
+		},
+		{
 			Name: "Issue #3097",
 			SetUpScript: []string{
 				"CREATE TABLE g_bool (id INT4 PRIMARY KEY, flag BOOLEAN);",
