@@ -16,6 +16,7 @@ package ast
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -54,6 +55,9 @@ func nodeAlterTable(ctx *Context, node *tree.AlterTable) (vitess.Statement, erro
 				),
 				Children: nil,
 			}, nil
+		}
+		if tcmd, ok := node.Cmds[0].(*tree.AlterTableAlterColumnType); ok && tcmd.Using != nil {
+			return nodeAlterTableAlterColumnTypeUsing(ctx, tcmd, tableName, node.IfExists)
 		}
 	}
 	statements, noOps, err := nodeAlterTableCmds(ctx, node.Cmds, tableName, node.IfExists)
@@ -344,7 +348,9 @@ func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColum
 	}
 
 	if node.Using != nil {
-		return nil, errors.Errorf("ALTER TABLE with USING is not supported yet")
+		// The USING form is handled by a dedicated node (see nodeAlterTableAlterColumnTypeUsing), which only supports
+		// a single command per ALTER TABLE statement.
+		return nil, errors.Errorf("ALTER TABLE ... ALTER COLUMN ... TYPE ... USING is not supported in a multi-action ALTER TABLE statement")
 	}
 
 	convertType, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType, false)
@@ -370,6 +376,70 @@ func nodeAlterTableAlterColumnType(ctx *Context, node *tree.AlterTableAlterColum
 				Charset:      convertType.Charset,
 			},
 		},
+	}, nil
+}
+
+// nodeAlterTableAlterColumnTypeUsing converts a tree.AlterTableAlterColumnType instance that includes a USING clause
+// into a vitess.InjectedStatement wrapping a pgnodes.AlterTableColumnTypeUsing node. The USING form computes each
+// row's new value by evaluating the given expression, rather than converting the existing values directly.
+func nodeAlterTableAlterColumnTypeUsing(ctx *Context, node *tree.AlterTableAlterColumnType, tableName vitess.TableName, ifExists bool) (vitess.Statement, error) {
+	if node.Collation != "" {
+		return nil, errors.Errorf("ALTER TABLE with COLLATE is not supported yet")
+	}
+
+	_, resolvedType, err := nodeResolvableTypeReference(ctx, node.ToType, false)
+	if err != nil {
+		return nil, err
+	}
+	if resolvedType == pgtypes.Record {
+		return nil, errors.Errorf(`column "%s" has pseudo-type record`, node.Column.String())
+	}
+
+	schemaName := tableName.SchemaQualifier.String()
+	tblName := tableName.Name.String()
+
+	// Column references in the USING expression may only refer to the table being altered, so we replace them with
+	// UsingColumn placeholders that resolve against that table rather than the (empty) scope of the statement.
+	replacedUsing, err := tree.SimpleVisit(node.Using, func(visitingExpr tree.Expr) (recurse bool, newExpr tree.Expr, err error) {
+		switch v := visitingExpr.(type) {
+		case *tree.Subquery:
+			return false, nil, errors.Errorf("cannot use subquery in transform expression")
+		case *tree.UnresolvedName:
+			if v.Star {
+				return false, nil, errors.Errorf("* syntax is not supported in a USING expression")
+			}
+			// Parts are ordered column name, table name, schema name, database name
+			if v.NumParts >= 2 && !strings.EqualFold(v.Parts[1], tblName) {
+				return false, nil, errors.Errorf(`missing FROM-clause entry for table "%s"`, v.Parts[1])
+			}
+			if v.NumParts >= 3 && schemaName != "" && !strings.EqualFold(v.Parts[2], schemaName) {
+				return false, nil, errors.Errorf(`missing FROM-clause entry for table "%s.%s"`, v.Parts[2], v.Parts[1])
+			}
+			return false, tree.UsingColumn{
+				SchemaName: schemaName,
+				TableName:  tblName,
+				Name:       v.Parts[0],
+			}, nil
+		}
+		return true, visitingExpr, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	usingExpr, err := nodeExpr(ctx, replacedUsing)
+	if err != nil {
+		return nil, err
+	}
+
+	return vitess.InjectedStatement{
+		Statement: pgnodes.NewAlterTableColumnTypeUsing(
+			schemaName,
+			tblName,
+			bareIdentifier(node.Column),
+			resolvedType,
+			ifExists,
+		),
+		Children: vitess.Exprs{usingExpr},
 	}, nil
 }
 
