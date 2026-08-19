@@ -2009,6 +2009,76 @@ func TestArrayFunctions(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3122
+			Name: "string_to_array",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT string_to_array('a,b,c', ',');`,
+					Expected: []sql.Row{{"{a,b,c}"}},
+				},
+				{
+					Query:    `SELECT string_to_array('xx~^~yy~^~zz', '~^~', 'yy');`,
+					Expected: []sql.Row{{"{xx,NULL,zz}"}},
+				},
+				{
+					// NULL delimiter splits into individual characters
+					Query:    `SELECT string_to_array('abc', NULL);`,
+					Expected: []sql.Row{{"{a,b,c}"}},
+				},
+				{
+					Query:    `SELECT string_to_array('abc', NULL, 'b');`,
+					Expected: []sql.Row{{"{a,NULL,c}"}},
+				},
+				{
+					// empty delimiter returns the whole string as a single element
+					Query:    `SELECT string_to_array('abc', '');`,
+					Expected: []sql.Row{{"{abc}"}},
+				},
+				{
+					// empty input string returns an empty array
+					Query:    `SELECT string_to_array('', ',');`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					Query:    `SELECT string_to_array('', NULL);`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					// NULL input string returns NULL
+					Query:    `SELECT string_to_array(NULL, ',');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT string_to_array(NULL, ',', 'a');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// NULL null_string performs no NULL substitution
+					Query:    `SELECT string_to_array('a,b,c', ',', NULL);`,
+					Expected: []sql.Row{{"{a,b,c}"}},
+				},
+				{
+					// delimiters at the edges produce empty-string fields
+					Query:    `SELECT string_to_array(',a,,b,', ',');`,
+					Expected: []sql.Row{{`{"",a,"",b,""}`}},
+				},
+				{
+					// empty null_string maps empty fields to NULL
+					Query:    `SELECT string_to_array(',a,', ',', '');`,
+					Expected: []sql.Row{{"{NULL,a,NULL}"}},
+				},
+				{
+					// result can be cast to other array types
+					Query:    `SELECT string_to_array('1,2,3', ',')::int4[];`,
+					Expected: []sql.Row{{"{1,2,3}"}},
+				},
+				{
+					Query:    `SELECT array_length(string_to_array('a,b,c', ','), 1);`,
+					Expected: []sql.Row{{int32(3)}},
+				},
+			},
+		},
+		{
 			Name: "array_upper",
 			Assertions: []ScriptTestAssertion{
 				{
