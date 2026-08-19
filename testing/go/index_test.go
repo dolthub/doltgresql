@@ -1519,6 +1519,107 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "ALTER INDEX RENAME TO",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int);",
+				"INSERT INTO t VALUES (1, 10), (2, 20), (3, 30);",
+				"CREATE INDEX v1_idx ON t (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER INDEX v1_idx RENAME TO v1_renamed_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' AND indexname <> 't_pkey';",
+					Expected: []sql.Row{{"v1_renamed_idx"}},
+				},
+				{
+					// The renamed index is still used in query plans
+					Query: "EXPLAIN SELECT * FROM t WHERE v1 = 20;",
+					Expected: []sql.Row{
+						{"IndexedTableAccess(t)"},
+						{" ├─ index: [t.v1]"},
+						{" ├─ filters: [{[20, 20]}]"},
+						{" └─ columns: [pk v1]"},
+					},
+				},
+				{
+					Query:    "SELECT * FROM t WHERE v1 = 20;",
+					Expected: []sql.Row{{2, 20}},
+				},
+				{
+					// The old name is gone
+					Query:       "ALTER INDEX v1_idx RENAME TO something_else;",
+					ExpectedErr: `relation "v1_idx" does not exist`,
+				},
+				{
+					// The new name is usable by DROP INDEX
+					Query:    "DROP INDEX v1_renamed_idx;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "ALTER INDEX RENAME TO with schema-qualified name",
+			SetUpScript: []string{
+				"CREATE SCHEMA myschema;",
+				"CREATE TABLE myschema.t (pk int PRIMARY KEY, v1 int);",
+				"CREATE INDEX v1_idx ON myschema.t (v1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER INDEX myschema.v1_idx RENAME TO v1_renamed_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'myschema' AND indexname <> 't_pkey';",
+					Expected: []sql.Row{{"v1_renamed_idx"}},
+				},
+				{
+					// The schema is not on the search path, so the unqualified name can't be found
+					Query:       "ALTER INDEX v1_renamed_idx RENAME TO another_name;",
+					ExpectedErr: `relation "v1_renamed_idx" does not exist`,
+				},
+				{
+					// A schema that doesn't contain the index errors
+					Query:       "ALTER INDEX public.v1_renamed_idx RENAME TO another_name;",
+					ExpectedErr: `relation "v1_renamed_idx" does not exist`,
+				},
+			},
+		},
+		{
+			Name: "ALTER INDEX RENAME TO error cases",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk int PRIMARY KEY, v1 int, v2 int);",
+				"CREATE INDEX v1_idx ON t (v1);",
+				"CREATE INDEX v2_idx ON t (v2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER INDEX no_such_index RENAME TO new_name;",
+					ExpectedErr: `relation "no_such_index" does not exist`,
+				},
+				{
+					Query:    "ALTER INDEX IF EXISTS no_such_index RENAME TO new_name;",
+					Expected: []sql.Row{},
+				},
+				{
+					// Renaming to a name that's already in use on the same table errors
+					Query:       "ALTER INDEX v1_idx RENAME TO v2_idx;",
+					ExpectedErr: `relation "v2_idx" already exists`,
+				},
+				{
+					Query:    "ALTER INDEX IF EXISTS v1_idx RENAME TO v1_renamed_idx;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' AND indexname <> 't_pkey' ORDER BY indexname;",
+					Expected: []sql.Row{{"v1_renamed_idx"}, {"v2_idx"}},
+				},
+			},
+		},
+		{
 			Name: "partial index",
 			SetUpScript: []string{
 				`CREATE TABLE user_sessions (
