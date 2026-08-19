@@ -161,11 +161,8 @@ from
   result;"
 
 # Replace new lines with spaces, so it is valid JSON later
-medianLatencyMultiplierReadsQuery=${medianLatencyMultiplierReadsQuery//$'\n'/ }
-meanMultiplierReadsQuery = ${meanMultiplierReadsQuery//$'\n'/ }
-medianLatencyMultiplierWritesQuery = ${medianLatencyMultiplierWritesQuery//$'\n'/ }
-meanMultiplierWritesQuery = ${meanMultiplierWritesQuery//$'\n'/ }
-meanMultiplierOverallQuery = ${meanMultiplierOverallQuery//$'\n'/ }
+medianLatencyChangeReadsQuery=${medianLatencyChangeReadsQuery//$'\n'/ }
+medianLatencyChangeWritesQuery = ${medianLatencyChangeWritesQuery//$'\n'/ }
 tpccLatencyQuery = ${tpccLatencyQuery//$'\n'/ }
 tpccTpsQuery = ${tpccTpsQuery//$'\n'/ }
 
