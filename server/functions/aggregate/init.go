@@ -18,4 +18,5 @@ func Init() {
 	initBoolAggs()
 	initNumericAggs()
 	initAvgAggs()
+	initVarianceAggs()
 }

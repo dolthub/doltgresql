@@ -16,6 +16,7 @@ package _go
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 
@@ -2361,6 +2362,33 @@ var typesTests = []ScriptTest{
 					{1, 123.875},
 					{2, 67.125},
 				},
+			},
+			{
+				// Values that overflow float4 must be rejected, not wrapped to +/-Inf
+				Query:       "INSERT INTO t_real VALUES (3, 1.0e100);",
+				ExpectedErr: "real out of range",
+			},
+			{
+				Query:       "INSERT INTO t_real VALUES (3, 1.0e100::numeric);",
+				ExpectedErr: "real out of range",
+			},
+			{
+				// Largest finite float4 magnitude must still be accepted.
+				Query: "SELECT 3.4e38::float8::real, (-3.4e38)::float8::real;",
+				Expected: []sql.Row{
+					{float32(3.4e38), float32(-3.4e38)},
+				},
+			},
+			{
+				// An infinite numeric must pass through as float Infinity
+				Query: "SELECT 'Infinity'::numeric::real, '-Infinity'::numeric::real, 'Infinity'::numeric::float8;",
+				Expected: []sql.Row{
+					{float32(math.Inf(1)), float32(math.Inf(-1)), math.Inf(1)},
+				},
+			},
+			{
+				Query:       "SELECT ('1' || repeat('0', 320))::numeric::float8;",
+				ExpectedErr: "double precision out of range",
 			},
 		},
 	},

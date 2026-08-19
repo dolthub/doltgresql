@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"math"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -482,6 +483,47 @@ func TestAggregateFunctions(t *testing.T) {
 			`,
 					Expected: []sql.Row{
 						{"{1}"},
+					},
+				},
+			},
+		},
+		{
+			Name: "var_pop/var_samp/stddev_pop/stddev_samp with infinite and NaN float8 input",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT sum(x::float8), avg(x::float8), var_pop(x::float8)::text FROM (VALUES ('infinity'), ('1')) v(x);`,
+					Expected: []sql.Row{
+						{math.Inf(1), math.Inf(1), "NaN"},
+					},
+				},
+				{
+					Query: `SELECT sum(x::float8), avg(x::float8), var_pop(x::float8)::text FROM (VALUES ('1'), ('infinity')) v(x);`,
+					Expected: []sql.Row{
+						{math.Inf(1), math.Inf(1), "NaN"},
+					},
+				},
+				{
+					Query: `SELECT var_pop(x::float8)::text FROM (VALUES ('infinity'), ('infinity')) v(x);`,
+					Expected: []sql.Row{
+						{"NaN"},
+					},
+				},
+				{
+					Query: `SELECT var_pop(x::float8)::text, var_samp(x::float8)::text, stddev_pop(x::float8)::text, stddev_samp(x::float8)::text FROM (VALUES ('infinity')) v(x);`,
+					Expected: []sql.Row{
+						{"NaN", nil, "NaN", nil},
+					},
+				},
+				{
+					Query: `SELECT var_pop(x::float8)::text, var_samp(x::float8)::text, stddev_pop(x::float8)::text, stddev_samp(x::float8)::text FROM (VALUES ('nan')) v(x);`,
+					Expected: []sql.Row{
+						{"NaN", nil, "NaN", nil},
+					},
+				},
+				{
+					Query: `SELECT var_pop(x::float8), var_samp(x::float8), stddev_pop(x::float8), stddev_samp(x::float8) FROM (VALUES (1::float8), (2::float8), (3::float8), (4::float8)) v(x);`,
+					Expected: []sql.Row{
+						{1.25, 1.6666666666666667, 1.118033988749895, 1.2909944487358056},
 					},
 				},
 			},
