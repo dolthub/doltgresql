@@ -42,119 +42,173 @@ func TypeSanitizer(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 	// TODO: this probably should not be opaque, we should let the analyzer dig into subqueries and analyze them when
 	//  it chooses. Doing all type transformations upfront like this masks bugs where certain tyupe conversion errors
 	//  only manifest in a subquery
-	return pgtransform.NodeExprsWithNodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
-		// This can be updated if we find more expressions that return GMS types.
-		// These should eventually be replaced with Doltgres-equivalents over time, rendering this function unnecessary.
-		switch expr := expr.(type) {
-		case *expression.GetField:
-			switch n := n.(type) {
-			case *plan.Project, *plan.Filter, *plan.GroupBy:
-				child := n.Children()[0]
-				// Table functions are wrapped in an alias node bearing the function's name
-				if alias, ok := child.(*plan.TableAlias); ok {
-					child = alias.Child
-				}
-				// Dolt system tables and table functions do not have doltgres types for their columns, so we
-				// convert them here.
-				var name, schemaName string
-				switch child := child.(type) {
-				case *plan.ResolvedTable:
-					name = child.Name()
-					if dbSchema, ok := child.Database().(sql.DatabaseSchema); ok {
-						schemaName = dbSchema.SchemaName()
-					}
-				case sql.TableFunction:
-					name = child.Name()
-				}
-				if doltdb.IsSystemTable(doltdb.TableName{Name: name, Schema: schemaName}) {
-					// This is a projection on a table, so we can safely convert the type
-					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
-						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
-					}
-				}
+	return pgtransform.NodeWithOpaque(ctx, node, sanitizeNodeExprs)
+}
+
+// sanitizeNodeExprs converts every GMS-typed expression held by a single node into its Doltgres equivalent. It's the
+// per-node callback driving TypeSanitizer's single tree walk: sanitizeExtraNodeExprs handles the handful of node
+// types whose Expressions()/WithExpressions() implementation doesn't expose everything they hold, and
+// transform.OneNodeExprsWithNode then handles the node's ordinary Expressions().
+func sanitizeNodeExprs(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+	n, sameExtra, err := sanitizeExtraNodeExprs(ctx, n)
+	if err != nil {
+		return nil, transform.SameTree, err
+	}
+	n, sameOrdinary, err := transform.OneNodeExprsWithNode(ctx, n, sanitizeExprType)
+	if err != nil {
+		return nil, transform.SameTree, err
+	}
+	return n, sameExtra && sameOrdinary, nil
+}
+
+// sanitizeExtraNodeExprs applies sanitizeExprType to expressions that a node holds outside of its ordinary
+// Expressions()/WithExpressions() implementation. This is where to add a case for any future node type with
+// the same shape of problem.
+func sanitizeExtraNodeExprs(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+	switch n := n.(type) {
+	case *plan.AlterIndex:
+		if len(n.Columns) == 0 {
+			return n, transform.SameTree, nil
+		}
+		newColumns := append([]sql.IndexColumn(nil), n.Columns...)
+		sameTree := transform.SameTree
+		for i, col := range n.Columns {
+			if col.Expression == nil {
+				continue
 			}
-			return expr, transform.SameTree, nil
-		case *expression.Literal:
-			// We want to leave limit literals alone, as they are expected to be GMS types when they appear in certain
-			// parts of the query (subqueries in particular)
-			// TODO: fix the limit and offset validation analysis to handle doltgres types
-			if _, isLimit := n.(*plan.Limit); isLimit {
-				break
+			newExpr, same, err := transform.ExprWithNode(ctx, n, col.Expression, sanitizeExprType)
+			if err != nil {
+				return nil, transform.SameTree, err
 			}
-			if _, isOffset := n.(*plan.Offset); isOffset {
-				break
+			if same {
+				continue
 			}
-			return typeSanitizerLiterals(ctx, expr)
-		case *expression.Not, *expression.And, *expression.Or, *expression.Like:
-			return pgexprs.NewGMSCast(expr), transform.NewTree, nil
-		case sql.FunctionExpression:
-			// Compiled functions are Doltgres functions. We're only concerned with GMS functions.
-			if _, ok := expr.(framework.Function); !ok {
-				// Aggregation/window-only expressions (Sum, Avg, Count, BitAnd, Rank, ...) can't be
-				// Eval()'d directly - only via NewBuffer/NewWindowFunction - so wrapping one in
-				// GMSCast (which evaluates its child directly) breaks it.
-				// sql.WindowAdaptableExpression is the common parent interface for both sql.Aggregation
-				// and sql.WindowAggregation, so checking it covers every current and future case in one
-				// shot. Only the *outer* reference to an aggregate's result (a GetField, handled
-				// elsewhere in this function) still needs its declared type corrected.
-				if _, ok := expr.(sql.WindowAdaptableExpression); ok {
-					return expr, transform.SameTree, nil
-				}
-				switch expr.FunctionName() {
-				case "coalesce":
-					// Replace GMS Coalesce with a Doltgres-native implementation that uses
-					// Postgres type-resolution rules (FindCommonType) to infer the result type.
-					// GMS's Coalesce.Type() falls back to LongText when its arguments are
-					// DoltgresTypes because they don't satisfy GMS's IsNumber/IsText checks.
-					if _, isPgCoalesce := expr.(*pgexprs.PgCoalesce); !isPgCoalesce {
-						children := expr.Children()
-						allDoltgresTypes := true
-						for _, child := range children {
-							if _, ok := child.Type(ctx).(*pgtypes.DoltgresType); !ok {
-								allDoltgresTypes = false
-								break
-							}
-						}
-						if allDoltgresTypes {
-							pgCoalesce, err := pgexprs.NewPgCoalesce(ctx, children...)
-							if err != nil {
-								return nil, transform.NewTree, err
-							}
-							return pgCoalesce, transform.NewTree, nil
-						}
-					}
-					// Fall through to GMSCast if children aren't DoltgresTypes yet.
-					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
-						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
-					}
-				default:
-					// Some GMS functions wrap Doltgres parameters, so we'll only handle those that return GMS types
-					if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
-						return pgexprs.NewGMSCast(expr), transform.NewTree, nil
-					}
-				}
+			sameTree = transform.NewTree
+			newColumns[i].Expression = newExpr
+		}
+		if sameTree == transform.SameTree {
+			return n, transform.SameTree, nil
+		}
+		newNode, err := n.WithColumns(newColumns)
+		return newNode, transform.NewTree, err
+	default:
+		return n, transform.SameTree, nil
+	}
+}
+
+// sanitizeExprType is the per-expression conversion applied by TypeSanitizer.
+func sanitizeExprType(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+	// This can be updated if we find more expressions that return GMS types.
+	// These should eventually be replaced with Doltgres-equivalents over time, rendering this function unnecessary.
+	switch expr := expr.(type) {
+	case *expression.GetField:
+		switch n := n.(type) {
+		case *plan.Project, *plan.Filter, *plan.GroupBy:
+			child := n.Children()[0]
+			// Table functions are wrapped in an alias node bearing the function's name
+			if alias, ok := child.(*plan.TableAlias); ok {
+				child = alias.Child
 			}
-		case *sql.ColumnDefaultValue:
-			// Due to how interfaces work, we sometimes pass (*ColumnDefaultValue)(nil), so we have to check for it
-			if expr != nil && expr.Expr != nil {
-				defaultExpr := expr.Expr
-				if _, ok := defaultExpr.Type(ctx).(*pgtypes.DoltgresType); !ok {
-					defaultExpr = pgexprs.NewGMSCast(defaultExpr)
+			// Dolt system tables and table functions do not have doltgres types for their columns, so we
+			// convert them here.
+			var name, schemaName string
+			switch child := child.(type) {
+			case *plan.ResolvedTable:
+				name = child.Name()
+				if dbSchema, ok := child.Database().(sql.DatabaseSchema); ok {
+					schemaName = dbSchema.SchemaName()
 				}
-				defaultExprType := defaultExpr.Type(ctx).(*pgtypes.DoltgresType)
-				outType, ok := expr.OutType.(*pgtypes.DoltgresType)
-				if !ok {
-					return nil, transform.NewTree, errors.Errorf("default values must have a non-GMS OutType: `%s`", expr.OutType.String())
+			case sql.TableFunction:
+				name = child.Name()
+			}
+			if doltdb.IsSystemTable(doltdb.TableName{Name: name, Schema: schemaName}) {
+				// This is a projection on a table, so we can safely convert the type
+				if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
+					return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 				}
-				if !outType.Equals(defaultExprType) {
-					defaultExpr = pgexprs.NewAssignmentCast(defaultExpr, defaultExprType, outType)
-				}
-				newDefault, err := sql.NewColumnDefaultValue(defaultExpr, outType, expr.Literal, expr.Parenthesized, expr.ReturnNil)
-				return newDefault, transform.NewTree, err
 			}
 		}
 		return expr, transform.SameTree, nil
-	})
+	case *expression.Literal:
+		// We want to leave limit literals alone, as they are expected to be GMS types when they appear in certain
+		// parts of the query (subqueries in particular)
+		// TODO: fix the limit and offset validation analysis to handle doltgres types
+		if _, isLimit := n.(*plan.Limit); isLimit {
+			break
+		}
+		if _, isOffset := n.(*plan.Offset); isOffset {
+			break
+		}
+		return typeSanitizerLiterals(ctx, expr)
+	case *expression.Not, *expression.And, *expression.Or, *expression.Like:
+		return pgexprs.NewGMSCast(expr), transform.NewTree, nil
+	case sql.FunctionExpression:
+		// Compiled functions are Doltgres functions. We're only concerned with GMS functions.
+		if _, ok := expr.(framework.Function); !ok {
+			// Aggregation/window-only expressions (Sum, Avg, Count, BitAnd, Rank, ...) can't be
+			// Eval()'d directly - only via NewBuffer/NewWindowFunction - so wrapping one in
+			// GMSCast (which evaluates its child directly) breaks it.
+			// sql.WindowAdaptableExpression is the common parent interface for both sql.Aggregation
+			// and sql.WindowAggregation, so checking it covers every current and future case in one
+			// shot. Only the *outer* reference to an aggregate's result (a GetField, handled
+			// elsewhere in this function) still needs its declared type corrected.
+			if _, ok := expr.(sql.WindowAdaptableExpression); ok {
+				return expr, transform.SameTree, nil
+			}
+			switch expr.FunctionName() {
+			case "coalesce":
+				// Replace GMS Coalesce with a Doltgres-native implementation that uses
+				// Postgres type-resolution rules (FindCommonType) to infer the result type.
+				// GMS's Coalesce.Type() falls back to LongText when its arguments are
+				// DoltgresTypes because they don't satisfy GMS's IsNumber/IsText checks.
+				if _, isPgCoalesce := expr.(*pgexprs.PgCoalesce); !isPgCoalesce {
+					children := expr.Children()
+					allDoltgresTypes := true
+					for _, child := range children {
+						if _, ok := child.Type(ctx).(*pgtypes.DoltgresType); !ok {
+							allDoltgresTypes = false
+							break
+						}
+					}
+					if allDoltgresTypes {
+						pgCoalesce, err := pgexprs.NewPgCoalesce(ctx, children...)
+						if err != nil {
+							return nil, transform.NewTree, err
+						}
+						return pgCoalesce, transform.NewTree, nil
+					}
+				}
+				// Fall through to GMSCast if children aren't DoltgresTypes yet.
+				if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
+					return pgexprs.NewGMSCast(expr), transform.NewTree, nil
+				}
+			default:
+				// Some GMS functions wrap Doltgres parameters, so we'll only handle those that return GMS types
+				if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
+					return pgexprs.NewGMSCast(expr), transform.NewTree, nil
+				}
+			}
+		}
+	case *sql.ColumnDefaultValue:
+		// Due to how interfaces work, we sometimes pass (*ColumnDefaultValue)(nil), so we have to check for it
+		if expr != nil && expr.Expr != nil {
+			defaultExpr := expr.Expr
+			if _, ok := defaultExpr.Type(ctx).(*pgtypes.DoltgresType); !ok {
+				defaultExpr = pgexprs.NewGMSCast(defaultExpr)
+			}
+			defaultExprType := defaultExpr.Type(ctx).(*pgtypes.DoltgresType)
+			outType, ok := expr.OutType.(*pgtypes.DoltgresType)
+			if !ok {
+				return nil, transform.NewTree, errors.Errorf("default values must have a non-GMS OutType: `%s`", expr.OutType.String())
+			}
+			if !outType.Equals(defaultExprType) {
+				defaultExpr = pgexprs.NewAssignmentCast(defaultExpr, defaultExprType, outType)
+			}
+			newDefault, err := sql.NewColumnDefaultValue(defaultExpr, outType, expr.Literal, expr.Parenthesized, expr.ReturnNil)
+			return newDefault, transform.NewTree, err
+		}
+	}
+	return expr, transform.SameTree, nil
 }
 
 // TypeSanitizeExistsSubquery casts any *plan.ExistsSubquery node still present in the tree into
