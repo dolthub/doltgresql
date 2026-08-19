@@ -37,11 +37,15 @@ var to_regproc_text = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		val1Str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		// If the string just represents a number, then we return nil.
-		if _, err := strconv.ParseUint(val1.(string), 10, 32); err == nil {
+		if _, err := strconv.ParseUint(val1Str, 10, 32); err == nil {
 			return nil, nil
 		}
-		oid, err := pgtypes.Regproc.IoInput(ctx, val1.(string))
+		oid, err := pgtypes.Regproc.IoInput(ctx, val1Str)
 		if err != nil {
 			// Specifically for the "does not exist" and "more than one function" errors, we return nil instead of the error.
 			// https://www.postgresql.org/docs/15/functions-info.html#FUNCTIONS-INFO-CATALOG-TABLE

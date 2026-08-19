@@ -60,7 +60,10 @@ var timezone_text_timestamptz = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		tz := val1.(string)
+		tz, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		timeVal := val2.(time.Time)
 		_, newOffset, _, err := convertTzToOffsetSecs(timeVal, tz)
 		if err != nil {
@@ -78,7 +81,10 @@ var timezone_text_timetz = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		tz := val1.(string)
+		tz, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		timeVal := val2.(timetz.TimeTZ).ToTime()
 		_, newOffset, _, err := convertTzToOffsetSecs(timeVal, tz)
 		if err != nil {
@@ -115,7 +121,10 @@ var timezone_text_timestamp = framework.Function2{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		tz := val1.(string)
+		tz, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		timeVal := val2.(time.Time)
 		_, newOffset, isOffset, err := convertTzToOffsetSecs(timeVal, tz)
 		if err != nil {

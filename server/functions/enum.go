@@ -50,7 +50,10 @@ var enum_in = framework.Function2{
 			return nil, errors.Errorf(`"%s" is not an enum type`, typ.Name())
 		}
 
-		value := val1.(string)
+		value, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		if _, exists := typ.EnumLabels[value]; !exists {
 			return nil, pgtypes.ErrInvalidInputValueForEnum.New(typ.Name(), value)
 		}
@@ -67,7 +70,7 @@ var enum_out = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// TODO: should receive the index instead of label?
-		return val.(string), nil
+		return framework.UnwrapString(ctx, val)
 	},
 }
 
@@ -78,7 +81,10 @@ var enum_recv = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		data := val1.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}
@@ -116,8 +122,14 @@ var enum_cmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyEnum, pgtypes.AnyEnum},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		ab := val1.(string)
-		bb := val2.(string)
+		ab, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		bb, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
 		enumType := t[0]
 		if enumType.EnumLabels == nil {
 			return nil, errors.Errorf(`enum label lookup failed for type %s`, enumType.Name())

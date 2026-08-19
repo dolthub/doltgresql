@@ -46,7 +46,10 @@ var bpcharin = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		input := val1.(string)
+		input, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		typmod := val3.(int32)
 		maxChars := int32(pgtypes.StringMaxLength)
 		if typmod != -1 {
@@ -71,16 +74,20 @@ var bpcharout = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.BpChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val any) (any, error) {
+		valStr, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		typ := t[0]
 		tm := typ.GetAttTypMod()
 		if tm == -1 {
-			return val.(string), nil
+			return valStr, nil
 		}
 		maxChars := pgtypes.GetCharLengthFromTypmod(tm)
 		if maxChars < 1 {
-			return val.(string), nil
+			return valStr, nil
 		} else {
-			str, runeCount := truncateString(val.(string), maxChars)
+			str, runeCount := truncateString(valStr, maxChars)
 			if runeCount < maxChars {
 				return str + strings.Repeat(" ", int(maxChars-runeCount)), nil
 			}
@@ -96,7 +103,10 @@ var bpcharrecv = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		data := val1.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}
@@ -138,7 +148,7 @@ var bpchartypmodin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.CstringArray},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return getTypModFromStringArr("char", val.([]any))
+		return getTypModFromStringArr(ctx, "char", val.([]any))
 	},
 }
 
@@ -165,7 +175,15 @@ var bpcharcmp = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.BpChar, pgtypes.BpChar},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		return int32(bytes.Compare([]byte(val1.(string)), []byte(val2.(string)))), nil
+		val1Str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		val2Str, err := framework.UnwrapString(ctx, val2)
+		if err != nil {
+			return nil, err
+		}
+		return int32(bytes.Compare([]byte(val1Str), []byte(val2Str))), nil
 	},
 }
 
@@ -182,14 +200,18 @@ func truncateString(val string, runeLimit int32) (string, int32) {
 	return val, n
 }
 
-func getTypModFromStringArr(typName string, inputArr []any) (int32, error) {
+func getTypModFromStringArr(ctx *sql.Context, typName string, inputArr []any) (int32, error) {
 	if len(inputArr) == 0 {
 		return 0, pgtypes.ErrTypmodArrayMustBe1D.New()
 	} else if len(inputArr) > 1 {
 		return 0, errors.Errorf("invalid type modifier")
 	}
 
-	l, err := strconv.ParseInt(inputArr[0].(string), 10, 32)
+	lStr, err := framework.UnwrapString(ctx, inputArr[0])
+	if err != nil {
+		return 0, err
+	}
+	l, err := strconv.ParseInt(lStr, 10, 32)
 	if err != nil {
 		return 0, err
 	}

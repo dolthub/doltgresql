@@ -501,7 +501,11 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 			return v, sql.InRange, nil
 		}
 	case "bytea":
-		if _, ok := v.([]byte); ok {
+		_, ok, err := sql.Unwrap[[]byte](ctx, v)
+		if err != nil {
+			return nil, sql.InRange, err
+		}
+		if ok {
 			return v, sql.InRange, nil
 		}
 	case "bpchar", "char", "name", "text", "varchar":
@@ -544,7 +548,11 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if _, ok := v.(sql.JSONWrapper); ok {
 			return v, sql.InRange, nil
 		}
-		if _, ok := v.(string); ok {
+		_, ok, err := sql.Unwrap[string](ctx, v)
+		if err != nil {
+			return nil, sql.InRange, err
+		}
+		if ok {
 			return v, sql.InRange, nil
 		}
 	case "oid", "regclass", "regproc", "regtype":

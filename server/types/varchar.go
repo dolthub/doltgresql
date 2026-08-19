@@ -113,7 +113,10 @@ func GetCharLengthFromTypmod(typmod int32) int32 {
 // serializeTypeVarChar handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeVarChar(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	str := val.(string)
+	str, err := unwrapSerializationString(ctx, "varchar", val)
+	if err != nil {
+		return nil, err
+	}
 	writer := utils.NewWriter(uint64(len(str) + 4))
 	writer.String(str)
 	return writer.Data(), nil

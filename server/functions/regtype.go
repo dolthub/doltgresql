@@ -45,7 +45,10 @@ var regtypein = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		// If the string just represents a number, then we return it.
-		input := val.(string)
+		input, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if parsedOid, err := strconv.ParseUint(input, 10, 32); err == nil {
 			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
 				return internalID, nil
@@ -118,7 +121,10 @@ var regtyperecv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}

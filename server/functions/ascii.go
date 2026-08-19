@@ -33,7 +33,10 @@ var ascii_text = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1Interface any) (any, error) {
-		val1 := val1Interface.(string)
+		val1, err := framework.UnwrapString(ctx, val1Interface)
+		if err != nil {
+			return nil, err
+		}
 		if len(val1) == 0 {
 			return int32(0), nil
 		}

@@ -36,6 +36,10 @@ var md5_text = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return fmt.Sprintf("%x", md5_package.Sum([]byte(val1.(string)))), nil
+		str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return fmt.Sprintf("%x", md5_package.Sum([]byte(str))), nil
 	},
 }

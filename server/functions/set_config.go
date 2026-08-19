@@ -49,19 +49,28 @@ var set_config_text_text_boolean = framework.Function3{
 			return nil, errors.Errorf("setting configuration values for the current transaction is not supported yet")
 		}
 
+		settingNameStr, err := framework.UnwrapString(ctx, settingName)
+		if err != nil {
+			return nil, err
+		}
+		newValueStr, err := framework.UnwrapString(ctx, newValue)
+		if err != nil {
+			return nil, err
+		}
+
 		// set_config can set system configuration or user configuration. System configuration settings are in top
 		// level settings, while user configuration settings are namespaced.
-		isUserConfig := strings.Contains(settingName.(string), ".")
+		isUserConfig := strings.Contains(settingNameStr, ".")
 		if isUserConfig {
-			if err := ctx.SetUserVariable(ctx, settingName.(string), newValue.(string), pgtypes.Text); err != nil {
+			if err := ctx.SetUserVariable(ctx, settingNameStr, newValueStr, pgtypes.Text); err != nil {
 				return nil, err
 			}
 		} else {
-			if err := ctx.SetSessionVariable(ctx, settingName.(string), newValue.(string)); err != nil {
+			if err := ctx.SetSessionVariable(ctx, settingNameStr, newValueStr); err != nil {
 				return nil, err
 			}
 		}
 
-		return newValue.(string), nil
+		return newValueStr, nil
 	},
 }

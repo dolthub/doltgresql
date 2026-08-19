@@ -44,7 +44,11 @@ var tidin = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		input := strings.TrimSpace(val.(string))
+		valStr, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
+		input := strings.TrimSpace(valStr)
 		commaIdx := strings.Index(input, ",")
 		if len(input) < 5 || input[0] != '(' || input[len(input)-1] != ')' || commaIdx == -1 {
 			return nil, pgtypes.ErrInvalidSyntaxForType.New(pgtypes.Tid.Name(), input)
@@ -83,7 +87,10 @@ var tidrecv = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Internal},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		data := val.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}

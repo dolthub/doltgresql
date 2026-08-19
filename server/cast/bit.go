@@ -39,7 +39,11 @@ func bitExplicit(builtInCasts map[id.Cast]casts.Cast) {
 		CastType: casts.CastType_Explicit,
 		Function: id.NullFunction,
 		BuiltIn: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			array, err := tree.ParseDBitArray(val.(string))
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			array, err := tree.ParseDBitArray(str)
 			if err != nil {
 				return nil, err
 			}
@@ -56,7 +60,11 @@ func bitExplicit(builtInCasts map[id.Cast]casts.Cast) {
 		CastType: casts.CastType_Explicit,
 		Function: id.NullFunction,
 		BuiltIn: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			array, err := tree.ParseDBitArray(val.(string))
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			array, err := tree.ParseDBitArray(str)
 			if err != nil {
 				return nil, err
 			}
@@ -75,7 +83,10 @@ func bitImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Bit,
 		ToType:   pgtypes.Bit,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			input := val.(string)
+			input, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
 				return nil, err
@@ -91,7 +102,10 @@ func bitImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Bit,
 		ToType:   pgtypes.VarBit,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			input := val.(string)
+			input, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
 				return nil, err

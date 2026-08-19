@@ -47,7 +47,10 @@ var timestamp_in = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		input := val1.(string)
+		input, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		//oid := val2.(id.Id)
 		//typmod := val3.(int32)
 		// TODO: decode typmod to precision
@@ -79,12 +82,15 @@ var timestamp_recv = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Internal, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		data := val1.([]byte)
+		data, err := framework.UnwrapBytes(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		if data == nil {
 			return nil, nil
 		}
 		var out pgtype.Timestamp
-		err := out.DecodeBinary(nil, data)
+		err = out.DecodeBinary(nil, data)
 		if err != nil {
 			return nil, err
 		}
@@ -170,12 +176,16 @@ func getDateStyleOutputFormat(ctx *sql.Context) string {
 	if err != nil {
 		return format
 	}
+	valStr, err := framework.UnwrapString(ctx, val)
+	if err != nil {
+		return format
+	}
 
 	defer func() {
 		_ = core.SetDateStyleOutputFormat(ctx, format)
 	}()
 
-	values := strings.Split(strings.ReplaceAll(val.(string), " ", ""), ",")
+	values := strings.Split(strings.ReplaceAll(valStr, " ", ""), ",")
 	for _, value := range values {
 		switch value {
 		case DateStyleISO, DateStyleSQL, DateStylePostgres, DateStyleGerman:

@@ -36,10 +36,14 @@ var pg_char_to_encoding_name = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		valStr, err := framework.UnwrapString(ctx, val)
+		if err != nil {
+			return nil, err
+		}
 		// Encoding names are normalized by lowercasing and dropping any characters that are not ASCII letters or
 		// digits, matching Postgres (e.g. "UTF-8" matches "utf8").
 		var sb strings.Builder
-		for _, r := range strings.ToLower(val.(string)) {
+		for _, r := range strings.ToLower(valStr) {
 			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
 				sb.WriteRune(r)
 			}
