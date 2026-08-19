@@ -51,6 +51,21 @@ func purposelyUnimplemented(sqllex sqlLexer, feature string, reason string) int 
     return 1
 }
 
+// copyFormatFromName maps a COPY format name given as an identifier or string (e.g. FORMAT "binary")
+// to its tree.CopyFormat. Like Postgres, format names are matched case-sensitively (unquoted
+// identifiers have already been normalized to lowercase by the lexer).
+func copyFormatFromName(name string) (tree.CopyFormat, bool) {
+    switch name {
+    case "csv":
+        return tree.CopyFormatCsv, true
+    case "text":
+        return tree.CopyFormatText, true
+    case "binary":
+        return tree.CopyFormatBinary, true
+    }
+    return 0, false
+}
+
 func setErr(sqllex sqlLexer, err error) int {
     sqllex.(*lexer).setErr(err)
     return 1
@@ -3805,6 +3820,24 @@ copy_options:
 | FORMAT BINARY
   {
     $$.val = &tree.CopyOptions{CopyFormat: tree.CopyFormatBinary}
+  }
+| FORMAT IDENT
+  {
+    // Postgres treats the FORMAT value as a generic identifier or string, so quoted format
+    // names (e.g. FORMAT "binary", as sent by DuckDB's postgres extension) must be accepted.
+    format, ok := copyFormatFromName($2)
+    if !ok {
+      return setErr(sqllex, fmt.Errorf("COPY format %q not recognized", $2))
+    }
+    $$.val = &tree.CopyOptions{CopyFormat: format}
+  }
+| FORMAT SCONST
+  {
+    format, ok := copyFormatFromName($2)
+    if !ok {
+      return setErr(sqllex, fmt.Errorf("COPY format %q not recognized", $2))
+    }
+    $$.val = &tree.CopyOptions{CopyFormat: format}
   }
 | HEADER
   {
@@ -10256,6 +10289,16 @@ transaction_mode_list:
   {
     a := $1.transactionModes()
     b := $3.transactionModes()
+    err := a.Merge(b)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = a
+  }
+| transaction_mode_list transaction_mode
+  {
+    // Postgres allows transaction modes to be separated by spaces as well as commas,
+    // e.g. BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY.
+    a := $1.transactionModes()
+    b := $2.transactionModes()
     err := a.Merge(b)
     if err != nil { return setErr(sqllex, err) }
     $$.val = a

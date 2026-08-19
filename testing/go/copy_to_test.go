@@ -76,6 +76,10 @@ func TestCopyTo(t *testing.T) {
 					Query:            "COPY tbl1 TO STDOUT (FORMAT CSV, HEADER);",
 					CopyToStdOutFile: "copy-to-basic.csv",
 				},
+				{
+					Query:            "COPY tbl1 TO STDOUT (FORMAT 'csv', HEADER);",
+					CopyToStdOutFile: "copy-to-basic.csv",
+				},
 			},
 		},
 		{
@@ -153,6 +157,11 @@ func TestCopyTo(t *testing.T) {
 					CopyToStdOutFile: "copy-to-basic.bin",
 				},
 				{
+					// DuckDB's postgres extension sends the format name as a quoted identifier
+					Query:            `COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT (FORMAT "binary");`,
+					CopyToStdOutFile: "copy-to-basic.bin",
+				},
+				{
 					Query:       fmt.Sprintf("COPY tbl3 TO '%s' (FORMAT BINARY);", filepath.Join(tempDir, "binary.bin")),
 					ExpectedTag: "COPY 4",
 				},
@@ -226,6 +235,10 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:       "COPY tbl1 TO STDOUT (FORMAT BINARY, DELIMITER '|');",
 					ExpectedErr: "cannot specify DELIMITER in BINARY mode",
+				},
+				{
+					Query:       `COPY tbl1 TO STDOUT (FORMAT "nonsense");`,
+					ExpectedErr: `COPY format "nonsense" not recognized`,
 				},
 			},
 		},

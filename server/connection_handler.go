@@ -1035,14 +1035,20 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 		flush = bufWriter.Flush
 	}
 
-	headerData, err := dataWriter.WriteHeader()
+	// The header is not sent on its own, but is instead prepended to the next chunk of data written (the first row,
+	// or the footer when there are no rows). This matches Postgres's message framing for COPY TO STDOUT, which some
+	// clients rely on: e.g. DuckDB's postgres extension rejects a binary COPY whose first COPY DATA message contains
+	// only the header.
+	pendingHeader, err := dataWriter.WriteHeader()
 	if err != nil {
 		return err
 	}
-	if headerData != nil {
-		if err = writeRow(headerData); err != nil {
-			return err
+	writeChunk := func(data []byte) error {
+		if pendingHeader != nil {
+			data = append(pendingHeader, data...)
+			pendingHeader = nil
 		}
+		return writeRow(data)
 	}
 
 	numRows := 0
@@ -1052,7 +1058,7 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 			if wErr != nil {
 				return wErr
 			}
-			if wErr = writeRow(data); wErr != nil {
+			if wErr = writeChunk(data); wErr != nil {
 				return wErr
 			}
 		}
@@ -1069,7 +1075,13 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 		return err
 	}
 	if footerData != nil {
-		if err = writeRow(footerData); err != nil {
+		if err = writeChunk(footerData); err != nil {
+			return err
+		}
+	}
+	// If nothing was written at all (no rows and no footer), the header must still be sent on its own.
+	if pendingHeader != nil {
+		if err = writeRow(pendingHeader); err != nil {
 			return err
 		}
 	}
