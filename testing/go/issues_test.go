@@ -461,6 +461,32 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #3111",
+			SetUpScript: []string{
+				"CREATE TABLE bug14 (a integer, b integer);",
+				"CREATE INDEX bug14_ab ON bug14 (a, b);",
+				"CREATE TABLE arrtbl (pk integer PRIMARY KEY, arr integer[]);",
+				"CREATE UNIQUE INDEX arrtbl_pk ON arrtbl (pk);",
+				"INSERT INTO arrtbl VALUES (1, '{10,20,30}'), (2, '{40}');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Set-returning functions can multiply output rows, so a point lookup that produces a
+					// single source row must not use the max1Row spooling shortcut.
+					Query:    "SELECT unnest(indkey) FROM pg_index WHERE indexrelid = 'bug14_ab'::regclass;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    "SELECT unnest(arr) FROM arrtbl WHERE pk = 1;",
+					Expected: []sql.Row{{10}, {20}, {30}},
+				},
+				{
+					Query:    "SELECT generate_series(1, 3) FROM arrtbl WHERE pk = 2;",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+			},
+		},
 	})
 }
 
@@ -642,6 +668,69 @@ func TestIssuesWire(t *testing.T) {
 						},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
 						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			// Set-returning functions multiply output rows, so a unique-index point lookup must not use the
+			// max1Row spooling shortcut. The simple query protocol is required to reproduce this, since the
+			// extended protocol does not take the max1Row shortcut.
+			Name: "Issue #3111",
+			SetUpScript: []string{
+				"CREATE TABLE bug14 (a integer, b integer);",
+				"CREATE INDEX bug14_ab ON bug14 (a, b);",
+				"CREATE TABLE arrtbl (pk integer PRIMARY KEY, arr integer[]);",
+				"INSERT INTO arrtbl VALUES (1, '{10,20,30}'), (2, '{40}');",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Query{String: "SELECT unnest(indkey) FROM pg_index WHERE indexrelid = 'bug14_ab'::regclass;"},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("unnest"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          21,
+									DataTypeSize:         2,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("1")}},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("2")}},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Query{String: "SELECT unnest(arr) FROM arrtbl WHERE pk = 1;"},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("unnest"),
+									TableOID:             0,
+									TableAttributeNumber: 1,
+									DataTypeOID:          23,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("10")}},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("20")}},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("30")}},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 3")},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
 				},
