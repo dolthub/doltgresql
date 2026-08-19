@@ -407,45 +407,45 @@ func TestWindowFunctions(t *testing.T) {
 				{
 					Query: "SELECT id, STDDEV_POP(val) OVER (ORDER BY grp) FROM t3038 ORDER BY id;",
 					Expected: []sql.Row{
-						{1, Numeric("5")},
-						{2, Numeric("5")},
-						{3, Numeric("9.601432184835760219712")},
-						{4, Numeric("9.601432184835760219712")},
-						{5, Numeric("8.53912563829966531937038356855984732")},
-						{6, Numeric("8.53912563829966531937038356855984732")},
+						{1, Numeric("5.0000000000000000")},
+						{2, Numeric("5.0000000000000000")},
+						{3, Numeric("9.6014321848357602")},
+						{4, Numeric("9.6014321848357602")},
+						{5, Numeric("8.5391256382996653")},
+						{6, Numeric("8.5391256382996653")},
 					},
 				},
 				{
 					Query: "SELECT id, STDDEV_SAMP(val) OVER (ORDER BY grp) FROM t3038 ORDER BY id;",
 					Expected: []sql.Row{
-						{1, Numeric("7.07106781186547524")},
-						{2, Numeric("7.07106781186547524")},
-						{3, Numeric("11.0867789130417256043553548840367852")},
-						{4, Numeric("11.0867789130417256043553548840367852")},
-						{5, Numeric("9.354143466934853464")},
-						{6, Numeric("9.354143466934853464")},
+						{1, Numeric("7.0710678118654752")},
+						{2, Numeric("7.0710678118654752")},
+						{3, Numeric("11.0867789130417256")},
+						{4, Numeric("11.0867789130417256")},
+						{5, Numeric("9.3541434669348535")},
+						{6, Numeric("9.3541434669348535")},
 					},
 				},
 				{
 					Query: "SELECT id, VAR_POP(val) OVER (ORDER BY grp) FROM t3038 ORDER BY id;",
 					Expected: []sql.Row{
-						{1, Numeric("25")},
-						{2, Numeric("25")},
-						{3, Numeric("92.1875")},
-						{4, Numeric("92.1875")},
-						{5, Numeric("72.916666666666666667")},
-						{6, Numeric("72.916666666666666667")},
+						{1, Numeric("25.0000000000000000")},
+						{2, Numeric("25.0000000000000000")},
+						{3, Numeric("92.1875000000000000")},
+						{4, Numeric("92.1875000000000000")},
+						{5, Numeric("72.9166666666666667")},
+						{6, Numeric("72.9166666666666667")},
 					},
 				},
 				{
 					Query: "SELECT id, VAR_SAMP(val) OVER (ORDER BY grp) FROM t3038 ORDER BY id;",
 					Expected: []sql.Row{
-						{1, Numeric("50")},
-						{2, Numeric("50")},
-						{3, Numeric("122.91666666666666667")},
-						{4, Numeric("122.91666666666666667")},
-						{5, Numeric("87.5")},
-						{6, Numeric("87.5")},
+						{1, Numeric("50.0000000000000000")},
+						{2, Numeric("50.0000000000000000")},
+						{3, Numeric("122.9166666666666667")},
+						{4, Numeric("122.9166666666666667")},
+						{5, Numeric("87.5000000000000000")},
+						{6, Numeric("87.5000000000000000")},
 					},
 				},
 			},
@@ -464,9 +464,9 @@ func TestWindowFunctions(t *testing.T) {
 				{
 					Query: "SELECT grp, VAR_POP(val), VAR_SAMP(val), STDDEV_POP(val), STDDEV_SAMP(val) FROM t3038b GROUP BY grp ORDER BY grp;",
 					Expected: []sql.Row{
-						{"a", Numeric("25"), Numeric("50"), Numeric("5"), Numeric("7.07106781186547524")},
-						{"b", Numeric("156.25"), Numeric("312.5"), Numeric("12.5"), Numeric("17.67766952966368811")},
-						{"c", Numeric("25"), Numeric("50"), Numeric("5"), Numeric("7.07106781186547524")},
+						{"a", Numeric("25.0000000000000000"), Numeric("50.0000000000000000"), Numeric("5.0000000000000000"), Numeric("7.0710678118654752")},
+						{"b", Numeric("156.2500000000000000"), Numeric("312.5000000000000000"), Numeric("12.5000000000000000"), Numeric("17.6776695296636881")},
+						{"c", Numeric("25.0000000000000000"), Numeric("50.0000000000000000"), Numeric("5.0000000000000000"), Numeric("7.0710678118654752")},
 					},
 				},
 				{
@@ -487,7 +487,24 @@ func TestWindowFunctions(t *testing.T) {
 					// variance/stddev must match var_samp/stddev_samp (Postgres semantics)
 					Query: "SELECT VARIANCE(val), STDDEV(val) FROM t3038b WHERE grp = 'a';",
 					Expected: []sql.Row{
-						{Numeric("50"), Numeric("7.07106781186547524")},
+						{Numeric("50.0000000000000000"), Numeric("7.0710678118654752")},
+					},
+				},
+			},
+		},
+		{
+			Name: "variance/stddev over float8 avoid cancellation for large nearly-equal values",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT avg(x::float8), var_pop(x::float8), var_samp(x::float8), stddev_pop(x::float8), stddev_samp(x::float8) FROM (VALUES (100000003), (100000004), (100000006), (100000007)) v(x);",
+					Expected: []sql.Row{
+						{float64(100000005), float64(2.5), float64(3.3333333333333335), float64(1.5811388300841898), float64(1.8257418583505538)},
+					},
+				},
+				{
+					Query: "SELECT avg(x::float8), var_pop(x::float8), var_samp(x::float8), stddev_pop(x::float8), stddev_samp(x::float8) FROM (VALUES (7000000000005), (7000000000007)) v(x);",
+					Expected: []sql.Row{
+						{float64(7000000000006), float64(1), float64(2), float64(1), float64(1.4142135623730951)},
 					},
 				},
 			},

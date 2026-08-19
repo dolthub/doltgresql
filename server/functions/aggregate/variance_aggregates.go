@@ -15,7 +15,10 @@
 package aggregate
 
 import (
+	"fmt"
 	"math"
+	"strconv"
+	"strings"
 
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
@@ -75,40 +78,155 @@ func varianceOverload(name string, paramType, returnType *pgtypes.DoltgresType, 
 	}
 }
 
-// decimalVariance computes the population (sample=false) or sample (sample=true) variance of n values given
-// their running sum and sum of squares, using the sum-of-squares formula (n*sumX2 - sumX^2) / divisor, where
-// divisor is n^2 for population variance and n*(n-1) for sample variance. The caller must ensure n is large
-// enough for the requested variant (n>=1 for population, n>=2 for sample) to avoid a division by zero.
-func decimalVariance(n int64, sumX, sumX2 *apd.Decimal, sample bool) (*apd.Decimal, error) {
+// decimalVarianceNumeratorDenominator computes the numerator (n*sumX2 - sumX^2) and denominator (n^2 for
+// population variance, n*(n-1) for sample variance) of the sum-of-squares variance formula. Both apd.Decimal
+// operations here run under sql.DecimalCtx, whose Precision of 0 disables rounding, so this arithmetic is
+// exact (no floating-point-style cancellation risk) regardless of how large sumX/sumX2 get. The caller must
+// ensure n is large enough for the requested variant (n>=1 for population, n>=2 for sample) to avoid a
+// division by zero.
+func decimalVarianceNumeratorDenominator(n int64, sumX, sumX2 *apd.Decimal, sample bool) (numerator, denominator *apd.Decimal, err error) {
 	nDec := apd.New(n, 0)
 	sumXSquared := new(apd.Decimal)
 	if _, err := sql.DecimalCtx.Mul(sumXSquared, sumX, sumX); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	nTimesSumX2 := new(apd.Decimal)
 	if _, err := sql.DecimalCtx.Mul(nTimesSumX2, nDec, sumX2); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	dividend := new(apd.Decimal)
-	if _, err := sql.DecimalCtx.Sub(dividend, nTimesSumX2, sumXSquared); err != nil {
-		return nil, err
+	numerator = new(apd.Decimal)
+	if _, err := sql.DecimalCtx.Sub(numerator, nTimesSumX2, sumXSquared); err != nil {
+		return nil, nil, err
 	}
-	divisor := new(apd.Decimal)
+	denominator = new(apd.Decimal)
 	if sample {
-		if _, err := sql.DecimalCtx.Mul(divisor, nDec, apd.New(n-1, 0)); err != nil {
-			return nil, err
+		if _, err := sql.DecimalCtx.Mul(denominator, nDec, apd.New(n-1, 0)); err != nil {
+			return nil, nil, err
 		}
 	} else {
-		if _, err := sql.DecimalCtx.Mul(divisor, nDec, nDec); err != nil {
-			return nil, err
+		if _, err := sql.DecimalCtx.Mul(denominator, nDec, nDec); err != nil {
+			return nil, nil, err
 		}
 	}
-	return quoAvg(dividend, divisor)
+	return numerator, denominator, nil
 }
 
-// decimalStdDev takes the square root of a variance already computed by decimalVariance, sized to
-// variance's own digit count plus a fixed set of guard digits.
-func decimalStdDev(variance *apd.Decimal) (*apd.Decimal, error) {
+// numericWeightAndFirstDigit mirrors the weight/firstdigit extraction at the top of Postgres's
+// select_div_scale (numeric.c): Postgres numerics internally store their digits in base-10000 "NBASE
+// digit" groups aligned to the decimal point, weight is the power-of-10000 position of the most
+// significant such group, and firstDigit is that leading group's own value (1-9999).
+func numericWeightAndFirstDigit(d *apd.Decimal) (weight, firstDigit int64) {
+	if d.IsZero() {
+		return 0, 0
+	}
+	digits := fmt.Sprintf("%d", &d.Coeff)
+	numDigits := int64(len(digits))
+	e := numDigits - 1 + int64(d.Exponent) // decimal exponent of the leading digit
+	w := floorDiv(e, 4)
+	k := int64(d.Exponent) - 4*w // digits to pad (k>=0) or trim (k<0) to land on d's own group boundary
+	var group string
+	if k >= 0 {
+		group = digits + strings.Repeat("0", int(k))
+	} else if cut := numDigits + k; cut > 0 {
+		group = digits[:cut]
+	} else {
+		group = "0"
+	}
+	if len(group) > 4 {
+		group = group[len(group)-4:]
+	}
+	fd, _ := strconv.ParseInt(group, 10, 64)
+	return w, fd
+}
+
+// floorDiv is integer division rounding towards negative infinity (unlike Go's /, which truncates towards
+// zero), needed so weights below the decimal point (negative e) group correctly in numericWeightAndFirstDigit.
+func floorDiv(a, b int64) int64 {
+	q := a / b
+	if a%b != 0 && (a < 0) != (b < 0) {
+		q--
+	}
+	return q
+}
+
+// decimalScale returns the number of digits after the decimal point in d's exact representation, Postgres's
+// "dscale" for a NumericVar.
+func decimalScale(d *apd.Decimal) int64 {
+	if d.Exponent < 0 {
+		return int64(-d.Exponent)
+	}
+	return 0
+}
+
+// selectDivScale mirrors Postgres's select_div_scale (numeric.c) exactly: it picks the number of fractional
+// digits (rscale) a dividend/divisor division should be rounded to, aiming for at least 16 significant
+// digits in the quotient (so numeric division is no less accurate than float8) while never dropping below
+// either operand's own number of fractional digits.
+func selectDivScale(dividend, divisor *apd.Decimal) int64 {
+	w1, fd1 := numericWeightAndFirstDigit(dividend)
+	w2, fd2 := numericWeightAndFirstDigit(divisor)
+	qweight := w1 - w2
+	if fd1 <= fd2 {
+		qweight--
+	}
+	const numericMinSigDigits = 16
+	rscale := numericMinSigDigits - qweight*4
+	if s := decimalScale(dividend); rscale < s {
+		rscale = s
+	}
+	if s := decimalScale(divisor); rscale < s {
+		rscale = s
+	}
+	if rscale < 0 {
+		rscale = 0
+	}
+	const numericMaxDisplayScale = 1000
+	if rscale > numericMaxDisplayScale {
+		rscale = numericMaxDisplayScale
+	}
+	return rscale
+}
+
+// quoScale divides dividend/divisor and rounds the result to exactly rscale digits after the decimal point,
+// matching Postgres's div_var(..., rscale, round=true) semantics used throughout numeric.c.
+func quoScale(dividend, divisor *apd.Decimal, rscale int64) (*apd.Decimal, error) {
+	p := dividend.NumDigits() - divisor.NumDigits() + int64(dividend.Exponent) - int64(divisor.Exponent) + 1
+	if p < 1 {
+		p = 1
+	}
+	p += rscale + avgGuardDigits
+	result := new(apd.Decimal)
+	if _, err := sql.DecimalCtx.WithPrecision(uint32(p)).Quo(result, dividend, divisor); err != nil {
+		return nil, err
+	}
+	if _, err := sql.DecimalCtx.WithPrecision(uint32(p)).Quantize(result, result, int32(-rscale)); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// decimalVariance computes the population (sample=false) or sample (sample=true) variance of n values given
+// their running sum and sum of squares, using the sum-of-squares formula (n*sumX2 - sumX^2) / divisor, where
+// divisor is n^2 for population variance and n*(n-1) for sample variance.
+func decimalVariance(n int64, sumX, sumX2 *apd.Decimal, sample bool) (*apd.Decimal, int64, error) {
+	numerator, denominator, err := decimalVarianceNumeratorDenominator(n, sumX, sumX2, sample)
+	if err != nil {
+		return nil, 0, err
+	}
+	if numerator.Sign() <= 0 {
+		return new(apd.Decimal), 0, nil
+	}
+	rscale := selectDivScale(numerator, denominator)
+	variance, err := quoScale(numerator, denominator, rscale)
+	if err != nil {
+		return nil, 0, err
+	}
+	return variance, rscale, nil
+}
+
+// decimalStdDev takes the square root of a variance already computed by decimalVariance, rounding to the
+// same rscale decimalVariance's own division used.
+func decimalStdDev(variance *apd.Decimal, rscale int64) (*apd.Decimal, error) {
 	if variance.Sign() <= 0 {
 		return new(apd.Decimal), nil
 	}
@@ -116,12 +234,14 @@ func decimalStdDev(variance *apd.Decimal) (*apd.Decimal, error) {
 	if variance.Exponent > 0 {
 		p += int64(variance.Exponent)
 	}
-	p += avgGuardDigits
+	p = p/2 + 1 + rscale + avgGuardDigits
 	res := new(apd.Decimal)
 	if _, err := sql.DecimalCtx.WithPrecision(uint32(p)).Sqrt(res, variance); err != nil {
 		return nil, err
 	}
-	res.Reduce(res)
+	if _, err := sql.DecimalCtx.WithPrecision(uint32(p)).Quantize(res, res, int32(-rscale)); err != nil {
+		return nil, err
+	}
 	return res, nil
 }
 
@@ -155,12 +275,12 @@ func (b *decimalVarianceBuffer[T]) Eval(ctx *sql.Context) (interface{}, error) {
 	if b.count < minCount {
 		return nil, nil
 	}
-	variance, err := decimalVariance(b.count, &b.sumX, &b.sumX2, b.sample)
+	variance, rscale, err := decimalVariance(b.count, &b.sumX, &b.sumX2, b.sample)
 	if err != nil {
 		return nil, err
 	}
 	if b.sqrtResult {
-		return decimalStdDev(variance)
+		return decimalStdDev(variance, rscale)
 	}
 	return variance, nil
 }
@@ -227,18 +347,15 @@ func (w *decimalVarianceWindowFunction[T]) Compute(ctx *sql.Context, interval sq
 	return b.Eval(ctx)
 }
 
-// floatVariance computes the population (sample=false) or sample (sample=true) variance of n float64 values
-// given their running sum and sum of squares, using the same sum-of-squares formula as decimalVariance. A
-// variance that comes out marginally negative due to floating-point rounding is clamped to 0.
-func floatVariance(n int64, sumX, sumX2 float64, sample bool) float64 {
-	nf := float64(n)
-	var divisor float64
+// floatVariance computes the population (sample=false) or sample (sample=true) variance from a running count n
+// and a running sum of squared deviations from the mean (sxx), the latter accumulated incrementally via the
+// Youngs-Cramer algorithm in floatVarianceBuffer.Update.
+func floatVariance(n, sxx float64, sample bool) float64 {
+	divisor := n
 	if sample {
-		divisor = nf * (nf - 1)
-	} else {
-		divisor = nf * nf
+		divisor = n - 1
 	}
-	variance := (nf*sumX2 - sumX*sumX) / divisor
+	variance := sxx / divisor
 	if variance < 0 {
 		return 0
 	}
@@ -249,9 +366,9 @@ func floatVariance(n int64, sumX, sumX2 float64, sample bool) float64 {
 // real/double precision input, both of which promote to double precision.
 type floatVarianceBuffer[T float32 | float64] struct {
 	expr       sql.Expression
-	sumX       float64
-	sumX2      float64
-	count      int64
+	n          float64
+	sx         float64
+	sxx        float64
 	sample     bool
 	sqrtResult bool
 }
@@ -267,20 +384,22 @@ func newFloatVarianceBuffer[T float32 | float64](sample, sqrtResult bool) framew
 func (b *floatVarianceBuffer[T]) Dispose(ctx *sql.Context) {}
 
 func (b *floatVarianceBuffer[T]) Eval(ctx *sql.Context) (interface{}, error) {
-	minCount := int64(1)
+	minCount := float64(1)
 	if b.sample {
 		minCount = 2
 	}
-	if b.count < minCount {
+	if b.n < minCount {
 		return nil, nil
 	}
-	variance := floatVariance(b.count, b.sumX, b.sumX2, b.sample)
+	variance := floatVariance(b.n, b.sxx, b.sample)
 	if b.sqrtResult {
 		return math.Sqrt(variance), nil
 	}
 	return variance, nil
 }
 
+// Update folds the next value into the running count/sum/sum-of-squared-deviations using the Youngs-Cramer
+// algorithm.
 func (b *floatVarianceBuffer[T]) Update(ctx *sql.Context, row sql.Row) error {
 	v, err := b.expr.Eval(ctx, row)
 	if err != nil {
@@ -294,9 +413,14 @@ func (b *floatVarianceBuffer[T]) Update(ctx *sql.Context, row sql.Row) error {
 		return errors.Errorf("variance: expected %T, got %T", f, v)
 	}
 	fv := float64(f)
-	b.sumX += fv
-	b.sumX2 += fv * fv
-	b.count++
+	b.n++
+	b.sx += fv
+	if b.n > 1 {
+		tmp := fv*b.n - b.sx
+		b.sxx += tmp * tmp / (b.n * (b.n - 1))
+	} else if math.IsNaN(fv) || math.IsInf(fv, 0) {
+		b.sxx = math.NaN()
+	}
 	return nil
 }
 
