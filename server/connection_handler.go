@@ -991,64 +991,34 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 		return errors.Errorf("unknown format specified for COPY TO: %v", copyTo.CopyOptions.CopyFormat)
 	}
 
-	// writeRow and flush abstract over the two output targets: for STDOUT, each row is sent to the client as a
-	// COPY DATA message, and for a file target, each row is written to the file on the server.
-	var writeRow func(data []byte) error
-	var flush func() error
-	if copyTo.Stdout {
-		var overallFormat byte
-		columnFormatCodes := make([]uint16, len(sch))
-		if copyTo.CopyOptions.CopyFormat == tree.CopyFormatBinary {
-			overallFormat = 1
-			for i := range columnFormatCodes {
-				columnFormatCodes[i] = 1
-			}
+	var overallFormat byte
+	columnFormatCodes := make([]uint16, len(sch))
+	if copyTo.CopyOptions.CopyFormat == tree.CopyFormatBinary {
+		overallFormat = 1
+		for i := range columnFormatCodes {
+			columnFormatCodes[i] = 1
 		}
-		if err = h.send(&pgproto3.CopyOutResponse{
-			OverallFormat:     overallFormat,
-			ColumnFormatCodes: columnFormatCodes,
-		}); err != nil {
-			return err
-		}
-		writeRow = func(data []byte) error {
-			h.backend.Send(&pgproto3.CopyData{Data: data})
-			return nil
-		}
-		flush = h.backend.Flush
-	} else {
-		// TODO: security check for file path
-		// TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
-		f, fErr := os.Create(copyTo.File)
-		if fErr != nil {
-			return fErr
-		}
-		defer func() {
-			if closeErr := f.Close(); closeErr != nil && err == nil {
-				err = closeErr
-			}
-		}()
-		bufWriter := bufio.NewWriter(f)
-		writeRow = func(data []byte) error {
-			_, wErr := bufWriter.Write(data)
-			return wErr
-		}
-		flush = bufWriter.Flush
+	}
+	if err = h.send(&pgproto3.CopyOutResponse{
+		OverallFormat:     overallFormat,
+		ColumnFormatCodes: columnFormatCodes,
+	}); err != nil {
+		return err
 	}
 
 	// The header is not sent on its own, but is instead prepended to the next chunk of data written (the first row,
 	// or the footer when there are no rows). This matches Postgres's message framing for COPY TO STDOUT, which some
-	// clients rely on: e.g. DuckDB's postgres extension rejects a binary COPY whose first COPY DATA message contains
-	// only the header.
+	// clients rely on
 	pendingHeader, err := dataWriter.WriteHeader()
 	if err != nil {
 		return err
 	}
-	writeChunk := func(data []byte) error {
+	writeChunk := func(data []byte) {
 		if pendingHeader != nil {
 			data = append(pendingHeader, data...)
 			pendingHeader = nil
 		}
-		return writeRow(data)
+		h.backend.Send(&pgproto3.CopyData{Data: data})
 	}
 
 	numRows := 0
@@ -1058,12 +1028,10 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 			if wErr != nil {
 				return wErr
 			}
-			if wErr = writeChunk(data); wErr != nil {
-				return wErr
-			}
+			writeChunk(data)
 		}
 		numRows += len(res.Rows)
-		return flush()
+		return h.backend.Flush()
 	}
 
 	if err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY TO", analyzedNode, formatCodes, callback); err != nil {
@@ -1075,17 +1043,15 @@ func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
 		return err
 	}
 	if footerData != nil {
-		if err = writeChunk(footerData); err != nil {
-			return err
-		}
+		writeChunk(footerData)
 	}
+
 	// If nothing was written at all (no rows and no footer), the header must still be sent on its own.
 	if pendingHeader != nil {
-		if err = writeRow(pendingHeader); err != nil {
-			return err
-		}
+		h.backend.Send(&pgproto3.CopyData{Data: pendingHeader})
 	}
-	if err = flush(); err != nil {
+
+	if err = h.backend.Flush(); err != nil {
 		return err
 	}
 
