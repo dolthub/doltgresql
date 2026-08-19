@@ -16,25 +16,19 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/auth"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeDropTable handles *tree.DropTable nodes.
-func nodeDropTable(ctx *Context, node *tree.DropTable) (*vitess.DDL, error) {
+func nodeDropTable(ctx *Context, node *tree.DropTable) (vitess.Statement, error) {
 	if node == nil || len(node.Names) == 0 {
 		return nil, nil
-	}
-	switch node.DropBehavior {
-	case tree.DropDefault:
-		// Default behavior, nothing to do
-	case tree.DropRestrict:
-		return nil, errors.Errorf("RESTRICT is not yet supported")
-	case tree.DropCascade:
-		return nil, errors.Errorf("CASCADE is not yet supported")
 	}
 	tableNames := make([]vitess.TableName, len(node.Names))
 	authTableNames := make([]string, 0, len(node.Names)*3)
@@ -47,14 +41,42 @@ func nodeDropTable(ctx *Context, node *tree.DropTable) (*vitess.DDL, error) {
 		authTableNames = append(authTableNames,
 			tableNames[i].DbQualifier.String(), tableNames[i].SchemaQualifier.String(), tableNames[i].Name.String())
 	}
+	authInformation := vitess.AuthInformation{
+		AuthType:    auth.AuthType_DROPTABLE,
+		TargetType:  auth.AuthTargetType_TableIdentifiers,
+		TargetNames: authTableNames,
+	}
+	switch node.DropBehavior {
+	case tree.DropDefault, tree.DropRestrict:
+		// RESTRICT is the default behavior in Postgres, so both are handled by the standard DROP TABLE path, which
+		// refuses to drop a table that other objects depend on.
+	case tree.DropCascade:
+		// CASCADE also drops the objects that depend on the dropped tables, which requires Doltgres-specific handling.
+		var databaseName string
+		dropTables := make([]doltdb.TableName, len(tableNames))
+		for i, tableName := range tableNames {
+			dbQualifier := tableName.DbQualifier.String()
+			if len(dbQualifier) > 0 {
+				if len(databaseName) > 0 && databaseName != dbQualifier {
+					return nil, errors.Errorf("DROP TABLE CASCADE is currently only supported for a single database")
+				}
+				databaseName = dbQualifier
+			}
+			dropTables[i] = doltdb.TableName{
+				Schema: tableName.SchemaQualifier.String(),
+				Name:   tableName.Name.String(),
+			}
+		}
+		return vitess.InjectedStatement{
+			Statement: pgnodes.NewDropTableCascade(node.IfExists, databaseName, dropTables),
+			Children:  nil,
+			Auth:      authInformation,
+		}, nil
+	}
 	return &vitess.DDL{
 		Action:     vitess.DropStr,
 		FromTables: tableNames,
 		IfExists:   node.IfExists,
-		Auth: vitess.AuthInformation{
-			AuthType:    auth.AuthType_DROPTABLE,
-			TargetType:  auth.AuthTargetType_TableIdentifiers,
-			TargetNames: authTableNames,
-		},
+		Auth:       authInformation,
 	}, nil
 }
