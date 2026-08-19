@@ -92,6 +92,9 @@ func (n *IsDistinctFrom) Resolved() bool {
 
 // String implements the sql.Expression interface.
 func (n *IsDistinctFrom) String() string {
+	if n.leftExpr == nil || n.rightExpr == nil {
+		return "? IS DISTINCT FROM ?"
+	}
 	return n.leftExpr.String() + " IS DISTINCT FROM " + n.rightExpr.String()
 }
 
