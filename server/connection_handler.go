@@ -644,6 +644,10 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 				// copying from a file is handled in a single message
 				return true, true, h.copyFromFileQuery(injectedStmt)
 			}
+		case *node.CopyTo:
+			// Unlike COPY FROM STDIN, the entire COPY TO flow (for both STDOUT and file targets) is driven by the
+			// server, so it completes within a single message and the server is ready for the next query afterward.
+			return true, true, h.handleCopyTo(injectedStmt)
 		}
 	}
 	return false, true, nil
@@ -926,6 +930,132 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 	return h.send(&pgproto3.CommandComplete{
 		CommandTag: []byte(fmt.Sprintf("COPY %d", loadDataResults.RowsLoaded)),
 	})
+}
+
+// handleCopyTo handles a COPY ... TO statement, streaming the results of the underlying SELECT statement back to
+// the client as COPY DATA messages (for COPY TO STDOUT), or writing them to a file on the server (for COPY TO
+// ... 'file'). Returns any error that occurs.
+func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "COPY TO")
+	if err != nil {
+		return err
+	}
+
+	if copyTo.TableName.Schema != "" {
+		originalSchema, err := sqlCtx.GetSessionVariable(sqlCtx, "search_path")
+		if err != nil {
+			return err
+		}
+		err = sqlCtx.SetSessionVariable(sqlCtx, "search_path", copyTo.TableName.Schema)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = sqlCtx.SetSessionVariable(sqlCtx, "search_path", originalSchema)
+		}()
+	}
+
+	// Build and analyze the plan for the SELECT statement underlying this COPY TO statement.
+	builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil)
+	boundNode, flags, err := builder.BindOnly(copyTo.SelectStub, "", nil)
+	if err != nil {
+		return err
+	}
+	analyzedNode, err := h.doltgresHandler.e.Analyzer.Analyze(sqlCtx, boundNode, nil, flags)
+	if err != nil {
+		return err
+	}
+
+	sch := analyzedNode.Schema(sqlCtx)
+	colNames := make([]string, len(sch))
+	for i, col := range sch {
+		colNames[i] = col.Name
+	}
+
+	var dataWriter dataloader.DataWriter
+	switch copyTo.CopyOptions.CopyFormat {
+	case tree.CopyFormatText:
+		dataWriter = dataloader.NewTabularDataWriter(colNames, copyTo.CopyOptions.Delimiter, "", copyTo.CopyOptions.Header)
+	case tree.CopyFormatCsv:
+		dataWriter = dataloader.NewCsvDataWriter(colNames, copyTo.CopyOptions.Delimiter, copyTo.CopyOptions.Header)
+	case tree.CopyFormatBinary:
+		return errors.Errorf("BINARY format is not supported for COPY TO")
+	default:
+		return errors.Errorf("unknown format specified for COPY TO: %v", copyTo.CopyOptions.CopyFormat)
+	}
+
+	// writeRow and flush abstract over the two output targets: for STDOUT, each row is sent to the client as a
+	// COPY DATA message, and for a file target, each row is written to the file on the server.
+	var writeRow func(data []byte) error
+	var flush func() error
+	if copyTo.Stdout {
+		if err = h.send(&pgproto3.CopyOutResponse{
+			OverallFormat:     0,
+			ColumnFormatCodes: make([]uint16, len(sch)),
+		}); err != nil {
+			return err
+		}
+		writeRow = func(data []byte) error {
+			h.backend.Send(&pgproto3.CopyData{Data: data})
+			return nil
+		}
+		flush = h.backend.Flush
+	} else {
+		// TODO: security check for file path
+		// TODO: Privilege Checking: https://www.postgresql.org/docs/15/sql-copy.html
+		f, fErr := os.Create(copyTo.File)
+		if fErr != nil {
+			return fErr
+		}
+		defer func() {
+			if closeErr := f.Close(); closeErr != nil && err == nil {
+				err = closeErr
+			}
+		}()
+		bufWriter := bufio.NewWriter(f)
+		writeRow = func(data []byte) error {
+			_, wErr := bufWriter.Write(data)
+			return wErr
+		}
+		flush = bufWriter.Flush
+	}
+
+	headerData, err := dataWriter.WriteHeader()
+	if err != nil {
+		return err
+	}
+	if headerData != nil {
+		if err = writeRow(headerData); err != nil {
+			return err
+		}
+	}
+
+	numRows := 0
+	callback := func(_ *sql.Context, res *Result) error {
+		for _, row := range res.Rows {
+			data, wErr := dataWriter.WriteRow(row.val)
+			if wErr != nil {
+				return wErr
+			}
+			if wErr = writeRow(data); wErr != nil {
+				return wErr
+			}
+		}
+		numRows += len(res.Rows)
+		return flush()
+	}
+
+	if err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY TO", analyzedNode, nil, callback); err != nil {
+		return err
+	}
+	if err = flush(); err != nil {
+		return err
+	}
+
+	if copyTo.Stdout {
+		h.backend.Send(&pgproto3.CopyDone{})
+	}
+	return h.send(makeCommandComplete("COPY", int32(numRows)))
 }
 
 // handleCopyDataHelper is a helper function that should only be invoked by handleCopyData. handleCopyData wraps this

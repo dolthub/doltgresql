@@ -16,6 +16,7 @@ package _go
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	goerrors "errors"
@@ -133,6 +134,10 @@ type ScriptTestAssertion struct {
 
 	// CopyFromSTDIN is used to test the COPY FROM STDIN command.
 	CopyFromStdInFile string
+
+	// CopyToStdOutFile is used to test the COPY TO STDOUT command. It names a file in the testdata directory whose
+	// contents are the expected output of the COPY TO STDOUT query.
+	CopyToStdOutFile string
 }
 
 // EmptyCommandTag is special command tag placeholder to check for the empty string
@@ -249,6 +254,8 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.CopyFromStdInFile != "" {
 				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile)
+			} else if assertion.CopyToStdOutFile != "" {
+				copyToStdout(t, conn.Current, assertion.Query, assertion.CopyToStdOutFile)
 			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" || assertion.ExpectedErrCode != "" {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				if assertion.ExpectedErrCode != "" {
@@ -356,6 +363,20 @@ func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) 
 	reader := bufio.NewReader(file)
 	_, err = conn.PgConn().CopyFrom(context.Background(), reader, query)
 	require.NoError(t, err)
+}
+
+// copyToStdout runs the COPY TO STDOUT statement given and asserts that the data sent to the client matches the
+// contents of the testdata file named.
+func copyToStdout(t *testing.T, conn *pgx.Conn, query string, filename string) {
+	filePath := filepath.Join("testdata", filename)
+
+	expected, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	_, err = conn.PgConn().CopyTo(context.Background(), &buf, query)
+	require.NoError(t, err)
+	assert.Equal(t, string(expected), buf.String())
 }
 
 // RunScripts runs the given collection of scripts. This normalizes all rows before comparing them.
