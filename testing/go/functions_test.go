@@ -4071,6 +4071,28 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3090
+			Name: "timestamp/timestamptz minus interval with day component",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00' - interval '90 days';`,
+					Expected: []sql.Row{{"2026-05-17 12:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2026-08-15 12:00:00+00' - interval '90 days';`,
+					Expected: []sql.Row{{"2026-05-17 12:00:00+00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00' - interval '1 hour';`,
+					Expected: []sql.Row{{"2026-08-15 11:00:00"}},
+				},
+				{
+					Query:    `SELECT (timestamp '2026-08-15 12:00:00' - interval '90 days') = timestamp '2026-08-15 12:00:00';`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
 	})
 }
 

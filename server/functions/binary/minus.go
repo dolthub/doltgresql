@@ -337,7 +337,7 @@ var timestamptz_mi_interval = framework.Function2{
 		interval := val2.(duration.Duration)
 
 		// Subtract the interval from the timestamptz
-		return timestamptz.Add(-time.Duration(interval.Nanos())), nil
+		return intervalPlusNonInterval(interval.Mul(-1), timestamptz)
 	},
 }
 
@@ -368,7 +368,7 @@ var timestamp_mi_interval = framework.Function2{
 		interval := val2.(duration.Duration)
 
 		// Subtract the interval from the timestamp
-		return timestamp.Add(-time.Duration(interval.Nanos())), nil
+		return intervalPlusNonInterval(interval.Mul(-1), timestamp)
 	},
 }
 
