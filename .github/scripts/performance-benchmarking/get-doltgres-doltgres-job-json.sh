@@ -162,9 +162,9 @@ from
 
 # Replace new lines with spaces, so it is valid JSON later
 medianLatencyChangeReadsQuery=${medianLatencyChangeReadsQuery//$'\n'/ }
-medianLatencyChangeWritesQuery = ${medianLatencyChangeWritesQuery//$'\n'/ }
-tpccLatencyQuery = ${tpccLatencyQuery//$'\n'/ }
-tpccTpsQuery = ${tpccTpsQuery//$'\n'/ }
+medianLatencyChangeWritesQuery=${medianLatencyChangeWritesQuery//$'\n'/ }
+tpccLatencyQuery=${tpccLatencyQuery//$'\n'/ }
+tpccTpsQuery=${tpccTpsQuery//$'\n'/ }
 
 echo '
 {
