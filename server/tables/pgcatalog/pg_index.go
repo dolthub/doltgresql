@@ -256,11 +256,28 @@ func (iter *pgIndexTableScanIter) Close(ctx *sql.Context) error {
 
 // pgIndexToRow converts a pgIndex to a sql.Row.
 func pgIndexToRow(index *pgIndex) sql.Row {
+	// indcollation, indclass, and indoption are per-column vectors that must have exactly one
+	// entry per index key column (the same length as indkey).
+	// indoption entries are bitmasks of per-column flags (INDOPTION_DESC = 0x0001,
+	// INDOPTION_NULLS_FIRST = 0x0002). Dolt indexes are always stored ascending and do not
+	// record per-column direction, so every entry is 0 (ASC NULLS LAST, the btree default).
+	// indcollation and indclass entries are collation and operator class OIDs respectively;
+	// we don't track those, so we emit the zero OID for each column.
+	numKeyCols := int(index.indnatts)
+	indCollation := make([]any, numKeyCols)
+	indClass := make([]any, numKeyCols)
+	indOption := make([]any, numKeyCols)
+	for i := 0; i < numKeyCols; i++ {
+		indCollation[i] = id.Null
+		indClass[i] = id.Null
+		indOption[i] = int16(0)
+	}
+
 	return sql.Row{
 		index.indexOid,         // indexrelid
 		index.tableOid,         // indrelid
 		index.indnatts,         // indnatts
-		int16(0),               // indnkeyatts
+		index.indnatts,         // indnkeyatts (we don't support INCLUDE columns, so all columns are key columns)
 		index.index.IsUnique(), // indisunique
 		false,                  // indnullsnotdistinct
 		index.indisprimary,     // indisprimary
@@ -273,9 +290,9 @@ func pgIndexToRow(index *pgIndex) sql.Row {
 		true,                   // indislive
 		false,                  // indisreplident
 		index.indkey,           // indkey
-		[]any{},                // indcollation
-		[]any{},                // indclass
-		[]any{int16(0)},        // indoption
+		indCollation,           // indcollation
+		indClass,               // indclass
+		indOption,              // indoption
 		nil,                    // indexprs
 		indexPred(index.index), // indpred
 	}
