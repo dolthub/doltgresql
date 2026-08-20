@@ -2009,7 +2009,6 @@ func TestArrayFunctions(t *testing.T) {
 			},
 		},
 		{
-			// https://github.com/dolthub/doltgresql/issues/3122
 			Name: "string_to_array",
 			Assertions: []ScriptTestAssertion{
 				{
