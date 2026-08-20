@@ -67,7 +67,15 @@ func (c *PgCoalesce) CollationCoercibility(ctx *sql.Context) (collation sql.Coll
 }
 
 // IsNullable implements sql.Expression.
-func (c *PgCoalesce) IsNullable(_ *sql.Context) bool {
+func (c *PgCoalesce) IsNullable(ctx *sql.Context) bool {
+	for _, arg := range c.args {
+		if arg == nil {
+			continue
+		}
+		if !arg.IsNullable(ctx) {
+			return false
+		}
+	}
 	return true
 }
 
