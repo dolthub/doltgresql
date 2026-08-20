@@ -18,14 +18,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strings"
-	"time"
-
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
 	"gopkg.in/src-d/go-errors.v1"
+	"strings"
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/utils"
@@ -169,7 +167,6 @@ func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 			return "f", nil
 		}
 	}
-	time.Sleep(100 * time.Nanosecond)
 	return t.IoOutput(ctx, val)
 }
 
