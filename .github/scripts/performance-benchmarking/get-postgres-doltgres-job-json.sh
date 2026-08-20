@@ -4,7 +4,7 @@ set -e
 
 if [ "$#" -lt 10 ]; then
     echo  "Usage: ./get-job-json.sh <jobname> <fromServer> <fromVersion> <toServer> <toVersion> <timeprefix> <actorprefix> <format> <issueNumber> <initBigRepo> <nomsBinFormat> <sysbenchTestTime> <withTpcc>"
-#    exit 1
+    exit 1
 fi
 
 jobname="$1"
