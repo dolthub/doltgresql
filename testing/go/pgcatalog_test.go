@@ -450,6 +450,7 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", "f", "f", "f", "t", nil, nil, "test extension to ensure that emulated extensions behave properly"},
 						{"uuid-ossp", "1.1", "f", "t", "t", "t", nil, nil, "generate universally unique identifiers (UUIDs)"},
+						{"vector", "0.8.6", "f", "t", "f", "t", nil, nil, "vector data type and ivfflat and hnsw access methods"},
 					},
 				},
 				{ // No extensions are installed by default
@@ -501,6 +502,7 @@ func TestPgAvailableExtensions(t *testing.T) {
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", nil, "test extension to ensure that emulated extensions behave properly"},
 						{"uuid-ossp", "1.1", nil, "generate universally unique identifiers (UUIDs)"},
+						{"vector", "0.8.6", nil, "vector data type and ivfflat and hnsw access methods"},
 					},
 				},
 				{ // No extensions are installed by default

@@ -35,6 +35,7 @@ import (
 
 // initBinaryEqual registers the functions to the catalog.
 func initBinaryEqual() {
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, array_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, biteq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, booleq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, bpchareq)
@@ -81,6 +82,21 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, varbiteq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, xideqint4)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, xideq)
+}
+
+// array_eq_callable is the callable logic for the array_eq function.
+func array_eq_callable(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	res, err := t[0].Compare(ctx, val1, val2)
+	return res == 0, err
+}
+
+// array_eq represents the PostgreSQL function of the same name, taking the same parameters.
+var array_eq = framework.Function2{
+	Name:       "array_eq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
+	Strict:     true,
+	Callable:   array_eq_callable,
 }
 
 // booleq_callable is the callable logic for the booleq function.

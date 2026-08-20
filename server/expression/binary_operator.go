@@ -255,11 +255,15 @@ func unwrapIndexScanTarget(expr sql.Expression) sql.Expression {
 func getUserDefinedOperator(ctx *sql.Context, operator framework.Operator, left sql.Expression, right sql.Expression) (framework.Function, error) {
 	leftType, ok := left.Type(ctx).(*pgtypes.DoltgresType)
 	if !ok {
-		return nil, nil
+		if leftType, _ = pgtypes.FromGmsTypeToDoltgresType(left.Type(ctx)); leftType == nil {
+			return nil, nil
+		}
 	}
 	rightType, ok := right.Type(ctx).(*pgtypes.DoltgresType)
 	if !ok {
-		return nil, nil
+		if rightType, _ = pgtypes.FromGmsTypeToDoltgresType(right.Type(ctx)); rightType == nil {
+			return nil, nil
+		}
 	}
 	operatorCollection, err := core.GetOperatorsCollectionFromContext(ctx, "")
 	if err != nil {

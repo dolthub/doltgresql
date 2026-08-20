@@ -161,17 +161,23 @@ func (pgs *TypeCollection) GetDomainType(ctx context.Context, name id.Type) (*pg
 // GetType returns the type with the given schema and name.
 // Returns nil if the type cannot be found.
 func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.DoltgresType, error) {
+	return pgs.GetTypeWithTypmod(ctx, name, nil)
+}
+
+// GetTypeWithTypmod returns the type with the given schema and name, with the given type modifiers applied.
+// Returns nil if the type cannot be found.
+func (pgs *TypeCollection) GetTypeWithTypmod(ctx context.Context, name id.Type, typmods []any) (*pgtypes.DoltgresType, error) {
 	// Check the built-in types first
 	if t, ok := pgtypes.IDToBuiltInDoltgresType[name]; ok {
-		return t, nil
+		return typeWithTypmod(ctx, t, typmods)
 	}
 
 	// Subsequent loads are cached
 	if t, ok := pgs.accessedMap[name]; ok {
-		return t, nil
+		return typeWithTypmod(ctx, t, typmods)
 	}
 	if t, ok := pgs.initCache[name]; ok {
-		return t, nil
+		return typeWithTypmod(ctx, t, typmods)
 	}
 	sqlCtx, ok := ctx.(*sql.Context)
 	if !ok {
@@ -185,7 +191,11 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 	if h.IsEmpty() {
 		// If this is an anonymous composite type, create it dynamically
 		if isAnonymousCompositeType(name) {
-			return pgs.createAnonymousCompositeType(sqlCtx, name)
+			t, err := pgs.createAnonymousCompositeType(sqlCtx, name)
+			if err != nil || t == nil {
+				return nil, err
+			}
+			return typeWithTypmod(ctx, t, typmods)
 		}
 
 		// Table composite types are computed on the fly from the live table schema rather than
@@ -200,14 +210,18 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 			if err != nil || elemType == nil {
 				return nil, err
 			}
-			return pgtypes.CreateArrayTypeFromBaseType(elemType), nil
+			return typeWithTypmod(ctx, pgtypes.CreateArrayTypeFromBaseType(elemType), typmods)
 		}
 
 		tbl, schema, err := pgs.getTable(sqlCtx, name.SchemaName(), typeName)
 		if err != nil || tbl == nil {
 			return nil, err
 		}
-		return pgs.tableToType(sqlCtx, tbl, schema)
+		t, err := pgs.tableToType(sqlCtx, tbl, schema)
+		if err != nil || t == nil {
+			return nil, err
+		}
+		return typeWithTypmod(ctx, t, typmods)
 	}
 	data, err := pgs.NodeStore().ReadBytes(ctx, h)
 	if err != nil {
@@ -220,7 +234,7 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 	pgt := t.(*pgtypes.DoltgresType)
 	pgs.accessedMap[pgt.ID] = pgt
 
-	return pgt, nil
+	return typeWithTypmod(ctx, pgt, typmods)
 }
 
 // ResolveType returns the type given if there's an exact match, or the closest matching type if the exact ID cannot be
@@ -228,7 +242,12 @@ func (pgs *TypeCollection) GetType(ctx context.Context, name id.Type) (*pgtypes.
 // significantly slower than GetType. Returns an error if the type cannot be resolved, unlike GetType which returns a
 // nil if the type is not found.
 func (pgs *TypeCollection) ResolveType(ctx context.Context, name id.Type) (*pgtypes.DoltgresType, error) {
-	if t, err := pgs.GetType(ctx, name); err != nil {
+	return pgs.ResolveTypeWithTypmod(ctx, name, nil)
+}
+
+// ResolveTypeWithTypmod resolves the type in the same manner as ResolveType, with the given type modifiers applied.
+func (pgs *TypeCollection) ResolveTypeWithTypmod(ctx context.Context, name id.Type, typmods []any) (*pgtypes.DoltgresType, error) {
+	if t, err := pgs.GetTypeWithTypmod(ctx, name, typmods); err != nil {
 		return nil, err
 	} else if t != nil && t.IsResolvedType() {
 		return t, nil
@@ -237,7 +256,7 @@ func (pgs *TypeCollection) ResolveType(ctx context.Context, name id.Type) (*pgty
 	if err != nil {
 		return nil, err
 	}
-	t, err := pgs.GetType(ctx, resolvedId)
+	t, err := pgs.GetTypeWithTypmod(ctx, resolvedId, typmods)
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +264,25 @@ func (pgs *TypeCollection) ResolveType(ctx context.Context, name id.Type) (*pgty
 		return nil, pgerror.WithCandidateCode(errors.Errorf("unable to resolve type `%s`", name.TypeName()), pgcode.UndefinedObject)
 	}
 	return t, nil
+}
+
+// typeWithTypmod returns the given type with the given type modifiers applied, or the type unchanged if there are none.
+func typeWithTypmod(ctx context.Context, t *pgtypes.DoltgresType, typmods []any) (*pgtypes.DoltgresType, error) {
+	if len(typmods) == 0 {
+		return t, nil
+	}
+	sqlCtx, ok := ctx.(*sql.Context)
+	if !ok {
+		return nil, errors.New("type collection requires a SQL context")
+	}
+	if t.ModInFunc == 0 {
+		return nil, errors.Errorf(`type modifier is not allowed for type "%s"`, t.Name())
+	}
+	typmod, err := t.TypModIn(sqlCtx, typmods)
+	if err != nil {
+		return nil, err
+	}
+	return t.WithAttTypMod(typmod), nil
 }
 
 // WithCachedType executes the given function while caching the given type, which allows for recursive type

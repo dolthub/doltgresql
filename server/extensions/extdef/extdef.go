@@ -58,6 +58,7 @@ type Type struct {
 	Send       string
 	ModIn      string
 	ModOut     string
+	Compare    string
 }
 
 // Routine is a function that an extension provides. Symbol is its C link symbol, which is unique within the extension.

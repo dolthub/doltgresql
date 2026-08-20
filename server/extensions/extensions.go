@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
 	uuid_ossp "github.com/dolthub/doltgresql/server/extensions/uuid-ossp/v1_1"
+	pgvector "github.com/dolthub/doltgresql/server/extensions/vector/v0_8_6"
 )
 
 // registry holds every extension that Doltgres emulates, keyed by its case-sensitive name.
@@ -30,6 +31,7 @@ var implementations = map[string]map[string]extdef.Function{}
 // Init adds every emulated extension to the registry, making them installable through CREATE EXTENSION.
 func Init() {
 	Register(uuid_ossp.Extension())
+	Register(pgvector.Extension())
 }
 
 // Register adds the given extension to the registry.
@@ -60,6 +62,18 @@ func Get(name string) (*extdef.Extension, error) {
 // GetAll returns every extension that Doltgres emulates, keyed by name. The map must not be modified.
 func GetAll() map[string]*extdef.Extension {
 	return registry
+}
+
+// GetRoutine returns the routine matching the given name and parameter count within any registered extension.
+func GetRoutine(name string, paramCount int) (extdef.Routine, bool) {
+	for _, ext := range registry {
+		for _, routine := range ext.Routines {
+			if routine.Name == name && len(routine.Parameters) == paramCount {
+				return routine, true
+			}
+		}
+	}
+	return extdef.Routine{}, false
 }
 
 // GetFunction returns the implementation of the given symbol within the given extension.
