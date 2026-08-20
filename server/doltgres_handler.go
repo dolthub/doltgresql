@@ -825,7 +825,20 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16
 				}
 			}
 		} else {
-			val, err := s[i].Type.SQL(ctx, []byte{}, v) // We use []byte{} as there's a distinction between nil and empty
+			typ := s[i].Type
+			if _, ok := typ.(*pgtypes.DoltgresType); !ok {
+				// GMS-typed columns (e.g. from Dolt system tables that escaped analyzer sanitization) advertise
+				// the equivalent Doltgres type's OID in their field description, so their values must be
+				// serialized by that Doltgres type as well. Serializing with the GMS type produces output that
+				// clients cannot parse (e.g. '0'/'1' instead of 'f'/'t' for a column advertised as boolean).
+				cast := pgexprs.NewGMSCast(expression.NewLiteral(v, typ))
+				v, err = cast.Eval(ctx, nil)
+				if err != nil {
+					return nil, err
+				}
+				typ = cast.DoltgresType(ctx)
+			}
+			val, err := typ.SQL(ctx, []byte{}, v) // We use []byte{} as there's a distinction between nil and empty
 			if err != nil {
 				return nil, err
 			}
