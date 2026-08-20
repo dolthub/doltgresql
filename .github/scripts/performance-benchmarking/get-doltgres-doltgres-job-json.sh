@@ -68,7 +68,7 @@ with result(test_name, from_latency, to_latency) as (
     f.test_name
 )
 select
-  test_name as write_tests,
+  test_name as read_tests,
   from_latency,
   to_latency,
   round(100 * ((to_latency - from_latency) / from_latency), $precision) as percent_change
