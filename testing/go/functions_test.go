@@ -4093,6 +4093,46 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3163
+			Name: "timestamp/timestamptz plus/minus interval normalizes month-end overflow",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2026-03-31 12:00:00' - interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-28 12:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2026-03-31 12:00:00+00' - interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-28 12:00:00+00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-03-15 12:00:00' - interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-15 12:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-01-31 00:00:00' + interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-28 00:00:00"}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/pull/3162#discussion_r3825271782
+			Name: "timestamp/timestamptz plus/minus interval preserves sub-second precision",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00.750000' - interval '0.250000 seconds';`,
+					Expected: []sql.Row{{"2026-08-15 12:00:00.5"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2026-08-15 12:00:00.750000+00' - interval '0.250000 seconds';`,
+					Expected: []sql.Row{{"2026-08-15 12:00:00.5+00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00.5' + interval '0.25 seconds';`,
+					Expected: []sql.Row{{"2026-08-15 12:00:00.75"}},
+				},
+			},
+		},
 	})
 }
 
