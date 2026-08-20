@@ -55,6 +55,7 @@ const (
 	ruleId_ResolveProcedureDefaults                                      // resolveProcedureDefaults
 	ruleId_SetRunner                                                     // setRunner
 	ruleId_TypeSanitizeExistsSubquery                                    // typeSanitizeExistsSubquery
+	ruleId_UnsetMax1RowForSRFs                                           // unsetMax1RowForSRFs
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -120,6 +121,9 @@ func Init() {
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},
 		analyzer.Rule{Id: ruleId_ReplaceNode, Apply: ReplaceNode},
 		analyzer.Rule{Id: ruleId_InsertContextRootFinalizer, Apply: InsertContextRootFinalizer},
+		// GMS sets QFlagMax1Row for point lookups without accounting for set-returning functions in the
+		// projection, which can multiply output rows. See https://github.com/dolthub/doltgresql/issues/3111.
+		analyzer.Rule{Id: ruleId_UnsetMax1RowForSRFs, Apply: UnsetMax1RowForSRFs},
 	)
 
 	initEngine()
