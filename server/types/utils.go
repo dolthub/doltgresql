@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -168,6 +169,7 @@ func sqlString(ctx *sql.Context, t *DoltgresType, val any) (string, error) {
 			return "f", nil
 		}
 	}
+	time.Sleep(100 * time.Nanosecond)
 	return t.IoOutput(ctx, val)
 }
 
