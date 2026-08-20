@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,10 +24,14 @@ import (
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
-// nodeCopyFrom handles *tree.CopyFrom nodes.
-func nodeCopyFrom(ctx *Context, node *tree.CopyFrom) (vitess.Statement, error) {
+// nodeCopyTo handles *tree.CopyTo nodes.
+func nodeCopyTo(ctx *Context, node *tree.CopyTo) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
+	}
+	if !node.Stdout {
+		// Writing files on the server is a security liability we have chosen not to support.
+		return nil, errors.Errorf("COPY TO a server-side file is not supported, use COPY TO STDOUT instead")
 	}
 	if node.Options.CopyFormat == tree.CopyFormatBinary {
 		if node.Options.Header {
@@ -38,46 +42,45 @@ func nodeCopyFrom(ctx *Context, node *tree.CopyFrom) (vitess.Statement, error) {
 		}
 	}
 
-	// We start by creating a stub insert statement for the COPY FROM statement, which we will use to build a basic
-	// INSERT plan for. At runtime we will swap out the bogus row values for our actual data read from STDIN.
-	var columns []vitess.ColIdent
-	if len(node.Columns) > 0 {
-		columns = make([]vitess.ColIdent, len(node.Columns))
-		for i := range node.Columns {
-			columns[i] = vitess.NewColIdent(string(node.Columns[i]))
+	// We create a stub select statement for the COPY TO statement, which the connection handler will build a plan
+	// for at execution time, streaming the results back to the client. When copying a table, we construct a simple
+	// SELECT over the columns named (or all columns when none were).
+	selectStmt := node.Statement
+	if selectStmt == nil {
+		var selectExprs tree.SelectExprs
+		if len(node.Columns) > 0 {
+			selectExprs = make(tree.SelectExprs, len(node.Columns))
+			for i := range node.Columns {
+				selectExprs[i] = tree.SelectExpr{Expr: tree.NewUnresolvedName(string(node.Columns[i]))}
+			}
+		} else {
+			selectExprs = tree.SelectExprs{tree.StarSelectExpr()}
+		}
+		selectStmt = &tree.Select{
+			Select: &tree.SelectClause{
+				Exprs: selectExprs,
+				From: tree.From{
+					Tables: tree.TableExprs{&node.Table},
+				},
+			},
 		}
 	}
 
-	tableName, err := nodeTableName(ctx, &node.Table)
+	selectStub, err := nodeSelect(ctx, selectStmt)
 	if err != nil {
 		return nil, err
 	}
 
-	stubValues := make(vitess.Values, 1)
-	stubValues[0] = make(vitess.ValTuple, len(columns))
-	for i := range columns {
-		stubValues[0][i] = &vitess.NullVal{}
-	}
-
 	return vitess.InjectedStatement{
-		Statement: pgnodes.NewCopyFrom(
+		Statement: pgnodes.NewCopyTo(
 			node.Table.Catalog(),
 			doltdb.TableName{
 				Name:   node.Table.Object(),
 				Schema: node.Table.Schema(),
 			},
 			node.Options,
-			node.File,
-			node.Stdin,
 			node.Columns,
-			&vitess.Insert{
-				Action:  vitess.InsertStr,
-				Table:   tableName,
-				Columns: columns,
-				Rows: &vitess.AliasedValues{
-					Values: stubValues,
-				},
-			},
+			selectStub,
 		),
 		Children: nil,
 	}, nil

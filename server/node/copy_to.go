@@ -1,4 +1,4 @@
-// Copyright 2024 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,107 +18,95 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
-// CopyFrom handles the COPY ... FROM ... statement.
-type CopyFrom struct {
+// CopyTo handles the COPY ... TO STDOUT statement. Copying to a server-side file is not supported, as a security
+// measure.
+type CopyTo struct {
 	DatabaseName string
 	TableName    doltdb.TableName
-	File         string
-	Stdin        bool
 	Columns      tree.NameList
 	CopyOptions  tree.CopyOptions
-	InsertStub   *vitess.Insert
-	DataLoader   dataloader.DataLoader
+	SelectStub   vitess.SelectStatement
 }
 
-var _ vitess.Injectable = (*CopyFrom)(nil)
-var _ sql.ExecSourceRel = (*CopyFrom)(nil)
+var _ vitess.Injectable = (*CopyTo)(nil)
+var _ sql.ExecSourceRel = (*CopyTo)(nil)
 
-// NewCopyFrom returns a new *CopyFrom.
-func NewCopyFrom(
+// NewCopyTo returns a new *CopyTo.
+func NewCopyTo(
 	databaseName string,
 	tableName doltdb.TableName,
 	options tree.CopyOptions,
-	fileName string,
-	stdin bool,
 	columns tree.NameList,
-	insertStub *vitess.Insert,
-) *CopyFrom {
+	selectStub vitess.SelectStatement,
+) *CopyTo {
 	switch options.CopyFormat {
 	case tree.CopyFormatCsv, tree.CopyFormatText, tree.CopyFormatBinary:
 		// no-op
 	default:
-		panic(fmt.Sprintf("unknown COPY FROM format: %d", options.CopyFormat))
+		panic(fmt.Sprintf("unknown COPY TO format: %d", options.CopyFormat))
 	}
 
-	return &CopyFrom{
+	return &CopyTo{
 		DatabaseName: databaseName,
 		TableName:    tableName,
-		File:         fileName,
-		Stdin:        stdin,
 		Columns:      columns,
 		CopyOptions:  options,
-		InsertStub:   insertStub,
+		SelectStub:   selectStub,
 	}
 }
 
 // Children implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) Children() []sql.Node {
+func (ct *CopyTo) Children() []sql.Node {
 	return nil
 }
 
 // IsReadOnly implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) IsReadOnly() bool {
-	return false
+func (ct *CopyTo) IsReadOnly() bool {
+	return true
 }
 
 // Resolved implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) Resolved() bool {
+func (ct *CopyTo) Resolved() bool {
 	return true
 }
 
 // RowIter implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) RowIter(ctx *sql.Context, r sql.Row) (_ sql.RowIter, err error) {
-	return cf.DataLoader.RowIter(ctx, r)
+func (ct *CopyTo) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
+	// COPY TO is handled directly by the connection handler, since it requires access to the wire connection to
+	// stream results back to the client, so it should never be executed by the engine.
+	return nil, errors.Errorf("COPY TO must be handled by the connection handler")
 }
 
 // Schema implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) Schema(ctx *sql.Context) sql.Schema {
-	// For Parse calls, we need access to the schema before we have a DataLoader created, so return a stub schema.
-	if cf.DataLoader == nil {
-		return nil
-	}
-	return cf.DataLoader.Schema(ctx)
+func (ct *CopyTo) Schema(ctx *sql.Context) sql.Schema {
+	return nil
 }
 
 // String implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) String() string {
-	source := "STDIN"
-	if cf.File != "" {
-		source = fmt.Sprintf("'%s'", cf.File)
-	}
-	return fmt.Sprintf("COPY FROM %s", source)
+func (ct *CopyTo) String() string {
+	return "COPY TO STDOUT"
 }
 
 // WithChildren implements the interface sql.ExecSourceRel.
-func (cf *CopyFrom) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
+func (ct *CopyTo) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	if len(children) != 0 {
-		return nil, sql.ErrInvalidChildrenNumber.New(cf, len(children), 0)
+		return nil, sql.ErrInvalidChildrenNumber.New(ct, len(children), 0)
 	}
-	return cf, nil
+	return ct, nil
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable.
-func (cf *CopyFrom) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
+func (ct *CopyTo) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}
-	return cf, nil
+	return ct, nil
 }

@@ -16,6 +16,7 @@ package _go
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	goerrors "errors"
@@ -133,6 +134,15 @@ type ScriptTestAssertion struct {
 
 	// CopyFromSTDIN is used to test the COPY FROM STDIN command.
 	CopyFromStdInFile string
+
+	// CopyToStdOutFile is used to test the COPY TO STDOUT command. It names a file in the testdata directory whose
+	// contents are the expected output of the COPY TO STDOUT query.
+	CopyToStdOutFile string
+
+	// CopyRoundTripStdInQuery is used to test that COPY TO STDOUT output can be read back in by COPY FROM STDIN.
+	// The bytes the server sends for Query (a COPY ... TO STDOUT statement) are piped directly into this
+	// COPY ... FROM STDIN statement, without touching the filesystem.
+	CopyRoundTripStdInQuery string
 }
 
 // EmptyCommandTag is special command tag placeholder to check for the empty string
@@ -248,7 +258,11 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.CopyFromStdInFile != "" {
-				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile)
+				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile, assertion.ExpectedErr)
+			} else if assertion.CopyRoundTripStdInQuery != "" {
+				copyRoundTrip(t, conn.Current, assertion.Query, assertion.CopyRoundTripStdInQuery)
+			} else if assertion.CopyToStdOutFile != "" {
+				copyToStdout(t, conn.Current, assertion.Query, assertion.CopyToStdOutFile)
 			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" || assertion.ExpectedErrCode != "" {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				if assertion.ExpectedErrCode != "" {
@@ -344,7 +358,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	}
 }
 
-func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) {
+// copyFromStdin runs the COPY FROM STDIN statement given, sending it the contents of the testdata file named. If
+// expectedErr is non-empty, the load is expected to be rejected with an error containing it.
+func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string, expectedErr string) {
 	filePath := filepath.Join("testdata", filename)
 
 	file, err := os.Open(filePath)
@@ -355,6 +371,35 @@ func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) 
 
 	reader := bufio.NewReader(file)
 	_, err = conn.PgConn().CopyFrom(context.Background(), reader, query)
+	if expectedErr != "" {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), expectedErr)
+	} else {
+		require.NoError(t, err)
+	}
+}
+
+// copyToStdout runs the COPY TO STDOUT statement given and asserts that the data sent to the client matches the
+// contents of the testdata file named.
+func copyToStdout(t *testing.T, conn *pgx.Conn, query string, filename string) {
+	filePath := filepath.Join("testdata", filename)
+
+	expected, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	_, err = conn.PgConn().CopyTo(context.Background(), &buf, query)
+	require.NoError(t, err)
+	assert.Equal(t, string(expected), buf.String())
+}
+
+// copyRoundTrip runs the COPY TO STDOUT statement given and pipes the data the server sends back into the given
+// COPY FROM STDIN statement, verifying that COPY output can be read back in without touching the filesystem.
+func copyRoundTrip(t *testing.T, conn *pgx.Conn, copyToQuery string, copyFromQuery string) {
+	var buf bytes.Buffer
+	_, err := conn.PgConn().CopyTo(context.Background(), &buf, copyToQuery)
+	require.NoError(t, err)
+	_, err = conn.PgConn().CopyFrom(context.Background(), &buf, copyFromQuery)
 	require.NoError(t, err)
 }
 

@@ -91,6 +91,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeControlSchedules(ctx, stmt)
 	case *tree.CopyFrom:
 		return nodeCopyFrom(ctx, stmt)
+	case *tree.CopyTo:
+		return nodeCopyTo(ctx, stmt)
 	case *tree.CreateAggregate:
 		return nodeCreateAggregate(ctx, stmt)
 	case *tree.CreateCast:

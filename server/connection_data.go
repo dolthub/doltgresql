@@ -87,6 +87,11 @@ type copyFromStdinState struct {
 	// so that it can avoid sending a CommandComplete message if an error was encountered after the client already
 	// sent a CopyDone message to the server.
 	copyErr error
+	// startedTransaction is true if the COPY operation started the session's transaction (as opposed to loading
+	// into a transaction that was already in progress). When the operation fails or is aborted, a transaction it
+	// started must be rolled back so that rows loaded by chunks that were processed successfully don't linger in
+	// an open transaction that a later statement would commit.
+	startedTransaction bool
 }
 
 type PortalData struct {
