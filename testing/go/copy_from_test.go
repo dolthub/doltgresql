@@ -390,6 +390,113 @@ bar`, "baz"},
 			},
 		},
 		{
+			Name: "malformed binary load does not poison the session",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 text);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// binary-load-malformed.bin holds 575 valid rows, then a malformed tuple placed exactly at
+					// the client's CopyData chunk boundary, then 5 more valid rows that arrive in a later chunk.
+					// The bad load must be rejected, all of its work rolled back, and the trailing chunk discarded.
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-malformed.bin",
+					ExpectedErr:       "row field count 5, expected 2",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl1;",
+					Expected: []sql.Row{
+						{0},
+					},
+				},
+				{
+					// The same connection stays usable for regular statements
+					Query:    "INSERT INTO tbl1 VALUES (100, 'still works');",
+					Expected: []sql.Row{},
+				},
+				{
+					// And for a subsequent, valid COPY FROM
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-2col.bin",
+				},
+				{
+					Query: "SELECT * FROM tbl1 ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "one"},
+						{2, nil},
+						{3, "three"},
+						{100, "still works"},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary load failing after a successful chunk does not poison the session",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 text);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// binary-load-malformed-late.bin fills the client's first CopyData chunk with 575 valid rows,
+					// with the malformed tuple arriving in the second chunk. The rows loaded by the first chunk
+					// must be rolled back along with the rest of the failed operation.
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-malformed-late.bin",
+					ExpectedErr:       "row field count 5, expected 2",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl1;",
+					Expected: []sql.Row{
+						{0},
+					},
+				},
+				{
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-2col.bin",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl1;",
+					Expected: []sql.Row{
+						{3},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary load missing its trailer does not poison the session",
+			SetUpScript: []string{
+				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The data is valid except that it ends without the file trailer, so the error only
+					// surfaces when the load is finalized. Its rows must still be rolled back.
+					Query:             "COPY tbl3 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "copy-from-missing-trailer.bin",
+					ExpectedErr:       "missing file trailer",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl3;",
+					Expected: []sql.Row{
+						{0},
+					},
+				},
+				{
+					Query:             "COPY tbl3 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "copy-to-basic.bin",
+				},
+				{
+					Query: "SELECT * FROM tbl3 ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "foo", "t"},
+						{2, nil, "f"},
+						{3, "", nil},
+						{4, "héllo", "t"},
+					},
+				},
+			},
+		},
+		{
 			Name: "binary errors",
 			SetUpScript: []string{
 				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",

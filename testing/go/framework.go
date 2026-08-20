@@ -258,7 +258,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
 			if assertion.CopyFromStdInFile != "" {
-				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile)
+				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile, assertion.ExpectedErr)
 			} else if assertion.CopyRoundTripStdInQuery != "" {
 				copyRoundTrip(t, conn.Current, assertion.Query, assertion.CopyRoundTripStdInQuery)
 			} else if assertion.CopyToStdOutFile != "" {
@@ -358,7 +358,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	}
 }
 
-func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) {
+// copyFromStdin runs the COPY FROM STDIN statement given, sending it the contents of the testdata file named. If
+// expectedErr is non-empty, the load is expected to be rejected with an error containing it.
+func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string, expectedErr string) {
 	filePath := filepath.Join("testdata", filename)
 
 	file, err := os.Open(filePath)
@@ -369,7 +371,12 @@ func copyFromStdin(t *testing.T, conn *pgx.Conn, query string, filename string) 
 
 	reader := bufio.NewReader(file)
 	_, err = conn.PgConn().CopyFrom(context.Background(), reader, query)
-	require.NoError(t, err)
+	if expectedErr != "" {
+		require.Error(t, err)
+		require.Contains(t, err.Error(), expectedErr)
+	} else {
+		require.NoError(t, err)
+	}
 }
 
 // copyToStdout runs the COPY TO STDOUT statement given and asserts that the data sent to the client matches the

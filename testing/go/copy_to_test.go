@@ -184,14 +184,97 @@ func TestCopyTo(t *testing.T) {
 					SkipResultsCheck: true,
 				},
 				{
-					// The tabular loader doesn't handle escaped newlines, so exclude that row from the round trip
-					Query:                   "COPY (SELECT * FROM tbl1 WHERE pk < 5) TO STDOUT;",
+					Query:                   "COPY tbl1 TO STDOUT;",
 					CopyRoundTripStdInQuery: "COPY tbl1_copy FROM STDIN;",
 				},
 				{
 					Query: "SELECT count(*) FROM tbl1 t1 JOIN tbl1_copy t2 ON t1.pk = t2.pk WHERE t1.c1 IS NOT DISTINCT FROM t2.c1 AND t1.c2 IS NOT DISTINCT FROM t2.c2;",
 					Expected: []sql.Row{
-						{4},
+						{7},
+					},
+				},
+			},
+		},
+		{
+			Name: "tab delimited escape characters round trip",
+			SetUpScript: []string{
+				"CREATE TABLE esc (pk int primary key, c1 text);",
+				`INSERT INTO esc VALUES
+					(1, E'tab\tseparated'),
+					(2, E'new\nline'),
+					(3, E'carriage\rreturn'),
+					(4, E'back\\slash'),
+					(5, E'\b\f\v'),
+					(6, E'\\N'),
+					(7, E'ends with backslash\\'),
+					(8, E'\\.'),
+					(9, E'mixed\t\\.\nescapes\\\r'),
+					(10, 'pipe|delimiter');`,
+				"CREATE TABLE esc_copy (pk int primary key, c1 text);",
+				"CREATE TABLE esc_copy2 (pk int primary key, c1 text);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:                   "COPY esc TO STDOUT;",
+					CopyRoundTripStdInQuery: "COPY esc_copy FROM STDIN;",
+				},
+				{
+					Query: "SELECT count(*) FROM esc t1 JOIN esc_copy t2 ON t1.pk = t2.pk WHERE t1.c1 = t2.c1;",
+					Expected: []sql.Row{
+						{10},
+					},
+				},
+				{
+					// A custom delimiter that appears inside a value must be escaped and unescaped correctly
+					Query:                   "COPY esc TO STDOUT (FORMAT TEXT, DELIMITER '|');",
+					CopyRoundTripStdInQuery: "COPY esc_copy2 FROM STDIN (FORMAT TEXT, DELIMITER '|');",
+				},
+				{
+					Query: "SELECT count(*) FROM esc t1 JOIN esc_copy2 t2 ON t1.pk = t2.pk WHERE t1.c1 = t2.c1;",
+					Expected: []sql.Row{
+						{10},
+					},
+				},
+			},
+		},
+		{
+			Name: "single column round trip with NULL",
+			SetUpScript: []string{
+				"CREATE TABLE single (c1 text);",
+				`INSERT INTO single VALUES ('foo'), (NULL), ('');`,
+				"CREATE TABLE single_copy_text (c1 text);",
+				"CREATE TABLE single_copy_csv (c1 text);",
+				"CREATE TABLE single_copy_bin (c1 text);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:                   "COPY single TO STDOUT;",
+					CopyRoundTripStdInQuery: "COPY single_copy_text FROM STDIN;",
+				},
+				{
+					Query: "SELECT count(*), count(c1), count(CASE WHEN c1 = '' THEN 1 END) FROM single_copy_text;",
+					Expected: []sql.Row{
+						{3, 2, 1},
+					},
+				},
+				{
+					Query:                   "COPY single TO STDOUT (FORMAT CSV);",
+					CopyRoundTripStdInQuery: "COPY single_copy_csv FROM STDIN (FORMAT CSV);",
+				},
+				{
+					Query: "SELECT count(*), count(c1), count(CASE WHEN c1 = '' THEN 1 END) FROM single_copy_csv;",
+					Expected: []sql.Row{
+						{3, 2, 1},
+					},
+				},
+				{
+					Query:                   "COPY single TO STDOUT (FORMAT BINARY);",
+					CopyRoundTripStdInQuery: "COPY single_copy_bin FROM STDIN (FORMAT BINARY);",
+				},
+				{
+					Query: "SELECT count(*), count(c1), count(CASE WHEN c1 = '' THEN 1 END) FROM single_copy_bin;",
+					Expected: []sql.Row{
+						{3, 2, 1},
 					},
 				},
 			},

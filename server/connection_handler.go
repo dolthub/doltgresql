@@ -879,12 +879,36 @@ func makeCommandComplete(tag string, rows int32) *pgproto3.CommandComplete {
 // messages are expected, and the server should tell the client that it is ready for the next query, and |err| contains
 // any error that occurred while processing the COPY DATA message.
 func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
+	if h.copyFromStdinState != nil && h.copyFromStdinState.copyErr != nil {
+		// A previous chunk of this COPY operation failed and its work was rolled back, so discard the remaining
+		// data until the client ends the operation with a COPY DONE or COPY FAIL message. Processing further
+		// chunks would insert rows for an operation that has already been rejected.
+		return false, false, nil
+	}
 	copyFromData := bytes.NewReader(message.Data)
 	stop, endOfMessages, err = h.handleCopyDataHelper(h.copyFromStdinState, copyFromData)
 	if err != nil && h.copyFromStdinState != nil {
 		h.copyFromStdinState.copyErr = err
+		h.rollbackCopyTransaction()
 	}
 	return stop, endOfMessages, err
+}
+
+// rollbackCopyTransaction rolls back the transaction started on behalf of a failed or aborted COPY FROM STDIN
+// operation, so that rows loaded by any chunks that were processed successfully don't linger in an open
+// transaction that a later statement would commit. If the COPY was run inside a transaction block, this does
+// nothing: the normal statement-failure handling marks the block as failed, matching Postgres.
+func (h *ConnectionHandler) rollbackCopyTransaction() {
+	if h.transactionState != idleTransactionState {
+		return
+	}
+	if h.restoredAutoCommitWithoutTransaction() {
+		return
+	}
+	if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
+		logrus.Warnf("error rolling back COPY FROM STDIN transaction: %s", err)
+	}
+	h.restoredAutoCommitWithoutTransaction()
 }
 
 // copyFromFileQuery handles a COPY FROM message that is reading from a file, returning any error that occurs
@@ -1189,6 +1213,16 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 			errors.Errorf("COPY DONE message received without a COPY FROM STDIN operation in progress")
 	}
 
+	// The COPY DONE message ends the COPY operation whether it succeeds or fails below, so always clear the COPY
+	// state, leaving the connection ready for its next query. If finalizing the operation fails, its work must
+	// also be rolled back.
+	defer func() {
+		h.copyFromStdinState = nil
+		if err != nil {
+			h.rollbackCopyTransaction()
+		}
+	}()
+
 	// If there was a previous error returned from processing a CopyData message, then don't return an error here
 	// and don't send endOfMessage=true, since the CopyData error already sent endOfMessage=true. If we do send
 	// endOfMessage=true here, then the client gets confused about the unexpected/extra Idle message since the
@@ -1226,7 +1260,6 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 	}
 	sqlCtx.SetIgnoreAutoCommit(false)
 
-	h.copyFromStdinState = nil
 	// We send back endOfMessage=true, since the COPY DONE message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
 	return false, true, h.send(&pgproto3.CommandComplete{
@@ -1251,6 +1284,8 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 	}
 
 	h.copyFromStdinState = nil
+	// The client aborted the operation, so any rows loaded by chunks that were already processed must not persist
+	h.rollbackCopyTransaction()
 	// We send back endOfMessage=true, since the COPY FAIL message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
 	return false, true, nil
