@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -91,9 +92,14 @@ func (c *PgCoalesce) WithChildren(ctx *sql.Context, children ...sql.Expression) 
 	}
 	newC := &PgCoalesce{args: children, typ: pgtypes.Unknown}
 	childTypes := make([]*pgtypes.DoltgresType, 0, len(children))
+	var bindVars []*expression.BindVar
 	for _, child := range children {
 		dt, ok := child.Type(ctx).(*pgtypes.DoltgresType)
 		if !ok {
+			if bv := UnwrapBindVar(child); bv != nil {
+				bindVars = append(bindVars, bv)
+				continue
+			}
 			return newC, nil
 		}
 		childTypes = append(childTypes, dt)
@@ -104,6 +110,11 @@ func (c *PgCoalesce) WithChildren(ctx *sql.Context, children ...sql.Expression) 
 	}
 	if commonType != nil {
 		newC.typ = commonType
+		for _, bv := range bindVars {
+			if _, ok := bv.Typ.(*pgtypes.DoltgresType); !ok {
+				bv.Typ = commonType
+			}
+		}
 	}
 	return newC, nil
 }

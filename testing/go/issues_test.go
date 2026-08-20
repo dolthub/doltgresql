@@ -461,6 +461,58 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #3097",
+			SetUpScript: []string{
+				"CREATE TABLE g_bool (id INT4 PRIMARY KEY, flag BOOLEAN);",
+				"INSERT INTO g_bool VALUES (1, true), (2, false), (3, NULL);",
+				"CREATE TABLE g_arr (id INT4 PRIMARY KEY, v INT4, vals INT4[]);",
+				"INSERT INTO g_arr VALUES (1, 1, ARRAY[1,2,3]), (2, 2, ARRAY[4,5,6]);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*) FROM g_bool WHERE flag IS DISTINCT FROM $1;`,
+					BindVars: []any{true},
+					Expected: []sql.Row{{int64(2)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_bool WHERE flag IS NOT DISTINCT FROM $1;`,
+					BindVars: []any{true},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE $1 = ANY(vals);`,
+					BindVars: []any{int32(2)},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					// Uncorrelated subquery: the comparison doesn't depend on the outer row, so it's all-or-nothing.
+					Query:    `SELECT count(*) FROM g_arr WHERE $1 = ANY(SELECT v FROM g_arr);`,
+					BindVars: []any{int32(2)},
+					Expected: []sql.Row{{int64(2)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE vals[$1] = 2;`,
+					BindVars: []any{int32(2)},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE coalesce($1, v) = 1;`,
+					BindVars: []any{nil},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE greatest($1, v) = 2;`,
+					BindVars: []any{int32(0)},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE least($1, v) = 1;`,
+					BindVars: []any{int32(5)},
+					Expected: []sql.Row{{int64(1)}},
+				},
+			},
+		},
 	})
 }
 
@@ -489,6 +541,99 @@ func TestIssuesWire(t *testing.T) {
 						},
 						&pgproto3.DataRow{Values: [][]byte{[]byte("foo")}},
 						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "Issue #3097",
+			SetUpScript: []string{
+				"CREATE TABLE g_arr (id INT4 PRIMARY KEY, v INT4, vals INT4[]);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s1", Query: "SELECT count(*) FROM g_arr WHERE $1 = ANY(vals)"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s1"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s2", Query: "SELECT count(*) FROM g_arr WHERE $1 = ANY(SELECT v FROM g_arr)"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s2"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s3", Query: "SELECT count(*) FROM g_arr WHERE vals[$1] = 2"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s3"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s4", Query: "SELECT count(*) FROM g_arr WHERE coalesce($1, v) = 1"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s4"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s5", Query: "SELECT count(*) FROM g_arr WHERE greatest($1, v) = 1"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s5"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
 				},
