@@ -20,7 +20,7 @@ initBigRepo="${10}"
 nomsBinFormat="${11}"
 sysbenchTestTime="${12}"
 withTpcc="${13}"
-precision="1"
+precision="2"
 tpccRegex="tpcc%"
 
 if [ -n "$initBigRepo" ]; then
@@ -53,8 +53,8 @@ readTests="(
 'index_join_postgres'
 )"
 
-medianLatencyMultiplierReadsQuery="
-with result(test_name, from_server, from_version, from_latency, to_server, to_version, to_latency) as (
+medianLatencyMultiplierReadsQuery="with
+result(test_name, from_server, from_version, from_latency, to_server, to_version, to_latency) as (
   select
     f.test_name,
     f.server_name,
@@ -84,8 +84,8 @@ select
 from
   result;"
 
-meanMultiplierReadsQuery="
-with result(multiplier) as (
+meanMultiplierReadsQuery="with
+result(multiplier) as (
   select
     round(avg(t.latency_percentile) / (avg(f.latency_percentile) + .000001), $precision)
   from
@@ -113,8 +113,8 @@ writeTests="(
 'types_delete_insert_postgres'
 )"
 
-medianLatencyMultiplierWritesQuery="
-with result(test_name, from_server, from_version, from_latency, to_server, to_version, to_latency) as (
+medianLatencyMultiplierWritesQuery="with
+result(test_name, from_server, from_version, from_latency, to_server, to_version, to_latency) as (
   select
     f.test_name,
     f.server_name,
@@ -144,8 +144,8 @@ select
 from
   result;"
 
-meanMultiplierWritesQuery="
-with result(multiplier) as (
+meanMultiplierWritesQuery="with
+result(multiplier) as (
   select
     round(avg(t.latency_percentile) / (avg(f.latency_percentile) + .000001), $precision)
   from
@@ -162,8 +162,8 @@ select
 from
   result;"
 
-meanMultiplierOverallQuery="
-with result(multiplier) as (
+meanMultiplierOverallQuery="with
+result(multiplier) as (
   select
     round(avg(t.latency_percentile) / (avg(f.latency_percentile) + .000001), $precision)
   from
@@ -180,8 +180,8 @@ select
 from
   result;"
 
-tpccLatencyQuery="
-with result(test_name, from_latency, to_latency) as (
+tpccLatencyQuery="with
+result(test_name, from_latency, to_latency) as (
   select
     f.test_name,
     avg(f.latency_percentile),
@@ -201,8 +201,8 @@ select
 from
   result;"
 
-tpccTpsQuery="
-with result(test_name, from_server_name, from_server_version, from_tps, to_server_name, to_server_version, to_tps) as (
+tpccTpsQuery="with
+result(test_name, from_server_name, from_server_version, from_tps, to_server_name, to_server_version, to_tps) as (
   select
     f.test_name,
     f.server_name,

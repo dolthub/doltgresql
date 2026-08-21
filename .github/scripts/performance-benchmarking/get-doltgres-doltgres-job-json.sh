@@ -21,6 +21,7 @@ nomsBinFormat="${11}"
 sysbenchTestTime="${12}"
 withTpcc="${13}"
 tpccRegex="tpcc%"
+precision="2"
 
 if [ -n "$initBigRepo" ]; then
   initBigRepo="\"--init-big-repo=$initBigRepo\","
@@ -52,8 +53,8 @@ readTests="(
 'index_join_postgres'
 )"
 
-medianLatencyChangeReadsQuery="
-with result(test_name, from_latency, to_latency) as (
+medianLatencyChangeReadsQuery="with
+result(test_name, from_latency, to_latency) as (
   select
     f.test_name,
     avg(f.latency_percentile),
@@ -85,8 +86,8 @@ writeTests="(
 'types_delete_insert_postgres'
 )"
 
-medianLatencyChangeWritesQuery="
-with result(test_name, from_latency, to_latency) as (
+medianLatencyChangeWritesQuery="with
+result(test_name, from_latency, to_latency) as (
   select
     f.test_name,
     avg(f.latency_percentile),
@@ -108,8 +109,8 @@ select
 from
   result;"
 
-tpccLatencyQuery="
-with result(test_name, from_latency, to_latency) as (
+tpccLatencyQuery="with
+result(test_name, from_latency, to_latency) as (
   select
     f.test_name,
     avg(f.latency_percentile),
@@ -129,8 +130,8 @@ select
 from
   result;"
 
-tpccTpsQuery="
-with result(test_name, from_server_name, from_server_version, from_tps, to_server_name, to_server_version, to_tps) as (
+tpccTpsQuery="with
+result(test_name, from_server_name, from_server_version, from_tps, to_server_name, to_server_version, to_tps) as (
   select
     f.test_name,
     f.server_name,
