@@ -840,7 +840,7 @@ func (*ReparentDatabase) StatementTag() string { return "CONVERT TO SCHEMA" }
 func (*RenameIndex) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*RenameIndex) StatementTag() string { return "RENAME INDEX" }
+func (*RenameIndex) StatementTag() string { return "ALTER INDEX" }
 
 // StatementType implements the Statement interface.
 func (*RenameTable) StatementType() StatementType { return DDL }
