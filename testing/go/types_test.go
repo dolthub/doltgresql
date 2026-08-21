@@ -867,6 +867,39 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Array literal parsing preserves internal whitespace in unquoted elements",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT '{2026-08-21 12:00:00,2026-08-22 13:30:00}'::timestamp[];`,
+				Expected: []sql.Row{{`{"2026-08-21 12:00:00","2026-08-22 13:30:00"}`}},
+			},
+			{
+				// Compared by instant equality (not text) since the display offset depends
+				// on the session's local time zone.
+				Query:    `SELECT ('{2026-08-21 12:00:00+05:00}'::timestamptz[])[1] = '2026-08-21 07:00:00+00'::timestamptz;`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT '{1 day 2 hours, 3 days}'::interval[];`,
+				Expected: []sql.Row{{`{"1 day 02:00:00","3 days"}`}},
+			},
+			{
+				// Insignificant whitespace around unquoted elements is still trimmed.
+				Query:    `SELECT '{ 1 , 2 , 3 }'::int[];`,
+				Expected: []sql.Row{{"{1,2,3}"}},
+			},
+			{
+				// A whitespace-only array body is still an empty array, not a single blank element.
+				Query:    `SELECT '{ }'::int[];`,
+				Expected: []sql.Row{{"{}"}},
+			},
+			{
+				Query:    `SELECT '{ NULL , 2 }'::int[];`,
+				Expected: []sql.Row{{"{NULL,2}"}},
+			},
+		},
+	},
+	{
 		Name: "2D array",
 		Skip: true, // multiple dimensions not supported yet
 		SetUpScript: []string{

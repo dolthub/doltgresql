@@ -19,6 +19,7 @@ import (
 	"math"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -460,4 +461,39 @@ func TestBindingJSONBExtractPathTextWithUntypedParam(t *testing.T) {
 	require.NoError(t, result.Err)
 	require.Len(t, result.Rows, 1)
 	assert.Equal(t, "1", string(result.Rows[0][0]))
+}
+
+// TestBindingExplicitCastToTimestamptzPreservesOffset is a regression test for
+// https://github.com/dolthub/doltgresql/issues/3093
+func TestBindingExplicitCastToTimestamptzPreservesOffset(t *testing.T) {
+	ctx, connection, controller := CreateServer(t, "postgres")
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	conn := connection.Default
+
+	_, err := connection.Exec(ctx, "CREATE TABLE t9 (id INT PRIMARY KEY, ts timestamptz);")
+	require.NoError(t, err)
+
+	// Use an offset that doesn't match the test server's local zone, so a bug that drops the
+	// offset entirely (rather than double-applying it) can't coincidentally still pass.
+	const text = "2026-08-21 12:00:00+05:00"
+	want := time.Date(2026, 8, 21, 12, 0, 0, 0, time.FixedZone("", 5*3600))
+	_, err = connection.Exec(ctx, "INSERT INTO t9 VALUES (1, $1)", want)
+	require.NoError(t, err)
+
+	// Standalone cast: the placeholder's inferred type must be timestamptz, not timestamp, so
+	// the embedded offset is honored rather than discarded.
+	var castBack time.Time
+	err = conn.QueryRow(ctx, "SELECT $1::timestamptz", text).Scan(&castBack)
+	require.NoError(t, err)
+	assert.True(t, castBack.Equal(want), "got %v, want %v", castBack, want)
+
+	// The same cast used in a WHERE clause comparison must match the stored row.
+	var count int
+	err = conn.QueryRow(ctx, "SELECT count(*) FROM t9 WHERE ts = $1::timestamptz", text).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
 }

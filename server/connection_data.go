@@ -160,7 +160,7 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 		case *pgexprs.ExplicitCast:
 			if bindVar, ok := e.Child().(*expression.BindVar); ok {
 				var typOid uint32
-				if doltgresType, ok := bindVar.Type(ctx).(*pgtypes.DoltgresType); ok {
+				if doltgresType, ok := e.Type(ctx).(*pgtypes.DoltgresType); ok {
 					typOid = id.Cache().ToOID(doltgresType.ID.AsId())
 				} else {
 					typOid, err = VitessTypeToObjectID(e.Type(ctx))

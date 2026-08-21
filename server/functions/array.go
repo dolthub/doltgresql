@@ -71,9 +71,16 @@ var array_in = framework.Function3{
 		input = input[1 : len(input)-1]
 		var values []any
 		sb := strings.Builder{}
+		pendingWS := strings.Builder{}
 		quoteStartCount := 0
 		quoteEndCount := 0
 		escaped := false
+		flushPendingWS := func() {
+			if sb.Len() > 0 {
+				sb.WriteString(pendingWS.String())
+			}
+			pendingWS.Reset()
+		}
 		// Iterate over each rune in the input to collect and process the rune elements
 		for _, r := range input {
 			if escaped {
@@ -91,16 +98,19 @@ var array_in = framework.Function3{
 			} else {
 				switch r {
 				case ' ', '\t', '\n', '\r':
-					continue
+					pendingWS.WriteRune(r)
 				case '\\':
+					flushPendingWS()
 					escaped = true
 				case '"':
+					flushPendingWS()
 					quoteStartCount++
 				case ',':
 					if quoteStartCount >= 2 {
 						// This is a malformed string, thus we treat it as a critical error.
 						return nil, errors.Errorf(`malformed array literal: "%s"`, input)
 					}
+					pendingWS.Reset()
 					str := sb.String()
 					var innerValue any
 					if quoteStartCount == 0 && strings.EqualFold(str, "null") {
@@ -121,6 +131,7 @@ var array_in = framework.Function3{
 					quoteStartCount = 0
 					quoteEndCount = 0
 				default:
+					flushPendingWS()
 					sb.WriteRune(r)
 				}
 			}
