@@ -4133,6 +4133,34 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/pull/3162
+			Name: "timestamp/timestamptz plus/minus interval errors on out-of-range results",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT timestamp '2026-01-01' + interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+				{
+					Query:       `SELECT timestamp '2026-01-01' - interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+				{
+					Query:       `SELECT timestamptz '2026-01-01+00' + interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+				{
+					// Confirms the session/connection survives an out-of-range error.
+					Query:    `SELECT timestamp '2026-01-01' + interval '1 day';`,
+					Expected: []sql.Row{{"2026-01-02 00:00:00"}},
+				},
+				{
+					// A large interval that stays within the supported range should still work.
+					Query:    `SELECT timestamp '2026-01-01' + interval '290000 years';`,
+					Expected: []sql.Row{{"292026-01-01 00:00:00"}},
+				},
+			},
+		},
 	})
 }
 
