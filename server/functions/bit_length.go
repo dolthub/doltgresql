@@ -15,6 +15,8 @@
 package functions
 
 import (
+	"math"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -24,6 +26,7 @@ import (
 // initBitLength registers the functions to the catalog.
 func initBitLength() {
 	framework.RegisterFunction(bit_length_text)
+	framework.RegisterFunction(bit_length_bit)
 }
 
 // bit_length_text represents the PostgreSQL function of the same name, taking the same parameters.
@@ -39,4 +42,27 @@ var bit_length_text = framework.Function1{
 		}
 		return result.(int32) * 8, nil
 	},
+}
+
+// bit_length_bit represents the PostgreSQL function of the same name, taking the same parameters.
+var bit_length_bit = framework.Function1{
+	Name:       "bit_length",
+	Return:     pgtypes.Int32,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bit},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		val1str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return bitStringLength(uint64(len(val1str)))
+	},
+}
+
+// bitStringLength converts a bit string's length to the int4 returned by PostgreSQL's bit string length functions.
+func bitStringLength(length uint64) (int32, error) {
+	if length > math.MaxInt32 {
+		return 0, pgtypes.ErrOutOfRange.New("integer")
+	}
+	return int32(length), nil
 }
