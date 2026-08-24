@@ -103,6 +103,49 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	return values, nil
 }
 
+// evalOidvectorCast evaluates a direct ARRAY[...] constructor as an oidvector. PostgreSQL permits this coercion for
+// constructors whose elements coerce to oid, but does not expose a general array-to-oidvector cast.
+func (array *Array) evalOidvectorCast(ctx *sql.Context, row sql.Row) (any, error) {
+	if len(array.children) == 0 {
+		return nil, errors.New("array is not a valid oidvector")
+	}
+
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]any, len(array.children))
+	for i, child := range array.children {
+		value, err := child.Eval(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		if value == nil {
+			return nil, errors.New("array is not a valid oidvector")
+		}
+		if _, nested := value.([]any); nested {
+			return nil, errors.New("array is not a valid oidvector")
+		}
+		sourceType, ok := child.Type(ctx).(*pgtypes.DoltgresType)
+		if !ok {
+			return nil, errors.New("array is not a valid oidvector")
+		}
+		cast, err := castsColl.GetImplicitCast(ctx, sourceType, pgtypes.Oid)
+		if err != nil {
+			return nil, err
+		}
+		if !cast.ID.IsValid() {
+			return nil, errors.New("array is not a valid oidvector")
+		}
+		result[i], err = cast.Eval(ctx, value, sourceType, pgtypes.Oid)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
 // IsNullable implements the sql.Expression interface.
 func (array *Array) IsNullable(ctx *sql.Context) bool {
 	// TODO: verify if this is actually nullable

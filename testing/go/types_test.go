@@ -2095,8 +2095,59 @@ var typesTests = []ScriptTest{
 		SetUpScript: []string{
 			"CREATE TABLE t_oidvector (id INTEGER primary key, v1 oidvector);",
 			"INSERT INTO t_oidvector VALUES (1, '1234 5678 9012'), (2, '556 778 223');",
+			"CREATE TABLE t_regtype_array (v regtype[]);",
+			"INSERT INTO t_regtype_array VALUES (ARRAY['integer'::regtype]);",
 		},
 		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY['character varying'::regtype]::oidvector;",
+				Expected: []sql.Row{{"1043"}},
+			},
+			{
+				Query:    "SELECT ARRAY['integer'::regtype, 'text'::regtype]::oidvector;",
+				Expected: []sql.Row{{"23 25"}},
+			},
+			{
+				Query:    "SELECT ARRAY[23::oid]::oidvector;",
+				Expected: []sql.Row{{"23"}},
+			},
+			{
+				Query: `SELECT ARRAY['pg_class'::regclass]::oidvector =
+					ARRAY['pg_class'::regclass::oid]::oidvector;`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    "SELECT ARRAY['textin'::regproc]::oidvector;",
+				Expected: []sql.Row{{"46"}},
+			},
+			{
+				Query:       "SELECT NULL::regtype[]::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT ARRAY[]::regtype[]::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY['integer'::regtype]::regtype[])::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT v::oidvector FROM t_regtype_array;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY['integer'::regtype] || ARRAY['text'::regtype])::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT ARRAY['integer'::regtype, NULL]::oidvector;",
+				ExpectedErr: "array is not a valid oidvector",
+			},
+			{
+				Query:       "SELECT ARRAY[ARRAY[23::oid]]::oidvector;",
+				ExpectedErr: "array is not a valid oidvector",
+			},
 			{
 				Query: "SELECT * FROM t_oidvector ORDER BY id;",
 				Expected: []sql.Row{

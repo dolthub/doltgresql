@@ -75,6 +75,9 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if !c.castToType.IsResolvedType() {
 		return nil, errors.Errorf("cannot call ExplicitCast.Eval with unresolved cast to type: %s", c.castToType.String())
 	}
+	if array, ok := c.sqlChild.(*Array); ok && c.castToType.ID == pgtypes.Oidvector.ID {
+		return array.evalOidvectorCast(ctx, row)
+	}
 
 	val, err := c.sqlChild.Eval(ctx, row)
 	if err != nil {
