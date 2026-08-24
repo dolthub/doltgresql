@@ -221,6 +221,7 @@ func Init() {
 	initTimezone()
 	initToChar()
 	initToHex()
+	initToJson()
 	initToRegclass()
 	initToRegproc()
 	initToRegtype()
