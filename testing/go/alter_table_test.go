@@ -611,6 +611,39 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3114
+			Name: "Rename table with a foreign key",
+			SetUpScript: []string{
+				"CREATE TABLE bug8_parent (id integer PRIMARY KEY);",
+				"CREATE TABLE bug8_child (id integer PRIMARY KEY, parent_id integer);",
+				"ALTER TABLE bug8_child ADD CONSTRAINT bug8_fk FOREIGN KEY (parent_id) REFERENCES bug8_parent(id);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE bug8_child RENAME TO bug8_child2;",
+				},
+				{
+					Query:    "INSERT INTO bug8_parent VALUES (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO bug8_child2 VALUES (1, 1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO bug8_child2 VALUES (2, 2);",
+					ExpectedErr: "Foreign key violation on fk: `bug8_fk`, table: `bug8_child2`, referenced table: `bug8_parent`, key: `[2]`",
+				},
+				{
+					Query: "ALTER TABLE bug8_parent RENAME TO bug8_parent2;",
+				},
+				{
+					Query:       "INSERT INTO bug8_child2 VALUES (3, 3);",
+					ExpectedErr: "Foreign key violation on fk: `bug8_fk`, table: `bug8_child2`, referenced table: `bug8_parent2`, key: `[3]`",
+				},
+			},
+		},
+		{
 			Name: "Rename table must not collide with other relation types",
 			SetUpScript: []string{
 				"CREATE TABLE src_tbl (pk int PRIMARY KEY, v1 int);",
