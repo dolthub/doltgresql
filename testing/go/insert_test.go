@@ -189,6 +189,157 @@ ON CONFLICT (id) do update set c1 = $4`,
 			},
 		},
 		{
+			Name: "on conflict do nothing only ignores uniqueness conflicts",
+			SetUpScript: []string{
+				"CREATE TABLE conflict_parent (id INT PRIMARY KEY)",
+				"CREATE TABLE conflict_child (id INT PRIMARY KEY, parent_id INT NOT NULL REFERENCES conflict_parent(id), positive INT CHECK (positive > 0))",
+				"CREATE TABLE self_referencing_child (id INT PRIMARY KEY, parent_id INT REFERENCES self_referencing_child(id))",
+				"CREATE TABLE secondary_unique_child (id INT PRIMARY KEY, unique_value INT UNIQUE, parent_id INT REFERENCES conflict_parent(id))",
+				"CREATE TABLE conflict_arbiter (id INT PRIMARY KEY, unique_value INT UNIQUE, a INT, b INT, UNIQUE (a, b))",
+				"CREATE TABLE invalid_conflict_target (id INT PRIMARY KEY, non_unique INT)",
+				"CREATE TABLE crossed_conflict (id INT PRIMARY KEY, unique_value INT UNIQUE)",
+				"CREATE TABLE crossed_keyless_conflict (a INT UNIQUE, b INT UNIQUE)",
+				"CREATE TABLE crossed_partial_conflict (a INT, b INT UNIQUE)",
+				"CREATE UNIQUE INDEX a_partial ON crossed_partial_conflict (a) WHERE b > 0",
+				"CREATE UNIQUE INDEX z_full ON crossed_partial_conflict (a)",
+				"INSERT INTO conflict_parent VALUES (1)",
+				"INSERT INTO conflict_child VALUES (1, 1, 1)",
+				"INSERT INTO secondary_unique_child VALUES (1, 10, 1)",
+				"INSERT INTO conflict_arbiter VALUES (1, 10, 20, 30)",
+				"INSERT INTO crossed_conflict VALUES (1, 10), (2, 20)",
+				"INSERT INTO crossed_keyless_conflict VALUES (1, 10), (2, 20)",
+				"INSERT INTO crossed_partial_conflict VALUES (1, 10), (2, 20)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "INSERT INTO conflict_child VALUES (2, 999, 1) ON CONFLICT DO NOTHING",
+					ExpectedErr:     "Foreign key violation",
+					ExpectedErrCode: "23503",
+				},
+				{
+					Query:           "INSERT INTO conflict_child VALUES (2, 1, -1) ON CONFLICT DO NOTHING",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query: "INSERT INTO conflict_child VALUES (1, 999, 1) ON CONFLICT DO NOTHING",
+				},
+				{
+					Query: "INSERT INTO secondary_unique_child VALUES (2, 10, 999) ON CONFLICT DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM secondary_unique_child ORDER BY id",
+					Expected: []sql.Row{
+						{1, 10, 1},
+					},
+				},
+				{
+					Query: "INSERT INTO conflict_arbiter VALUES (1, 11, 21, 31) ON CONFLICT (id) DO NOTHING",
+				},
+				{
+					Query:           "INSERT INTO conflict_arbiter VALUES (2, 10, 21, 31) ON CONFLICT (id) DO NOTHING",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO conflict_arbiter VALUES (2, 11, 20, 30) ON CONFLICT (a, b) DO NOTHING",
+				},
+				{
+					Query: "INSERT INTO conflict_arbiter VALUES (2, 10, 21, 31) ON CONFLICT DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM conflict_arbiter ORDER BY id",
+					Expected: []sql.Row{
+						{1, 10, 20, 30},
+					},
+				},
+				{
+					Query:           "INSERT INTO invalid_conflict_target VALUES (1, 10) ON CONFLICT (non_unique) DO NOTHING",
+					ExpectedErr:     "there is no unique or exclusion constraint matching the ON CONFLICT specification",
+					ExpectedErrCode: "42P10",
+				},
+				{
+					Query:           "INSERT INTO invalid_conflict_target VALUES (1, 10) ON CONFLICT (missing) DO NOTHING",
+					ExpectedErr:     `column "missing" could not be found in any table in scope`,
+					ExpectedErrCode: "42703",
+				},
+				{
+					Query: "SELECT * FROM invalid_conflict_target",
+				},
+				{
+					Query: "INSERT INTO crossed_conflict VALUES (1, 20) ON CONFLICT (id) DO NOTHING",
+				},
+				{
+					Query: "INSERT INTO crossed_conflict VALUES (1, 20) ON CONFLICT (unique_value) DO NOTHING",
+				},
+				{
+					Query: "INSERT INTO crossed_conflict VALUES (3, 30), (3, 10) ON CONFLICT (id) DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM crossed_conflict ORDER BY id",
+					Expected: []sql.Row{
+						{1, 10},
+						{2, 20},
+						{3, 30},
+					},
+				},
+				{
+					Query: "INSERT INTO crossed_keyless_conflict VALUES (3, 30), (3, 10) ON CONFLICT (a) DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM crossed_keyless_conflict ORDER BY a",
+					Expected: []sql.Row{
+						{1, 10},
+						{2, 20},
+						{3, 30},
+					},
+				},
+				{
+					Query: "INSERT INTO crossed_partial_conflict VALUES (3, -1), (3, 10) ON CONFLICT (a) DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM crossed_partial_conflict ORDER BY a",
+					Expected: []sql.Row{
+						{1, 10},
+						{2, 20},
+						{3, -1},
+					},
+				},
+				{
+					Query: "INSERT INTO self_referencing_child VALUES (1, 1) ON CONFLICT DO NOTHING",
+				},
+				{
+					Query: "SELECT * FROM self_referencing_child",
+					Expected: []sql.Row{
+						{1, 1},
+					},
+				},
+				{
+					Query:    "INSERT INTO conflict_child VALUES (1, 1, 1), (2, 1, 1) ON CONFLICT DO NOTHING RETURNING id",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query: "SELECT * FROM conflict_child ORDER BY id",
+					Expected: []sql.Row{
+						{1, 1, 1},
+						{2, 1, 1},
+					},
+				},
+				{
+					Query:           "INSERT INTO conflict_child VALUES (2, 1, 1), (3, 999, 1) ON CONFLICT DO NOTHING",
+					ExpectedErr:     "Foreign key violation",
+					ExpectedErrCode: "23503",
+				},
+				{
+					Query: "SELECT * FROM conflict_child ORDER BY id",
+					Expected: []sql.Row{
+						{1, 1, 1},
+						{2, 1, 1},
+					},
+				},
+			},
+		},
+		{
 			Name: "null and unspecified default values",
 			SetUpScript: []string{
 				"CREATE TABLE t (i INT DEFAULT NULL, j INT)",

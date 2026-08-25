@@ -1767,6 +1767,9 @@ func castSQLError(err error) *pgconn.PgError {
 	// TODO: should update the error message to match Postgres
 	var code pgcode.Code
 	switch {
+	// Class 42 — Syntax Error or Access Rule Violation
+	case sql.ErrInsertConflictTarget.Is(err):
+		code = pgcode.InvalidColumnReference
 	// Class 0A — Feature Not Supported
 	case sql.ErrUnsupportedFeature.Is(err), sql.ErrUnsupportedSyntax.Is(err):
 		code = pgcode.FeatureNotSupported

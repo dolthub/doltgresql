@@ -134,7 +134,6 @@ func transformUpdate(stmt *sqlparser.Update) ([]string, bool) {
 			Select: selectClause,
 		},
 		OnConflict: &tree.OnConflict{
-			Columns:   tree.NameList{tree.Name("fake")}, // placeholder, see transformInsert
 			DoNothing: true,
 		},
 		Returning: &tree.NoReturningClause{},
@@ -264,7 +263,6 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		rows := rowsForInsert(stmt.Rows)
 
 		onConflict := tree.OnConflict{
-			Columns:   tree.NameList{tree.Name("fake")}, // column list ignored but must be present for valid syntax
 			DoNothing: true,
 		}
 
@@ -2397,19 +2395,19 @@ func TestUpdateIgnoreConversion(t *testing.T) {
 		{
 			input: "UPDATE IGNORE mytable SET i = 2 WHERE i = 1",
 			expected: []string{
-				"INSERT INTO mytable(i) SELECT 2 FROM mytable WHERE i = 1 ON CONFLICT (fake) DO NOTHING",
+				"INSERT INTO mytable(i) SELECT 2 FROM mytable WHERE i = 1 ON CONFLICT DO NOTHING",
 			},
 		},
 		{
 			input: "UPDATE IGNORE pkTable SET pk = pk + 1, val = val + 1",
 			expected: []string{
-				`INSERT INTO "pkTable"(pk, val) SELECT pk + 1, val + 1 FROM "pkTable" ON CONFLICT (fake) DO NOTHING`,
+				`INSERT INTO "pkTable"(pk, val) SELECT pk + 1, val + 1 FROM "pkTable" ON CONFLICT DO NOTHING`,
 			},
 		},
 		{
 			input: "UPDATE IGNORE t1 SET v1 = v1 + 5 WHERE pk > 3",
 			expected: []string{
-				"INSERT INTO t1(v1) SELECT v1 + 5 FROM t1 WHERE pk > 3 ON CONFLICT (fake) DO NOTHING",
+				"INSERT INTO t1(v1) SELECT v1 + 5 FROM t1 WHERE pk > 3 ON CONFLICT DO NOTHING",
 			},
 		},
 	}
