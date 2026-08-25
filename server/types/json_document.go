@@ -16,6 +16,7 @@ package types
 
 import (
 	"bytes"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -230,12 +231,8 @@ func JsonValueFormatter(sb *strings.Builder, value JsonValue) {
 
 // UnmarshalToJsonDocument converts a JSON document byte slice into the actual JSON document.
 func UnmarshalToJsonDocument(val []byte) (JsonDocument, error) {
-	var decoded interface{}
-	decoder := json.NewDecoder(bytes.NewReader(val))
-	// UseNumber causes JSON numbers to be decoded as json.Number (string-backed) instead of
-	// float64, which ensures we preserve values and precision.
-	decoder.UseNumber()
-	if err := decoder.Decode(&decoded); err != nil {
+	decoded, err := DecodeJSONValue(val)
+	if err != nil {
 		return JsonDocument{}, err
 	}
 	jsonValue, err := ConvertToJsonDocument(decoded)
@@ -243,6 +240,56 @@ func UnmarshalToJsonDocument(val []byte) (JsonDocument, error) {
 		return JsonDocument{}, err
 	}
 	return JsonDocument{Value: jsonValue}, nil
+}
+
+// DecodeJSONValue parses JSON into the native representation used by GMS while preserving
+// JSON numbers as arbitrary-precision decimals instead of lossy float64 values.
+func DecodeJSONValue(val []byte) (any, error) {
+	var decoded any
+	decoder := json.NewDecoder(bytes.NewReader(val))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return nil, errors.New("invalid trailing JSON value")
+		}
+		return nil, err
+	}
+	return convertJSONNumbers(decoded)
+}
+
+func convertJSONNumbers(val any) (any, error) {
+	switch val := val.(type) {
+	case map[string]any:
+		for key, item := range val {
+			converted, err := convertJSONNumbers(item)
+			if err != nil {
+				return nil, err
+			}
+			val[key] = converted
+		}
+		return val, nil
+	case []any:
+		for i, item := range val {
+			converted, err := convertJSONNumbers(item)
+			if err != nil {
+				return nil, err
+			}
+			val[i] = converted
+		}
+		return val, nil
+	case json.Number:
+		decimal, _, err := apd.NewFromString(val.String())
+		if err != nil {
+			return nil, err
+		}
+		return decimal, nil
+	default:
+		return val, nil
+	}
 }
 
 // ConvertToJsonDocument recursively constructs a valid JsonDocument based on the structures returned by the decoder.
