@@ -5186,6 +5186,96 @@ ORDER BY sp.r, pg_type.oid DESC;`,
 				},
 			},
 			{
+				Name: "generate_subscripts as table function with scalar alias",
+				SetUpScript: []string{
+					"CREATE TABLE array_alias_test (id INT primary key, values_array INT[]);",
+					"INSERT INTO array_alias_test VALUES (1, ARRAY[10, 20, 30]), (2, NULL), (3, ARRAY[]::INT[]);",
+					`CREATE OR REPLACE FUNCTION calculate_bonus(
+    IN current_salary NUMERIC,
+    OUT bonus_amount NUMERIC,
+    OUT new_total_salary NUMERIC
+) AS $$
+BEGIN
+    bonus_amount := current_salary * 0.10;
+    new_total_salary := current_salary + bonus_amount;
+END;
+$$ LANGUAGE plpgsql;`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "SELECT k FROM generate_subscripts(ARRAY[1, 2, 3], 1) AS k;",
+						Expected: []sql.Row{
+							{1}, {2}, {3},
+						},
+					},
+					{
+						Query:    "SELECT ARRAY(SELECT k + 1 FROM generate_subscripts(ARRAY[10, 20, 30], 1) AS k ORDER BY k);",
+						Expected: []sql.Row{{"{2,3,4}"}},
+					},
+					{
+						Query: "SELECT ARRAY(SELECT values_array[k] + 1 FROM generate_subscripts(values_array, 1) AS k ORDER BY k) FROM array_alias_test WHERE id = 1;",
+						Expected: []sql.Row{
+							{"{11,21,31}"},
+						},
+					},
+					{
+						Query:    "SELECT k FROM generate_subscripts(NULL::INT[], 1) AS k ORDER BY k;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT k FROM generate_subscripts(ARRAY[]::INT[], 1) AS k ORDER BY k;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT k FROM generate_subscripts(ARRAY[10, 20]::INT[], NULL::INT) AS k ORDER BY k;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT generate_subscripts(NULL::INT[], 1);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT idx FROM generate_subscripts(NULL::INT[], 1) AS k(idx) ORDER BY idx;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT id, ARRAY(SELECT k FROM generate_subscripts(values_array, 1) AS k ORDER BY k) FROM array_alias_test ORDER BY id;",
+						Expected: []sql.Row{{1, "{1,2,3}"}, {2, "{}"}, {3, "{}"}},
+					},
+					{
+						Query: "SELECT c.bonus_amount, c.new_total_salary, k FROM calculate_bonus(5000) AS c CROSS JOIN generate_subscripts(ARRAY[10,20], 1) AS k ORDER BY k;",
+						Expected: []sql.Row{
+							{Numeric("500.00"), Numeric("5500.00"), 1},
+							{Numeric("500.00"), Numeric("5500.00"), 2},
+						},
+					},
+					{
+						Query:    "SELECT c.bonus_amount, c.new_total_salary FROM calculate_bonus(5000) AS c;",
+						Expected: []sql.Row{{Numeric("500.00"), Numeric("5500.00")}},
+					},
+					{
+						Query: "SELECT k, c.bonus_amount, c.new_total_salary FROM generate_subscripts(ARRAY[10,20], 1) AS k CROSS JOIN calculate_bonus(5000) AS c ORDER BY k;",
+						Expected: []sql.Row{
+							{1, Numeric("500.00"), Numeric("5500.00")},
+							{2, Numeric("500.00"), Numeric("5500.00")},
+						},
+					},
+					{
+						Query: "SELECT k, j FROM generate_subscripts(ARRAY[10,20], 1) AS k CROSS JOIN generate_subscripts(ARRAY[30,40], 1) AS j ORDER BY k, j;",
+						Expected: []sql.Row{
+							{1, 1}, {1, 2}, {2, 1}, {2, 2},
+						},
+					},
+					{
+						Query: "SELECT c.bonus, c.total, k.idx FROM calculate_bonus(5000) AS c(bonus,total) CROSS JOIN generate_subscripts(ARRAY[10,20], 1) AS k(idx) ORDER BY k.idx;",
+						Expected: []sql.Row{
+							{Numeric("500.00"), Numeric("5500.00"), 1},
+							{Numeric("500.00"), Numeric("5500.00"), 2},
+						},
+					},
+				},
+			},
+			{
 				Name: "generate_subscripts with join",
 				SetUpScript: []string{
 					"CREATE TABLE t1 (a INT[]);",
