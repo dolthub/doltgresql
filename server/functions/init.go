@@ -100,6 +100,7 @@ func Init() {
 	initChr()
 	initColDescription()
 	initConcat()
+	initConvertTo()
 	initCos()
 	initCosd()
 	initCosh()
