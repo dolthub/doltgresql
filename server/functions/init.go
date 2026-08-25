@@ -125,6 +125,7 @@ func Init() {
 	initGetdatabaseencoding()
 	initHasDatabasePrivilege()
 	initHasSchemaPrivilege()
+	initHashText()
 	initInitcap()
 	initLcm()
 	initLeft()
