@@ -100,7 +100,11 @@ func valueToJsonRaw(ctx *sql.Context, elemType *pgtypes.DoltgresType, val any) (
 	if val == nil {
 		return json.RawMessage("null"), nil
 	}
-	if v, ok := val.(pgtypes.JsonDocument); ok {
+	switch v := val.(type) {
+	case types.JSONBytes:
+		bytes, err := v.GetBytes(ctx)
+		return json.RawMessage(bytes), err
+	case pgtypes.JsonDocument:
 		sb := strings.Builder{}
 		pgtypes.JsonValueFormatter(&sb, v.Value)
 		return json.RawMessage(sb.String()), nil

@@ -40,18 +40,18 @@ func jsonbGetInterface(ctx *sql.Context, val any) (any, error) {
 	case sql.JSONWrapper:
 		return v.ToInterface(ctx)
 	case sql.StringWrapper:
-		var result any
 		s, err := v.Unwrap(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal([]byte(s), &result); err != nil {
+		result, err := pgtypes.DecodeJSONValue([]byte(s))
+		if err != nil {
 			return nil, errors.Errorf("invalid JSON: %v", err)
 		}
 		return result, nil
 	case string:
-		var result any
-		if err := json.Unmarshal([]byte(v), &result); err != nil {
+		result, err := pgtypes.DecodeJSONValue([]byte(v))
+		if err != nil {
 			return nil, errors.Errorf("invalid JSON: %v", err)
 		}
 		return result, nil

@@ -15,8 +15,9 @@
 package functions
 
 import (
+	"bytes"
+	"context"
 	"fmt"
-	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -27,6 +28,31 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
 )
+
+// preciseJSONDocument retains the original bytes for storage while exposing a parsed value
+// whose numbers have not been converted through float64.
+type preciseJSONDocument struct {
+	bytes []byte
+	value any
+}
+
+func (d *preciseJSONDocument) Clone(context.Context) sql.JSONWrapper {
+	bytes := append([]byte(nil), d.bytes...)
+	value, err := pgtypes.DecodeJSONValue(bytes)
+	if err != nil {
+		// The bytes were validated when this document was created.
+		return &preciseJSONDocument{bytes: bytes, value: d.value}
+	}
+	return &preciseJSONDocument{bytes: bytes, value: value}
+}
+
+func (d *preciseJSONDocument) ToInterface(context.Context) (any, error) {
+	return d.value, nil
+}
+
+func (d *preciseJSONDocument) GetBytes(context.Context) ([]byte, error) {
+	return d.bytes, nil
+}
 
 // jsonWrapperToFormattedString converts a sql.JSONWrapper to a formatted JSON string with spaces (JSONB format).
 func jsonWrapperToFormattedString(ctx *sql.Context, val sql.JSONWrapper) (string, error) {
@@ -88,15 +114,22 @@ func json_in_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (an
 	if err != nil {
 		return nil, err
 	}
-	var jsonVal any
-	err = json.Unmarshal(unsafe.Slice(unsafe.StringData(input), len(input)), &jsonVal)
+	jsonVal, err := pgtypes.DecodeJSONValue([]byte(input))
 	if err != nil {
 		if len(input) > 10 {
 			input = input[:10] + "..."
 		}
 		return nil, pgtypes.ErrInvalidSyntaxForType.New("json", input)
 	}
-	return types.JSONDocument{Val: jsonVal}, nil
+	formatted, err := types.JSONDocument{Val: jsonVal}.JSONString()
+	if err != nil {
+		return nil, err
+	}
+	var compact bytes.Buffer
+	if err = json.Compact(&compact, []byte(formatted)); err != nil {
+		return nil, err
+	}
+	return &preciseJSONDocument{bytes: compact.Bytes(), value: jsonVal}, nil
 }
 
 // json_out represents the PostgreSQL function of json type IO output.
