@@ -1360,6 +1360,47 @@ ORDER BY schema_name, table_name;`,
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3082
+			Name: "duplicate key handling after ADD COLUMN with an expression index",
+			SetUpScript: []string{
+				"CREATE TABLE expression_index_alter (id int PRIMARY KEY, name text UNIQUE);",
+				"CREATE INDEX expression_index_alter_lower_name ON expression_index_alter ((lower(name)));",
+				"ALTER TABLE expression_index_alter ADD COLUMN extra timestamptz;",
+				"INSERT INTO expression_index_alter (id, name) VALUES (1, 'v1');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (1, 'duplicate');",
+					ExpectedErr: "duplicate primary key",
+				},
+				{
+					// Verify the secondary UNIQUE index uses the remapped row shape too.
+					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (2, 'v1');",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'v2') ON CONFLICT (id) DO UPDATE SET name = 'v2';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (2, 'v2');",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'ignored') ON CONFLICT DO NOTHING;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'ignored') ON CONFLICT (id) DO NOTHING;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, name, extra FROM expression_index_alter;",
+					Expected: []sql.Row{{1, "v2", nil}},
+				},
+			},
+		},
+		{
 			Name: "ALTER TABLE with MATCH FULL on foreign key",
 			SetUpScript: []string{
 				`CREATE TABLE parent_table (parent_id INT, sub_id INT, name TEXT, PRIMARY KEY (parent_id, sub_id));`,
