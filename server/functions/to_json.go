@@ -21,27 +21,23 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// initPgCharToEncoding registers the functions to the catalog.
-func initPgCharToEncoding() {
-	framework.RegisterFunction(pg_char_to_encoding_name)
+// initToJson registers the functions to the catalog.
+func initToJson() {
+	framework.RegisterFunction(to_json_anyelement)
 }
 
-// pg_char_to_encoding_name represents the PostgreSQL system catalog information function.
-var pg_char_to_encoding_name = framework.Function1{
-	Name:               "pg_char_to_encoding",
-	Return:             pgtypes.Int32,
-	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Name},
+// to_json_anyelement represents the PostgreSQL function of the same name, taking the same parameters.
+var to_json_anyelement = framework.Function1{
+	Name:               "to_json",
+	Return:             pgtypes.Json,
+	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.AnyElement},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		valStr, err := framework.UnwrapString(ctx, val)
+	Callable: func(ctx *sql.Context, paramsAndReturn [2]*pgtypes.DoltgresType, val any) (any, error) {
+		raw, err := valueToJsonRaw(ctx, paramsAndReturn[0], val)
 		if err != nil {
 			return nil, err
 		}
-		definition := lookupPostgresEncoding(valStr)
-		if definition == nil {
-			return int32(-1), nil
-		}
-		return definition.id, nil
+		return string(raw), nil
 	},
 }

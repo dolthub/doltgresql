@@ -1060,6 +1060,18 @@ func (t *DoltgresType) String() string {
 	return str
 }
 
+// SchemaQualifiedString returns String with a schema qualifier for types outside `pg_catalog`. Persisted expressions
+// are re-parsed under whatever search path is in effect later, which may not reach the type's schema, or may match its
+// bare name in more than one schema.
+func (t *DoltgresType) SchemaQualifiedString() string {
+	str := t.String()
+	schema := t.ID.SchemaName()
+	if schema == "" || schema == "pg_catalog" {
+		return str
+	}
+	return fmt.Sprintf("%s.%s", schema, str)
+}
+
 // SubscriptFuncName returns the name that would be displayed in pg_type for the `typsubscript` field.
 func (t *DoltgresType) SubscriptFuncName() string {
 	return globalFunctionRegistry.GetString(t.SubscriptFunc)

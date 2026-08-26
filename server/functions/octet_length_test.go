@@ -23,12 +23,12 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-func TestBitStringLength(t *testing.T) {
-	result, err := bitStringLength(math.MaxInt32)
+func TestLengthToInt32(t *testing.T) {
+	result, err := lengthToInt32(math.MaxInt32)
 	require.NoError(t, err)
 	require.Equal(t, int32(math.MaxInt32), result)
 
-	result, err = bitStringLength(math.MaxInt32 + 1)
+	result, err = lengthToInt32(math.MaxInt32 + 1)
 	require.Zero(t, result)
 	require.Error(t, err)
 	require.True(t, pgtypes.ErrOutOfRange.Is(err))

@@ -15,8 +15,6 @@
 package functions
 
 import (
-	"math"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -26,6 +24,7 @@ import (
 // initBitLength registers the functions to the catalog.
 func initBitLength() {
 	framework.RegisterFunction(bit_length_text)
+	framework.RegisterFunction(bit_length_bytea)
 	framework.RegisterFunction(bit_length_bit)
 }
 
@@ -35,12 +34,19 @@ var bit_length_text = framework.Function1{
 	Return:     pgtypes.Int32,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, t [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		result, err := octet_length_text.Callable(ctx, t, val1)
-		if err != nil {
-			return nil, err
-		}
-		return result.(int32) * 8, nil
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		return valueBitLength(ctx, val1)
+	},
+}
+
+// bit_length_bytea represents the PostgreSQL function of the same name, taking the same parameters.
+var bit_length_bytea = framework.Function1{
+	Name:       "bit_length",
+	Return:     pgtypes.Int32,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Bytea},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		return valueBitLength(ctx, val1)
 	},
 }
 
@@ -55,14 +61,15 @@ var bit_length_bit = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		return bitStringLength(uint64(len(val1str)))
+		return lengthToInt32(int64(len(val1str)))
 	},
 }
 
-// bitStringLength converts a bit string's length to the int4 returned by PostgreSQL's bit string length functions.
-func bitStringLength(length uint64) (int32, error) {
-	if length > math.MaxInt32 {
-		return 0, pgtypes.ErrOutOfRange.New("integer")
+// valueBitLength returns the number of bits in a string- or bytes-typed value, which is its byte length times eight.
+func valueBitLength(ctx *sql.Context, val any) (int32, error) {
+	length, err := framework.UnwrapByteLength(ctx, val)
+	if err != nil {
+		return 0, err
 	}
-	return int32(length), nil
+	return lengthToInt32(length * 8)
 }
