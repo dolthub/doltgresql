@@ -1844,6 +1844,119 @@ func TestJsonFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "to_json",
+			SetUpScript: []string{
+				`SET TIME ZONE 'UTC'`,
+				`SET DateStyle = 'SQL, MDY'`,
+				`CREATE TABLE to_json_test (id int4, label text)`,
+				`INSERT INTO to_json_test VALUES (7, 'named')`,
+				`CREATE DOMAIN to_json_int_domain AS int4`,
+				`CREATE DOMAIN to_json_oid_domain AS oid`,
+				`CREATE DOMAIN to_json_json_domain AS json`,
+				`CREATE DOMAIN to_json_int_array_domain AS int4[]`,
+				`CREATE TYPE to_json_named_record AS (id int4, label text)`,
+				`CREATE DOMAIN to_json_named_record_domain AS to_json_named_record`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT to_json(E'quote " slash \\ newline\n'::text)`,
+					Expected: []sql.Row{{`"quote \" slash \\ newline\n"`}},
+				},
+				{
+					Query:    `SELECT to_json(42::int4)`,
+					Expected: []sql.Row{{"42"}},
+				},
+				{
+					Query:    `SELECT pg_typeof(to_json(42)), pg_typeof(array_to_json(ARRAY[1])), pg_typeof(row_to_json(ROW(1)))`,
+					Expected: []sql.Row{{"json", "json", "json"}},
+				},
+				{
+					Query:    `SELECT to_json(123.450::numeric)`,
+					Expected: []sql.Row{{"123.450"}},
+				},
+				{
+					Query:    `SELECT to_json('NaN'::numeric), to_json('Infinity'::numeric), to_json('-Infinity'::numeric)`,
+					Expected: []sql.Row{{`"NaN"`, `"Infinity"`, `"-Infinity"`}},
+				},
+				{
+					Query:    `SELECT to_json(1.25::float8), to_json('NaN'::float8), to_json('Infinity'::float8), to_json('-Infinity'::float8)`,
+					Expected: []sql.Row{{"1.25", `"NaN"`, `"Infinity"`, `"-Infinity"`}},
+				},
+				{
+					Query:    `SELECT to_json(1e20::float8), to_json(1e-7::float8)`,
+					Expected: []sql.Row{{"1e+20", "1e-07"}},
+				},
+				{
+					Query:    `SELECT to_json(true)`,
+					Expected: []sql.Row{{"true"}},
+				},
+				{
+					Query:    `SELECT to_json(DATE '2024-02-29')`,
+					Expected: []sql.Row{{`"2024-02-29"`}},
+				},
+				{
+					Query:    `SELECT to_json(TIMESTAMP '2024-02-29 12:34:56.123456')`,
+					Expected: []sql.Row{{`"2024-02-29T12:34:56.123456"`}},
+				},
+				{
+					Query:    `SELECT to_json(TIMESTAMPTZ '2024-02-29 12:34:56.123456+05:30')`,
+					Expected: []sql.Row{{`"2024-02-29T07:04:56.123456+00:00"`}},
+				},
+				{
+					Query:    `SELECT to_json(DATE '0001-01-01 BC'), to_json(TIMESTAMP '0001-01-01 12:34:56.123456 BC'), to_json(TIMESTAMPTZ '0001-01-01 12:34:56.123456+00 BC')`,
+					Expected: []sql.Row{{`"0001-01-01 BC"`, `"0001-01-01T12:34:56.123456 BC"`, `"0001-01-01T12:34:56.123456+00:00 BC"`}},
+				},
+				{
+					Query:    `SELECT to_json('550e8400-e29b-41d4-a716-446655440000'::uuid)`,
+					Expected: []sql.Row{{`"550e8400-e29b-41d4-a716-446655440000"`}},
+				},
+				{
+					Query:    `SELECT to_json(23::oid), to_json('pg_class'::regclass), to_json('42'::xid)`,
+					Expected: []sql.Row{{`"23"`, `"pg_class"`, `"42"`}},
+				},
+				{
+					Query:    `SELECT to_json(7::to_json_int_domain), to_json(23::to_json_oid_domain)`,
+					Expected: []sql.Row{{"7", `"23"`}},
+				},
+				{
+					Query:    `SELECT to_json(ARRAY[1, NULL, 3]::to_json_int_array_domain)`,
+					Expected: []sql.Row{{`[1,null,3]`}},
+				},
+				{
+					Query:    `SELECT to_json((ROW(7, 'named')::to_json_named_record)::to_json_named_record_domain)`,
+					Expected: []sql.Row{{`{"id":7,"label":"named"}`}},
+				},
+				{
+					Query:    `SELECT to_json('{"b": 2, "a":1}'::json), to_json('{"b": 2, "a":1}'::jsonb)`,
+					Expected: []sql.Row{{`{"b": 2, "a":1}`, `{"a": 1, "b": 2}`}},
+				},
+				{
+					Query:    `SELECT to_json('{"b": 2, "a":1}'::to_json_json_domain)`,
+					Expected: []sql.Row{{`{"b": 2, "a":1}`}},
+				},
+				{
+					Query:    `SELECT to_json(E'\\x00ff'::bytea), to_json(INTERVAL '1 day 02:03:04.5')`,
+					Expected: []sql.Row{{`"\\x00ff"`, `"1 day 02:03:04.5"`}},
+				},
+				{
+					Query:    `SELECT to_json(ARRAY[1, NULL, 3]::int4[])`,
+					Expected: []sql.Row{{`[1,null,3]`}},
+				},
+				{
+					Query:    `SELECT to_json(ROW(1, 'x'::text, NULL::bool))`,
+					Expected: []sql.Row{{`{"f1":1,"f2":"x","f3":null}`}},
+				},
+				{
+					Query:    `SELECT to_json(t) FROM to_json_test t`,
+					Expected: []sql.Row{{`{"id":7,"label":"named"}`}},
+				},
+				{
+					Query:    `SELECT to_json(NULL::text)`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
 			Name: "row_to_json anonymous row",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1937,8 +2050,16 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{"[1.5,2.5]"}},
 				},
 				{
+					Query:    `SELECT array_to_json(ARRAY[1e20::float8, 1e-7::float8])`,
+					Expected: []sql.Row{{"[1e+20,1e-07]"}},
+				},
+				{
 					Query:    `SELECT array_to_json(ARRAY[true, false])`,
 					Expected: []sql.Row{{"[true,false]"}},
+				},
+				{
+					Query:    `SELECT array_to_json(ARRAY[DATE '2024-02-29', DATE '2025-01-01'])`,
+					Expected: []sql.Row{{`["2024-02-29","2025-01-01"]`}},
 				},
 				{
 					Query:    `SELECT array_to_json(ARRAY['a', 'b', 'c'])`,
@@ -1949,7 +2070,7 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{"[1,null,3]"}},
 				},
 				{
-					Skip:     true, // TODO: multidimensional array literals are not yet supported
+					Skip:     true, // TODO: https://github.com/dolthub/doltgresql/issues/3183
 					Query:    `SELECT array_to_json('{{1,2},{3,4}}'::int[])`,
 					Expected: []sql.Row{{"[[1,2],[3,4]]"}},
 				},
