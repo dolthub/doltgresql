@@ -166,12 +166,9 @@ func TestAdaptiveEncodingGarbageCollection(t *testing.T) {
 					Expected: []sql.Row{{0}},
 				},
 				{
-					// BUG: the ProllyTreeNode message format records chunk references for value
-					// tuples (value_address_offsets) but has no equivalent field for key tuples, so
-					// the reachability walk used by gc (and push and clone) never visits chunks
-					// referenced only from keys. gc deletes them, and this query panics with "empty
-					// chunk returned from ChunkStore". Unskip once key-side references are tracked.
-					Skip:     true,
+					// out-of-band key chunks are tracked via the key_address_offsets field of
+					// leaf nodes, so the reachability walk used by gc (and push and clone)
+					// retains them
 					Query:    `select count(*) from tk where length(big) = 20000;`,
 					Username: "postgres",
 					Password: "password",
