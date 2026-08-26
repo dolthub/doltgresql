@@ -36,11 +36,12 @@ type Stats struct {
 	Chunks uint64
 	// LeafChunks is the number of leaf node chunks in the subtree.
 	LeafChunks uint64
-	// CorruptChunks is the number of leaf chunks with at least one missing value address offset.
+	// CorruptChunks is the number of leaf chunks with at least one missing key or value address offset.
 	CorruptChunks uint64
 	// Rows is the total number of rows in the subtree.
 	Rows uint64
-	// CorruptRows is the number of rows with at least one out-of-band value missing from value_address_offsets.
+	// CorruptRows is the number of rows with at least one out-of-band value missing from the node's
+	// recorded key or value address offsets.
 	CorruptRows uint64
 	// AdaptiveValues is the number of non-NULL adaptive-encoded values in value tuples.
 	AdaptiveValues uint64
@@ -55,9 +56,11 @@ type Stats struct {
 	// KeyAdaptiveValues is the number of non-NULL adaptive-encoded values in key tuples.
 	KeyAdaptiveValues uint64
 	// KeyOutOfBandValues is the number of adaptive-encoded values stored out-of-band in key tuples.
-	// The ProllyTreeNode message format has no field to record key address offsets, so these references
-	// are invisible to push/clone/GC regardless of which release wrote the node. Reported for visibility.
 	KeyOutOfBandValues uint64
+	// KeyCorruptValues is the number of expected chunk address references missing from the node's
+	// key_address_offsets field. Nodes written before that field existed record no key addresses at
+	// all, so any out-of-band key value they hold counts here.
+	KeyCorruptValues uint64
 	// MissingChunks is the number of out-of-band values (key or value side) whose chunks are absent from
 	// the chunk store. These values are already lost (e.g. to a previous GC) and cannot be repaired by
 	// rewriting nodes.
@@ -77,6 +80,7 @@ func (s *Stats) Add(o *Stats) {
 	s.UnexpectedOffsets += o.UnexpectedOffsets
 	s.KeyAdaptiveValues += o.KeyAdaptiveValues
 	s.KeyOutOfBandValues += o.KeyOutOfBandValues
+	s.KeyCorruptValues += o.KeyCorruptValues
 	s.MissingChunks += o.MissingChunks
 }
 
@@ -237,8 +241,8 @@ func ChildAddresses(pm *serial.ProllyTreeNode) []hash.Hash {
 // value_address_offsets field.
 type LeafAnalysis struct {
 	Stats Stats
-	// Corrupt is true when at least one expected offset is missing from value_address_offsets;
-	// such nodes must be rewritten to be repaired.
+	// Corrupt is true when at least one expected offset is missing from value_address_offsets or
+	// key_address_offsets; such nodes must be rewritten to be repaired.
 	Corrupt bool
 	// ValueOOBAddrs are the chunk addresses referenced from value tuples (out-of-band adaptive values
 	// and address-encoded fields).
@@ -247,9 +251,9 @@ type LeafAnalysis struct {
 	KeyOOBAddrs []hash.Hash
 }
 
-// AnalyzeLeaf recomputes the expected value_address_offsets for a leaf node from its value tuples,
-// mirroring the (fixed) serializer logic in dolt's go/store/prolly/message package, and compares the
-// result against the offsets actually recorded in the message.
+// AnalyzeLeaf recomputes the expected value_address_offsets and key_address_offsets for a leaf node
+// from its tuples, mirroring the (fixed) serializer logic in dolt's go/store/prolly/message package,
+// and compares the result against the offsets actually recorded in the message.
 func AnalyzeLeaf(pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (*LeafAnalysis, error) {
 	la := &LeafAnalysis{}
 
@@ -261,100 +265,103 @@ func AnalyzeLeaf(pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (*LeafAnalysi
 		return nil, errors.Errorf("leaf node has %d keys but %d values", n, pm.ValueOffsetsLength()-1)
 	}
 
-	// recorded maps each recorded offset to the number of times it occurs (offsets are unique in
-	// practice, but count matching makes the comparison exact).
-	recorded := make(map[uint16]int, pm.ValueAddressOffsetsLength())
-	for i := 0; i < pm.ValueAddressOffsetsLength(); i++ {
-		recorded[pm.ValueAddressOffsets(i)]++
-	}
-	matched := 0
+	valueSide := analyzeTupleAddresses(vd, pm.ValueItemsBytes(), pm.ValueOffsets, n,
+		recordedOffsets(pm.ValueAddressOffsetsLength(), pm.ValueAddressOffsets))
+	keySide := analyzeTupleAddresses(kd, pm.KeyItemsBytes(), pm.KeyOffsets, n,
+		recordedOffsets(pm.KeyAddressOffsetsLength(), pm.KeyAddressOffsets))
 
-	valueItems := pm.ValueItemsBytes()
+	la.Stats.AdaptiveValues = valueSide.adaptiveValues
+	la.Stats.OutOfBandValues = valueSide.outOfBandValues
+	la.Stats.CorruptValues = valueSide.corruptValues
+	la.ValueOOBAddrs = valueSide.oobAddrs
+	la.Stats.KeyAdaptiveValues = keySide.adaptiveValues
+	la.Stats.KeyOutOfBandValues = keySide.outOfBandValues
+	la.Stats.KeyCorruptValues = keySide.corruptValues
+	la.KeyOOBAddrs = keySide.oobAddrs
+
+	la.Stats.Rows = uint64(n)
 	for i := 0; i < n; i++ {
-		start := int(pm.ValueOffsets(i))
-		end := int(pm.ValueOffsets(i + 1))
-		tup := val.Tuple(valueItems[start:end])
-		rowCorrupt := false
-
-		val.IterAddressFields(vd, func(j int, t val.Type) {
-			field := tup.GetField(j)
-			if len(field) == 0 || hash.New(field).IsEmpty() {
-				return
-			}
-			la.ValueOOBAddrs = append(la.ValueOOBAddrs, hash.New(field))
-			off, _ := tup.GetOffset(j)
-			expected := uint16(start + off)
-			if recorded[expected] > 0 {
-				recorded[expected]--
-				matched++
-			} else {
-				la.Stats.CorruptValues++
-				rowCorrupt = true
-			}
-		})
-
-		val.IterAdaptiveFields(vd, func(j int, t val.Type) {
-			field := tup.GetField(j)
-			av := val.AdaptiveValue(field)
-			if av.IsNull() {
-				return
-			}
-			la.Stats.AdaptiveValues++
-			if !av.IsOutOfBand() {
-				return
-			}
-			la.Stats.OutOfBandValues++
-			if addr, err := av.OutOfBandAddr(); err == nil {
-				la.ValueOOBAddrs = append(la.ValueOOBAddrs, addr)
-			}
-			// Out-of-band adaptive values end in an address, so the expected offset is
-			// hash.ByteLen bytes before the end of the field.
-			off, _ := tup.GetOffset(j)
-			expected := uint16(start + off + len(field) - hash.ByteLen)
-			if recorded[expected] > 0 {
-				recorded[expected]--
-				matched++
-			} else {
-				la.Stats.CorruptValues++
-				rowCorrupt = true
-			}
-		})
-
-		la.Stats.Rows++
-		if rowCorrupt {
+		if valueSide.corruptRows[i] || keySide.corruptRows[i] {
 			la.Stats.CorruptRows++
 			la.Corrupt = true
 		}
 	}
 
-	la.Stats.UnexpectedOffsets = uint64(pm.ValueAddressOffsetsLength() - matched)
+	la.Stats.UnexpectedOffsets = uint64(pm.ValueAddressOffsetsLength()-valueSide.matched) +
+		uint64(pm.KeyAddressOffsetsLength()-keySide.matched)
 
-	// Examine key tuples for out-of-band adaptive values. The message format cannot record address
-	// offsets for keys, so these are reported but cannot be repaired by rewriting the node.
-	keyHasAdaptive := false
-	val.IterAdaptiveFields(kd, func(int, val.Type) { keyHasAdaptive = true })
-	if keyHasAdaptive {
-		keyItems := pm.KeyItemsBytes()
-		for i := 0; i < n; i++ {
-			start := int(pm.KeyOffsets(i))
-			end := int(pm.KeyOffsets(i + 1))
-			tup := val.Tuple(keyItems[start:end])
-			val.IterAdaptiveFields(kd, func(j int, t val.Type) {
-				av := val.AdaptiveValue(tup.GetField(j))
-				if av.IsNull() {
-					return
-				}
-				la.Stats.KeyAdaptiveValues++
-				if !av.IsOutOfBand() {
-					return
-				}
-				la.Stats.KeyOutOfBandValues++
-				if addr, err := av.OutOfBandAddr(); err == nil {
-					la.KeyOOBAddrs = append(la.KeyOOBAddrs, addr)
-				}
-			})
+	return la, nil
+}
+
+// sideAnalysis is the result of checking the tuples of one side (keys or values) of a leaf node
+// against the address offsets recorded for that side.
+type sideAnalysis struct {
+	adaptiveValues  uint64
+	outOfBandValues uint64
+	corruptValues   uint64
+	matched         int
+	corruptRows     []bool
+	oobAddrs        []hash.Hash
+}
+
+// recordedOffsets collects one side's recorded address offsets into a multiset. Offsets are unique in
+// practice, but count matching makes the comparison exact.
+func recordedOffsets(length int, offsetAt func(int) uint16) map[uint16]int {
+	recorded := make(map[uint16]int, length)
+	for i := 0; i < length; i++ {
+		recorded[offsetAt(i)]++
+	}
+	return recorded
+}
+
+// analyzeTupleAddresses computes the expected address offsets for |n| tuples of one side of a leaf node
+// and matches them against the |recorded| offsets, consuming matches from the multiset.
+func analyzeTupleAddresses(desc *val.TupleDesc, items []byte, offsetAt func(int) uint16, n int, recorded map[uint16]int) sideAnalysis {
+	sa := sideAnalysis{corruptRows: make([]bool, n)}
+	match := func(expected uint16, row int) {
+		if recorded[expected] > 0 {
+			recorded[expected]--
+			sa.matched++
+		} else {
+			sa.corruptValues++
+			sa.corruptRows[row] = true
 		}
 	}
 
-	return la, nil
+	for i := 0; i < n; i++ {
+		start := int(offsetAt(i))
+		end := int(offsetAt(i + 1))
+		tup := val.Tuple(items[start:end])
+
+		val.IterAddressFields(desc, func(j int, t val.Type) {
+			field := tup.GetField(j)
+			if len(field) == 0 || hash.New(field).IsEmpty() {
+				return
+			}
+			sa.oobAddrs = append(sa.oobAddrs, hash.New(field))
+			off, _ := tup.GetOffset(j)
+			match(uint16(start+off), i)
+		})
+
+		val.IterAdaptiveFields(desc, func(j int, t val.Type) {
+			field := tup.GetField(j)
+			av := val.AdaptiveValue(field)
+			if av.IsNull() {
+				return
+			}
+			sa.adaptiveValues++
+			if !av.IsOutOfBand() {
+				return
+			}
+			sa.outOfBandValues++
+			if addr, err := av.OutOfBandAddr(); err == nil {
+				sa.oobAddrs = append(sa.oobAddrs, addr)
+			}
+			// Out-of-band adaptive values end in an address, so the expected offset is
+			// hash.ByteLen bytes before the end of the field.
+			off, _ := tup.GetOffset(j)
+			match(uint16(start+off+len(field)-hash.ByteLen), i)
+		})
+	}
+	return sa
 }

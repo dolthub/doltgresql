@@ -334,7 +334,7 @@ func (r *repairer) repairRootValue(sctx *sql.Context, root doltdb.RootValue) (do
 
 	changed := false
 	for _, ti := range tables {
-		if !ti.Impacted() {
+		if !ti.Impacted() && !ti.KeyImpacted() {
 			continue
 		}
 		m, err := ti.RowMap(sctx)
@@ -411,7 +411,7 @@ func (r *repairer) repairTree(sctx *sql.Context, addr hash.Hash, kd, vd *val.Tup
 			childrenChanged = childrenChanged || newChild != child
 		}
 		if childrenChanged {
-			newAddr, err = r.rewriteInternal(sctx, msg, &pm, newChildren, vd)
+			newAddr, err = r.rewriteInternal(sctx, msg, &pm, newChildren, kd, vd)
 			if err != nil {
 				return hash.Hash{}, errors.Wrapf(err, "failed to rewrite internal node %s", addr.String())
 			}
@@ -435,7 +435,7 @@ func repairLeafTransform(r *repairer, pm *serial.ProllyTreeNode, kd, vd *val.Tup
 		return nil, false, nil
 	}
 
-	newMsg, err := reserializeLeaf(pm, vd, r.db.ns.Pool())
+	newMsg, err := reserializeLeaf(pm, kd, vd, r.db.ns.Pool())
 	if err != nil {
 		return nil, false, err
 	}
@@ -456,13 +456,13 @@ func repairLeafTransform(r *repairer, pm *serial.ProllyTreeNode, kd, vd *val.Tup
 	return newMsg, true, nil
 }
 
-// reserializeLeaf re-serializes a leaf node's original key and value tuple bytes with the given value
+// reserializeLeaf re-serializes a leaf node's original key and value tuple bytes with the given
 // descriptor and verifies that the result is tuple-for-tuple identical to the original.
-func reserializeLeaf(pm *serial.ProllyTreeNode, vd *val.TupleDesc, pool pool.BuffPool) (serial.Message, error) {
+func reserializeLeaf(pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc, pool pool.BuffPool) (serial.Message, error) {
 	keys := extractItems(pm.KeyItemsBytes(), pm.KeyOffsetsLength(), pm.KeyOffsets)
 	values := extractItems(pm.ValueItemsBytes(), pm.ValueOffsetsLength(), pm.ValueOffsets)
 
-	serializer := message.NewProllyMapSerializer(vd, pool)
+	serializer := message.NewProllyMapSerializer(kd, vd, pool)
 	newMsg := serializer.Serialize(keys, values, nil, 0)
 
 	// Sanity-check the rewritten node: tuples must be byte-identical to the original.
@@ -482,7 +482,7 @@ func reserializeLeaf(pm *serial.ProllyTreeNode, vd *val.TupleDesc, pool pool.Buf
 
 // rewriteInternal re-serializes an internal node, replacing its child addresses with the repaired ones.
 // Keys, subtree counts, and level are preserved from the original node.
-func (r *repairer) rewriteInternal(sctx *sql.Context, oldMsg serial.Message, pm *serial.ProllyTreeNode, newChildren []hash.Hash, vd *val.TupleDesc) (hash.Hash, error) {
+func (r *repairer) rewriteInternal(sctx *sql.Context, oldMsg serial.Message, pm *serial.ProllyTreeNode, newChildren []hash.Hash, kd, vd *val.TupleDesc) (hash.Hash, error) {
 	keys := extractItems(pm.KeyItemsBytes(), pm.KeyOffsetsLength(), pm.KeyOffsets)
 	if len(keys) != len(newChildren) {
 		return hash.Hash{}, errors.Errorf("internal node has %d keys but %d children", len(keys), len(newChildren))
@@ -499,7 +499,7 @@ func (r *repairer) rewriteInternal(sctx *sql.Context, oldMsg serial.Message, pm 
 		return hash.Hash{}, err
 	}
 
-	serializer := message.NewProllyMapSerializer(vd, r.db.ns.Pool())
+	serializer := message.NewProllyMapSerializer(kd, vd, r.db.ns.Pool())
 	newMsg := serializer.Serialize(keys, values, subtrees, int(pm.TreeLevel()))
 
 	// Sanity-check the rewritten node before writing it.

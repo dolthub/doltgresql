@@ -54,7 +54,7 @@ To repair this database:
      doltgres-admin repair -dir <data-dir> to repair it.
 
 To start the server without this check (unsafe until the database is repaired), set behavior.skip_startup_integrity_check to true in config.yaml.`,
-		e.Database, e.Table, location, e.Stats.CorruptValues, e.Stats.CorruptRows)
+		e.Database, e.Table, location, e.Stats.CorruptValues+e.Stats.KeyCorruptValues, e.Stats.CorruptRows)
 }
 
 // CheckDatabase scans every table in every commit reachable from every branch of the database, as well
@@ -151,14 +151,14 @@ func checkRoot(sctx *sql.Context, sc *Scanner, dbName, branch, commit string, ro
 		return err
 	}
 	for _, ti := range tables {
-		if !ti.Impacted() {
+		if !ti.Impacted() && !ti.KeyImpacted() {
 			continue
 		}
 		stats, err := sc.ScanTable(sctx, ti)
 		if err != nil {
 			return errors.Wrapf(err, "failed to scan table %s", ti.Name.String())
 		}
-		if stats.CorruptValues > 0 {
+		if stats.CorruptValues > 0 || stats.KeyCorruptValues > 0 {
 			return &CorruptionError{
 				Database: dbName,
 				Branch:   branch,

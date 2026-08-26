@@ -50,9 +50,9 @@ type tableReport struct {
 	// Impacted is true when the table's value tuples contain adaptive-encoded fields, making it
 	// subject to the value_address_offsets corruption.
 	Impacted bool
-	// KeyImpacted is true when the table's key tuples contain adaptive-encoded fields. Out-of-band
-	// key values are structurally untracked (there is no key_address_offsets field), so they are
-	// reported but not repairable by rewriting nodes.
+	// KeyImpacted is true when the table's key tuples contain adaptive-encoded fields, making it
+	// subject to missing key_address_offsets (either the corruption in earlier releases, or nodes
+	// written before the field existed).
 	KeyImpacted bool
 	// Stats is nil when the table is not impacted (it is not scanned).
 	Stats *integrity.Stats
@@ -127,15 +127,15 @@ internal chunks rewritten: {{.Repair.InternalChunksRewritten}}
 <th>Rows</th><th>Corrupt rows</th><th>% rows</th>
 <th>Adaptive values</th><th>Out-of-band</th><th>Corrupt values</th><th>% values</th>
 <th>Chunks</th><th>Corrupt chunks</th>
-<th>Key out-of-band</th><th>Missing chunks</th>
+<th>Key out-of-band</th><th>Corrupt key values</th><th>Missing chunks</th>
 </tr>
 {{range .Tables}}
 {{if .Err}}
-<tr class="corrupt"><td class="name">{{.Schema}}</td><td class="name">{{.Table}}</td><td colspan="12" class="warn">error: {{.Err}}</td></tr>
+<tr class="corrupt"><td class="name">{{.Schema}}</td><td class="name">{{.Table}}</td><td colspan="13" class="warn">error: {{.Err}}</td></tr>
 {{else if not .Stats}}
-<tr class="skipped"><td class="name">{{.Schema}}</td><td class="name">{{.Table}}</td><td class="name">(schema not impacted)</td><td colspan="11"></td></tr>
+<tr class="skipped"><td class="name">{{.Schema}}</td><td class="name">{{.Table}}</td><td class="name">(schema not impacted)</td><td colspan="12"></td></tr>
 {{else}}
-<tr class="{{if .Stats.CorruptValues}}corrupt{{else}}clean{{end}}">
+<tr class="{{if or .Stats.CorruptValues .Stats.KeyCorruptValues}}corrupt{{else}}clean{{end}}">
 <td class="name">{{.Schema}}</td>
 <td class="name">{{.Table}}</td>
 <td class="name">{{join .AdaptiveValueCols}}{{if .AdaptiveKeyCols}} [key: {{join .AdaptiveKeyCols}}]{{end}}</td>
@@ -149,6 +149,7 @@ internal chunks rewritten: {{.Repair.InternalChunksRewritten}}
 <td>{{.Stats.Chunks}}</td>
 <td>{{.Stats.CorruptChunks}}</td>
 <td>{{.Stats.KeyOutOfBandValues}}</td>
+<td>{{.Stats.KeyCorruptValues}}</td>
 <td>{{if .Stats.MissingChunks}}<span class="warn">{{.Stats.MissingChunks}}</span>{{else}}0{{end}}</td>
 </tr>
 {{end}}

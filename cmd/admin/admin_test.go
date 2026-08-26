@@ -70,7 +70,7 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 	assertTableStats(t, baseline, "main", "t5", expectStats{rows: 2, adaptive: 2, oob: 2})
 	assertTableStats(t, baseline, "b2", "t1", expectStats{rows: 1005, adaptive: 1005, oob: 5})
 	assertTableStats(t, baseline, "b3", "t1", expectStats{rows: 1008, adaptive: 1008, oob: 8})
-	assertKeyStats(t, baseline, "main", "t3", 3, 3)
+	assertKeyStats(t, baseline, "main", "t3", 3, 3, 0)
 	assertNotScanned(t, baseline, "main", "t2")
 
 	origHeads := branchHeadHashes(t, sctx, db)
@@ -111,7 +111,7 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 	assertTableStats(t, corrupted, "main", "t5", expectStats{rows: 2, adaptive: 2, oob: 2, corruptVals: 2, corruptRows: 2})
 	assertTableStats(t, corrupted, "b2", "t1", expectStats{rows: 1005, adaptive: 1005, oob: 5, corruptVals: 5, corruptRows: 5})
 	assertTableStats(t, corrupted, "b3", "t1", expectStats{rows: 1008, adaptive: 1008, oob: 8, corruptVals: 8, corruptRows: 8})
-	assertKeyStats(t, corrupted, "main", "t3", 3, 3)
+	assertKeyStats(t, corrupted, "main", "t3", 3, 3, 3)
 
 	// The corrupt commits are new commits; the clean initial commit keeps its hash.
 	corruptHeads := branchHeadHashes(t, sctx, db)
@@ -155,7 +155,7 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 	assertTableStats(t, repaired, "main", "t5", expectStats{rows: 2, adaptive: 2, oob: 2})
 	assertTableStats(t, repaired, "b2", "t1", expectStats{rows: 1005, adaptive: 1005, oob: 5})
 	assertTableStats(t, repaired, "b3", "t1", expectStats{rows: 1008, adaptive: 1008, oob: 8})
-	assertKeyStats(t, repaired, "main", "t3", 3, 3)
+	assertKeyStats(t, repaired, "main", "t3", 3, 3, 0)
 
 	// Repair rebuilds the exact chunks the fixed serializer originally wrote, so the rewritten
 	// commit history converges back to the original commit hashes.
@@ -243,10 +243,10 @@ func TestGenerateCorruptedDataDir(t *testing.T) {
 // value_address_offsets field omitted. This matches the behavior of releases where the tuple
 // descriptor's AddressFieldCount did not count adaptive-encoded fields.
 func corruptLeafTransform(r *repairer, pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
-	if pm.ValueAddressOffsetsLength() == 0 {
+	if pm.ValueAddressOffsetsLength() == 0 && pm.KeyAddressOffsetsLength() == 0 {
 		return nil, false, nil
 	}
-	msg, err := reserializeLeaf(pm, strippedDescriptor(vd), r.db.ns.Pool())
+	msg, err := reserializeLeaf(pm, strippedDescriptor(kd), strippedDescriptor(vd), r.db.ns.Pool())
 	if err != nil {
 		return nil, false, err
 	}
@@ -398,7 +398,7 @@ func assertTableStats(t *testing.T, scans map[string]map[string]*tableReport, br
 
 // assertKeyStats verifies the key-side adaptive statistics of a table whose primary key contains
 // adaptive-encoded columns.
-func assertKeyStats(t *testing.T, scans map[string]map[string]*tableReport, branch, table string, keyAdaptive, keyOOB uint64) {
+func assertKeyStats(t *testing.T, scans map[string]map[string]*tableReport, branch, table string, keyAdaptive, keyOOB, keyCorrupt uint64) {
 	t.Helper()
 	tr := scans[branch][table]
 	require.NotNil(t, tr, "table %s on branch %s", table, branch)
@@ -406,6 +406,7 @@ func assertKeyStats(t *testing.T, scans map[string]map[string]*tableReport, bran
 	require.True(t, tr.KeyImpacted)
 	require.Equal(t, keyAdaptive, tr.Stats.KeyAdaptiveValues, "key adaptive values of %s on %s", table, branch)
 	require.Equal(t, keyOOB, tr.Stats.KeyOutOfBandValues, "key out-of-band values of %s on %s", table, branch)
+	require.Equal(t, keyCorrupt, tr.Stats.KeyCorruptValues, "key corrupt values of %s on %s", table, branch)
 	require.Zero(t, tr.Stats.CorruptValues)
 	require.Zero(t, tr.Stats.MissingChunks, "missing chunks of %s on %s", table, branch)
 }
