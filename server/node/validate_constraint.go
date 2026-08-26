@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/expranalysis"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
@@ -157,7 +158,7 @@ func (v *ValidateConstraint) validateCheckConstraint(ctx *sql.Context, tblNode s
 		return sql.RowsToRowIter(), nil
 	}
 
-	checkExpr, err := expranalysis.ResolveExpression(ctx, v.tableName, check.CheckExpression)
+	checkExpr, err := expranalysis.ResolveExpression(ctx, doltdb.TableName{Name: v.tableName, Schema: v.schemaName}, check.CheckExpression)
 	if err != nil {
 		return nil, errors.Errorf("could not parse check expression for constraint %q: %v", check.Name, err)
 	}

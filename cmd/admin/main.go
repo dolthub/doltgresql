@@ -116,7 +116,7 @@ func processDatabase(ctx context.Context, db *database, mode string, verbose boo
 		if verbose {
 			log.Printf("repairing database %s", db.name)
 		}
-		rep := newRepairer(db, verbose)
+		rep := newRepairer(db, sc, verbose)
 		summary, err := rep.repairDatabase(sctx)
 		if err != nil {
 			return nil, err

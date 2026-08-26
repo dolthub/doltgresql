@@ -83,8 +83,7 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 	require.Greater(t, mapHeight(t, sctx, db, "main", "t1"), 1)
 
 	// ------- corrupt every branch and commit -------
-	corrupter := newRepairer(db, testing.Verbose())
-	corrupter.transformLeaf = corruptLeafTransform
+	corrupter := newCorrupter(db, testing.Verbose())
 	summary, err := corrupter.repairDatabase(sctx)
 	require.NoError(t, err)
 	// main has three user commits (t2-only, initial data, extra t1 rows) plus repository
@@ -184,8 +183,7 @@ func TestRepairedDatabaseIsServable(t *testing.T) {
 
 	db, cleanup := openTestDatabase(t, ctx, dataDir)
 	sctx := db.sctx
-	corrupter := newRepairer(db, testing.Verbose())
-	corrupter.transformLeaf = corruptLeafTransform
+	corrupter := newCorrupter(db, testing.Verbose())
 	_, err = corrupter.repairDatabase(sctx)
 	require.NoError(t, err)
 	cleanup(t)
@@ -234,20 +232,32 @@ func TestGenerateCorruptedDataDir(t *testing.T) {
 
 	db, cleanup := openTestDatabase(t, ctx, dataDir)
 	defer cleanup(t)
-	corrupter := newRepairer(db, true)
-	corrupter.transformLeaf = corruptLeafTransform
+	corrupter := newCorrupter(db, true)
 	_, err := corrupter.repairDatabase(db.sctx)
 	require.NoError(t, err)
 }
 
+// newCorrupter returns a repairer whose rewriter has been inverted to simulate the bugs in old
+// releases: it strips the address offset fields from every leaf node that records any.
+func newCorrupter(db *database, verbose bool) *repairer {
+	corrupter := newRepairer(db, integrity.NewScanner(db.cs), verbose)
+	corrupter.rewriter.TransformLeaf = corruptLeafTransform
+	// visit every subtree holding out-of-band values (in a healthy database, exactly the subtrees
+	// whose nodes record address offsets), rather than the corrupt subtrees the repair visits
+	corrupter.rewriter.ShouldRewrite = func(stats *integrity.Stats) bool {
+		return stats.OutOfBandValues > 0 || stats.KeyOutOfBandValues > 0
+	}
+	return corrupter
+}
+
 // corruptLeafTransform simulates the bug in old releases: it re-serializes leaf nodes with their
-// value_address_offsets field omitted. This matches the behavior of releases where the tuple
-// descriptor's AddressFieldCount did not count adaptive-encoded fields.
-func corruptLeafTransform(r *repairer, pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
+// value_address_offsets and key_address_offsets fields omitted. This matches the behavior of releases
+// where the tuple descriptor's AddressFieldCount did not count adaptive-encoded fields.
+func corruptLeafTransform(rw *integrity.TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
 	if pm.ValueAddressOffsetsLength() == 0 && pm.KeyAddressOffsetsLength() == 0 {
 		return nil, false, nil
 	}
-	msg, err := reserializeLeaf(pm, strippedDescriptor(kd), strippedDescriptor(vd), r.db.ns.Pool())
+	msg, err := integrity.ReserializeLeaf(pm, strippedDescriptor(kd), strippedDescriptor(vd), rw.Pool())
 	if err != nil {
 		return nil, false, err
 	}
