@@ -39,9 +39,6 @@ type database struct {
 	ddb  *doltdb.DoltDB
 	cs   chunks.ChunkStore
 	ns   tree.NodeStore
-	// sctx is a *sql.Context backed by a real session with this database set as current, of the same
-	// kind a running server would build for a query. Storage-level scans require it: deserializing a
-	// table schema that uses a user-defined data type resolves the type through the session.
 	sctx *sql.Context
 }
 

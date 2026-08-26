@@ -168,10 +168,10 @@ func scanBranchHeads(sctx *sql.Context, db *database, sc *integrity.Scanner, ver
 				Table:             ti.Name.Name,
 				AdaptiveValueCols: ti.AdaptiveValueCols,
 				AdaptiveKeyCols:   ti.AdaptiveKeyCols,
-				Impacted:          ti.Impacted(),
-				KeyImpacted:       ti.KeyImpacted(),
+				ValColsImpacted:   ti.ValColsImpacted(),
+				KeyColsImpacted:   ti.KeyColsImpacted(),
 			}
-			if ti.Impacted() || ti.KeyImpacted() {
+			if ti.ValColsImpacted() || ti.KeyColsImpacted() {
 				stats, err := sc.ScanTable(sctx, ti)
 				if err != nil {
 					tr.Err = err.Error()

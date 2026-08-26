@@ -216,6 +216,7 @@ func TestRepairedDatabaseIsServable(t *testing.T) {
 // TestGenerateCorruptedDataDir is a manual-testing helper, not a regression test: it builds a corrupted
 // data directory at $ADMIN_TEST_GEN_DIR for exercising the compiled admin binary by hand (e.g.
 // `go build ./cmd/admin && ./admin report -dir <dir>`). Skipped unless the environment variable is set.
+// This is used by bats tests to create databases with this specific corruption issue.
 func TestGenerateCorruptedDataDir(t *testing.T) {
 	dataDir := os.Getenv("ADMIN_TEST_GEN_DIR")
 	if dataDir == "" {
@@ -403,7 +404,7 @@ func assertKeyStats(t *testing.T, scans map[string]map[string]*tableReport, bran
 	tr := scans[branch][table]
 	require.NotNil(t, tr, "table %s on branch %s", table, branch)
 	require.NotNil(t, tr.Stats, "table %s on branch %s was not scanned", table, branch)
-	require.True(t, tr.KeyImpacted)
+	require.True(t, tr.KeyColsImpacted)
 	require.Equal(t, keyAdaptive, tr.Stats.KeyAdaptiveValues, "key adaptive values of %s on %s", table, branch)
 	require.Equal(t, keyOOB, tr.Stats.KeyOutOfBandValues, "key out-of-band values of %s on %s", table, branch)
 	require.Equal(t, keyCorrupt, tr.Stats.KeyCorruptValues, "key corrupt values of %s on %s", table, branch)
@@ -415,8 +416,8 @@ func assertNotScanned(t *testing.T, scans map[string]map[string]*tableReport, br
 	t.Helper()
 	tr := scans[branch][table]
 	require.NotNil(t, tr, "table %s on branch %s", table, branch)
-	require.False(t, tr.Impacted)
-	require.False(t, tr.KeyImpacted)
+	require.False(t, tr.ValColsImpacted)
+	require.False(t, tr.KeyColsImpacted)
 	require.Nil(t, tr.Stats)
 }
 

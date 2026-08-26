@@ -47,13 +47,10 @@ type tableReport struct {
 	// AdaptiveValueCols and AdaptiveKeyCols name the adaptive-encoded columns in the table's schema.
 	AdaptiveValueCols []string
 	AdaptiveKeyCols   []string
-	// Impacted is true when the table's value tuples contain adaptive-encoded fields, making it
-	// subject to the value_address_offsets corruption.
-	Impacted bool
-	// KeyImpacted is true when the table's key tuples contain adaptive-encoded fields, making it
-	// subject to missing key_address_offsets (either the corruption in earlier releases, or nodes
-	// written before the field existed).
-	KeyImpacted bool
+	// ValColsImpacted is true when the table's value tuples contain adaptive-encoded fields
+	ValColsImpacted bool
+	// KeyColsImpacted is true when the table's key tuples contain adaptive-encoded fields
+	KeyColsImpacted bool
 	// Stats is nil when the table is not impacted (it is not scanned).
 	Stats *integrity.Stats
 	Err   string

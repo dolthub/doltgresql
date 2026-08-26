@@ -30,6 +30,9 @@ import (
 // cases: for example, deserializing a table schema that uses a user-defined data type resolves the type
 // through the session's Doltgres state, and panics on a bare session. The caller must Close the
 // returned engine. initialization.Initialize must have been called first.
+//
+// This is useful for certain offline, non-server admin tasks where starting a server is either undesirable
+// or impossible.
 func NewOfflineSqlEngine(ctx context.Context, mrEnv *env.MultiRepoEnv) (*engine.SqlEngine, error) {
 	user, _ := auth.GetSuperUserAndPassword()
 	return engine.NewSqlEngine(ctx, mrEnv, &engine.SqlEngineConfig{
@@ -41,7 +44,7 @@ func NewOfflineSqlEngine(ctx context.Context, mrEnv *env.MultiRepoEnv) (*engine.
 
 // NewOfflineSessionContext returns a *sql.Context backed by a real session from |se|, running as the
 // Doltgres superuser, along with a cleanup function that ends the session. Callers examining a specific
-// database must also set it with sctx.SetCurrentDatabase, which user-defined type resolution depends on.
+// database must also set it with ctx.SetCurrentDatabase, which user-defined type resolution depends on.
 func NewOfflineSessionContext(ctx context.Context, se *engine.SqlEngine) (*sql.Context, func(), error) {
 	sctx, err := se.NewDefaultContext(ctx)
 	if err != nil {

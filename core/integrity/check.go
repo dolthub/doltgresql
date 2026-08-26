@@ -58,25 +58,20 @@ To start the server without this check (unsafe until the database is repaired), 
 }
 
 // CheckDatabase scans every table in every commit reachable from every branch of the database, as well
-// as each branch's working set, for adaptive-encoded out-of-band values that are missing from their
-// node's value_address_offsets field. It returns a *CorruptionError describing the first corrupted
-// table found, or nil if the database is healthy. Scan results are cached per chunk, so shared history
-// and structurally identical tables cost nothing to re-examine.
-//
-// This check must run before any garbage collection: GC treats the missing references as unreachable
-// and deletes the affected values.
-func CheckDatabase(sctx *sql.Context, dbName string, ddb *doltdb.DoltDB) error {
+// as each branch's working set, for integrity. It returns a *CorruptionError describing the first corrupted
+// table found, or nil if the database is healthy.
+func CheckDatabase(ctx *sql.Context, dbName string, ddb *doltdb.DoltDB) error {
 	cs := datas.ChunkStoreFromDatabase(doltdb.ExposeDatabaseFromDoltDB(ddb))
 	sc := NewScanner(cs)
 
-	branches, err := ddb.GetBranches(sctx)
+	branches, err := ddb.GetBranches(ctx)
 	if err != nil {
 		return err
 	}
 
 	visited := make(map[hash.Hash]struct{})
 	for _, branchRef := range branches {
-		head, err := ddb.ResolveCommitRef(sctx, branchRef)
+		head, err := ddb.ResolveCommitRef(ctx, branchRef)
 		if err != nil {
 			return errors.Wrapf(err, "failed to resolve branch %s", branchRef.String())
 		}
@@ -96,16 +91,16 @@ func CheckDatabase(sctx *sql.Context, dbName string, ddb *doltdb.DoltDB) error {
 			}
 			visited[h] = struct{}{}
 
-			root, err := cm.GetRootValue(sctx)
+			root, err := cm.GetRootValue(ctx)
 			if err != nil {
 				return err
 			}
-			err = checkRoot(sctx, sc, dbName, branchRef.GetPath(), h.String(), root, ddb)
+			err = checkRoot(ctx, sc, dbName, branchRef.GetPath(), h.String(), root, ddb)
 			if err != nil {
 				return err
 			}
 
-			optParents, err := ddb.ResolveAllParents(sctx, cm)
+			optParents, err := ddb.ResolveAllParents(ctx, cm)
 			if err != nil {
 				return err
 			}
@@ -124,7 +119,7 @@ func CheckDatabase(sctx *sql.Context, dbName string, ddb *doltdb.DoltDB) error {
 		if err != nil {
 			return err
 		}
-		ws, err := ddb.ResolveWorkingSet(sctx, wsRef)
+		ws, err := ddb.ResolveWorkingSet(ctx, wsRef)
 		if err != nil {
 			// Not all branches have working sets (e.g. branches never checked out).
 			continue
@@ -133,7 +128,7 @@ func CheckDatabase(sctx *sql.Context, dbName string, ddb *doltdb.DoltDB) error {
 			if wsRoot == nil {
 				continue
 			}
-			err = checkRoot(sctx, sc, dbName, branchRef.GetPath(), "", wsRoot, ddb)
+			err = checkRoot(ctx, sc, dbName, branchRef.GetPath(), "", wsRoot, ddb)
 			if err != nil {
 				return err
 			}
@@ -151,7 +146,7 @@ func checkRoot(sctx *sql.Context, sc *Scanner, dbName, branch, commit string, ro
 		return err
 	}
 	for _, ti := range tables {
-		if !ti.Impacted() && !ti.KeyImpacted() {
+		if !ti.ValColsImpacted() && !ti.KeyColsImpacted() {
 			continue
 		}
 		stats, err := sc.ScanTable(sctx, ti)

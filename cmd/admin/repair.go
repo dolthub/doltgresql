@@ -334,7 +334,7 @@ func (r *repairer) repairRootValue(sctx *sql.Context, root doltdb.RootValue) (do
 
 	changed := false
 	for _, ti := range tables {
-		if !ti.Impacted() && !ti.KeyImpacted() {
+		if !ti.ValColsImpacted() && !ti.KeyColsImpacted() {
 			continue
 		}
 		m, err := ti.RowMap(sctx)

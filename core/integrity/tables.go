@@ -41,16 +41,16 @@ type TableInfo struct {
 	AdaptiveKeyCols []string
 }
 
-// Impacted returns whether this table's schema can be affected by the value_address_offsets corruption:
+// ValColsImpacted returns whether this table's schema can be affected by the value_address_offsets corruption:
 // its value tuples contain one or more adaptive-encoded fields.
-func (ti *TableInfo) Impacted() bool {
+func (ti *TableInfo) ValColsImpacted() bool {
 	return len(ti.AdaptiveValueCols) > 0
 }
 
-// KeyImpacted returns whether this table's key tuples contain adaptive-encoded fields. Out-of-band
+// KeyColsImpacted returns whether this table's key tuples contain adaptive-encoded fields. Out-of-band
 // values in key tuples cannot be recorded in the ProllyTreeNode message format at all, so they are
 // scanned and reported, but cannot be repaired by rewriting nodes.
-func (ti *TableInfo) KeyImpacted() bool {
+func (ti *TableInfo) KeyColsImpacted() bool {
 	return len(ti.AdaptiveKeyCols) > 0
 }
 

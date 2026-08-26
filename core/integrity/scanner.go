@@ -252,8 +252,7 @@ type LeafAnalysis struct {
 }
 
 // AnalyzeLeaf recomputes the expected value_address_offsets and key_address_offsets for a leaf node
-// from its tuples, mirroring the (fixed) serializer logic in dolt's go/store/prolly/message package,
-// and compares the result against the offsets actually recorded in the message.
+// from its tuples
 func AnalyzeLeaf(pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (*LeafAnalysis, error) {
 	la := &LeafAnalysis{}
 
@@ -265,37 +264,37 @@ func AnalyzeLeaf(pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (*LeafAnalysi
 		return nil, errors.Errorf("leaf node has %d keys but %d values", n, pm.ValueOffsetsLength()-1)
 	}
 
-	valueSide := analyzeTupleAddresses(vd, pm.ValueItemsBytes(), pm.ValueOffsets, n,
+	valuesResult := analyzeTupleAddresses(vd, pm.ValueItemsBytes(), pm.ValueOffsets, n,
 		recordedOffsets(pm.ValueAddressOffsetsLength(), pm.ValueAddressOffsets))
-	keySide := analyzeTupleAddresses(kd, pm.KeyItemsBytes(), pm.KeyOffsets, n,
+	keysResult := analyzeTupleAddresses(kd, pm.KeyItemsBytes(), pm.KeyOffsets, n,
 		recordedOffsets(pm.KeyAddressOffsetsLength(), pm.KeyAddressOffsets))
 
-	la.Stats.AdaptiveValues = valueSide.adaptiveValues
-	la.Stats.OutOfBandValues = valueSide.outOfBandValues
-	la.Stats.CorruptValues = valueSide.corruptValues
-	la.ValueOOBAddrs = valueSide.oobAddrs
-	la.Stats.KeyAdaptiveValues = keySide.adaptiveValues
-	la.Stats.KeyOutOfBandValues = keySide.outOfBandValues
-	la.Stats.KeyCorruptValues = keySide.corruptValues
-	la.KeyOOBAddrs = keySide.oobAddrs
+	la.Stats.AdaptiveValues = valuesResult.adaptiveValues
+	la.Stats.OutOfBandValues = valuesResult.outOfBandValues
+	la.Stats.CorruptValues = valuesResult.corruptValues
+	la.ValueOOBAddrs = valuesResult.oobAddrs
+	la.Stats.KeyAdaptiveValues = keysResult.adaptiveValues
+	la.Stats.KeyOutOfBandValues = keysResult.outOfBandValues
+	la.Stats.KeyCorruptValues = keysResult.corruptValues
+	la.KeyOOBAddrs = keysResult.oobAddrs
 
 	la.Stats.Rows = uint64(n)
 	for i := 0; i < n; i++ {
-		if valueSide.corruptRows[i] || keySide.corruptRows[i] {
+		if valuesResult.corruptRows[i] || keysResult.corruptRows[i] {
 			la.Stats.CorruptRows++
 			la.Corrupt = true
 		}
 	}
 
-	la.Stats.UnexpectedOffsets = uint64(pm.ValueAddressOffsetsLength()-valueSide.matched) +
-		uint64(pm.KeyAddressOffsetsLength()-keySide.matched)
+	la.Stats.UnexpectedOffsets = uint64(pm.ValueAddressOffsetsLength()-valuesResult.matched) +
+		uint64(pm.KeyAddressOffsetsLength()-keysResult.matched)
 
 	return la, nil
 }
 
-// sideAnalysis is the result of checking the tuples of one side (keys or values) of a leaf node
+// tupleDescResult is the result of checking the tuples of one side (keys or values) of a leaf node
 // against the address offsets recorded for that side.
-type sideAnalysis struct {
+type tupleDescResult struct {
 	adaptiveValues  uint64
 	outOfBandValues uint64
 	corruptValues   uint64
@@ -304,11 +303,10 @@ type sideAnalysis struct {
 	oobAddrs        []hash.Hash
 }
 
-// recordedOffsets collects one side's recorded address offsets into a multiset. Offsets are unique in
-// practice, but count matching makes the comparison exact.
+// recordedOffsets collects a tuple desc's recorded address offsets into a multiset
 func recordedOffsets(length int, offsetAt func(int) uint16) map[uint16]int {
 	recorded := make(map[uint16]int, length)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		recorded[offsetAt(i)]++
 	}
 	return recorded
@@ -316,8 +314,8 @@ func recordedOffsets(length int, offsetAt func(int) uint16) map[uint16]int {
 
 // analyzeTupleAddresses computes the expected address offsets for |n| tuples of one side of a leaf node
 // and matches them against the |recorded| offsets, consuming matches from the multiset.
-func analyzeTupleAddresses(desc *val.TupleDesc, items []byte, offsetAt func(int) uint16, n int, recorded map[uint16]int) sideAnalysis {
-	sa := sideAnalysis{corruptRows: make([]bool, n)}
+func analyzeTupleAddresses(desc *val.TupleDesc, items []byte, offsetAt func(int) uint16, n int, recorded map[uint16]int) tupleDescResult {
+	sa := tupleDescResult{corruptRows: make([]bool, n)}
 	match := func(expected uint16, row int) {
 		if recorded[expected] > 0 {
 			recorded[expected]--
