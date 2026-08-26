@@ -15,8 +15,6 @@
 package functions
 
 import (
-	"strings"
-
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -40,19 +38,10 @@ var pg_char_to_encoding_name = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
-		// Encoding names are normalized by lowercasing and dropping any characters that are not ASCII letters or
-		// digits, matching Postgres (e.g. "UTF-8" matches "utf8").
-		var sb strings.Builder
-		for _, r := range strings.ToLower(valStr) {
-			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-				sb.WriteRune(r)
-			}
+		definition := lookupPostgresEncoding(valStr)
+		if definition == nil {
+			return int32(-1), nil
 		}
-		switch sb.String() {
-		case "utf8", "unicode":
-			return int32(6), nil
-		}
-		// TODO: only UTF8 is supported for now; Postgres returns -1 for unrecognized encoding names
-		return int32(-1), nil
+		return definition.id, nil
 	},
 }

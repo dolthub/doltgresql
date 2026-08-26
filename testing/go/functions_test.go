@@ -2703,10 +2703,9 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					// TODO: only UTF8 is supported for now
 					Query: `SELECT pg_char_to_encoding('LATIN1');`,
 					Expected: []sql.Row{
-						{-1},
+						{8},
 					},
 				},
 			},
