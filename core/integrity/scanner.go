@@ -109,7 +109,7 @@ func DescFingerprint(kd, vd *val.TupleDesc) uint64 {
 // omits references to out-of-band values. Results are cached per chunk, so re-scanning the same table
 // on another branch or commit is nearly free.
 type Scanner struct {
-	cs    chunks.ChunkStore
+	Cs    chunks.ChunkStore
 	cache map[CacheKey]*Stats
 	// presence caches chunk-existence lookups for out-of-band value chunks.
 	presence map[hash.Hash]bool
@@ -120,7 +120,7 @@ type Scanner struct {
 
 func NewScanner(cs chunks.ChunkStore) *Scanner {
 	return &Scanner{
-		cs:       cs,
+		Cs:       cs,
 		cache:    make(map[CacheKey]*Stats),
 		presence: make(map[hash.Hash]bool),
 	}
@@ -143,7 +143,7 @@ func (s *Scanner) ScanTree(ctx context.Context, addr hash.Hash, kd, vd *val.Tupl
 		return cached, nil
 	}
 
-	msg, err := GetTreeNodeMessage(ctx, s.cs, addr)
+	msg, err := GetTreeNodeMessage(ctx, s.Cs, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +193,7 @@ func (s *Scanner) countMissing(ctx context.Context, addrs []hash.Hash) (uint64, 
 		}
 	}
 	if toCheck.Size() > 0 {
-		absent, err := s.cs.HasMany(ctx, toCheck)
+		absent, err := s.Cs.HasMany(ctx, toCheck)
 		if err != nil {
 			return 0, err
 		}

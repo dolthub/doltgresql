@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package integrity
+package main
 
 import (
 	"bytes"
@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/dolt/go/store/prolly/message"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/val"
+	"github.com/dolthub/doltgresql/core/integrity"
 )
 
 // LeafTransform inspects a leaf node and returns a replacement message, or false if the node needs
@@ -42,7 +43,7 @@ type LeafTransform func(rw *TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *val
 // the repaired children. Results are cached per chunk, so identical subtrees shared between branches,
 // commits, and structurally identical tables are only rewritten once.
 type TreeRewriter struct {
-	sc *Scanner
+	sc *integrity.Scanner
 	ns tree.NodeStore
 
 	// TransformLeaf produces the replacement message for a leaf node, or reports that the leaf needs
@@ -52,10 +53,10 @@ type TreeRewriter struct {
 	// ShouldRewrite decides, from the Scanner's aggregated statistics for a subtree, whether the
 	// subtree contains anything TransformLeaf would change; subtrees it rejects are skipped without
 	// visiting their nodes. It defaults to descending into subtrees with corrupt chunks.
-	ShouldRewrite func(*Stats) bool
+	ShouldRewrite func(*integrity.Stats) bool
 
 	// cache maps old node chunk hashes to their rewritten equivalents (identity for skipped subtrees).
-	cache map[CacheKey]hash.Hash
+	cache map[integrity.CacheKey]hash.Hash
 
 	// LeafChunksRewritten and InternalChunksRewritten count the nodes rewritten so far.
 	LeafChunksRewritten     uint64
@@ -64,13 +65,13 @@ type TreeRewriter struct {
 
 // NewTreeRewriter returns a TreeRewriter that repairs the corruption detected by |sc|, writing
 // rewritten nodes to |ns|.
-func NewTreeRewriter(sc *Scanner, ns tree.NodeStore) *TreeRewriter {
+func NewTreeRewriter(sc *integrity.Scanner, ns tree.NodeStore) *TreeRewriter {
 	return &TreeRewriter{
 		sc:            sc,
 		ns:            ns,
 		TransformLeaf: RepairLeafTransform,
-		ShouldRewrite: func(stats *Stats) bool { return stats.CorruptChunks > 0 },
-		cache:         make(map[CacheKey]hash.Hash),
+		ShouldRewrite: func(stats *integrity.Stats) bool { return stats.CorruptChunks > 0 },
+		cache:         make(map[integrity.CacheKey]hash.Hash),
 	}
 }
 
@@ -82,7 +83,7 @@ func (rw *TreeRewriter) Pool() pool.BuffPool {
 // RewriteTree rewrites the subtree rooted at |addr|, returning the (possibly identical) new root
 // address.
 func (rw *TreeRewriter) RewriteTree(ctx context.Context, addr hash.Hash, kd, vd *val.TupleDesc) (hash.Hash, error) {
-	key := CacheKey{Addr: addr, Desc: DescFingerprint(kd, vd)}
+	key := integrity.CacheKey{Addr: addr, Desc: integrity.DescFingerprint(kd, vd)}
 	if newAddr, ok := rw.cache[key]; ok {
 		return newAddr, nil
 	}
@@ -97,7 +98,7 @@ func (rw *TreeRewriter) RewriteTree(ctx context.Context, addr hash.Hash, kd, vd 
 		return addr, nil
 	}
 
-	msg, err := GetTreeNodeMessage(ctx, rw.sc.cs, addr)
+	msg, err := integrity.GetTreeNodeMessage(ctx, rw.sc.Cs, addr)
 	if err != nil {
 		return hash.Hash{}, err
 	}
@@ -121,7 +122,7 @@ func (rw *TreeRewriter) RewriteTree(ctx context.Context, addr hash.Hash, kd, vd 
 			rw.LeafChunksRewritten++
 		}
 	} else {
-		children := ChildAddresses(&pm)
+		children := integrity.ChildAddresses(&pm)
 		newChildren := make([]hash.Hash, len(children))
 		childrenChanged := false
 		for i, child := range children {
@@ -149,7 +150,7 @@ func (rw *TreeRewriter) RewriteTree(ctx context.Context, addr hash.Hash, kd, vd 
 // original key and value tuple bytes. The serializer recomputes the address offset fields from the
 // tuple contents, which repairs the omitted entries. Leaf nodes with correct offsets are left unchanged.
 func RepairLeafTransform(rw *TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
-	la, err := AnalyzeLeaf(pm, kd, vd)
+	la, err := integrity.AnalyzeLeaf(pm, kd, vd)
 	if err != nil {
 		return nil, false, err
 	}
@@ -168,7 +169,7 @@ func RepairLeafTransform(rw *TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *va
 	if err != nil {
 		return nil, false, err
 	}
-	newLa, err := AnalyzeLeaf(&npm, kd, vd)
+	newLa, err := integrity.AnalyzeLeaf(&npm, kd, vd)
 	if err != nil {
 		return nil, false, err
 	}
@@ -236,7 +237,7 @@ func (rw *TreeRewriter) rewriteInternal(ctx context.Context, oldMsg serial.Messa
 	if npm.TreeLevel() != pm.TreeLevel() || npm.TreeCount() != pm.TreeCount() {
 		return hash.Hash{}, errors.New("rewritten internal node has different level or tree count than the original")
 	}
-	newAddrs := ChildAddresses(&npm)
+	newAddrs := integrity.ChildAddresses(&npm)
 	if len(newAddrs) != len(newChildren) {
 		return hash.Hash{}, errors.New("rewritten internal node has wrong child count")
 	}

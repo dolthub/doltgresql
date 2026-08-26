@@ -47,7 +47,7 @@ type repairSummary struct {
 // original hashes.
 type repairer struct {
 	db       *database
-	rewriter *integrity.TreeRewriter
+	rewriter *TreeRewriter
 	summary  repairSummary
 	verbose  bool
 }
@@ -57,7 +57,7 @@ type repairer struct {
 func newRepairer(db *database, sc *integrity.Scanner, verbose bool) *repairer {
 	return &repairer{
 		db:       db,
-		rewriter: integrity.NewTreeRewriter(sc, db.ns),
+		rewriter: NewTreeRewriter(sc, db.ns),
 		verbose:  verbose,
 	}
 }
