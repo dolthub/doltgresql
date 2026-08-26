@@ -46,3 +46,27 @@ func UnwrapBytes(ctx *sql.Context, val any) ([]byte, error) {
 	}
 	return data, nil
 }
+
+// UnwrapByteLength returns the length in bytes of a string- or bytes-typed function argument. Large values may arrive
+// as a wrapper (e.g. *val.ByteArray) whose contents are stored out-of-band; when such a wrapper already knows its
+// exact byte length, that length is used rather than loading the full value into memory.
+func UnwrapByteLength(ctx *sql.Context, val any) (int64, error) {
+	if wrapper, ok := val.(sql.AnyWrapper); ok {
+		if wrapper.IsExactLength() {
+			return wrapper.MaxByteLength(), nil
+		}
+		unwrapped, err := wrapper.UnwrapAny(ctx)
+		if err != nil {
+			return 0, err
+		}
+		val = unwrapped
+	}
+	switch val := val.(type) {
+	case string:
+		return int64(len(val)), nil
+	case []byte:
+		return int64(len(val)), nil
+	default:
+		return 0, errors.Errorf("expected string or []byte value, got %T", val)
+	}
+}
