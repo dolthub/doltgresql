@@ -526,8 +526,11 @@ func (pgs *TypeCollection) writeCache(ctx context.Context) (err error) {
 // getTable returns the SQL table that matches the given schema and table name. Returns a nil table if one is not found.
 // This is intended for use with tableToType.
 func (*TypeCollection) getTable(ctx *sql.Context, schema string, tblName string) (tbl sql.Table, actualSchema string, err error) {
-	actualSchema, err = GetSchemaName(ctx, nil, schema)
-	if err != nil {
+	// With no schema to search there is no matching table, which is a miss rather than a failure: callers can still
+	// resolve an unqualified name by other means.
+	// TODO: an unqualified name should be resolved against every schema on the search path, not just the first.
+	actualSchema, ok, err := LookupSchemaName(ctx, nil, schema)
+	if err != nil || !ok {
 		return nil, "", err
 	}
 	tbl, err = GetSqlTableFromContext(ctx, "", doltdb.TableName{
@@ -569,5 +572,5 @@ func (pgs *TypeCollection) tableToType(ctx *sql.Context, tbl sql.Table, schema s
 // GetSqlTableFromContext is a forward declaration to get around import cycles
 var GetSqlTableFromContext func(ctx *sql.Context, databaseName string, tableName doltdb.TableName) (sql.Table, error)
 
-// GetSchemaName is a forward declaration to get around import cycles
-var GetSchemaName func(ctx *sql.Context, db sql.Database, schemaName string) (string, error)
+// LookupSchemaName is a forward declaration to get around import cycles
+var LookupSchemaName func(ctx *sql.Context, db sql.Database, schemaName string) (string, bool, error)

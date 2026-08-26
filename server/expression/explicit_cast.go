@@ -170,8 +170,9 @@ func (c *ExplicitCast) String() string {
 	} else {
 		sqlChild = c.sqlChild.String()
 	}
+	// Column defaults are persisted as this string and re-parsed later, so the type must be schema-qualified.
 	// type needs to be upper-case to match InputExpression in AliasExpr
-	return fmt.Sprintf("%s::%s", sqlChild, strings.ToUpper(c.castToType.String()))
+	return fmt.Sprintf("%s::%s", sqlChild, strings.ToUpper(c.castToType.SchemaQualifiedString()))
 }
 
 // Type implements the sql.Expression interface.
