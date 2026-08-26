@@ -859,6 +859,66 @@ func TestFunctionsMath(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "num_nonnulls and num_nulls",
+			Assertions: []ScriptTestAssertion{
+				{
+					// The OIDs are registered in the built-in catalog, so they must match Postgres.
+					Query:    `SELECT 'num_nonnulls'::regproc::oid, 'num_nulls'::regproc::oid;`,
+					Expected: []sql.Row{{440, 438}},
+				},
+				{
+					Query:            `SELECT num_nonnulls(1, NULL);`,
+					ExpectedColNames: []string{"num_nonnulls"},
+					Expected:         []sql.Row{{1}},
+				},
+				{
+					Query:            `SELECT num_nulls(1, NULL);`,
+					ExpectedColNames: []string{"num_nulls"},
+					Expected:         []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT num_nonnulls(NULL);`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT num_nulls(NULL);`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT num_nonnulls(1, 2, 3), num_nulls(1, 2, 3);`,
+					Expected: []sql.Row{{3, 0}},
+				},
+				{
+					Query:    `SELECT num_nonnulls('a', NULL::int4, true, NULL::text, 1.5), num_nulls('a', NULL::int4, true, NULL::text, 1.5);`,
+					Expected: []sql.Row{{3, 2}},
+				},
+				{
+					Query:       `SELECT num_nonnulls();`,
+					ExpectedErr: "function num_nonnulls() does not exist",
+				},
+				{
+					Query:       `SELECT num_nulls();`,
+					ExpectedErr: "function num_nulls() does not exist",
+				},
+				{
+					Query:    `CREATE TABLE num_nulls_check (a uuid, b uuid, CONSTRAINT t_direction_check CHECK ((num_nonnulls(a, b) = 1)));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO num_nulls_check VALUES ('00000000-0000-0000-0000-000000000001', NULL);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO num_nulls_check VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');`,
+					ExpectedErr: "Check constraint",
+				},
+				{
+					Query:       `INSERT INTO num_nulls_check VALUES (NULL, NULL);`,
+					ExpectedErr: "Check constraint",
+				},
+			},
+		},
 	})
 }
 
