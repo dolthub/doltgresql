@@ -46,7 +46,7 @@ EOF
 
     run doltgres -data-dir=./data -config=config.yaml
     log_status_eq 1
-    log_output_has "failed the startup integrity check"
+    log_output_has "failed a startup integrity check"
     # the error must tell the user to back up before repairing
     log_output_has "MAKE A BACKUP COPY"
     log_output_has "doltgres-admin repair"

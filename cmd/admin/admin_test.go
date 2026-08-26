@@ -62,11 +62,12 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 
 	// ------- baseline: freshly written data is healthy -------
 	db, cleanup := openTestDatabase(t, ctx, dataDir)
-	sctx := sql.NewContext(ctx)
+	sctx := db.sctx
 
 	baseline := scanAllBranches(t, sctx, db)
 	assertTableStats(t, baseline, "main", "t1", expectStats{rows: 1007, adaptive: 1007, oob: 7})
 	assertTableStats(t, baseline, "main", "t4", expectStats{rows: 3, adaptive: 3, oob: 2})
+	assertTableStats(t, baseline, "main", "t5", expectStats{rows: 2, adaptive: 2, oob: 2})
 	assertTableStats(t, baseline, "b2", "t1", expectStats{rows: 1005, adaptive: 1005, oob: 5})
 	assertTableStats(t, baseline, "b3", "t1", expectStats{rows: 1008, adaptive: 1008, oob: 8})
 	assertKeyStats(t, baseline, "main", "t3", 3, 3)
@@ -102,11 +103,12 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 
 	// ------- report mode sees the corruption -------
 	db, cleanup = openTestDatabase(t, ctx, dataDir)
-	sctx = sql.NewContext(ctx)
+	sctx = db.sctx
 
 	corrupted := scanAllBranches(t, sctx, db)
 	assertTableStats(t, corrupted, "main", "t1", expectStats{rows: 1007, adaptive: 1007, oob: 7, corruptVals: 7, corruptRows: 7})
 	assertTableStats(t, corrupted, "main", "t4", expectStats{rows: 3, adaptive: 3, oob: 2, corruptVals: 2, corruptRows: 2})
+	assertTableStats(t, corrupted, "main", "t5", expectStats{rows: 2, adaptive: 2, oob: 2, corruptVals: 2, corruptRows: 2})
 	assertTableStats(t, corrupted, "b2", "t1", expectStats{rows: 1005, adaptive: 1005, oob: 5, corruptVals: 5, corruptRows: 5})
 	assertTableStats(t, corrupted, "b3", "t1", expectStats{rows: 1008, adaptive: 1008, oob: 8, corruptVals: 8, corruptRows: 8})
 	assertKeyStats(t, corrupted, "main", "t3", 3, 3)
@@ -145,11 +147,12 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 	// ------- verify the repair -------
 	db, cleanup = openTestDatabase(t, ctx, dataDir)
 	defer cleanup(t)
-	sctx = sql.NewContext(ctx)
+	sctx = db.sctx
 
 	repaired := scanAllBranches(t, sctx, db)
 	assertTableStats(t, repaired, "main", "t1", expectStats{rows: 1007, adaptive: 1007, oob: 7})
 	assertTableStats(t, repaired, "main", "t4", expectStats{rows: 3, adaptive: 3, oob: 2})
+	assertTableStats(t, repaired, "main", "t5", expectStats{rows: 2, adaptive: 2, oob: 2})
 	assertTableStats(t, repaired, "b2", "t1", expectStats{rows: 1005, adaptive: 1005, oob: 5})
 	assertTableStats(t, repaired, "b3", "t1", expectStats{rows: 1008, adaptive: 1008, oob: 8})
 	assertKeyStats(t, repaired, "main", "t3", 3, 3)
@@ -180,7 +183,7 @@ func TestRepairedDatabaseIsServable(t *testing.T) {
 	createTestDatabase(t, ctx, dataDir)
 
 	db, cleanup := openTestDatabase(t, ctx, dataDir)
-	sctx := sql.NewContext(ctx)
+	sctx := db.sctx
 	corrupter := newRepairer(db, testing.Verbose())
 	corrupter.transformLeaf = corruptLeafTransform
 	_, err = corrupter.repairDatabase(sctx)
@@ -232,7 +235,7 @@ func TestGenerateCorruptedDataDir(t *testing.T) {
 	defer cleanup(t)
 	corrupter := newRepairer(db, true)
 	corrupter.transformLeaf = corruptLeafTransform
-	_, err := corrupter.repairDatabase(sql.NewContext(ctx))
+	_, err := corrupter.repairDatabase(db.sctx)
 	require.NoError(t, err)
 }
 
@@ -252,10 +255,12 @@ func corruptLeafTransform(r *repairer, pm *serial.ProllyTreeNode, kd, vd *val.Tu
 
 // strippedDescriptor returns a copy of the descriptor with all address and adaptive encodings replaced
 // by a plain encoding, so the serializer records no value address offsets, mirroring the historical bug.
+// Extended encodings are also replaced: they would require type handlers, which the serializer never
+// consults, and which plain descriptor construction rejects.
 func strippedDescriptor(vd *val.TupleDesc) *val.TupleDesc {
 	types := make([]val.Type, len(vd.Types))
 	for i, typ := range vd.Types {
-		if val.IsAdaptiveEncoding(typ.Enc) || val.IsAddrEncoding(typ.Enc) {
+		if val.IsAdaptiveEncoding(typ.Enc) || val.IsAddrEncoding(typ.Enc) || val.IsExtendedEncoding(typ.Enc) {
 			typ.Enc = val.StringEnc
 		}
 		types[i] = typ
@@ -299,6 +304,11 @@ func createTestDatabase(t *testing.T, ctx context.Context, dataDir string) {
 		"CREATE TABLE t4 (id int primary key, j jsonb)",
 		`INSERT INTO t4 SELECT i, ('{"k": "' || rpad(i::text, 20000, 'j') || '"}')::jsonb FROM generate_series(1, 2) AS g(i)`,
 		`INSERT INTO t4 VALUES (3, '{"k": "small"}')`,
+		// t5 has a user-defined type column: deserializing its schema requires resolving the type
+		// through a real session (a naked sql.Context panics in DSessFromSess).
+		"CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
+		"CREATE TABLE t5 (id int primary key, m mood, big text)",
+		"INSERT INTO t5 SELECT i, 'happy', rpad(i::text, 20000, 'e') FROM generate_series(1, 2) AS g(i)",
 		"SELECT dolt_commit('-Am', 'commit 1: initial data')",
 		"SELECT dolt_branch('b2')",
 
@@ -327,17 +337,17 @@ func createTestDatabase(t *testing.T, ctx context.Context, dataDir string) {
 
 // openTestDatabase opens the test database offline and returns it along with a cleanup function.
 func openTestDatabase(t *testing.T, ctx context.Context, dataDir string) (*database, func(*testing.T)) {
-	dbs, err := openDatabases(ctx, dataDir)
+	dbs, cleanup, err := openDatabases(ctx, dataDir)
 	require.NoError(t, err)
 	for _, db := range dbs {
 		if db.name == testDbName {
 			return db, func(t *testing.T) {
-				closeDatabases(dbs)
+				cleanup()
 				require.NoError(t, dbfactory.CloseAllLocalDatabases())
 			}
 		}
 	}
-	closeDatabases(dbs)
+	cleanup()
 	t.Fatalf("database %s not found in %s", testDbName, dataDir)
 	return nil, nil
 }

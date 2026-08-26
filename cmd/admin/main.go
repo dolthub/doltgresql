@@ -68,11 +68,11 @@ func run(args []string) error {
 	}
 
 	ctx := context.Background()
-	dbs, err := openDatabases(ctx, *dir)
+	dbs, cleanup, err := openDatabases(ctx, *dir)
 	if err != nil {
 		return err
 	}
-	defer closeDatabases(dbs)
+	defer cleanup()
 
 	reports := make([]*databaseReport, 0, len(dbs))
 	for _, db := range dbs {
@@ -98,8 +98,7 @@ func run(args []string) error {
 
 // processDatabase scans (and in repair mode, repairs) a single database.
 func processDatabase(ctx context.Context, db *database, mode string, verbose bool) (*databaseReport, error) {
-	// Doltgres extended type deserialization requires a *sql.Context.
-	sctx := sql.NewContext(ctx)
+	sctx := db.sctx
 	sc := integrity.NewScanner(db.cs)
 
 	report := &databaseReport{Name: db.name}

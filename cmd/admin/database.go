@@ -25,7 +25,9 @@ import (
 	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/datas"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
+	"github.com/dolthub/go-mysql-server/sql"
 
+	dserver "github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/server/initialization"
 	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 )
@@ -37,16 +39,21 @@ type database struct {
 	ddb  *doltdb.DoltDB
 	cs   chunks.ChunkStore
 	ns   tree.NodeStore
+	// sctx is a *sql.Context backed by a real session with this database set as current, of the same
+	// kind a running server would build for a query. Storage-level scans require it: deserializing a
+	// table schema that uses a user-defined data type resolves the type through the session.
+	sctx *sql.Context
 }
 
 // openDatabases initializes the doltgres runtime (type serialization etc.) and opens every database found in |dir|.
 // |dir| may either be a database directory itself (contains .dolt) or a data directory containing databases.
-func openDatabases(ctx context.Context, dir string) ([]*database, error) {
+// The returned cleanup function releases the underlying engine, sessions, and databases.
+func openDatabases(ctx context.Context, dir string) ([]*database, func(), error) {
 	initialization.Initialize(nil, doltgresservercfg.DefaultServerConfig())
 
 	fs, err := filesys.LocalFilesysWithWorkingDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	dEnv := env.LoadWithoutDB(ctx, env.GetCurrentUserHomeDir, fs, doltdb.LocalDirDoltDB, "doltgres-admin")
@@ -56,8 +63,21 @@ func openDatabases(ctx context.Context, dir string) ([]*database, error) {
 
 	mrEnv, err := env.MultiEnvForDirectory(ctx, fs, dEnv)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	se, err := dserver.NewOfflineSqlEngine(ctx, mrEnv)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var cleanups []func()
+	cleanup := func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+	}
+	cleanups = append(cleanups, func() { _ = se.Close() })
 
 	var dbs []*database
 	err = mrEnv.Iter(func(name string, de *env.DoltEnv) (bool, error) {
@@ -68,6 +88,14 @@ func openDatabases(ctx context.Context, dir string) ([]*database, error) {
 		if ddb == nil {
 			return false, nil
 		}
+
+		sctx, sessCleanup, err := dserver.NewOfflineSessionContext(ctx, se)
+		if err != nil {
+			return true, err
+		}
+		cleanups = append(cleanups, sessCleanup)
+		sctx.SetCurrentDatabase(name)
+
 		cs := datas.ChunkStoreFromDatabase(doltdb.ExposeDatabaseFromDoltDB(ddb))
 		dbs = append(dbs, &database{
 			name: name,
@@ -75,21 +103,23 @@ func openDatabases(ctx context.Context, dir string) ([]*database, error) {
 			ddb:  ddb,
 			cs:   cs,
 			ns:   ddb.NodeStore(),
+			sctx: sctx,
 		})
 		return false, nil
 	})
 	if err != nil {
-		return nil, err
+		cleanup()
+		return nil, nil, err
 	}
 	if len(dbs) == 0 {
-		return nil, errors.Errorf("no databases found in %s", dir)
+		cleanup()
+		return nil, nil, errors.Errorf("no databases found in %s", dir)
 	}
-	return dbs, nil
-}
 
-// close closes the underlying dolt databases.
-func closeDatabases(dbs []*database) {
-	for _, db := range dbs {
-		_ = db.ddb.Close()
-	}
+	cleanups = append(cleanups, func() {
+		for _, db := range dbs {
+			_ = db.ddb.Close()
+		}
+	})
+	return dbs, cleanup, nil
 }

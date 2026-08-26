@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
-	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/core/integrity"
@@ -29,15 +28,29 @@ import (
 // prevent the server from starting. It returns an error if it finds any.
 func runStartupIntegrityCheck(ctx context.Context, mrEnv *env.MultiRepoEnv) error {
 	start := time.Now()
-	// Doltgres extended type deserialization requires a *sql.Context.
-	// TODO: this is broken, we need to get an actual Doltgres session from the session manager
-	sctx := sql.NewContext(ctx)
 
-	err := mrEnv.Iter(func(name string, de *env.DoltEnv) (bool, error) {
+	// Storage-level scans deserialize table schemas, which requires a real session of the kind the
+	// server builds for a query (e.g. to resolve user-defined data types), so build a short-lived
+	// engine over the same databases. It runs no background services, so no garbage collection can
+	// begin before the check completes.
+	se, err := NewOfflineSqlEngine(ctx, mrEnv)
+	if err != nil {
+		return err
+	}
+	defer se.Close()
+	sctx, cleanup, err := NewOfflineSessionContext(ctx, se)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	err = mrEnv.Iter(func(name string, de *env.DoltEnv) (bool, error) {
 		ddb := de.DoltDB(ctx)
 		if ddb == nil {
 			return false, nil
 		}
+		// User-defined type resolution consults the session state of the current database.
+		sctx.SetCurrentDatabase(name)
 		if err := integrity.CheckDatabase(sctx, name, ddb); err != nil {
 			return true, err
 		}
