@@ -148,11 +148,6 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return true, nil
 	})
 
-	// Check every database for the adaptive-encoding chunk reference corruption written by earlier
-	// releases, and refuse to start against a corrupted database. This must happen before any other
-	// service starts: in particular, garbage collection (including auto-GC, which runs as part of the
-	// sql-server services below) deletes the chunks that corrupted nodes fail to reference, turning
-	// repairable corruption into permanent data loss.
 	if !cfg.SkipStartupIntegrityCheck() {
 		if err = runStartupIntegrityCheck(ctx, mrEnv); err != nil {
 			return nil, err

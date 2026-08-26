@@ -44,13 +44,13 @@ func (e *CorruptionError) Error() string {
 	if e.Commit == "" {
 		location = fmt.Sprintf("the working set of branch %s", e.Branch)
 	}
-	return fmt.Sprintf(`database %q failed the startup integrity check: table %s at %s has %d adaptive-encoded values (in %d rows) that are missing from the storage layer's chunk reference index (value_address_offsets). This corruption was written by an earlier release; pushing, cloning, or garbage collecting this database will lose the affected values.
+	return fmt.Sprintf(`database %q failed a startup integrity check: table %s at %s has %d values (in %d rows) that were serialized incorrectly due to an error in a previous release of Doltgres. To avoid data loss with this version, the server will now exit.
 
 To repair this database:
-  1. Stop the server and MAKE A BACKUP COPY of the database directory before doing anything else.
-  2. Do not run garbage collection before repairing.
-  3. Build the repair tool from the DoltgreSQL repository: go build -o doltgres-admin ./cmd/admin
-  4. Run: doltgres-admin report -dir <data-dir> to see the full extent of the corruption, then
+  1. MAKE A BACKUP COPY of the database directory before doing anything else.
+  2. Build the repair tool from the DoltgreSQL repository at https://github.com/dolthub/doltgresql/ with this command:
+				go build -o doltgres-admin ./cmd/admin
+  3. Run: doltgres-admin report -dir <data-dir> to see the full extent of the corruption, then
      doltgres-admin repair -dir <data-dir> to repair it.
 
 To start the server without this check (unsafe until the database is repaired), set behavior.skip_startup_integrity_check to true in config.yaml.`,

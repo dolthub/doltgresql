@@ -46,19 +46,16 @@ type repairSummary struct {
 }
 
 // repairer rewrites prolly tree nodes whose value_address_offsets field omits references to out-of-band
-// values. Corrupt leaf nodes are re-serialized with the current (fixed) serializer using their original
+// values. Corrupt leaf nodes are re-serialized with the current serializer using their original
 // key and value tuple bytes, which recomputes the correct offsets; ancestor nodes are then rewritten to
 // reference the repaired children. Results are cached per chunk, so identical subtrees shared between
 // branches, commits, and structurally identical tables are only repaired once.
 type repairer struct {
 	db *database
 	// treeCache maps old node chunk hashes to their repaired equivalents (identity for clean subtrees).
-	treeCache map[integrity.CacheKey]hash.Hash
-	summary   repairSummary
-	verbose   bool
-	// transformLeaf inspects a leaf node and returns a replacement message, or false if the node
-	// needs no rewrite. It defaults to the repair transform; tests substitute a corrupting transform
-	// to simulate the bug in old releases.
+	treeCache     map[integrity.CacheKey]hash.Hash
+	summary       repairSummary
+	verbose       bool
 	transformLeaf leafTransform
 }
 

@@ -25,17 +25,12 @@ import (
 	"github.com/dolthub/doltgresql/core/integrity"
 )
 
-// runStartupIntegrityCheck scans every database in the data directory for adaptive-encoded out-of-band
-// values that are missing from their tree node's chunk reference index (value_address_offsets), a form
-// of corruption written by earlier releases. It returns an error describing the first corruption found,
-// which prevents the server from starting.
-//
-// This check must run before any garbage collection process begins (auto-GC runs as part of the
-// sql-server services): GC treats the missing references as unreachable and permanently deletes the
-// affected values. It can be skipped for faster startup with behavior.skip_startup_integrity_check.
+// runStartupIntegrityCheck scans every database in the data directory for errors in data integrity that should
+// prevent the server from starting. It returns an error if it finds any.
 func runStartupIntegrityCheck(ctx context.Context, mrEnv *env.MultiRepoEnv) error {
 	start := time.Now()
 	// Doltgres extended type deserialization requires a *sql.Context.
+	// TODO: this is broken, we need to get an actual Doltgres session from the session manager
 	sctx := sql.NewContext(ctx)
 
 	err := mrEnv.Iter(func(name string, de *env.DoltEnv) (bool, error) {

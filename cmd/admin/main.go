@@ -12,25 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// admin is an offline administration tool for doltgres databases. It identifies and repairs a form of
-// corruption introduced by earlier releases: tree node messages whose value_address_offsets field omits
-// entries for adaptive-encoded values stored out of band. Nodes written this way are missing chunk
-// references, which causes push and clone to omit the out-of-band chunks, and garbage collection to
-// delete them, resulting in data loss.
-//
-// Usage:
-//
-//	admin report [-dir <path>] [-out <report.html>] [-verbose]
-//	admin repair [-dir <path>] [-out <report.html>] [-verbose]
-//
-// Report mode scans the head of every branch of every database found in -dir and writes an HTML report
-// summarizing the corruption found. Repair mode does the same, then rewrites every corrupted tree node
-// in every commit reachable from any branch or tag, updating refs to the repaired history, and appends
-// a post-repair verification scan to the report. Repair preserves the hashes of unaffected commits.
-//
-// Repair mode must be run while the database is offline (no server running against it), and should be
-// run before any garbage collection: out-of-band chunks that GC already deleted cannot be recovered by
-// this tool (they are reported in the "missing chunks" column).
 package main
 
 import (
@@ -50,6 +31,21 @@ const (
 	modeRepair = "repair"
 )
 
+// admin is an offline administration tool for doltgres databases. It identifies and repairs a form of
+// corruption created by release before 0.56.3 where rows containing adaptive value columns (TEXT, JSON, etc.)
+// may not be correctly pushed or retained during a garbage collection, resulting in data loss.
+//
+// Usage:
+//
+//	admin report [-dir <path>] [-out <report.html>] [-verbose]
+//	admin repair [-dir <path>] [-out <report.html>] [-verbose]
+//
+// Report mode scans the head of every branch of every database found in -dir and writes an HTML report
+// summarizing the corruption found. Repair mode does the same, then rewrites every corrupted tree node
+// in every commit reachable from any branch or tag, updating refs to the repaired history, and appends
+// a post-repair verification scan to the report. Repair preserves the hashes of unaffected commits.
+//
+// Repair mode must be run while the database is offline (no server running against it).
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

@@ -102,10 +102,7 @@ type DoltgresBehaviorConfig struct {
 	DoltTransactionCommit *bool `yaml:"dolt_transaction_commit,omitempty" minver:"0.7.4"`
 	// AutoGCBehavior configures automatic background garbage collection.
 	AutoGCBehavior *DoltgresAutoGCBehaviorYAMLConfig `yaml:"auto_gc_behavior,omitempty" minver:"TBD"`
-	// SkipStartupIntegrityCheck disables the integrity check that runs at server startup, which
-	// refuses to start against a database corrupted by the adaptive-encoding chunk reference bug in
-	// earlier releases. Skipping the check makes startup faster, but starting against a corrupted
-	// database risks data loss on push, clone, or garbage collection.
+	// SkipStartupIntegrityCheck disables the data integrity check that runs at server startup, which makes startup faster
 	SkipStartupIntegrityCheck *bool `yaml:"skip_startup_integrity_check,omitempty" minver:"TBD"`
 }
 
