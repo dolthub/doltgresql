@@ -1360,6 +1360,40 @@ ORDER BY schema_name, table_name;`,
 			},
 		},
 		{
+			Name: "VALIDATE CONSTRAINT with the table's schema not on the search path",
+			SetUpScript: []string{
+				`CREATE TABLE public.vc (a int, b int);`,
+				`INSERT INTO public.vc VALUES (1, 10);`,
+				`ALTER TABLE public.vc ADD CONSTRAINT b_gt_ten CHECK (b > 10) NOT VALID;`,
+				`SELECT pg_catalog.set_config('search_path', '', false);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `ALTER TABLE public.vc VALIDATE CONSTRAINT b_gt_ten;`,
+					ExpectedErr: `Check constraint "b_gt_ten" violated`,
+				},
+			},
+		},
+		{
+			Name: "VALIDATE CONSTRAINT with a same-named table earlier on the search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA s2;`,
+				// (11, 5) violates b > 10, but satisfies it if b is read from column 0, as it would be were the
+				// check compiled against s2.vc.
+				`CREATE TABLE public.vc (a int, b int);`,
+				`INSERT INTO public.vc VALUES (11, 5);`,
+				`ALTER TABLE public.vc ADD CONSTRAINT b_gt_ten CHECK (b > 10) NOT VALID;`,
+				`CREATE TABLE s2.vc (b int, a int);`,
+				`SET search_path TO 's2, public';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `ALTER TABLE public.vc VALIDATE CONSTRAINT b_gt_ten;`,
+					ExpectedErr: `Check constraint "b_gt_ten" violated`,
+				},
+			},
+		},
+		{
 			// https://github.com/dolthub/doltgresql/issues/3082
 			Name: "duplicate key handling after ADD COLUMN with an expression index",
 			SetUpScript: []string{
