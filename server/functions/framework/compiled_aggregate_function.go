@@ -21,6 +21,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // AggregateFunction is an expression that represents CompiledAggregateFunction
@@ -152,7 +154,7 @@ func (c *CompiledAggregateFunction) NewBuffer(ctx *sql.Context) (sql.Aggregation
 	// Buffers evaluate their argument expressions directly, without the GMS value conversion that
 	// CompiledFunction.Eval performs, so any GMS-typed arguments (e.g. columns of the dolt_* system
 	// tables) must be wrapped to convert their values.
-	return agg.NewBuffer(castGMSArguments(ctx, args))
+	return agg.NewBuffer(withResolvedAggregateArgumentTypes(castGMSArguments(ctx, args), c.originalTypes))
 }
 
 // Id implements the interface sql.Aggregation.
@@ -182,7 +184,71 @@ func (c *CompiledAggregateFunction) NewWindowFunction(ctx *sql.Context) (sql.Win
 		return nil, err
 	}
 	// See the comment in NewBuffer: GMS-typed arguments must convert their values.
-	return newWindowFunc(castGMSArguments(ctx, args), c.window)
+	return newWindowFunc(withResolvedAggregateArgumentTypes(castGMSArguments(ctx, args), c.originalTypes), c.window)
+}
+
+// resolvedAggregateArgument preserves the concrete argument type selected for a
+// polymorphic aggregate. Aggregate buffers evaluate cloned expressions directly
+// and otherwise only see the declared pseudo-type (for example, anyarray), while
+// conversion-sensitive aggregates such as json_agg need the concrete element
+// type selected during overload resolution.
+type resolvedAggregateArgument struct {
+	child sql.Expression
+	typ   *pgtypes.DoltgresType
+}
+
+var _ sql.Expression = (*resolvedAggregateArgument)(nil)
+
+// EvalAggregateArgument evaluates an argument and reports whether DISTINCT retained the value.
+func EvalAggregateArgument(ctx *sql.Context, expr sql.Expression, row sql.Row) (interface{}, bool, error) {
+	if resolved, ok := expr.(*resolvedAggregateArgument); ok {
+		expr = resolved.child
+	}
+	if distinct, ok := expr.(*expression.DistinctExpression); ok {
+		return distinct.EvalDistinct(ctx, row)
+	}
+	value, err := expr.Eval(ctx, row)
+	return value, true, err
+}
+
+// withResolvedAggregateArgumentTypes preserves the concrete types selected during overload resolution.
+func withResolvedAggregateArgumentTypes(args []sql.Expression, types []*pgtypes.DoltgresType) []sql.Expression {
+	for i := range args {
+		if i < len(types) && types[i] != nil {
+			args[i] = &resolvedAggregateArgument{child: args[i], typ: types[i]}
+		}
+	}
+	return args
+}
+
+// Resolved implements sql.Expression.
+func (e *resolvedAggregateArgument) Resolved() bool { return e.child.Resolved() }
+
+// String implements sql.Expression.
+func (e *resolvedAggregateArgument) String() string { return e.child.String() }
+
+// Type implements sql.Expression.
+func (e *resolvedAggregateArgument) Type(ctx *sql.Context) sql.Type { return e.typ }
+
+// IsNullable implements sql.Expression.
+func (e *resolvedAggregateArgument) IsNullable(ctx *sql.Context) bool {
+	return e.child.IsNullable(ctx)
+}
+
+// Eval implements sql.Expression.
+func (e *resolvedAggregateArgument) Eval(ctx *sql.Context, row sql.Row) (any, error) {
+	return e.child.Eval(ctx, row)
+}
+
+// Children implements sql.Expression.
+func (e *resolvedAggregateArgument) Children() []sql.Expression { return []sql.Expression{e.child} }
+
+// WithChildren implements sql.Expression.
+func (e *resolvedAggregateArgument) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
+	if len(children) != 1 {
+		return nil, sql.ErrInvalidChildrenNumber.New(len(children), 1)
+	}
+	return &resolvedAggregateArgument{child: children[0], typ: e.typ}, nil
 }
 
 // cloneArguments returns a deep copy of args. Each partition/group gets its own AggregationBuffer or

@@ -787,6 +787,11 @@ func (t *DoltgresType) IsArrayCategory() bool {
 	return t.TypCategory == TypeCategory_ArrayTypes
 }
 
+// IsVectorType returns whether the type is one of PostgreSQL's legacy array-compatible vector types.
+func (t *DoltgresType) IsVectorType() bool {
+	return t.ID == Int16vector.ID || t.ID == Oidvector.ID
+}
+
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a
 // user-created composite type.
 func (t *DoltgresType) IsCompositeType() bool {

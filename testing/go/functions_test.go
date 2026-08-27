@@ -129,6 +129,127 @@ func TestAggregateFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "json_agg",
+			SetUpScript: []string{
+				`SET TIME ZONE 'UTC'`,
+				`CREATE TABLE json_agg_records (id int4, label text)`,
+				`INSERT INTO json_agg_records VALUES (1, 'one'), (2, NULL)`,
+				`CREATE TABLE json_agg_arrays (id int4 primary key, v int4[])`,
+				`INSERT INTO json_agg_arrays VALUES (1, ARRAY[1,NULL,3]), (2, ARRAY[4,5,NULL])`,
+				`CREATE TABLE json_agg_stored (id int4 primary key, amount numeric(40,20), payload json)`,
+				`INSERT INTO json_agg_stored VALUES (1, 12345678901234567890.12345678901234567890, '{"kind":"stored"}')`,
+				`CREATE DOMAIN json_agg_positive_int AS int4 CHECK (VALUE > 0)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (1::int4),(2),(NULL)) AS t(v);`,
+					Expected: []sql.Row{{`[1, 2, null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('quote"slash\line'::text),(E'line\nnext')) AS t(v);`,
+					Expected: []sql.Row{{`["quote\"slash\\line", "line\nnext"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (true),(false),(NULL::bool)) AS t(v);`,
+					Expected: []sql.Row{{`[true, false, null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (1.2300::numeric),('-4.5'::numeric),('NaN'::numeric)) AS t(v);`,
+					Expected: []sql.Row{{`[1.2300, -4.5, "NaN"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('Infinity'::float8),('-Infinity'::float8),('NaN'::float8),(1.5::float8)) AS t(v);`,
+					Expected: []sql.Row{{`["Infinity", "-Infinity", "NaN", 1.5]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('2024-02-29'::date),('0001-01-01 BC'::date)) AS t(v);`,
+					Expected: []sql.Row{{`["2024-02-29", "0001-01-01 BC"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('2024-02-29 12:34:56.123456'::timestamp),('2024-03-01 00:00:00'::timestamp)) AS t(v);`,
+					Expected: []sql.Row{{`["2024-02-29T12:34:56.123456", "2024-03-01T00:00:00"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('550e8400-e29b-41d4-a716-446655440000'::uuid),('00000000-0000-0000-0000-000000000000'::uuid)) AS t(v);`,
+					Expected: []sql.Row{{`["550e8400-e29b-41d4-a716-446655440000", "00000000-0000-0000-0000-000000000000"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('{"b": 2, "a": 1}'::json),('null'::json)) AS t(v);`,
+					Expected: []sql.Row{{`[{"b": 2, "a": 1}, null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('{"b": 2, "a": 1}'::jsonb),('[1, null]'::jsonb)) AS t(v);`,
+					Expected: []sql.Row{{`[{"a": 1, "b": 2}, [1, null]]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('1'::json),('"two"'::json),('true'::json),('null'::json),('{"k":3}'::json),('[4]'::json)) AS t(v);`,
+					Expected: []sql.Row{{`[1, "two", true, null, {"k":3}, [4]]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM json_agg_arrays;`,
+					Expected: []sql.Row{{"[[1,null,3], \n [4,5,null]]"}},
+				},
+				{
+					Query:    `SELECT json_agg(amount) FROM json_agg_stored;`,
+					Expected: []sql.Row{{`[12345678901234567890.12345678901234567890]`}},
+				},
+				{
+					Query:    `SELECT json_agg(r) FROM (SELECT * FROM json_agg_stored ORDER BY id) r;`,
+					Expected: []sql.Row{{`[{"id":1,"amount":12345678901234567890.12345678901234567890,"payload":{"kind":"stored"}}]`}},
+				},
+				{
+					Query:    `SELECT json_agg(NULL::text);`,
+					Expected: []sql.Row{{`[null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (SELECT 1::int AS v WHERE false) AS t;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(json_agg(1));`,
+					Expected: []sql.Row{{"json"}},
+				},
+				{
+					Query:    `SELECT json_agg(r) FROM (SELECT * FROM json_agg_records ORDER BY id) r;`,
+					Expected: []sql.Row{{`[{"id":1,"label":"one"}, ` + "\n " + `{"id":2,"label":null}]`}},
+				},
+				{
+					Query: `SELECT g, json_agg(v) FROM (VALUES ('a',1),('a',2),('b',3),('b',NULL)) AS t(g,v) GROUP BY g ORDER BY g;`,
+					Expected: []sql.Row{
+						{"a", `[1, 2]`},
+						{"b", `[3, null]`},
+					},
+				},
+				{
+					Query: `SELECT json_agg(v) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES (1,10),(2,NULL),(3,30)) AS t(id,v) ORDER BY id;`,
+					Expected: []sql.Row{
+						{`[10]`},
+						{`[10, null]`},
+						{`[10, null, 30]`},
+					},
+				},
+				{
+					Query: `SELECT json_agg(v) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) FROM (VALUES (1,10),(2,20)) AS t(id,v) ORDER BY id;`,
+					Expected: []sql.Row{
+						{nil},
+						{`[10]`},
+					},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('\x00ff'::bytea),(NULL::bytea)) AS t(v);`,
+					Expected: []sql.Row{{`["\\x00ff", null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (1::json_agg_positive_int),(2::json_agg_positive_int)) AS t(v);`,
+					Expected: []sql.Row{{`[1, 2]`}},
+				},
+				{
+					Query:    `SELECT json_agg(DISTINCT v) FROM (VALUES (1),(1),(NULL),(NULL)) AS t(v);`,
+					Expected: []sql.Row{{`[1, null]`}},
+				},
+			},
+		},
+		{
 			Name: "array_agg",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (pk INT primary key, t timestamp, v varchar, f float[]);`,
@@ -856,6 +977,66 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:    `select greatest(a, b, c), least(a, b, c) from t;`,
 					Expected: []sql.Row{{Numeric("8.80000"), Numeric("2.75")}},
+				},
+			},
+		},
+		{
+			Name: "num_nonnulls and num_nulls",
+			Assertions: []ScriptTestAssertion{
+				{
+					// The OIDs are registered in the built-in catalog, so they must match Postgres.
+					Query:    `SELECT 'num_nonnulls'::regproc::oid, 'num_nulls'::regproc::oid;`,
+					Expected: []sql.Row{{440, 438}},
+				},
+				{
+					Query:            `SELECT num_nonnulls(1, NULL);`,
+					ExpectedColNames: []string{"num_nonnulls"},
+					Expected:         []sql.Row{{1}},
+				},
+				{
+					Query:            `SELECT num_nulls(1, NULL);`,
+					ExpectedColNames: []string{"num_nulls"},
+					Expected:         []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT num_nonnulls(NULL);`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT num_nulls(NULL);`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT num_nonnulls(1, 2, 3), num_nulls(1, 2, 3);`,
+					Expected: []sql.Row{{3, 0}},
+				},
+				{
+					Query:    `SELECT num_nonnulls('a', NULL::int4, true, NULL::text, 1.5), num_nulls('a', NULL::int4, true, NULL::text, 1.5);`,
+					Expected: []sql.Row{{3, 2}},
+				},
+				{
+					Query:       `SELECT num_nonnulls();`,
+					ExpectedErr: "function num_nonnulls() does not exist",
+				},
+				{
+					Query:       `SELECT num_nulls();`,
+					ExpectedErr: "function num_nulls() does not exist",
+				},
+				{
+					Query:    `CREATE TABLE num_nulls_check (a uuid, b uuid, CONSTRAINT t_direction_check CHECK ((num_nonnulls(a, b) = 1)));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO num_nulls_check VALUES ('00000000-0000-0000-0000-000000000001', NULL);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO num_nulls_check VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');`,
+					ExpectedErr: "Check constraint",
+				},
+				{
+					Query:       `INSERT INTO num_nulls_check VALUES (NULL, NULL);`,
+					ExpectedErr: "Check constraint",
 				},
 			},
 		},
