@@ -132,6 +132,7 @@ func Init() {
 	initJsonObjectKeys()
 	initJsonStripNulls()
 	initJsonTypeof()
+	initJsonbSet()
 	initLcm()
 	initLeft()
 	initLength()

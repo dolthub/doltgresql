@@ -1755,7 +1755,7 @@ func castSQLError(err error) *pgconn.PgError {
 		code = pgcode.DivisionByZero
 	case sql.ErrValueOutOfRange.Is(err), pgtypes.ErrValueIsOutOfRangeForType.Is(err),
 		pgtypes.ErrOutOfRange.Is(err), pgtypes.ErrInputOutOfRange.Is(err),
-		errors.Is(err, pgtypes.ErrCastOutOfRange):
+		pgtypes.ErrJSONNumberOutOfRange.Is(err), errors.Is(err, pgtypes.ErrCastOutOfRange):
 		code = pgcode.NumericValueOutOfRange
 	case pgtypes.ErrInvalidSyntaxForType.Is(err), sql.ErrInvalidValue.Is(err):
 		code = pgcode.InvalidTextRepresentation

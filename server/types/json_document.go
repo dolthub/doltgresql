@@ -15,17 +15,28 @@
 package types
 
 import (
-	"bytes"
+	"context"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/cockroachdb/apd/v3"
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/goccy/go-json"
+	goerrors "gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/utils"
 )
+
+const (
+	maxJSONNumericIntegerDigits = 131072
+	maxJSONNumericScale         = 16383
+)
+
+// ErrJSONNumberOutOfRange is returned when a JSON number exceeds PostgreSQL's numeric limits.
+var ErrJSONNumberOutOfRange = goerrors.NewKind("value overflows numeric format")
 
 // jsonDocumentStringUnicodeRegex is used on a JsonDocument's string to find all Unicode escape sequences that have an
 // additional backslash.
@@ -230,12 +241,8 @@ func JsonValueFormatter(sb *strings.Builder, value JsonValue) {
 
 // UnmarshalToJsonDocument converts a JSON document byte slice into the actual JSON document.
 func UnmarshalToJsonDocument(val []byte) (JsonDocument, error) {
-	var decoded interface{}
-	decoder := json.NewDecoder(bytes.NewReader(val))
-	// UseNumber causes JSON numbers to be decoded as json.Number (string-backed) instead of
-	// float64, which ensures we preserve values and precision.
-	decoder.UseNumber()
-	if err := decoder.Decode(&decoded); err != nil {
+	decoded, err := DecodeJSONBValue(val)
+	if err != nil {
 		return JsonDocument{}, err
 	}
 	jsonValue, err := ConvertToJsonDocument(decoded)
@@ -243,6 +250,84 @@ func UnmarshalToJsonDocument(val []byte) (JsonDocument, error) {
 		return JsonDocument{}, err
 	}
 	return JsonDocument{Value: jsonValue}, nil
+}
+
+// DecodeJSONValue parses textual PostgreSQL JSON while retaining number tokens exactly.
+// PostgreSQL's json type validates syntax but does not impose jsonb's numeric bounds.
+func DecodeJSONValue(val []byte) (any, error) {
+	var decoded any
+	if err := gmstypes.JsonUnmarshalPreserveNumberTokens(val, &decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
+}
+
+// DecodeJSONBValue parses PostgreSQL jsonb without losing numeric precision and
+// enforces the numeric range accepted by PostgreSQL's jsonb input function.
+func DecodeJSONBValue(val []byte) (any, error) {
+	decoded, err := DecodeJSONValue(val)
+	if err != nil {
+		return nil, err
+	}
+	decoded, err = gmstypes.JsonNumbersToDecimals(decoded)
+	if err != nil {
+		return nil, ErrJSONNumberOutOfRange.New()
+	}
+	if err := validateJSONNumberRange(decoded); err != nil {
+		return nil, err
+	}
+	return decoded, nil
+}
+
+// validateJSONNumberRange enforces PostgreSQL's numeric bounds for JSONB numbers.
+func validateJSONNumberRange(value any) error {
+	switch value := value.(type) {
+	case *apd.Decimal:
+		exponent := int64(value.Exponent)
+		if exponent < -maxJSONNumericScale {
+			return ErrJSONNumberOutOfRange.New()
+		}
+		if !value.IsZero() && value.NumDigits()+exponent > maxJSONNumericIntegerDigits {
+			return ErrJSONNumberOutOfRange.New()
+		}
+	case map[string]any:
+		for _, item := range value {
+			if err := validateJSONNumberRange(item); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, item := range value {
+			if err := validateJSONNumberRange(item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// JSONWrapperToInterface returns a JSON wrapper's native value without normalizing
+// exact numeric tokens through float64 when the wrapper exposes its stored bytes.
+func JSONWrapperToInterface(ctx context.Context, wrapper sql.JSONWrapper) (any, error) {
+	return jsonWrapperToInterface(ctx, wrapper, DecodeJSONValue)
+}
+
+// JSONBWrapperToInterface materializes byte-backed jsonb using exact, bounded
+// PostgreSQL numeric semantics.
+func JSONBWrapperToInterface(ctx context.Context, wrapper sql.JSONWrapper) (any, error) {
+	return jsonWrapperToInterface(ctx, wrapper, DecodeJSONBValue)
+}
+
+// jsonWrapperToInterface decodes byte-backed wrappers with the requested numeric policy.
+func jsonWrapperToInterface(ctx context.Context, wrapper sql.JSONWrapper, decode func([]byte) (any, error)) (any, error) {
+	if bytesValue, ok := wrapper.(gmstypes.JSONBytes); ok {
+		bytes, err := bytesValue.GetBytes(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return decode(bytes)
+	}
+	return wrapper.ToInterface(ctx)
 }
 
 // ConvertToJsonDocument recursively constructs a valid JsonDocument based on the structures returned by the decoder.
