@@ -144,7 +144,7 @@ func (v *ValidateConstraint) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 		}
 		for _, check := range checks {
 			if strings.EqualFold(check.Name, v.constraintName) {
-				return v.validateCheckConstraint(ctx, tblNode, check)
+				return v.validateCheckConstraint(ctx, tblNode, doltdb.TableName{Schema: schemaName, Name: v.tableName}, check)
 			}
 		}
 	}
@@ -153,12 +153,15 @@ func (v *ValidateConstraint) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, 
 }
 
 // validateCheckConstraint validates check constraints if on its |IsNotValid| field is TRUE.
-func (v *ValidateConstraint) validateCheckConstraint(ctx *sql.Context, tblNode sql.Table, check sql.CheckDefinition) (sql.RowIter, error) {
+func (v *ValidateConstraint) validateCheckConstraint(ctx *sql.Context, tblNode sql.Table, tableName doltdb.TableName, check sql.CheckDefinition) (sql.RowIter, error) {
 	if !check.IsNotValid {
 		return sql.RowsToRowIter(), nil
 	}
 
-	checkExpr, err := expranalysis.ResolveExpression(ctx, doltdb.TableName{Name: v.tableName, Schema: v.schemaName}, check.CheckExpression)
+	// The name must carry its schema: the expression is compiled by a query built around it, and an unqualified name
+	// is resolved against the session's search_path, which need not reach this table's schema and may name a
+	// different table of the same name first.
+	checkExpr, err := expranalysis.ResolveExpression(ctx, tableName, check.CheckExpression)
 	if err != nil {
 		return nil, errors.Errorf("could not parse check expression for constraint %q: %v", check.Name, err)
 	}
