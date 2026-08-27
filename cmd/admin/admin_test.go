@@ -253,11 +253,11 @@ func newCorrupter(db *database, verbose bool) *repairer {
 // corruptLeafTransform simulates the bug in old releases: it re-serializes leaf nodes with their
 // value_address_offsets and key_address_offsets fields omitted. This matches the behavior of releases
 // where the tuple descriptor's AddressFieldCount did not count adaptive-encoded fields.
-func corruptLeafTransform(rw *integrity.TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
+func corruptLeafTransform(rw *TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
 	if pm.ValueAddressOffsetsLength() == 0 && pm.KeyAddressOffsetsLength() == 0 {
 		return nil, false, nil
 	}
-	msg, err := integrity.ReserializeLeaf(pm, strippedDescriptor(kd), strippedDescriptor(vd), rw.Pool())
+	msg, err := ReserializeLeaf(pm, strippedDescriptor(kd), strippedDescriptor(vd), rw.Pool())
 	if err != nil {
 		return nil, false, err
 	}
