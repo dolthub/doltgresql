@@ -85,7 +85,10 @@ func openDatabases(ctx context.Context, dir string) ([]*database, func(), error)
 		if ddb == nil {
 			return false, nil
 		}
+		cleanups = append(cleanups, func() { _ = ddb.Close() })
 
+		// The session is registered after the database it's pegged to, so that reverse-order
+		// cleanup ends the session before closing the database under it.
 		sctx, sessCleanup, err := dserver.NewOfflineSessionContext(ctx, se)
 		if err != nil {
 			return true, err
@@ -112,11 +115,5 @@ func openDatabases(ctx context.Context, dir string) ([]*database, func(), error)
 		cleanup()
 		return nil, nil, errors.Errorf("no databases found in %s", dir)
 	}
-
-	cleanups = append(cleanups, func() {
-		for _, db := range dbs {
-			_ = db.ddb.Close()
-		}
-	})
 	return dbs, cleanup, nil
 }

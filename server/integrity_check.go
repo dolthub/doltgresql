@@ -44,15 +44,33 @@ func runStartupIntegrityCheck(ctx context.Context, mrEnv *env.MultiRepoEnv) erro
 	}
 	defer cleanup()
 
+	var checked, skipped int
 	err = mrEnv.Iter(func(name string, de *env.DoltEnv) (bool, error) {
 		ddb := de.DoltDB(ctx)
 		if ddb == nil {
 			return false, nil
 		}
+
+		// Databases that already passed this version of the check carry a sentinel file and are
+		// not checked again.
+		doltDir := de.GetDoltDir()
+		if integrity.HasValidSentinel(de.FS, doltDir) {
+			logrus.Debugf("skipping integrity check for database %s: previously passed", name)
+			skipped++
+			return false, nil
+		}
+
 		// User-defined type resolution consults the session state of the current database.
 		sctx.SetCurrentDatabase(name)
 		if err := integrity.CheckDatabase(sctx, name, ddb); err != nil {
 			return true, err
+		}
+		checked++
+
+		// Record the result so future startups skip this database. Best effort: a database that
+		// can't record it (e.g. a read-only filesystem) is just checked again next time.
+		if err := integrity.WriteSentinel(de.FS, doltDir); err != nil {
+			logrus.Warnf("failed to record integrity check result for database %s: %s", name, err.Error())
 		}
 		return false, nil
 	})
@@ -60,6 +78,7 @@ func runStartupIntegrityCheck(ctx context.Context, mrEnv *env.MultiRepoEnv) erro
 		return err
 	}
 
-	logrus.Infof("startup integrity check passed in %s", time.Since(start))
+	logrus.Infof("startup integrity check passed in %s (%d checked, %d previously passed)",
+		time.Since(start), checked, skipped)
 	return nil
 }

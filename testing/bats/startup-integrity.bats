@@ -63,6 +63,9 @@ EOF
     run query_server_for_db corruption_test -c "SELECT count(*) FROM t2;" -t
     log_status_eq 0
     log_output_has "2"
+
+    # a skipped check records no passed-check sentinel
+    [ ! -f data/corruption_test/.dolt/.integrity_check_passed ]
 }
 
 @test "startup-integrity: healthy database passes the startup check" {
@@ -93,4 +96,35 @@ EOF
     log_status_eq 0
     # 7 committed out-of-band values on main plus 2 repaired uncommitted ones in the working set
     log_output_has "9"
+
+    # the passed check dropped a sentinel so future startups skip re-checking this database
+    [ -f data/corruption_test/.dolt/.integrity_check_passed ]
+}
+
+@test "startup-integrity: sentinel from a passed check skips future checks" {
+    generate_corrupt_data_dir "$(pwd)/data"
+    PORT=$( definePORT )
+    write_config $PORT false
+
+    # the corrupt database refuses to start
+    run doltgres -data-dir=./data -config=config.yaml
+    log_status_eq 1
+    log_output_has "failed a startup integrity check"
+
+    # a sentinel recorded by a passed check suppresses the check for that database entirely, so
+    # the server now starts even though the database is corrupt. (The file content is the version
+    # of the check that passed; this couples the test to that format on purpose.)
+    echo "1" > data/corruption_test/.dolt/.integrity_check_passed
+    start_sql_server_with_args "-data-dir=./data" "-config=config.yaml"
+    run query_server_for_db corruption_test -c "SELECT count(*) FROM t2;" -t
+    log_status_eq 0
+    stop_sql_server 1
+
+    # a sentinel recorded by a different (older) version of the check does not suppress it
+    echo "0" > data/corruption_test/.dolt/.integrity_check_passed
+    PORT=$( definePORT )
+    write_config $PORT false
+    run doltgres -data-dir=./data -config=config.yaml
+    log_status_eq 1
+    log_output_has "failed a startup integrity check"
 }
