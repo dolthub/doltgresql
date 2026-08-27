@@ -51,9 +51,6 @@ func resolveRenameIndex(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 	if !ok {
 		return nil, transform.SameTree, errors.Errorf(`table "%s" does not support renaming indexes`, tbl.Name())
 	}
-	// Postgres requires every relation name in a schema to be unique regardless of relation type, so the new name
-	// must not collide with any table, view, sequence, or index in the index's schema. The name validator lives on
-	// tables.PgDatabase; schemas fetched via core.GetSqlDatabaseFromContext are unwrapped, so wrap before asserting.
 	if validator, ok := tables.WrapSqlDatabase(schema).(sql.SchemaObjectNameValidator); ok {
 		if _, err := validator.ValidateNewIndexName(ctx, ri.NewName, false); err != nil {
 			return nil, transform.SameTree, err
