@@ -33,7 +33,8 @@ const (
 
 // admin is an offline administration tool for doltgres databases. It identifies and repairs a form of
 // corruption created by release before 0.56.3 where rows containing adaptive value columns (TEXT, JSON, etc.)
-// may not be correctly pushed or retained during a garbage collection, resulting in data loss.
+// may not be correctly pushed or retained during a garbage collection, resulting in data loss. Additionally,
+// all versions of Doltgres had this bug for adaptive key columns (JSON, etc.) in primary keys.
 //
 // Usage:
 //
