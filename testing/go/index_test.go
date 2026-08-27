@@ -1637,6 +1637,76 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			// The predicate is stored as text and re-compiled by a query built around the table name. That name is
+			// unqualified today, so it is resolved against the session's search_path rather than the schema the index
+			// actually lives in.
+			Name: "partial index on a table whose schema is not on the search path",
+			SetUpScript: []string{
+				"CREATE TABLE public.cg (id int PRIMARY KEY, org_id int, code text, deleted_at timestamptz);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT pg_catalog.set_config('search_path', '', false);",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "CREATE UNIQUE INDEX uq_cg ON public.cg USING btree (org_id, code) WHERE ((code IS NOT NULL) AND (deleted_at IS NULL));",
+					Expected: []sql.Row{},
+				},
+				{
+					// A second connection, so the writer state is compiled fresh rather than served from the cache
+					// the CREATE INDEX above populated.
+					Query:            "SELECT pg_catalog.set_config('search_path', '', false);",
+					SkipResultsCheck: true,
+					Username:         "postgres",
+					Password:         "password",
+				},
+				{
+					Query:    "INSERT INTO public.cg (id, org_id, code) VALUES (1, 1, 'a');",
+					Expected: []sql.Row{},
+					Username: "postgres",
+					Password: "password",
+				},
+				{
+					Query:       "INSERT INTO public.cg (id, org_id, code) VALUES (2, 1, 'a');",
+					ExpectedErr: "duplicate unique key given",
+					Username:    "postgres",
+					Password:    "password",
+				},
+			},
+		},
+		{
+			// Same cause as above, but silent: the predicate compiles against s2.cg, whose columns sit at different
+			// positions, so the unique index is simply not enforced.
+			Name: "partial index predicate does not resolve to a same-named table in another schema",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"CREATE TABLE public.cg (id int PRIMARY KEY, org_id int, code text, deleted_at text);",
+				"CREATE UNIQUE INDEX uq_cg ON public.cg USING btree (org_id, code) WHERE ((code IS NOT NULL) AND (deleted_at IS NULL));",
+				"CREATE TABLE s2.cg (deleted_at text, code text, org_id int, id int PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SET search_path TO 's2';",
+					SkipResultsCheck: true,
+					Username:         "postgres",
+					Password:         "password",
+				},
+				{
+					Query:    "INSERT INTO public.cg (id, org_id, code, deleted_at) VALUES (1, 1, 'a', NULL);",
+					Expected: []sql.Row{},
+					Username: "postgres",
+					Password: "password",
+				},
+				{
+					Query:       "INSERT INTO public.cg (id, org_id, code, deleted_at) VALUES (2, 1, 'a', NULL);",
+					ExpectedErr: "duplicate unique key given",
+					Username:    "postgres",
+					Password:    "password",
+				},
+			},
+		},
+		{
 			Name: "index naming: unnamed index uses table_col_idx convention",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (pk INT PRIMARY KEY, a INT, b INT);",
