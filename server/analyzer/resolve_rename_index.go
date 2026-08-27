@@ -25,6 +25,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
+	"github.com/dolthub/doltgresql/server/tables"
 )
 
 // resolveRenameIndex resolves the table owning the index named in an ALTER INDEX ... RENAME TO statement and fills
@@ -35,7 +36,7 @@ func resolveRenameIndex(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 		return n, transform.SameTree, nil
 	}
 
-	tbl, err := findRenameIndexTable(ctx, ri)
+	tbl, schema, err := findRenameIndexTable(ctx, ri)
 	if err != nil {
 		return nil, transform.SameTree, err
 	}
@@ -50,39 +51,37 @@ func resolveRenameIndex(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 	if !ok {
 		return nil, transform.SameTree, errors.Errorf(`table "%s" does not support renaming indexes`, tbl.Name())
 	}
-	if idxTbl, ok := tbl.(sql.IndexAddressableTable); ok {
-		indexes, err := idxTbl.GetIndexes(ctx)
-		if err != nil {
+	// Postgres requires every relation name in a schema to be unique regardless of relation type, so the new name
+	// must not collide with any table, view, sequence, or index in the index's schema. The name validator lives on
+	// tables.PgDatabase; schemas fetched via core.GetSqlDatabaseFromContext are unwrapped, so wrap before asserting.
+	if validator, ok := tables.WrapSqlDatabase(schema).(sql.SchemaObjectNameValidator); ok {
+		if _, err := validator.ValidateNewIndexName(ctx, ri.NewName, false); err != nil {
 			return nil, transform.SameTree, err
-		}
-		for _, index := range indexes {
-			if strings.EqualFold(index.ID(), ri.NewName) {
-				return nil, transform.SameTree, errors.Errorf(`relation "%s" already exists`, ri.NewName)
-			}
 		}
 	}
 
 	return ri.WithResolvedTable(alterableTbl), transform.NewTree, nil
 }
 
-// findRenameIndexTable finds the table that owns the index being renamed. Postgres does not name the table in
-// ALTER INDEX statements, so we search the schemas on the search path (or the explicitly named schema) for a table
-// with a matching index. Returns nil (with no error) if no matching index was found.
-func findRenameIndexTable(ctx *sql.Context, ri *pgnodes.RenameIndex) (sql.Table, error) {
+// findRenameIndexTable finds the table that owns the index being renamed, along with the schema containing it.
+// Postgres does not name the table in ALTER INDEX statements, so we search the schemas on the search path (or the
+// explicitly named schema) for a table with a matching index. Returns nils (with no error) if no matching index
+// was found.
+func findRenameIndexTable(ctx *sql.Context, ri *pgnodes.RenameIndex) (sql.Table, sql.DatabaseSchema, error) {
 	db, err := core.GetSqlDatabaseFromContext(ctx, ri.DbName)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if db == nil {
 		dbName := ri.DbName
 		if len(dbName) == 0 {
 			dbName = ctx.GetCurrentDatabase()
 		}
-		return nil, sql.ErrDatabaseNotFound.New(dbName)
+		return nil, nil, sql.ErrDatabaseNotFound.New(dbName)
 	}
 	schemaDb, ok := db.(sql.SchemaDatabase)
 	if !ok {
-		return nil, errors.Errorf(`database "%s" does not support schemas`, db.Name())
+		return nil, nil, errors.Errorf(`database "%s" does not support schemas`, db.Name())
 	}
 	var searchPath []string
 	if len(ri.SchemaName) > 0 {
@@ -90,7 +89,7 @@ func findRenameIndexTable(ctx *sql.Context, ri *pgnodes.RenameIndex) (sql.Table,
 	} else {
 		searchPath, err = core.SearchPath(ctx)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	for _, schemaName := range searchPath {
@@ -100,7 +99,7 @@ func findRenameIndexTable(ctx *sql.Context, ri *pgnodes.RenameIndex) (sql.Table,
 		}
 		schema, ok, err := schemaDb.GetSchema(ctx, schemaName)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !ok {
 			continue
@@ -111,13 +110,13 @@ func findRenameIndexTable(ctx *sql.Context, ri *pgnodes.RenameIndex) (sql.Table,
 		} else {
 			tableNames, err = schema.GetTableNames(ctx)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		for _, tableName := range tableNames {
 			tbl, ok, err := schema.GetTableInsensitive(ctx, tableName)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !ok {
 				continue
@@ -128,14 +127,14 @@ func findRenameIndexTable(ctx *sql.Context, ri *pgnodes.RenameIndex) (sql.Table,
 			}
 			indexes, err := idxTbl.GetIndexes(ctx)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			for _, index := range indexes {
 				if strings.EqualFold(index.ID(), ri.IndexName) {
-					return tbl, nil
+					return tbl, schema, nil
 				}
 			}
 		}
 	}
-	return nil, nil
+	return nil, nil, nil
 }

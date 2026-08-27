@@ -1594,6 +1594,12 @@ func TestBasicIndexing(t *testing.T) {
 				"CREATE TABLE t (pk int PRIMARY KEY, v1 int, v2 int);",
 				"CREATE INDEX v1_idx ON t (v1);",
 				"CREATE INDEX v2_idx ON t (v2);",
+				"CREATE TABLE t2 (pk int PRIMARY KEY, v1 int);",
+				"CREATE INDEX t2_v1_idx ON t2 (v1);",
+				"CREATE VIEW myview AS SELECT pk FROM t;",
+				"CREATE SEQUENCE myseq;",
+				"CREATE SCHEMA otherschema;",
+				"CREATE TABLE otherschema.t3 (pk int PRIMARY KEY);",
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1608,6 +1614,40 @@ func TestBasicIndexing(t *testing.T) {
 					// Renaming to a name that's already in use on the same table errors
 					Query:       "ALTER INDEX v1_idx RENAME TO v2_idx;",
 					ExpectedErr: `relation "v2_idx" already exists`,
+				},
+				{
+					// All relations in a schema share a namespace, so an index on another table conflicts too
+					Query:       "ALTER INDEX v1_idx RENAME TO t2_v1_idx;",
+					ExpectedErr: `relation "t2_v1_idx" already exists`,
+				},
+				{
+					// ... as does a table name
+					Query:       "ALTER INDEX v1_idx RENAME TO t2;",
+					ExpectedErr: `relation "t2" already exists`,
+				},
+				{
+					// ... a view name
+					Query:       "ALTER INDEX v1_idx RENAME TO myview;",
+					ExpectedErr: `relation "myview" already exists`,
+				},
+				{
+					// ... a sequence name
+					Query:       "ALTER INDEX v1_idx RENAME TO myseq;",
+					ExpectedErr: `relation "myseq" already exists`,
+				},
+				{
+					// ... and the index's own current name
+					Query:       "ALTER INDEX v1_idx RENAME TO v1_idx;",
+					ExpectedErr: `relation "v1_idx" already exists`,
+				},
+				{
+					// Relations in other schemas don't conflict
+					Query:    "ALTER INDEX v1_idx RENAME TO t3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER INDEX t3 RENAME TO v1_idx;",
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    "ALTER INDEX IF EXISTS v1_idx RENAME TO v1_renamed_idx;",
