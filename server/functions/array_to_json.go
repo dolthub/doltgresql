@@ -160,6 +160,13 @@ func valueToJsonRaw(ctx *sql.Context, elemType *pgtypes.DoltgresType, val any) (
 	}
 }
 
+// ValueToJsonRaw converts a PostgreSQL value to its JSON representation. It is
+// exported for aggregates such as json_agg, which share PostgreSQL's scalar
+// value-to-JSON conversion rules with to_json and array_to_json.
+func ValueToJsonRaw(ctx *sql.Context, elemType *pgtypes.DoltgresType, val any) (json.RawMessage, error) {
+	return valueToJsonRaw(ctx, elemType, val)
+}
+
 // marshalJsonNumber formats PostgreSQL numeric types through their output
 // functions. Non-finite float and numeric values are JSON strings because they
 // are not valid JSON number tokens.
