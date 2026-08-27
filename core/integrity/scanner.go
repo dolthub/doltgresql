@@ -13,9 +13,10 @@
 // limitations under the License.
 
 // Package integrity detects a form of storage corruption introduced by earlier DoltgreSQL releases:
-// prolly tree node messages whose value_address_offsets field omits entries for adaptive-encoded
-// values stored out of band. Nodes written this way are missing chunk references, which causes push
-// and clone to omit the out-of-band chunks, and garbage collection to delete them, resulting in data
+// prolly tree node messages whose address offset fields (value_address_offsets for value tuples,
+// key_address_offsets for key tuples, at every tree level) omit entries for adaptive-encoded values
+// stored out of band. Nodes written this way are missing chunk references, which causes push and
+// clone to omit the out-of-band chunks, and garbage collection to delete them, resulting in data
 // loss. See cmd/admin for the offline tool that reports and repairs this corruption.
 package integrity
 
@@ -36,7 +37,8 @@ type Stats struct {
 	Chunks uint64
 	// LeafChunks is the number of leaf node chunks in the subtree.
 	LeafChunks uint64
-	// CorruptChunks is the number of leaf chunks with at least one missing key or value address offset.
+	// CorruptChunks is the number of chunks, leaf or internal, with at least one missing key or value
+	// address offset.
 	CorruptChunks uint64
 	// Rows is the total number of rows in the subtree.
 	Rows uint64
@@ -61,6 +63,13 @@ type Stats struct {
 	// key_address_offsets field. Nodes written before that field existed record no key addresses at
 	// all, so any out-of-band key value they hold counts here.
 	KeyCorruptValues uint64
+	// InternalKeyOutOfBandValues is the number of adaptive-encoded values stored out-of-band in the
+	// key tuples of internal (non-leaf) nodes. Internal boundary keys are copies of leaf keys, so
+	// these are duplicates of values counted in KeyOutOfBandValues.
+	InternalKeyOutOfBandValues uint64
+	// InternalKeyCorruptValues is the number of expected chunk address references missing from the
+	// key_address_offsets field of internal (non-leaf) nodes.
+	InternalKeyCorruptValues uint64
 	// MissingChunks is the number of out-of-band values (key or value side) whose chunks are absent from
 	// the chunk store. These values are already lost (e.g. to a previous GC) and cannot be repaired by
 	// rewriting nodes.
@@ -81,6 +90,8 @@ func (s *Stats) Add(o *Stats) {
 	s.KeyAdaptiveValues += o.KeyAdaptiveValues
 	s.KeyOutOfBandValues += o.KeyOutOfBandValues
 	s.KeyCorruptValues += o.KeyCorruptValues
+	s.InternalKeyOutOfBandValues += o.InternalKeyOutOfBandValues
+	s.InternalKeyCorruptValues += o.InternalKeyCorruptValues
 	s.MissingChunks += o.MissingChunks
 }
 
@@ -105,9 +116,9 @@ func DescFingerprint(kd, vd *val.TupleDesc) uint64 {
 	return h.Sum64()
 }
 
-// Scanner walks prolly trees at the chunk level and detects leaf nodes whose value_address_offsets field
-// omits references to out-of-band values. Results are cached per chunk, so re-scanning the same table
-// on another branch or commit is nearly free.
+// Scanner walks prolly trees at the chunk level and detects nodes whose address offset fields
+// (value_address_offsets and key_address_offsets) omit references to out-of-band values. Results are
+// cached per chunk, so re-scanning the same table on another branch or commit is nearly free.
 type Scanner struct {
 	Cs    chunks.ChunkStore
 	cache map[CacheKey]*Stats
@@ -161,6 +172,20 @@ func (s *Scanner) ScanTree(ctx context.Context, addr hash.Hash, kd, vd *val.Tupl
 				return nil, err
 			}
 			stats.Add(childStats)
+		}
+
+		// Internal node boundary keys embed the same out-of-band addresses as the leaf keys they
+		// were copied from, and must record them in key_address_offsets just as leaves do. (Their
+		// chunk existence isn't re-checked here: the leaf copies below already cover it.)
+		ia, err := AnalyzeInternalKeys(&pm, kd)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to analyze internal node %s", addr.String())
+		}
+		stats.InternalKeyOutOfBandValues += ia.OutOfBandValues
+		stats.InternalKeyCorruptValues += ia.CorruptValues
+		stats.UnexpectedOffsets += ia.UnexpectedOffsets
+		if ia.Corrupt {
+			stats.CorruptChunks++
 		}
 	} else {
 		la, err := AnalyzeLeaf(&pm, kd, vd)
@@ -290,6 +315,42 @@ func AnalyzeLeaf(pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (*LeafAnalysi
 		uint64(pm.KeyAddressOffsetsLength()-keysResult.matched)
 
 	return la, nil
+}
+
+// InternalKeyAnalysis is the result of examining an internal node's boundary key tuples against its
+// recorded key_address_offsets field.
+type InternalKeyAnalysis struct {
+	// OutOfBandValues is the number of adaptive-encoded values stored out-of-band in the node's keys.
+	OutOfBandValues uint64
+	// CorruptValues is the number of expected chunk address references missing from the node's
+	// key_address_offsets field.
+	CorruptValues uint64
+	// UnexpectedOffsets is the number of recorded offsets that match no address in the node's keys.
+	UnexpectedOffsets uint64
+	// Corrupt is true when at least one expected offset is missing; such nodes must be rewritten to
+	// be repaired.
+	Corrupt bool
+}
+
+// AnalyzeInternalKeys recomputes the expected key_address_offsets for an internal (non-leaf) node from
+// its boundary key tuples, mirroring the serializer logic in dolt's go/store/prolly/message package,
+// and compares the result against the offsets actually recorded in the message. Boundary keys are
+// copies of leaf keys, so any out-of-band addresses they embed must be recorded just as they are in
+// the leaves.
+func AnalyzeInternalKeys(pm *serial.ProllyTreeNode, kd *val.TupleDesc) (*InternalKeyAnalysis, error) {
+	ia := &InternalKeyAnalysis{}
+	n := pm.KeyOffsetsLength() - 1
+	if n <= 0 {
+		return ia, nil
+	}
+
+	keysResult := analyzeTupleAddresses(kd, pm.KeyItemsBytes(), pm.KeyOffsets, n,
+		recordedOffsets(pm.KeyAddressOffsetsLength(), pm.KeyAddressOffsets))
+	ia.OutOfBandValues = keysResult.outOfBandValues
+	ia.CorruptValues = keysResult.corruptValues
+	ia.UnexpectedOffsets = uint64(pm.KeyAddressOffsetsLength() - keysResult.matched)
+	ia.Corrupt = keysResult.corruptValues > 0
+	return ia, nil
 }
 
 // tupleDescResult is the result of checking the tuples of one side (keys or values) of a leaf node

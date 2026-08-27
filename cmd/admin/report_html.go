@@ -132,7 +132,7 @@ internal chunks rewritten: {{.Repair.InternalChunksRewritten}}
 {{else if not .Stats}}
 <tr class="skipped"><td class="name">{{.Schema}}</td><td class="name">{{.Table}}</td><td class="name">(schema not impacted)</td><td colspan="12"></td></tr>
 {{else}}
-<tr class="{{if or .Stats.CorruptValues .Stats.KeyCorruptValues}}corrupt{{else}}clean{{end}}">
+<tr class="{{if or .Stats.CorruptValues .Stats.KeyCorruptValues .Stats.InternalKeyCorruptValues}}corrupt{{else}}clean{{end}}">
 <td class="name">{{.Schema}}</td>
 <td class="name">{{.Table}}</td>
 <td class="name">{{join .AdaptiveValueCols}}{{if .AdaptiveKeyCols}} [key: {{join .AdaptiveKeyCols}}]{{end}}</td>
@@ -146,7 +146,7 @@ internal chunks rewritten: {{.Repair.InternalChunksRewritten}}
 <td>{{.Stats.Chunks}}</td>
 <td>{{.Stats.CorruptChunks}}</td>
 <td>{{.Stats.KeyOutOfBandValues}}</td>
-<td>{{.Stats.KeyCorruptValues}}</td>
+<td>{{.Stats.KeyCorruptValues}}{{if .Stats.InternalKeyCorruptValues}} (+{{.Stats.InternalKeyCorruptValues}} internal){{end}}</td>
 <td>{{if .Stats.MissingChunks}}<span class="warn">{{.Stats.MissingChunks}}</span>{{else}}0{{end}}</td>
 </tr>
 {{end}}

@@ -33,6 +33,11 @@ import (
 // no rewrite.
 type LeafTransform func(rw *TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (serial.Message, bool, error)
 
+// InternalTransform inspects an internal node, whose children have already been rewritten to
+// |newChildren| (|childrenChanged| reports whether any of them differs from the original), and returns
+// a replacement message, or false if the node needs no rewrite.
+type InternalTransform func(rw *TreeRewriter, pm *serial.ProllyTreeNode, newChildren []hash.Hash, childrenChanged bool, kd, vd *val.TupleDesc) (serial.Message, bool, error)
+
 // TreeRewriter rewrites prolly tree nodes whose address offset fields omit references to out-of-band
 // values. It is built on a Scanner, which is the single authority on which subtrees contain corruption:
 // subtrees the Scanner reports as clean are never visited, so a rewrite can never disagree with the
@@ -51,6 +56,10 @@ type TreeRewriter struct {
 	// no rewrite. It defaults to RepairLeafTransform; tests substitute a corrupting transform to
 	// simulate the serialization bugs in old releases.
 	TransformLeaf LeafTransform
+	// TransformInternal is TransformLeaf's counterpart for internal nodes. It defaults to
+	// RepairInternalTransform, which rewrites a node when its children changed or when its own
+	// boundary keys embed out-of-band addresses missing from its key_address_offsets field.
+	TransformInternal InternalTransform
 	// ShouldRewrite decides, from the Scanner's aggregated statistics for a subtree, whether the
 	// subtree contains anything TransformLeaf would change; subtrees it rejects are skipped without
 	// visiting their nodes. It defaults to descending into subtrees with corrupt chunks.
@@ -68,11 +77,12 @@ type TreeRewriter struct {
 // rewritten nodes to |ns|.
 func NewTreeRewriter(sc *integrity.Scanner, ns tree.NodeStore) *TreeRewriter {
 	return &TreeRewriter{
-		sc:            sc,
-		ns:            ns,
-		TransformLeaf: RepairLeafTransform,
-		ShouldRewrite: func(stats *integrity.Stats) bool { return stats.CorruptChunks > 0 },
-		cache:         make(map[integrity.CacheKey]hash.Hash),
+		sc:                sc,
+		ns:                ns,
+		TransformLeaf:     RepairLeafTransform,
+		TransformInternal: RepairInternalTransform,
+		ShouldRewrite:     func(stats *integrity.Stats) bool { return stats.CorruptChunks > 0 },
+		cache:             make(map[integrity.CacheKey]hash.Hash),
 	}
 }
 
@@ -134,10 +144,14 @@ func (rw *TreeRewriter) RewriteTree(ctx context.Context, addr hash.Hash, kd, vd 
 			newChildren[i] = newChild
 			childrenChanged = childrenChanged || newChild != child
 		}
-		if childrenChanged {
-			newAddr, err = rw.rewriteInternal(ctx, msg, &pm, newChildren, kd, vd)
+		newMsg, changed, err := rw.TransformInternal(rw, &pm, newChildren, childrenChanged, kd, vd)
+		if err != nil {
+			return hash.Hash{}, errors.Wrapf(err, "failed to rewrite internal node %s", addr.String())
+		}
+		if changed {
+			newAddr, err = rw.writeNode(ctx, newMsg)
 			if err != nil {
-				return hash.Hash{}, errors.Wrapf(err, "failed to rewrite internal node %s", addr.String())
+				return hash.Hash{}, errors.Wrapf(err, "failed to write rewritten internal node %s", addr.String())
 			}
 			rw.InternalChunksRewritten++
 		}
@@ -204,12 +218,47 @@ func ReserializeLeaf(pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc, pool pool
 	return newMsg, nil
 }
 
-// rewriteInternal re-serializes an internal node, replacing its child addresses with the rewritten
-// ones. Keys, subtree counts, and level are preserved from the original node.
-func (rw *TreeRewriter) rewriteInternal(ctx context.Context, oldMsg serial.Message, pm *serial.ProllyTreeNode, newChildren []hash.Hash, kd, vd *val.TupleDesc) (hash.Hash, error) {
+// RepairInternalTransform re-serializes an internal node with the current serializer when its
+// children have been rewritten, or when its own boundary keys embed out-of-band addresses that are
+// missing from its key_address_offsets field. The serializer recomputes the offsets from the key
+// tuples, which repairs the omitted entries.
+func RepairInternalTransform(rw *TreeRewriter, pm *serial.ProllyTreeNode, newChildren []hash.Hash, childrenChanged bool, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
+	ia, err := integrity.AnalyzeInternalKeys(pm, kd)
+	if err != nil {
+		return nil, false, err
+	}
+	if !childrenChanged && !ia.Corrupt {
+		return nil, false, nil
+	}
+
+	newMsg, err := ReserializeInternal(pm, newChildren, kd, vd, rw.Pool())
+	if err != nil {
+		return nil, false, err
+	}
+
+	// The rewritten node's recomputed offsets must be complete.
+	var npm serial.ProllyTreeNode
+	err = serial.InitProllyTreeNodeRoot(&npm, newMsg, serial.MessagePrefixSz)
+	if err != nil {
+		return nil, false, err
+	}
+	newIa, err := integrity.AnalyzeInternalKeys(&npm, kd)
+	if err != nil {
+		return nil, false, err
+	}
+	if newIa.Corrupt || newIa.UnexpectedOffsets != 0 {
+		return nil, false, errors.New("rewritten internal node still has incorrect key address offsets")
+	}
+	return newMsg, true, nil
+}
+
+// ReserializeInternal re-serializes an internal node's original boundary key tuple bytes with the
+// given descriptors, replacing its child addresses with |newChildren|. Keys, subtree counts, and level
+// are preserved and verified against the original node.
+func ReserializeInternal(pm *serial.ProllyTreeNode, newChildren []hash.Hash, kd, vd *val.TupleDesc, pool pool.BuffPool) (serial.Message, error) {
 	keys := extractItems(pm.KeyItemsBytes(), pm.KeyOffsetsLength(), pm.KeyOffsets)
 	if len(keys) != len(newChildren) {
-		return hash.Hash{}, errors.Errorf("internal node has %d keys but %d children", len(keys), len(newChildren))
+		return nil, errors.Errorf("internal node has %d keys but %d children", len(keys), len(newChildren))
 	}
 
 	values := make([][]byte, len(newChildren))
@@ -218,37 +267,39 @@ func (rw *TreeRewriter) rewriteInternal(ctx context.Context, oldMsg serial.Messa
 		values[i] = addr[:]
 	}
 
-	subtrees, err := subtreeCounts(oldMsg, len(newChildren))
+	// pm's underlying buffer is the full original message, which the subtree count decoder needs.
+	subtrees, err := subtreeCounts(serial.Message(pm.Table().Bytes), len(newChildren))
 	if err != nil {
-		return hash.Hash{}, err
+		return nil, err
 	}
 
-	serializer := message.NewProllyMapSerializer(kd, vd, rw.Pool())
+	serializer := message.NewProllyMapSerializer(kd, vd, pool)
 	newMsg := serializer.Serialize(keys, values, subtrees, int(pm.TreeLevel()))
 
-	// Sanity-check the rewritten node before writing it.
+	// Sanity-check the rewritten node: everything but the child addresses and the key address
+	// offsets must be identical to the original.
 	var npm serial.ProllyTreeNode
 	err = serial.InitProllyTreeNodeRoot(&npm, newMsg, serial.MessagePrefixSz)
 	if err != nil {
-		return hash.Hash{}, err
+		return nil, err
 	}
 	if !bytes.Equal(npm.KeyItemsBytes(), pm.KeyItemsBytes()) {
-		return hash.Hash{}, errors.New("rewritten internal node has different key bytes than the original")
+		return nil, errors.New("rewritten internal node has different key bytes than the original")
 	}
 	if npm.TreeLevel() != pm.TreeLevel() || npm.TreeCount() != pm.TreeCount() {
-		return hash.Hash{}, errors.New("rewritten internal node has different level or tree count than the original")
+		return nil, errors.New("rewritten internal node has different level or tree count than the original")
 	}
 	newAddrs := integrity.ChildAddresses(&npm)
 	if len(newAddrs) != len(newChildren) {
-		return hash.Hash{}, errors.New("rewritten internal node has wrong child count")
+		return nil, errors.New("rewritten internal node has wrong child count")
 	}
 	for i := range newAddrs {
 		if newAddrs[i] != newChildren[i] {
-			return hash.Hash{}, errors.New("rewritten internal node has wrong child addresses")
+			return nil, errors.New("rewritten internal node has wrong child addresses")
 		}
 	}
 
-	return rw.writeNode(ctx, newMsg)
+	return newMsg, nil
 }
 
 // writeNode writes a serialized tree node message to the node store and returns its address.

@@ -73,6 +73,13 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 	assertKeyStats(t, baseline, "main", "t3", 3, 3, 0)
 	assertNotScanned(t, baseline, "main", "t2")
 
+	// t6's tree is multi-level, so its internal boundary keys embed out-of-band addresses,
+	// recorded at every level
+	require.Greater(t, mapHeight(t, sctx, db, "main", "t6"), 1)
+	assertKeyStats(t, baseline, "main", "t6", 300, 300, 0)
+	require.NotZero(t, baseline["main"]["t6"].Stats.InternalKeyOutOfBandValues)
+	require.Zero(t, baseline["main"]["t6"].Stats.InternalKeyCorruptValues)
+
 	origHeads := branchHeadHashes(t, sctx, db)
 	require.Len(t, origHeads, 3)
 	origOOBAddrs := tableOOBAddrs(t, sctx, db, "main", "t1")
@@ -111,6 +118,11 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 	assertTableStats(t, corrupted, "b2", "t1", expectStats{rows: 1005, adaptive: 1005, oob: 5, corruptVals: 5, corruptRows: 5})
 	assertTableStats(t, corrupted, "b3", "t1", expectStats{rows: 1008, adaptive: 1008, oob: 8, corruptVals: 8, corruptRows: 8})
 	assertKeyStats(t, corrupted, "main", "t3", 3, 3, 3)
+	assertKeyStats(t, corrupted, "main", "t6", 300, 300, 300)
+	// the corruption stripped the internal nodes' key address bookkeeping as well
+	require.NotZero(t, corrupted["main"]["t6"].Stats.InternalKeyOutOfBandValues)
+	require.Equal(t, corrupted["main"]["t6"].Stats.InternalKeyOutOfBandValues,
+		corrupted["main"]["t6"].Stats.InternalKeyCorruptValues)
 
 	// The corrupt commits are new commits; the clean initial commit keeps its hash.
 	corruptHeads := branchHeadHashes(t, sctx, db)
@@ -155,6 +167,9 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 	assertTableStats(t, repaired, "b2", "t1", expectStats{rows: 1005, adaptive: 1005, oob: 5})
 	assertTableStats(t, repaired, "b3", "t1", expectStats{rows: 1008, adaptive: 1008, oob: 8})
 	assertKeyStats(t, repaired, "main", "t3", 3, 3, 0)
+	assertKeyStats(t, repaired, "main", "t6", 300, 300, 0)
+	require.NotZero(t, repaired["main"]["t6"].Stats.InternalKeyOutOfBandValues)
+	require.Zero(t, repaired["main"]["t6"].Stats.InternalKeyCorruptValues)
 
 	// Repair rebuilds the exact chunks the fixed serializer originally wrote, so the rewritten
 	// commit history converges back to the original commit hashes.
@@ -215,6 +230,61 @@ func TestRepairedDatabaseIsServable(t *testing.T) {
 // data directory at $ADMIN_TEST_GEN_DIR for exercising the compiled admin binary by hand (e.g.
 // `go build ./cmd/admin && ./admin report -dir <dir>`). Skipped unless the environment variable is set.
 // This is used by bats tests to create databases with this specific corruption issue.
+// TestInternalOnlyKeyBookkeepingRepair simulates databases written by the interim storage code that
+// recorded out-of-band key addresses in leaf nodes but not in internal nodes: the scanner flags them,
+// the startup check refuses them, and repair rewrites exactly the internal nodes, restoring the
+// original commit hashes.
+func TestInternalOnlyKeyBookkeepingRepair(t *testing.T) {
+	ctx := context.Background()
+	dataDir, err := os.MkdirTemp(os.TempDir(), "admin_internal_keys_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(dataDir)
+
+	createTestDatabase(t, ctx, dataDir)
+
+	db, cleanup := openTestDatabase(t, ctx, dataDir)
+	sctx := db.sctx
+	origHeads := branchHeadHashes(t, sctx, db)
+
+	// strip key address bookkeeping from internal nodes only, leaving the leaves intact
+	corrupter := newRepairer(db, integrity.NewScanner(db.cs), testing.Verbose())
+	corrupter.rewriter.TransformLeaf = func(rw *TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
+		return nil, false, nil
+	}
+	corrupter.rewriter.TransformInternal = corruptInternalTransform
+	corrupter.rewriter.ShouldRewrite = func(stats *integrity.Stats) bool {
+		return stats.InternalKeyOutOfBandValues > 0
+	}
+	summary, err := corrupter.repairDatabase(sctx)
+	require.NoError(t, err)
+	require.Zero(t, summary.LeafChunksRewritten)
+	require.NotZero(t, summary.InternalChunksRewritten)
+	cleanup(t)
+
+	// the scanner flags the internal nodes, and the startup check refuses the database
+	db, cleanup = openTestDatabase(t, ctx, dataDir)
+	sctx = db.sctx
+	corrupted := scanAllBranches(t, sctx, db)
+	t6 := corrupted["main"]["t6"]
+	require.Zero(t, t6.Stats.KeyCorruptValues, "leaf bookkeeping is intact")
+	require.NotZero(t, t6.Stats.InternalKeyCorruptValues)
+	var corruptionErr *integrity.CorruptionError
+	require.ErrorAs(t, integrity.CheckDatabase(sctx, testDbName, db.ddb), &corruptionErr)
+	cleanup(t)
+
+	// repair rewrites only the internal nodes and converges back to the original commit hashes
+	require.NoError(t, run([]string{"repair", "-dir", dataDir, "-out", filepath.Join(dataDir, "report.html")}))
+
+	db, cleanup = openTestDatabase(t, ctx, dataDir)
+	defer cleanup(t)
+	sctx = db.sctx
+	repaired := scanAllBranches(t, sctx, db)
+	require.Zero(t, repaired["main"]["t6"].Stats.InternalKeyCorruptValues)
+	require.NotZero(t, repaired["main"]["t6"].Stats.InternalKeyOutOfBandValues)
+	require.NoError(t, integrity.CheckDatabase(sctx, testDbName, db.ddb))
+	require.Equal(t, origHeads, branchHeadHashes(t, sctx, db))
+}
+
 func TestGenerateCorruptedDataDir(t *testing.T) {
 	dataDir := os.Getenv("ADMIN_TEST_GEN_DIR")
 	if dataDir == "" {
@@ -242,10 +312,11 @@ func TestGenerateCorruptedDataDir(t *testing.T) {
 func newCorrupter(db *database, verbose bool) *repairer {
 	corrupter := newRepairer(db, integrity.NewScanner(db.cs), verbose)
 	corrupter.rewriter.TransformLeaf = corruptLeafTransform
+	corrupter.rewriter.TransformInternal = corruptInternalTransform
 	// visit every subtree holding out-of-band values (in a healthy database, exactly the subtrees
 	// whose nodes record address offsets), rather than the corrupt subtrees the repair visits
 	corrupter.rewriter.ShouldRewrite = func(stats *integrity.Stats) bool {
-		return stats.OutOfBandValues > 0 || stats.KeyOutOfBandValues > 0
+		return stats.OutOfBandValues > 0 || stats.KeyOutOfBandValues > 0 || stats.InternalKeyOutOfBandValues > 0
 	}
 	return corrupter
 }
@@ -258,6 +329,20 @@ func corruptLeafTransform(rw *TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *v
 		return nil, false, nil
 	}
 	msg, err := ReserializeLeaf(pm, strippedDescriptor(kd), strippedDescriptor(vd), rw.Pool())
+	if err != nil {
+		return nil, false, err
+	}
+	return msg, true, nil
+}
+
+// corruptInternalTransform is corruptLeafTransform's counterpart for internal nodes: it strips the
+// key_address_offsets field from internal nodes that record one, matching the historical format in
+// which the field did not exist at any level.
+func corruptInternalTransform(rw *TreeRewriter, pm *serial.ProllyTreeNode, newChildren []hash.Hash, childrenChanged bool, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
+	if !childrenChanged && pm.KeyAddressOffsetsLength() == 0 {
+		return nil, false, nil
+	}
+	msg, err := ReserializeInternal(pm, newChildren, strippedDescriptor(kd), strippedDescriptor(vd), rw.Pool())
 	if err != nil {
 		return nil, false, err
 	}
@@ -320,6 +405,10 @@ func createTestDatabase(t *testing.T, ctx context.Context, dataDir string) {
 		"CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
 		"CREATE TABLE t5 (id int primary key, m mood, big text)",
 		"INSERT INTO t5 SELECT i, 'happy', rpad(i::text, 20000, 'e') FROM generate_series(1, 2) AS g(i)",
+		// t6 has enough out-of-band text primary keys that its prolly tree has internal nodes,
+		// whose boundary keys embed out-of-band addresses that must be recorded at every level
+		"CREATE TABLE t6 (big text primary key, n int)",
+		"INSERT INTO t6 SELECT lpad(i::text, 8, '0') || repeat('m', 19992), i FROM generate_series(1, 300) AS g(i)",
 		"SELECT dolt_commit('-Am', 'commit 1: initial data')",
 		"SELECT dolt_branch('b2')",
 

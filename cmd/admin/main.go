@@ -203,7 +203,7 @@ func printSummary(w *os.File, mode, outPath string, reports []*databaseReport) {
 				rows += tr.Stats.Rows
 				corruptRows += tr.Stats.CorruptRows
 				values += tr.Stats.AdaptiveValues + tr.Stats.KeyAdaptiveValues
-				corruptValues += tr.Stats.CorruptValues + tr.Stats.KeyCorruptValues
+				corruptValues += tr.Stats.CorruptValues + tr.Stats.KeyCorruptValues + tr.Stats.InternalKeyCorruptValues
 				missing += tr.Stats.MissingChunks
 			}
 		}
