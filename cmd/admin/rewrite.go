@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/dolt/go/store/prolly/message"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/val"
+
 	"github.com/dolthub/doltgresql/core/integrity"
 )
 
