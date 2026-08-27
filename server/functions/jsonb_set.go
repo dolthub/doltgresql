@@ -56,6 +56,7 @@ var jsonb_set_jsonb_text_array_jsonb_bool = framework.Function4{
 	},
 }
 
+// jsonbSet replaces or creates the value at a PostgreSQL JSONB path.
 func jsonbSet(ctx *sql.Context, target, path, newValue any, createIfMissing bool) (any, error) {
 	targetValue, err := jsonbValueToInterface(ctx, target)
 	if err != nil {
@@ -87,25 +88,20 @@ func jsonbSet(ctx *sql.Context, target, path, newValue any, createIfMissing bool
 	return types.JSONDocument{Val: result}, nil
 }
 
+// jsonbValueToInterface materializes a JSONB value without losing numeric precision.
 func jsonbValueToInterface(ctx *sql.Context, value any) (any, error) {
 	unwrapped, err := sql.UnwrapAny(ctx, value)
 	if err != nil {
 		return nil, err
 	}
-	if bytesValue, ok := unwrapped.(types.JSONBytes); ok {
-		bytes, err := bytesValue.GetBytes(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return pgtypes.DecodeJSONValue(bytes)
-	}
 	wrapper, ok := unwrapped.(sql.JSONWrapper)
 	if !ok {
 		return nil, fmt.Errorf("expected JSON wrapper, got %T", unwrapped)
 	}
-	return wrapper.ToInterface(ctx)
+	return pgtypes.JSONBWrapperToInterface(ctx, wrapper)
 }
 
+// jsonbSetPath unwraps and validates a JSONB path array.
 func jsonbSetPath(ctx *sql.Context, value any) ([]string, error) {
 	unwrapped, err := sql.UnwrapAny(ctx, value)
 	if err != nil {
@@ -208,6 +204,7 @@ func jsonbSetAtPath(current any, path []string, newValue any, createIfMissing bo
 	}
 }
 
+// cloneJSONObject returns a shallow copy for copy-on-write path updates.
 func cloneJSONObject(value map[string]any) map[string]any {
 	result := make(map[string]any, len(value)+1)
 	for key, item := range value {

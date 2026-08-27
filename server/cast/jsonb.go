@@ -38,19 +38,19 @@ func initJsonB(builtInCasts map[id.Cast]casts.Cast) {
 func jsonbGetInterface(ctx *sql.Context, val any) (any, error) {
 	switch v := val.(type) {
 	case sql.JSONWrapper:
-		return v.ToInterface(ctx)
+		return pgtypes.JSONBWrapperToInterface(ctx, v)
 	case sql.StringWrapper:
 		s, err := v.Unwrap(ctx)
 		if err != nil {
 			return nil, err
 		}
-		result, err := pgtypes.DecodeJSONValue([]byte(s))
+		result, err := pgtypes.DecodeJSONBValue([]byte(s))
 		if err != nil {
 			return nil, errors.Errorf("invalid JSON: %v", err)
 		}
 		return result, nil
 	case string:
-		result, err := pgtypes.DecodeJSONValue([]byte(v))
+		result, err := pgtypes.DecodeJSONBValue([]byte(v))
 		if err != nil {
 			return nil, errors.Errorf("invalid JSON: %v", err)
 		}
