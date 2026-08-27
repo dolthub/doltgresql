@@ -70,5 +70,26 @@ func TestPartialIndexMergeJoinDoesNotLoseRows(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "partial index created after rows exist",
+			SetUpScript: []string{
+				"CREATE TABLE existing_profiles (id int PRIMARY KEY);",
+				"CREATE TABLE existing_favorites (id int PRIMARY KEY, profile_id int NOT NULL, flag boolean NOT NULL DEFAULT false);",
+				"INSERT INTO existing_profiles VALUES (1), (2), (3), (4), (5), (6), (7);",
+				"INSERT INTO existing_favorites (id, profile_id) SELECT id, id FROM existing_profiles;",
+				"UPDATE existing_favorites SET flag = true WHERE profile_id IN (1, 7);",
+				"CREATE INDEX existing_favorites_partial ON existing_favorites (profile_id) WHERE flag;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT count(*) FROM existing_favorites f JOIN existing_profiles p ON p.id = f.profile_id;",
+					Expected: []sql.Row{{7}},
+				},
+				{
+					Query:    "SELECT count(*) FROM existing_favorites f JOIN existing_profiles p ON p.id = f.profile_id WHERE f.flag;",
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
 	})
 }
