@@ -82,7 +82,7 @@ func TestReportAndRepairEndToEnd(t *testing.T) {
 
 	origHeads := branchHeadHashes(t, sctx, db)
 	require.Len(t, origHeads, 3)
-	origOOBAddrs := tableOOBAddrs(t, sctx, db, "main", "t1")
+	origOOBAddrs, _ := tableOOBAddrs(t, sctx, db, "main", "t1")
 	require.Len(t, origOOBAddrs, 7)
 
 	// t1 is large enough that its map is a multi-level tree, so repair exercises internal node
@@ -230,6 +230,93 @@ func TestRepairedDatabaseIsServable(t *testing.T) {
 // data directory at $ADMIN_TEST_GEN_DIR for exercising the compiled admin binary by hand (e.g.
 // `go build ./cmd/admin && ./admin report -dir <dir>`). Skipped unless the environment variable is set.
 // This is used by bats tests to create databases with this specific corruption issue.
+// TestKeyColumnCorruptionRepair simulates databases whose only corruption is in adaptive-encoded KEY
+// columns: nodes hold out-of-band key values with no key_address_offsets recorded, at any level, while
+// all value-side bookkeeping is intact — the format every release before the field existed wrote for
+// tables with large text/bytea/etc. primary keys. It verifies that the key-side checks alone flag the
+// database, make the startup check refuse it, and drive the repair; and that the corruption really is
+// the data-loss exposure: the reachability walk used by gc, push, and clone misses the key chunks
+// until the database is repaired.
+func TestKeyColumnCorruptionRepair(t *testing.T) {
+	ctx := context.Background()
+	dataDir, err := os.MkdirTemp(os.TempDir(), "admin_key_corruption_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(dataDir)
+
+	createTestDatabase(t, ctx, dataDir)
+
+	db, cleanup := openTestDatabase(t, ctx, dataDir)
+	sctx := db.sctx
+	origHeads := branchHeadHashes(t, sctx, db)
+	_, origKeyAddrs := tableOOBAddrs(t, sctx, db, "main", "t3")
+	require.Len(t, origKeyAddrs, 3)
+
+	// strip only the key-side bookkeeping, at every level; value_address_offsets stay intact
+	corrupter := newRepairer(db, integrity.NewScanner(db.cs), testing.Verbose())
+	corrupter.rewriter.TransformLeaf = func(rw *TreeRewriter, pm *serial.ProllyTreeNode, kd, vd *val.TupleDesc) (serial.Message, bool, error) {
+		if pm.KeyAddressOffsetsLength() == 0 {
+			return nil, false, nil
+		}
+		msg, err := ReserializeLeaf(pm, strippedDescriptor(kd), vd, rw.Pool())
+		if err != nil {
+			return nil, false, err
+		}
+		return msg, true, nil
+	}
+	corrupter.rewriter.TransformInternal = corruptInternalTransform
+	corrupter.rewriter.ShouldRewrite = func(stats *integrity.Stats) bool {
+		return stats.KeyOutOfBandValues > 0 || stats.InternalKeyOutOfBandValues > 0
+	}
+	summary, err := corrupter.repairDatabase(sctx)
+	require.NoError(t, err)
+	require.NotZero(t, summary.LeafChunksRewritten)
+	cleanup(t)
+
+	// ------- the corruption is visible, and only on the key side -------
+	db, cleanup = openTestDatabase(t, ctx, dataDir)
+	sctx = db.sctx
+	corrupted := scanAllBranches(t, sctx, db)
+
+	// tables whose adaptive data lives in value columns are untouched
+	assertTableStats(t, corrupted, "main", "t1", expectStats{rows: 1007, adaptive: 1007, oob: 7})
+	// tables with adaptive key columns are corrupt in every out-of-band key, and nothing else
+	assertKeyStats(t, corrupted, "main", "t3", 3, 3, 3)
+	assertKeyStats(t, corrupted, "main", "t6", 300, 300, 300)
+	require.NotZero(t, corrupted["main"]["t6"].Stats.InternalKeyCorruptValues)
+
+	// the startup check refuses the database because of the key columns specifically
+	var corruptionErr *integrity.CorruptionError
+	require.ErrorAs(t, integrity.CheckDatabase(sctx, testDbName, db.ddb), &corruptionErr)
+	require.Zero(t, corruptionErr.Stats.CorruptValues)
+	require.NotZero(t, corruptionErr.Stats.KeyCorruptValues)
+
+	// the reachability walk (the same walk used by push, clone, and gc) no longer reaches the
+	// out-of-band key chunks: this is exactly why the corruption loses data
+	walked := walkedAddrs(t, sctx, db, "main", "t3")
+	for addr := range origKeyAddrs {
+		require.False(t, walked.Has(addr), "corrupt tree should not reach out-of-band key chunk %s", addr)
+	}
+	cleanup(t)
+
+	// ------- repair fixes the key bookkeeping and restores the original commit hashes -------
+	require.NoError(t, run([]string{"repair", "-dir", dataDir, "-out", filepath.Join(dataDir, "report.html")}))
+
+	db, cleanup = openTestDatabase(t, ctx, dataDir)
+	defer cleanup(t)
+	sctx = db.sctx
+	repaired := scanAllBranches(t, sctx, db)
+	assertKeyStats(t, repaired, "main", "t3", 3, 3, 0)
+	assertKeyStats(t, repaired, "main", "t6", 300, 300, 0)
+	require.Zero(t, repaired["main"]["t6"].Stats.InternalKeyCorruptValues)
+	require.NoError(t, integrity.CheckDatabase(sctx, testDbName, db.ddb))
+	require.Equal(t, origHeads, branchHeadHashes(t, sctx, db))
+
+	walked = walkedAddrs(t, sctx, db, "main", "t3")
+	for addr := range origKeyAddrs {
+		require.True(t, walked.Has(addr), "repaired tree should reach out-of-band key chunk %s", addr)
+	}
+}
+
 // TestInternalOnlyKeyBookkeepingRepair simulates databases written by the interim storage code that
 // recorded out-of-band key addresses in leaf nodes but not in internal nodes: the scanner flags them,
 // the startup check refuses them, and repair rewrites exactly the internal nodes, restoring the
@@ -568,14 +655,14 @@ func tableAtBranchHead(t *testing.T, sctx *sql.Context, db *database, branch, ta
 	return nil
 }
 
-// tableOOBAddrs returns the set of out-of-band chunk addresses referenced from the value tuples of the
-// named table at the head of the given branch.
-func tableOOBAddrs(t *testing.T, sctx *sql.Context, db *database, branch, table string) hash.HashSet {
+// tableOOBAddrs returns the sets of out-of-band chunk addresses referenced from the value tuples and
+// the key tuples of the named table at the head of the given branch.
+func tableOOBAddrs(t *testing.T, sctx *sql.Context, db *database, branch, table string) (valueAddrs, keyAddrs hash.HashSet) {
 	ti := tableAtBranchHead(t, sctx, db, branch, table)
 	m, err := ti.RowMap(sctx)
 	require.NoError(t, err)
 
-	addrs := hash.NewHashSet()
+	valueAddrs, keyAddrs = hash.NewHashSet(), hash.NewHashSet()
 	var walk func(addr hash.Hash)
 	walk = func(addr hash.Hash) {
 		msg, err := integrity.GetTreeNodeMessage(sctx, db.cs, addr)
@@ -591,11 +678,14 @@ func tableOOBAddrs(t *testing.T, sctx *sql.Context, db *database, branch, table 
 		la, err := integrity.AnalyzeLeaf(&pm, ti.KeyDesc, ti.ValDesc)
 		require.NoError(t, err)
 		for _, a := range la.ValueOOBAddrs {
-			addrs.Insert(a)
+			valueAddrs.Insert(a)
+		}
+		for _, a := range la.KeyOOBAddrs {
+			keyAddrs.Insert(a)
 		}
 	}
 	walk(m.Node().HashOf())
-	return addrs
+	return valueAddrs, keyAddrs
 }
 
 // walkedAddrs returns every chunk address reachable from the named table's row map via the standard
