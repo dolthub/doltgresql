@@ -16,24 +16,28 @@ package node
 
 import (
 	"context"
-	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-
-	"github.com/dolthub/doltgresql/core"
 )
 
-// RenameIndex handles the ALTER INDEX ... RENAME TO ... statement.
+// RenameIndex handles the ALTER INDEX ... RENAME TO ... statement. The table owning the index is resolved at
+// analysis time by the resolveRenameIndex analyzer rule.
 type RenameIndex struct {
-	ifExists   bool
-	dbName     string // optional catalog qualifier for the index name
-	schemaName string // optional schema qualifier for the index name
-	tableName  string // optional table name (from the CockroachDB `table@index` syntax)
-	indexName  string
-	newName    string
+	IfExists   bool
+	DbName     string // optional catalog qualifier for the index name
+	SchemaName string // optional schema qualifier for the index name
+	TableName  string // optional table name (from the CockroachDB `table@index` syntax)
+	IndexName  string
+	NewName    string
+
+	// table is the table owning the index, filled in during analysis. It is nil when IfExists is set and no
+	// matching index was found, in which case execution is a no-op.
+	table sql.IndexAlterableTable
+	// resolved is set once analysis has resolved the target table (or determined there is none to resolve)
+	resolved bool
 }
 
 var _ sql.ExecSourceRel = (*RenameIndex)(nil)
@@ -42,13 +46,22 @@ var _ vitess.Injectable = (*RenameIndex)(nil)
 // NewRenameIndex returns a new *RenameIndex.
 func NewRenameIndex(ifExists bool, dbName, schemaName, tableName, indexName, newName string) *RenameIndex {
 	return &RenameIndex{
-		ifExists:   ifExists,
-		dbName:     dbName,
-		schemaName: schemaName,
-		tableName:  tableName,
-		indexName:  indexName,
-		newName:    newName,
+		IfExists:   ifExists,
+		DbName:     dbName,
+		SchemaName: schemaName,
+		TableName:  tableName,
+		IndexName:  indexName,
+		NewName:    newName,
 	}
+}
+
+// WithResolvedTable returns a copy of this node with the table owning the index filled in. A nil table is only
+// valid when IfExists is set, and makes execution a no-op.
+func (r *RenameIndex) WithResolvedTable(table sql.IndexAlterableTable) *RenameIndex {
+	nr := *r
+	nr.table = table
+	nr.resolved = true
+	return &nr
 }
 
 // Children implements the interface sql.ExecSourceRel.
@@ -63,116 +76,22 @@ func (r *RenameIndex) IsReadOnly() bool {
 
 // Resolved implements the interface sql.ExecSourceRel.
 func (r *RenameIndex) Resolved() bool {
-	return true
+	return r.resolved
 }
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (r *RenameIndex) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
-	tbl, err := r.findIndexTable(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if tbl == nil {
-		if r.ifExists {
+	if r.table == nil {
+		if r.IfExists {
 			// TODO: send notice "relation ... does not exist, skipping"
 			return sql.RowsToRowIter(), nil
 		}
-		return nil, errors.Errorf(`relation "%s" does not exist`, r.indexName)
+		return nil, errors.Errorf(`relation "%s" does not exist`, r.IndexName)
 	}
-	alterableTbl, ok := tbl.(sql.IndexAlterableTable)
-	if !ok {
-		return nil, errors.Errorf(`table "%s" does not support renaming indexes`, tbl.Name())
-	}
-	if idxTbl, ok := tbl.(sql.IndexAddressableTable); ok {
-		indexes, err := idxTbl.GetIndexes(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, index := range indexes {
-			if strings.EqualFold(index.ID(), r.newName) {
-				return nil, errors.Errorf(`relation "%s" already exists`, r.newName)
-			}
-		}
-	}
-	if err = alterableTbl.RenameIndex(ctx, r.indexName, r.newName); err != nil {
+	if err := r.table.RenameIndex(ctx, r.IndexName, r.NewName); err != nil {
 		return nil, err
 	}
 	return sql.RowsToRowIter(), nil
-}
-
-// findIndexTable finds the table that owns the index being renamed. Postgres does not name the table in ALTER INDEX
-// statements, so we search the schemas on the search path (or the explicitly named schema) for a table with a matching
-// index. Returns nil (with no error) if no matching index was found.
-func (r *RenameIndex) findIndexTable(ctx *sql.Context) (sql.Table, error) {
-	db, err := core.GetSqlDatabaseFromContext(ctx, r.dbName)
-	if err != nil {
-		return nil, err
-	}
-	if db == nil {
-		dbName := r.dbName
-		if len(dbName) == 0 {
-			dbName = ctx.GetCurrentDatabase()
-		}
-		return nil, sql.ErrDatabaseNotFound.New(dbName)
-	}
-	schemaDb, ok := db.(sql.SchemaDatabase)
-	if !ok {
-		return nil, errors.Errorf(`database "%s" does not support schemas`, db.Name())
-	}
-	var searchPath []string
-	if len(r.schemaName) > 0 {
-		searchPath = []string{r.schemaName}
-	} else {
-		searchPath, err = core.SearchPath(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
-	for _, schemaName := range searchPath {
-		// System schemas hold read-only virtual tables, so we never look for user indexes there
-		if schemaName == "pg_catalog" || schemaName == "information_schema" {
-			continue
-		}
-		schema, ok, err := schemaDb.GetSchema(ctx, schemaName)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			continue
-		}
-		var tableNames []string
-		if len(r.tableName) > 0 {
-			tableNames = []string{r.tableName}
-		} else {
-			tableNames, err = schema.GetTableNames(ctx)
-			if err != nil {
-				return nil, err
-			}
-		}
-		for _, tableName := range tableNames {
-			tbl, ok, err := schema.GetTableInsensitive(ctx, tableName)
-			if err != nil {
-				return nil, err
-			}
-			if !ok {
-				continue
-			}
-			idxTbl, ok := tbl.(sql.IndexAddressableTable)
-			if !ok {
-				continue
-			}
-			indexes, err := idxTbl.GetIndexes(ctx)
-			if err != nil {
-				return nil, err
-			}
-			for _, index := range indexes {
-				if strings.EqualFold(index.ID(), r.indexName) {
-					return tbl, nil
-				}
-			}
-		}
-	}
-	return nil, nil
 }
 
 // Schema implements the interface sql.ExecSourceRel.
