@@ -156,11 +156,11 @@ func jsonb_concat_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1Int
 	if !ok1 || !ok2 {
 		return nil, fmt.Errorf("jsonb_concat: unexpected types %T, %T", val1Interface, val2Interface)
 	}
-	v1, err := wrapper1.ToInterface(ctx)
+	v1, err := pgtypes.JSONBWrapperToInterface(ctx, wrapper1)
 	if err != nil {
 		return nil, err
 	}
-	v2, err := wrapper2.ToInterface(ctx)
+	v2, err := pgtypes.JSONBWrapperToInterface(ctx, wrapper2)
 	if err != nil {
 		return nil, err
 	}

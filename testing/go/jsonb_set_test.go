@@ -20,11 +20,43 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TestJsonbSet verifies PostgreSQL-compatible JSONB mutation and numeric behavior.
 func TestJsonbSet(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "json preserves exact numbers outside jsonb numeric range",
+			SetUpScript: []string{
+				`CREATE TABLE json_number_text_test (id INT PRIMARY KEY, value JSON);`,
+				`INSERT INTO json_number_text_test VALUES (1, '{"n":123456789012345678901234567890.123456789}'), (2, '{"n":1e3000000000}');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT ('123456789012345678901234567890.123456789'::json)::text, ('1e131072'::json)::text, ('1e3000000000'::json)::text;`,
+					Expected: []sql.Row{{`123456789012345678901234567890.123456789`, `1e131072`, `1e3000000000`}},
+				},
+				{
+					Query:    `SELECT value ->> 'n' FROM json_number_text_test ORDER BY id;`,
+					Expected: []sql.Row{{`123456789012345678901234567890.123456789`}, {`1e3000000000`}},
+				},
+			},
+		},
+		{
 			Name: "jsonb_set objects and paths",
 			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT '1e308'::jsonb IS NOT NULL, '1e-16383'::jsonb IS NOT NULL, '0e1000000000'::jsonb IS NOT NULL;`,
+					ExpectedRaw: [][][]byte{{{1}, {1}, {1}}},
+				},
+				{
+					Query:           `SELECT '1e131072'::jsonb;`,
+					ExpectedErr:     "value overflows numeric format",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT '{"n":1e-16384}'::jsonb;`,
+					ExpectedErr:     "value overflows numeric format",
+					ExpectedErrCode: "22003",
+				},
 				{
 					Query:    `SELECT jsonb_set('{"a":1,"b":2}'::jsonb, '{a}', '9'::jsonb);`,
 					Expected: []sql.Row{{`{"a": 9, "b": 2}`}},
@@ -193,6 +225,8 @@ func TestJsonbSet(t *testing.T) {
 			SetUpScript: []string{
 				`CREATE TABLE jsonb_precision_test (id INT PRIMARY KEY, value JSONB);`,
 				`INSERT INTO jsonb_precision_test VALUES (1, '{"n":0}');`,
+				`INSERT INTO jsonb_precision_test VALUES (2, '{"value":123456789012345678901234567890.123456789}');`,
+				`UPDATE jsonb_precision_test SET value = jsonb_set(value, '{other}', 'true'::jsonb) WHERE id = 2;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -207,6 +241,32 @@ func TestJsonbSet(t *testing.T) {
 					ExpectedRaw: [][][]byte{{
 						[]byte(`{"n": 1234567890.12345678901234567890}`),
 					}},
+				},
+				{
+					Query: `SELECT value FROM jsonb_precision_test WHERE id = 2;`,
+					ExpectedRaw: [][][]byte{{
+						[]byte(`{"other": true, "value": 123456789012345678901234567890.123456789}`),
+					}},
+				},
+				{
+					Query: `SELECT value ->> 'value', value #>> '{value}', (value -> 'value')::numeric = 123456789012345678901234567890.123456789::numeric, value -> 'value' = '123456789012345678901234567890.123456789'::jsonb, value -> 'value' < '123456789012345678901234567890.123456790'::jsonb FROM jsonb_precision_test WHERE id = 2;`,
+					ExpectedRaw: [][][]byte{{
+						[]byte(`123456789012345678901234567890.123456789`),
+						[]byte(`123456789012345678901234567890.123456789`),
+						{1},
+						{1},
+						{1},
+					}},
+				},
+				{
+					Query: `SELECT value || '{"third": 123456789012345678901234567890.123456788}'::jsonb FROM jsonb_precision_test WHERE id = 2;`,
+					ExpectedRaw: [][][]byte{{
+						[]byte(`{"other": true, "third": 123456789012345678901234567890.123456788, "value": 123456789012345678901234567890.123456789}`),
+					}},
+				},
+				{
+					Query:       `SELECT '1.0'::jsonb = '1'::jsonb, '9007199254740992.1'::jsonb = '9007199254740992.2'::jsonb, '9007199254740992.1'::jsonb < '9007199254740992.2'::jsonb;`,
+					ExpectedRaw: [][][]byte{{{1}, {0}, {1}}},
 				},
 				{
 					Query: `SELECT jsonb_set('{"n":0}'::jsonb, '{n}', '123456789012345678901234567890'::jsonb), jsonb_set('{"n":0}'::jsonb, '{n}', '1234567890.12345678901234567890'::jsonb);`,

@@ -123,8 +123,14 @@ func toJSONWrapper(ctx *sql.Context, val any) (sql.JSONWrapper, error) {
 
 // jsonWrapperElementToText converts a JSON element (sql.JSONWrapper) to its text representation.
 // For string values, it returns the raw string without quotes. For other types, it returns the JSON representation.
-func jsonWrapperElementToText(ctx *sql.Context, wrapper sql.JSONWrapper) (string, error) {
-	v, err := wrapper.ToInterface(ctx)
+func jsonWrapperElementToText(ctx *sql.Context, wrapper sql.JSONWrapper, jsonb bool) (string, error) {
+	var v any
+	var err error
+	if jsonb {
+		v, err = pgtypes.JSONBWrapperToInterface(ctx, wrapper)
+	} else {
+		v, err = pgtypes.JSONWrapperToInterface(ctx, wrapper)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -172,7 +178,7 @@ var jsonb_array_element = framework.Function2{
 	Callable:   jsonb_array_element_callable,
 }
 
-func jsonb_array_element_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+func jsonb_array_element_callable(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	wrapper, ok := val1.(sql.JSONWrapper)
 	if !ok {
 		return nil, nil
@@ -204,7 +210,13 @@ func jsonb_array_element_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, 
 	// Materialized fallback: covers wrappers that don't implement
 	// ComparableJSON (e.g. literal jsonb values) and the negative-index
 	// case on ComparableJSON arrays.
-	v, err := wrapper.ToInterface(ctx)
+	var v any
+	var err error
+	if dt[1] != nil {
+		v, err = pgtypes.JSONBWrapperToInterface(ctx, wrapper)
+	} else {
+		v, err = pgtypes.JSONWrapperToInterface(ctx, wrapper)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +266,7 @@ var jsonb_object_field = framework.Function2{
 	Return:     pgtypes.JsonB,
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.JsonB, pgtypes.Text},
 	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	Callable: func(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 		wrapper, ok := val1.(sql.JSONWrapper)
 		if !ok {
 			return nil, nil
@@ -282,7 +294,12 @@ var jsonb_object_field = framework.Function2{
 		// ComparableJSON (e.g. literal jsonb values), where the embedded
 		// jsonpath library has trouble with edge cases like keys that
 		// contain escaped quotes, or array operands with text paths.
-		v, err := wrapper.ToInterface(ctx)
+		var v any
+		if dt[1] != nil {
+			v, err = pgtypes.JSONBWrapperToInterface(ctx, wrapper)
+		} else {
+			v, err = pgtypes.JSONWrapperToInterface(ctx, wrapper)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -333,7 +350,7 @@ var jsonb_array_element_text = framework.Function2{
 		if !ok {
 			return nil, nil
 		}
-		return jsonWrapperElementToText(ctx, wrapper)
+		return jsonWrapperElementToText(ctx, wrapper, dt[1] != nil)
 	},
 }
 
@@ -372,7 +389,7 @@ var jsonb_object_field_text = framework.Function2{
 		if !ok {
 			return nil, nil
 		}
-		return jsonWrapperElementToText(ctx, wrapper)
+		return jsonWrapperElementToText(ctx, wrapper, dt[1] != nil)
 	},
 }
 
@@ -412,7 +429,7 @@ var jsonb_extract_path = framework.Function2{
 	Callable:   jsonb_extract_path_callable,
 }
 
-func jsonb_extract_path_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+func jsonb_extract_path_callable(ctx *sql.Context, dt [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	cur, ok := val1.(sql.JSONWrapper)
 	if !ok {
 		return nil, nil
@@ -442,7 +459,7 @@ func jsonb_extract_path_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, v
 		if !ok {
 			return nil, nil
 		}
-		next, err := extractOneJsonPathStep(ctx, cur, textPath)
+		next, err := extractOneJsonPathStep(ctx, cur, textPath, dt[1] != nil)
 		if err != nil {
 			return nil, err
 		}
@@ -495,7 +512,7 @@ func extractJsonPathBySingleLookup(ctx *sql.Context, doc sql.JSONWrapper, paths 
 
 	if result != nil {
 		// A non-nil result could still be semantically NULL
-		i, err := result.ToInterface(ctx)
+		i, err := pgtypes.JSONWrapperToInterface(ctx, result)
 		if err != nil {
 			return nil, false, err
 		}
@@ -514,7 +531,7 @@ func extractJsonPathBySingleLookup(ctx *sql.Context, doc sql.JSONWrapper, paths 
 // object and as an integer index when the wrapper is an array. Returns nil if
 // the step cannot be resolved (missing key, out-of-range index, scalar
 // wrapper, or non-integer text on an array).
-func extractOneJsonPathStep(ctx *sql.Context, cur sql.JSONWrapper, textPath string) (sql.JSONWrapper, error) {
+func extractOneJsonPathStep(ctx *sql.Context, cur sql.JSONWrapper, textPath string, jsonb bool) (sql.JSONWrapper, error) {
 	// Fast path: use the ComparableJSON.JsonType / SearchableJSON.Lookup
 	// interfaces to avoid materializing the entire document.
 	if comparable, ok := cur.(types.ComparableJSON); ok {
@@ -541,7 +558,13 @@ func extractOneJsonPathStep(ctx *sql.Context, cur sql.JSONWrapper, textPath stri
 	}
 	// Materialized fallback for wrappers that don't implement ComparableJSON,
 	// and for negative array indices on ones that do.
-	v, err := cur.ToInterface(ctx)
+	var v any
+	var err error
+	if jsonb {
+		v, err = pgtypes.JSONBWrapperToInterface(ctx, cur)
+	} else {
+		v, err = pgtypes.JSONWrapperToInterface(ctx, cur)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -607,7 +630,7 @@ func jsonb_extract_path_text_callable(ctx *sql.Context, dt [3]*pgtypes.DoltgresT
 	if !ok {
 		return nil, nil
 	}
-	return jsonWrapperElementToText(ctx, wrapper)
+	return jsonWrapperElementToText(ctx, wrapper, dt[1] != nil)
 }
 
 // jsonb_contains represents the PostgreSQL function of the same name, taking the same parameters.
@@ -658,7 +681,7 @@ var jsonb_exists = framework.Function2{
 			}
 			return found != nil, nil
 		}
-		value, err := wrapper.ToInterface(ctx)
+		value, err := pgtypes.JSONBWrapperToInterface(ctx, wrapper)
 		if err != nil {
 			return nil, err
 		}
@@ -731,7 +754,7 @@ var jsonb_exists_any = framework.Function2{
 			}
 			return false, nil
 		}
-		value, err := wrapper.ToInterface(ctx)
+		value, err := pgtypes.JSONBWrapperToInterface(ctx, wrapper)
 		if err != nil {
 			return nil, err
 		}
@@ -801,7 +824,7 @@ var jsonb_exists_all = framework.Function2{
 			}
 			return true, nil
 		}
-		value, err := wrapper.ToInterface(ctx)
+		value, err := pgtypes.JSONBWrapperToInterface(ctx, wrapper)
 		if err != nil {
 			return nil, err
 		}

@@ -74,7 +74,7 @@ func serializeTypeJsonB(ctx *sql.Context, t *DoltgresType, val any) ([]byte, err
 	var doc JsonDocument
 	switch v := res.(type) {
 	case sql.JSONWrapper:
-		j, err := v.ToInterface(ctx)
+		j, err := JSONBWrapperToInterface(ctx, v)
 		if err != nil {
 			return nil, err
 		}

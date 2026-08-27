@@ -43,7 +43,9 @@ var jsonb_in = framework.Function1{
 	Return:     pgtypes.JsonB,
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Cstring},
 	Strict:     true,
-	Callable:   json_in_callable,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		return decodeJSONInput(ctx, val, true)
+	},
 }
 
 // jsonb_out represents the PostgreSQL function of jsonb type IO output.

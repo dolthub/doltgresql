@@ -17,12 +17,12 @@ package functions
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
-	"github.com/goccy/go-json"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -34,29 +34,45 @@ import (
 type preciseJSONDocument struct {
 	bytes []byte
 	value any
+	jsonb bool
 }
 
+// Clone returns an independent precision-preserving JSON document.
 func (d *preciseJSONDocument) Clone(context.Context) sql.JSONWrapper {
 	bytes := append([]byte(nil), d.bytes...)
-	value, err := pgtypes.DecodeJSONValue(bytes)
+	var value any
+	var err error
+	if d.jsonb {
+		value, err = pgtypes.DecodeJSONBValue(bytes)
+	} else {
+		value, err = pgtypes.DecodeJSONValue(bytes)
+	}
 	if err != nil {
 		// The bytes were validated when this document was created.
-		return &preciseJSONDocument{bytes: bytes, value: d.value}
+		return &preciseJSONDocument{bytes: bytes, value: d.value, jsonb: d.jsonb}
 	}
-	return &preciseJSONDocument{bytes: bytes, value: value}
+	return &preciseJSONDocument{bytes: bytes, value: value, jsonb: d.jsonb}
 }
 
+// ToInterface returns the parsed precision-preserving JSON value.
 func (d *preciseJSONDocument) ToInterface(context.Context) (any, error) {
 	return d.value, nil
 }
 
+// GetBytes returns the validated JSON bytes retained by the document.
 func (d *preciseJSONDocument) GetBytes(context.Context) ([]byte, error) {
 	return d.bytes, nil
 }
 
 // jsonWrapperToFormattedString converts a sql.JSONWrapper to a formatted JSON string with spaces (JSONB format).
-func jsonWrapperToFormattedString(ctx *sql.Context, val sql.JSONWrapper) (string, error) {
-	v, err := val.ToInterface(ctx)
+func jsonWrapperToFormattedString(ctx *sql.Context, val sql.JSONWrapper, jsonb bool) (string, error) {
+	var v any
+	var err error
+	if jsonb {
+		v, err = pgtypes.JSONBWrapperToInterface(ctx, val)
+	} else {
+		v, err = pgtypes.JSONWrapperToInterface(ctx, val)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -110,12 +126,25 @@ var json_in = framework.Function1{
 }
 
 func json_in_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+	return decodeJSONInput(ctx, val, false)
+}
+
+// decodeJSONInput validates and decodes PostgreSQL JSON or JSONB input.
+func decodeJSONInput(ctx *sql.Context, val any, jsonb bool) (any, error) {
 	input, err := framework.UnwrapString(ctx, val)
 	if err != nil {
 		return nil, err
 	}
-	jsonVal, err := pgtypes.DecodeJSONValue([]byte(input))
+	var jsonVal any
+	if jsonb {
+		jsonVal, err = pgtypes.DecodeJSONBValue([]byte(input))
+	} else {
+		jsonVal, err = pgtypes.DecodeJSONValue([]byte(input))
+	}
 	if err != nil {
+		if pgtypes.ErrJSONNumberOutOfRange.Is(err) {
+			return nil, err
+		}
 		if len(input) > 10 {
 			input = input[:10] + "..."
 		}
@@ -129,7 +158,7 @@ func json_in_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (an
 	if err = json.Compact(&compact, []byte(formatted)); err != nil {
 		return nil, err
 	}
-	return &preciseJSONDocument{bytes: compact.Bytes(), value: jsonVal}, nil
+	return &preciseJSONDocument{bytes: compact.Bytes(), value: jsonVal, jsonb: jsonb}, nil
 }
 
 // json_out represents the PostgreSQL function of json type IO output.
@@ -162,7 +191,7 @@ func json_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (a
 		return string(bytes), err
 	case sql.JSONWrapper:
 		// JSON type is stored as binary JSON (same as JSONB), so output is normalized with spaces
-		return jsonWrapperToFormattedString(ctx, v)
+		return jsonWrapperToFormattedString(ctx, v, false)
 	default:
 		return nil, fmt.Errorf("unexpected type for json_out: %T", val)
 	}
@@ -197,9 +226,9 @@ func jsonb_out_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (
 		if doc == nil {
 			return nil, nil
 		}
-		return jsonWrapperToFormattedString(ctx, doc.(sql.JSONWrapper))
+		return jsonWrapperToFormattedString(ctx, doc.(sql.JSONWrapper), true)
 	case sql.JSONWrapper:
-		return jsonWrapperToFormattedString(ctx, v)
+		return jsonWrapperToFormattedString(ctx, v, true)
 	default:
 		return nil, fmt.Errorf("unexpected type for jsonb_out: %T", val)
 	}
@@ -247,7 +276,7 @@ var json_send = framework.Function1{
 			jsonStr = v
 		case sql.JSONWrapper:
 			var err error
-			jsonStr, err = jsonWrapperToFormattedString(ctx, v)
+			jsonStr, err = jsonWrapperToFormattedString(ctx, v, false)
 			if err != nil {
 				return nil, err
 			}

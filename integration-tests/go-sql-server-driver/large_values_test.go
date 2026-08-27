@@ -19,12 +19,48 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
 	driver "github.com/dolthub/doltgresql/integration-tests/go-sql-server-driver/driver"
 )
+
+// TestJSONBPrecisionAfterRestart verifies exact JSONB numerics through mutation, indexed storage, and server restart.
+func TestJSONBPrecisionAfterRestart(t *testing.T) {
+	server := setupTestServer(t, "jsonb_precision_restart")
+	db, err := server.DB(driver.Connection{})
+	require.NoError(t, err)
+
+	_, err = db.Exec(`CREATE TABLE precision_docs (id int PRIMARY KEY, doc jsonb)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO precision_docs VALUES (1, '{"value":123456789012345678901234567890.123456789}')`)
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE precision_docs SET doc = jsonb_set(doc, '{other}', 'true'::jsonb) WHERE id = 1`)
+	require.NoError(t, err)
+	_, err = db.Exec(`SELECT dolt_commit('-Am', 'persist precise jsonb')`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	require.NoError(t, server.Restart(nil, nil))
+	db, err = server.DB(driver.Connection{})
+	require.NoError(t, err)
+	defer db.Close()
+	require.Eventually(t, func() bool { return db.Ping() == nil }, 10*time.Second, 100*time.Millisecond)
+
+	var extracted, castValue string
+	var equal, ordered bool
+	err = db.QueryRow(`SELECT doc ->> 'value', (doc -> 'value')::numeric::text,
+		doc -> 'value' = '123456789012345678901234567890.123456789'::jsonb,
+		doc -> 'value' < '123456789012345678901234567890.123456790'::jsonb
+		FROM precision_docs WHERE id = 1`).Scan(&extracted, &castValue, &equal, &ordered)
+	require.NoError(t, err)
+	require.Equal(t, "123456789012345678901234567890.123456789", extracted)
+	require.Equal(t, extracted, castValue)
+	require.True(t, equal)
+	require.True(t, ordered)
+}
 
 // setupTestServer creates a standard single-server test environment. The repo
 // name is also used as the database name. Cleanup is registered with t.Cleanup.
