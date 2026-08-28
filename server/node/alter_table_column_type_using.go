@@ -45,10 +45,8 @@ type AlterTableColumnTypeUsing struct {
 	IfExists   bool
 	usingExpr  sql.Expression
 	// table is the resolved target table, assigned during analysis by the resolveTableForDDL rule. It is nil when
-	// the table does not exist, which resolution only tolerates when IfExists is set.
+	// the table does not exist, which analysis only tolerates when IfExists is set; execution is then a no-op.
 	table sql.TableNode
-	// tableResolved is set once analysis has resolved the target table (or determined there is none to resolve)
-	tableResolved bool
 }
 
 var _ sql.ExecSourceRel = (*AlterTableColumnTypeUsing)(nil)
@@ -74,22 +72,16 @@ func (a *AlterTableColumnTypeUsing) Children() []sql.Node { return nil }
 // IsReadOnly implements sql.ExecSourceRel.
 func (a *AlterTableColumnTypeUsing) IsReadOnly() bool { return false }
 
-// Resolved implements sql.ExecSourceRel.
+// Resolved implements sql.ExecSourceRel. The table field is not part of this check because a missing table with
+// IF EXISTS legitimately leaves it nil.
 func (a *AlterTableColumnTypeUsing) Resolved() bool {
-	return a.DbProvider != nil && a.usingExpr != nil && a.usingExpr.Resolved() && a.tableResolved
+	return a.DbProvider != nil && a.usingExpr != nil && a.usingExpr.Resolved()
 }
 
-// TableResolved returns whether the target table has been resolved by the analyzer.
-func (a *AlterTableColumnTypeUsing) TableResolved() bool {
-	return a.tableResolved
-}
-
-// WithResolvedTable returns a copy of this node with the target table assigned. A nil table is only valid when
-// IfExists is set, and makes execution a no-op.
+// WithResolvedTable returns a copy of this node with the target table assigned.
 func (a *AlterTableColumnTypeUsing) WithResolvedTable(table sql.TableNode) *AlterTableColumnTypeUsing {
 	na := *a
 	na.table = table
-	na.tableResolved = true
 	return &na
 }
 
@@ -151,9 +143,6 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 		return nil, pgtypes.ErrTypeDoesNotExist.New(a.NewType.Name())
 	}
 
-	if !a.tableResolved {
-		return nil, errors.Errorf("target table for ALTER TABLE ... ALTER COLUMN ... TYPE ... USING was not resolved during analysis")
-	}
 	if a.table == nil {
 		// The table does not exist; analysis only permits this with IF EXISTS, making this statement a no-op
 		if a.IfExists {
@@ -215,14 +204,6 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 		return nil, err
 	}
 	return sql.RowsToRowIter(), nil
-}
-
-// ResolveUsingTable resolves the target table of an ALTER TABLE ... ALTER COLUMN ... TYPE ... USING statement,
-// honoring the search path for unqualified table names. Returns nil (without an error) if the table does not exist.
-// This is the single resolution mechanism shared by the resolveTableForDDL analyzer rule and the UsingColumn
-// placeholder's build-time column type resolution, so the two can never disagree about the target table.
-func ResolveUsingTable(ctx *sql.Context, schemaName string, tableName string) (sql.Table, error) {
-	return core.GetSqlTableFromContext(ctx, "", doltdb.TableName{Name: tableName, Schema: schemaName})
 }
 
 // rewriteRows rewrites the given table, computing the new value of the altered column for each row by evaluating
@@ -436,7 +417,8 @@ func (u *UsingColumn) WithChildren(ctx *sql.Context, children ...sql.Expression)
 }
 
 // WithResolvedChildren implements the interface vitess.Injectable. It resolves the referenced column's type against
-// the target table, if the table exists.
+// the target table, if the table exists, honoring the search path for unqualified table names just like the
+// resolveTableForDDL analyzer rule does when it resolves the statement's target table.
 func (u *UsingColumn) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
@@ -445,7 +427,7 @@ func (u *UsingColumn) WithResolvedChildren(ctx context.Context, children []any) 
 	if !ok {
 		return u, nil
 	}
-	tbl, err := ResolveUsingTable(sqlCtx, u.SchemaName, u.TableName)
+	tbl, err := core.GetSqlTableFromContext(sqlCtx, "", doltdb.TableName{Name: u.TableName, Schema: u.SchemaName})
 	if err != nil {
 		return nil, err
 	}
