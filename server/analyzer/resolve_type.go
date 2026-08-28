@@ -292,6 +292,16 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				col.Type = dt
 			}
 			return node, same, nil
+		case *pgnodes.AlterTableColumnTypeUsing:
+			if !n.NewType.IsResolvedType() {
+				dt, err := resolveType(ctx, db, n.NewType)
+				if err != nil {
+					return nil, transform.NewTree, err
+				}
+				same = transform.NewTree
+				n.NewType = dt
+			}
+			return node, same, nil
 		default:
 			// TODO: add nodes that use unresolved types like domain
 			return node, transform.SameTree, nil

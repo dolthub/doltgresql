@@ -54,7 +54,7 @@ const (
 	ruleId_ResolveProcedureDefaults                                      // resolveProcedureDefaults
 	ruleId_SetRunner                                                     // setRunner
 	ruleId_TypeSanitizeExistsSubquery                                    // typeSanitizeExistsSubquery
-	ruleId_ResolveRenameIndex                                            // resolveRenameIndex
+	ruleId_ResolveTableForDDL                                            // resolveTableForDDL
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -64,7 +64,7 @@ func Init() {
 		{Id: ruleId_ResolveType, Apply: ResolveType}, // ResolveType rule must run before simplifyFilters rule in GMS
 		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
 		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint},
-		{Id: ruleId_ResolveRenameIndex, Apply: resolveRenameIndex}},
+		{Id: ruleId_ResolveTableForDDL, Apply: resolveTableForDDL}},
 		analyzer.OnceBeforeDefault...)
 
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,

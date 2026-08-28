@@ -24,7 +24,7 @@ import (
 )
 
 // RenameIndex handles the ALTER INDEX ... RENAME TO ... statement. The table owning the index is resolved at
-// analysis time by the resolveRenameIndex analyzer rule.
+// analysis time by the resolveTableForDDL analyzer rule.
 type RenameIndex struct {
 	IfExists   bool
 	DbName     string // optional catalog qualifier for the index name
@@ -33,9 +33,9 @@ type RenameIndex struct {
 	IndexName  string
 	NewName    string
 
-	// table is the table owning the index, filled in during analysis. It is nil when IfExists is set and no
+	// table is the table owning the index, assigned during analysis. It is nil when IfExists is set and no
 	// matching index was found, in which case execution is a no-op.
-	table sql.IndexAlterableTable
+	table sql.TableNode
 	// resolved is set once analysis has resolved the target table (or determined there is none to resolve)
 	resolved bool
 }
@@ -55,9 +55,9 @@ func NewRenameIndex(ifExists bool, dbName, schemaName, tableName, indexName, new
 	}
 }
 
-// WithResolvedTable returns a copy of this node with the table owning the index filled in. A nil table is only
+// WithResolvedTable returns a copy of this node with the table owning the index assigned. A nil table is only
 // valid when IfExists is set, and makes execution a no-op.
-func (r *RenameIndex) WithResolvedTable(table sql.IndexAlterableTable) *RenameIndex {
+func (r *RenameIndex) WithResolvedTable(table sql.TableNode) *RenameIndex {
 	nr := *r
 	nr.table = table
 	nr.resolved = true
@@ -88,7 +88,11 @@ func (r *RenameIndex) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) 
 		}
 		return nil, errors.Errorf(`relation "%s" does not exist`, r.IndexName)
 	}
-	if err := r.table.RenameIndex(ctx, r.IndexName, r.NewName); err != nil {
+	alterable, ok := r.table.UnderlyingTable().(sql.IndexAlterableTable)
+	if !ok {
+		return nil, errors.Errorf(`table "%s" does not support renaming indexes`, r.table.Name())
+	}
+	if err := alterable.RenameIndex(ctx, r.IndexName, r.NewName); err != nil {
 		return nil, err
 	}
 	return sql.RowsToRowIter(), nil
