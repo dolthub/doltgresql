@@ -12171,6 +12171,20 @@ simple_typename:
       }
     }
   }
+| IDENT '(' expr_list ')'
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    name, err := tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = &tree.ModifiedTypeReference{Name: name, Modifiers: $3.exprs()}
+  }
+| unreserved_keyword '(' expr_list ')'
+  {
+    aIdx := sqllex.(*lexer).NewAnnotation()
+    name, err := tree.NewUnresolvedObjectName(1, [3]string{$1}, aIdx)
+    if err != nil { return setErr(sqllex, err) }
+    $$.val = &tree.ModifiedTypeReference{Name: name, Modifiers: $3.exprs()}
+  }
 | '@' iconst32
   {
     id := $2.int32()
@@ -12179,6 +12193,10 @@ simple_typename:
 | complex_type_name
   {
     $$.val = $1.typeReference()
+  }
+| complex_type_name '(' expr_list ')'
+  {
+    $$.val = &tree.ModifiedTypeReference{Name: $1.typeReference().(*tree.UnresolvedObjectName), Modifiers: $3.exprs()}
   }
 | const_typename
 | bit_with_length

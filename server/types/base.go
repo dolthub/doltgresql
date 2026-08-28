@@ -28,6 +28,7 @@ type BaseTypeDefinition struct {
 	SendFunc    uint32
 	ModInFunc   uint32
 	ModOutFunc  uint32
+	CompareFunc uint32
 	TypLength   int16
 	PassedByVal bool
 	Align       TypeAlignment
@@ -93,7 +94,7 @@ func NewBaseType(ctx *sql.Context, typeID id.Type, def BaseTypeDefinition) *Dolt
 		Acl:                 nil,
 		Checks:              nil,
 		attTypMod:           -1,
-		CompareFunc:         toFuncID("-"),
+		CompareFunc:         def.CompareFunc,
 		SerializationFunc:   nil,
 		DeserializationFunc: nil,
 	}

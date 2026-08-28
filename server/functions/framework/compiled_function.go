@@ -502,6 +502,11 @@ func (c *CompiledFunction) callFunction(ctx *sql.Context, args []any) (interface
 		if err != nil {
 			return nil, err
 		}
+		for i, arg := range args {
+			if args[i], err = sql.UnwrapAny(ctx, arg); err != nil {
+				return nil, err
+			}
+		}
 		return extFunc(ctx, args...)
 	case SQLFunction:
 		return CallSqlFunction(ctx, f, c.runner, args)
@@ -643,6 +648,19 @@ func (c *CompiledFunction) GetQuickFunction(ctx *sql.Context) QuickFunction {
 	default:
 		return nil
 	}
+}
+
+// ResolvedExtensionRoutine returns the extension name and symbol of the resolved overload. Returns
+// false when the function is unresolved or the resolved overload is not an extension routine.
+func (c *CompiledFunction) ResolvedExtensionRoutine() (extensionName string, symbol string, ok bool) {
+	if c.stashedErr != nil || !c.overload.Valid() {
+		return "", "", false
+	}
+	extFunc, isExtFunc := c.overload.Function().(ExtensionFunction)
+	if !isExtFunc {
+		return "", "", false
+	}
+	return extFunc.ExtensionName, extFunc.ExtensionSymbol, true
 }
 
 // resolve returns an overloadMatch that either matches the given parameters exactly, or is a viable match after casting.

@@ -426,6 +426,11 @@ func validateAlterIndex(ctx *sql.Context, initialSch, sch sql.Schema, ai *plan.A
 		if err != nil {
 			return nil, err
 		}
+		if ai.Constraint == sql.IndexConstraint_Vector && ai.VectorAccessMethod != "" {
+			if err = validateVectorIndex(colMap, ai); err != nil {
+				return nil, err
+			}
+		}
 		return append(indexes, ai.IndexName), nil
 	case plan.IndexAction_Drop:
 		savedIdx := -1

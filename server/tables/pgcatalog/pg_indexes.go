@@ -129,6 +129,10 @@ func getIndexDef(index sql.Index, schema string, tableSchema sql.Schema) string 
 			continue
 		}
 		cols[i] = colName
+		if method, opclass, ok := functions.VectorIndexRendering(index, col); ok {
+			using = method
+			cols[i] += " " + opclass
+		}
 	}
 	colsStr := strings.Join(cols, ", ")
 

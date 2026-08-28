@@ -36,6 +36,7 @@ import (
 
 // initBinaryGreaterOrEqual registers the functions to the catalog.
 func initBinaryGreaterOrEqual() {
+	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, array_ge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, boolge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, bpcharge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, byteage)
@@ -77,6 +78,18 @@ func initBinaryGreaterOrEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, timetz_ge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, record_ge)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryGreaterOrEqual, uuid_ge)
+}
+
+// array_ge represents the PostgreSQL function of the same name, taking the same parameters.
+var array_ge = framework.Function2{
+	Name:       "array_ge",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+		res, err := t[0].Compare(ctx, val1, val2)
+		return res >= 0, err
+	},
 }
 
 // boolge represents the PostgreSQL function of the same name, taking the same parameters.
