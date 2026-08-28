@@ -516,49 +516,6 @@ limit 1`,
 				},
 			},
 		},
-	})
-}
-
-// TestIssue3116WireFormat asserts, over the simple query protocol, that boolean columns of dolt system
-// tables are sent in Postgres's text format ('t'/'f') rather than MySQL's ('1'/'0'), including when a
-// filter or sort sits between the projection and the system table. Clients like psycopg2 use the simple
-// protocol with text-format results and fail to parse '0'/'1' for a column whose declared type is boolean.
-// The ScriptTest above cannot cover this: pgx negotiates binary-format results, which took a different
-// (working) code path while the text path was broken.
-func TestIssue3116WireFormat(t *testing.T) {
-	RunMessageFlowTests(t, []MessageFlowTest{
-		{
-			Name: "Issue #3116: dolt system table booleans over the wire",
-			SetUpScript: []string{
-				"CREATE TABLE t3116 (id INT PRIMARY KEY);",
-			},
-			Steps: []FlowStep{
-				SimpleQuery{
-					Query:    "SELECT dirty FROM dolt.branches;",
-					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
-				},
-				SimpleQuery{
-					Query:    "SELECT dirty FROM dolt.branches WHERE name = 'main';",
-					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
-				},
-				SimpleQuery{
-					Query:    "SELECT dirty FROM dolt.branches ORDER BY name;",
-					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
-				},
-				SimpleQuery{
-					Query:    "SELECT dirty FROM dolt.branches WHERE dirty = true;",
-					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
-				},
-				SimpleQuery{
-					Query:    "SELECT staged FROM dolt.status ORDER BY table_name;",
-					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f"}}}},
-				},
-				SimpleQuery{
-					Query:    "SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;",
-					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f", "t"}}}},
-				},
-			},
-		},
 		{
 			Name: "Issue #3138",
 			SetUpScript: []string{
@@ -631,6 +588,49 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 					Query:    `SELECT count(*) FROM g_arr WHERE least($1, v) = 1;`,
 					BindVars: []any{int32(5)},
 					Expected: []sql.Row{{int64(1)}},
+				},
+			},
+		},
+	})
+}
+
+// TestIssue3116WireFormat asserts, over the simple query protocol, that boolean columns of dolt system
+// tables are sent in Postgres's text format ('t'/'f') rather than MySQL's ('1'/'0'), including when a
+// filter or sort sits between the projection and the system table. Clients like psycopg2 use the simple
+// protocol with text-format results and fail to parse '0'/'1' for a column whose declared type is boolean.
+// The ScriptTest above cannot cover this: pgx negotiates binary-format results, which took a different
+// (working) code path while the text path was broken.
+func TestIssue3116WireFormat(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "Issue #3116: dolt system table booleans over the wire",
+			SetUpScript: []string{
+				"CREATE TABLE t3116 (id INT PRIMARY KEY);",
+			},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches WHERE name = 'main';",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches ORDER BY name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches WHERE dirty = true;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT staged FROM dolt.status ORDER BY table_name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f", "t"}}}},
 				},
 			},
 		},
