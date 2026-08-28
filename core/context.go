@@ -63,7 +63,10 @@ func getContextValues(ctx *sql.Context) (*contextValues, error) {
 	if ctx == nil {
 		return nil, errors.New("context is nil")
 	}
-	sess := dsess.DSessFromSess(ctx.Session)
+	sess, ok := ctx.Session.(*dsess.DoltSession)
+	if !ok {
+		return nil, errors.Errorf("context contains a session of type %T, expected a Dolt session", ctx.Session)
+	}
 	if sess.DoltgresSessObj == nil {
 		cv := &contextValues{}
 		sess.DoltgresSessObj = cv

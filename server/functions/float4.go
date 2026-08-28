@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -61,7 +62,13 @@ var float4out = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Float32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		return strconv.FormatFloat(float64(val.(float32)), 'f', -1, 32), nil
+		fVal := float64(val.(float32))
+		if math.IsInf(fVal, 1) {
+			return "Infinity", nil
+		} else if math.IsInf(fVal, -1) {
+			return "-Infinity", nil
+		}
+		return strconv.FormatFloat(fVal, 'f', -1, 32), nil
 	},
 }
 

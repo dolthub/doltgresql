@@ -1772,7 +1772,7 @@ func castSQLError(err error) *pgconn.PgError {
 		code = pgcode.ForeignKeyViolation
 	case sql.ErrCheckConstraintViolated.Is(err), pgtypes.ErrDomainValueViolatesCheckConstraint.Is(err):
 		code = pgcode.CheckViolation
-	case sql.ErrInsertIntoNonNullableProvidedNull.Is(err), sql.ErrInsertIntoNonNullableDefaultNullColumn.Is(err),
+	case sql.ErrInsertIntoNonNullableProvidedNull.Is(err), sql.ErrFieldNoDefaultValue.Is(err),
 		sql.ErrColumnDefaultReturnedNull.Is(err), pgtypes.ErrDomainDoesNotAllowNullValues.Is(err):
 		code = pgcode.NotNullViolation
 	// Class 25 — Invalid Transaction State

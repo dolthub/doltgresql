@@ -34,6 +34,10 @@ type QuickFunction interface {
 // solely for functions that are used for types, as the returned functions are not valid using the Eval function.
 var LoadFunctionFromCatalog func(ctx *sql.Context, schemaName string, funcName string, parameterTypes []*DoltgresType) any
 
+// LoadExtensionFunction returns the extension-provided function matching the given ID. This is the fallback for
+// LoadFunctionFromCatalog in contexts that have no session, such as index comparators.
+var LoadExtensionFunction func(functionID id.Function) any
+
 // functionRegistry is a local registry that holds a mapping from ID to QuickFunction. This is done as types are now
 // passed by struct, meaning that we need to cache the loading of functions somewhere. Only the functions in pg_catalog
 // are cached, since a user-defined function may be replaced or dropped, and it may differ between databases.
@@ -74,19 +78,13 @@ func (r *functionRegistry) InternalToRegistryID(functionID id.Function) uint32 {
 
 // GetFunction returns the associated function for the given ID. This will always return a valid function.
 func (r *functionRegistry) GetFunction(ctx *sql.Context, id uint32) QuickFunction {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	f := r.functions[id]
-	if f != nil {
-		return f
-	}
 	if id == 0 {
 		return nil
 	}
-	f = r.loadFunction(ctx, id)
+	f := r.loadFunction(ctx, id)
 	if f == nil {
 		// If we hit this panic, then we're missing a test that uses this function (and we should add that test)
-		panic(errors.Errorf("cannot find function: `%s`", r.revMapping[id]))
+		panic(errors.Errorf("cannot find function: `%s`", r.GetInternalID(id)))
 	}
 	return f
 }
@@ -107,32 +105,37 @@ func (r *functionRegistry) GetString(id uint32) string {
 
 // loadFunction loads the given function
 func (r *functionRegistry) loadFunction(ctx *sql.Context, id uint32) QuickFunction {
-	// We make this check a second time (first in GetFunction) since the function may have been added while another
-	// function acquired the lock.
+	// The mutex is only held while accessing the cache, since loading through the catalog may re-enter the registry
+	// (extension types resolve their I/O functions during deserialization).
+	r.mutex.Lock()
 	f := r.functions[id]
+	functionID := r.revMapping[id]
+	r.mutex.Unlock()
 	if f != nil {
 		return f
 	}
-	if LoadFunctionFromCatalog == nil {
-		return nil
-	}
-	functionID := r.revMapping[id]
 	if !functionID.IsValid() {
 		return nil
 	}
-	funcName, types, ok := r.toFuncSignature(ctx, functionID)
-	if !ok {
-		return nil
+	if LoadFunctionFromCatalog != nil {
+		if funcName, types, ok := r.toFuncSignature(ctx, functionID); ok {
+			if potentialFunction := LoadFunctionFromCatalog(ctx, functionID.SchemaName(), funcName, types); potentialFunction != nil {
+				f = potentialFunction.(QuickFunction)
+				if functionID.SchemaName() == "pg_catalog" {
+					r.mutex.Lock()
+					r.functions[id] = f
+					r.mutex.Unlock()
+				}
+				return f
+			}
+		}
 	}
-	potentialFunction := LoadFunctionFromCatalog(ctx, functionID.SchemaName(), funcName, types)
-	if potentialFunction == nil {
-		return nil
+	if LoadExtensionFunction != nil {
+		if potentialFunction := LoadExtensionFunction(functionID); potentialFunction != nil {
+			return potentialFunction.(QuickFunction)
+		}
 	}
-	f = potentialFunction.(QuickFunction)
-	if functionID.SchemaName() == "pg_catalog" {
-		r.functions[id] = f
-	}
-	return f
+	return nil
 }
 
 // nameWithoutParams returns the name only from the given function string.

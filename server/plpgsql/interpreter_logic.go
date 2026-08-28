@@ -236,6 +236,23 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 					return nil, err
 				}
 			}
+		case OpCode_ExecuteInto:
+			// The target is a RECORD, which takes on the shape of the query's result columns.
+			schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			if err != nil {
+				return nil, err
+			}
+			// Without STRICT, Postgres keeps the first row and discards the rest, and leaves every field NULL
+			// when there are no rows at all.
+			var row sql.Row
+			if len(rows) > 0 {
+				row = rows[0]
+			}
+			if err = stack.UpdateRecord(operation.Target, schema, row); err != nil {
+				return nil, err
+			}
+		case OpCode_DeclareRecord:
+			stack.NewRecord(operation.Target, nil, nil)
 		case OpCode_Get:
 			// TODO: implement
 		case OpCode_Goto:
