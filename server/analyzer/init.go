@@ -38,7 +38,6 @@ const (
 	ruleId_AssignUpdateCasts                                             // assignUpdateCasts
 	ruleId_ConvertDropPrimaryKeyConstraint                               // convertDropPrimaryKeyConstraint
 	ruleId_GenerateForeignKeyName                                        // generateForeignKeyName
-	ruleId_ReplaceIndexedTables                                          // replaceIndexedTables
 	ruleId_ReplaceNode                                                   // replaceNode
 	ruleId_TransformRecordFilter                                         // transformRecordFilter
 	ruleId_ReplaceSerial                                                 // replaceSerial

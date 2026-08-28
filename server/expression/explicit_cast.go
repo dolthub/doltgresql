@@ -220,7 +220,7 @@ func (c *ExplicitCast) WithResolvedChildren(ctx context.Context, children []any)
 		if err != nil {
 			return nil, err
 		}
-		resolvedType, err := typeColl.ResolveType(sqlCtx, c.castToType.ID)
+		resolvedType, err := typeColl.ResolveTypeWithTypmod(sqlCtx, c.castToType.ID, c.castToType.UnresolvedTypmods)
 		if err != nil {
 			return nil, err
 		}

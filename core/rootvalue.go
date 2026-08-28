@@ -264,12 +264,18 @@ func (root *RootValue) FilterRootObjectNames(ctx context.Context, names []doltdb
 	}
 	var returnNames []doltdb.TableName
 	for _, name := range names {
-		_, _, objID, err := rootobject.ResolveNameOnCollections(ctx, colls, name)
-		if err != nil {
-			return nil, err
-		}
-		if objID != objinterface.RootObjectID_None {
-			returnNames = append(returnNames, name)
+		for _, coll := range colls {
+			if coll == nil {
+				continue
+			}
+			_, rawID, err := coll.ResolveName(ctx, name)
+			if err != nil {
+				return nil, err
+			}
+			if rawID.IsValid() {
+				returnNames = append(returnNames, name)
+				break
+			}
 		}
 	}
 	return returnNames, nil

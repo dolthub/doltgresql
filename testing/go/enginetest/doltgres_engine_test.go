@@ -1733,13 +1733,13 @@ func TestUserPrivileges(t *testing.T) {
 }
 
 func TestVectorFunctions(t *testing.T) {
-	t.Skip("doltgresql does not yet support vector types")
+	t.Skip("MySQL-dialect vector tests")
 }
 
 func TestVectorIndexes(t *testing.T) {
-	t.Skip("doltgresql does not yet support vector types")
+	t.Skip("MySQL-dialect vector tests")
 }
 
 func TestVectorType(t *testing.T) {
-	t.Skip("doltgresql does not yet support vector types")
+	t.Skip("MySQL-dialect vector tests")
 }
