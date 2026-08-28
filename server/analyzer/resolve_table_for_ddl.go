@@ -37,9 +37,19 @@ func resolveTableForDDL(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 		if node.Resolved() {
 			return n, transform.SameTree, nil
 		}
-		tbl, schema, err := resolveTableUsingSearchPath(ctx, node.DbName, node.SchemaName, node.TableName, node.IndexName)
+		// Postgres does not name the table in ALTER INDEX statements, so we must first find the table that owns
+		// the index being renamed
+		schemaName, tableName, err := findTableOwningIndex(ctx, node)
 		if err != nil {
 			return nil, transform.SameTree, err
+		}
+		var tbl sql.TableNode
+		var schema sql.DatabaseSchema
+		if len(tableName) > 0 {
+			tbl, schema, err = resolveTableUsingSearchPath(ctx, node.DbName, schemaName, tableName)
+			if err != nil {
+				return nil, transform.SameTree, err
+			}
 		}
 		if tbl == nil {
 			if !node.IfExists {
@@ -57,7 +67,7 @@ func resolveTableForDDL(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 		}
 		return node.WithResolvedTable(tbl), transform.NewTree, nil
 	case *pgnodes.AlterTableColumnTypeUsing:
-		tbl, _, err := resolveTableUsingSearchPath(ctx, "", node.SchemaName, node.TableName, "")
+		tbl, _, err := resolveTableUsingSearchPath(ctx, "", node.SchemaName, node.TableName)
 		if err != nil {
 			return nil, transform.SameTree, err
 		}
@@ -74,25 +84,83 @@ func resolveTableForDDL(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 	}
 }
 
-// resolveTableUsingSearchPath finds the target table of a DDL statement, searching the schemas on the search path (or
-// only the explicitly named schema) and returning the table as a sql.TableNode along with the schema containing it.
-// When indexName is non-empty, the table name may be empty: Postgres does not name the table in ALTER INDEX
-// statements, so we search for a table owning an index with that name. Returns nils (with no error) if no matching
-// table was found.
-func resolveTableUsingSearchPath(ctx *sql.Context, dbName, schemaName, tableName, indexName string) (sql.TableNode, sql.DatabaseSchema, error) {
-	db, err := core.GetSqlDatabaseFromContext(ctx, dbName)
+// resolveTableUsingSearchPath resolves the named table, searching the schemas on the search path (or only the
+// explicitly named schema), and returns it as a sql.TableNode along with the schema containing it. Returns nils
+// (with no error) if the table was not found.
+func resolveTableUsingSearchPath(ctx *sql.Context, dbName, schemaName, tableName string) (sql.TableNode, sql.DatabaseSchema, error) {
+	schemas, err := schemasOnSearchPath(ctx, dbName, schemaName)
 	if err != nil {
 		return nil, nil, err
+	}
+	for _, schema := range schemas {
+		tbl, ok, err := schema.GetTableInsensitive(ctx, tableName)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !ok {
+			continue
+		}
+		return plan.NewResolvedTable(tbl, schema, nil), schema, nil
+	}
+	return nil, nil, nil
+}
+
+// findTableOwningIndex finds the table that owns the index being renamed by an ALTER INDEX ... RENAME TO statement,
+// returning the names of that table and the schema containing it. We search the schemas on the search path (or the
+// explicitly named schema) for a table with a matching index, limited to the statement's table when it names one
+// (from the CockroachDB `table@index` syntax). Returns empty names (with no error) if no matching index was found.
+func findTableOwningIndex(ctx *sql.Context, ri *pgnodes.RenameIndex) (string, string, error) {
+	schemas, err := schemasOnSearchPath(ctx, ri.DbName, ri.SchemaName)
+	if err != nil {
+		return "", "", err
+	}
+	for _, schema := range schemas {
+		var tableNames []string
+		if len(ri.TableName) > 0 {
+			tableNames = []string{ri.TableName}
+		} else {
+			tableNames, err = schema.GetTableNames(ctx)
+			if err != nil {
+				return "", "", err
+			}
+		}
+		for _, tableName := range tableNames {
+			tbl, ok, err := schema.GetTableInsensitive(ctx, tableName)
+			if err != nil {
+				return "", "", err
+			}
+			if !ok {
+				continue
+			}
+			hasIndex, err := tableHasIndex(ctx, tbl, ri.IndexName)
+			if err != nil {
+				return "", "", err
+			}
+			if hasIndex {
+				return schema.SchemaName(), tbl.Name(), nil
+			}
+		}
+	}
+	return "", "", nil
+}
+
+// schemasOnSearchPath returns the schemas a DDL statement's target table should be searched in: the schemas on the
+// search path, or only the explicitly named schema if one was given. System schemas are excluded, since they hold
+// read-only virtual tables that can never be the target of a DDL statement.
+func schemasOnSearchPath(ctx *sql.Context, dbName, schemaName string) ([]sql.DatabaseSchema, error) {
+	db, err := core.GetSqlDatabaseFromContext(ctx, dbName)
+	if err != nil {
+		return nil, err
 	}
 	if db == nil {
 		if len(dbName) == 0 {
 			dbName = ctx.GetCurrentDatabase()
 		}
-		return nil, nil, sql.ErrDatabaseNotFound.New(dbName)
+		return nil, sql.ErrDatabaseNotFound.New(dbName)
 	}
 	schemaDb, ok := db.(sql.SchemaDatabase)
 	if !ok {
-		return nil, nil, errors.Errorf(`database "%s" does not support schemas`, db.Name())
+		return nil, errors.Errorf(`database "%s" does not support schemas`, db.Name())
 	}
 	var searchPath []string
 	if len(schemaName) > 0 {
@@ -100,51 +168,24 @@ func resolveTableUsingSearchPath(ctx *sql.Context, dbName, schemaName, tableName
 	} else {
 		searchPath, err = core.SearchPath(ctx)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
+	var schemas []sql.DatabaseSchema
 	for _, searchSchemaName := range searchPath {
-		// System schemas hold read-only virtual tables, which can never be the target of a DDL statement
 		if searchSchemaName == "pg_catalog" || searchSchemaName == "information_schema" {
 			continue
 		}
 		schema, ok, err := schemaDb.GetSchema(ctx, searchSchemaName)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if !ok {
 			continue
 		}
-		var tableNames []string
-		if len(tableName) > 0 {
-			tableNames = []string{tableName}
-		} else {
-			tableNames, err = schema.GetTableNames(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-		for _, searchTableName := range tableNames {
-			tbl, ok, err := schema.GetTableInsensitive(ctx, searchTableName)
-			if err != nil {
-				return nil, nil, err
-			}
-			if !ok {
-				continue
-			}
-			if len(indexName) > 0 {
-				hasIndex, err := tableHasIndex(ctx, tbl, indexName)
-				if err != nil {
-					return nil, nil, err
-				}
-				if !hasIndex {
-					continue
-				}
-			}
-			return plan.NewResolvedTable(tbl, schema, nil), schema, nil
-		}
+		schemas = append(schemas, schema)
 	}
-	return nil, nil, nil
+	return schemas, nil
 }
 
 // tableHasIndex returns whether the given table has an index with the given name (compared case-insensitively).
