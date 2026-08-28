@@ -301,14 +301,6 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				same = transform.NewTree
 				n.NewType = dt
 			}
-			if !n.TableResolved() {
-				nn, err := n.ResolveTable(ctx)
-				if err != nil {
-					return nil, transform.NewTree, err
-				}
-				same = transform.NewTree
-				node = nn
-			}
 			return node, same, nil
 		default:
 			// TODO: add nodes that use unresolved types like domain

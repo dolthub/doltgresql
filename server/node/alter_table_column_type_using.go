@@ -39,14 +39,15 @@ import (
 type AlterTableColumnTypeUsing struct {
 	DbProvider sql.DatabaseProvider
 	NewType    *pgtypes.DoltgresType
+	SchemaName string
+	TableName  string
+	ColumnName string
+	IfExists   bool
 	usingExpr  sql.Expression
-	schemaName string
-	tableName  string
-	columnName string
-	ifExists   bool
-	// table is the resolved target table, set by the ResolveType analyzer rule via ResolveTable. It is nil when the
-	// table does not exist, which resolution only tolerates when ifExists is set.
-	table         sql.Table
+	// table is the resolved target table, assigned during analysis by the resolveTableForDDL rule. It is nil when
+	// the table does not exist, which resolution only tolerates when IfExists is set.
+	table sql.TableNode
+	// tableResolved is set once analysis has resolved the target table (or determined there is none to resolve)
 	tableResolved bool
 }
 
@@ -60,10 +61,10 @@ var _ vitess.Injectable = (*AlterTableColumnTypeUsing)(nil)
 func NewAlterTableColumnTypeUsing(schemaName, tableName, columnName string, newType *pgtypes.DoltgresType, ifExists bool) *AlterTableColumnTypeUsing {
 	return &AlterTableColumnTypeUsing{
 		NewType:    newType,
-		schemaName: schemaName,
-		tableName:  tableName,
-		columnName: columnName,
-		ifExists:   ifExists,
+		SchemaName: schemaName,
+		TableName:  tableName,
+		ColumnName: columnName,
+		IfExists:   ifExists,
 	}
 }
 
@@ -83,21 +84,13 @@ func (a *AlterTableColumnTypeUsing) TableResolved() bool {
 	return a.tableResolved
 }
 
-// ResolveTable resolves the target table of the statement, returning a copy of the node with the resolved table
-// stored on it. The search path is used for unqualified table names. A missing table is an error unless the statement
-// specified IF EXISTS, in which case the node executes as a no-op.
-func (a *AlterTableColumnTypeUsing) ResolveTable(ctx *sql.Context) (*AlterTableColumnTypeUsing, error) {
-	tbl, err := resolveUsingTable(ctx, a.schemaName, a.tableName)
-	if err != nil {
-		return nil, err
-	}
-	if tbl == nil && !a.ifExists {
-		return nil, sql.ErrTableNotFound.New(a.tableName)
-	}
+// WithResolvedTable returns a copy of this node with the target table assigned. A nil table is only valid when
+// IfExists is set, and makes execution a no-op.
+func (a *AlterTableColumnTypeUsing) WithResolvedTable(table sql.TableNode) *AlterTableColumnTypeUsing {
 	na := *a
-	na.table = tbl
+	na.table = table
 	na.tableResolved = true
-	return &na, nil
+	return &na
 }
 
 // Schema implements sql.ExecSourceRel.
@@ -162,22 +155,23 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 		return nil, errors.Errorf("target table for ALTER TABLE ... ALTER COLUMN ... TYPE ... USING was not resolved during analysis")
 	}
 	if a.table == nil {
-		// The table does not exist; ResolveTable only permits this with IF EXISTS, making this statement a no-op
-		if a.ifExists {
+		// The table does not exist; analysis only permits this with IF EXISTS, making this statement a no-op
+		if a.IfExists {
 			return sql.RowsToRowIter(), nil
 		}
-		return nil, sql.ErrTableNotFound.New(a.tableName)
+		return nil, sql.ErrTableNotFound.New(a.TableName)
 	}
 
-	rwt, ok := a.table.(sql.RewritableTable)
+	tbl := a.table.UnderlyingTable()
+	rwt, ok := tbl.(sql.RewritableTable)
 	if !ok {
-		return nil, errors.Errorf("ALTER COLUMN ... TYPE ... USING is not supported for table %s", a.tableName)
+		return nil, errors.Errorf("ALTER COLUMN ... TYPE ... USING is not supported for table %s", a.TableName)
 	}
 
 	sch := rwt.Schema(ctx)
-	colIdx := sch.IndexOfColName(a.columnName)
+	colIdx := sch.IndexOfColName(a.ColumnName)
 	if colIdx < 0 {
-		return nil, sql.ErrTableColumnNotFound.New(a.tableName, a.columnName)
+		return nil, sql.ErrTableColumnNotFound.New(a.TableName, a.ColumnName)
 	}
 	oldCol := sch[colIdx]
 	newCol := *oldCol
@@ -185,12 +179,12 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 
 	// Reject type changes for columns that participate in a foreign key, mirroring the behavior of the
 	// non-USING column type change.
-	if err := a.checkForeignKeyUsage(ctx, a.table, oldCol.Name); err != nil {
+	if err := a.checkForeignKeyUsage(ctx, tbl, oldCol.Name); err != nil {
 		return nil, err
 	}
 
 	// Reject the type change if this table's implicit row type is used as a column type anywhere else.
-	if doltTable := core.SQLTableToDoltTable(a.table); doltTable != nil {
+	if doltTable := core.SQLTableToDoltTable(tbl); doltTable != nil {
 		if err := hook.ValidateColumnTypeChangeForTable(ctx, doltTable.TableName()); err != nil {
 			return nil, err
 		}
@@ -223,11 +217,11 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 	return sql.RowsToRowIter(), nil
 }
 
-// resolveUsingTable resolves the target table of an ALTER TABLE ... ALTER COLUMN ... TYPE ... USING statement,
+// ResolveUsingTable resolves the target table of an ALTER TABLE ... ALTER COLUMN ... TYPE ... USING statement,
 // honoring the search path for unqualified table names. Returns nil (without an error) if the table does not exist.
-// This is the single resolution mechanism shared by the node's analyzer-rule resolution (ResolveTable) and the
-// UsingColumn placeholder's build-time column type resolution, so the two can never disagree about the target table.
-func resolveUsingTable(ctx *sql.Context, schemaName string, tableName string) (sql.Table, error) {
+// This is the single resolution mechanism shared by the resolveTableForDDL analyzer rule and the UsingColumn
+// placeholder's build-time column type resolution, so the two can never disagree about the target table.
+func ResolveUsingTable(ctx *sql.Context, schemaName string, tableName string) (sql.Table, error) {
 	return core.GetSqlTableFromContext(ctx, "", doltdb.TableName{Name: tableName, Schema: schemaName})
 }
 
@@ -451,7 +445,7 @@ func (u *UsingColumn) WithResolvedChildren(ctx context.Context, children []any) 
 	if !ok {
 		return u, nil
 	}
-	tbl, err := resolveUsingTable(sqlCtx, u.SchemaName, u.TableName)
+	tbl, err := ResolveUsingTable(sqlCtx, u.SchemaName, u.TableName)
 	if err != nil {
 		return nil, err
 	}

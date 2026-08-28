@@ -28,14 +28,29 @@ import (
 	"github.com/dolthub/doltgresql/server/tables"
 )
 
-// resolveRenameIndex resolves the table owning the index named in an ALTER INDEX ... RENAME TO statement and fills
-// it in on the RenameIndex node. It also validates that the new index name is not already in use on that table.
-func resolveRenameIndex(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	ri, ok := n.(*pgnodes.RenameIndex)
-	if !ok || ri.Resolved() {
+// resolveTableForDDL resolves the target table for DDL node types that need a table assigned to them during analysis
+// in order to perform their runtime operation. The resolved table is assigned to the node as a sql.TableNode, and is
+// nil when the statement tolerates a missing table (IF EXISTS), in which case execution is a no-op.
+func resolveTableForDDL(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+	switch node := n.(type) {
+	case *pgnodes.RenameIndex:
+		if node.Resolved() {
+			return n, transform.SameTree, nil
+		}
+		return resolveRenameIndexTable(ctx, node)
+	case *pgnodes.AlterTableColumnTypeUsing:
+		if node.TableResolved() {
+			return n, transform.SameTree, nil
+		}
+		return resolveAlterColumnTypeUsingTable(ctx, node)
+	default:
 		return n, transform.SameTree, nil
 	}
+}
 
+// resolveRenameIndexTable resolves the table owning the index named in an ALTER INDEX ... RENAME TO statement and
+// assigns it to the RenameIndex node. It also validates that the new index name is not already in use on that table.
+func resolveRenameIndexTable(ctx *sql.Context, ri *pgnodes.RenameIndex) (sql.Node, transform.TreeIdentity, error) {
 	tbl, schema, err := findRenameIndexTable(ctx, ri)
 	if err != nil {
 		return nil, transform.SameTree, err
@@ -47,8 +62,7 @@ func resolveRenameIndex(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 		return ri.WithResolvedTable(nil), transform.NewTree, nil
 	}
 
-	alterableTbl, ok := tbl.(sql.IndexAlterableTable)
-	if !ok {
+	if _, ok := tbl.(sql.IndexAlterableTable); !ok {
 		return nil, transform.SameTree, errors.Errorf(`table "%s" does not support renaming indexes`, tbl.Name())
 	}
 	if validator, ok := tables.WrapSqlDatabase(schema).(sql.SchemaObjectNameValidator); ok {
@@ -57,7 +71,28 @@ func resolveRenameIndex(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 		}
 	}
 
-	return ri.WithResolvedTable(alterableTbl), transform.NewTree, nil
+	return ri.WithResolvedTable(plan.NewResolvedTable(tbl, schema, nil)), transform.NewTree, nil
+}
+
+// resolveAlterColumnTypeUsingTable resolves the target table of an ALTER TABLE ... ALTER COLUMN ... TYPE ... USING
+// statement and assigns it to the AlterTableColumnTypeUsing node. The search path is used for unqualified table
+// names. A missing table is an error unless the statement specified IF EXISTS.
+func resolveAlterColumnTypeUsingTable(ctx *sql.Context, atu *pgnodes.AlterTableColumnTypeUsing) (sql.Node, transform.TreeIdentity, error) {
+	tbl, err := pgnodes.ResolveUsingTable(ctx, atu.SchemaName, atu.TableName)
+	if err != nil {
+		return nil, transform.SameTree, err
+	}
+	if tbl == nil {
+		if !atu.IfExists {
+			return nil, transform.SameTree, sql.ErrTableNotFound.New(atu.TableName)
+		}
+		return atu.WithResolvedTable(nil), transform.NewTree, nil
+	}
+	db, err := core.GetSqlDatabaseFromContext(ctx, "")
+	if err != nil {
+		return nil, transform.SameTree, err
+	}
+	return atu.WithResolvedTable(plan.NewResolvedTable(tbl, db, nil)), transform.NewTree, nil
 }
 
 // findRenameIndexTable finds the table that owns the index being renamed, along with the schema containing it.
