@@ -27,7 +27,7 @@ import (
 func TestIssues(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "Issue #25",
+			Name: "Issue #25: double-quoted args to dolt functions treated as identifiers",
 			SetUpScript: []string{
 				"create table tbl (pk int);",
 				"insert into tbl values (1);",
@@ -60,7 +60,7 @@ func TestIssues(t *testing.T) {
 			},
 		},
 		{
-			Name: "Issue #2030",
+			Name: "Issue #2030: Drizzle relational query fails with BigInt error",
 			SetUpScript: []string{
 				`CREATE TABLE sub_entities (
   project_id VARCHAR(256) NOT NULL,
@@ -177,7 +177,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2049",
+			Name: "Issue #2049: bad control character in JSON string literal",
 			SetUpScript: []string{
 				`CREATE TABLE jsonb_test (id VARCHAR(256) NOT NULL PRIMARY KEY, "jsonbColumn" JSONB);`,
 				`INSERT INTO jsonb_test VALUES ('test', '{"test": "value\n"}');`,
@@ -201,7 +201,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2197 Part 1",
+			Name: "Issue #2197 Part 1: bugs with table composite types",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT, b VARCHAR(3));`,
 				`CREATE TABLE t2(id SERIAL, t1 t1);`,
@@ -234,7 +234,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2197 Part 2",
+			Name: "Issue #2197 Part 2: bugs with table composite types",
 			SetUpScript: []string{
 				`CREATE TABLE t1a (a INT4, b VARCHAR(3));`,
 				`CREATE TABLE t1b (a INT4 NOT NULL, b VARCHAR(3) NOT NULL);`,
@@ -371,7 +371,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2299",
+			Name: "Issue #2299: nil pointer panic using DEFAULT on ENUM column",
 			SetUpScript: []string{
 				"CREATE TYPE team_role AS ENUM ('admin', 'editor', 'member');",
 			},
@@ -391,7 +391,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2307",
+			Name: "Issue #2307: SELECT EXISTS returns INT2 instead of BOOL",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk INT4);",
 			},
@@ -409,7 +409,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2548",
+			Name: "Issue #2548: timezone parser rejects valid time zone offset formats",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk INT4 PRIMARY KEY, v1 TIMESTAMP WITH TIME ZONE);",
 			},
@@ -437,7 +437,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2604",
+			Name: "Issue #2604: dolt_merge syntax error with unique index and DEFAULT",
 			SetUpScript: []string{
 				"CREATE TABLE t (id INT PRIMARY KEY, a TEXT, b TEXT DEFAULT 'x');",
 				"CREATE UNIQUE INDEX idx_t_a ON t(a);",
@@ -462,7 +462,62 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #3138",
+			Name: "Issue #3116: dolt.branches.dirty does not have boolean output",
+			SetUpScript: []string{
+				"CREATE TABLE t3116 (id INT PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The bare projection was already handled before this issue was filed; the shapes below,
+					// with a filter or sort between the projection and the system table, were not.
+					Query:            `SELECT dirty FROM dolt.branches;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches WHERE name = 'main';`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches ORDER BY name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches WHERE dirty = true;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT b.dirty FROM dolt.branches b ORDER BY b.name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					// Other dolt system tables expose boolean columns with the same problem
+					Query:            `SELECT staged FROM dolt.status ORDER BY table_name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f"}},
+				},
+				{
+					Query:            `SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID, pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f", "t"}},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'commit for issue 3116');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches WHERE name = 'main';`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name: "Issue #3138: WITH ORDINALITY in correlated subquery internal error",
 			SetUpScript: []string{
 				"CREATE TABLE bug16_parent (id integer PRIMARY KEY);",
 				"CREATE TABLE bug16_child  (id integer PRIMARY KEY, parent_id integer REFERENCES bug16_parent(id));",
@@ -485,7 +540,7 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 			},
 		},
 		{
-			Name: "Issue #3097",
+			Name: "Issue #3097: bind parameters described as unknown OID, breaking pgx",
 			SetUpScript: []string{
 				"CREATE TABLE g_bool (id INT4 PRIMARY KEY, flag BOOLEAN);",
 				"INSERT INTO g_bool VALUES (1, true), (2, false), (3, NULL);",
@@ -539,10 +594,53 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 	})
 }
 
+// TestIssue3116WireFormat asserts, over the simple query protocol, that boolean columns of dolt system
+// tables are sent in Postgres's text format ('t'/'f') rather than MySQL's ('1'/'0'), including when a
+// filter or sort sits between the projection and the system table. Clients like psycopg2 use the simple
+// protocol with text-format results and fail to parse '0'/'1' for a column whose declared type is boolean.
+// The ScriptTest above cannot cover this: pgx negotiates binary-format results, which took a different
+// (working) code path while the text path was broken.
+func TestIssue3116WireFormat(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "Issue #3116: dolt system table booleans over the wire",
+			SetUpScript: []string{
+				"CREATE TABLE t3116 (id INT PRIMARY KEY);",
+			},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches WHERE name = 'main';",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches ORDER BY name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches WHERE dirty = true;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT staged FROM dolt.status ORDER BY table_name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f", "t"}}}},
+				},
+			},
+		},
+	})
+}
+
 func TestIssuesWire(t *testing.T) {
 	RunWireScripts(t, []WireScriptTest{
 		{
-			Name: "Issue #2546",
+			Name: "Issue #2546: string literal described as invalid OID 705",
 			Assertions: []WireScriptTestAssertion{
 				{
 					Send: []pgproto3.FrontendMessage{
@@ -570,7 +668,7 @@ func TestIssuesWire(t *testing.T) {
 			},
 		},
 		{
-			Name: "Issue #3097",
+			Name: "Issue #3097: bind parameters described as unknown OID, breaking pgx",
 			SetUpScript: []string{
 				"CREATE TABLE g_arr (id INT4 PRIMARY KEY, v INT4, vals INT4[]);",
 			},
@@ -663,7 +761,7 @@ func TestIssuesWire(t *testing.T) {
 			},
 		},
 		{
-			Name: "Issue #2557",
+			Name: "Issue #2557: unescaped newlines in JSON output",
 			Assertions: []WireScriptTestAssertion{
 				{
 					Send: []pgproto3.FrontendMessage{
