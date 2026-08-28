@@ -322,9 +322,16 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if len(stack.ReturnQueryResults()) > 0 {
 				records := stack.ReturnQueryResults()
 
+				// A function that declares a single, non-composite result column returns that column's value
+				// directly rather than a one-field record.
+				returnsRecord := iFunc.GetReturn().TypCategory == pgtypes.TypeCategory_CompositeTypes
 				rows := make([]sql.Row, len(records))
 				for i, record := range records {
-					rows[i] = sql.Row{record}
+					if !returnsRecord && len(record) == 1 {
+						rows[i] = sql.Row{record[0].Value}
+					} else {
+						rows[i] = sql.Row{record}
+					}
 				}
 
 				return sql.RowsToRowIter(rows...), nil
