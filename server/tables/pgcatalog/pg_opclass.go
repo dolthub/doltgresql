@@ -16,10 +16,12 @@ package pgcatalog
 
 import (
 	"io"
+	"slices"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -44,8 +46,47 @@ func (p PgOpclassHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgOpclassHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
+	// Use cached data from this process if it exists
+	pgCatalogCache, err := getPgCatalogCache(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if pgCatalogCache.extensions == nil {
+		err = cachePgExtensions(ctx, pgCatalogCache)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	classes := defaultOperatorClasses
+	for _, ext := range pgCatalogCache.extensions {
+		declaration, err := extensions.Get(ext.ExtName.Name())
+		if err != nil {
+			return nil, err
+		}
+		schemaName := ext.Namespace.SchemaName()
+		for _, opclass := range declaration.OperatorClasses {
+			// Classes over a built-in type (e.g. pgvector's bit classes) reference the pg_catalog type.
+			inputTypeID := id.NewType(schemaName, opclass.Type)
+			if builtin, ok := pgtypes.IDToBuiltInDoltgresType[id.NewType("pg_catalog", opclass.Type)]; ok {
+				inputTypeID = builtin.ID
+			}
+			for _, am := range opclass.AccessMethods {
+				classes = append(classes, operatorClass{
+					am:          am,
+					name:        opclass.Name,
+					familyName:  opclass.Name,
+					inputTypeID: inputTypeID.AsId(),
+					namespace:   schemaName,
+					isDefault:   slices.Contains(opclass.DefaultFor, am),
+				})
+			}
+		}
+	}
+
 	return &pgOpclassRowIter{
-		classes: defaultOperatorClasses,
+		classes: classes,
 		idx:     0,
 	}, nil
 }
@@ -71,16 +112,21 @@ var pgOpclassSchema = sql.Schema{
 	{Name: "opckeytype", Type: pgtypes.Oid, Default: nil, Nullable: false, Source: PgOpclassName},
 }
 
-// operatorClass describes a built-in operator class.
+// operatorClass describes an operator class.
 type operatorClass struct {
 	am         string
 	name       string
 	familyName string // the operator family this class belongs to, within the same access method
 	inputType  *pgtypes.DoltgresType
-	isDefault  bool
+	// inputTypeID is the input type of an extension-declared class whose type is not built in
+	inputTypeID id.Id
+	// namespace is the schema of an extension-declared class
+	namespace string
+	isDefault bool
 }
 
-// oid returns the ID of this operator class, whose OIDs are registered in core/id/cache_operator_class_defaults.go.
+// oid returns the ID of this operator class. The built-in classes' OIDs are registered in
+// core/id/cache_operator_class_defaults.go.
 func (c operatorClass) oid() id.Id {
 	return id.NewId(id.Section_OperatorClass, c.am, c.name)
 }
@@ -155,16 +201,24 @@ func (iter *pgOpclassRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	iter.idx++
 	class := iter.classes[iter.idx-1]
 
+	namespace := class.namespace
+	if namespace == "" {
+		namespace = "pg_catalog"
+	}
+	inputTypeID := class.inputTypeID
+	if class.inputType != nil {
+		inputTypeID = class.inputType.ID.AsId()
+	}
 	return sql.Row{
-		class.oid(),                          // oid
-		id.NewAccessMethod(class.am).AsId(),  // opcmethod
-		class.name,                           // opcname
-		id.NewNamespace("pg_catalog").AsId(), // opcnamespace
-		id.Null,                              // opcowner (TODO: object ownership is not tracked)
+		class.oid(),                         // oid
+		id.NewAccessMethod(class.am).AsId(), // opcmethod
+		class.name,                          // opcname
+		id.NewNamespace(namespace).AsId(),   // opcnamespace
+		id.Null,                             // opcowner (TODO: object ownership is not tracked)
 		operatorFamily{am: class.am, name: class.familyName}.oid(), // opcfamily
-		class.inputType.ID.AsId(),                                  // opcintype
-		class.isDefault,                                            // opcdefault
-		id.Null,                                                    // opckeytype
+		inputTypeID,     // opcintype
+		class.isDefault, // opcdefault
+		id.Null,         // opckeytype
 	}, nil
 }
 

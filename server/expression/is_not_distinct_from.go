@@ -37,6 +37,7 @@ type IsNotDistinctFrom struct {
 
 var _ vitess.Injectable = (*IsNotDistinctFrom)(nil)
 var _ sql.Expression = (*IsNotDistinctFrom)(nil)
+var _ expression.BinaryExpression = (*IsNotDistinctFrom)(nil)
 
 // NewIsNotDistinctFrom returns a new *IsNotDistinctFrom.
 func NewIsNotDistinctFrom() *IsNotDistinctFrom {
@@ -80,6 +81,16 @@ func (n *IsNotDistinctFrom) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 // IsNullable implements the sql.Expression interface.
 func (n *IsNotDistinctFrom) IsNullable(ctx *sql.Context) bool {
 	return true
+}
+
+// Left implements the expression.BinaryExpression interface.
+func (n *IsNotDistinctFrom) Left() sql.Expression {
+	return n.leftExpr
+}
+
+// Right implements the expression.BinaryExpression interface.
+func (n *IsNotDistinctFrom) Right() sql.Expression {
+	return n.rightExpr
 }
 
 // Resolved implements the sql.Expression interface.

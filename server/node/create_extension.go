@@ -187,6 +187,9 @@ func (e extensionObjects) materializeTypes(ctx *sql.Context) error {
 		if def.ModOutFunc, err = e.supportFuncID(ctx, declared.ModOut); err != nil {
 			return err
 		}
+		if def.CompareFunc, err = e.supportFuncID(ctx, declared.Compare); err != nil {
+			return err
+		}
 		newType := types.NewBaseType(ctx, id.NewType(e.schemaName, declared.Name), def)
 		if err = e.typColl.CreateType(ctx, newType); err != nil {
 			return err

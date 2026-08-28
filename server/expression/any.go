@@ -310,6 +310,20 @@ func (a *AnyExpr) WithChildren(ctx *sql.Context, children ...sql.Expression) (sq
 				bv.Typ = leftType.ToArrayType()
 			}
 		}
+	} else if bv, ok := leftExpr.(*expression.BindVar); ok {
+		// Similarly, an untyped bind variable on the left (e.g. `$1 = ANY(arr_col)` or `$1 = ANY(SELECT ...)`) is
+		// resolved from the right side's element type: the array's base type, or the subquery's first column type.
+		if _, ok = bv.Typ.(*pgtypes.DoltgresType); !ok {
+			if sub, ok := rightExpr.(*plan.Subquery); ok {
+				if schema := sub.Query.Schema(ctx); len(schema) > 0 {
+					if colType, ok := schema[0].Type.(*pgtypes.DoltgresType); ok {
+						bv.Typ = colType
+					}
+				}
+			} else if rightType, ok := rightExpr.Type(ctx).(*pgtypes.DoltgresType); ok && rightType.IsArrayType() {
+				bv.Typ = rightType.BaseType()
+			}
+		}
 	}
 	anyExpr := &AnyExpr{
 		leftExpr:    leftExpr,
@@ -341,17 +355,26 @@ func (a *AnyExpr) WithResolvedChildren(ctx context.Context, children []any) (any
 	return a.WithChildren(ctx.(*sql.Context), left, right)
 }
 
-// String implements the fmt.Stringer interface.
+// operatorString returns the comparison operator as it should appear in serialized output. The parser spells
+// not-equals as `!=`, so we round-trip through the operator framework to get Postgres' canonical spelling (`<>`),
+// falling back to the operator as written for anything the framework doesn't recognize.
+func (a *AnyExpr) operatorString() string {
+	if op, err := framework.GetOperatorFromString(a.subOperator); err == nil {
+		return op.String()
+	}
+	return a.subOperator
+}
+
 func (a *AnyExpr) String() string {
 	if a.leftExpr == nil || a.rightExpr == nil {
-		return fmt.Sprintf("? %s (?)", a.name)
+		return fmt.Sprintf("? %s %s (?)", a.operatorString(), a.name)
 	}
-	return fmt.Sprintf("%s = %s (%s)", a.leftExpr, a.name, a.rightExpr)
+	return fmt.Sprintf("%s %s %s (%s)", a.leftExpr, a.operatorString(), a.name, a.rightExpr)
 }
 
 // DebugString implements the Expression interface.
 func (a *AnyExpr) DebugString(ctx *sql.Context) string {
-	return fmt.Sprintf("%s %s (%s)", sql.DebugString(ctx, a.leftExpr), a.name, sql.DebugString(ctx, a.rightExpr))
+	return fmt.Sprintf("%s %s %s (%s)", sql.DebugString(ctx, a.leftExpr), a.operatorString(), a.name, sql.DebugString(ctx, a.rightExpr))
 }
 
 // anySubqueryWithChildren resolves the comparison functions for a plan.Subquery.

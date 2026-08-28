@@ -87,6 +87,11 @@ type copyFromStdinState struct {
 	// so that it can avoid sending a CommandComplete message if an error was encountered after the client already
 	// sent a CopyDone message to the server.
 	copyErr error
+	// startedTransaction is true if the COPY operation started the session's transaction (as opposed to loading
+	// into a transaction that was already in progress). When the operation fails or is aborted, a transaction it
+	// started must be rolled back so that rows loaded by chunks that were processed successfully don't linger in
+	// an open transaction that a later statement would commit.
+	startedTransaction bool
 }
 
 type PortalData struct {
@@ -155,7 +160,7 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 		case *pgexprs.ExplicitCast:
 			if bindVar, ok := e.Child().(*expression.BindVar); ok {
 				var typOid uint32
-				if doltgresType, ok := bindVar.Type(ctx).(*pgtypes.DoltgresType); ok {
+				if doltgresType, ok := e.Type(ctx).(*pgtypes.DoltgresType); ok {
 					typOid = id.Cache().ToOID(doltgresType.ID.AsId())
 				} else {
 					typOid, err = VitessTypeToObjectID(e.Type(ctx))
@@ -229,6 +234,10 @@ func checkCompatibleTypes(ctx *sql.Context, existingOid, newOid uint32, newName 
 	var err error
 	existing := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(existingOid)))
 	newType := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(newOid)))
+	if existing == nil || newType == nil {
+		//TODO: user-defined types are not in the built-in map, so their compatibility is not checked
+		return nil
+	}
 	if _, _, err = framework.FindCommonType(ctx, []*pgtypes.DoltgresType{existing, newType}); err != nil {
 		err = errors.Errorf("parameter %s is used for incompatible types: %s and %s", newName, existing.String(), newType.String())
 	}

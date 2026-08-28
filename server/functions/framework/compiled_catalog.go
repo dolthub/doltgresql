@@ -17,6 +17,8 @@ package framework
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -79,5 +81,30 @@ func getQuickFunctionFromProvider(ctx *sql.Context, schemaName string, functionN
 	if call == nil {
 		return nil
 	}
-	return &quickUserFunction{call: call}
+	return &quickWrappedFunction{
+		callable: func(ctx *sql.Context, resolvedTypes []*pgtypes.DoltgresType, args []any) (any, error) {
+			compiled := *call.compiled
+			compiled.callResolved = resolvedTypes
+			return compiled.callFunction(ctx, args)
+		},
+		strict:        call.strict,
+		resolvedTypes: call.compiled.callResolved,
+	}
+}
+
+// getQuickExtensionFunction resolves an extension-provided function by name only. Returns nil if no registered
+// extension declares a matching routine. Extension routines never read their resolved types, so the wrapper carries
+// placeholders sized to the routine's signature.
+func getQuickExtensionFunction(functionID id.Function) any {
+	routine, ok := extensions.GetRoutine(functionID.FunctionName(), functionID.ParameterCount())
+	if !ok {
+		return nil
+	}
+	return &quickWrappedFunction{
+		callable: func(ctx *sql.Context, _ []*pgtypes.DoltgresType, args []any) (any, error) {
+			return routine.Impl(ctx, args...)
+		},
+		strict:        routine.Strict,
+		resolvedTypes: make([]*pgtypes.DoltgresType, len(routine.Parameters)+1),
+	}
 }

@@ -18,10 +18,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/schema"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -68,7 +70,15 @@ func buildIndexDef(ctx *sql.Context, index sql.Index, table sql.Table, schemaNam
 		unique = " UNIQUE"
 	}
 
-	colsStr := strings.Join(indexColumnExprs(ctx, index, table), ", ")
+	cols := indexColumnExprs(ctx, index, table)
+	if len(cols) == 1 {
+		col := plan.GetColumnFromIndexExpr(ctx, index.Expressions()[0], table)
+		if method, opclass, ok := VectorIndexRendering(index, col); ok {
+			using = method
+			cols[0] += " " + opclass
+		}
+	}
+	colsStr := strings.Join(cols, ", ")
 
 	def := fmt.Sprintf("CREATE%s INDEX %s ON %s.%s USING %s (%s)", unique, name, schemaName, index.Table(), using, colsStr)
 	if pi, ok := index.(sql.PartialIndex); ok && pi.Predicate() != "" {
@@ -96,6 +106,29 @@ func indexColumnExprs(ctx *sql.Context, index sql.Index, table sql.Table) []stri
 		}
 	}
 	return cols
+}
+
+// VectorIndexRendering returns the access method and operator class rendered for the given vector index over the given
+// column.
+func VectorIndexRendering(index sql.Index, col *sql.Column) (method string, opclass string, ok bool) {
+	if col == nil || !index.IsVector() {
+		return "", "", false
+	}
+	vectorIndex, ok := index.(interface {
+		VectorProperties() schema.VectorProperties
+	})
+	if !ok {
+		return "", "", false
+	}
+	colType, ok := col.Type.(*pgtypes.DoltgresType)
+	if !ok {
+		return "", "", false
+	}
+	declared, ok := extensions.GetOperatorClassForIndex(colType.Name(), vectorIndex.VectorProperties().DistanceType)
+	if !ok {
+		return "", "", false
+	}
+	return "hnsw", declared.Name, true
 }
 
 // RenderHiddenIndexColumnExpr returns the original SQL text of the functional expression backing

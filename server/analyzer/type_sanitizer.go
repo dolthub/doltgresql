@@ -151,6 +151,12 @@ func sanitizeExprType(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Ex
 					allDoltgresTypes := true
 					for _, child := range children {
 						if _, ok := child.Type(ctx).(*pgtypes.DoltgresType); !ok {
+							// An untyped bind variable (e.g. `coalesce($1, x)`) doesn't have a concrete type yet, but
+							// PgCoalesce.WithChildren resolves it from the other, already-typed arguments' common
+							// type, so it doesn't block the conversion the way any other unresolved type would.
+							if pgexprs.UnwrapBindVar(child) != nil {
+								continue
+							}
 							allDoltgresTypes = false
 							break
 						}

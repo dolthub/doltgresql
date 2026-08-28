@@ -39,12 +39,17 @@ func varBitImplicit(builtInCasts map[id.Cast]casts.Cast) {
 			if err != nil {
 				return nil, err
 			}
+			// A function declared to take bit has no type modifier. In that case,
+			// varbit is binary-coercible to bit and its current length is preserved.
+			if targetType.GetAttTypMod() == -1 {
+				return input, nil
+			}
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
 				return nil, err
 			}
 			expectedLength := targetType.GetAttTypMod()
-			if array.BitLen() != uint(expectedLength) {
+			if expectedLength != -1 && array.BitLen() != uint(expectedLength) {
 				return nil, pgtypes.ErrWrongLengthBit.New(len(input), expectedLength)
 			}
 			return tree.AsStringWithFlags(array, tree.FmtPgwireText), nil
