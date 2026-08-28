@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/dolt/go/store/pool"
 	"github.com/dolthub/dolt/go/store/prolly/message"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
+	"github.com/dolthub/dolt/go/store/types"
 	"github.com/dolthub/dolt/go/store/val"
 
 	"github.com/dolthub/doltgresql/core/integrity"
@@ -91,8 +92,33 @@ func (rw *TreeRewriter) Pool() pool.BuffPool {
 	return rw.ns.Pool()
 }
 
-// RewriteTree rewrites the subtree rooted at |addr|, returning the (possibly identical) new root
-// address.
+// RewriteMapRoot rewrites a tree from its in-memory root node, returning the (possibly identical)
+// new root address. A table's row map root is embedded in the durable table message rather than
+// referenced by address, so it need not exist as an addressable chunk at all (in a cloned database,
+// or after garbage collection); descendant nodes are always addressable.
+func (rw *TreeRewriter) RewriteMapRoot(ctx context.Context, root *tree.Node, kd, vd *val.TupleDesc) (hash.Hash, error) {
+	addr := root.HashOf()
+	key := integrity.CacheKey{Addr: addr, Desc: integrity.DescFingerprint(kd, vd)}
+	if newAddr, ok := rw.cache[key]; ok {
+		return newAddr, nil
+	}
+
+	// The Scanner decides whether this tree contains anything worth rewriting.
+	stats, err := rw.sc.ScanRootNode(ctx, root, kd, vd)
+	if err != nil {
+		return hash.Hash{}, err
+	}
+	if !rw.ShouldRewrite(stats) {
+		rw.cache[key] = addr
+		return addr, nil
+	}
+
+	msg := serial.Message(tree.ValueFromNode(root).(types.SerialMessage))
+	return rw.rewriteMessage(ctx, key, addr, msg, kd, vd)
+}
+
+// RewriteTree rewrites the subtree rooted at the chunk |addr|, returning the (possibly identical) new
+// root address.
 func (rw *TreeRewriter) RewriteTree(ctx context.Context, addr hash.Hash, kd, vd *val.TupleDesc) (hash.Hash, error) {
 	key := integrity.CacheKey{Addr: addr, Desc: integrity.DescFingerprint(kd, vd)}
 	if newAddr, ok := rw.cache[key]; ok {
@@ -113,8 +139,14 @@ func (rw *TreeRewriter) RewriteTree(ctx context.Context, addr hash.Hash, kd, vd 
 	if err != nil {
 		return hash.Hash{}, err
 	}
+	return rw.rewriteMessage(ctx, key, addr, msg, kd, vd)
+}
+
+// rewriteMessage rewrites the parsed tree node |msg| at |addr| and its descendants, caching the result
+// under |key|.
+func (rw *TreeRewriter) rewriteMessage(ctx context.Context, key integrity.CacheKey, addr hash.Hash, msg serial.Message, kd, vd *val.TupleDesc) (hash.Hash, error) {
 	var pm serial.ProllyTreeNode
-	err = serial.InitProllyTreeNodeRoot(&pm, msg, serial.MessagePrefixSz)
+	err := serial.InitProllyTreeNodeRoot(&pm, msg, serial.MessagePrefixSz)
 	if err != nil {
 		return hash.Hash{}, err
 	}

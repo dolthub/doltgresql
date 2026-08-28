@@ -28,6 +28,8 @@ import (
 	"github.com/dolthub/dolt/go/gen/fb/serial"
 	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/hash"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
+	"github.com/dolthub/dolt/go/store/types"
 	"github.com/dolthub/dolt/go/store/val"
 )
 
@@ -143,10 +145,24 @@ func (s *Scanner) ScanTable(ctx context.Context, ti *TableInfo) (*Stats, error) 
 	if err != nil {
 		return nil, err
 	}
-	return s.ScanTree(ctx, m.Node().HashOf(), ti.KeyDesc, ti.ValDesc)
+	return s.ScanRootNode(ctx, m.Node(), ti.KeyDesc, ti.ValDesc)
 }
 
-// ScanTree scans the subtree rooted at |addr| and returns aggregated statistics.
+// ScanRootNode scans a tree from its in-memory root node. A table's row map root is embedded in the
+// durable table message rather than referenced by address, so it need not exist as an addressable
+// chunk at all (in a cloned database, or after garbage collection). Descendant nodes are always
+// addressable and are fetched from the chunk store.
+func (s *Scanner) ScanRootNode(ctx context.Context, root *tree.Node, kd, vd *val.TupleDesc) (*Stats, error) {
+	key := CacheKey{Addr: root.HashOf(), Desc: DescFingerprint(kd, vd)}
+	if cached, ok := s.cache[key]; ok {
+		s.CacheHits++
+		return cached, nil
+	}
+	msg := serial.Message(tree.ValueFromNode(root).(types.SerialMessage))
+	return s.scanMessage(ctx, key, root.HashOf(), msg, kd, vd)
+}
+
+// ScanTree scans the subtree rooted at the chunk |addr| and returns aggregated statistics.
 func (s *Scanner) ScanTree(ctx context.Context, addr hash.Hash, kd, vd *val.TupleDesc) (*Stats, error) {
 	key := CacheKey{Addr: addr, Desc: DescFingerprint(kd, vd)}
 	if cached, ok := s.cache[key]; ok {
@@ -158,8 +174,14 @@ func (s *Scanner) ScanTree(ctx context.Context, addr hash.Hash, kd, vd *val.Tupl
 	if err != nil {
 		return nil, err
 	}
+	return s.scanMessage(ctx, key, addr, msg, kd, vd)
+}
+
+// scanMessage scans the parsed tree node |msg| at |addr| and its descendants, caching the aggregated
+// statistics under |key|.
+func (s *Scanner) scanMessage(ctx context.Context, key CacheKey, addr hash.Hash, msg serial.Message, kd, vd *val.TupleDesc) (*Stats, error) {
 	var pm serial.ProllyTreeNode
-	err = serial.InitProllyTreeNodeRoot(&pm, msg, serial.MessagePrefixSz)
+	err := serial.InitProllyTreeNodeRoot(&pm, msg, serial.MessagePrefixSz)
 	if err != nil {
 		return nil, err
 	}

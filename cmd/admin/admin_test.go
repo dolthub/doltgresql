@@ -372,6 +372,32 @@ func TestInternalOnlyKeyBookkeepingRepair(t *testing.T) {
 	require.Equal(t, origHeads, branchHeadHashes(t, sctx, db))
 }
 
+func TestScanAfterGarbageCollection(t *testing.T) {
+	ctx := context.Background()
+	dataDir, err := os.MkdirTemp(os.TempDir(), "admin_gc_scan_test")
+	require.NoError(t, err)
+	defer os.RemoveAll(dataDir)
+
+	createTestDatabase(t, ctx, dataDir)
+
+	port := freePort(t)
+	controller := startServer(t, ctx, dataDir, port)
+	conn := connectDb(t, ctx, port, testDbName)
+	_, err = conn.Exec(ctx, "SELECT dolt_gc();")
+	require.NoError(t, err)
+	require.NoError(t, conn.Close(ctx))
+	stopServer(t, controller)
+
+	db, cleanup := openTestDatabase(t, ctx, dataDir)
+	defer cleanup(t)
+	sctx := db.sctx
+
+	scans := scanAllBranches(t, sctx, db)
+	assertTableStats(t, scans, "main", "t1", expectStats{rows: 1007, adaptive: 1007, oob: 7})
+	assertKeyStats(t, scans, "main", "t6", 300, 300, 0)
+	require.NoError(t, integrity.CheckDatabase(sctx, testDbName, db.ddb))
+}
+
 func TestGenerateCorruptedDataDir(t *testing.T) {
 	dataDir := os.Getenv("ADMIN_TEST_GEN_DIR")
 	if dataDir == "" {

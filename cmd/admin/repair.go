@@ -333,7 +333,7 @@ func (r *repairer) repairRootValue(sctx *sql.Context, root doltdb.RootValue) (do
 			return nil, false, err
 		}
 		oldAddr := m.Node().HashOf()
-		newAddr, err := r.rewriter.RewriteTree(sctx, oldAddr, ti.KeyDesc, ti.ValDesc)
+		newAddr, err := r.rewriter.RewriteMapRoot(sctx, m.Node(), ti.KeyDesc, ti.ValDesc)
 		if err != nil {
 			return nil, false, errors.Wrapf(err, "failed to repair table %s", ti.Name.String())
 		}
