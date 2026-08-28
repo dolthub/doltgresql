@@ -12,6 +12,7 @@ BehaviorConfig *cfgdetails.DoltgresBehaviorConfig 0.7.4 behavior,omitempty
 --Enable_ *bool TBD enable,omitempty
 --ArchiveLevel_ *int TBD archive_level,omitempty
 --IncrementalFileSize_ *uint64 TBD incremental_file_size,omitempty
+-SkipStartupIntegrityCheck *bool TBD skip_startup_integrity_check,omitempty
 UserConfig *cfgdetails.DoltgresUserConfig 0.7.4 user,omitempty
 -Name *string 0.7.4 name,omitempty
 -Password *string 0.7.4 password,omitempty
