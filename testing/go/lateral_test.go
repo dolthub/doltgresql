@@ -135,5 +135,32 @@ func TestImplicitLateralJoin(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "left lateral join null-extends rows when the function returns no rows",
+			SetUpScript: []string{
+				"CREATE TABLE t3 (id integer, vals integer[]);",
+				"INSERT INTO t3 VALUES (1, ARRAY[]::integer[]), (2, ARRAY[10, 20]), (3, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT t3.id, u FROM t3 LEFT JOIN LATERAL unnest(t3.vals) AS x(u) ON true ORDER BY t3.id, u NULLS FIRST;",
+					Expected: []sql.Row{
+						{1, nil},
+						{2, 10},
+						{2, 20},
+						{3, nil},
+					},
+				},
+				{
+					// A non-trivial join condition must also null-extend non-matching rows
+					Query: "SELECT t3.id, u FROM t3 LEFT JOIN LATERAL unnest(t3.vals) AS x(u) ON u > 10 ORDER BY t3.id, u NULLS FIRST;",
+					Expected: []sql.Row{
+						{1, nil},
+						{2, 20},
+						{3, nil},
+					},
+				},
+			},
+		},
 	})
 }
