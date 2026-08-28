@@ -35,6 +35,71 @@ var ErrRecordHasNoField = errors.NewKind(`record "%s" has no field "%s"`)
 // ErrVariableNotFound is returned when a referenced variable does not exist on the stack.
 var ErrVariableNotFound = errors.NewKind("variable `%s` could not be found")
 
+// NormalizeIdentifier folds a PL/pgSQL identifier the way Postgres does, so that the name a reference is
+// written with and the name a variable was declared with can be compared directly. An unquoted identifier
+// folds to lowercase; a quoted one keeps its case and loses its quotes, with a doubled quote inside standing
+// for a literal one. `MyVar` and `MYVAR` therefore name the same variable, and `"MyVar"` names a different
+// one. pg_query already stores declared names in this form, so normalizing every name we take from raw
+// source text is what puts both sides in the same alphabet.
+func NormalizeIdentifier(ident string) string {
+	if len(ident) >= 2 && strings.HasPrefix(ident, `"`) && strings.HasSuffix(ident, `"`) {
+		return strings.ReplaceAll(ident[1:len(ident)-1], `""`, `"`)
+	}
+	return strings.ToLower(ident)
+}
+
+// NormalizeIdentifierPath folds a bare reference of the form `name` or `name.field` and reports whether the
+// text was such a reference at all. Some statements, RAISE among them, carry their arguments as raw source
+// text rather than through the expression rewriter, and each one may be either a variable reference or an
+// expression to evaluate. Anything that is not a plain reference is left alone for the caller to evaluate.
+func NormalizeIdentifierPath(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	// GetVariable resolves at most one level of field access, so anything deeper is not a reference it
+	// could answer anyway.
+	base, field, hasField := strings.Cut(text, ".")
+	if !isIdentifier(base) || (hasField && !isIdentifier(field)) {
+		return "", false
+	}
+	// Only the base names a variable; the field is matched against the record's columns separately.
+	if hasField {
+		return NormalizeIdentifier(base) + "." + field, true
+	}
+	return NormalizeIdentifier(base), true
+}
+
+// isIdentifier reports whether |s| is a single SQL identifier, quoted or otherwise.
+func isIdentifier(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	if strings.HasPrefix(s, `"`) {
+		return len(s) >= 2 && strings.HasSuffix(s, `"`) && !strings.Contains(s[1:len(s)-1], `"`)
+	}
+	for i, r := range s {
+		switch {
+		case r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+		case i > 0 && (r == '$' || (r >= '0' && r <= '9')):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// QuoteIdentifier renders |name| so that it survives NormalizeIdentifier unchanged. Use it when building SQL
+// that refers to a variable whose declared name is already known, since that name may hold capitals that an
+// unquoted mention would fold away.
+func QuoteIdentifier(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// TriggerNewRecordName and TriggerOldRecordName are the names a trigger invocation supplies its row records
+// under. They are the folded form of NEW and OLD, matching how pg_query names them in a parsed function.
+const (
+	TriggerNewRecordName = "new"
+	TriggerOldRecordName = "old"
+)
+
 // cursorState holds the result set for a FOR record IN query LOOP cursor.
 type cursorState struct {
 	Schema sql.Schema
@@ -198,8 +263,9 @@ func recordFieldIndex(sch sql.Schema, fieldName string) int {
 	return -1
 }
 
-// ListVariables returns a map with the names of all variables. The attached slice represents field names for records.
-// All names are lowercased.
+// ListVariables returns a map with the names of all variables. The attached slice represents field names for
+// records. Names are keyed exactly as they were declared, which is already the folded form, so a reference
+// matches by being folded the same way rather than by being compared case-insensitively.
 func (is *InterpreterStack) ListVariables() map[string][]string {
 	seen := make(map[string][]string)
 	for i := 0; i < is.stack.Len(); i++ {
@@ -210,7 +276,7 @@ func (is *InterpreterStack) ListVariables() map[string][]string {
 					fieldNames = append(fieldNames, strings.ToLower(col.Name))
 				}
 			}
-			seen[strings.ToLower(varName)] = fieldNames
+			seen[varName] = fieldNames
 		}
 	}
 	return seen
