@@ -462,7 +462,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #3111",
+			Name: "Issue #3111 (set-returning functions and max1Row spooling)",
 			SetUpScript: []string{
 				"CREATE TABLE bug14 (a integer, b integer);",
 				"CREATE INDEX bug14_ab ON bug14 (a, b);",
@@ -674,10 +674,7 @@ func TestIssuesWire(t *testing.T) {
 			},
 		},
 		{
-			// Set-returning functions multiply output rows, so a unique-index point lookup must not use the
-			// max1Row spooling shortcut. The simple query protocol is required to reproduce this, since the
-			// extended protocol does not take the max1Row shortcut.
-			Name: "Issue #3111",
+			Name: "Issue #3111 (set-returning functions and max1Row spooling)",
 			SetUpScript: []string{
 				"CREATE TABLE bug14 (a integer, b integer);",
 				"CREATE INDEX bug14_ab ON bug14 (a, b);",
