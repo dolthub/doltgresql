@@ -128,3 +128,88 @@ EOF
     log_status_eq 1
     log_output_has "failed a startup integrity check"
 }
+
+# seed_adaptive_data creates tables holding every shape the integrity scanner walks: out-of-band
+# adaptive values in value columns, and enough out-of-band text primary keys that the tree is
+# multi-level (embedded root node, internal nodes with key address bookkeeping).
+seed_adaptive_data() {
+    query_server <<SQL
+CREATE TABLE tv (id INT PRIMARY KEY, big TEXT);
+INSERT INTO tv SELECT i, rpad(i::text, 20000, 'v') FROM generate_series(1, 3) AS g(i);
+CREATE TABLE tk (big TEXT PRIMARY KEY, n INT);
+INSERT INTO tk SELECT lpad(i::text, 8, '0') || repeat('k', 19992), i FROM generate_series(1, 300) AS g(i);
+SELECT dolt_commit('-Am', 'seed adaptive data');
+SQL
+}
+
+# assert_adaptive_data_readable <db> — reads back everything seed_adaptive_data wrote.
+assert_adaptive_data_readable() {
+    local db=$1
+    run query_server_for_db $db -t -c "SELECT count(*) FROM tv WHERE length(big) = 20000;"
+    log_status_eq 0
+    log_output_has "3"
+    run query_server_for_db $db -t -c "SELECT count(*) FROM tk WHERE length(big) = 20000;"
+    log_status_eq 0
+    log_output_has "300"
+    run query_server_for_db $db -t -c "SELECT n FROM tk WHERE big = lpad('42', 8, '0') || repeat('k', 19992);"
+    log_status_eq 0
+    log_output_has "42"
+}
+
+@test "startup-integrity: freshly cloned database passes the startup check" {
+    mkdir remote serverA serverB
+
+    # --- Server A: seed adaptive data and push it to a file remote ---
+    PORT=$( definePORT )
+    write_config $PORT false
+    start_sql_server_with_args "-data-dir=./serverA" "-config=config.yaml"
+    seed_adaptive_data
+    query_server <<SQL
+SELECT dolt_remote('add', 'origin', 'file://$(pwd)/remote');
+SELECT dolt_push('origin', 'main');
+SQL
+    stop_sql_server 1
+
+    # --- Server B: a separate data directory; clone from the remote ---
+    PORT=$( definePORT )
+    write_config $PORT false
+    start_sql_server_with_args "-data-dir=./serverB" "-config=config.yaml"
+    run query_server -c "SELECT dolt_clone('file://$(pwd)/remote', 'cloned');"
+    log_status_eq 0
+    stop_sql_server 1
+
+    # --- Restart server B: the startup check runs against the fresh clone. A clone holds only the
+    # chunks push walked to (in particular, table root nodes exist only embedded in their table
+    # messages, never as addressable chunks), and the check must scan it cleanly. ---
+    PORT=$( definePORT )
+    write_config $PORT false
+    start_sql_server_with_args "-data-dir=./serverB" "-config=config.yaml"
+    assert_adaptive_data_readable cloned
+
+    # the passed check recorded a sentinel for the clone
+    [ -f serverB/cloned/.dolt/.integrity_check_passed ]
+}
+
+@test "startup-integrity: database passes the startup check after garbage collection" {
+    mkdir data
+
+    # --- Seed adaptive data, then garbage collect. GC rewrites the store down to reachable chunks:
+    # table root nodes survive only embedded in their table messages, not as addressable chunks,
+    # and out-of-band key chunks survive only through the key address bookkeeping. ---
+    PORT=$( definePORT )
+    write_config $PORT false
+    start_sql_server_with_args "-data-dir=./data" "-config=config.yaml"
+    seed_adaptive_data
+    run query_server -t -c "SELECT dolt_gc();"
+    log_status_eq 0
+    stop_sql_server 1
+
+    # --- Restart: the startup check must scan the collected store cleanly ---
+    PORT=$( definePORT )
+    write_config $PORT false
+    start_sql_server_with_args "-data-dir=./data" "-config=config.yaml"
+    assert_adaptive_data_readable postgres
+
+    # the passed check recorded a sentinel
+    [ -f data/postgres/.dolt/.integrity_check_passed ]
+}
