@@ -55,6 +55,7 @@ const (
 	ruleId_ResolveProcedureDefaults                                      // resolveProcedureDefaults
 	ruleId_SetRunner                                                     // setRunner
 	ruleId_TypeSanitizeExistsSubquery                                    // typeSanitizeExistsSubquery
+	ruleId_ResolveRenameIndex                                            // resolveRenameIndex
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -63,7 +64,8 @@ func Init() {
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
 		{Id: ruleId_ResolveType, Apply: ResolveType}, // ResolveType rule must run before simplifyFilters rule in GMS
 		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
-		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint}},
+		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint},
+		{Id: ruleId_ResolveRenameIndex, Apply: resolveRenameIndex}},
 		analyzer.OnceBeforeDefault...)
 
 	analyzer.AlwaysBeforeDefault = append(analyzer.AlwaysBeforeDefault,
@@ -148,6 +150,7 @@ var postgresOnlyAggregateFuncNames = map[string]bool{
 	"array_agg": true,
 	"bool_and":  true,
 	"bool_or":   true,
+	"json_agg":  true,
 }
 
 // postgresOnlyWindowFuncNames holds Postgres functions that may only be used as window functions (i.e.

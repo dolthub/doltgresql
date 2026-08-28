@@ -787,6 +787,11 @@ func (t *DoltgresType) IsArrayCategory() bool {
 	return t.TypCategory == TypeCategory_ArrayTypes
 }
 
+// IsVectorType returns whether the type is one of PostgreSQL's legacy array-compatible vector types.
+func (t *DoltgresType) IsVectorType() bool {
+	return t.ID == Int16vector.ID || t.ID == Oidvector.ID
+}
+
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a
 // user-created composite type.
 func (t *DoltgresType) IsCompositeType() bool {
@@ -1058,6 +1063,18 @@ func (t *DoltgresType) String() string {
 		}
 	}
 	return str
+}
+
+// SchemaQualifiedString returns String with a schema qualifier for types outside `pg_catalog`. Persisted expressions
+// are re-parsed under whatever search path is in effect later, which may not reach the type's schema, or may match its
+// bare name in more than one schema.
+func (t *DoltgresType) SchemaQualifiedString() string {
+	str := t.String()
+	schema := t.ID.SchemaName()
+	if schema == "" || schema == "pg_catalog" {
+		return str
+	}
+	return fmt.Sprintf("%s.%s", schema, str)
 }
 
 // SubscriptFuncName returns the name that would be displayed in pg_type for the `typsubscript` field.

@@ -33,11 +33,6 @@ import (
 // SRFs (set-returning functions) by setting the `IncludesNestedIters` flag on the Project node if any SRF is found
 // inside projection expressions.
 func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
-	// This is supposed to be one of the last rules to run. Subqueries break that assumption, so we skip this rule in such cases.
-	if scope != nil && scope.CurrentNodeIsFromSubqueryExpression {
-		return node, transform.SameTree, nil
-	}
-
 	_, isInsertNode := node.(*plan.InsertInto)
 	return pgtransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		projectNode, ok := n.(*plan.Project)

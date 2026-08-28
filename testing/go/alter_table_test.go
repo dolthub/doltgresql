@@ -914,6 +914,39 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3114
+			Name: "Rename table with a foreign key",
+			SetUpScript: []string{
+				"CREATE TABLE bug8_parent (id integer PRIMARY KEY);",
+				"CREATE TABLE bug8_child (id integer PRIMARY KEY, parent_id integer);",
+				"ALTER TABLE bug8_child ADD CONSTRAINT bug8_fk FOREIGN KEY (parent_id) REFERENCES bug8_parent(id);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE bug8_child RENAME TO bug8_child2;",
+				},
+				{
+					Query:    "INSERT INTO bug8_parent VALUES (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO bug8_child2 VALUES (1, 1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO bug8_child2 VALUES (2, 2);",
+					ExpectedErr: "Foreign key violation on fk: `bug8_fk`, table: `bug8_child2`, referenced table: `bug8_parent`, key: `[2]`",
+				},
+				{
+					Query: "ALTER TABLE bug8_parent RENAME TO bug8_parent2;",
+				},
+				{
+					Query:       "INSERT INTO bug8_child2 VALUES (3, 3);",
+					ExpectedErr: "Foreign key violation on fk: `bug8_fk`, table: `bug8_child2`, referenced table: `bug8_parent2`, key: `[3]`",
+				},
+			},
+		},
+		{
 			Name: "Rename table must not collide with other relation types",
 			SetUpScript: []string{
 				"CREATE TABLE src_tbl (pk int PRIMARY KEY, v1 int);",
@@ -1626,6 +1659,81 @@ WHERE con.contype = 'c'
 ORDER BY schema_name, table_name;`,
 					// TODO: the check should `CHECK ((b > 10))`
 					Expected: []sql.Row{{"public", "attmp3", "b_greater_than_ten", `b_greater_than_ten CHECK "b" > 10 ENFORCED`}},
+				},
+			},
+		},
+		{
+			Name: "VALIDATE CONSTRAINT with the table's schema not on the search path",
+			SetUpScript: []string{
+				`CREATE TABLE public.vc (a int, b int);`,
+				`INSERT INTO public.vc VALUES (1, 10);`,
+				`ALTER TABLE public.vc ADD CONSTRAINT b_gt_ten CHECK (b > 10) NOT VALID;`,
+				`SELECT pg_catalog.set_config('search_path', '', false);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `ALTER TABLE public.vc VALIDATE CONSTRAINT b_gt_ten;`,
+					ExpectedErr: `Check constraint "b_gt_ten" violated`,
+				},
+			},
+		},
+		{
+			Name: "VALIDATE CONSTRAINT with a same-named table earlier on the search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA s2;`,
+				// (11, 5) violates b > 10, but satisfies it if b is read from column 0, as it would be were the
+				// check compiled against s2.vc.
+				`CREATE TABLE public.vc (a int, b int);`,
+				`INSERT INTO public.vc VALUES (11, 5);`,
+				`ALTER TABLE public.vc ADD CONSTRAINT b_gt_ten CHECK (b > 10) NOT VALID;`,
+				`CREATE TABLE s2.vc (b int, a int);`,
+				`SET search_path TO 's2, public';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `ALTER TABLE public.vc VALIDATE CONSTRAINT b_gt_ten;`,
+					ExpectedErr: `Check constraint "b_gt_ten" violated`,
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3082
+			Name: "duplicate key handling after ADD COLUMN with an expression index",
+			SetUpScript: []string{
+				"CREATE TABLE expression_index_alter (id int PRIMARY KEY, name text UNIQUE);",
+				"CREATE INDEX expression_index_alter_lower_name ON expression_index_alter ((lower(name)));",
+				"ALTER TABLE expression_index_alter ADD COLUMN extra timestamptz;",
+				"INSERT INTO expression_index_alter (id, name) VALUES (1, 'v1');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (1, 'duplicate');",
+					ExpectedErr: "duplicate primary key",
+				},
+				{
+					// Verify the secondary UNIQUE index uses the remapped row shape too.
+					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (2, 'v1');",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'v2') ON CONFLICT (id) DO UPDATE SET name = 'v2';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (2, 'v2');",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'ignored') ON CONFLICT DO NOTHING;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'ignored') ON CONFLICT (id) DO NOTHING;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, name, extra FROM expression_index_alter;",
+					Expected: []sql.Row{{1, "v2", nil}},
 				},
 			},
 		},

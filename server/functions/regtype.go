@@ -105,6 +105,15 @@ var regtypeout = framework.Function1{
 		if internalID.Section() == id.Section_OID {
 			return internalID.Segment(0), nil
 		}
+		// GMS represents both PostgreSQL json and jsonb with its single JSON
+		// type, whose SQLStandardName is jsonb. Preserve the distinct
+		// PostgreSQL names when formatting regtype values.
+		if typ := pgtypes.GetTypeByID(id.Type(internalID)); typ != nil {
+			switch typ.ID.TypeName() {
+			case "json", "jsonb":
+				return typ.ID.TypeName(), nil
+			}
+		}
 		toid := id.Cache().ToOID(internalID)
 		if t, ok := types.OidToType[oid.Oid(toid)]; ok {
 			return t.SQLStandardName(), nil

@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/expression"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
@@ -102,6 +103,15 @@ func (n *Greatest) WithResolvedChildren(ctx context.Context, children []any) (an
 	return n.WithChildren(ctx.(*sql.Context), args...)
 }
 
+// UnwrapBindVar returns the underlying *expression.BindVar if expr is a bind variable, or an Alias wrapping one.
+func UnwrapBindVar(expr sql.Expression) *expression.BindVar {
+	if alias, ok := expr.(*expression.Alias); ok {
+		expr = alias.Child
+	}
+	bv, _ := expr.(*expression.BindVar)
+	return bv
+}
+
 // argsResolved returns true when every expression in args is resolved.
 func argsResolved(args []sql.Expression) bool {
 	for _, arg := range args {
@@ -147,6 +157,16 @@ func getRetTypeAndCasts(ctx *sql.Context, children []sql.Expression) (*pgtypes.D
 	if retType.ID == pgtypes.Numeric.ID {
 		// use Numeric type with no precision
 		retType = pgtypes.Numeric
+	}
+
+	// Untyped bind variables (e.g. `greatest($1, x)`) don't contribute to nonNullTypes above, so the common type is
+	// resolved from the other, already-typed arguments.
+	for _, child := range children {
+		if bv := UnwrapBindVar(child); bv != nil {
+			if _, ok := bv.Typ.(*pgtypes.DoltgresType); !ok {
+				bv.Typ = retType
+			}
+		}
 	}
 
 	var castList = make([]casts.Cast, len(children))

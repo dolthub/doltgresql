@@ -87,6 +87,11 @@ func bitImplicit(builtInCasts map[id.Cast]casts.Cast) {
 			if err != nil {
 				return nil, err
 			}
+			// A function declared to take bit has no type modifier. Preserve the
+			// input's width when resolving such a function call.
+			if targetType.GetAttTypMod() == -1 {
+				return input, nil
+			}
 			array, err := tree.ParseDBitArray(input)
 			if err != nil {
 				return nil, err

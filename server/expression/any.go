@@ -310,6 +310,20 @@ func (a *AnyExpr) WithChildren(ctx *sql.Context, children ...sql.Expression) (sq
 				bv.Typ = leftType.ToArrayType()
 			}
 		}
+	} else if bv, ok := leftExpr.(*expression.BindVar); ok {
+		// Similarly, an untyped bind variable on the left (e.g. `$1 = ANY(arr_col)` or `$1 = ANY(SELECT ...)`) is
+		// resolved from the right side's element type: the array's base type, or the subquery's first column type.
+		if _, ok = bv.Typ.(*pgtypes.DoltgresType); !ok {
+			if sub, ok := rightExpr.(*plan.Subquery); ok {
+				if schema := sub.Query.Schema(ctx); len(schema) > 0 {
+					if colType, ok := schema[0].Type.(*pgtypes.DoltgresType); ok {
+						bv.Typ = colType
+					}
+				}
+			} else if rightType, ok := rightExpr.Type(ctx).(*pgtypes.DoltgresType); ok && rightType.IsArrayType() {
+				bv.Typ = rightType.BaseType()
+			}
+		}
 	}
 	anyExpr := &AnyExpr{
 		leftExpr:    leftExpr,
