@@ -197,13 +197,7 @@ func sanitizeExprType(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Ex
 }
 
 // getFieldSourceIsSystemTable reports whether the given GetField refers to a column supplied by a Dolt
-// system table or system table function somewhere beneath |node|. GetFields over ordinary Doltgres tables
-// always carry Doltgres types, but Dolt system tables (dolt.branches, dolt.status, dolt_log(...), etc.)
-// expose GMS types, which must be wrapped in a GMSCast so that clients receive Postgres-formatted values
-// (e.g. booleans as 't'/'f' rather than '1'/'0'). The source table may be separated from the node
-// referencing the column by intermediate nodes such as filters and sorts (e.g.
-// `SELECT dirty FROM dolt.branches ORDER BY name`), so we search the subtree for the relation that the
-// field names rather than only examining the immediate child (issue #3116).
+// system table or system table function somewhere beneath |node|.
 func getFieldSourceIsSystemTable(node sql.Node, gf *expression.GetField) bool {
 	// An empty table name cannot disambiguate between sources, so we treat it as matching any relation.
 	nameMatches := func(name string) bool {
