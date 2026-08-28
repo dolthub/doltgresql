@@ -391,7 +391,7 @@ func nodeAlterTableAlterColumnTypeUsing(ctx *Context, node *tree.AlterTableAlter
 	if err != nil {
 		return nil, err
 	}
-	if resolvedType == pgtypes.Record {
+	if resolvedType.ID == pgtypes.Record.ID {
 		return nil, errors.Errorf(`column "%s" has pseudo-type record`, node.Column.String())
 	}
 
