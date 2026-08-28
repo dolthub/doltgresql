@@ -69,7 +69,20 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 				Default:     v.Variable.Default.Var.Query,
 			})
 		default:
-			return Block{}, errors.Errorf("unhandled datum type: %T", v)
+			// The datum struct is a union of pointers, so printing its type here would only ever say
+			// "plpgsql.datum". Name the arms we do handle instead.
+			return Block{}, errors.New("unhandled declared variable: expected a record, record field, row, or variable")
+		}
+	}
+	// The NEW and OLD records of a trigger appear in the datum list like any other record, but they are
+	// supplied by the trigger invocation rather than declared by the function, so they must not be
+	// redeclared (which would shadow the supplied values with an empty record).
+	for _, triggerRecordNumber := range []int32{jsonBlock.NewVariableNumber, jsonBlock.OldVariableNumber} {
+		if triggerRecordNumber == 0 {
+			continue
+		}
+		if idx := triggerRecordNumber + offset; idx >= 0 && int(idx) < len(block.Records) {
+			block.Records[idx].IsTriggerRecord = true
 		}
 	}
 	var err error
