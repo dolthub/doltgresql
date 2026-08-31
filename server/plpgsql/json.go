@@ -657,6 +657,10 @@ func (stmt *plpgSQL_stmt_fors) Convert() (block Block, err error) {
 	//   [1] ForQueryNext  – fetch next row into varName, or jump forward by (bodySize+2) to ScopeEnd
 	//   [2..2+bodySize-1] body statements
 	//   [2+bodySize]      Goto back to ForQueryNext: offset = -(1 + bodySize)
+	//
+	// A CONTINUE must fetch the next row rather than re-run the query, so it targets the ForQueryNext at [1]
+	// rather than the ForQueryInit at [0].
+	block.ContinueTargetOffset = 1
 	block.Body = []Statement{
 		ForQueryInit{CursorName: cursorName, Query: query},
 		ForQueryNext{CursorName: cursorName, RecordVar: varName, GotoOffset: bodySize + 2},

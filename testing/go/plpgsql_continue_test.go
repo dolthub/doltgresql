@@ -329,5 +329,182 @@ END; $$;`,
 				},
 			},
 		},
+		{
+			Name: "CONTINUE WHEN in a FOR..IN..SELECT loop",
+			SetUpScript: []string{
+				`CREATE TABLE c1 (id int, val int);`,
+				`INSERT INTO c1 VALUES (1, 10), (2, 20), (3, 30);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_fors_when() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE r RECORD; n int := 0; guard int := 0;
+BEGIN
+	FOR r IN SELECT id, val FROM c1 ORDER BY id LOOP
+		guard := guard + 1;
+		IF guard > 20 THEN RETURN -99; END IF;
+		CONTINUE WHEN r.id = 2;
+		n := n + r.val;
+	END LOOP;
+	RETURN n;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// The second row is skipped, so this is 10 + 30.
+					Query:    `SELECT f_fors_when();`,
+					Expected: []sql.Row{{40}},
+				},
+			},
+		},
+		{
+			Name: "bare CONTINUE in a FOR..IN..SELECT loop",
+			SetUpScript: []string{
+				`CREATE TABLE c2 (id int, val int);`,
+				`INSERT INTO c2 VALUES (1, 10), (2, 20), (3, 30);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_fors_bare() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE r RECORD; n int := 0; guard int := 0;
+BEGIN
+	FOR r IN SELECT id, val FROM c2 ORDER BY id LOOP
+		guard := guard + 1;
+		IF guard > 20 THEN RETURN -99; END IF;
+		IF r.id = 3 THEN
+			CONTINUE;
+		END IF;
+		n := n + r.val;
+	END LOOP;
+	RETURN n;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// The third row is skipped, so this is 10 + 20.
+					Query:    `SELECT f_fors_bare();`,
+					Expected: []sql.Row{{30}},
+				},
+			},
+		},
+		{
+			Name: "CONTINUE and EXIT in the same FOR..IN..SELECT loop",
+			SetUpScript: []string{
+				`CREATE TABLE c3 (id int, val int);`,
+				`INSERT INTO c3 VALUES (1, 10), (2, 20), (3, 30), (4, 40), (5, 50);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_fors_exit() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE r RECORD; n int := 0; guard int := 0;
+BEGIN
+	FOR r IN SELECT id, val FROM c3 ORDER BY id LOOP
+		guard := guard + 1;
+		IF guard > 20 THEN RETURN -99; END IF;
+		CONTINUE WHEN r.id = 2;
+		EXIT WHEN r.id = 4;
+		n := n + r.val;
+	END LOOP;
+	RETURN n;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// The second row is skipped and the loop exits on the fourth, so this is 10 + 30.
+					Query:    `SELECT f_fors_exit();`,
+					Expected: []sql.Row{{40}},
+				},
+			},
+		},
+		{
+			Name: "labelled CONTINUE of an outer FOR..IN..SELECT loop",
+			SetUpScript: []string{
+				`CREATE TABLE c4 (id int, val int);`,
+				`INSERT INTO c4 VALUES (1, 10), (2, 20), (3, 30);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_fors_label() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE r RECORD; s RECORD; n int := 0; guard int := 0;
+BEGIN
+	<<outer_loop>>
+	FOR r IN SELECT id, val FROM c4 ORDER BY id LOOP
+		FOR s IN SELECT id FROM c4 ORDER BY id LOOP
+			guard := guard + 1;
+			IF guard > 30 THEN RETURN -99; END IF;
+			CONTINUE outer_loop WHEN s.id = 2;
+			n := n + (r.id * 10 + s.id);
+		END LOOP;
+	END LOOP;
+	RETURN n;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// Each outer row counts its first inner row, so this is 11 + 21 + 31.
+					Query:    `SELECT f_fors_label();`,
+					Expected: []sql.Row{{63}},
+				},
+			},
+		},
+		{
+			Name: "labelled CONTINUE of an outer integer FOR loop from a FOR..IN..SELECT loop",
+			SetUpScript: []string{
+				`CREATE TABLE c5 (id int);`,
+				`INSERT INTO c5 VALUES (1), (2), (3);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_mixed_label() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE i int; r RECORD; n int := 0; guard int := 0;
+BEGIN
+	<<outer_loop>>
+	FOR i IN 1..3 LOOP
+		FOR r IN SELECT id FROM c5 ORDER BY id LOOP
+			guard := guard + 1;
+			IF guard > 30 THEN RETURN -99; END IF;
+			CONTINUE outer_loop WHEN r.id = 2;
+			n := n + (i * 10 + r.id);
+		END LOOP;
+	END LOOP;
+	RETURN n;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// The labelled CONTINUE advances the integer FOR loop, so this is 11 + 21 + 31.
+					Query:    `SELECT f_mixed_label();`,
+					Expected: []sql.Row{{63}},
+				},
+			},
+		},
+		{
+			Name: "CONTINUE as the last statement of a FOR..IN..SELECT loop body",
+			SetUpScript: []string{
+				`CREATE TABLE c6 (id int, val int);`,
+				`INSERT INTO c6 VALUES (1, 10), (2, 20), (3, 30);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE FUNCTION f_fors_last() RETURNS int LANGUAGE plpgsql AS $$
+DECLARE r RECORD; n int := 0; guard int := 0;
+BEGIN
+	FOR r IN SELECT id, val FROM c6 ORDER BY id LOOP
+		guard := guard + 1;
+		IF guard > 20 THEN RETURN -99; END IF;
+		n := n + r.val;
+		CONTINUE WHEN r.id > 0;
+	END LOOP;
+	RETURN n;
+END; $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// The CONTINUE always fires, but nothing follows it, so every row is summed.
+					Query:    `SELECT f_fors_last();`,
+					Expected: []sql.Row{{60}},
+				},
+			},
+		},
 	})
 }
