@@ -234,21 +234,24 @@ func rewriteTableFuncExprs(fromExpr vitess.TableExpr) vitess.TableExpr {
 									}
 								}
 							}
-							alias := expr.As
-							if alias.IsEmpty() {
-								// A function called in FROM implicitly uses the function's name as its alias
-								alias = vitess.NewTableIdent(funcExpr.Name.Lowered())
-							}
+							// The TableFuncExpr keeps the user's alias (possibly empty): a fabricated alias would
+							// rename a single-column function result to the function's name, clobbering the column
+							// name that a named OUT parameter provides (e.g. pg_partition_ancestors's relid).
 							tableFuncExpr := &vitess.TableFuncExpr{
 								Name:    funcExpr.Name.String(),
 								Exprs:   funcExpr.Exprs,
-								Alias:   alias,
+								Alias:   expr.As,
 								Columns: subquery.Columns,
 							}
 							if expr.Lateral {
 								// GMS only supports lateral scoping for subqueries, so we wrap the table function
 								// in a subquery marked as lateral. This makes columns of the preceding FROM items
-								// visible to the function's arguments.
+								// visible to the function's arguments. The wrapping subquery requires an alias;
+								// a function called in FROM implicitly uses the function's name as its table alias.
+								alias := expr.As
+								if alias.IsEmpty() {
+									alias = vitess.NewTableIdent(funcExpr.Name.Lowered())
+								}
 								return &vitess.AliasedTableExpr{
 									Expr: &vitess.Subquery{
 										Select: &vitess.Select{
