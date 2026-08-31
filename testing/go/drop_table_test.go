@@ -242,7 +242,7 @@ func TestDropTableCascade(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:       `DROP TABLE doesnotexist CASCADE;`,
+					Query: `DROP TABLE doesnotexist CASCADE;`,
 					// This matches the standard DROP TABLE path's error; Postgres says `table "doesnotexist" does not exist`
 					ExpectedErr: `table not found: doesnotexist`,
 				},
