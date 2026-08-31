@@ -65,6 +65,42 @@ func TestBindingWithOidZero(t *testing.T) {
 	assert.Equal(t, "Alice", name)
 }
 
+// TestBindingInsertSelectWithOidZero verifies that INSERT target columns supply
+// types for otherwise untyped parameters in a SELECT source.
+func TestBindingInsertSelectWithOidZero(t *testing.T) {
+	ctx, connection, controller := CreateServer(t, "postgres")
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	conn := connection.Default
+
+	_, err := connection.Exec(ctx, "CREATE TABLE t (id INT PRIMARY KEY, v BIGINT, label TEXT);")
+	require.NoError(t, err)
+
+	sql := "INSERT INTO t (id, v, label) SELECT $1, $2, $3"
+	description, err := conn.PgConn().Prepare(ctx, "insert_select", sql, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []uint32{pgtype.Int4OID, pgtype.Int8OID, pgtype.TextOID}, description.ParamOIDs)
+
+	args := [][]byte{[]byte("12"), []byte("9223372036854775806"), []byte("inserted")}
+	paramOIDs := []uint32{0, 0, 0}
+	paramFormats := []int16{0, 0, 0}
+	result := conn.PgConn().ExecParams(ctx,
+		sql,
+		args, paramOIDs, paramFormats, nil).Read()
+	require.NoError(t, result.Err)
+
+	var id int32
+	var value int64
+	var label string
+	require.NoError(t, conn.QueryRow(ctx, "SELECT id, v, label FROM t").Scan(&id, &value, &label))
+	assert.Equal(t, int32(12), id)
+	assert.Equal(t, int64(9223372036854775806), value)
+	assert.Equal(t, "inserted", label)
+}
+
 // TestBindingInt4ToBigintWithUntypedNull is a regression test for
 // https://github.com/dolthub/doltgresql/issues/2973: an int4-typed parameter bound to
 // a BIGINT column was silently corrupted whenever the same statement also had an untyped
