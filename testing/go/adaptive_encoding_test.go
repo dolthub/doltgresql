@@ -295,8 +295,8 @@ func TestStringFunctionsOnOutOfBandValues(t *testing.T) {
 							Expected: []sql.Row{{bigStringMd5}},
 						},
 						{
-							Query:    "select octet_length(body) from t_big;",
-							Expected: []sql.Row{{int32(20000)}},
+							Query:    "select octet_length(body), bit_length(body) from t_big;",
+							Expected: []sql.Row{{int32(20000), int32(160000)}},
 						},
 						{
 							Query:    "select initcap(left(body, 3)) from t_big;",
@@ -342,6 +342,10 @@ func TestByteaFunctionsOnOutOfBandValues(t *testing.T) {
 				{
 					Query:    "select body from t_bytes;",
 					Expected: []sql.Row{{bigBytes}},
+				},
+				{
+					Query:    "select octet_length(body), length(body), bit_length(body) from t_bytes;",
+					Expected: []sql.Row{{int32(20000), int32(20000), int32(160000)}},
 				},
 				{
 					Query:    "select length(encode(body, 'hex')) from t_bytes;",

@@ -191,6 +191,58 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		// pg_dump emits schema-qualified DDL under an empty search_path, so a type reference in a column default has
+		// to survive being persisted and re-parsed with no search path to resolve it against.
+		Name: "qualified type in a column default with an empty search path",
+		SetUpScript: []string{
+			"SELECT pg_catalog.set_config('search_path', '', false);",
+			"CREATE TYPE public.registration_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED');",
+			`CREATE TABLE public.registration_request (
+				id int NOT NULL,
+				status public.registration_status DEFAULT 'PENDING'::public.registration_status NOT NULL
+			);`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "ALTER TABLE ONLY public.registration_request ADD CONSTRAINT registration_request_pkey PRIMARY KEY (id);",
+			},
+			{
+				Query: "INSERT INTO public.registration_request (id) VALUES (1);",
+			},
+			{
+				Query: "SELECT id, status FROM public.registration_request;",
+				Expected: []sql.Row{
+					{1, "PENDING"},
+				},
+			},
+		},
+	},
+	{
+		// The same round trip has to keep the schema straight when the bare type name is ambiguous.
+		Name: "qualified type in a column default when the type name is ambiguous",
+		SetUpScript: []string{
+			"CREATE SCHEMA schema1;",
+			"CREATE SCHEMA schema2;",
+			"CREATE TYPE schema1.status AS ENUM ('one');",
+			"CREATE TYPE schema2.status AS ENUM ('two');",
+			"CREATE TABLE public.t1 (id int NOT NULL, status schema2.status DEFAULT 'two'::schema2.status NOT NULL);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "ALTER TABLE ONLY public.t1 ADD CONSTRAINT t1_pkey PRIMARY KEY (id);",
+			},
+			{
+				Query: "INSERT INTO public.t1 (id) VALUES (1);",
+			},
+			{
+				Query: "SELECT id, status FROM public.t1;",
+				Expected: []sql.Row{
+					{1, "two"},
+				},
+			},
+		},
+	},
+	{
 		Name: "search path returns user table before public table",
 		SetUpScript: []string{
 			"create schema postgres",

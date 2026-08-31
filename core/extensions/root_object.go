@@ -120,6 +120,10 @@ func (pge *Collection) RenameRootObject(ctx context.Context, oldName id.Id, newN
 
 // ResolveName implements the interface objinterface.Collection.
 func (pge *Collection) ResolveName(ctx context.Context, name doltdb.TableName) (doltdb.TableName, id.Id, error) {
+	// Extension names are not schema-qualified, so a name with a schema can never match an extension
+	if len(name.Schema) > 0 {
+		return doltdb.TableName{}, id.Null, nil
+	}
 	extID := id.NewExtension(name.Name)
 	if pge.HasLoadedExtension(ctx, extID) {
 		return doltdb.TableName{Name: name.Name}, extID.AsId(), nil

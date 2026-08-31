@@ -148,6 +148,12 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return true, nil
 	})
 
+	if !cfg.SkipStartupIntegrityCheck() {
+		if err = runStartupIntegrityCheck(ctx, mrEnv); err != nil {
+			return nil, err
+		}
+	}
+
 	// Doltgres-specific engine initialization runs after the engine is constructed but before the server accepts
 	// any connections: hooking auth (auth.db) into cluster replication, and creating the default database on a
 	// first run. The latter must happen before connections are accepted because `CREATE DATABASE` is

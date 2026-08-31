@@ -94,9 +94,13 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		sourceSchema := insertInto.Source.Schema(ctx)
 		projections := make([]sql.Expression, len(sourceSchema))
 		for i, col := range sourceSchema {
-			fromColType, ok := col.Type.(*pgtypes.DoltgresType)
+			colType := col.Type
+			if colType == nil || colType == types.Null {
+				colType = pgtypes.Unknown
+			}
+			fromColType, ok := colType.(*pgtypes.DoltgresType)
 			if !ok {
-				return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", fromColType.String())
+				return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", colType.String())
 			}
 			toColType := destinationTypes[i]
 			getField := expression.NewGetField(i, fromColType, col.Name, true)

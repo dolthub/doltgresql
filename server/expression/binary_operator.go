@@ -21,10 +21,13 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/expression/function/vector"
+	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/procedures"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -41,6 +44,7 @@ var _ expression.BinaryExpression = (*BinaryOperator)(nil)
 var _ expression.Equality = (*BinaryOperator)(nil)
 var _ sql.IndexComparisonExpression = (*BinaryOperator)(nil)
 var _ procedures.InterpreterExpr = (*BinaryOperator)(nil)
+var _ vector.OrderableDistance = (*BinaryOperator)(nil)
 
 // NewBinaryOperator returns a new *BinaryOperator.
 func NewBinaryOperator(operator framework.Operator) *BinaryOperator {
@@ -237,6 +241,57 @@ func (b *BinaryOperator) IndexScanOperation() (sql.IndexScanOp, sql.Expression, 
 	return 0, nil, nil, false
 }
 
+// DistanceMetric implements the vector.OrderableDistance interface.
+func (b *BinaryOperator) DistanceMetric() sql.DistanceType {
+	compiledFunc, ok := b.compiledFunc.(*framework.CompiledFunction)
+	if !ok {
+		return nil
+	}
+	extensionName, symbol, ok := compiledFunc.ResolvedExtensionRoutine()
+	if !ok {
+		return nil
+	}
+	return extensions.GetDistanceType(extensionName, symbol)
+}
+
+// TargetAndQuery implements the vector.OrderableDistance interface.
+func (b *BinaryOperator) TargetAndQuery() (sql.Expression, sql.Expression, bool) {
+	if b.DistanceMetric() == nil {
+		return nil, nil, false
+	}
+	left := unwrapIndexScanTarget(b.Left())
+	right := unwrapIndexScanTarget(b.Right())
+	if _, ok := left.(*expression.GetField); ok {
+		if isRowIndependentQueryVector(right) {
+			return left, right, true
+		}
+	} else if _, ok = right.(*expression.GetField); ok {
+		if isRowIndependentQueryVector(left) {
+			return right, left, true
+		}
+	}
+	return nil, nil, false
+}
+
+// isRowIndependentQueryVector returns whether the expression can serve as the query vector of a vector index scan.
+func isRowIndependentQueryVector(expr sql.Expression) bool {
+	if !expr.Resolved() {
+		return false
+	}
+	switch e := expr.(type) {
+	case *expression.GetField, *plan.Subquery:
+		return false
+	case *expression.Literal:
+		return e.Value() != nil
+	}
+	for _, child := range expr.Children() {
+		if !isRowIndependentQueryVector(child) {
+			return false
+		}
+	}
+	return true
+}
+
 // unwrapIndexScanTarget removes a GMSCast wrapper from an expression when the cast wraps a GetField.
 // The analyzer wraps GMS-typed columns (e.g. the to_commit/from_commit columns of the dolt_diff_*
 // system tables) in a GMSCast so that they may be used by the Doltgres function framework, but index
@@ -255,11 +310,15 @@ func unwrapIndexScanTarget(expr sql.Expression) sql.Expression {
 func getUserDefinedOperator(ctx *sql.Context, operator framework.Operator, left sql.Expression, right sql.Expression) (framework.Function, error) {
 	leftType, ok := left.Type(ctx).(*pgtypes.DoltgresType)
 	if !ok {
-		return nil, nil
+		if leftType, _ = pgtypes.FromGmsTypeToDoltgresType(left.Type(ctx)); leftType == nil {
+			return nil, nil
+		}
 	}
 	rightType, ok := right.Type(ctx).(*pgtypes.DoltgresType)
 	if !ok {
-		return nil, nil
+		if rightType, _ = pgtypes.FromGmsTypeToDoltgresType(right.Type(ctx)); rightType == nil {
+			return nil, nil
+		}
 	}
 	operatorCollection, err := core.GetOperatorsCollectionFromContext(ctx, "")
 	if err != nil {

@@ -92,6 +92,7 @@ type DoltgresType struct {
 	// Below are not stored
 	IsSerial            bool    // used for serial types only (e.g.: smallserial)
 	IsUnresolved        bool    // used internally to know if a type has been resolved
+	UnresolvedTypmods   []any   // used internally to carry type modifiers until the type is resolved
 	BaseTypeForInternal id.Type // used for INTERNAL type only
 	SerializationFunc   internalSerializationFunc
 	DeserializationFunc internalDeserializationFunc
@@ -486,6 +487,17 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 			return 1, nil
 		}
 	default:
+		if t.CompareFunc != 0 {
+			sqlCtx, ok := ctx.(*sql.Context)
+			if !ok {
+				sqlCtx = sql.NewEmptyContext()
+			}
+			i, err := globalFunctionRegistry.GetFunction(sqlCtx, t.CompareFunc).CallVariadic(nil, v1, v2)
+			if err != nil {
+				return 0, err
+			}
+			return int(i.(int32)), nil
+		}
 		return 0, errors.Errorf("unhandled type %T in Compare", v1)
 	}
 }
@@ -787,6 +799,11 @@ func (t *DoltgresType) IsArrayCategory() bool {
 	return t.TypCategory == TypeCategory_ArrayTypes
 }
 
+// IsVectorType returns whether the type is one of PostgreSQL's legacy array-compatible vector types.
+func (t *DoltgresType) IsVectorType() bool {
+	return t.ID == Int16vector.ID || t.ID == Oidvector.ID
+}
+
 // IsCompositeType returns true if the type is a composite type, such as an anonymous record, or a
 // user-created composite type.
 func (t *DoltgresType) IsCompositeType() bool {
@@ -1005,6 +1022,9 @@ func (t *DoltgresType) SerializedCompare(ctx context.Context, v1 []byte, v2 []by
 	case TypeCategory_StringTypes:
 		return serializedStringCompare(v1, v2), nil
 	default:
+		if codec := t.codec(); codec != nil {
+			return codec.SerializedCompare(v1, v2)
+		}
 		// TODO: there are certainly other types that could be compared in serialized form
 		return deserializeAndCompare(ctx, t, v1, v2)
 	}
@@ -1058,6 +1078,18 @@ func (t *DoltgresType) String() string {
 		}
 	}
 	return str
+}
+
+// SchemaQualifiedString returns String with a schema qualifier for types outside `pg_catalog`. Persisted expressions
+// are re-parsed under whatever search path is in effect later, which may not reach the type's schema, or may match its
+// bare name in more than one schema.
+func (t *DoltgresType) SchemaQualifiedString() string {
+	str := t.String()
+	schema := t.ID.SchemaName()
+	if schema == "" || schema == "pg_catalog" {
+		return str
+	}
+	return fmt.Sprintf("%s.%s", schema, str)
 }
 
 // SubscriptFuncName returns the name that would be displayed in pg_type for the `typsubscript` field.
@@ -1257,6 +1289,9 @@ func (t *DoltgresType) SerializeValue(ctx context.Context, val any) ([]byte, err
 	if t.SerializationFunc != nil {
 		return t.SerializationFunc(sqlCtx, t, val)
 	}
+	if codec := t.codec(); codec != nil {
+		return codec.Serialize(val)
+	}
 	// If there's not a built-in serialization function, then we'll use the `send` function instead
 	return t.CallSend(sqlCtx, val)
 }
@@ -1269,6 +1304,9 @@ func (t *DoltgresType) DeserializeValue(ctx context.Context, val []byte) (any, e
 	sqlCtx, _ := ctx.(*sql.Context) // There are cases where it's okay to deserialize with a nil SQL context
 	if t.DeserializationFunc != nil {
 		return t.DeserializationFunc(sqlCtx, t, val)
+	}
+	if codec := t.codec(); codec != nil {
+		return codec.Deserialize(val)
 	}
 	// If there's not a built-in deserialization function, then we'll use the `receive` function instead
 	return t.CallReceive(sqlCtx, val)

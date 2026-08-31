@@ -510,6 +510,309 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Alter Column Type with USING clause",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id INT PRIMARY KEY, c TEXT);",
+				"INSERT INTO t1 VALUES (1, '100'), (2, '-42'), (3, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The most common form: cast the column itself to the new type
+					Query:    "ALTER TABLE t1 ALTER COLUMN c TYPE integer USING c::integer;",
+					Expected: []sql.Row{},
+				},
+				{
+					// Note: pg_typeof returns NULL (rather than the column type) for NULL values in Doltgres, so the
+					// NULL row is checked without pg_typeof here.
+					Query:    "SELECT id, c, pg_typeof(c) FROM t1 WHERE c IS NOT NULL ORDER BY id;",
+					Expected: []sql.Row{{1, 100, "integer"}, {2, -42, "integer"}},
+				},
+				{
+					Query:    "SELECT id, c FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, 100}, {2, -42}, {3, nil}},
+				},
+				{
+					// The new type is enforced for future inserts
+					Query:       "INSERT INTO t1 VALUES (4, 'abc');",
+					ExpectedErr: "invalid input syntax for type",
+				},
+				{
+					Query:    "INSERT INTO t1 VALUES (4, 999);",
+					Expected: []sql.Row{},
+				},
+				{
+					// USING with an arbitrary expression over the column
+					Query:    "ALTER TABLE t1 ALTER COLUMN c TYPE text USING 'val: ' || (c * 2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, c FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, "val: 200"}, {2, "val: -84"}, {3, nil}, {4, "val: 1998"}},
+				},
+			},
+		},
+		{
+			Name: "Alter Column Type with USING expression form",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id INT PRIMARY KEY, c TEXT NOT NULL);",
+				"INSERT INTO t1 VALUES (1, '1'), (2, '25');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// An expression that isn't just a plain cast of the column
+					Query:    "ALTER TABLE t1 ALTER COLUMN c TYPE integer USING (c || '0')::integer;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, c FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, 10}, {2, 250}},
+				},
+				{
+					// USING expressions can reference other columns as well
+					Query:    "ALTER TABLE t1 ALTER COLUMN c TYPE text USING ('id-' || id || ': ' || c);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, c FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, "id-1: 10"}, {2, "id-2: 250"}},
+				},
+			},
+		},
+		{
+			Name: "Alter Column Type with USING in Django migration style",
+			SetUpScript: []string{
+				`CREATE TABLE "app_event" ("id" integer PRIMARY KEY, "created" text);`,
+				`INSERT INTO "app_event" VALUES (1, '2024-01-15 10:30:00+00'), (2, '2025-06-01 08:00:00+00');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `ALTER TABLE "app_event" ALTER COLUMN "created" TYPE timestamp with time zone USING "created"::timestamp with time zone;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id FROM app_event WHERE created = '2024-01-15 10:30:00+00'::timestamptz;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT count(*) FROM app_event WHERE created > '2024-12-31 00:00:00+00'::timestamptz;`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "Alter Column Type with USING error cases",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id INT PRIMARY KEY, c TEXT);",
+				"INSERT INTO t1 VALUES (1, '100'), (2, 'abc');",
+				"CREATE TABLE t2 (id INT PRIMARY KEY, c TEXT NOT NULL);",
+				"INSERT INTO t2 VALUES (1, '');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Values that can't be converted result in an error, and the type change is not applied
+					Query:       "ALTER TABLE t1 ALTER COLUMN c TYPE integer USING c::integer;",
+					ExpectedErr: "invalid input syntax for type",
+				},
+				{
+					Query:    "SELECT id, c FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, "100"}, {2, "abc"}},
+				},
+				{
+					// A USING expression that produces NULL for a NOT NULL column is an error
+					Query:       "ALTER TABLE t2 ALTER COLUMN c TYPE integer USING NULLIF(c, '')::integer;",
+					ExpectedErr: "contains null values",
+				},
+				{
+					// USING is only supported as the sole action of an ALTER TABLE statement
+					Query:       "ALTER TABLE t1 ALTER COLUMN c TYPE integer USING c::integer, ALTER COLUMN id TYPE bigint;",
+					ExpectedErr: "multi-action",
+				},
+				{
+					// Column references that don't exist in the table are an error
+					Query:       "ALTER TABLE t1 ALTER COLUMN c TYPE integer USING d::integer;",
+					ExpectedErr: `column "d" does not exist`,
+				},
+				{
+					// Column references qualified with a different table name are an error
+					Query:       "ALTER TABLE t1 ALTER COLUMN c TYPE integer USING other.c::integer;",
+					ExpectedErr: `missing FROM-clause entry for table "other"`,
+				},
+				{
+					// Column references qualified with the altered table's name are allowed
+					Query:    "ALTER TABLE t1 ALTER COLUMN c TYPE varchar(20) USING t1.c || '!';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, c FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, "100!"}, {2, "abc!"}},
+				},
+				{
+					Query:       "ALTER TABLE doesnotexist ALTER COLUMN c TYPE integer USING c::integer;",
+					ExpectedErr: "not found",
+				},
+				{
+					// IF EXISTS on a missing table is a no-op
+					Query:    "ALTER TABLE IF EXISTS doesnotexist ALTER COLUMN c TYPE integer USING c::integer;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE fkparent (id TEXT PRIMARY KEY);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE fkchild (id INT PRIMARY KEY, p TEXT REFERENCES fkparent(id));",
+					Expected: []sql.Row{},
+				},
+				{
+					// Columns used by foreign keys can't have their types changed
+					Query:       "ALTER TABLE fkchild ALTER COLUMN p TYPE integer USING p::integer;",
+					ExpectedErr: "used by foreign keys",
+				},
+				{
+					Query:       "ALTER TABLE fkparent ALTER COLUMN id TYPE integer USING id::integer;",
+					ExpectedErr: "used by foreign keys",
+				},
+			},
+		},
+		{
+			Name: "Alter Column Type with USING failure leaves the table intact",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id INT PRIMARY KEY, value TEXT);",
+				"CREATE INDEX t1_value_idx ON t1 (value);",
+				"INSERT INTO t1 VALUES (1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (6, '6'), (7, '7'), (8, '8'), (9, '9'), (10, '10');",
+				"INSERT INTO t1 SELECT id + 10, (id + 10)::text FROM t1;",
+				"INSERT INTO t1 SELECT id + 20, (id + 20)::text FROM t1 WHERE id <= 20;",
+				"INSERT INTO t1 SELECT id + 40, (id + 40)::text FROM t1 WHERE id <= 40;",
+				"INSERT INTO t1 SELECT id + 80, (id + 80)::text FROM t1 WHERE id <= 20;",
+				"INSERT INTO t1 VALUES (101, 'not-a-number');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER TABLE t1 ALTER COLUMN value TYPE integer USING value::integer;",
+					ExpectedErr: "invalid input syntax for type",
+				},
+				{
+					// The column must still have its original type
+					Query:    "SELECT pg_typeof(value) FROM t1 WHERE id = 1;",
+					Expected: []sql.Row{{"text"}},
+				},
+				{
+					// All the original rows must still be present
+					Query:    "SELECT count(*) FROM t1;",
+					Expected: []sql.Row{{101}},
+				},
+				{
+					// Lookups through the secondary index must still work
+					Query:    "SELECT id FROM t1 WHERE value = '42';",
+					Expected: []sql.Row{{42}},
+				},
+				{
+					Query:    "SELECT id FROM t1 WHERE value = 'not-a-number';",
+					Expected: []sql.Row{{101}},
+				},
+				{
+					// The table must still accept writes with the original type
+					Query:    "INSERT INTO t1 VALUES (102, 'still-text');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT count(*) FROM t1;",
+					Expected: []sql.Row{{102}},
+				},
+				{
+					// The table must also be intact when viewed from a different connection
+					Query:    "SELECT count(*) FROM t1;",
+					Expected: []sql.Row{{102}},
+					Username: "postgres",
+					Password: "password",
+				},
+				{
+					Query:    "SELECT pg_typeof(value) FROM t1 WHERE id = 1;",
+					Expected: []sql.Row{{"text"}},
+					Username: "postgres",
+					Password: "password",
+				},
+				{
+					// A failed conversion inside an explicit transaction, followed by COMMIT (which rolls back the
+					// aborted transaction), must also leave the table intact
+					Query:    "BEGIN;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "ALTER TABLE t1 ALTER COLUMN value TYPE integer USING value::integer;",
+					ExpectedErr: "invalid input syntax for type",
+				},
+				{
+					Query:    "COMMIT;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT count(*) FROM t1;",
+					Expected: []sql.Row{{102}},
+				},
+				{
+					Query:    "SELECT id FROM t1 WHERE value = '42';",
+					Expected: []sql.Row{{42}},
+				},
+				{
+					Query:    "SELECT pg_typeof(value) FROM t1 WHERE id = 1;",
+					Expected: []sql.Row{{"text"}},
+				},
+			},
+		},
+		{
+			Name: "Alter Column Type with USING on a schema-qualified table",
+			SetUpScript: []string{
+				"CREATE SCHEMA s1;",
+				"CREATE TABLE s1.t (id INT PRIMARY KEY, c TEXT);",
+				"INSERT INTO s1.t VALUES (1, '7'), (2, '8');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE s1.t ALTER COLUMN c TYPE integer USING c::integer;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, c FROM s1.t ORDER BY id;",
+					Expected: []sql.Row{{1, 7}, {2, 8}},
+				},
+			},
+		},
+		{
+			Name: "Alter Column Type with USING on keys and indexes",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id TEXT PRIMARY KEY, c INT);",
+				"INSERT INTO t1 VALUES ('3', 30), ('1', 10), ('2', 20);",
+				"CREATE TABLE t2 (id INT PRIMARY KEY, c TEXT);",
+				"CREATE INDEX t2_c_idx ON t2 (c);",
+				"INSERT INTO t2 VALUES (1, '100'), (2, '200');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Changing the type of a primary key column
+					Query:    "ALTER TABLE t1 ALTER COLUMN id TYPE integer USING id::integer;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, c FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, 10}, {2, 20}, {3, 30}},
+				},
+				{
+					Query:       "INSERT INTO t1 VALUES (1, 11);",
+					ExpectedErr: "duplicate primary key",
+				},
+				{
+					// Changing the type of a column with a secondary index
+					Query:    "ALTER TABLE t2 ALTER COLUMN c TYPE integer USING c::integer;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id FROM t2 WHERE c = 200;",
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
+		{
 			Name: "ALTER COLUMN resolves column default expressions",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (id VARCHAR PRIMARY KEY, c1 TIMESTAMP DEFAULT CURRENT_TIMESTAMP);",
@@ -607,6 +910,39 @@ func TestAlterTable(t *testing.T) {
 						{5, 6},
 					},
 					Skip: true, // schema names not supported yet
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3114
+			Name: "Rename table with a foreign key",
+			SetUpScript: []string{
+				"CREATE TABLE bug8_parent (id integer PRIMARY KEY);",
+				"CREATE TABLE bug8_child (id integer PRIMARY KEY, parent_id integer);",
+				"ALTER TABLE bug8_child ADD CONSTRAINT bug8_fk FOREIGN KEY (parent_id) REFERENCES bug8_parent(id);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE bug8_child RENAME TO bug8_child2;",
+				},
+				{
+					Query:    "INSERT INTO bug8_parent VALUES (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO bug8_child2 VALUES (1, 1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO bug8_child2 VALUES (2, 2);",
+					ExpectedErr: "Foreign key violation on fk: `bug8_fk`, table: `bug8_child2`, referenced table: `bug8_parent`, key: `[2]`",
+				},
+				{
+					Query: "ALTER TABLE bug8_parent RENAME TO bug8_parent2;",
+				},
+				{
+					Query:       "INSERT INTO bug8_child2 VALUES (3, 3);",
+					ExpectedErr: "Foreign key violation on fk: `bug8_fk`, table: `bug8_child2`, referenced table: `bug8_parent2`, key: `[3]`",
 				},
 			},
 		},
@@ -1323,6 +1659,81 @@ WHERE con.contype = 'c'
 ORDER BY schema_name, table_name;`,
 					// TODO: the check should `CHECK ((b > 10))`
 					Expected: []sql.Row{{"public", "attmp3", "b_greater_than_ten", `b_greater_than_ten CHECK "b" > 10 ENFORCED`}},
+				},
+			},
+		},
+		{
+			Name: "VALIDATE CONSTRAINT with the table's schema not on the search path",
+			SetUpScript: []string{
+				`CREATE TABLE public.vc (a int, b int);`,
+				`INSERT INTO public.vc VALUES (1, 10);`,
+				`ALTER TABLE public.vc ADD CONSTRAINT b_gt_ten CHECK (b > 10) NOT VALID;`,
+				`SELECT pg_catalog.set_config('search_path', '', false);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `ALTER TABLE public.vc VALIDATE CONSTRAINT b_gt_ten;`,
+					ExpectedErr: `Check constraint "b_gt_ten" violated`,
+				},
+			},
+		},
+		{
+			Name: "VALIDATE CONSTRAINT with a same-named table earlier on the search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA s2;`,
+				// (11, 5) violates b > 10, but satisfies it if b is read from column 0, as it would be were the
+				// check compiled against s2.vc.
+				`CREATE TABLE public.vc (a int, b int);`,
+				`INSERT INTO public.vc VALUES (11, 5);`,
+				`ALTER TABLE public.vc ADD CONSTRAINT b_gt_ten CHECK (b > 10) NOT VALID;`,
+				`CREATE TABLE s2.vc (b int, a int);`,
+				`SET search_path TO 's2, public';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `ALTER TABLE public.vc VALIDATE CONSTRAINT b_gt_ten;`,
+					ExpectedErr: `Check constraint "b_gt_ten" violated`,
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3082
+			Name: "duplicate key handling after ADD COLUMN with an expression index",
+			SetUpScript: []string{
+				"CREATE TABLE expression_index_alter (id int PRIMARY KEY, name text UNIQUE);",
+				"CREATE INDEX expression_index_alter_lower_name ON expression_index_alter ((lower(name)));",
+				"ALTER TABLE expression_index_alter ADD COLUMN extra timestamptz;",
+				"INSERT INTO expression_index_alter (id, name) VALUES (1, 'v1');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (1, 'duplicate');",
+					ExpectedErr: "duplicate primary key",
+				},
+				{
+					// Verify the secondary UNIQUE index uses the remapped row shape too.
+					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (2, 'v1');",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'v2') ON CONFLICT (id) DO UPDATE SET name = 'v2';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (2, 'v2');",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'ignored') ON CONFLICT DO NOTHING;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'ignored') ON CONFLICT (id) DO NOTHING;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, name, extra FROM expression_index_alter;",
+					Expected: []sql.Row{{1, "v2", nil}},
 				},
 			},
 		},

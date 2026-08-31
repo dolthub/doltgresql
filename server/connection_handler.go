@@ -644,6 +644,10 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 				// copying from a file is handled in a single message
 				return true, true, h.copyFromFileQuery(injectedStmt)
 			}
+		case *node.CopyTo:
+			// Unlike COPY FROM STDIN, the entire COPY TO STDOUT flow is driven by the server, so it completes
+			// within a single message and the server is ready for the next query afterward.
+			return true, true, h.handleCopyTo(injectedStmt)
 		}
 	}
 	return false, true, nil
@@ -875,12 +879,37 @@ func makeCommandComplete(tag string, rows int32) *pgproto3.CommandComplete {
 // messages are expected, and the server should tell the client that it is ready for the next query, and |err| contains
 // any error that occurred while processing the COPY DATA message.
 func (h *ConnectionHandler) handleCopyData(message *pgproto3.CopyData) (stop bool, endOfMessages bool, err error) {
+	if h.copyFromStdinState != nil && h.copyFromStdinState.copyErr != nil {
+		// A previous chunk of this COPY operation failed and its work was rolled back, so discard the remaining
+		// data until the client ends the operation with a COPY DONE or COPY FAIL message. Processing further
+		// chunks would insert rows for an operation that has already been rejected.
+		return false, false, nil
+	}
 	copyFromData := bytes.NewReader(message.Data)
 	stop, endOfMessages, err = h.handleCopyDataHelper(h.copyFromStdinState, copyFromData)
 	if err != nil && h.copyFromStdinState != nil {
 		h.copyFromStdinState.copyErr = err
+		h.rollbackCopyTransaction(h.copyFromStdinState.startedTransaction)
 	}
 	return stop, endOfMessages, err
+}
+
+// rollbackCopyTransaction rolls back the transaction started on behalf of a failed or aborted COPY FROM STDIN
+// operation, so that rows loaded by any chunks that were processed successfully don't linger in an open
+// transaction that a later statement would commit. If the COPY did not start the transaction itself (e.g. it was
+// run inside a transaction block), this does nothing: the normal statement-failure handling takes care of it,
+// matching Postgres.
+func (h *ConnectionHandler) rollbackCopyTransaction(startedTransaction bool) {
+	if !startedTransaction || h.transactionState != idleTransactionState {
+		return
+	}
+	if h.restoredAutoCommitWithoutTransaction() {
+		return
+	}
+	if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
+		logrus.Warnf("error rolling back COPY FROM STDIN transaction: %s", err)
+	}
+	h.restoredAutoCommitWithoutTransaction()
 }
 
 // copyFromFileQuery handles a COPY FROM message that is reading from a file, returning any error that occurs
@@ -928,6 +957,133 @@ func (h *ConnectionHandler) copyFromFileQuery(stmt *node.CopyFrom) error {
 	})
 }
 
+// handleCopyTo handles a COPY ... TO STDOUT statement, streaming the results of the underlying SELECT statement
+// back to the client as COPY DATA messages. Copying to a server-side file is rejected during AST conversion, as a
+// security measure. Returns any error that occurs.
+func (h *ConnectionHandler) handleCopyTo(copyTo *node.CopyTo) (err error) {
+	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "COPY TO")
+	if err != nil {
+		return err
+	}
+
+	if copyTo.TableName.Schema != "" {
+		originalSchema, err := sqlCtx.GetSessionVariable(sqlCtx, "search_path")
+		if err != nil {
+			return err
+		}
+		err = sqlCtx.SetSessionVariable(sqlCtx, "search_path", copyTo.TableName.Schema)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = sqlCtx.SetSessionVariable(sqlCtx, "search_path", originalSchema)
+		}()
+	}
+
+	// Build and analyze the plan for the SELECT statement underlying this COPY TO statement.
+	builder := planbuilder.New(sqlCtx, h.doltgresHandler.e.Analyzer.Catalog, nil)
+	boundNode, flags, err := builder.BindOnly(copyTo.SelectStub, "", nil)
+	if err != nil {
+		return err
+	}
+	analyzedNode, err := h.doltgresHandler.e.Analyzer.Analyze(sqlCtx, boundNode, nil, flags)
+	if err != nil {
+		return err
+	}
+
+	sch := analyzedNode.Schema(sqlCtx)
+	colNames := make([]string, len(sch))
+	for i, col := range sch {
+		colNames[i] = col.Name
+	}
+
+	// For the binary format, we ask the engine for values in each type's binary send format by setting the format
+	// code for every column to 1 (binary). The text and CSV formats use the default text encoding (format code 0).
+	var dataWriter dataloader.DataWriter
+	var formatCodes []int16
+	switch copyTo.CopyOptions.CopyFormat {
+	case tree.CopyFormatText:
+		dataWriter = dataloader.NewTabularDataWriter(colNames, copyTo.CopyOptions.Delimiter, "", copyTo.CopyOptions.Header)
+	case tree.CopyFormatCsv:
+		dataWriter = dataloader.NewCsvDataWriter(colNames, copyTo.CopyOptions.Delimiter, copyTo.CopyOptions.Header)
+	case tree.CopyFormatBinary:
+		dataWriter = dataloader.NewBinaryDataWriter()
+		formatCodes = make([]int16, len(sch))
+		for i := range formatCodes {
+			formatCodes[i] = 1
+		}
+	default:
+		return errors.Errorf("unknown format specified for COPY TO: %v", copyTo.CopyOptions.CopyFormat)
+	}
+
+	var overallFormat byte
+	columnFormatCodes := make([]uint16, len(sch))
+	if copyTo.CopyOptions.CopyFormat == tree.CopyFormatBinary {
+		overallFormat = 1
+		for i := range columnFormatCodes {
+			columnFormatCodes[i] = 1
+		}
+	}
+	if err = h.send(&pgproto3.CopyOutResponse{
+		OverallFormat:     overallFormat,
+		ColumnFormatCodes: columnFormatCodes,
+	}); err != nil {
+		return err
+	}
+
+	// The header is not sent on its own, but is instead prepended to the next chunk of data written (the first row,
+	// or the footer when there are no rows). This matches Postgres's message framing for COPY TO STDOUT, which some
+	// clients rely on
+	pendingHeader, err := dataWriter.WriteHeader()
+	if err != nil {
+		return err
+	}
+	writeChunk := func(data []byte) {
+		if pendingHeader != nil {
+			data = append(pendingHeader, data...)
+			pendingHeader = nil
+		}
+		h.backend.Send(&pgproto3.CopyData{Data: data})
+	}
+
+	numRows := 0
+	callback := func(_ *sql.Context, res *Result) error {
+		for _, row := range res.Rows {
+			data, wErr := dataWriter.WriteRow(row.val)
+			if wErr != nil {
+				return wErr
+			}
+			writeChunk(data)
+		}
+		numRows += len(res.Rows)
+		return h.backend.Flush()
+	}
+
+	if err = h.doltgresHandler.ComExecuteBound(sqlCtx, h.mysqlConn, "COPY TO", analyzedNode, formatCodes, callback); err != nil {
+		return err
+	}
+
+	footerData, err := dataWriter.WriteFooter()
+	if err != nil {
+		return err
+	}
+	if footerData != nil {
+		writeChunk(footerData)
+	}
+
+	// If nothing was written at all (no rows and no footer), the header must still be sent on its own.
+	if pendingHeader != nil {
+		h.backend.Send(&pgproto3.CopyData{Data: pendingHeader})
+	}
+
+	if err = h.backend.Flush(); err != nil {
+		return err
+	}
+
+	h.backend.Send(&pgproto3.CopyDone{})
+	return h.send(makeCommandComplete("COPY", int32(numRows)))
+}
+
 // handleCopyDataHelper is a helper function that should only be invoked by handleCopyData. handleCopyData wraps this
 // function so that it can capture any returned error message and store it in the saved state.
 func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, copyFromData io.Reader) (stop bool, endOfMessages bool, err error) {
@@ -940,6 +1096,9 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 	sqlCtx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "COPY FROM STDIN")
 	if err != nil {
 		return false, false, err
+	}
+	if sqlCtx.GetTransaction() == nil {
+		copyState.startedTransaction = true
 	}
 	if err = startTransactionIfNecessary(sqlCtx); err != nil {
 		return false, false, err
@@ -991,7 +1150,7 @@ func (h *ConnectionHandler) handleCopyDataHelper(copyState *copyFromStdinState, 
 		case tree.CopyFormatCsv:
 			dataLoader, err = dataloader.NewCsvDataLoader(insertNode.ColumnNames, tbl.Schema(sqlCtx), copyFromStdinNode.CopyOptions.Delimiter, copyFromStdinNode.CopyOptions.Header)
 		case tree.CopyFormatBinary:
-			err = errors.Errorf("BINARY format is not supported for COPY FROM")
+			dataLoader, err = dataloader.NewBinaryDataLoader(insertNode.ColumnNames, tbl.Schema(sqlCtx))
 		default:
 			err = errors.Errorf("unknown format specified for COPY FROM: %v",
 				copyFromStdinNode.CopyOptions.CopyFormat)
@@ -1058,6 +1217,17 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 			errors.Errorf("COPY DONE message received without a COPY FROM STDIN operation in progress")
 	}
 
+	// The COPY DONE message ends the COPY operation whether it succeeds or fails below, so always clear the COPY
+	// state, leaving the connection ready for its next query. If finalizing the operation fails, its work must
+	// also be rolled back.
+	startedTransaction := h.copyFromStdinState.startedTransaction
+	defer func() {
+		h.copyFromStdinState = nil
+		if err != nil {
+			h.rollbackCopyTransaction(startedTransaction)
+		}
+	}()
+
 	// If there was a previous error returned from processing a CopyData message, then don't return an error here
 	// and don't send endOfMessage=true, since the CopyData error already sent endOfMessage=true. If we do send
 	// endOfMessage=true here, then the client gets confused about the unexpected/extra Idle message since the
@@ -1095,7 +1265,6 @@ func (h *ConnectionHandler) handleCopyDone(_ *pgproto3.CopyDone) (stop bool, end
 	}
 	sqlCtx.SetIgnoreAutoCommit(false)
 
-	h.copyFromStdinState = nil
 	// We send back endOfMessage=true, since the COPY DONE message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
 	return false, true, h.send(&pgproto3.CommandComplete{
@@ -1119,7 +1288,10 @@ func (h *ConnectionHandler) handleCopyFail(_ *pgproto3.CopyFail) (stop bool, end
 			errors.Errorf("no data loader found for COPY FROM STDIN operation")
 	}
 
+	startedTransaction := h.copyFromStdinState.startedTransaction
 	h.copyFromStdinState = nil
+	// The client aborted the operation, so any rows loaded by chunks that were already processed must not persist
+	h.rollbackCopyTransaction(startedTransaction)
 	// We send back endOfMessage=true, since the COPY FAIL message ends the COPY DATA flow and the server is ready
 	// to accept the next query now.
 	return false, true, nil
@@ -1600,7 +1772,7 @@ func castSQLError(err error) *pgconn.PgError {
 		code = pgcode.ForeignKeyViolation
 	case sql.ErrCheckConstraintViolated.Is(err), pgtypes.ErrDomainValueViolatesCheckConstraint.Is(err):
 		code = pgcode.CheckViolation
-	case sql.ErrInsertIntoNonNullableProvidedNull.Is(err),
+	case sql.ErrInsertIntoNonNullableProvidedNull.Is(err), sql.ErrFieldNoDefaultValue.Is(err),
 		sql.ErrColumnDefaultReturnedNull.Is(err), pgtypes.ErrDomainDoesNotAllowNullValues.Is(err):
 		code = pgcode.NotNullViolation
 	// Class 25 — Invalid Transaction State

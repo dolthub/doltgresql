@@ -129,6 +129,127 @@ func TestAggregateFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "json_agg",
+			SetUpScript: []string{
+				`SET TIME ZONE 'UTC'`,
+				`CREATE TABLE json_agg_records (id int4, label text)`,
+				`INSERT INTO json_agg_records VALUES (1, 'one'), (2, NULL)`,
+				`CREATE TABLE json_agg_arrays (id int4 primary key, v int4[])`,
+				`INSERT INTO json_agg_arrays VALUES (1, ARRAY[1,NULL,3]), (2, ARRAY[4,5,NULL])`,
+				`CREATE TABLE json_agg_stored (id int4 primary key, amount numeric(40,20), payload json)`,
+				`INSERT INTO json_agg_stored VALUES (1, 12345678901234567890.12345678901234567890, '{"kind":"stored"}')`,
+				`CREATE DOMAIN json_agg_positive_int AS int4 CHECK (VALUE > 0)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (1::int4),(2),(NULL)) AS t(v);`,
+					Expected: []sql.Row{{`[1, 2, null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('quote"slash\line'::text),(E'line\nnext')) AS t(v);`,
+					Expected: []sql.Row{{`["quote\"slash\\line", "line\nnext"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (true),(false),(NULL::bool)) AS t(v);`,
+					Expected: []sql.Row{{`[true, false, null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (1.2300::numeric),('-4.5'::numeric),('NaN'::numeric)) AS t(v);`,
+					Expected: []sql.Row{{`[1.2300, -4.5, "NaN"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('Infinity'::float8),('-Infinity'::float8),('NaN'::float8),(1.5::float8)) AS t(v);`,
+					Expected: []sql.Row{{`["Infinity", "-Infinity", "NaN", 1.5]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('2024-02-29'::date),('0001-01-01 BC'::date)) AS t(v);`,
+					Expected: []sql.Row{{`["2024-02-29", "0001-01-01 BC"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('2024-02-29 12:34:56.123456'::timestamp),('2024-03-01 00:00:00'::timestamp)) AS t(v);`,
+					Expected: []sql.Row{{`["2024-02-29T12:34:56.123456", "2024-03-01T00:00:00"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('550e8400-e29b-41d4-a716-446655440000'::uuid),('00000000-0000-0000-0000-000000000000'::uuid)) AS t(v);`,
+					Expected: []sql.Row{{`["550e8400-e29b-41d4-a716-446655440000", "00000000-0000-0000-0000-000000000000"]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('{"b": 2, "a": 1}'::json),('null'::json)) AS t(v);`,
+					Expected: []sql.Row{{`[{"b": 2, "a": 1}, null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('{"b": 2, "a": 1}'::jsonb),('[1, null]'::jsonb)) AS t(v);`,
+					Expected: []sql.Row{{`[{"a": 1, "b": 2}, [1, null]]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('1'::json),('"two"'::json),('true'::json),('null'::json),('{"k":3}'::json),('[4]'::json)) AS t(v);`,
+					Expected: []sql.Row{{`[1, "two", true, null, {"k":3}, [4]]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM json_agg_arrays;`,
+					Expected: []sql.Row{{"[[1,null,3], \n [4,5,null]]"}},
+				},
+				{
+					Query:    `SELECT json_agg(amount) FROM json_agg_stored;`,
+					Expected: []sql.Row{{`[12345678901234567890.12345678901234567890]`}},
+				},
+				{
+					Query:    `SELECT json_agg(r) FROM (SELECT * FROM json_agg_stored ORDER BY id) r;`,
+					Expected: []sql.Row{{`[{"id":1,"amount":12345678901234567890.12345678901234567890,"payload":{"kind":"stored"}}]`}},
+				},
+				{
+					Query:    `SELECT json_agg(NULL::text);`,
+					Expected: []sql.Row{{`[null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (SELECT 1::int AS v WHERE false) AS t;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(json_agg(1));`,
+					Expected: []sql.Row{{"json"}},
+				},
+				{
+					Query:    `SELECT json_agg(r) FROM (SELECT * FROM json_agg_records ORDER BY id) r;`,
+					Expected: []sql.Row{{`[{"id":1,"label":"one"}, ` + "\n " + `{"id":2,"label":null}]`}},
+				},
+				{
+					Query: `SELECT g, json_agg(v) FROM (VALUES ('a',1),('a',2),('b',3),('b',NULL)) AS t(g,v) GROUP BY g ORDER BY g;`,
+					Expected: []sql.Row{
+						{"a", `[1, 2]`},
+						{"b", `[3, null]`},
+					},
+				},
+				{
+					Query: `SELECT json_agg(v) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES (1,10),(2,NULL),(3,30)) AS t(id,v) ORDER BY id;`,
+					Expected: []sql.Row{
+						{`[10]`},
+						{`[10, null]`},
+						{`[10, null, 30]`},
+					},
+				},
+				{
+					Query: `SELECT json_agg(v) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) FROM (VALUES (1,10),(2,20)) AS t(id,v) ORDER BY id;`,
+					Expected: []sql.Row{
+						{nil},
+						{`[10]`},
+					},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES ('\x00ff'::bytea),(NULL::bytea)) AS t(v);`,
+					Expected: []sql.Row{{`["\\x00ff", null]`}},
+				},
+				{
+					Query:    `SELECT json_agg(v) FROM (VALUES (1::json_agg_positive_int),(2::json_agg_positive_int)) AS t(v);`,
+					Expected: []sql.Row{{`[1, 2]`}},
+				},
+				{
+					Query:    `SELECT json_agg(DISTINCT v) FROM (VALUES (1),(1),(NULL),(NULL)) AS t(v);`,
+					Expected: []sql.Row{{`[1, null]`}},
+				},
+			},
+		},
+		{
 			Name: "array_agg",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (pk INT primary key, t timestamp, v varchar, f float[]);`,
@@ -856,6 +977,66 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:    `select greatest(a, b, c), least(a, b, c) from t;`,
 					Expected: []sql.Row{{Numeric("8.80000"), Numeric("2.75")}},
+				},
+			},
+		},
+		{
+			Name: "num_nonnulls and num_nulls",
+			Assertions: []ScriptTestAssertion{
+				{
+					// The OIDs are registered in the built-in catalog, so they must match Postgres.
+					Query:    `SELECT 'num_nonnulls'::regproc::oid, 'num_nulls'::regproc::oid;`,
+					Expected: []sql.Row{{440, 438}},
+				},
+				{
+					Query:            `SELECT num_nonnulls(1, NULL);`,
+					ExpectedColNames: []string{"num_nonnulls"},
+					Expected:         []sql.Row{{1}},
+				},
+				{
+					Query:            `SELECT num_nulls(1, NULL);`,
+					ExpectedColNames: []string{"num_nulls"},
+					Expected:         []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT num_nonnulls(NULL);`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT num_nulls(NULL);`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT num_nonnulls(1, 2, 3), num_nulls(1, 2, 3);`,
+					Expected: []sql.Row{{3, 0}},
+				},
+				{
+					Query:    `SELECT num_nonnulls('a', NULL::int4, true, NULL::text, 1.5), num_nulls('a', NULL::int4, true, NULL::text, 1.5);`,
+					Expected: []sql.Row{{3, 2}},
+				},
+				{
+					Query:       `SELECT num_nonnulls();`,
+					ExpectedErr: "function num_nonnulls() does not exist",
+				},
+				{
+					Query:       `SELECT num_nulls();`,
+					ExpectedErr: "function num_nulls() does not exist",
+				},
+				{
+					Query:    `CREATE TABLE num_nulls_check (a uuid, b uuid, CONSTRAINT t_direction_check CHECK ((num_nonnulls(a, b) = 1)));`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO num_nulls_check VALUES ('00000000-0000-0000-0000-000000000001', NULL);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `INSERT INTO num_nulls_check VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');`,
+					ExpectedErr: "Check constraint",
+				},
+				{
+					Query:       `INSERT INTO num_nulls_check VALUES (NULL, NULL);`,
+					ExpectedErr: "Check constraint",
 				},
 			},
 		},
@@ -1844,6 +2025,119 @@ func TestJsonFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "to_json",
+			SetUpScript: []string{
+				`SET TIME ZONE 'UTC'`,
+				`SET DateStyle = 'SQL, MDY'`,
+				`CREATE TABLE to_json_test (id int4, label text)`,
+				`INSERT INTO to_json_test VALUES (7, 'named')`,
+				`CREATE DOMAIN to_json_int_domain AS int4`,
+				`CREATE DOMAIN to_json_oid_domain AS oid`,
+				`CREATE DOMAIN to_json_json_domain AS json`,
+				`CREATE DOMAIN to_json_int_array_domain AS int4[]`,
+				`CREATE TYPE to_json_named_record AS (id int4, label text)`,
+				`CREATE DOMAIN to_json_named_record_domain AS to_json_named_record`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT to_json(E'quote " slash \\ newline\n'::text)`,
+					Expected: []sql.Row{{`"quote \" slash \\ newline\n"`}},
+				},
+				{
+					Query:    `SELECT to_json(42::int4)`,
+					Expected: []sql.Row{{"42"}},
+				},
+				{
+					Query:    `SELECT pg_typeof(to_json(42)), pg_typeof(array_to_json(ARRAY[1])), pg_typeof(row_to_json(ROW(1)))`,
+					Expected: []sql.Row{{"json", "json", "json"}},
+				},
+				{
+					Query:    `SELECT to_json(123.450::numeric)`,
+					Expected: []sql.Row{{"123.450"}},
+				},
+				{
+					Query:    `SELECT to_json('NaN'::numeric), to_json('Infinity'::numeric), to_json('-Infinity'::numeric)`,
+					Expected: []sql.Row{{`"NaN"`, `"Infinity"`, `"-Infinity"`}},
+				},
+				{
+					Query:    `SELECT to_json(1.25::float8), to_json('NaN'::float8), to_json('Infinity'::float8), to_json('-Infinity'::float8)`,
+					Expected: []sql.Row{{"1.25", `"NaN"`, `"Infinity"`, `"-Infinity"`}},
+				},
+				{
+					Query:    `SELECT to_json(1e20::float8), to_json(1e-7::float8)`,
+					Expected: []sql.Row{{"1e+20", "1e-07"}},
+				},
+				{
+					Query:    `SELECT to_json(true)`,
+					Expected: []sql.Row{{"true"}},
+				},
+				{
+					Query:    `SELECT to_json(DATE '2024-02-29')`,
+					Expected: []sql.Row{{`"2024-02-29"`}},
+				},
+				{
+					Query:    `SELECT to_json(TIMESTAMP '2024-02-29 12:34:56.123456')`,
+					Expected: []sql.Row{{`"2024-02-29T12:34:56.123456"`}},
+				},
+				{
+					Query:    `SELECT to_json(TIMESTAMPTZ '2024-02-29 12:34:56.123456+05:30')`,
+					Expected: []sql.Row{{`"2024-02-29T07:04:56.123456+00:00"`}},
+				},
+				{
+					Query:    `SELECT to_json(DATE '0001-01-01 BC'), to_json(TIMESTAMP '0001-01-01 12:34:56.123456 BC'), to_json(TIMESTAMPTZ '0001-01-01 12:34:56.123456+00 BC')`,
+					Expected: []sql.Row{{`"0001-01-01 BC"`, `"0001-01-01T12:34:56.123456 BC"`, `"0001-01-01T12:34:56.123456+00:00 BC"`}},
+				},
+				{
+					Query:    `SELECT to_json('550e8400-e29b-41d4-a716-446655440000'::uuid)`,
+					Expected: []sql.Row{{`"550e8400-e29b-41d4-a716-446655440000"`}},
+				},
+				{
+					Query:    `SELECT to_json(23::oid), to_json('pg_class'::regclass), to_json('42'::xid)`,
+					Expected: []sql.Row{{`"23"`, `"pg_class"`, `"42"`}},
+				},
+				{
+					Query:    `SELECT to_json(7::to_json_int_domain), to_json(23::to_json_oid_domain)`,
+					Expected: []sql.Row{{"7", `"23"`}},
+				},
+				{
+					Query:    `SELECT to_json(ARRAY[1, NULL, 3]::to_json_int_array_domain)`,
+					Expected: []sql.Row{{`[1,null,3]`}},
+				},
+				{
+					Query:    `SELECT to_json((ROW(7, 'named')::to_json_named_record)::to_json_named_record_domain)`,
+					Expected: []sql.Row{{`{"id":7,"label":"named"}`}},
+				},
+				{
+					Query:    `SELECT to_json('{"b": 2, "a":1}'::json), to_json('{"b": 2, "a":1}'::jsonb)`,
+					Expected: []sql.Row{{`{"b": 2, "a":1}`, `{"a": 1, "b": 2}`}},
+				},
+				{
+					Query:    `SELECT to_json('{"b": 2, "a":1}'::to_json_json_domain)`,
+					Expected: []sql.Row{{`{"b": 2, "a":1}`}},
+				},
+				{
+					Query:    `SELECT to_json(E'\\x00ff'::bytea), to_json(INTERVAL '1 day 02:03:04.5')`,
+					Expected: []sql.Row{{`"\\x00ff"`, `"1 day 02:03:04.5"`}},
+				},
+				{
+					Query:    `SELECT to_json(ARRAY[1, NULL, 3]::int4[])`,
+					Expected: []sql.Row{{`[1,null,3]`}},
+				},
+				{
+					Query:    `SELECT to_json(ROW(1, 'x'::text, NULL::bool))`,
+					Expected: []sql.Row{{`{"f1":1,"f2":"x","f3":null}`}},
+				},
+				{
+					Query:    `SELECT to_json(t) FROM to_json_test t`,
+					Expected: []sql.Row{{`{"id":7,"label":"named"}`}},
+				},
+				{
+					Query:    `SELECT to_json(NULL::text)`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+		{
 			Name: "row_to_json anonymous row",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1937,8 +2231,16 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{"[1.5,2.5]"}},
 				},
 				{
+					Query:    `SELECT array_to_json(ARRAY[1e20::float8, 1e-7::float8])`,
+					Expected: []sql.Row{{"[1e+20,1e-07]"}},
+				},
+				{
 					Query:    `SELECT array_to_json(ARRAY[true, false])`,
 					Expected: []sql.Row{{"[true,false]"}},
+				},
+				{
+					Query:    `SELECT array_to_json(ARRAY[DATE '2024-02-29', DATE '2025-01-01'])`,
+					Expected: []sql.Row{{`["2024-02-29","2025-01-01"]`}},
 				},
 				{
 					Query:    `SELECT array_to_json(ARRAY['a', 'b', 'c'])`,
@@ -1949,7 +2251,7 @@ func TestArrayFunctions(t *testing.T) {
 					Expected: []sql.Row{{"[1,null,3]"}},
 				},
 				{
-					Skip:     true, // TODO: multidimensional array literals are not yet supported
+					Skip:     true, // TODO: https://github.com/dolthub/doltgresql/issues/3183
 					Query:    `SELECT array_to_json('{{1,2},{3,4}}'::int[])`,
 					Expected: []sql.Row{{"[[1,2],[3,4]]"}},
 				},
@@ -2005,6 +2307,75 @@ func TestArrayFunctions(t *testing.T) {
 				{
 					Query:    `SELECT array_to_string(indclass, ',') FROM pg_index WHERE indexrelid = 'vectest_ab'::regclass;`,
 					Expected: []sql.Row{{""}},
+				},
+			},
+		},
+		{
+			Name: "string_to_array",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT string_to_array('a,b,c', ',');`,
+					Expected: []sql.Row{{"{a,b,c}"}},
+				},
+				{
+					Query:    `SELECT string_to_array('xx~^~yy~^~zz', '~^~', 'yy');`,
+					Expected: []sql.Row{{"{xx,NULL,zz}"}},
+				},
+				{
+					// NULL delimiter splits into individual characters
+					Query:    `SELECT string_to_array('abc', NULL);`,
+					Expected: []sql.Row{{"{a,b,c}"}},
+				},
+				{
+					Query:    `SELECT string_to_array('abc', NULL, 'b');`,
+					Expected: []sql.Row{{"{a,NULL,c}"}},
+				},
+				{
+					// empty delimiter returns the whole string as a single element
+					Query:    `SELECT string_to_array('abc', '');`,
+					Expected: []sql.Row{{"{abc}"}},
+				},
+				{
+					// empty input string returns an empty array
+					Query:    `SELECT string_to_array('', ',');`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					Query:    `SELECT string_to_array('', NULL);`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					// NULL input string returns NULL
+					Query:    `SELECT string_to_array(NULL, ',');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT string_to_array(NULL, ',', 'a');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// NULL null_string performs no NULL substitution
+					Query:    `SELECT string_to_array('a,b,c', ',', NULL);`,
+					Expected: []sql.Row{{"{a,b,c}"}},
+				},
+				{
+					// delimiters at the edges produce empty-string fields
+					Query:    `SELECT string_to_array(',a,,b,', ',');`,
+					Expected: []sql.Row{{`{"",a,"",b,""}`}},
+				},
+				{
+					// empty null_string maps empty fields to NULL
+					Query:    `SELECT string_to_array(',a,', ',', '');`,
+					Expected: []sql.Row{{"{NULL,a,NULL}"}},
+				},
+				{
+					// result can be cast to other array types
+					Query:    `SELECT string_to_array('1,2,3', ',')::int4[];`,
+					Expected: []sql.Row{{"{1,2,3}"}},
+				},
+				{
+					Query:    `SELECT array_length(string_to_array('a,b,c', ','), 1);`,
+					Expected: []sql.Row{{int32(3)}},
 				},
 			},
 		},
@@ -2513,10 +2884,9 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					},
 				},
 				{
-					// TODO: only UTF8 is supported for now
 					Query: `SELECT pg_char_to_encoding('LATIN1');`,
 					Expected: []sql.Row{
-						{-1},
+						{8},
 					},
 				},
 			},
@@ -4071,6 +4441,96 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3090
+			Name: "timestamp/timestamptz minus interval with day component",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00' - interval '90 days';`,
+					Expected: []sql.Row{{"2026-05-17 12:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2026-08-15 12:00:00+00' - interval '90 days';`,
+					Expected: []sql.Row{{"2026-05-17 12:00:00+00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00' - interval '1 hour';`,
+					Expected: []sql.Row{{"2026-08-15 11:00:00"}},
+				},
+				{
+					Query:    `SELECT (timestamp '2026-08-15 12:00:00' - interval '90 days') = timestamp '2026-08-15 12:00:00';`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3163
+			Name: "timestamp/timestamptz plus/minus interval normalizes month-end overflow",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2026-03-31 12:00:00' - interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-28 12:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2026-03-31 12:00:00+00' - interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-28 12:00:00+00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-03-15 12:00:00' - interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-15 12:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-01-31 00:00:00' + interval '1 month';`,
+					Expected: []sql.Row{{"2026-02-28 00:00:00"}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/pull/3162#discussion_r3825271782
+			Name: "timestamp/timestamptz plus/minus interval preserves sub-second precision",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00.750000' - interval '0.250000 seconds';`,
+					Expected: []sql.Row{{"2026-08-15 12:00:00.5"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2026-08-15 12:00:00.750000+00' - interval '0.250000 seconds';`,
+					Expected: []sql.Row{{"2026-08-15 12:00:00.5+00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2026-08-15 12:00:00.5' + interval '0.25 seconds';`,
+					Expected: []sql.Row{{"2026-08-15 12:00:00.75"}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/pull/3162
+			Name: "timestamp/timestamptz plus/minus interval errors on out-of-range results",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT timestamp '2026-01-01' + interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+				{
+					Query:       `SELECT timestamp '2026-01-01' - interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+				{
+					Query:       `SELECT timestamptz '2026-01-01+00' + interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+				{
+					// Confirms the session/connection survives an out-of-range error.
+					Query:    `SELECT timestamp '2026-01-01' + interval '1 day';`,
+					Expected: []sql.Row{{"2026-01-02 00:00:00"}},
+				},
+				{
+					// A large interval that stays within the supported range should still work.
+					Query:    `SELECT timestamp '2026-01-01' + interval '290000 years';`,
+					Expected: []sql.Row{{"292026-01-01 00:00:00"}},
+				},
+			},
+		},
 	})
 }
 
@@ -4739,6 +5199,41 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 			{
+				// The projection materialized below the sort expands the set-returning function; the final
+				// projection must reference the expanded column rather than re-evaluate it, which multiplied
+				// the rows again and clobbered the sort order.
+				Name: "aliased SRF alongside scalar columns with ORDER BY",
+				SetUpScript: []string{
+					"CREATE TABLE srf_sort (id integer PRIMARY KEY, arr integer[]);",
+					"INSERT INTO srf_sort VALUES (7, '{101,202,303}'), (8, '{44}');",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:            `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort WHERE id = 7 ORDER BY elem DESC;`,
+						Expected:         []sql.Row{{7, 303}, {7, 202}, {7, 101}},
+						ExpectedColNames: []string{"source_id", "elem"},
+					},
+					{
+						// run a second time in the same session
+						Query:    `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort WHERE id = 7 ORDER BY elem DESC;`,
+						Expected: []sql.Row{{7, 303}, {7, 202}, {7, 101}},
+					},
+					{
+						Query:    `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort ORDER BY elem DESC;`,
+						Expected: []sql.Row{{7, 303}, {7, 202}, {7, 101}, {8, 44}},
+					},
+					{
+						Query:    `SELECT id AS source_id, generate_series(1, 2) AS n FROM srf_sort ORDER BY n, source_id;`,
+						Expected: []sql.Row{{7, 1}, {8, 1}, {7, 2}, {8, 2}},
+					},
+					{
+						// no ORDER BY: the SRF alias is still materialized below the final projection
+						Query:    `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort WHERE id = 7;`,
+						Expected: []sql.Row{{7, 101}, {7, 202}, {7, 303}},
+					},
+				},
+			},
+			{
 				Name: "generate_series as table function with column alias",
 				Assertions: []ScriptTestAssertion{
 					{
@@ -5022,6 +5517,96 @@ ORDER BY sp.r, pg_type.oid DESC;`,
 							{3, "{1,2,3}"},
 							{1, "{4,5}"},
 							{2, "{4,5}"},
+						},
+					},
+				},
+			},
+			{
+				Name: "generate_subscripts as table function with scalar alias",
+				SetUpScript: []string{
+					"CREATE TABLE array_alias_test (id INT primary key, values_array INT[]);",
+					"INSERT INTO array_alias_test VALUES (1, ARRAY[10, 20, 30]), (2, NULL), (3, ARRAY[]::INT[]);",
+					`CREATE OR REPLACE FUNCTION calculate_bonus(
+    IN current_salary NUMERIC,
+    OUT bonus_amount NUMERIC,
+    OUT new_total_salary NUMERIC
+) AS $$
+BEGIN
+    bonus_amount := current_salary * 0.10;
+    new_total_salary := current_salary + bonus_amount;
+END;
+$$ LANGUAGE plpgsql;`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "SELECT k FROM generate_subscripts(ARRAY[1, 2, 3], 1) AS k;",
+						Expected: []sql.Row{
+							{1}, {2}, {3},
+						},
+					},
+					{
+						Query:    "SELECT ARRAY(SELECT k + 1 FROM generate_subscripts(ARRAY[10, 20, 30], 1) AS k ORDER BY k);",
+						Expected: []sql.Row{{"{2,3,4}"}},
+					},
+					{
+						Query: "SELECT ARRAY(SELECT values_array[k] + 1 FROM generate_subscripts(values_array, 1) AS k ORDER BY k) FROM array_alias_test WHERE id = 1;",
+						Expected: []sql.Row{
+							{"{11,21,31}"},
+						},
+					},
+					{
+						Query:    "SELECT k FROM generate_subscripts(NULL::INT[], 1) AS k ORDER BY k;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT k FROM generate_subscripts(ARRAY[]::INT[], 1) AS k ORDER BY k;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT k FROM generate_subscripts(ARRAY[10, 20]::INT[], NULL::INT) AS k ORDER BY k;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT generate_subscripts(NULL::INT[], 1);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT idx FROM generate_subscripts(NULL::INT[], 1) AS k(idx) ORDER BY idx;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT id, ARRAY(SELECT k FROM generate_subscripts(values_array, 1) AS k ORDER BY k) FROM array_alias_test ORDER BY id;",
+						Expected: []sql.Row{{1, "{1,2,3}"}, {2, "{}"}, {3, "{}"}},
+					},
+					{
+						Query: "SELECT c.bonus_amount, c.new_total_salary, k FROM calculate_bonus(5000) AS c CROSS JOIN generate_subscripts(ARRAY[10,20], 1) AS k ORDER BY k;",
+						Expected: []sql.Row{
+							{Numeric("500.00"), Numeric("5500.00"), 1},
+							{Numeric("500.00"), Numeric("5500.00"), 2},
+						},
+					},
+					{
+						Query:    "SELECT c.bonus_amount, c.new_total_salary FROM calculate_bonus(5000) AS c;",
+						Expected: []sql.Row{{Numeric("500.00"), Numeric("5500.00")}},
+					},
+					{
+						Query: "SELECT k, c.bonus_amount, c.new_total_salary FROM generate_subscripts(ARRAY[10,20], 1) AS k CROSS JOIN calculate_bonus(5000) AS c ORDER BY k;",
+						Expected: []sql.Row{
+							{1, Numeric("500.00"), Numeric("5500.00")},
+							{2, Numeric("500.00"), Numeric("5500.00")},
+						},
+					},
+					{
+						Query: "SELECT k, j FROM generate_subscripts(ARRAY[10,20], 1) AS k CROSS JOIN generate_subscripts(ARRAY[30,40], 1) AS j ORDER BY k, j;",
+						Expected: []sql.Row{
+							{1, 1}, {1, 2}, {2, 1}, {2, 2},
+						},
+					},
+					{
+						Query: "SELECT c.bonus, c.total, k.idx FROM calculate_bonus(5000) AS c(bonus,total) CROSS JOIN generate_subscripts(ARRAY[10,20], 1) AS k(idx) ORDER BY k.idx;",
+						Expected: []sql.Row{
+							{Numeric("500.00"), Numeric("5500.00"), 1},
+							{Numeric("500.00"), Numeric("5500.00"), 2},
 						},
 					},
 				},

@@ -152,6 +152,7 @@ RUN apt-get install -y \
     ca-certificates-java \
     bats \
     lsof \
+    unzip \
     postgresql-client-15 \
     nodejs \
     elixir \
@@ -166,6 +167,14 @@ RUN curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh \
     && ./dotnet-install.sh --channel 9.0 --runtime aspnetcore --install-dir /usr/share/dotnet \
     && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
     && rm dotnet-install.sh
+
+# duckdb CLI and its postgres extension, used by the duckdb integration test. The extension is
+# installed (downloaded) at build time so that running the tests doesn't require network access.
+RUN curl -fsSL -o /tmp/duckdb.zip "https://github.com/duckdb/duckdb/releases/download/v1.4.4/duckdb_cli-linux-$(dpkg --print-architecture).zip" && \
+    unzip -o /tmp/duckdb.zip -d /usr/local/bin && \
+    chmod +x /usr/local/bin/duckdb && \
+    rm /tmp/duckdb.zip && \
+    duckdb -c "INSTALL postgres;"
 
 # cpan dependencies
 RUN cpanm --force DBD::Pg
@@ -204,6 +213,7 @@ COPY testing/postgres-client-tests/c/ /postgres-client-tests/c/
 COPY testing/postgres-client-tests/cpp/ /postgres-client-tests/cpp/
 COPY testing/postgres-client-tests/odbc/ /postgres-client-tests/odbc/
 COPY testing/postgres-client-tests/drizzle/ /postgres-client-tests/drizzle/
+COPY testing/postgres-client-tests/duckdb/ /postgres-client-tests/duckdb/
 COPY testing/postgres-client-tests/helpers.bash /postgres-client-tests/
 COPY testing/postgres-client-tests/php/ /postgres-client-tests/php/
 COPY testing/postgres-client-tests/perl/ /postgres-client-tests/perl/

@@ -169,3 +169,10 @@ teardown() {
     (cd $BATS_TEST_DIRNAME/c; make)
     $BATS_TEST_DIRNAME/c/libdbi-test $USER $PORT
 }
+
+@test "duckdb postgres extension" {
+    # DuckDB imports remote tables using COPY (SELECT ...) TO STDOUT (FORMAT "binary")
+    query_server -c "CREATE TABLE duckdb_test (pk int primary key, name text, price double precision, active boolean, created timestamp)" -t
+    query_server -c "INSERT INTO duckdb_test VALUES (1, 'first', 1.5, true, '2025-01-01 12:00:00'), (2, NULL, -2.25, false, '2025-06-15 08:30:00'), (3, '', 0, NULL, NULL), (4, 'héllo, \"world\"', 1e10, true, '1999-12-31 23:59:59')" -t
+    bash $BATS_TEST_DIRNAME/duckdb/duckdb-test.sh $USER $PORT
+}

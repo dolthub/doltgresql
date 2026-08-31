@@ -87,6 +87,11 @@ type copyFromStdinState struct {
 	// so that it can avoid sending a CommandComplete message if an error was encountered after the client already
 	// sent a CopyDone message to the server.
 	copyErr error
+	// startedTransaction is true if the COPY operation started the session's transaction (as opposed to loading
+	// into a transaction that was already in progress). When the operation fails or is aborted, a transaction it
+	// started must be rolled back so that rows loaded by chunks that were processed successfully don't linger in
+	// an open transaction that a later statement would commit.
+	startedTransaction bool
 }
 
 type PortalData struct {
@@ -155,7 +160,7 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 		case *pgexprs.ExplicitCast:
 			if bindVar, ok := e.Child().(*expression.BindVar); ok {
 				var typOid uint32
-				if doltgresType, ok := bindVar.Type(ctx).(*pgtypes.DoltgresType); ok {
+				if doltgresType, ok := e.Type(ctx).(*pgtypes.DoltgresType); ok {
 					typOid = id.Cache().ToOID(doltgresType.ID.AsId())
 				} else {
 					typOid, err = VitessTypeToObjectID(e.Type(ctx))
@@ -196,6 +201,7 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 	switch queryPlan := queryPlan.(type) {
 	case *plan.InsertInto:
 		transform.InspectExpressionsWithNode(ctx, queryPlan.Source, extractBindVars)
+		bindInsertSelect(ctx, queryPlan, types)
 	}
 
 	// above finds types of bindvars in unordered form.
@@ -214,6 +220,34 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 	return typesArr, err
 }
 
+// bindInsertSelect infers direct SELECT bind variables from their corresponding INSERT destination columns.
+func bindInsertSelect(ctx *sql.Context, insert *plan.InsertInto, types map[string]uint32) {
+	project, ok := insert.Source.(*plan.Project)
+	if !ok {
+		return
+	}
+	destinationTypes := make(map[string]sql.Type)
+	for _, col := range insert.Destination.Schema(ctx) {
+		destinationTypes[strings.ToLower(col.Name)] = col.Type
+	}
+	unknownOID := id.Cache().ToOID(pgtypes.Unknown.ID.AsId())
+	for i, projection := range project.Projections {
+		bindVar := pgexprs.UnwrapBindVar(projection)
+		if bindVar == nil || i >= len(insert.ColumnNames) || types[bindVar.Name] != unknownOID {
+			continue
+		}
+		destinationType, ok := destinationTypes[strings.ToLower(insert.ColumnNames[i])]
+		if !ok {
+			continue
+		}
+		if doltgresType, ok := destinationType.(*pgtypes.DoltgresType); ok {
+			types[bindVar.Name] = id.Cache().ToOID(doltgresType.ID.AsId())
+		} else if typOID, typeErr := VitessTypeToObjectID(destinationType); typeErr == nil {
+			types[bindVar.Name] = typOID
+		}
+	}
+}
+
 // VitessTypeToObjectID returns a type, as defined by Vitess, into a type as defined by Postgres.
 // OIDs can be obtained with the following query: `SELECT oid, typname FROM pg_type ORDER BY 1;`
 func VitessTypeToObjectID(typ sql.Type) (uint32, error) {
@@ -229,6 +263,10 @@ func checkCompatibleTypes(ctx *sql.Context, existingOid, newOid uint32, newName 
 	var err error
 	existing := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(existingOid)))
 	newType := pgtypes.GetTypeByID(id.Type(id.Cache().ToInternal(newOid)))
+	if existing == nil || newType == nil {
+		//TODO: user-defined types are not in the built-in map, so their compatibility is not checked
+		return nil
+	}
 	if _, _, err = framework.FindCommonType(ctx, []*pgtypes.DoltgresType{existing, newType}); err != nil {
 		err = errors.Errorf("parameter %s is used for incompatible types: %s and %s", newName, existing.String(), newType.String())
 	}
