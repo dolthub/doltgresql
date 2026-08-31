@@ -102,6 +102,8 @@ type DoltgresBehaviorConfig struct {
 	DoltTransactionCommit *bool `yaml:"dolt_transaction_commit,omitempty" minver:"0.7.4"`
 	// AutoGCBehavior configures automatic background garbage collection.
 	AutoGCBehavior *DoltgresAutoGCBehaviorYAMLConfig `yaml:"auto_gc_behavior,omitempty" minver:"TBD"`
+	// SkipStartupIntegrityCheck disables the data integrity check that runs at server startup, which makes startup faster
+	SkipStartupIntegrityCheck *bool `yaml:"skip_startup_integrity_check,omitempty" minver:"TBD"`
 }
 
 // DoltgresAutoGCBehaviorYAMLConfig implements Dolt's doltservercfg.AutoGCBehavior.
@@ -255,6 +257,15 @@ func (cfg *DoltgresConfig) DoltTransactionCommit() bool {
 	}
 
 	return *cfg.BehaviorConfig.DoltTransactionCommit
+}
+
+// SkipStartupIntegrityCheck returns whether the adaptive-encoding integrity check that normally runs
+// at server startup should be skipped.
+func (cfg *DoltgresConfig) SkipStartupIntegrityCheck() bool {
+	if cfg.BehaviorConfig == nil || cfg.BehaviorConfig.SkipStartupIntegrityCheck == nil {
+		return false
+	}
+	return *cfg.BehaviorConfig.SkipStartupIntegrityCheck
 }
 
 func (cfg *DoltgresConfig) DataDir() string {

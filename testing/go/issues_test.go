@@ -27,7 +27,7 @@ import (
 func TestIssues(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "Issue #25",
+			Name: "Issue #25: double-quoted args to dolt functions treated as identifiers",
 			SetUpScript: []string{
 				"create table tbl (pk int);",
 				"insert into tbl values (1);",
@@ -60,7 +60,7 @@ func TestIssues(t *testing.T) {
 			},
 		},
 		{
-			Name: "Issue #2030",
+			Name: "Issue #2030: Drizzle relational query fails with BigInt error",
 			SetUpScript: []string{
 				`CREATE TABLE sub_entities (
   project_id VARCHAR(256) NOT NULL,
@@ -177,7 +177,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2049",
+			Name: "Issue #2049: bad control character in JSON string literal",
 			SetUpScript: []string{
 				`CREATE TABLE jsonb_test (id VARCHAR(256) NOT NULL PRIMARY KEY, "jsonbColumn" JSONB);`,
 				`INSERT INTO jsonb_test VALUES ('test', '{"test": "value\n"}');`,
@@ -201,7 +201,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2197 Part 1",
+			Name: "Issue #2197 Part 1: bugs with table composite types",
 			SetUpScript: []string{
 				`CREATE TABLE t1 (a INT, b VARCHAR(3));`,
 				`CREATE TABLE t2(id SERIAL, t1 t1);`,
@@ -234,7 +234,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2197 Part 2",
+			Name: "Issue #2197 Part 2: bugs with table composite types",
 			SetUpScript: []string{
 				`CREATE TABLE t1a (a INT4, b VARCHAR(3));`,
 				`CREATE TABLE t1b (a INT4 NOT NULL, b VARCHAR(3) NOT NULL);`,
@@ -371,7 +371,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2299",
+			Name: "Issue #2299: nil pointer panic using DEFAULT on ENUM column",
 			SetUpScript: []string{
 				"CREATE TYPE team_role AS ENUM ('admin', 'editor', 'member');",
 			},
@@ -391,7 +391,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2307",
+			Name: "Issue #2307: SELECT EXISTS returns INT2 instead of BOOL",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk INT4);",
 			},
@@ -409,7 +409,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2548",
+			Name: "Issue #2548: timezone parser rejects valid time zone offset formats",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk INT4 PRIMARY KEY, v1 TIMESTAMP WITH TIME ZONE);",
 			},
@@ -437,7 +437,7 @@ limit 1`,
 			},
 		},
 		{
-			Name: "Issue #2604",
+			Name: "Issue #2604: dolt_merge syntax error with unique index and DEFAULT",
 			SetUpScript: []string{
 				"CREATE TABLE t (id INT PRIMARY KEY, a TEXT, b TEXT DEFAULT 'x');",
 				"CREATE UNIQUE INDEX idx_t_a ON t(a);",
@@ -461,13 +461,186 @@ limit 1`,
 				},
 			},
 		},
+		{
+			Name: "Issue #3116: dolt.branches.dirty does not have boolean output",
+			SetUpScript: []string{
+				"CREATE TABLE t3116 (id INT PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The bare projection was already handled before this issue was filed; the shapes below,
+					// with a filter or sort between the projection and the system table, were not.
+					Query:            `SELECT dirty FROM dolt.branches;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches WHERE name = 'main';`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches ORDER BY name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches WHERE dirty = true;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					Query:            `SELECT b.dirty FROM dolt.branches b ORDER BY b.name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"t"}},
+				},
+				{
+					// Other dolt system tables expose boolean columns with the same problem
+					Query:            `SELECT staged FROM dolt.status ORDER BY table_name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f"}},
+				},
+				{
+					Query:            `SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID, pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f", "t"}},
+				},
+				{
+					Query:            `SELECT dolt_commit('-Am', 'commit for issue 3116');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            `SELECT dirty FROM dolt.branches WHERE name = 'main';`,
+					ExpectedColTypes: []id.Type{pgtypes.Bool.ID},
+					Expected:         []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
+			Name: "Issue #3138: WITH ORDINALITY in correlated subquery internal error",
+			SetUpScript: []string{
+				"CREATE TABLE bug16_parent (id integer PRIMARY KEY);",
+				"CREATE TABLE bug16_child  (id integer PRIMARY KEY, parent_id integer REFERENCES bug16_parent(id));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT c.conname,
+       array(SELECT colid FROM unnest(c.conkey) WITH ORDINALITY cols(colid, arridx) ORDER BY cols.arridx)
+FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 'bug16_child' ORDER BY c.conname;`,
+					Expected: []sql.Row{
+						{"bug16_child_parent_id_fkey", "{2}"},
+						{"bug16_child_pkey", "{1}"},
+					},
+				},
+				{
+					// non-correlated WITH ORDINALITY should still number rows correctly
+					Query:    `SELECT colid, arridx FROM unnest(ARRAY[1,2]) WITH ORDINALITY cols(colid, arridx);`,
+					Expected: []sql.Row{{1, 1}, {2, 2}},
+				},
+			},
+		},
+		{
+			Name: "Issue #3097: bind parameters described as unknown OID, breaking pgx",
+			SetUpScript: []string{
+				"CREATE TABLE g_bool (id INT4 PRIMARY KEY, flag BOOLEAN);",
+				"INSERT INTO g_bool VALUES (1, true), (2, false), (3, NULL);",
+				"CREATE TABLE g_arr (id INT4 PRIMARY KEY, v INT4, vals INT4[]);",
+				"INSERT INTO g_arr VALUES (1, 1, ARRAY[1,2,3]), (2, 2, ARRAY[4,5,6]);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*) FROM g_bool WHERE flag IS DISTINCT FROM $1;`,
+					BindVars: []any{true},
+					Expected: []sql.Row{{int64(2)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_bool WHERE flag IS NOT DISTINCT FROM $1;`,
+					BindVars: []any{true},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE $1 = ANY(vals);`,
+					BindVars: []any{int32(2)},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					// Uncorrelated subquery: the comparison doesn't depend on the outer row, so it's all-or-nothing.
+					Query:    `SELECT count(*) FROM g_arr WHERE $1 = ANY(SELECT v FROM g_arr);`,
+					BindVars: []any{int32(2)},
+					Expected: []sql.Row{{int64(2)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE vals[$1] = 2;`,
+					BindVars: []any{int32(2)},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE coalesce($1, v) = 1;`,
+					BindVars: []any{nil},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE greatest($1, v) = 2;`,
+					BindVars: []any{int32(0)},
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    `SELECT count(*) FROM g_arr WHERE least($1, v) = 1;`,
+					BindVars: []any{int32(5)},
+					Expected: []sql.Row{{int64(1)}},
+				},
+			},
+		},
+	})
+}
+
+// TestIssue3116WireFormat asserts, over the simple query protocol, that boolean columns of dolt system
+// tables are sent in Postgres's text format ('t'/'f') rather than MySQL's ('1'/'0'), including when a
+// filter or sort sits between the projection and the system table. Clients like psycopg2 use the simple
+// protocol with text-format results and fail to parse '0'/'1' for a column whose declared type is boolean.
+// The ScriptTest above cannot cover this: pgx negotiates binary-format results, which took a different
+// (working) code path while the text path was broken.
+func TestIssue3116WireFormat(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "Issue #3116: dolt system table booleans over the wire",
+			SetUpScript: []string{
+				"CREATE TABLE t3116 (id INT PRIMARY KEY);",
+			},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches WHERE name = 'main';",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches ORDER BY name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT dirty FROM dolt.branches WHERE dirty = true;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"t"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT staged FROM dolt.status ORDER BY table_name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f"}}}},
+				},
+				SimpleQuery{
+					Query:    "SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;",
+					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f", "t"}}}},
+				},
+			},
+		},
 	})
 }
 
 func TestIssuesWire(t *testing.T) {
 	RunWireScripts(t, []WireScriptTest{
 		{
-			Name: "Issue #2546",
+			Name: "Issue #2546: string literal described as invalid OID 705",
 			Assertions: []WireScriptTestAssertion{
 				{
 					Send: []pgproto3.FrontendMessage{
@@ -495,7 +668,100 @@ func TestIssuesWire(t *testing.T) {
 			},
 		},
 		{
-			Name: "Issue #2557",
+			Name: "Issue #3097: bind parameters described as unknown OID, breaking pgx",
+			SetUpScript: []string{
+				"CREATE TABLE g_arr (id INT4 PRIMARY KEY, v INT4, vals INT4[]);",
+			},
+			Assertions: []WireScriptTestAssertion{
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s1", Query: "SELECT count(*) FROM g_arr WHERE $1 = ANY(vals)"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s1"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s2", Query: "SELECT count(*) FROM g_arr WHERE $1 = ANY(SELECT v FROM g_arr)"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s2"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s3", Query: "SELECT count(*) FROM g_arr WHERE vals[$1] = 2"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s3"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s4", Query: "SELECT count(*) FROM g_arr WHERE coalesce($1, v) = 1"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s4"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+				{
+					Send: []pgproto3.FrontendMessage{
+						&pgproto3.Parse{Name: "s5", Query: "SELECT count(*) FROM g_arr WHERE greatest($1, v) = 1"},
+						&pgproto3.Describe{ObjectType: 'S', Name: "s5"},
+						&pgproto3.Sync{},
+					},
+					Receive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 1, DataTypeOID: 20, DataTypeSize: 20, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+				},
+			},
+		},
+		{
+			Name: "Issue #2557: unescaped newlines in JSON output",
 			Assertions: []WireScriptTestAssertion{
 				{
 					Send: []pgproto3.FrontendMessage{

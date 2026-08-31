@@ -267,9 +267,14 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 	}
 	newStmt = stmt
 	for i, bindingName := range bindings {
-		variable := stack.GetVariable(bindingName)
+		variable, err := stack.GetVariableWithError(bindingName)
+		if err != nil {
+			// Only a name that matches no variable at all leaves the caller free to try something else; a
+			// bad field on a variable that does exist is a real error that has to surface.
+			return newStmt, !plpgsql.ErrVariableNotFound.Is(err), err
+		}
 		if variable.Type == nil {
-			return newStmt, false, fmt.Errorf("variable `%s` could not be found", bindingName)
+			return newStmt, false, plpgsql.ErrVariableNotFound.New(bindingName)
 		}
 		var formattedVar string
 		if *variable.Value != nil {

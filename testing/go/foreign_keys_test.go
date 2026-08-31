@@ -2043,6 +2043,39 @@ func TestForeignKeys(t *testing.T) {
 					},
 				},
 			},
+			{
+				Name: "Self-referential foreign key with schema-qualified column reference",
+				SetUpScript: []string{
+					`CREATE SCHEMA myschema`,
+					`CREATE TABLE myschema.t (a INT PRIMARY KEY, b INT REFERENCES myschema.t (a))`,
+					`INSERT INTO myschema.t VALUES (1, NULL), (2, 1)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "INSERT INTO myschema.t VALUES (3, 2)",
+					},
+					{
+						Query:       "INSERT INTO myschema.t VALUES (4, 99)",
+						ExpectedErr: "Foreign key violation",
+					},
+				},
+			},
+			{
+				Name: "Self-referential foreign key with schema-qualified table constraint",
+				SetUpScript: []string{
+					`CREATE TABLE public.t (a INT PRIMARY KEY, b INT, FOREIGN KEY (b) REFERENCES public.t (a))`,
+					`INSERT INTO public.t VALUES (1, NULL), (2, 1)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "INSERT INTO t VALUES (3, 2)",
+					},
+					{
+						Query:       "INSERT INTO t VALUES (4, 99)",
+						ExpectedErr: "Foreign key violation",
+					},
+				},
+			},
 		},
 	)
 }

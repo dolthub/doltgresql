@@ -1776,5 +1776,81 @@ $$ LANGUAGE plpgsql;`,
 				},
 			},
 		},
+		{
+			Name: "RETURNS TABLE in a FROM clause",
+			SetUpScript: []string{
+				`CREATE FUNCTION figures() RETURNS TABLE(shape TEXT, sides INT)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 'triangle', 3;
+						RETURN QUERY SELECT 'square', 4;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT * FROM figures();",
+					ExpectedColNames: []string{"shape", "sides"},
+					Expected:         []sql.Row{{"triangle", 3}, {"square", 4}},
+				},
+				{
+					Query:            "SELECT shape FROM figures() WHERE sides = 4;",
+					ExpectedColNames: []string{"shape"},
+					Expected:         []sql.Row{{"square"}},
+				},
+				{
+					// In a SELECT list the same call produces one record value per row
+					Query:    "SELECT figures();",
+					Expected: []sql.Row{{"(triangle,3)"}, {"(square,4)"}},
+				},
+			},
+		},
+		{
+			Name: "RETURNS TABLE with a single column in a FROM clause",
+			SetUpScript: []string{
+				`CREATE FUNCTION shapes() RETURNS TABLE(shape TEXT)
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 'triangle';
+						RETURN QUERY SELECT 'square';
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT * FROM shapes();",
+					ExpectedColNames: []string{"shape"},
+					Expected:         []sql.Row{{"triangle"}, {"square"}},
+				},
+				{
+					Query:    "SELECT shapes();",
+					Expected: []sql.Row{{"(triangle)"}, {"(square)"}},
+				},
+			},
+		},
+		{
+			Name: "RETURNS SETOF a scalar type",
+			SetUpScript: []string{
+				`CREATE FUNCTION sides() RETURNS SETOF INT
+					LANGUAGE plpgsql
+					AS $$
+					BEGIN
+						RETURN QUERY SELECT 3 UNION ALL SELECT 4;
+					END;
+					$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM sides();",
+					Expected: []sql.Row{{3}, {4}},
+				},
+				{
+					Query:    "SELECT sides();",
+					Expected: []sql.Row{{3}, {4}},
+				},
+			},
+		},
 	})
 }

@@ -613,6 +613,14 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		return vitess.InjectedExpr{
 			Expression: &pgnodes.DomainColumn{Typ: dataType},
 		}, nil
+	case tree.UsingColumn:
+		return vitess.InjectedExpr{
+			Expression: &pgnodes.UsingColumn{
+				SchemaName: node.SchemaName,
+				TableName:  node.TableName,
+				ColumnName: node.Name,
+			},
+		}, nil
 	case tree.FunctionColumn:
 		if !node.FromCreate {
 			return vitess.InjectedExpr{

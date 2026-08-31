@@ -867,6 +867,39 @@ var typesTests = []ScriptTest{
 		},
 	},
 	{
+		Name: "Array literal parsing preserves internal whitespace in unquoted elements",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT '{2026-08-21 12:00:00,2026-08-22 13:30:00}'::timestamp[];`,
+				Expected: []sql.Row{{`{"2026-08-21 12:00:00","2026-08-22 13:30:00"}`}},
+			},
+			{
+				// Compared by instant equality (not text) since the display offset depends
+				// on the session's local time zone.
+				Query:    `SELECT ('{2026-08-21 12:00:00+05:00}'::timestamptz[])[1] = '2026-08-21 07:00:00+00'::timestamptz;`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT '{1 day 2 hours, 3 days}'::interval[];`,
+				Expected: []sql.Row{{`{"1 day 02:00:00","3 days"}`}},
+			},
+			{
+				// Insignificant whitespace around unquoted elements is still trimmed.
+				Query:    `SELECT '{ 1 , 2 , 3 }'::int[];`,
+				Expected: []sql.Row{{"{1,2,3}"}},
+			},
+			{
+				// A whitespace-only array body is still an empty array, not a single blank element.
+				Query:    `SELECT '{ }'::int[];`,
+				Expected: []sql.Row{{"{}"}},
+			},
+			{
+				Query:    `SELECT '{ NULL , 2 }'::int[];`,
+				Expected: []sql.Row{{"{NULL,2}"}},
+			},
+		},
+	},
+	{
 		Name: "2D array",
 		Skip: true, // multiple dimensions not supported yet
 		SetUpScript: []string{
@@ -2062,8 +2095,59 @@ var typesTests = []ScriptTest{
 		SetUpScript: []string{
 			"CREATE TABLE t_oidvector (id INTEGER primary key, v1 oidvector);",
 			"INSERT INTO t_oidvector VALUES (1, '1234 5678 9012'), (2, '556 778 223');",
+			"CREATE TABLE t_regtype_array (v regtype[]);",
+			"INSERT INTO t_regtype_array VALUES (ARRAY['integer'::regtype]);",
 		},
 		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY['character varying'::regtype]::oidvector;",
+				Expected: []sql.Row{{"1043"}},
+			},
+			{
+				Query:    "SELECT ARRAY['integer'::regtype, 'text'::regtype]::oidvector;",
+				Expected: []sql.Row{{"23 25"}},
+			},
+			{
+				Query:    "SELECT ARRAY[23::oid]::oidvector;",
+				Expected: []sql.Row{{"23"}},
+			},
+			{
+				Query: `SELECT ARRAY['pg_class'::regclass]::oidvector =
+					ARRAY['pg_class'::regclass::oid]::oidvector;`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    "SELECT ARRAY['textin'::regproc]::oidvector;",
+				Expected: []sql.Row{{"46"}},
+			},
+			{
+				Query:       "SELECT NULL::regtype[]::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT ARRAY[]::regtype[]::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY['integer'::regtype]::regtype[])::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT v::oidvector FROM t_regtype_array;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY['integer'::regtype] || ARRAY['text'::regtype])::oidvector;",
+				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+			},
+			{
+				Query:       "SELECT ARRAY['integer'::regtype, NULL]::oidvector;",
+				ExpectedErr: "array is not a valid oidvector",
+			},
+			{
+				Query:       "SELECT ARRAY[ARRAY[23::oid]]::oidvector;",
+				ExpectedErr: "array is not a valid oidvector",
+			},
 			{
 				Query: "SELECT * FROM t_oidvector ORDER BY id;",
 				Expected: []sql.Row{
@@ -2745,8 +2829,50 @@ var typesTests = []ScriptTest{
 		SetUpScript: []string{
 			"CREATE TABLE t_int2vector (id INTEGER primary key, v1 int2vector);",
 			"INSERT INTO t_int2vector VALUES (1, '1 2 3'), (2, '6 7 8 9');",
+			"CREATE TABLE t_int2_array (v int2[]);",
+			"INSERT INTO t_int2_array VALUES (ARRAY[1::int2]);",
 		},
 		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[1, 2]::int2vector;",
+				Expected: []sql.Row{{"1 2"}},
+			},
+			{
+				Query:    "SELECT ARRAY[1::bigint, 2::bigint]::int2vector;",
+				Expected: []sql.Row{{"1 2"}},
+			},
+			{
+				Query:    "SELECT ARRAY[1.0::numeric, 2.0::numeric]::int2vector;",
+				Expected: []sql.Row{{"1 2"}},
+			},
+			{
+				Query:       "SELECT ARRAY[1, NULL]::int2vector;",
+				ExpectedErr: "array is not a valid int2vector",
+			},
+			{
+				Query:       "SELECT ARRAY[ARRAY[1]]::int2vector;",
+				ExpectedErr: "array is not a valid int2vector",
+			},
+			{
+				Query:       "SELECT NULL::int2[]::int2vector;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
+			{
+				Query:       "SELECT ARRAY[]::int2[]::int2vector;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY[1::int2]::int2[])::int2vector;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
+			{
+				Query:       "SELECT v::int2vector FROM t_int2_array;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
+			{
+				Query:       "SELECT (ARRAY[1::int2] || ARRAY[2::int2])::int2vector;",
+				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+			},
 			{
 				Query: "SELECT * FROM t_int2vector ORDER BY id;",
 				Expected: []sql.Row{
@@ -2782,6 +2908,40 @@ var typesTests = []ScriptTest{
 				Skip:     true,
 				Query:    `SELECT unnest(unnest(v1)) FROM t_int2vector ORDER BY id;`,
 				Expected: []sql.Row{{1}, {2}, {3}, {4}},
+			},
+		},
+	},
+	{
+		Name: "Domains over vector types",
+		SetUpScript: []string{
+			"CREATE DOMAIN two_int2vector AS int2vector CHECK (array_length(VALUE, 1) = 2);",
+			"CREATE DOMAIN nonnull_oidvector AS oidvector NOT NULL CHECK (array_length(VALUE, 1) <= 2);",
+			"CREATE DOMAIN null_rejecting_int2vector AS int2vector CHECK (VALUE IS NOT NULL);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT ARRAY[1, 2]::two_int2vector;",
+				Expected: []sql.Row{{"1 2"}},
+			},
+			{
+				Query:       "SELECT ARRAY[1]::two_int2vector;",
+				ExpectedErr: `constraint "two_int2vector_check"`,
+			},
+			{
+				Query:    "SELECT ARRAY[23::oid, 25::oid]::nonnull_oidvector;",
+				Expected: []sql.Row{{"23 25"}},
+			},
+			{
+				Query:       "SELECT ARRAY[23::oid, 25::oid, 26::oid]::nonnull_oidvector;",
+				ExpectedErr: `constraint "nonnull_oidvector_check"`,
+			},
+			{
+				Query:       "SELECT NULL::nonnull_oidvector;",
+				ExpectedErr: "domain nonnull_oidvector does not allow null values",
+			},
+			{
+				Query:       "SELECT NULL::null_rejecting_int2vector;",
+				ExpectedErr: `constraint "null_rejecting_int2vector_check"`,
 			},
 		},
 	},

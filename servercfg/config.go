@@ -43,8 +43,9 @@ var _ doltservercfg.ServerConfig = (*DoltgresConfig)(nil)
 func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 	return sql.EngineOverrides{
 		Builder: sql.BuilderOverrides{
-			ParseTableAsColumn: expression.NewTableToComposite,
-			Parser:             pgsql.NewPostgresParser(),
+			ParseTableAsColumn:          expression.NewTableToComposite,
+			ScalarFunctionAliasAsColumn: true,
+			Parser:                      pgsql.NewPostgresParser(),
 		},
 		Hooks: sql.ExecutionHooks{
 			RenameTable: sql.RenameTable{

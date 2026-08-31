@@ -16,6 +16,7 @@ package analyzer
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
@@ -104,26 +105,10 @@ func sanitizeExprType(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Ex
 	case *expression.GetField:
 		switch n := n.(type) {
 		case *plan.Project, *plan.Filter, *plan.GroupBy:
-			child := n.Children()[0]
-			// Table functions are wrapped in an alias node bearing the function's name
-			if alias, ok := child.(*plan.TableAlias); ok {
-				child = alias.Child
-			}
 			// Dolt system tables and table functions do not have doltgres types for their columns, so we
 			// convert them here.
-			var name, schemaName string
-			switch child := child.(type) {
-			case *plan.ResolvedTable:
-				name = child.Name()
-				if dbSchema, ok := child.Database().(sql.DatabaseSchema); ok {
-					schemaName = dbSchema.SchemaName()
-				}
-			case sql.TableFunction:
-				name = child.Name()
-			}
-			if doltdb.IsSystemTable(doltdb.TableName{Name: name, Schema: schemaName}) {
-				// This is a projection on a table, so we can safely convert the type
-				if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
+			if _, ok := expr.Type(ctx).(*pgtypes.DoltgresType); !ok {
+				if getFieldSourceIsSystemTable(n.Children()[0], expr) {
 					return pgexprs.NewGMSCast(expr), transform.NewTree, nil
 				}
 			}
@@ -166,6 +151,12 @@ func sanitizeExprType(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Ex
 					allDoltgresTypes := true
 					for _, child := range children {
 						if _, ok := child.Type(ctx).(*pgtypes.DoltgresType); !ok {
+							// An untyped bind variable (e.g. `coalesce($1, x)`) doesn't have a concrete type yet, but
+							// PgCoalesce.WithChildren resolves it from the other, already-typed arguments' common
+							// type, so it doesn't block the conversion the way any other unresolved type would.
+							if pgexprs.UnwrapBindVar(child) != nil {
+								continue
+							}
 							allDoltgresTypes = false
 							break
 						}
@@ -209,6 +200,53 @@ func sanitizeExprType(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Ex
 		}
 	}
 	return expr, transform.SameTree, nil
+}
+
+// getFieldSourceIsSystemTable reports whether the given GetField refers to a column supplied by a Dolt
+// system table or system table function somewhere beneath |node|.
+func getFieldSourceIsSystemTable(node sql.Node, gf *expression.GetField) bool {
+	// An empty table name cannot disambiguate between sources, so we treat it as matching any relation.
+	nameMatches := func(name string) bool {
+		return gf.Table() == "" || strings.EqualFold(name, gf.Table())
+	}
+	switch node := node.(type) {
+	case *plan.TableAlias:
+		// An alias hides the underlying relation's name, so only the alias name can match the field's table
+		if !nameMatches(node.Name()) {
+			return false
+		}
+		switch child := node.Child.(type) {
+		case *plan.ResolvedTable:
+			return resolvedTableIsSystemTable(child)
+		case sql.TableFunction:
+			return doltdb.IsSystemTable(doltdb.TableName{Name: child.Name()})
+		}
+		return false
+	case *plan.ResolvedTable:
+		return nameMatches(node.Name()) && resolvedTableIsSystemTable(node)
+	case *plan.SubqueryAlias:
+		// Subquery aliases are opaque: their output columns come from the subquery's own projection,
+		// which is sanitized independently.
+		return false
+	case sql.TableFunction:
+		return nameMatches(node.Name()) && doltdb.IsSystemTable(doltdb.TableName{Name: node.Name()})
+	default:
+		for _, child := range node.Children() {
+			if getFieldSourceIsSystemTable(child, gf) {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+// resolvedTableIsSystemTable returns whether the given resolved table is a Dolt system table.
+func resolvedTableIsSystemTable(rt *plan.ResolvedTable) bool {
+	schemaName := ""
+	if dbSchema, ok := rt.Database().(sql.DatabaseSchema); ok {
+		schemaName = dbSchema.SchemaName()
+	}
+	return doltdb.IsSystemTable(doltdb.TableName{Name: rt.Name(), Schema: schemaName})
 }
 
 // TypeSanitizeExistsSubquery casts any *plan.ExistsSubquery node still present in the tree into
