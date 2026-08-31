@@ -5199,6 +5199,41 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 			},
 			{
+				// The projection materialized below the sort expands the set-returning function; the final
+				// projection must reference the expanded column rather than re-evaluate it, which multiplied
+				// the rows again and clobbered the sort order.
+				Name: "aliased SRF alongside scalar columns with ORDER BY",
+				SetUpScript: []string{
+					"CREATE TABLE srf_sort (id integer PRIMARY KEY, arr integer[]);",
+					"INSERT INTO srf_sort VALUES (7, '{101,202,303}'), (8, '{44}');",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:            `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort WHERE id = 7 ORDER BY elem DESC;`,
+						Expected:         []sql.Row{{7, 303}, {7, 202}, {7, 101}},
+						ExpectedColNames: []string{"source_id", "elem"},
+					},
+					{
+						// run a second time in the same session
+						Query:    `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort WHERE id = 7 ORDER BY elem DESC;`,
+						Expected: []sql.Row{{7, 303}, {7, 202}, {7, 101}},
+					},
+					{
+						Query:    `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort ORDER BY elem DESC;`,
+						Expected: []sql.Row{{7, 303}, {7, 202}, {7, 101}, {8, 44}},
+					},
+					{
+						Query:    `SELECT id AS source_id, generate_series(1, 2) AS n FROM srf_sort ORDER BY n, source_id;`,
+						Expected: []sql.Row{{7, 1}, {8, 1}, {7, 2}, {8, 2}},
+					},
+					{
+						// no ORDER BY: the SRF alias is still materialized below the final projection
+						Query:    `SELECT id AS source_id, unnest(arr) AS elem FROM srf_sort WHERE id = 7;`,
+						Expected: []sql.Row{{7, 101}, {7, 202}, {7, 303}},
+					},
+				},
+			},
+			{
 				Name: "generate_series as table function with column alias",
 				Assertions: []ScriptTestAssertion{
 					{
