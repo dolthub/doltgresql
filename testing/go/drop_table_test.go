@@ -243,7 +243,8 @@ func TestDropTableCascade(t *testing.T) {
 				},
 				{
 					Query:       `DROP TABLE doesnotexist CASCADE;`,
-					ExpectedErr: `table "doesnotexist" does not exist`,
+					// This matches the standard DROP TABLE path's error; Postgres says `table "doesnotexist" does not exist`
+					ExpectedErr: `table not found: doesnotexist`,
 				},
 				{
 					Query:    `DROP TABLE IF EXISTS doesnotexist, parent CASCADE;`,
@@ -340,15 +341,125 @@ func TestDropTableCascade(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: view dependencies on tables are not yet tracked, so CASCADE cannot drop the dependent
-					//  view; the table drop succeeds and leaves the view behind (which errors when used), matching
-					//  the behavior of DROP TABLE without CASCADE
 					Query:    `DROP TABLE test CASCADE;`,
 					Expected: []sql.Row{},
 				},
 				{
 					Query:       `SELECT * FROM test_view;`,
-					ExpectedErr: "references invalid table",
+					ExpectedErr: "not found",
+				},
+			},
+		},
+		{
+			Name: "DROP TABLE CASCADE drops transitively dependent views only",
+			SetUpScript: []string{
+				`CREATE TABLE test (pk INT4 PRIMARY KEY, v1 TEXT);`,
+				`CREATE TABLE other (pk INT4 PRIMARY KEY);`,
+				`INSERT INTO test VALUES (1, 'one');`,
+				`INSERT INTO other VALUES (7);`,
+				`CREATE VIEW test_view AS SELECT * FROM test;`,
+				`CREATE VIEW test_view_view AS SELECT pk FROM test_view;`,
+				`CREATE VIEW other_view AS SELECT * FROM other;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `DROP TABLE test CASCADE;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT * FROM test_view;`,
+					ExpectedErr: "not found",
+				},
+				{
+					// The view on the dependent view is dropped as well
+					Query:       `SELECT * FROM test_view_view;`,
+					ExpectedErr: "not found",
+				},
+				{
+					// Views that don't depend on the dropped table are left alone
+					Query:    `SELECT * FROM other_view;`,
+					Expected: []sql.Row{{7}},
+				},
+			},
+		},
+		{
+			Name: "DROP TABLE CASCADE does not drop views resolving to a same-named table in another schema",
+			SetUpScript: []string{
+				`CREATE SCHEMA sch1;`,
+				`CREATE TABLE test (pk INT4 PRIMARY KEY);`,
+				`CREATE TABLE sch1.test (pk INT4 PRIMARY KEY);`,
+				`INSERT INTO sch1.test VALUES (3);`,
+				`CREATE VIEW qualified_view AS SELECT * FROM sch1.test;`,
+				`CREATE VIEW unqualified_view AS SELECT * FROM test;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Drops public.test; sch1.test and the views that resolve to it survive
+					Query:    `DROP TABLE test CASCADE;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM qualified_view;`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					// The unqualified reference resolved to public.test, which was dropped
+					Query:       `SELECT * FROM unqualified_view;`,
+					ExpectedErr: "not found",
+				},
+			},
+		},
+		{
+			Name: "DROP TABLE CASCADE drops columns using the table's row type",
+			SetUpScript: []string{
+				`CREATE TABLE test1 (pk INT4 PRIMARY KEY, v1 TEXT);`,
+				`CREATE TABLE test2 (pk INT4 PRIMARY KEY, v1 test1);`,
+				`INSERT INTO test2 VALUES (1, ROW(2, 'abc')::test1);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `DROP TABLE test1;`,
+					ExpectedErr: "cannot drop table test1 because other objects depend on it",
+				},
+				{
+					// The dependent column is dropped, not the whole table
+					Query:    `DROP TABLE test1 CASCADE;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM test2;`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "DROP TABLE CASCADE drops functions and procedures using the table's row type",
+			SetUpScript: []string{
+				`CREATE TABLE test (pk INT4 PRIMARY KEY, v1 TEXT);`,
+				`CREATE FUNCTION dependent_func(t test) RETURNS INT4 AS $$ BEGIN RETURN t.pk * 2; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION unrelated_func(v INT4) RETURNS INT4 AS $$ BEGIN RETURN v + 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE PROCEDURE dependent_proc(input test) AS $$ BEGIN END; $$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `DROP TABLE test;`,
+					ExpectedErr: "cannot drop table test because other objects depend on it",
+				},
+				{
+					Query:    `DROP TABLE test CASCADE;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT dependent_func(NULL);`,
+					ExpectedErr: "not found",
+				},
+				{
+					Query:    `SELECT unrelated_func(1);`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:       `CALL dependent_proc(NULL);`,
+					ExpectedErr: "does not exist",
 				},
 			},
 		},
