@@ -314,7 +314,8 @@ func (stmt *plpgSQL_stmt_assign) Convert() (Assignment, error) {
 		return Assignment{}, errors.New("PL/pgSQL assignment cannot find `:=` sign")
 	}
 	return Assignment{
-		VariableName:  varName,
+		// The target is raw source text, so it has to be folded the same way a reference to it would be.
+		VariableName:  NormalizeIdentifier(varName),
 		Expression:    query,
 		VariableIndex: stmt.VariableNumber,
 	}, nil
@@ -365,12 +366,9 @@ func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
 			return Block{}, fmt.Errorf("case statement WHEN clause is nil")
 		}
 
-		// TODO: The generated expressions from pg_query_go uses double quotes
-		//       around the variable name, which is valid for Postgres, but
-		//       our engine doesn't currently resolve double-quoted strings to
-		//       variables, so for now, we just extract the double quotes.
+		// pg_query_go quotes the generated variable name, which is what keeps its capitals intact when
+		// the reference is folded, so the quotes are left in place.
 		expressionString := when.Expression.Expression.Query
-		expressionString = strings.ReplaceAll(expressionString, `"`, "")
 
 		convertedWhenBodyStatements, err := jsonConvertStatements(when.Body)
 		if err != nil {
@@ -430,7 +428,13 @@ func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
 func (stmt *plpgSQL_stmt_dynexecute) Convert() (DynamicExecute, error) {
 	var params []string
 	for _, param := range stmt.Params {
-		params = append(params, param.Expr.Query)
+		// USING arguments are raw source text, so a reference among them is folded the way one in an
+		// ordinary expression would be.
+		query := param.Expr.Query
+		if normalized, isRef := NormalizeIdentifierPath(query); isRef {
+			query = normalized
+		}
+		params = append(params, query)
 	}
 	var target string
 	var targetIsRecord bool
@@ -534,6 +538,10 @@ func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
 		return Block{}, errors.New("for loop variable cannot be nil")
 	}
 	varName := stmt.Var.Variable.RefName
+	// The name is already in its declared form, so it is quoted where it goes into generated SQL rather
+	// than mentioned bare, which would fold away any capitals a quoted declaration gave it. Assignment
+	// targets take the plain name, since those are matched against the stack rather than parsed as SQL.
+	quotedVarName := QuoteIdentifier(varName)
 
 	// Extract bound and step expressions
 	lowerExpr := "1"
@@ -553,11 +561,11 @@ func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
 	// In the JSON, Lower is always the starting value and Upper is the ending bound.
 	var condition, incrExpr string
 	if stmt.Reverse {
-		condition = fmt.Sprintf("%s >= (%s)", varName, upperExpr)
-		incrExpr = fmt.Sprintf("%s - (%s)", varName, stepExpr)
+		condition = fmt.Sprintf("%s >= (%s)", quotedVarName, upperExpr)
+		incrExpr = fmt.Sprintf("%s - (%s)", quotedVarName, stepExpr)
 	} else {
-		condition = fmt.Sprintf("%s <= (%s)", varName, upperExpr)
-		incrExpr = fmt.Sprintf("%s + (%s)", varName, stepExpr)
+		condition = fmt.Sprintf("%s <= (%s)", quotedVarName, upperExpr)
+		incrExpr = fmt.Sprintf("%s + (%s)", quotedVarName, stepExpr)
 	}
 
 	// Convert the loop body.
@@ -742,7 +750,13 @@ func (stmt *plpgSQL_stmt_perform) Convert() Perform {
 func (stmt *plpgSQL_stmt_raise) Convert() Raise {
 	var params []string
 	for _, param := range stmt.Params {
-		params = append(params, param.Expr.Query)
+		// USING arguments are raw source text, so a reference among them is folded the way one in an
+		// ordinary expression would be.
+		query := param.Expr.Query
+		if normalized, isRef := NormalizeIdentifierPath(query); isRef {
+			query = normalized
+		}
+		params = append(params, query)
 	}
 
 	options := make(map[string]string)

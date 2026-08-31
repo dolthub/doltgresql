@@ -76,14 +76,17 @@ func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner sql.Stateme
 	// Set up the initial state of the function
 	stack := NewInterpreterStack(runner)
 	// Add the special variables
-	stack.NewRecord("OLD", sch, oldRow)
-	stack.NewRecord("NEW", sch, newRow)
+	// These are declared under their folded names, the same as anything the function declares itself, so
+	// that a body may write them in any case (`NEW.x`, `new.x`) the way Postgres allows.
+	stack.NewRecord(TriggerOldRecordName, sch, oldRow)
+	stack.NewRecord(TriggerNewRecordName, sch, newRow)
 	for varName, val := range trigVars {
-		varType, ok := triggerSpecialVariables[varName]
+		normalized := NormalizeIdentifier(varName)
+		varType, ok := triggerSpecialVariables[normalized]
 		if !ok {
 			return nil, fmt.Errorf("unknown variable %s for trigger", varName)
 		}
-		stack.NewVariableWithValue(varName, varType, val)
+		stack.NewVariableWithValue(normalized, varType, val)
 	}
 	return call(ctx, iFunc, stack)
 }
@@ -349,10 +352,10 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if iFunc.GetReturn().ID == pgtypes.Trigger.ID && len(operation.SecondaryData) == 1 {
 				normalized := strings.ReplaceAll(strings.ToLower(operation.PrimaryData), " ", "")
 				if normalized == "select$1;" {
-					if strings.EqualFold(operation.SecondaryData[0], "new") {
-						return *stack.GetVariable("NEW").Value, nil
-					} else if strings.EqualFold(operation.SecondaryData[0], "old") {
-						return *stack.GetVariable("OLD").Value, nil
+					if strings.EqualFold(operation.SecondaryData[0], TriggerNewRecordName) {
+						return *stack.GetVariable(TriggerNewRecordName).Value, nil
+					} else if strings.EqualFold(operation.SecondaryData[0], TriggerOldRecordName) {
+						return *stack.GetVariable(TriggerOldRecordName).Value, nil
 					}
 				}
 			}
@@ -494,7 +497,13 @@ func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
 				}
 				currentParam := params[currentParamIdx]
 				currentParamIdx += 1
-				formattedVar, varFound, err := iFunc.ApplyBindings(ctx, stack, "$1", []string{currentParam}, false)
+				// RAISE carries its arguments as raw source text, so a reference among them still has to
+				// be folded before it will match the variable it names.
+				lookupName := currentParam
+				if normalized, isRef := NormalizeIdentifierPath(currentParam); isRef {
+					lookupName = normalized
+				}
+				formattedVar, varFound, err := iFunc.ApplyBindings(ctx, stack, "$1", []string{lookupName}, false)
 				if varFound {
 					if err != nil {
 						return "", err
@@ -522,17 +531,18 @@ func evaluteNoticeMessage(ctx *sql.Context, iFunc InterpretedFunction,
 // triggerSpecialVariables are the list of special variables for triggers.
 // https://www.postgresql.org/docs/15/plpgsql-trigger.html
 // TODO: NEW and OLD variables are handled separately using `InterpreterStack.NewRecord` function.
+// Keys are the folded form of each name, since that is what a reference to one normalizes to.
 var triggerSpecialVariables = map[string]*pgtypes.DoltgresType{
-	//"NEW":
-	//"OLD":
-	"TG_NAME":         pgtypes.Name,
-	"TG_WHEN":         pgtypes.Text,
-	"TG_LEVEL":        pgtypes.Text,
-	"TG_OP":           pgtypes.Text,
-	"TG_RELID":        pgtypes.Oid,
-	"TG_RELNAME":      pgtypes.Name,
-	"TG_TABLE_NAME":   pgtypes.Name,
-	"TG_TABLE_SCHEMA": pgtypes.Name,
-	"TG_NARGS":        pgtypes.Int32,
-	"TG_ARGV[]":       pgtypes.TextArray,
+	//"new":
+	//"old":
+	"tg_name":         pgtypes.Name,
+	"tg_when":         pgtypes.Text,
+	"tg_level":        pgtypes.Text,
+	"tg_op":           pgtypes.Text,
+	"tg_relid":        pgtypes.Oid,
+	"tg_relname":      pgtypes.Name,
+	"tg_table_name":   pgtypes.Name,
+	"tg_table_schema": pgtypes.Name,
+	"tg_nargs":        pgtypes.Int32,
+	"tg_argv[]":       pgtypes.TextArray,
 }
