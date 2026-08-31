@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/goccy/go-json"
@@ -34,6 +35,33 @@ func jsonWrapperToFormattedString(ctx *sql.Context, val sql.JSONWrapper) (string
 		return "", err
 	}
 	return types.JSONDocument{Val: v}.JSONString()
+}
+
+// jsonValueToInterface converts a `json` or `jsonb` function argument into its plain Go
+// representation (map[string]any, []any, string, a number, bool, or nil), which is the form the
+// inspection functions walk.
+func jsonValueToInterface(ctx *sql.Context, val any) (any, error) {
+	// Large values stored with the old ExtendedAdaptiveEnc encoding are returned as a
+	// *val.ExtendedValueWrapper (sql.AnyWrapper). Unwrap to get the underlying document.
+	if wrapper, ok := val.(sql.AnyWrapper); ok {
+		unwrapped, err := wrapper.UnwrapAny(ctx)
+		if err != nil {
+			return nil, err
+		}
+		val = unwrapped
+	}
+	switch v := val.(type) {
+	case sql.JSONWrapper:
+		return v.ToInterface(ctx)
+	case string:
+		doc, err := json_in_callable(ctx, [2]*pgtypes.DoltgresType{}, v)
+		if err != nil {
+			return nil, err
+		}
+		return doc.(types.JSONDocument).Val, nil
+	default:
+		return nil, errors.Errorf("unexpected type for json value: %T", val)
+	}
 }
 
 // initJson registers the functions to the catalog.

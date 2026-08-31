@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/functions"
 )
 
@@ -38,6 +39,10 @@ func generateForeignKeyName(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, 
 				copiedForeignKeys[i] = &fk
 			}
 
+			schemaName, err := core.GetSchemaName(ctx, n.Db, "")
+			if err != nil {
+				return nil, transform.SameTree, err
+			}
 			changedForeignKey := false
 			for _, fk := range copiedForeignKeys {
 				if fk.Name == "" {
@@ -47,6 +52,14 @@ func generateForeignKeyName(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, 
 					}
 					changedForeignKey = true
 					fk.Name = generatedName
+				}
+				// A foreign key that references the table being created resolves both schemas to the table's schema
+				if strings.EqualFold(fk.ParentTable, n.Name()) &&
+					(fk.ParentSchema == "" || strings.EqualFold(fk.ParentSchema, schemaName)) &&
+					(fk.SchemaName != schemaName || fk.ParentSchema != schemaName) {
+					changedForeignKey = true
+					fk.SchemaName = schemaName
+					fk.ParentSchema = schemaName
 				}
 			}
 			if changedForeignKey {

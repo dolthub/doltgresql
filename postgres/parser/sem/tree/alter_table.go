@@ -24,7 +24,11 @@
 
 package tree
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/dolthub/doltgresql/postgres/parser/types"
+)
 
 var _ Statement = &AlterTable{}
 
@@ -263,6 +267,26 @@ func (node *AlterTableAlterColumnType) Format(ctx *FmtCtx) {
 		ctx.WriteString(" USING ")
 		ctx.FormatNode(node.Using)
 	}
+}
+
+// UsingColumn represents a column reference within the USING expression of an
+// ALTER TABLE ... ALTER COLUMN ... TYPE ... USING statement. It is not used directly during parsing,
+// but replaces the UnresolvedName column references before conversion. SchemaName and TableName identify
+// the table being altered, which the column reference is resolved against.
+type UsingColumn struct {
+	SchemaName string
+	TableName  string
+	Name       string
+}
+
+// ResolvedType implements the TypedExpr interface.
+func (u UsingColumn) ResolvedType() *types.T {
+	return nil
+}
+
+// Format implements the NodeFormatter interface.
+func (u UsingColumn) Format(ctx *FmtCtx) {
+	ctx.FormatNameP(&u.Name)
 }
 
 // GetColumn implements the ColumnMutationCmd interface.

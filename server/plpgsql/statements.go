@@ -16,7 +16,6 @@ package plpgsql
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -84,6 +83,11 @@ func (stmt Block) OperationSize() int32 {
 			total++
 		}
 	}
+	for _, record := range stmt.Records {
+		if record.IsDeclared() {
+			total++
+		}
+	}
 	for _, innerStmt := range stmt.Body {
 		total += innerStmt.OperationSize()
 	}
@@ -125,11 +129,19 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 		stack.NewVariableWithValue(variable.Name, nil, val)
 	}
 	for _, record := range stmt.Records {
+		// The schema here only exists so that field references such as `r.id` are recognized as variable
+		// references while the body is compiled. The real schema is not known until the record is assigned.
 		var fakeSch sql.Schema
 		for _, fieldName := range record.Fields {
 			fakeSch = append(fakeSch, &sql.Column{Name: fieldName})
 		}
 		stack.NewRecord(record.Name, fakeSch, nil)
+		if record.IsDeclared() {
+			*ops = append(*ops, InterpreterOperation{
+				OpCode: OpCode_DeclareRecord,
+				Target: record.Name,
+			})
+		}
 	}
 	for _, innerStmt := range stmt.Body {
 		if err := innerStmt.AppendOperations(ops, stack); err != nil {
@@ -147,6 +159,9 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 type ExecuteSQL struct {
 	Statement string
 	Target    string
+	// TargetIsRecord states that Target names a single RECORD variable that receives the entire result row,
+	// rather than a comma-separated list of scalar variables that each receive one column.
+	TargetIsRecord bool
 }
 
 var _ Statement = ExecuteSQL{}
@@ -163,7 +178,7 @@ func (stmt ExecuteSQL) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 		return err
 	}
 	*ops = append(*ops, InterpreterOperation{
-		OpCode:        OpCode_Execute,
+		OpCode:        executeOpCode(stmt.TargetIsRecord),
 		PrimaryData:   statementStr,
 		SecondaryData: referencedVariables,
 		Target:        stmt.Target,
@@ -176,6 +191,9 @@ type DynamicExecute struct {
 	Query  string
 	Params []string
 	Target string
+	// TargetIsRecord states that Target names a single RECORD variable that receives the entire result row,
+	// rather than a comma-separated list of scalar variables that each receive one column.
+	TargetIsRecord bool
 }
 
 var _ Statement = DynamicExecute{}
@@ -188,12 +206,21 @@ func (DynamicExecute) OperationSize() int32 {
 // AppendOperations implements the interface Statement.
 func (stmt DynamicExecute) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
 	*ops = append(*ops, InterpreterOperation{
-		OpCode:        OpCode_Execute,
+		OpCode:        executeOpCode(stmt.TargetIsRecord),
 		PrimaryData:   stmt.Query,
 		SecondaryData: stmt.Params,
 		Target:        stmt.Target,
 	})
 	return nil
+}
+
+// executeOpCode returns the opcode used to run a SQL statement whose results are written into the given
+// kind of INTO target.
+func executeOpCode(targetIsRecord bool) OpCode {
+	if targetIsRecord {
+		return OpCode_ExecuteInto
+	}
+	return OpCode_Execute
 }
 
 // ForQueryInit executes a SQL query and stores the result set in a named cursor on the stack.
@@ -382,6 +409,15 @@ func (r Raise) AppendOperations(ops *[]InterpreterOperation, _ *InterpreterStack
 type Record struct {
 	Name   string
 	Fields []string
+	// IsTriggerRecord is true for the NEW and OLD records of a trigger function. Those are created by the
+	// trigger invocation rather than by the function body, so they are not declared when the block is entered.
+	IsTriggerRecord bool
+}
+
+// IsDeclared returns whether entering the record's block should declare it. Trigger records are supplied by
+// the trigger invocation, and PL/pgSQL leaves a record's name empty when it is only referenced internally.
+func (record Record) IsDeclared() bool {
+	return !record.IsTriggerRecord && len(record.Name) > 0
 }
 
 // ReturnQuery represents a RETURN QUERY statement.
@@ -474,24 +510,29 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 		isAfterDot := i > 0 && scanResult.Tokens[i-1].Token == '.'
 
 		if !isAfterDot {
-			if _, ok := varMap[strings.ToLower(substring)]; ok {
+			// A variable is named by whatever the reference folds to, not by how it happens to be spelled
+			// here, so the binding is recorded under the folded name.
+			normalized := NormalizeIdentifier(substring)
+			if _, ok := varMap[normalized]; ok {
+				bindingName := normalized
 				// If there's a '.', then we'll assume this is accessing a record's field (`NEW.val1` for example)
 				for i+2 < len(scanResult.Tokens) && scanResult.Tokens[i+1].Token == '.' {
 					nextFieldSubstring := expression[scanResult.Tokens[i+2].Start:scanResult.Tokens[i+2].End]
 					substring += "." + nextFieldSubstring
+					bindingName += "." + nextFieldSubstring
 					i += 2
 				}
 				// Variables cannot have a '(' after their name as that would classify them as functions, so we have to
 				// explicitly check for that. This is because variables and functions can share names, for example:
 				// SELECT COUNT(*) INTO count FROM table_name;
 				if i+1 >= len(scanResult.Tokens) || scanResult.Tokens[i+1].Token != '(' {
-					referencedVars = append(referencedVars, substring)
+					referencedVars = append(referencedVars, bindingName)
 					newExpression += fmt.Sprintf("$%d ", len(referencedVars))
 				} else {
 					newExpression += substring + " "
 				}
-			} else if _, ok := triggerSpecialVariables[substring]; ok {
-				referencedVars = append(referencedVars, substring)
+			} else if _, ok := triggerSpecialVariables[normalized]; ok {
+				referencedVars = append(referencedVars, normalized)
 				newExpression += fmt.Sprintf("$%d ", len(referencedVars))
 			} else {
 				newExpression += substring + " "

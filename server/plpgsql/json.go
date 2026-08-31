@@ -314,7 +314,8 @@ func (stmt *plpgSQL_stmt_assign) Convert() (Assignment, error) {
 		return Assignment{}, errors.New("PL/pgSQL assignment cannot find `:=` sign")
 	}
 	return Assignment{
-		VariableName:  varName,
+		// The target is raw source text, so it has to be folded the same way a reference to it would be.
+		VariableName:  NormalizeIdentifier(varName),
 		Expression:    query,
 		VariableIndex: stmt.VariableNumber,
 	}, nil
@@ -323,22 +324,18 @@ func (stmt *plpgSQL_stmt_assign) Convert() (Assignment, error) {
 // Convert converts the JSON statement into its output form.
 func (stmt *plpgSQL_stmt_call) Convert() (ExecuteSQL, error) {
 	var target string
+	var targetIsRecord bool
 	if !stmt.IsCall {
-		if stmt.Target.Row != nil {
-			names := make([]string, len(stmt.Target.Row.Fields))
-			for i, rowField := range stmt.Target.Row.Fields {
-				names[i] = rowField.Name
-			}
-			target = strings.Join(names, ",")
-		} else if stmt.Target.Variable != nil {
-			target = stmt.Target.Variable.RefName
-		} else {
-			return ExecuteSQL{}, errors.Errorf("unhandled datum type: %T", stmt.Target)
+		var err error
+		target, targetIsRecord, err = intoTarget(stmt.Target)
+		if err != nil {
+			return ExecuteSQL{}, err
 		}
 	}
 	return ExecuteSQL{
-		Statement: stmt.Expression.Expression.Query,
-		Target:    target,
+		Statement:      stmt.Expression.Expression.Query,
+		Target:         target,
+		TargetIsRecord: targetIsRecord,
 	}, nil
 }
 
@@ -369,12 +366,9 @@ func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
 			return Block{}, fmt.Errorf("case statement WHEN clause is nil")
 		}
 
-		// TODO: The generated expressions from pg_query_go uses double quotes
-		//       around the variable name, which is valid for Postgres, but
-		//       our engine doesn't currently resolve double-quoted strings to
-		//       variables, so for now, we just extract the double quotes.
+		// pg_query_go quotes the generated variable name, which is what keeps its capitals intact when
+		// the reference is folded, so the quotes are left in place.
 		expressionString := when.Expression.Expression.Query
-		expressionString = strings.ReplaceAll(expressionString, `"`, "")
 
 		convertedWhenBodyStatements, err := jsonConvertStatements(when.Body)
 		if err != nil {
@@ -434,51 +428,71 @@ func (stmt *plpgSQL_stmt_case) Convert() (block Block, err error) {
 func (stmt *plpgSQL_stmt_dynexecute) Convert() (DynamicExecute, error) {
 	var params []string
 	for _, param := range stmt.Params {
-		params = append(params, param.Expr.Query)
+		// USING arguments are raw source text, so a reference among them is folded the way one in an
+		// ordinary expression would be.
+		query := param.Expr.Query
+		if normalized, isRef := NormalizeIdentifierPath(query); isRef {
+			query = normalized
+		}
+		params = append(params, query)
 	}
 	var target string
+	var targetIsRecord bool
 	if stmt.Into {
-		switch {
-		case stmt.Target.Row != nil:
-			names := make([]string, len(stmt.Target.Row.Fields))
-			for i, rowField := range stmt.Target.Row.Fields {
-				names[i] = rowField.Name
-			}
-			target = strings.Join(names, ",")
-		case stmt.Target.Variable != nil:
-			target = stmt.Target.Variable.RefName
-		default:
-			return DynamicExecute{}, errors.Errorf("unhandled datum type: %T", stmt.Target)
+		var err error
+		target, targetIsRecord, err = intoTarget(stmt.Target)
+		if err != nil {
+			return DynamicExecute{}, err
 		}
 	}
 	query := strings.TrimSuffix(strings.TrimPrefix(stmt.Query.Expression.Query, "'"), "'")
 	return DynamicExecute{
-		Query:  query,
-		Params: params,
-		Target: target,
+		Query:          query,
+		Params:         params,
+		Target:         target,
+		TargetIsRecord: targetIsRecord,
 	}, nil
 }
 
 // Convert converts the JSON statement into its output form.
 func (stmt *plpgSQL_stmt_execsql) Convert() (ExecuteSQL, error) {
 	var target string
+	var targetIsRecord bool
 	if stmt.Into {
-		if stmt.Target.Row != nil {
-			names := make([]string, len(stmt.Target.Row.Fields))
-			for i, rowField := range stmt.Target.Row.Fields {
-				names[i] = rowField.Name
-			}
-			target = strings.Join(names, ",")
-		} else if stmt.Target.Variable != nil {
-			target = stmt.Target.Variable.RefName
-		} else {
-			return ExecuteSQL{}, errors.Errorf("unhandled datum type: %T", stmt.Target)
+		var err error
+		target, targetIsRecord, err = intoTarget(stmt.Target)
+		if err != nil {
+			return ExecuteSQL{}, err
 		}
 	}
 	return ExecuteSQL{
-		Statement: stmt.SQLStmt.Expr.Query,
-		Target:    target,
+		Statement:      stmt.SQLStmt.Expr.Query,
+		Target:         target,
+		TargetIsRecord: targetIsRecord,
 	}, nil
+}
+
+// intoTarget returns the name of the variable that an INTO clause writes to. A row target (which is what
+// PL/pgSQL builds for a list of scalar variables, or for a variable declared as %ROWTYPE) is returned as a
+// comma-separated list of its field names. A record target is returned by name, with |isRecord| set, since
+// a record takes on the shape of whatever is assigned to it rather than having one of its own.
+func intoTarget(target datum) (name string, isRecord bool, err error) {
+	switch {
+	case target.Row != nil:
+		names := make([]string, len(target.Row.Fields))
+		for i, rowField := range target.Row.Fields {
+			names[i] = rowField.Name
+		}
+		return strings.Join(names, ","), false, nil
+	case target.Variable != nil:
+		return target.Variable.RefName, false, nil
+	case target.Record != nil:
+		return target.Record.RefName, true, nil
+	default:
+		// The datum struct is a union of pointers, so printing its type here would only ever say
+		// "plpgsql.datum". Name the arms we do handle instead.
+		return "", false, errors.New("unhandled INTO target: expected a record, row, or variable")
+	}
 }
 
 // Convert converts the JSON statement into its output form.
@@ -524,6 +538,10 @@ func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
 		return Block{}, errors.New("for loop variable cannot be nil")
 	}
 	varName := stmt.Var.Variable.RefName
+	// The name is already in its declared form, so it is quoted where it goes into generated SQL rather
+	// than mentioned bare, which would fold away any capitals a quoted declaration gave it. Assignment
+	// targets take the plain name, since those are matched against the stack rather than parsed as SQL.
+	quotedVarName := QuoteIdentifier(varName)
 
 	// Extract bound and step expressions
 	lowerExpr := "1"
@@ -543,11 +561,11 @@ func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
 	// In the JSON, Lower is always the starting value and Upper is the ending bound.
 	var condition, incrExpr string
 	if stmt.Reverse {
-		condition = fmt.Sprintf("%s >= (%s)", varName, upperExpr)
-		incrExpr = fmt.Sprintf("%s - (%s)", varName, stepExpr)
+		condition = fmt.Sprintf("%s >= (%s)", quotedVarName, upperExpr)
+		incrExpr = fmt.Sprintf("%s - (%s)", quotedVarName, stepExpr)
 	} else {
-		condition = fmt.Sprintf("%s <= (%s)", varName, upperExpr)
-		incrExpr = fmt.Sprintf("%s + (%s)", varName, stepExpr)
+		condition = fmt.Sprintf("%s <= (%s)", quotedVarName, upperExpr)
+		incrExpr = fmt.Sprintf("%s + (%s)", quotedVarName, stepExpr)
 	}
 
 	// Convert the loop body.
@@ -732,7 +750,13 @@ func (stmt *plpgSQL_stmt_perform) Convert() Perform {
 func (stmt *plpgSQL_stmt_raise) Convert() Raise {
 	var params []string
 	for _, param := range stmt.Params {
-		params = append(params, param.Expr.Query)
+		// USING arguments are raw source text, so a reference among them is folded the way one in an
+		// ordinary expression would be.
+		query := param.Expr.Query
+		if normalized, isRef := NormalizeIdentifierPath(query); isRef {
+			query = normalized
+		}
+		params = append(params, query)
 	}
 
 	options := make(map[string]string)

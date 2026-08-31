@@ -1,0 +1,5 @@
+# These fixtures must be byte-exact on every platform: the copy-to-* files are compared byte-for-byte
+# against COPY TO STDOUT output (which always uses \n, matching Postgres), the *.bin files are binary
+# COPY data that line-ending conversion would corrupt, and several tab-load-* files intentionally
+# contain \r\n line endings to test loading data with Windows line endings.
+* -text

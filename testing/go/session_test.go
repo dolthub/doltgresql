@@ -127,6 +127,20 @@ func TestBeginIsolationLevel(t *testing.T) {
 					Query:    "COMMIT",
 					Expected: []sql.Row{},
 				},
+				{
+					// Transaction modes may be separated by spaces as well as commas. DuckDB's postgres
+					// extension opens its transactions with this exact statement.
+					Query:    "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "COMMIT",
+					Expected: []sql.Row{},
+				},
 			},
 		},
 		{

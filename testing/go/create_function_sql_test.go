@@ -473,5 +473,82 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "table function in FROM returning a table",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION figures() RETURNS TABLE(shape TEXT, sides INT) LANGUAGE SQL AS $$ SELECT 'triangle', 3 UNION ALL SELECT 'square', 4 $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM figures();`,
+					Expected: []sql.Row{{"triangle", 3}, {"square", 4}},
+				},
+				{
+					Query:    `SELECT shape, sides FROM figures();`,
+					Expected: []sql.Row{{"triangle", 3}, {"square", 4}},
+				},
+				{
+					Query:    `SELECT shape FROM figures() WHERE sides = 4;`,
+					Expected: []sql.Row{{"square"}},
+				},
+				{
+					Query:    `SELECT * FROM public.figures();`,
+					Expected: []sql.Row{{"triangle", 3}, {"square", 4}},
+				},
+				{
+					Query:    `SELECT * FROM figures() AS f(name, edges);`,
+					Expected: []sql.Row{{"triangle", 3}, {"square", 4}},
+				},
+				{
+					// In a SELECT list the same call produces one record value per row
+					Query:    `SELECT figures();`,
+					Expected: []sql.Row{{"(triangle,3)"}, {"(square,4)"}},
+				},
+			},
+		},
+		{
+			Name: "table function in FROM returning SETOF a table type",
+			SetUpScript: []string{
+				`CREATE TABLE shapes (shape TEXT, sides INT);`,
+				`INSERT INTO shapes VALUES ('triangle', 3), ('square', 4);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION with_sides(n INT) RETURNS SETOF shapes LANGUAGE SQL AS $$ SELECT * FROM shapes WHERE sides >= n $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM with_sides(4);`,
+					Expected: []sql.Row{{"square", 4}},
+				},
+				{
+					Query:    `SELECT s.shape FROM shapes s JOIN with_sides(3) w ON s.shape = w.shape ORDER BY s.shape;`,
+					Expected: []sql.Row{{"square"}, {"triangle"}},
+				},
+				{
+					Query:    `SELECT with_sides(4);`,
+					Expected: []sql.Row{{"(square,4)"}},
+				},
+			},
+		},
+		{
+			Name:        "table function in FROM returning a composite type",
+			SetUpScript: []string{`CREATE TYPE figure AS (shape TEXT, sides INT);`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION a_figure() RETURNS figure LANGUAGE SQL AS $$ SELECT ROW('triangle', 3)::figure $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM a_figure();`,
+					Expected: []sql.Row{{"triangle", 3}},
+				},
+				{
+					Query:    `SELECT a_figure();`,
+					Expected: []sql.Row{{"(triangle,3)"}},
+				},
+			},
+		},
 	})
 }

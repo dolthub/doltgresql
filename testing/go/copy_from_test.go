@@ -317,6 +317,212 @@ bar`, "baz"},
 			},
 		},
 		{
+			Name: "binary from stdin",
+			SetUpScript: []string{
+				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:             "COPY tbl3 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "copy-to-basic.bin",
+				},
+				{
+					Query: "SELECT * FROM tbl3 ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "foo", "t"},
+						{2, nil, "f"},
+						{3, "", nil},
+						{4, "héllo", "t"},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary load multiple chunks",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 text);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// binary-load-multi-chunk.bin is ~230KB, so the client splits it into multiple CopyData
+					// chunks and tuples land across chunk boundaries. It holds 2000 rows of (pk, c1) where c1
+					// is 'x' repeated (pk % 211) times, except that every 100th row is NULL.
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-multi-chunk.bin",
+				},
+				{
+					Query: "SELECT count(*), count(c1), sum(length(c1)) FROM tbl1;",
+					Expected: []sql.Row{
+						{2000, 1980, 202536},
+					},
+				},
+				{
+					// pk = 211 is an empty string, which must stay distinct from NULL
+					Query: "SELECT pk, length(c1) FROM tbl1 WHERE pk IN (99, 211, 300, 1999) ORDER BY pk;",
+					Expected: []sql.Row{
+						{99, 99},
+						{211, 0},
+						{300, nil},
+						{1999, 100},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary from file",
+			SetUpScript: []string{
+				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       fmt.Sprintf("COPY tbl3 FROM '%s' (FORMAT BINARY);", filepath.Join(absTestDataDir, "copy-to-basic.bin")),
+					ExpectedTag: "COPY 4",
+				},
+				{
+					Query: "SELECT * FROM tbl3 ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "foo", "t"},
+						{2, nil, "f"},
+						{3, "", nil},
+						{4, "héllo", "t"},
+					},
+				},
+			},
+		},
+		{
+			Name: "malformed binary load does not poison the session",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 text);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// binary-load-malformed.bin holds 575 valid rows, then a malformed tuple placed exactly at
+					// the client's CopyData chunk boundary, then 5 more valid rows that arrive in a later chunk.
+					// The bad load must be rejected, all of its work rolled back, and the trailing chunk discarded.
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-malformed.bin",
+					ExpectedErr:       "row field count 5, expected 2",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl1;",
+					Expected: []sql.Row{
+						{0},
+					},
+				},
+				{
+					// The same connection stays usable for regular statements
+					Query:    "INSERT INTO tbl1 VALUES (100, 'still works');",
+					Expected: []sql.Row{},
+				},
+				{
+					// And for a subsequent, valid COPY FROM
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-2col.bin",
+				},
+				{
+					Query: "SELECT * FROM tbl1 ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "one"},
+						{2, nil},
+						{3, "three"},
+						{100, "still works"},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary load failing after a successful chunk does not poison the session",
+			SetUpScript: []string{
+				"CREATE TABLE tbl1 (pk int primary key, c1 text);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// binary-load-malformed-late.bin fills the client's first CopyData chunk with 575 valid rows,
+					// with the malformed tuple arriving in the second chunk. The rows loaded by the first chunk
+					// must be rolled back along with the rest of the failed operation.
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-malformed-late.bin",
+					ExpectedErr:       "row field count 5, expected 2",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl1;",
+					Expected: []sql.Row{
+						{0},
+					},
+				},
+				{
+					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "binary-load-2col.bin",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl1;",
+					Expected: []sql.Row{
+						{3},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary load missing its trailer does not poison the session",
+			SetUpScript: []string{
+				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The data is valid except that it ends without the file trailer, so the error only
+					// surfaces when the load is finalized. Its rows must still be rolled back.
+					Query:             "COPY tbl3 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "copy-from-missing-trailer.bin",
+					ExpectedErr:       "missing file trailer",
+				},
+				{
+					Query: "SELECT count(*) FROM tbl3;",
+					Expected: []sql.Row{
+						{0},
+					},
+				},
+				{
+					Query:             "COPY tbl3 FROM STDIN (FORMAT BINARY);",
+					CopyFromStdInFile: "copy-to-basic.bin",
+				},
+				{
+					Query: "SELECT * FROM tbl3 ORDER BY pk;",
+					Expected: []sql.Row{
+						{1, "foo", "t"},
+						{2, nil, "f"},
+						{3, "", nil},
+						{4, "héllo", "t"},
+					},
+				},
+			},
+		},
+		{
+			Name: "binary errors",
+			SetUpScript: []string{
+				"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "COPY tbl3 FROM STDIN (FORMAT BINARY, HEADER);",
+					ExpectedErr: "cannot specify HEADER in BINARY mode",
+				},
+				{
+					Query:       "COPY tbl3 FROM STDIN (FORMAT BINARY, DELIMITER '|');",
+					ExpectedErr: "cannot specify DELIMITER in BINARY mode",
+				},
+				{
+					// A text file is not valid binary COPY input
+					Query:       fmt.Sprintf("COPY tbl3 FROM '%s' (FORMAT BINARY);", filepath.Join(absTestDataDir, "copy-to-basic.txt")),
+					ExpectedErr: "COPY file signature not recognized",
+				},
+				{
+					// Binary data that ends without the file trailer indicates truncation
+					Query:       fmt.Sprintf("COPY tbl3 FROM '%s' (FORMAT BINARY);", filepath.Join(absTestDataDir, "copy-from-missing-trailer.bin")),
+					ExpectedErr: "missing file trailer",
+				},
+			},
+		},
+		{
 			Name: "file not found",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk int primary key);",
