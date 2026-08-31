@@ -141,15 +141,19 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				parts := strings.Split(typeName, ".")
 				schemaName = parts[0]
 				typeName = parts[1]
-				// Check the NonKeyword type names to see if we're looking at
-				// an alias of a type if we're in the pg_catalog schema.
-				// Skip array types (names starting with "_") since their internal
-				// lookup key uses the "_typename" form, not the "typename[]" form
-				// that TypeForNonKeywordTypeName returns.
-				if schemaName == "pg_catalog" && !strings.HasPrefix(typeName, "_") {
-					typ, ok, _ := types.TypeForNonKeywordTypeName(typeName)
+				// Within pg_catalog the name may be an alias, so map it to the name the type is
+				// registered under (`pg_catalog.boolean` to `pg_catalog.bool`). An array type arrives
+				// as "_typename", which is also the form its lookup key takes, so it is the element
+				// name that gets mapped.
+				if schemaName == "pg_catalog" {
+					arrayPrefix := ""
+					elementName := typeName
+					if strings.HasPrefix(typeName, "_") {
+						arrayPrefix, elementName = "_", typeName[1:]
+					}
+					typ, ok, _ := types.TypeForNonKeywordTypeName(elementName)
 					if ok && typ != nil {
-						typeName = typ.Name()
+						typeName = arrayPrefix + typ.PGName()
 					}
 				}
 			}
