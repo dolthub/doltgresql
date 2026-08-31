@@ -40,6 +40,7 @@ type InterpretedFunction interface {
 	GetReturn() *pgtypes.DoltgresType
 	GetStatements() []InterpreterOperation
 	QueryMultiReturn(ctx *sql.Context, stack InterpreterStack, stmt string, bindings []string) (schema sql.Schema, rows []sql.Row, err error)
+	QueryRowReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetTypes []*pgtypes.DoltgresType, bindings []string) (row sql.Row, ok bool, err error)
 	QuerySingleReturn(ctx *sql.Context, stack InterpreterStack, stmt string, targetType *pgtypes.DoltgresType, bindings []string) (val any, err error)
 	// IsSRF returns whether the function is a set returning function, meaning whether the
 	// function returns one or more rows as a result.
@@ -193,43 +194,26 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			// TODO: implement
 		case OpCode_Execute:
 			if len(operation.Target) > 0 {
-				if vars := strings.Split(operation.Target, ","); len(vars) > 1 {
-					// multiple column row result
-					sch, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
-					if err != nil {
-						return nil, err
-					}
-					if len(rows) > 1 {
-						return nil, errors.New("query returned more than one row")
-					}
-					for i, row := range rows {
-						if len(row) != len(vars) {
-							return nil, errors.New("number of row values does not match number of schema columns")
-						}
-						target := stack.GetVariable(vars[i])
-						if target.Type == nil {
-							return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
-						}
-						if sch[i].Type.(*pgtypes.DoltgresType).ID != target.Type.ID {
-							return nil, fmt.Errorf("variable type `%s` does not match `%s`", sch[i].Type.String(), target.Type.String())
-						}
-						err = stack.SetVariable(ctx, vars[i], rows[0][i])
-						if err != nil {
-							return nil, err
-						}
-					}
-				} else {
-					// single column
-					target := stack.GetVariable(operation.Target)
+				vars := strings.Split(operation.Target, ",")
+				targetTypes := make([]*pgtypes.DoltgresType, len(vars))
+				for i, varName := range vars {
+					target := stack.GetVariable(varName)
 					if target.Type == nil {
-						return nil, fmt.Errorf("variable `%s` could not be found", operation.Target)
+						return nil, fmt.Errorf("variable `%s` could not be found", varName)
 					}
-					retVal, err := iFunc.QuerySingleReturn(ctx, stack, operation.PrimaryData, target.Type, operation.SecondaryData)
-					if err != nil {
-						return nil, err
+					targetTypes[i] = target.Type
+				}
+				row, rowFound, err := iFunc.QueryRowReturn(ctx, stack, operation.PrimaryData, targetTypes, operation.SecondaryData)
+				if err != nil {
+					return nil, err
+				}
+				// When the query matches nothing, every target is set to NULL rather than left alone.
+				for i, varName := range vars {
+					var val any
+					if rowFound {
+						val = row[i]
 					}
-					err = stack.SetVariable(ctx, operation.Target, retVal)
-					if err != nil {
+					if err = stack.SetVariable(ctx, varName, val); err != nil {
 						return nil, err
 					}
 				}
