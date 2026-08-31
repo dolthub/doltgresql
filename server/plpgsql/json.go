@@ -577,34 +577,42 @@ func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
 
 	// Build the loop body:
 	//   [0]           InitAssign: varName := lower
-	//   [1]           If(condition, GotoOffset:2) → jumps to [3] (first body stmt) when true
-	//   [2]           ExitGoto → offset=3+bodySize → jumps to ScopeEnd
-	//   [3..3+N-1]    body statements (N = bodySize)
-	//   [3+N]         IncrAssign: varName := varName +/- step
-	//   [3+N+1]       BackGoto → offset=-(3+bodySize) → jumps back to If at [1]
+	//   [1]           SkipIncrGoto → offset=2 → jumps to [3], so the first iteration uses lower unchanged
+	//   [2]           IncrAssign: varName := varName +/- step (the CONTINUE target)
+	//   [3]           If(condition, GotoOffset:2) → jumps to [5] (first body stmt) when true
+	//   [4]           ExitGoto → offset=2+bodySize → jumps to ScopeEnd
+	//   [5..5+N-1]    body statements (N = bodySize)
+	//   [5+N]         BackGoto → offset=-(3+bodySize) → jumps back to IncrAssign at [2]
+	//
+	// The increment sits ahead of the condition, rather than at the end of the body, so that CONTINUE has a
+	// single operation to jump to that both advances the loop and re-tests the condition.
 	//
 	// Because no variables are declared in this block (the loop variable is already
 	// declared by the caller's DECLARE section), ScopeBegin is at M and the
 	// InitAssign is at M+1, so all offsets are consistent.
+	block.ContinueTargetOffset = 2
 	block.Body = []Statement{
 		Assignment{
 			VariableName: varName,
 			Expression:   lowerExpr,
+		},
+		Goto{
+			Offset: 2,
+		},
+		Assignment{
+			VariableName: varName,
+			Expression:   incrExpr,
 		},
 		If{
 			Condition:  condition,
 			GotoOffset: 2,
 		},
 		Goto{
-			Offset: 3 + bodySize,
+			Offset: 2 + bodySize,
 		},
 	}
 	block.Body = append(block.Body, convertedBody...)
 	block.Body = append(block.Body,
-		Assignment{
-			VariableName: varName,
-			Expression:   incrExpr,
-		},
 		Goto{
 			Offset: -(3 + bodySize),
 		},
