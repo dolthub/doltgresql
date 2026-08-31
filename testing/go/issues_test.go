@@ -591,6 +591,32 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3111 (set-returning functions and max1Row spooling)",
+			SetUpScript: []string{
+				"CREATE TABLE bug14 (a integer, b integer);",
+				"CREATE INDEX bug14_ab ON bug14 (a, b);",
+				"CREATE TABLE arrtbl (pk integer PRIMARY KEY, arr integer[]);",
+				"CREATE UNIQUE INDEX arrtbl_pk ON arrtbl (pk);",
+				"INSERT INTO arrtbl VALUES (1, '{10,20,30}'), (2, '{40}');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Set-returning functions can multiply output rows, so a point lookup that produces a
+					// single source row must not use the max1Row spooling shortcut.
+					Query:    "SELECT unnest(indkey) FROM pg_index WHERE indexrelid = 'bug14_ab'::regclass;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    "SELECT unnest(arr) FROM arrtbl WHERE pk = 1;",
+					Expected: []sql.Row{{10}, {20}, {30}},
+				},
+				{
+					Query:    "SELECT generate_series(1, 3) FROM arrtbl WHERE pk = 2;",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+			},
+		},
 	})
 }
 
@@ -631,32 +657,6 @@ func TestIssue3116WireFormat(t *testing.T) {
 				SimpleQuery{
 					Query:    "SELECT data_change, schema_change FROM dolt.diff ORDER BY table_name;",
 					Expected: []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"f", "t"}}}},
-				},
-			},
-		},
-		{
-			Name: "Issue #3111 (set-returning functions and max1Row spooling)",
-			SetUpScript: []string{
-				"CREATE TABLE bug14 (a integer, b integer);",
-				"CREATE INDEX bug14_ab ON bug14 (a, b);",
-				"CREATE TABLE arrtbl (pk integer PRIMARY KEY, arr integer[]);",
-				"CREATE UNIQUE INDEX arrtbl_pk ON arrtbl (pk);",
-				"INSERT INTO arrtbl VALUES (1, '{10,20,30}'), (2, '{40}');",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					// Set-returning functions can multiply output rows, so a point lookup that produces a
-					// single source row must not use the max1Row spooling shortcut.
-					Query:    "SELECT unnest(indkey) FROM pg_index WHERE indexrelid = 'bug14_ab'::regclass;",
-					Expected: []sql.Row{{1}, {2}},
-				},
-				{
-					Query:    "SELECT unnest(arr) FROM arrtbl WHERE pk = 1;",
-					Expected: []sql.Row{{10}, {20}, {30}},
-				},
-				{
-					Query:    "SELECT generate_series(1, 3) FROM arrtbl WHERE pk = 2;",
-					Expected: []sql.Row{{1}, {2}, {3}},
 				},
 			},
 		},
