@@ -258,11 +258,6 @@ func (iter *pgIndexTableScanIter) Close(ctx *sql.Context) error {
 func pgIndexToRow(index *pgIndex) sql.Row {
 	// indcollation, indclass, and indoption are per-column vectors that must have exactly one
 	// entry per index key column (the same length as indkey).
-	// indoption entries are bitmasks of per-column flags (INDOPTION_DESC = 0x0001,
-	// INDOPTION_NULLS_FIRST = 0x0002). Dolt indexes are always stored ascending and do not
-	// record per-column direction, so every entry is 0 (ASC NULLS LAST, the btree default).
-	// indcollation and indclass entries are collation and operator class OIDs respectively;
-	// we don't track those, so we emit the zero OID for each column.
 	numKeyCols := int(index.indnatts)
 	indCollation := make([]any, numKeyCols)
 	indClass := make([]any, numKeyCols)
@@ -270,6 +265,8 @@ func pgIndexToRow(index *pgIndex) sql.Row {
 	for i := 0; i < numKeyCols; i++ {
 		indCollation[i] = id.Null
 		indClass[i] = id.Null
+		// indoption entries are bitmasks of per-column flags (INDOPTION_DESC = 0x0001,
+		// INDOPTION_NULLS_FIRST = 0x0002), neither of which are supported
 		indOption[i] = int16(0)
 	}
 
