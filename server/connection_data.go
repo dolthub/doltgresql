@@ -201,6 +201,7 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 	switch queryPlan := queryPlan.(type) {
 	case *plan.InsertInto:
 		transform.InspectExpressionsWithNode(ctx, queryPlan.Source, extractBindVars)
+		bindInsertSelect(ctx, queryPlan, types)
 	}
 
 	// above finds types of bindvars in unordered form.
@@ -217,6 +218,34 @@ func extractBindVarTypes(ctx *sql.Context, queryPlan sql.Node) ([]uint32, error)
 		typesArr[idx-1] = t
 	}
 	return typesArr, err
+}
+
+// bindInsertSelect infers direct SELECT bind variables from their corresponding INSERT destination columns.
+func bindInsertSelect(ctx *sql.Context, insert *plan.InsertInto, types map[string]uint32) {
+	project, ok := insert.Source.(*plan.Project)
+	if !ok {
+		return
+	}
+	destinationTypes := make(map[string]sql.Type)
+	for _, col := range insert.Destination.Schema(ctx) {
+		destinationTypes[strings.ToLower(col.Name)] = col.Type
+	}
+	unknownOID := id.Cache().ToOID(pgtypes.Unknown.ID.AsId())
+	for i, projection := range project.Projections {
+		bindVar := pgexprs.UnwrapBindVar(projection)
+		if bindVar == nil || i >= len(insert.ColumnNames) || types[bindVar.Name] != unknownOID {
+			continue
+		}
+		destinationType, ok := destinationTypes[strings.ToLower(insert.ColumnNames[i])]
+		if !ok {
+			continue
+		}
+		if doltgresType, ok := destinationType.(*pgtypes.DoltgresType); ok {
+			types[bindVar.Name] = id.Cache().ToOID(doltgresType.ID.AsId())
+		} else if typOID, typeErr := VitessTypeToObjectID(destinationType); typeErr == nil {
+			types[bindVar.Name] = typOID
+		}
+	}
 }
 
 // VitessTypeToObjectID returns a type, as defined by Vitess, into a type as defined by Postgres.
