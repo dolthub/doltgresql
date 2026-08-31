@@ -243,5 +243,49 @@ select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'`,
 				},
 			},
 		},
+		{
+			// A function called in FROM without an alias keeps the column name given by its named OUT
+			// parameter, and only the table takes the function's name; a table alias renames a
+			// single-column result. Regression test for a fabricated table alias clobbering the OUT
+			// parameter's column name (pg_partition_ancestors's relid, which psql's \d foreign-key
+			// listing query references unqualified).
+			Name: "column names of functions called in FROM",
+			SetUpScript: []string{
+				"CREATE TABLE ft (id integer primary key);",
+				"INSERT INTO ft VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// The named OUT parameter provides the column name when no alias is given
+					Query:            "SELECT relid FROM pg_partition_ancestors('ft');",
+					Expected:         []sql.Row{{"ft"}},
+					ExpectedColNames: []string{"relid"},
+				},
+				{
+					// The table takes the function's name, leaving the column name alone
+					Query:            "SELECT pg_partition_ancestors.relid FROM pg_partition_ancestors('ft');",
+					Expected:         []sql.Row{{"ft"}},
+					ExpectedColNames: []string{"relid"},
+				},
+				{
+					// A table alias renames a single-column function result
+					Query:            "SELECT x FROM pg_partition_ancestors('ft') AS x;",
+					Expected:         []sql.Row{{"ft"}},
+					ExpectedColNames: []string{"x"},
+				},
+				{
+					// The OUT parameter's name also survives an implicit lateral join
+					Query:            "SELECT relid FROM ft, pg_partition_ancestors('ft');",
+					Expected:         []sql.Row{{"ft"}},
+					ExpectedColNames: []string{"relid"},
+				},
+				{
+					// A function without named OUT parameters names its column after the function
+					Query:            "SELECT unnest FROM unnest(ARRAY[1]);",
+					Expected:         []sql.Row{{1}},
+					ExpectedColNames: []string{"unnest"},
+				},
+			},
+		},
 	})
 }

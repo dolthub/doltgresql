@@ -109,6 +109,11 @@ func nodeSelectClause(ctx *Context, node *tree.SelectClause) (*vitess.Select, er
 		node.Where = nil
 	}
 PostJoinRewrite:
+	// In Postgres, a function called in the FROM list may reference columns of tables that precede it in the same
+	// FROM clause: it is an implicit LATERAL join (the LATERAL keyword is a noise word for function-call FROM items).
+	// We mirror that here by marking any function-call FROM item that follows another FROM item as lateral before
+	// converting the FROM clause.
+	markImplicitLateralFunctions(node.From.Tables)
 	from, err := nodeFrom(ctx, node.From)
 	if err != nil {
 		return nil, err
@@ -162,6 +167,33 @@ PostJoinRewrite:
 	}, nil
 }
 
+// markImplicitLateralFunctions marks function-call FROM items that follow another FROM item as lateral. In
+// Postgres, a function called in the FROM list may reference columns provided by preceding FROM items: it is an
+// implicit LATERAL join, and the LATERAL keyword is a noise word for function-call FROM items (unlike subqueries,
+// which require the explicit keyword to reference preceding FROM items).
+func markImplicitLateralFunctions(tables tree.TableExprs) {
+	var mark func(table tree.TableExpr, followsFromItem bool)
+	mark = func(table tree.TableExpr, followsFromItem bool) {
+		switch table := table.(type) {
+		case *tree.AliasedTableExpr:
+			if followsFromItem {
+				if _, ok := table.Expr.(*tree.RowsFromExpr); ok {
+					table.Lateral = true
+				}
+			}
+		case *tree.JoinTableExpr:
+			mark(table.Left, followsFromItem)
+			// The right side of a join always has FROM items to its left
+			mark(table.Right, true)
+		case *tree.ParenTableExpr:
+			mark(table.Expr, followsFromItem)
+		}
+	}
+	for i := range tables {
+		mark(tables[i], i > 0)
+	}
+}
+
 // rewriteTableFuncExprs rewrites a table expression that represents a function call into a
 // vitess.TableFuncExpr. Table expressions that don't represent a function call are returned unchanged.
 func rewriteTableFuncExprs(fromExpr vitess.TableExpr) vitess.TableExpr {
@@ -180,8 +212,7 @@ func rewriteTableFuncExprs(fromExpr vitess.TableExpr) vitess.TableExpr {
 		subquery, ok := expr.Expr.(*vitess.Subquery)
 		// If all of these are true, then the AliasedTableExpr is probably a wrapper around a subquery, but we have
 		// to confirm that the subquery contains a *Select with a single child in its From expressions.
-		if !expr.Lateral &&
-			expr.Hints == nil &&
+		if expr.Hints == nil &&
 			len(expr.Partitions) == 0 &&
 			ok {
 			// If this is true, then we can confirm that it's just a wrapper (and not an explicit AliasedTableExpr).
@@ -203,12 +234,36 @@ func rewriteTableFuncExprs(fromExpr vitess.TableExpr) vitess.TableExpr {
 									}
 								}
 							}
-							return &vitess.TableFuncExpr{
+							// The TableFuncExpr keeps the user's alias (possibly empty): a fabricated alias would
+							// rename a single-column function result to the function's name, clobbering the column
+							// name that a named OUT parameter provides (e.g. pg_partition_ancestors's relid).
+							tableFuncExpr := &vitess.TableFuncExpr{
 								Name:    funcExpr.Name.String(),
 								Exprs:   funcExpr.Exprs,
 								Alias:   expr.As,
 								Columns: subquery.Columns,
 							}
+							if expr.Lateral {
+								// GMS only supports lateral scoping for subqueries, so we wrap the table function
+								// in a subquery marked as lateral. This makes columns of the preceding FROM items
+								// visible to the function's arguments. The wrapping subquery requires an alias;
+								// a function called in FROM implicitly uses the function's name as its table alias.
+								alias := expr.As
+								if alias.IsEmpty() {
+									alias = vitess.NewTableIdent(funcExpr.Name.Lowered())
+								}
+								return &vitess.AliasedTableExpr{
+									Expr: &vitess.Subquery{
+										Select: &vitess.Select{
+											SelectExprs: vitess.SelectExprs{&vitess.StarExpr{}},
+											From:        vitess.TableExprs{tableFuncExpr},
+										},
+									},
+									As:      alias,
+									Lateral: true,
+								}
+							}
+							return tableFuncExpr
 						}
 					}
 				}
