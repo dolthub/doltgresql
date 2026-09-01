@@ -44,11 +44,6 @@ var set_config_text_text_boolean = framework.Function3{
 			newValue = ""
 		}
 
-		if isLocal == true {
-			// TODO: If isLocal is true, then the config setting should only persist for the current transaction
-			return nil, errors.Errorf("setting configuration values for the current transaction is not supported yet")
-		}
-
 		settingNameStr, err := framework.UnwrapString(ctx, settingName)
 		if err != nil {
 			return nil, err
