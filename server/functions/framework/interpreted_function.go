@@ -195,45 +195,84 @@ func (iFunc InterpretedFunction) QuerySingleReturn(ctx *sql.Context, stack plpgs
 		if len(rows[0]) != 1 {
 			return nil, errors.New("expression returned multiple results")
 		}
-		if targetType == nil {
-			return rows[0][0], nil
+		return castQueryValue(subCtx, rows[0][0], sch[0].Type, targetType)
+	})
+}
+
+// castQueryValue converts |val|, which a query produced with the column type |columnType|, into the form
+// expected by |targetType| using an assignment cast. A nil |targetType| leaves the value as it is.
+func castQueryValue(ctx *sql.Context, val any, columnType sql.Type, targetType *pgtypes.DoltgresType) (any, error) {
+	if targetType == nil {
+		return val, nil
+	}
+	if val == nil {
+		return nil, nil
+	}
+	sourceType, ok := columnType.(*pgtypes.DoltgresType)
+	if !ok {
+		// TODO: We ensure we have a DoltgresType, but we should also convert the value to
+		//       ensure it's in the correct form for the DoltgresType. This logic lives in
+		//       pgexpressions.GMSCast, but need to be extracted to avoid a dependency cycle
+		//       so it can be used here and from server.plpgsql.
+		var err error
+		sourceType, err = pgtypes.FromGmsTypeToDoltgresType(columnType)
+		if err != nil {
+			return nil, err
 		}
-		if rows[0][0] == nil {
-			return nil, nil
+	}
+	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	cast, err := castsColl.GetAssignmentCast(ctx, sourceType, targetType)
+	if err != nil {
+		return nil, err
+	}
+	if !cast.ID.IsValid() {
+		// TODO: We're using assignment casting, but for some reason we have to use I/O casting here, which is incorrect?
+		//  We need to dig into this and figure out exactly what's happening, as this is "wrong" according to what
+		//  I understand. This lines up more with explicit casting, but it's supposed to be assignment.
+		//  Maybe there are specific rules for pgsql?
+		if sourceType.TypCategory == pgtypes.TypeCategory_StringTypes {
+			cast.ID = id.NewCast(sourceType.ID, targetType.ID)
+			cast.UseInOut = true
+		} else {
+			return nil, errors.New("no valid cast for return value")
 		}
-		sourceType, ok := sch[0].Type.(*pgtypes.DoltgresType)
-		if !ok {
-			// TODO: We ensure we have a DoltgresType, but we should also convert the value to
-			//       ensure it's in the correct form for the DoltgresType. This logic lives in
-			//       pgexpressions.GMSCast, but need to be extracted to avoid a dependency cycle
-			//       so it can be used here and from server.plpgsql.
-			sourceType, err = pgtypes.FromGmsTypeToDoltgresType(sch[0].Type)
+	}
+	return cast.Eval(ctx, val, sourceType, targetType)
+}
+
+// QueryRowReturn handles a statement whose result is written into an INTO clause's targets. It returns the
+// first row of the result with each value cast to the matching entry of |targetTypes|, and reports whether
+// the query produced a row at all. Any rows after the first are discarded, and no rows is not an error:
+// that is what PL/pgSQL does for an INTO clause without STRICT.
+func (iFunc InterpretedFunction) QueryRowReturn(ctx *sql.Context, stack plpgsql.InterpreterStack, stmt string, targetTypes []*pgtypes.DoltgresType, bindings []string) (row sql.Row, ok bool, err error) {
+	schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, stmt, bindings)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(rows) == 0 {
+		return nil, false, nil
+	}
+	if len(rows[0]) != len(targetTypes) {
+		return nil, false, errors.Errorf("INTO expects %d values, query returned %d", len(targetTypes), len(rows[0]))
+	}
+	row, err = sql.RunInterpreted(ctx, func(subCtx *sql.Context) (sql.Row, error) {
+		castRow := make(sql.Row, len(targetTypes))
+		for i := range castRow {
+			castVal, err := castQueryValue(subCtx, rows[0][i], schema[i].Type, targetTypes[i])
 			if err != nil {
 				return nil, err
 			}
+			castRow[i] = castVal
 		}
-		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
-		if err != nil {
-			return nil, err
-		}
-		cast, err := castsColl.GetAssignmentCast(ctx, sourceType, targetType)
-		if err != nil {
-			return nil, err
-		}
-		if !cast.ID.IsValid() {
-			// TODO: We're using assignment casting, but for some reason we have to use I/O casting here, which is incorrect?
-			//  We need to dig into this and figure out exactly what's happening, as this is "wrong" according to what
-			//  I understand. This lines up more with explicit casting, but it's supposed to be assignment.
-			//  Maybe there are specific rules for pgsql?
-			if sourceType.TypCategory == pgtypes.TypeCategory_StringTypes {
-				cast.ID = id.NewCast(sourceType.ID, targetType.ID)
-				cast.UseInOut = true
-			} else {
-				return nil, errors.New("no valid cast for return value")
-			}
-		}
-		return cast.Eval(subCtx, rows[0][0], sourceType, targetType)
+		return castRow, nil
 	})
+	if err != nil {
+		return nil, false, err
+	}
+	return row, true, nil
 }
 
 // QueryMultiReturn handles queries that may return multiple values over multiple rows.
