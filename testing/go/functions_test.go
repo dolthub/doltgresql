@@ -139,6 +139,10 @@ func TestAggregateFunctions(t *testing.T) {
 				`CREATE TABLE json_agg_stored (id int4 primary key, amount numeric(40,20), payload json)`,
 				`INSERT INTO json_agg_stored VALUES (1, 12345678901234567890.12345678901234567890, '{"kind":"stored"}')`,
 				`CREATE DOMAIN json_agg_positive_int AS int4 CHECK (VALUE > 0)`,
+				`CREATE FUNCTION json_agg_window_step(state int4, value int4) RETURNS int4 LANGUAGE SQL IMMUTABLE AS 'SELECT state + value'`,
+				`CREATE AGGREGATE json_agg_window_custom (int4) (SFUNC = json_agg_window_step, STYPE = int4, INITCOND = '0')`,
+				`CREATE SCHEMA json_agg_collision`,
+				`CREATE FUNCTION json_agg_collision.json_agg(value int4) RETURNS int4 LANGUAGE SQL IMMUTABLE AS 'SELECT value'`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -246,6 +250,36 @@ func TestAggregateFunctions(t *testing.T) {
 				{
 					Query:    `SELECT json_agg(DISTINCT v) FROM (VALUES (1),(1),(NULL),(NULL)) AS t(v);`,
 					Expected: []sql.Row{{`[1, null]`}},
+				},
+				{
+					Query:           `SELECT json_agg(DISTINCT v) OVER (PARTITION BY p ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES ('a',1,1),('a',2,2),('a',3,2),('b',1,NULL),('b',2,2),('b',3,2)) AS t(p,id,v);`,
+					ExpectedErr:     `DISTINCT is not implemented for window functions`,
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT json_agg(DISTINCT v) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING) FROM (VALUES (1,1),(2,NULL)) AS t(id,v);`,
+					ExpectedErr:     `DISTINCT is not implemented for window functions`,
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT sum(DISTINCT v) OVER () FROM (VALUES (1),(1),(NULL)) AS t(v);`,
+					ExpectedErr:     `DISTINCT is not implemented for window functions`,
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT abs(DISTINCT v) OVER () FROM (VALUES (-1)) AS t(v);`,
+					ExpectedErr:     `DISTINCT specified, but abs is not an aggregate function`,
+					ExpectedErrCode: "42809",
+				},
+				{
+					Query:           `SELECT json_agg_window_custom(DISTINCT v) OVER () FROM (VALUES (1),(1)) AS t(v);`,
+					ExpectedErr:     `DISTINCT is not implemented for window functions`,
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           `SELECT json_agg_collision.json_agg(DISTINCT v) OVER () FROM (VALUES (1)) AS t(v);`,
+					ExpectedErr:     `DISTINCT specified, but json_agg_collision.json_agg is not an aggregate function`,
+					ExpectedErrCode: "42809",
 				},
 			},
 		},
