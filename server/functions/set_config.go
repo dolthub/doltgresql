@@ -48,10 +48,6 @@ var set_config_text_text_boolean = framework.Function3{
 		// level settings, while user configuration settings are namespaced.
 		isUserConfig := strings.Contains(settingName.(string), ".")
 		if isLocal == true {
-			if isUserConfig {
-				// TODO: support transaction-local values for customized options, which are session user vars
-				return nil, errors.Errorf("setting customized options for the current transaction is not supported yet")
-			}
 			// A transaction-local value overrides the session value until the transaction ends, when the
 			// connection handler clears it
 			if err := ctx.Session.SetTransactionLocalVariable(ctx, settingName.(string), newValue.(string)); err != nil {

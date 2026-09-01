@@ -229,7 +229,6 @@ func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 		err := ctx.SetSessionVariable(ctx, name, val)
 		return err
 	case PsqlScopeLocal:
-		// Reset any cached variables in ContextValues, same as the session scope
 		_ = core.SetDateStyleOutputFormat(ctx, "")
 		return ctx.Session.SetTransactionLocalVariable(ctx, name, val)
 	default:

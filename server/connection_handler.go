@@ -1195,9 +1195,6 @@ func (h *ConnectionHandler) clearTransactionLocalVars() {
 		logrus.Warnf("error creating context to clear transaction-local variables: %s", err)
 		return
 	}
-	if len(ctx.Session.GetTransactionLocalVariables()) == 0 {
-		return
-	}
 	if err = ctx.Session.ClearTransactionLocalVariables(ctx); err != nil {
 		logrus.Warnf("error clearing transaction-local variables: %s", err)
 		return
