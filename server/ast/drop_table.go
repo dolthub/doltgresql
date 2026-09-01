@@ -15,8 +15,6 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -24,17 +22,9 @@ import (
 )
 
 // nodeDropTable handles *tree.DropTable nodes.
-func nodeDropTable(ctx *Context, node *tree.DropTable) (*vitess.DDL, error) {
+func nodeDropTable(ctx *Context, node *tree.DropTable) (vitess.Statement, error) {
 	if node == nil || len(node.Names) == 0 {
 		return nil, nil
-	}
-	switch node.DropBehavior {
-	case tree.DropDefault:
-		// Default behavior, nothing to do
-	case tree.DropRestrict:
-		return nil, errors.Errorf("RESTRICT is not yet supported")
-	case tree.DropCascade:
-		return nil, errors.Errorf("CASCADE is not yet supported")
 	}
 	tableNames := make([]vitess.TableName, len(node.Names))
 	authTableNames := make([]string, 0, len(node.Names)*3)
@@ -47,14 +37,19 @@ func nodeDropTable(ctx *Context, node *tree.DropTable) (*vitess.DDL, error) {
 		authTableNames = append(authTableNames,
 			tableNames[i].DbQualifier.String(), tableNames[i].SchemaQualifier.String(), tableNames[i].Name.String())
 	}
+	authInformation := vitess.AuthInformation{
+		AuthType:    auth.AuthType_DROPTABLE,
+		TargetType:  auth.AuthTargetType_TableIdentifiers,
+		TargetNames: authTableNames,
+	}
 	return &vitess.DDL{
 		Action:     vitess.DropStr,
 		FromTables: tableNames,
 		IfExists:   node.IfExists,
-		Auth: vitess.AuthInformation{
-			AuthType:    auth.AuthType_DROPTABLE,
-			TargetType:  auth.AuthTargetType_TableIdentifiers,
-			TargetNames: authTableNames,
-		},
+		// RESTRICT is the default behavior in Postgres, so both are handled by the standard DROP TABLE path, which
+		// refuses to drop a table that other objects depend on. CASCADE also drops the dependent objects, which the
+		// DROP TABLE pre-execution hook handles.
+		Cascade: node.DropBehavior == tree.DropCascade,
+		Auth:    authInformation,
 	}, nil
 }
