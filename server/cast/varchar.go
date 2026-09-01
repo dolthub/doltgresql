@@ -36,7 +36,11 @@ func varcharAssignment(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.InternalChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 }
@@ -47,14 +51,22 @@ func varcharImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.Name,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
@@ -68,7 +80,11 @@ func varcharImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.VarChar,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 }

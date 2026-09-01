@@ -40,11 +40,19 @@ var split_part_text_text_int32 = framework.Function3{
 		if n.(int32) == 0 {
 			return nil, errors.Errorf("field position must not be zero")
 		}
+		strStr, err := framework.UnwrapString(ctx, str)
+		if err != nil {
+			return nil, err
+		}
+		delimiterStr, err := framework.UnwrapString(ctx, delimiter)
+		if err != nil {
+			return nil, err
+		}
 		var parts []string
-		if len(delimiter.(string)) > 0 {
-			parts = strings.Split(str.(string), delimiter.(string))
+		if len(delimiterStr) > 0 {
+			parts = strings.Split(strStr, delimiterStr)
 		} else {
-			parts = []string{str.(string)}
+			parts = []string{strStr}
 		}
 		if int(utils.Abs(n.(int32))) > len(parts) {
 			return "", nil

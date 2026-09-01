@@ -79,7 +79,10 @@ func NewVarBitType(width int32) (*DoltgresType, error) {
 // serializeTypeVarbit handles serialization from the standard representation to our serialized representation that is
 // written in Dolt.
 func serializeTypeVarbit(ctx *sql.Context, t *DoltgresType, val any) ([]byte, error) {
-	bitStr := val.(string)
+	bitStr, err := unwrapSerializationString(ctx, "varbit", val)
+	if err != nil {
+		return nil, err
+	}
 	writer := utils.NewWriter(uint64(len(bitStr) + 4))
 	writer.String(bitStr)
 	return writer.Data(), nil

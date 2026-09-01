@@ -75,6 +75,14 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	if !c.castToType.IsResolvedType() {
 		return nil, errors.Errorf("cannot call ExplicitCast.Eval with unresolved cast to type: %s", c.castToType.String())
 	}
+	baseCastToType := checkForDomainType(c.castToType)
+	if array, ok := c.sqlChild.(*Array); ok && baseCastToType.IsVectorType() {
+		castResult, err := array.evalVectorCast(ctx, row, baseCastToType)
+		if err != nil {
+			return nil, err
+		}
+		return c.applyDomainConstraints(ctx, castResult)
+	}
 
 	val, err := c.sqlChild.Eval(ctx, row)
 	if err != nil {
@@ -92,7 +100,6 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		sourceType = gmsCast.DoltgresType(ctx)
 	}
 
-	baseCastToType := checkForDomainType(c.castToType)
 	castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 	if err != nil {
 		return nil, err
@@ -108,11 +115,8 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		)
 	}
 	if val == nil {
-		if c.castToType.TypType == pgtypes.TypeType_Domain && !c.domainNullable {
-			return nil, pgtypes.ErrDomainDoesNotAllowNullValues.New(c.castToType.Name())
-		}
 		if !cast.Function.IsValid() {
-			return nil, nil
+			return c.applyDomainConstraints(ctx, nil)
 		}
 	}
 	castResult, err := cast.Eval(ctx, val, sourceType, c.castToType)
@@ -130,18 +134,26 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 	}
 
-	if c.castToType.TypType == pgtypes.TypeType_Domain {
-		for _, check := range c.domainChecks {
-			res, err := sql.EvaluateCondition(ctx, check.Expr, sql.Row{castResult})
-			if err != nil {
-				return nil, err
-			}
-			if sql.IsFalse(res) {
-				return nil, pgtypes.ErrDomainValueViolatesCheckConstraint.New(c.castToType.Name(), check.Name)
-			}
+	return c.applyDomainConstraints(ctx, castResult)
+}
+
+// applyDomainConstraints enforces the NOT NULL and CHECK constraints attached to a domain cast.
+func (c *ExplicitCast) applyDomainConstraints(ctx *sql.Context, castResult any) (any, error) {
+	if c.castToType.TypType != pgtypes.TypeType_Domain {
+		return castResult, nil
+	}
+	if castResult == nil && !c.domainNullable {
+		return nil, pgtypes.ErrDomainDoesNotAllowNullValues.New(c.castToType.Name())
+	}
+	for _, check := range c.domainChecks {
+		res, err := sql.EvaluateCondition(ctx, check.Expr, sql.Row{castResult})
+		if err != nil {
+			return nil, err
+		}
+		if sql.IsFalse(res) {
+			return nil, pgtypes.ErrDomainValueViolatesCheckConstraint.New(c.castToType.Name(), check.Name)
 		}
 	}
-
 	return castResult, nil
 }
 
@@ -167,8 +179,9 @@ func (c *ExplicitCast) String() string {
 	} else {
 		sqlChild = c.sqlChild.String()
 	}
+	// Column defaults are persisted as this string and re-parsed later, so the type must be schema-qualified.
 	// type needs to be upper-case to match InputExpression in AliasExpr
-	return fmt.Sprintf("%s::%s", sqlChild, strings.ToUpper(c.castToType.String()))
+	return fmt.Sprintf("%s::%s", sqlChild, strings.ToUpper(c.castToType.SchemaQualifiedString()))
 }
 
 // Type implements the sql.Expression interface.
@@ -207,7 +220,7 @@ func (c *ExplicitCast) WithResolvedChildren(ctx context.Context, children []any)
 		if err != nil {
 			return nil, err
 		}
-		resolvedType, err := typeColl.ResolveType(sqlCtx, c.castToType.ID)
+		resolvedType, err := typeColl.ResolveTypeWithTypmod(sqlCtx, c.castToType.ID, c.castToType.UnresolvedTypmods)
 		if err != nil {
 			return nil, err
 		}

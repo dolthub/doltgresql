@@ -83,6 +83,39 @@ type Result struct {
 	Fields       []pgproto3.FieldDescription `json:"fields"`
 	Rows         []Row                       `json:"rows"`
 	RowsAffected uint64                      `json:"rows_affected"`
+	// availableRowValueCells is the unused tail of the current batch-owned metadata chunk.
+	availableRowValueCells [][]byte
+}
+
+// nextRowValues returns isolated, batch-owned column metadata for the next row.
+// It carves rows from geometrically grown chunks and caps speculative capacity
+// for wide rows. Returned row slices retain their chunks until the batch is done.
+func (r *Result) nextRowValues(columnCount int) [][]byte {
+	if columnCount <= 0 || len(r.Rows) >= rowsBatch {
+		return nil
+	}
+	if len(r.availableRowValueCells) < columnCount {
+		remainingRows := rowsBatch - len(r.Rows)
+		// Match the next chunk to the rows already covered, doubling total capacity.
+		chunkRows := len(r.Rows) + 1
+		// Consume the remainder when another geometric chunk would leave a small tail.
+		if chunkRows*2 > remainingRows {
+			chunkRows = remainingRows
+		}
+		// Always fit one row, even when its metadata exceeds the chunk budget.
+		maxChunkRows := maxRowValueChunkCells / columnCount
+		if maxChunkRows < 1 {
+			maxChunkRows = 1
+		}
+		if chunkRows > maxChunkRows {
+			chunkRows = maxChunkRows
+		}
+		r.availableRowValueCells = make([][]byte, chunkRows*columnCount)
+	}
+	// Clamp capacity so appending cannot overwrite the following row's metadata.
+	rowValues := r.availableRowValueCells[:columnCount:columnCount]
+	r.availableRowValueCells = r.availableRowValueCells[columnCount:]
+	return rowValues
 }
 
 // Row represents a single row value in bytes format.
@@ -92,7 +125,11 @@ type Row struct {
 	val [][]byte
 }
 
-const rowsBatch = 128
+const (
+	rowsBatch = 128
+	// maxRowValueChunkCells caps one arena allocation at about 96 KiB on 64-bit platforms.
+	maxRowValueChunkCells = 4096
+)
 
 // DoltgresHandler is a handler uses SQLe engine directly
 // running Doltgres specific queries.
@@ -400,21 +437,21 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 		if err != nil {
 			return err
 		}
-	} else if analyzer.FlagIsSet(qFlags, sql.QFlagMax1Row) {
-		resultFields, err := schemaToFieldDescriptions(sqlCtx, schema, formatCodes)
-		if err != nil {
-			return err
-		}
-		r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields, formatCodes)
-		if err != nil {
-			return err
-		}
 	} else {
+		// Normalize wire format codes into one canonical per-column slice for result encoding.
+		formatCodes, err = extendFormatCodes(len(schema), formatCodes)
+		if err != nil {
+			return err
+		}
 		resultFields, err := schemaToFieldDescriptions(sqlCtx, schema, formatCodes)
 		if err != nil {
 			return err
 		}
-		r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields, formatCodes)
+		if analyzer.FlagIsSet(qFlags, sql.QFlagMax1Row) {
+			r, err = resultForMax1RowIter(sqlCtx, schema, rowIter, resultFields, formatCodes)
+		} else {
+			r, processedAtLeastOneBatch, err = h.resultForDefaultIter(sqlCtx, schema, rowIter, callback, resultFields, formatCodes)
+		}
 		if err != nil {
 			return err
 		}
@@ -726,7 +763,8 @@ func (h *DoltgresHandler) resultForDefaultIter(ctx *sql.Context, schema sql.Sche
 					continue
 				}
 
-				outputRow, rErr := rowToBytes(ctx, schema, row, formatCodes)
+				outputRow := res.nextRowValues(len(schema))
+				rErr := rowToBytesInto(ctx, schema, row, formatCodes, outputRow)
 				if rErr != nil {
 					return rErr
 				}
@@ -803,6 +841,27 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16
 		return nil, err
 	}
 	o := make([][]byte, len(row))
+	if err = rowToBytesInto(ctx, s, row, formatCodes, o); err != nil {
+		return nil, err
+	}
+	return o, nil
+}
+
+// rowToBytesInto encodes a row into caller-owned column metadata.
+func rowToBytesInto(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16, o [][]byte) error {
+	if len(row) == 0 {
+		return nil
+	}
+	if len(s) == 0 {
+		return errors.Errorf("received empty schema")
+	}
+	if len(o) != len(row) {
+		return errors.Errorf("received output row of length %d for input row of length %d", len(o), len(row))
+	}
+	if len(formatCodes) != len(row) {
+		return errors.Errorf("received %d format codes for row of length %d", len(formatCodes), len(row))
+	}
+	var err error
 	for i, v := range row {
 		if v == nil {
 			o[i] = nil
@@ -811,26 +870,26 @@ func rowToBytes(ctx *sql.Context, s sql.Schema, row sql.Row, formatCodes []int16
 			case *pgtypes.DoltgresType:
 				o[i], err = d.CallSend(ctx, v)
 				if err != nil {
-					return nil, err
+					return err
 				}
 			default:
 				cast := pgexprs.NewGMSCast(expression.NewLiteral(v, d))
 				v, err = cast.Eval(ctx, nil)
 				if err != nil {
-					return nil, err
+					return err
 				}
 				o[i], err = cast.DoltgresType(ctx).CallSend(ctx, v)
 				if err != nil {
-					return nil, err
+					return err
 				}
 			}
 		} else {
 			val, err := s[i].Type.SQL(ctx, []byte{}, v) // We use []byte{} as there's a distinction between nil and empty
 			if err != nil {
-				return nil, err
+				return err
 			}
 			o[i] = val.ToBytes()
 		}
 	}
-	return o, nil
+	return nil
 }

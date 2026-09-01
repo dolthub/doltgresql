@@ -529,6 +529,8 @@ ListenerLoop:
 				var responseError *pgproto3.ErrorResponse
 				var responseRowDesc *pgproto3.RowDescription
 				var responseDataRows []*pgproto3.DataRow
+				var responseCopyData []*pgproto3.CopyData
+				receivedCopyOut := false
 			ResponseLoop:
 				for {
 					response, err := connection.Receive()
@@ -543,6 +545,9 @@ ListenerLoop:
 					response = DuplicateMessage(response).(pgproto3.BackendMessage)
 					switch response := response.(type) {
 					case *pgproto3.CommandComplete:
+					case *pgproto3.CopyData:
+						responseCopyData = append(responseCopyData, response)
+					case *pgproto3.CopyDone:
 					case *pgproto3.CopyInResponse:
 						for _, copyData := range expectedCopyData {
 							connection.Queue(copyData)
@@ -555,6 +560,8 @@ ListenerLoop:
 							})
 							continue ListenerLoop
 						}
+					case *pgproto3.CopyOutResponse:
+						receivedCopyOut = true
 					case *pgproto3.DataRow:
 						responseDataRows = append(responseDataRows, response)
 					case *pgproto3.EmptyQueryResponse:
@@ -566,7 +573,7 @@ ListenerLoop:
 					case *pgproto3.RowDescription:
 						responseRowDesc = response
 					default:
-						return nil, errors.Errorf("unable to determine what to do with %T", message)
+						return nil, errors.Errorf("unable to determine what to do with %T", response)
 					}
 				}
 				if err = connection.EmptyReceiveBuffer(); err != nil {
@@ -576,6 +583,25 @@ ListenerLoop:
 						UnexpectedError: err.Error(),
 					})
 					continue MessageLoop
+				}
+				// For a COPY ... TO STDOUT statement, the results arrive as CopyData messages rather than
+				// DataRows, so we compare those against the recorded CopyData before the normal result
+				// handling below (which sees no row description on either side).
+				if receivedCopyOut && expectedError == nil && responseError == nil {
+					if strings.Contains(strings.ToLower(message.String), "order by") {
+						err = CompareCopyDataOrdered(expectedCopyData, responseCopyData)
+					} else {
+						// Without an ORDER BY, our native row order may differ from Postgres.
+						err = CompareCopyDataUnordered(expectedCopyData, responseCopyData)
+					}
+					if err != nil {
+						tracker.Failed++
+						tracker.AddFailure(ReplayTrackerItem{
+							Query:           message.String,
+							UnexpectedError: err.Error(),
+						})
+						continue MessageLoop
+					}
 				}
 				if expectedError == nil {
 					if responseError != nil {

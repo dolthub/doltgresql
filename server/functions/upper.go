@@ -36,6 +36,10 @@ var upper_text = framework.Function1{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
 		//TODO: this doesn't respect collations
-		return strings.ToUpper(val1.(string)), nil
+		val1Str, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
+		return strings.ToUpper(val1Str), nil
 	},
 }

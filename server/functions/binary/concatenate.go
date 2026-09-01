@@ -47,7 +47,11 @@ func anytextcat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresT
 	if err != nil {
 		return nil, err
 	}
-	return val1String + val2.(string), nil
+	val2String, err := framework.UnwrapString(ctx, val2)
+	if err != nil {
+		return nil, err
+	}
+	return val1String + val2String, nil
 }
 
 // anytextcat represents the PostgreSQL function of the same name, taking the same parameters.
@@ -120,8 +124,14 @@ var array_prepend = framework.Function2{
 
 // byteacat_callable is the callable logic for the byteacat function.
 func byteacat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	v1 := val1.([]byte)
-	v2 := val2.([]byte)
+	v1, err := framework.UnwrapBytes(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := framework.UnwrapBytes(ctx, val2)
+	if err != nil {
+		return nil, err
+	}
 	copied := make([]byte, len(v1)+len(v2))
 	copy(copied, v1)
 	copy(copied[len(v1):], v2)
@@ -198,7 +208,11 @@ func textanycat_callable(ctx *sql.Context, paramsAndReturn [3]*pgtypes.DoltgresT
 	if err != nil {
 		return nil, err
 	}
-	return val1.(string) + val2String, nil
+	val1String, err := framework.UnwrapString(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
+	return val1String + val2String, nil
 }
 
 // textanycat represents the PostgreSQL function of the same name, taking the same parameters.
@@ -212,7 +226,15 @@ var textanycat = framework.Function2{
 
 // textcat_callable is the callable logic for the textcat function.
 func textcat_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	return val1.(string) + val2.(string), nil
+	val1String, err := framework.UnwrapString(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
+	val2String, err := framework.UnwrapString(ctx, val2)
+	if err != nil {
+		return nil, err
+	}
+	return val1String + val2String, nil
 }
 
 // textcat represents the PostgreSQL function of the same name, taking the same parameters.

@@ -5,3 +5,4 @@
 # test suite, so CI time grows linearly.
 v0.56.0
 v0.56.2
+v0.56.5

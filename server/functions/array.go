@@ -44,7 +44,10 @@ var array_in = framework.Function3{
 	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Cstring, pgtypes.Oid, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		input := val1.(string)
+		input, err := framework.UnwrapString(ctx, val1)
+		if err != nil {
+			return nil, err
+		}
 		baseTypeOid := val2.(id.Id)
 		baseType := pgtypes.IDToBuiltInDoltgresType[id.Type(baseTypeOid)]
 		if baseType == nil {
@@ -67,11 +70,17 @@ var array_in = framework.Function3{
 		// We'll remove the surrounding braces since we've already verified that they're there
 		input = input[1 : len(input)-1]
 		var values []any
-		var err error
 		sb := strings.Builder{}
+		pendingWS := strings.Builder{}
 		quoteStartCount := 0
 		quoteEndCount := 0
 		escaped := false
+		flushPendingWS := func() {
+			if sb.Len() > 0 {
+				sb.WriteString(pendingWS.String())
+			}
+			pendingWS.Reset()
+		}
 		// Iterate over each rune in the input to collect and process the rune elements
 		for _, r := range input {
 			if escaped {
@@ -89,16 +98,19 @@ var array_in = framework.Function3{
 			} else {
 				switch r {
 				case ' ', '\t', '\n', '\r':
-					continue
+					pendingWS.WriteRune(r)
 				case '\\':
+					flushPendingWS()
 					escaped = true
 				case '"':
+					flushPendingWS()
 					quoteStartCount++
 				case ',':
 					if quoteStartCount >= 2 {
 						// This is a malformed string, thus we treat it as a critical error.
 						return nil, errors.Errorf(`malformed array literal: "%s"`, input)
 					}
+					pendingWS.Reset()
 					str := sb.String()
 					var innerValue any
 					if quoteStartCount == 0 && strings.EqualFold(str, "null") {
@@ -119,6 +131,7 @@ var array_in = framework.Function3{
 					quoteStartCount = 0
 					quoteEndCount = 0
 				default:
+					flushPendingWS()
 					sb.WriteRune(r)
 				}
 			}
@@ -177,7 +190,10 @@ var array_recv = framework.Function3{
 
 // array_recv_callable is the function definition of array_recv.
 func array_recv_callable(ctx *sql.Context, t [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-	data := val1.([]byte)
+	data, err := framework.UnwrapBytes(ctx, val1)
+	if err != nil {
+		return nil, err
+	}
 	if data == nil {
 		return nil, nil
 	}

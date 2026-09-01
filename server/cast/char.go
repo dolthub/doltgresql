@@ -40,7 +40,11 @@ func charAssignment(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.InternalChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
 		},
 	})
 }
@@ -51,12 +55,16 @@ func charExplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.Int32,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			out, err := strconv.ParseInt(strings.TrimSpace(val.(string)), 10, 32)
+			str, err := framework.UnwrapString(ctx, val)
 			if err != nil {
-				return nil, errors.Errorf("invalid input syntax for type %s: %q", targetType.String(), val.(string))
+				return nil, err
+			}
+			out, err := strconv.ParseInt(strings.TrimSpace(str), 10, 32)
+			if err != nil {
+				return nil, errors.Errorf("invalid input syntax for type %s: %q", targetType.String(), str)
 			}
 			if out > 2147483647 || out < -2147483648 {
-				return nil, errors.Errorf("value %q is out of range for type %s", val.(string), targetType.String())
+				return nil, errors.Errorf("value %q is out of range for type %s", str, targetType.String())
 			}
 			return int32(out), nil
 		},
@@ -69,14 +77,22 @@ func charImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.BpChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return targetType.IoInput(ctx, val.(string))
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return targetType.IoInput(ctx, str)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.Name,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
@@ -90,7 +106,11 @@ func charImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.BpChar,
 		ToType:   pgtypes.VarChar,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return handleStringCast(val.(string), targetType)
+			str, err := framework.UnwrapString(ctx, val)
+			if err != nil {
+				return nil, err
+			}
+			return handleStringCast(str, targetType)
 		},
 	})
 }

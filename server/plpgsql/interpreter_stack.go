@@ -19,9 +19,85 @@ import (
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"gopkg.in/src-d/go-errors.v1"
 
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
+)
+
+// ErrRecordNotAssigned is returned when a field is read from a RECORD variable that has not been assigned yet,
+// and therefore has no shape to read a field from.
+var ErrRecordNotAssigned = errors.NewKind(`record "%s" is not assigned yet`)
+
+// ErrRecordHasNoField is returned when a field is read from a RECORD variable that has no such field.
+var ErrRecordHasNoField = errors.NewKind(`record "%s" has no field "%s"`)
+
+// ErrVariableNotFound is returned when a referenced variable does not exist on the stack.
+var ErrVariableNotFound = errors.NewKind("variable `%s` could not be found")
+
+// NormalizeIdentifier folds a PL/pgSQL identifier the way Postgres does, so that the name a reference is
+// written with and the name a variable was declared with can be compared directly. An unquoted identifier
+// folds to lowercase; a quoted one keeps its case and loses its quotes, with a doubled quote inside standing
+// for a literal one. `MyVar` and `MYVAR` therefore name the same variable, and `"MyVar"` names a different
+// one. pg_query already stores declared names in this form, so normalizing every name we take from raw
+// source text is what puts both sides in the same alphabet.
+func NormalizeIdentifier(ident string) string {
+	if len(ident) >= 2 && strings.HasPrefix(ident, `"`) && strings.HasSuffix(ident, `"`) {
+		return strings.ReplaceAll(ident[1:len(ident)-1], `""`, `"`)
+	}
+	return strings.ToLower(ident)
+}
+
+// NormalizeIdentifierPath folds a bare reference of the form `name` or `name.field` and reports whether the
+// text was such a reference at all. Some statements, RAISE among them, carry their arguments as raw source
+// text rather than through the expression rewriter, and each one may be either a variable reference or an
+// expression to evaluate. Anything that is not a plain reference is left alone for the caller to evaluate.
+func NormalizeIdentifierPath(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	// GetVariable resolves at most one level of field access, so anything deeper is not a reference it
+	// could answer anyway.
+	base, field, hasField := strings.Cut(text, ".")
+	if !isIdentifier(base) || (hasField && !isIdentifier(field)) {
+		return "", false
+	}
+	// Only the base names a variable; the field is matched against the record's columns separately.
+	if hasField {
+		return NormalizeIdentifier(base) + "." + field, true
+	}
+	return NormalizeIdentifier(base), true
+}
+
+// isIdentifier reports whether |s| is a single SQL identifier, quoted or otherwise.
+func isIdentifier(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	if strings.HasPrefix(s, `"`) {
+		return len(s) >= 2 && strings.HasSuffix(s, `"`) && !strings.Contains(s[1:len(s)-1], `"`)
+	}
+	for i, r := range s {
+		switch {
+		case r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+		case i > 0 && (r == '$' || (r >= '0' && r <= '9')):
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// QuoteIdentifier renders |name| so that it survives NormalizeIdentifier unchanged. Use it when building SQL
+// that refers to a variable whose declared name is already known, since that name may hold capitals that an
+// unquoted mention would fold away.
+func QuoteIdentifier(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// TriggerNewRecordName and TriggerOldRecordName are the names a trigger invocation supplies its row records
+// under. They are the folded form of NEW and OLD, matching how pg_query names them in a parsed function.
+const (
+	TriggerNewRecordName = "new"
+	TriggerOldRecordName = "old"
 )
 
 // cursorState holds the result set for a FOR record IN query LOOP cursor.
@@ -38,6 +114,9 @@ type interpreterVariable struct {
 	Record sql.Schema // TODO: all records carry their type information alongside the value, so this is redundant
 	Type   *pgtypes.DoltgresType
 	Value  any
+	// IsRecord marks a variable declared as RECORD (or a trigger's NEW/OLD). Such a variable has no shape
+	// until something is assigned to it, at which point Record and Value are set together.
+	IsRecord bool
 }
 
 // InterpreterVariableReference is a reference to a variable that lives on the stack. If the type is not null, then it
@@ -107,15 +186,26 @@ func (is *InterpreterStack) GetCurrentLabel() string {
 	return ""
 }
 
-// GetVariable traverses the stack (starting from the top) to find a variable with a matching name. Returns nil if no
-// variable was found.
+// GetVariable traverses the stack (starting from the top) to find a variable with a matching name. Returns a
+// reference with a nil type if no variable was found. Use GetVariableWithError when the reason for the failure
+// matters.
 func (is *InterpreterStack) GetVariable(name string) InterpreterVariableReference {
+	ref, _ := is.GetVariableWithError(name)
+	return ref
+}
+
+// GetVariableWithError behaves like GetVariable, but explains why the reference could not be resolved rather
+// than returning an empty reference.
+func (is *InterpreterStack) GetVariableWithError(name string) (InterpreterVariableReference, error) {
 	// TODO: handle nested record access
+	fullName := name
 	fieldName := ""
 	if strings.Count(name, ".") == 1 {
 		splitName := strings.Split(name, ".")
 		name = splitName[0]
-		fieldName = splitName[1]
+		// A field may be written as a quoted identifier (`blocker."id"`), which reaches us with its quotes
+		// still attached. Field lookup is case-insensitive here, so the quotes are all that need removing.
+		fieldName = strings.Trim(splitName[1], `"`)
 	}
 	for i := 0; i < is.stack.Len(); i++ {
 		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
@@ -123,40 +213,59 @@ func (is *InterpreterStack) GetVariable(name string) InterpreterVariableReferenc
 				return InterpreterVariableReference{
 					Type:  iv.Type,
 					Value: &iv.Value,
-				}
+				}, nil
 			} else if len(iv.Record) > 0 {
-				fieldIdx := iv.Record.IndexOf(fieldName, iv.Record[0].Source)
+				fieldIdx := recordFieldIndex(iv.Record, fieldName)
 				if fieldIdx == -1 {
-					// TODO: implement this as a proper error for missing record field rather than the generic "variable not found"
-					return InterpreterVariableReference{}
+					return InterpreterVariableReference{}, ErrRecordHasNoField.New(name, fieldName)
+				}
+				fieldType, ok := iv.Record[fieldIdx].Type.(*pgtypes.DoltgresType)
+				if !ok {
+					return InterpreterVariableReference{}, fmt.Errorf(
+						"field `%s` of record `%s` does not have a Postgres type", fieldName, name)
 				}
 				return InterpreterVariableReference{
-					Type:  iv.Record[fieldIdx].Type.(*pgtypes.DoltgresType),
+					Type:  fieldType,
 					Value: &(iv.Value.(sql.Row)[fieldIdx]),
-				}
-			} else if iv.Type.IsCompositeType() {
+				}, nil
+			} else if iv.IsRecord {
+				// A record that has never been assigned has no shape, so there is no field to read.
+				return InterpreterVariableReference{}, ErrRecordNotAssigned.New(name)
+			} else if iv.Type != nil && iv.Type.IsCompositeType() {
 				for fieldIdx := range iv.Type.CompositeAttrs {
 					if iv.Type.CompositeAttrs[fieldIdx].Name == fieldName {
 						vals := iv.Value.([]pgtypes.RecordValue)
 						return InterpreterVariableReference{
 							Type:  vals[fieldIdx].Type.(*pgtypes.DoltgresType),
 							Value: &(vals[fieldIdx].Value),
-						}
+						}, nil
 					}
 				}
-				// The field could not be found
-				return InterpreterVariableReference{}
+				return InterpreterVariableReference{}, ErrRecordHasNoField.New(name, fieldName)
 			} else {
-				// Can't access fields on an empty record
-				return InterpreterVariableReference{}
+				return InterpreterVariableReference{}, fmt.Errorf(
+					"could not identify column `%s` in variable `%s`", fieldName, name)
 			}
 		}
 	}
-	return InterpreterVariableReference{}
+	return InterpreterVariableReference{}, ErrVariableNotFound.New(fullName)
 }
 
-// ListVariables returns a map with the names of all variables. The attached slice represents field names for records.
-// All names are lowercased.
+// recordFieldIndex returns the index of the field named |fieldName| within |sch|, or -1 if there is no such
+// field. Unlike sql.Schema.IndexOf, the column's source is ignored, since a record's shape comes from the
+// output columns of whatever query was assigned to it and those may originate in different tables.
+func recordFieldIndex(sch sql.Schema, fieldName string) int {
+	for i, col := range sch {
+		if strings.EqualFold(col.Name, fieldName) {
+			return i
+		}
+	}
+	return -1
+}
+
+// ListVariables returns a map with the names of all variables. The attached slice represents field names for
+// records. Names are keyed exactly as they were declared, which is already the folded form, so a reference
+// matches by being folded the same way rather than by being compared case-insensitively.
 func (is *InterpreterStack) ListVariables() map[string][]string {
 	seen := make(map[string][]string)
 	for i := 0; i < is.stack.Len(); i++ {
@@ -167,26 +276,37 @@ func (is *InterpreterStack) ListVariables() map[string][]string {
 					fieldNames = append(fieldNames, strings.ToLower(col.Name))
 				}
 			}
-			seen[strings.ToLower(varName)] = fieldNames
+			seen[varName] = fieldNames
 		}
 	}
 	return seen
 }
 
 // NewRecord creates a new record in the current scope. If a record with the same name exists in a previous scope, then
-// that record will be shadowed until the current scope exits.
+// that record will be shadowed until the current scope exits. A nil |sch| declares a record that has no shape yet,
+// which is what a `DECLARE r RECORD` produces until something is assigned to it. When |sch| is non-nil but |val| is
+// nil, the record has a shape whose every field is NULL, which is what a trigger's OLD record is on an INSERT.
 func (is *InterpreterStack) NewRecord(name string, sch sql.Schema, val sql.Row) {
-	// TODO: this is currently implemented only for the specific record types used in triggers: OLD and NEW
-	var newVal sql.Row
-	if val != nil {
-		newVal = make(sql.Row, len(val))
-		copy(newVal, val)
-	}
 	is.stack.Peek().variables[name] = &interpreterVariable{
-		Record: sch,
-		Type:   pgtypes.Trigger, // TODO: we need to implement the RECORD pseudotype and replace the TRIGGER type here
-		Value:  newVal,
+		Record:   sch,
+		Type:     pgtypes.Trigger, // TODO: we need to implement the RECORD pseudotype and replace the TRIGGER type here
+		Value:    copyRecordRow(sch, val),
+		IsRecord: true,
 	}
+}
+
+// copyRecordRow returns a copy of |val| for storage in a record. A nil |val| becomes an all-NULL row matching
+// |sch|, so that every field of a record with a known shape is addressable.
+func copyRecordRow(sch sql.Schema, val sql.Row) sql.Row {
+	if val == nil {
+		if len(sch) == 0 {
+			return nil
+		}
+		return make(sql.Row, len(sch))
+	}
+	newVal := make(sql.Row, len(val))
+	copy(newVal, val)
+	return newVal
 }
 
 // NewVariable creates a new variable in the current scope. If a variable with the same name exists in a previous scope,
@@ -313,14 +433,42 @@ func (is *InterpreterStack) CloseCursor(name string) {
 	delete(is.cursors, name)
 }
 
-// UpdateRecord finds the named variable and sets its schema and row value.
+// UpdateRecord finds the named variable and sets its schema and row value. A nil |val| gives the record the
+// shape of |schema| with every field NULL, which is what PostgreSQL does when an INTO query matches no rows.
 func (is *InterpreterStack) UpdateRecord(name string, schema sql.Schema, val sql.Row) error {
+	normalizedSchema, err := normalizeRecordSchema(schema)
+	if err != nil {
+		return err
+	}
 	for i := 0; i < is.stack.Len(); i++ {
 		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
-			iv.Record = schema
-			iv.Value = val
+			iv.Record = normalizedSchema
+			iv.Value = copyRecordRow(normalizedSchema, val)
+			iv.IsRecord = true
 			return nil
 		}
 	}
 	return fmt.Errorf("record variable `%s` could not be found", name)
+}
+
+// normalizeRecordSchema returns |schema| with every column type converted to a DoltgresType. Query results can
+// carry plain GMS types (an aggregate such as `count(*)`, for example), but a record's fields are read back as
+// Doltgres values, so the types have to be converted before the schema is stored.
+func normalizeRecordSchema(schema sql.Schema) (sql.Schema, error) {
+	normalized := make(sql.Schema, len(schema))
+	for i, col := range schema {
+		if _, ok := col.Type.(*pgtypes.DoltgresType); ok {
+			normalized[i] = col
+			continue
+		}
+		// TODO: this only converts the type, not the value. See the same TODO in convertRowsToRecords.
+		doltgresType, err := pgtypes.FromGmsTypeToDoltgresType(col.Type)
+		if err != nil {
+			return nil, err
+		}
+		newCol := *col
+		newCol.Type = doltgresType
+		normalized[i] = &newCol
+	}
+	return normalized, nil
 }

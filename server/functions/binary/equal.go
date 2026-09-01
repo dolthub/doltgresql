@@ -35,6 +35,7 @@ import (
 
 // initBinaryEqual registers the functions to the catalog.
 func initBinaryEqual() {
+	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, array_eq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, biteq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, booleq)
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, bpchareq)
@@ -83,6 +84,21 @@ func initBinaryEqual() {
 	framework.RegisterBinaryFunction(framework.Operator_BinaryEqual, xideq)
 }
 
+// array_eq_callable is the callable logic for the array_eq function.
+func array_eq_callable(ctx *sql.Context, t [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
+	res, err := t[0].Compare(ctx, val1, val2)
+	return res == 0, err
+}
+
+// array_eq represents the PostgreSQL function of the same name, taking the same parameters.
+var array_eq = framework.Function2{
+	Name:       "array_eq",
+	Return:     pgtypes.Bool,
+	Parameters: [2]*pgtypes.DoltgresType{pgtypes.AnyArray, pgtypes.AnyArray},
+	Strict:     true,
+	Callable:   array_eq_callable,
+}
+
 // booleq_callable is the callable logic for the booleq function.
 func booleq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	res, err := pgtypes.Bool.Compare(ctx, val1.(bool), val2.(bool))
@@ -100,7 +116,7 @@ var booleq = framework.Function2{
 
 // bpchareq_callable is the callable logic for the bpchareq function.
 func bpchareq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.BpChar.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.BpChar.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 
@@ -130,7 +146,7 @@ var byteaeq = framework.Function2{
 
 // chareq_callable is the callable logic for the chareq function.
 func chareq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.InternalChar.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.InternalChar.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 
@@ -446,7 +462,7 @@ var jsonb_eq = framework.Function2{
 
 // nameeq_callable is the callable logic for the nameeq function.
 func nameeq_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.Name.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.Name.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 
@@ -461,7 +477,7 @@ var nameeq = framework.Function2{
 
 // nameeqtext_callable is the callable logic for the nameeqtext function.
 func nameeqtext_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.Text.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 
@@ -522,7 +538,7 @@ var oidvectoreq = framework.Function2{
 
 // texteqname_callable is the callable logic for the texteqname function.
 func texteqname_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res, err := pgtypes.Text.Compare(ctx, val1.(string), val2.(string))
+	res, err := pgtypes.Text.Compare(ctx, val1, val2)
 	return res == 0, err
 }
 

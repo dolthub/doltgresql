@@ -19,20 +19,55 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// GetCurrentSchema returns the current schema used by the context. Defaults to "public" if the context does not specify
-// a schema.
-func GetCurrentSchema(ctx *sql.Context) (string, error) {
+// LookupCurrentSchema returns the first schema on the search path that exists, reporting whether there was one.
+// Finding none is not an error here: only the caller knows whether it needs somewhere to create an object or is
+// resolving a name that may simply not exist.
+func LookupCurrentSchema(ctx *sql.Context) (string, bool, error) {
 	_, root, err := GetRootFromContext(ctx)
 	if err != nil {
-		return "", nil
+		return "", false, err
 	}
 	// The current database may not be backed by a Doltgres *RootValue (e.g. Dolt's synthetic dolt_cluster system
 	// database), in which case there's no search path to resolve against.
 	if root == nil {
-		return "public", nil
+		return "public", true, nil
 	}
+	schemaName, err := resolve.FirstExistingSchemaOnSearchPath(ctx, root)
+	if err != nil {
+		// Dolt reports "no schema on the search path exists" with an error phrased for its CREATE TABLE caller.
+		if sql.ErrDatabaseNoDatabaseSchemaSelectedCreate.Is(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return schemaName, true, nil
+}
 
-	return resolve.FirstExistingSchemaOnSearchPath(ctx, root)
+// LookupSchemaName is GetSchemaName for callers that treat a missing schema as "not found" rather than an error.
+func LookupSchemaName(ctx *sql.Context, db sql.Database, schemaName string) (string, bool, error) {
+	if schemaName == "" {
+		if schema, isSch := db.(sql.DatabaseSchema); isSch {
+			schemaName = schema.SchemaName()
+		}
+		if schemaName == "" {
+			return LookupCurrentSchema(ctx)
+		}
+	}
+	return schemaName, true, nil
+}
+
+// GetCurrentSchema returns the current schema used by the context. Defaults to "public" if the context does not specify
+// a schema. Returns sql.ErrDatabaseNoDatabaseSchemaSelectedCreate when no schema on the search path exists, which suits
+// callers creating an object; use LookupCurrentSchema to treat that as "not found" instead.
+func GetCurrentSchema(ctx *sql.Context) (string, error) {
+	schemaName, ok, err := LookupCurrentSchema(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", sql.ErrDatabaseNoDatabaseSchemaSelectedCreate.New()
+	}
+	return schemaName, nil
 }
 
 // GetSchemaName returns the schema name if there is any exist.
@@ -42,13 +77,12 @@ func GetCurrentSchema(ctx *sql.Context) (string, error) {
 // it tries retrieving the current schema used by the context.
 // Defaults to "public" if the context does not specify a schema.
 func GetSchemaName(ctx *sql.Context, db sql.Database, schemaName string) (string, error) {
-	if schemaName == "" {
-		if schema, isSch := db.(sql.DatabaseSchema); isSch {
-			schemaName = schema.SchemaName()
-		}
-		if schemaName == "" {
-			return GetCurrentSchema(ctx)
-		}
+	name, ok, err := LookupSchemaName(ctx, db, schemaName)
+	if err != nil {
+		return "", err
 	}
-	return schemaName, nil
+	if !ok {
+		return "", sql.ErrDatabaseNoDatabaseSchemaSelectedCreate.New()
+	}
+	return name, nil
 }
