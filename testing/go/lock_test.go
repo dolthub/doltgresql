@@ -120,4 +120,61 @@ func TestAdvisoryLocks(t *testing.T) {
 			},
 		},
 	})
+
+	RunTransactionTests(t, []ScriptTest{
+		{
+			Name: "transaction advisory locks",
+			SetUpScript: []string{
+				`CREATE TABLE lock_commit_test (pk INT PRIMARY KEY)`,
+				`SELECT DOLT_BRANCH('lock-test-branch')`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(20)`, Expected: []sql.Row{{nil}}},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(20)`, Expected: []sql.Row{{"f"}}},
+				{Query: `/* client A */ COMMIT`, ExpectedTag: "COMMIT"},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(20)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(20)`, Expected: []sql.Row{{"t"}}},
+
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_try_advisory_xact_lock(21)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(21)`, Expected: []sql.Row{{"f"}}},
+				{Query: `/* client A */ ROLLBACK`, ExpectedTag: "ROLLBACK"},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(21)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(21)`, Expected: []sql.Row{{"t"}}},
+
+				// The blocking form remains in flight until client A releases the lock.
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(22)`, Expected: []sql.Row{{nil}}},
+				{Query: `/* client B */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client B */ SELECT pg_advisory_xact_lock(22)`, ExpectedBlocking: true},
+				{Query: `/* client A */ COMMIT`, ExpectedTag: "COMMIT"},
+				{Query: `/* client B */ COMMIT`, ExpectedTag: "COMMIT"},
+				{Query: `/* client C */ SELECT pg_try_advisory_lock(22)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client C */ SELECT pg_advisory_unlock(22)`, Expected: []sql.Row{{"t"}}},
+
+				// Autocommit also ends the transaction and releases its lock.
+				{Query: `/* client A */ SELECT pg_try_advisory_xact_lock(23)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(23)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(23)`, Expected: []sql.Row{{"t"}}},
+
+				// DOLT_COMMIT clears the transaction from inside a stored function.
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(24)`, Expected: []sql.Row{{nil}}},
+				{Query: `/* client A */ INSERT INTO lock_commit_test VALUES (1)`, ExpectedTag: "INSERT 0 1"},
+				{Query: `/* client A */ SELECT DOLT_COMMIT('-Am', 'lock lifecycle test')`, SkipResultsCheck: true},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(24)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(24)`, Expected: []sql.Row{{"t"}}},
+
+				// Clearing branch-dependent caches must not discard lock callbacks.
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(25)`, Expected: []sql.Row{{nil}}},
+				{Query: `/* client A */ SELECT DOLT_CHECKOUT('lock-test-branch')`, SkipResultsCheck: true},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(25)`, Expected: []sql.Row{{"f"}}},
+				{Query: `/* client A */ COMMIT`, ExpectedTag: "COMMIT"},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(25)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(25)`, Expected: []sql.Row{{"t"}}},
+			},
+		},
+	})
 }

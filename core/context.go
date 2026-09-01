@@ -51,6 +51,39 @@ type contextValues struct {
 
 	// cache the dateOutputFormat, this is refreshed on SET
 	dateOutputFormat string
+
+	transactionEndCallbacks []func()
+}
+
+// DoltgresSessionCacheClear clears branch-dependent cached state while
+// preserving transaction-end callbacks.
+func (cv *contextValues) DoltgresSessionCacheClear() {
+	cv.colls = nil
+	cv.pgCatalogCache = nil
+	cv.runner = nil
+	cv.dateOutputFormat = ""
+}
+
+// DoltgresTransactionEnd releases resources whose lifetime is the current
+// transaction. DoltSession calls it from the audited semantic transaction-end
+// paths, including explicit, implicit, and procedural commit and rollback.
+func (cv *contextValues) DoltgresTransactionEnd() {
+	callbacks := cv.transactionEndCallbacks
+	cv.transactionEndCallbacks = nil
+	for _, callback := range callbacks {
+		callback()
+	}
+}
+
+// AddTransactionEndCallback registers work to run when the current transaction
+// commits or rolls back.
+func AddTransactionEndCallback(ctx *sql.Context, callback func()) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.transactionEndCallbacks = append(cv.transactionEndCallbacks, callback)
+	return nil
 }
 
 // databaseCollections holds the root object collections cached for a single database, indexed by RootObjectID. A cached
