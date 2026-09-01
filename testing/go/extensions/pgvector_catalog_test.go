@@ -25,6 +25,60 @@ import (
 func TestPgvectorCatalog(t *testing.T) {
 	framework.RunScripts(t, []framework.ScriptTest{
 		{
+			Name: "dimensioned types expose their modifiers through pg_attribute",
+			SetUpScript: []string{
+				"CREATE EXTENSION vector;",
+				"CREATE TABLE vector_typmod_probe (v vector(1024), h halfvec(7), s sparsevec(99), unbounded vector, vectors vector(3)[]);",
+				"CREATE VIEW vector_typmod_view AS SELECT v FROM vector_typmod_probe;",
+			},
+			Assertions: []framework.ScriptTestAssertion{
+				{
+					Query: `SELECT attribute.attname, attribute.atttypmod, format_type(attribute.atttypid, attribute.atttypmod)
+FROM pg_attribute AS attribute
+JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+WHERE relation.relname = 'vector_typmod_probe' AND attribute.attnum > 0 AND NOT attribute.attisdropped
+ORDER BY attribute.attnum;`,
+					Expected: []sql.Row{
+						{"v", int32(1024), "vector(1024)"},
+						{"h", int32(7), "halfvec(7)"},
+						{"s", int32(99), "sparsevec(99)"},
+						{"unbounded", int32(-1), "vector"},
+						{"vectors", int32(3), "vector(3)[]"},
+					},
+				},
+				{
+					Query: `SELECT attribute.atttypmod, format_type(attribute.atttypid, attribute.atttypmod)
+FROM pg_attribute AS attribute
+JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+WHERE relation.relname = 'vector_typmod_view' AND attribute.attname = 'v';`,
+					Expected: []sql.Row{{int32(1024), "vector(1024)"}},
+				},
+			},
+		},
+		{
+			Name: "user-defined type names are quoted and qualified according to visibility",
+			SetUpScript: []string{
+				"CREATE SCHEMA first_schema;",
+				"CREATE SCHEMA second_schema;",
+				`CREATE TYPE first_schema."Mixed Type" AS ENUM ('first');`,
+				`CREATE TYPE second_schema."Mixed Type" AS ENUM ('second');`,
+				"SET search_path TO first_schema, second_schema, public;",
+			},
+			Assertions: []framework.ScriptTestAssertion{
+				{
+					Query: `SELECT namespace.nspname, format_type(type.oid, NULL)
+FROM pg_type AS type
+JOIN pg_namespace AS namespace ON namespace.oid = type.typnamespace
+WHERE type.typname = 'Mixed Type'
+ORDER BY namespace.nspname;`,
+					Expected: []sql.Row{
+						{"first_schema", `"Mixed Type"`},
+						{"second_schema", `second_schema."Mixed Type"`},
+					},
+				},
+			},
+		},
+		{
 			Name: "pg_am lists the extension access methods once installed",
 			Assertions: []framework.ScriptTestAssertion{
 				{

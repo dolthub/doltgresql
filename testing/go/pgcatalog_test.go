@@ -1756,9 +1756,9 @@ func TestPgIndex(t *testing.T) {
 						WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'
 						ORDER BY 1;`,
 					Expected: []sql.Row{
-						{1067629180, 3120782595, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "", "", "0", nil, nil},
-						{2070175302, 3120782595, 1, 0, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "", "", "0", nil, nil},
-						{3185790121, 1784425749, 2, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1 2", "", "", "0", nil, nil},
+						{1067629180, 3120782595, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "0", "0", nil, nil},
+						{2070175302, 3120782595, 1, 1, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "0", "0", nil, nil},
+						{3185790121, 1784425749, 2, 2, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1 2", "0 0", "0 0", "0 0", nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -1792,6 +1792,33 @@ func TestPgIndex(t *testing.T) {
 				{
 					Query:    "SELECT unnest(indoption) FROM pg_index LIMIT 1;",
 					Expected: []sql.Row{{0}},
+				},
+			},
+		},
+		{
+			Name: "pg_index indoption has one entry per key column", // https://github.com/dolthub/doltgresql/issues/3110
+			SetUpScript: []string{
+				`CREATE TABLE bug13 (a integer, b integer);`,
+				`CREATE INDEX bug13_ab ON bug13 (a, b);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT indkey, indoption, array_length(indkey, 1), array_length(indoption, 1)
+						FROM pg_index WHERE indexrelid = 'bug13_ab'::regclass;`,
+					Expected: []sql.Row{
+						{"1 2", "0 0", 2, 2},
+					},
+				},
+				{
+					Query: `SELECT indnatts, indnkeyatts, array_length(indcollation, 1), array_length(indclass, 1)
+						FROM pg_index WHERE indexrelid = 'bug13_ab'::regclass;`,
+					Expected: []sql.Row{
+						{2, 2, 2, 2},
+					},
+				},
+				{
+					Query:    `SELECT unnest(indoption) FROM pg_index WHERE indexrelid = 'bug13_ab'::regclass;`,
+					Expected: []sql.Row{{0}, {0}},
 				},
 			},
 		},
@@ -5974,8 +6001,8 @@ func TestPgIndexIndexes(t *testing.T) {
 					Query: `SELECT * FROM pg_catalog.pg_index i 
 WHERE i.indrelid = 1496157034 order by 1`,
 					Expected: []sql.Row{
-						{3992679530, 1496157034, 1, 0, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "", "", "0", nil, nil},
-						{4052612617, 1496157034, 1, 0, "f", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "", "", "0", nil, nil},
+						{3992679530, 1496157034, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "0", "0", nil, nil},
+						{4052612617, 1496157034, 1, 1, "f", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "0", "0", nil, nil},
 					},
 				},
 				{
@@ -6436,7 +6463,7 @@ WHERE pg_catalog.pg_index.indrelid IN (3491847678)
   AND NOT pg_catalog.pg_index.indisprimary
 ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 					Expected: []sql.Row{
-						{3491847678, "dolt_log_commit_hash_key", "t", "t", "0", interface{}(nil), "btree", interface{}(nil), 0, "f", "{commit_hash}", "{f}"},
+						{3491847678, "dolt_log_commit_hash_key", "t", "t", "0", interface{}(nil), "btree", interface{}(nil), 1, "f", "{commit_hash}", "{f}"},
 					},
 				},
 			},
@@ -6576,7 +6603,7 @@ FROM pg_catalog.pg_index
 WHERE pg_catalog.pg_index.indrelid IN (select oid from pg_class where relname='t2')
   AND NOT pg_catalog.pg_index.indisprimary ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 					Expected: []sql.Row{
-						{1496157034, "t2_b_idx", "f", "f", "0", nil, "btree", nil, 0, "f", "{b}", "{f}"},
+						{1496157034, "t2_b_idx", "f", "f", "0", nil, "btree", nil, 1, "f", "{b}", "{f}"},
 					},
 				},
 			},

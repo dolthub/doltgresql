@@ -97,8 +97,10 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 		Table: func(ctx *sql.Context, _ functions.ItemSchema, table functions.ItemTable) (cont bool, err error) {
 			for i, col := range table.Item.Schema(ctx) {
 				typeOid := id.Null
+				typeMod := int32(-1)
 				if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
 					typeOid = doltgresType.ID.AsId()
+					typeMod = doltgresType.GetAttTypMod()
 				} else {
 					// TODO: Remove once all information_schema tables are converted to use DoltgresType
 					dt := pgtypes.FromGmsType(col.Type)
@@ -122,6 +124,7 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 					attrelidNative: id.Cache().ToOID(table.OID.AsId()),
 					attname:        col.Name,
 					atttypid:       typeOid,
+					atttypmod:      typeMod,
 					attnum:         int16(i + 1),
 					attndims:       dimensions,
 					attnotnull:     !col.Nullable,
@@ -164,8 +167,10 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 
 			for i, col := range analyzed.Schema(ctx) {
 				typeOid := id.Null
+				typeMod := int32(-1)
 				if doltgresType, ok := col.Type.(*pgtypes.DoltgresType); ok {
 					typeOid = doltgresType.ID.AsId()
+					typeMod = doltgresType.GetAttTypMod()
 				} else {
 					dt := pgtypes.FromGmsType(col.Type)
 					typeOid = dt.ID.AsId()
@@ -176,6 +181,7 @@ func cachePgAttributes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 					attrelidNative: id.Cache().ToOID(view.OID.AsId()),
 					attname:        col.Name,
 					atttypid:       typeOid,
+					atttypmod:      typeMod,
 					attnum:         int16(i + 1),
 				}
 				attrelidIdx.Add(attr)
@@ -411,6 +417,7 @@ type pgAttribute struct {
 	attrelidNative uint32
 	attname        string
 	atttypid       id.Id
+	atttypmod      int32
 	attnum         int16
 	attndims       int16
 	attnotnull     bool
@@ -467,7 +474,7 @@ func pgAttributeToRow(attr *pgAttribute) sql.Row {
 		int16(0),          // attlen
 		attr.attnum,       // attnum
 		int32(-1),         // attcacheoff
-		int32(-1),         // atttypmod
+		attr.atttypmod,    // atttypmod
 		attr.attndims,     // attndims
 		false,             // attbyval
 		"i",               // attalign

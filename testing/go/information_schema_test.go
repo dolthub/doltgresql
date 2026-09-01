@@ -157,7 +157,7 @@ func TestInfoSchemaColumns(t *testing.T) {
 						) WHERE ("table_schema" = 'public' AND "table_name" = 'test_table');`,
 					Expected: []sql.Row{
 						{"id", nil, "integer", "integer"},
-						{"col1", nil, "character varying", "character varying"},
+						{"col1", nil, "character varying", "character varying(255)"},
 					},
 				},
 				{

@@ -44,6 +44,7 @@ import (
 	"github.com/mitchellh/go-ps"
 	"github.com/sirupsen/logrus"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/dataloader"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
@@ -604,6 +605,7 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 			// A COMMIT issued inside a failed transaction block ends the block by rolling it back, and reports
 			// ROLLBACK to the client to indicate that the transaction's effects were discarded.
 			h.transactionState = idleTransactionState
+			h.clearTransactionLocalVars()
 			if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
 				return true, true, err
 			}
@@ -612,9 +614,11 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery) (hand
 		// A COMMIT closes the current transaction block, whether explicit or implicit. Any statements that
 		// follow it in the same Query message (or extended-query batch) run in a new implicit transaction block.
 		h.transactionState = idleTransactionState
+		h.clearTransactionLocalVars()
 	case *sqlparser.Rollback:
 		// Like COMMIT, a ROLLBACK closes the current transaction block, whether explicit, implicit, or failed.
 		h.transactionState = idleTransactionState
+		h.clearTransactionLocalVars()
 	case *sqlparser.Savepoint:
 		if !h.transactionState.inExplicitTransactionBlock() {
 			return true, true, noActiveTransactionError("SAVEPOINT")
@@ -1326,6 +1330,7 @@ func (h *ConnectionHandler) commitImplicitTransaction() error {
 		return nil
 	}
 	h.transactionState = idleTransactionState
+	h.clearTransactionLocalVars()
 	if h.restoredAutoCommitWithoutTransaction() {
 		return nil
 	}
@@ -1344,12 +1349,30 @@ func (h *ConnectionHandler) rollbackImplicitTransaction() {
 		return
 	}
 	h.transactionState = idleTransactionState
+	h.clearTransactionLocalVars()
 	if h.restoredAutoCommitWithoutTransaction() {
 		return
 	}
 	if err := h.runEngineTransactionControl("ROLLBACK"); err != nil {
 		logrus.Warnf("error rolling back implicit transaction: %s", err)
 	}
+}
+
+// clearTransactionLocalVars removes any system variable values that were set with transaction-local scope
+// (SET LOCAL, or set_config with is_local), restoring the variables' session values. Called whenever the current
+// transaction block ends, whether by COMMIT or ROLLBACK: Postgres reverts SET LOCAL values in both cases.
+func (h *ConnectionHandler) clearTransactionLocalVars() {
+	ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, "")
+	if err != nil {
+		logrus.Warnf("error creating context to clear transaction-local variables: %s", err)
+		return
+	}
+	if err = ctx.Session.ClearTransactionLocalVariables(ctx); err != nil {
+		logrus.Warnf("error clearing transaction-local variables: %s", err)
+		return
+	}
+	// Reset any cached variables in ContextValues, in case a cached parameter (e.g. datestyle) was overridden
+	_ = core.SetDateStyleOutputFormat(ctx, "")
 }
 
 // restoredAutoCommitWithoutTransaction returns whether the session no longer has an engine transaction in

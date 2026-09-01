@@ -2306,7 +2306,7 @@ func TestArrayFunctions(t *testing.T) {
 				},
 				{
 					Query:    `SELECT array_to_string(indclass, ',') FROM pg_index WHERE indexrelid = 'vectest_ab'::regclass;`,
-					Expected: []sql.Row{{""}},
+					Expected: []sql.Row{{"0,0"}},
 				},
 			},
 		},

@@ -44,11 +44,6 @@ var set_config_text_text_boolean = framework.Function3{
 			newValue = ""
 		}
 
-		if isLocal == true {
-			// TODO: If isLocal is true, then the config setting should only persist for the current transaction
-			return nil, errors.Errorf("setting configuration values for the current transaction is not supported yet")
-		}
-
 		settingNameStr, err := framework.UnwrapString(ctx, settingName)
 		if err != nil {
 			return nil, err
@@ -61,7 +56,13 @@ var set_config_text_text_boolean = framework.Function3{
 		// set_config can set system configuration or user configuration. System configuration settings are in top
 		// level settings, while user configuration settings are namespaced.
 		isUserConfig := strings.Contains(settingNameStr, ".")
-		if isUserConfig {
+		if isLocal == true {
+			// A transaction-local value overrides the session value until the transaction ends, when the
+			// connection handler clears it
+			if err := ctx.Session.SetTransactionLocalVariable(ctx, settingName.(string), newValue.(string)); err != nil {
+				return nil, err
+			}
+		} else if isUserConfig {
 			if err := ctx.SetUserVariable(ctx, settingNameStr, newValueStr, pgtypes.Text); err != nil {
 				return nil, err
 			}
