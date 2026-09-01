@@ -469,6 +469,10 @@ func (stmt *plpgSQL_stmt_execsql) Convert() (ExecuteSQL, error) {
 		Statement:      stmt.SQLStmt.Expr.Query,
 		Target:         target,
 		TargetIsRecord: targetIsRecord,
+		// An INTO clause always reports whether it found a row. Without one, only a data-modifying
+		// statement touches FOUND. The INTO check comes first because the raw text of a SELECT INTO
+		// still carries the INTO clause, which parses as something else entirely.
+		SetsFound: stmt.Into || isDataModifying(stmt.SQLStmt.Expr.Query),
 	}, nil
 }
 
@@ -604,8 +608,9 @@ func (stmt *plpgSQL_stmt_fori) Convert() (block Block, err error) {
 			Expression:   incrExpr,
 		},
 		If{
-			Condition:  condition,
-			GotoOffset: 2,
+			Condition:       condition,
+			GotoOffset:      2,
+			IsLoopCondition: true,
 		},
 		Goto{
 			Offset: 2 + bodySize,

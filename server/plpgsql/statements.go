@@ -176,6 +176,29 @@ type ExecuteSQL struct {
 	// TargetIsRecord states that Target names a single RECORD variable that receives the entire result row,
 	// rather than a comma-separated list of scalar variables that each receive one column.
 	TargetIsRecord bool
+	// SetsFound states that the statement updates the built-in FOUND variable. PostgreSQL limits that to
+	// statements carrying an INTO clause and to data-modifying statements. Everything else leaves FOUND
+	// as it was, a utility statement such as CREATE TABLE in particular.
+	SetsFound bool
+}
+
+// isDataModifying reports whether |query| is an INSERT, UPDATE, DELETE, or MERGE. Those are the statements
+// PostgreSQL treats as data-modifying when deciding whether to update FOUND; its own compiler records the
+// same thing as PLpgSQL_stmt_execsql.mod_stmt. A query that does not parse is reported as not data-modifying,
+// since leaving FOUND alone is what every statement outside this set does.
+func isDataModifying(query string) bool {
+	result, err := pg_query.Parse(query)
+	if err != nil {
+		return false
+	}
+	for _, rawStmt := range result.GetStmts() {
+		switch rawStmt.GetStmt().GetNode().(type) {
+		case *pg_query.Node_InsertStmt, *pg_query.Node_UpdateStmt,
+			*pg_query.Node_DeleteStmt, *pg_query.Node_MergeStmt:
+			return true
+		}
+	}
+	return false
 }
 
 var _ Statement = ExecuteSQL{}
@@ -191,12 +214,16 @@ func (stmt ExecuteSQL) AppendOperations(ops *[]InterpreterOperation, stack *Inte
 	if err != nil {
 		return err
 	}
-	*ops = append(*ops, InterpreterOperation{
+	op := InterpreterOperation{
 		OpCode:        executeOpCode(stmt.TargetIsRecord),
 		PrimaryData:   statementStr,
 		SecondaryData: referencedVariables,
 		Target:        stmt.Target,
-	})
+	}
+	if stmt.SetsFound {
+		op.Options = map[string]string{OptionSetsFound: "true"}
+	}
+	*ops = append(*ops, op)
 	return nil
 }
 
@@ -341,6 +368,9 @@ func (stmt Goto) AppendOperations(ops *[]InterpreterOperation, stack *Interprete
 type If struct {
 	Condition  string
 	GotoOffset int32
+	// IsLoopCondition marks this as the conditional jump that advances an integer FOR loop, whose result
+	// is the only record of the loop having run its body.
+	IsLoopCondition bool
 }
 
 var _ Statement = If{}
@@ -357,12 +387,16 @@ func (stmt If) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterS
 		return err
 	}
 
-	*ops = append(*ops, InterpreterOperation{
+	op := InterpreterOperation{
 		OpCode:        OpCode_If,
 		PrimaryData:   "SELECT " + condition + ";",
 		SecondaryData: referencedVariables,
 		Index:         len(*ops) + int(stmt.GotoOffset),
-	})
+	}
+	if stmt.IsLoopCondition {
+		op.Options = map[string]string{OptionLoopCondition: "true"}
+	}
+	*ops = append(*ops, op)
 	return nil
 }
 

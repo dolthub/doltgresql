@@ -48,6 +48,17 @@ const (
 	// Function OpCodes are persisted to disk, so these values MUST be stable across Doltgres versions.
 )
 
+// OptionSetsFound is an Options key marking an operation that updates the built-in FOUND variable. Static
+// and dynamic execution share an opcode, and PostgreSQL defines a static statement as setting FOUND while a
+// dynamic EXECUTE deliberately leaves it alone, so the two are told apart by this option rather than by
+// their opcode. Operations that always set FOUND do not carry it.
+const OptionSetsFound = "sets_found"
+
+// OptionLoopCondition is an Options key marking the conditional jump that advances an integer FOR loop.
+// Every kind of loop compiles to the same conditional jump, and PostgreSQL defines a FOR loop as setting
+// FOUND on exit while a WHILE or a plain LOOP leaves it alone, so the two are told apart by this option.
+const OptionLoopCondition = "loop_condition"
+
 // InterpreterOperation is an operation that will be performed by the interpreter.
 type InterpreterOperation struct {
 	OpCode        OpCode
