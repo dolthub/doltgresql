@@ -16,6 +16,7 @@ package plpgsql
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -71,6 +72,10 @@ type Block struct {
 	Body       []Statement
 	Label      string
 	IsLoop     bool
+	// ContinueTargetOffset gives the loop's next-iteration operation, where a CONTINUE for this loop jumps, as
+	// an offset from the body's first operation. It applies only when IsLoop is true, and the zero value suits
+	// WHILE and plain LOOP, whose bodies begin with that step rather than with loop setup.
+	ContinueTargetOffset int32
 }
 
 var _ Statement = Block{}
@@ -107,6 +112,7 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 			stmt.Label = stack.GetCurrentLabel()
 		}
 	}
+	scopeBeginIndex := len(*ops)
 	*ops = append(*ops, InterpreterOperation{
 		OpCode:      OpCode_ScopeBegin,
 		PrimaryData: stmt.Label,
@@ -141,6 +147,14 @@ func (stmt Block) AppendOperations(ops *[]InterpreterOperation, stack *Interpret
 				OpCode: OpCode_DeclareRecord,
 				Target: record.Name,
 			})
+		}
+	}
+	if stmt.IsLoop {
+		// Declarations are already appended, so the body starts at the next operation. reconcileLabels
+		// resolves this loop's CONTINUE statements through this offset.
+		continueTarget := len(*ops) + int(stmt.ContinueTargetOffset)
+		(*ops)[scopeBeginIndex].Options = map[string]string{
+			continueTargetOption: strconv.Itoa(continueTarget - scopeBeginIndex),
 		}
 	}
 	for _, innerStmt := range stmt.Body {

@@ -15,10 +15,17 @@
 package plpgsql
 
 import (
+	"strconv"
+
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/doltgresql/utils"
 )
+
+// continueTargetOption is the key, within a loop's ScopeBegin Options, holding the offset from that ScopeBegin
+// to the loop's next-iteration operation, which is where a CONTINUE for that loop jumps. Block.AppendOperations
+// sets it and reconcileLabels removes it, so it never reaches the persisted operations.
+const continueTargetOption = "continue_target"
 
 // labelStackItem is the stack item used while reconciling labels.
 type labelStackItem struct {
@@ -61,15 +68,29 @@ func reconcileLabels(ops []InterpreterOperation) error {
 				}
 			}
 		case OpCode_ScopeBegin:
+			// A CONTINUE defaults to the operation after this one, else we'll continually increase the scope.
+			// Loops that begin with setup operations instead of their next-iteration step say where it is.
+			start := opIndex + 1
+			if offset, ok := operation.Options[continueTargetOption]; ok {
+				parsedOffset, err := strconv.Atoi(offset)
+				if err != nil {
+					return errors.Wrapf(err, "invalid CONTINUE target for scope at operation %d", opIndex)
+				}
+				start = opIndex + parsedOffset
+			}
 			// We'll push the label and loop status to the stack
 			labels.Push(labelStackItem{
 				label:  operation.PrimaryData,
-				start:  opIndex + 1, // We want to go to the operation after this one, else we'll continually increase the scope
+				start:  start,
 				isLoop: len(operation.Target) > 0,
 			})
-			// We clear the label and loop status since we only set them for reconciliation
+			// We clear the label, loop status, and CONTINUE target since we only set them for reconciliation
 			ops[opIndex].PrimaryData = ""
 			ops[opIndex].Target = ""
+			delete(ops[opIndex].Options, continueTargetOption)
+			if len(ops[opIndex].Options) == 0 {
+				ops[opIndex].Options = nil
+			}
 		case OpCode_ScopeEnd:
 			stackItem := labels.Pop()
 			for gotoIdx, gotoOp := range gotos {
