@@ -178,3 +178,38 @@ func TestAdvisoryLocks(t *testing.T) {
 		},
 	})
 }
+
+// TestAdvisoryLockQARegressions covers the transaction-release failures
+// reported by automated QA against a Doltgres build that did not include the
+// companion Dolt lifecycle change.
+func TestAdvisoryLockQARegressions(t *testing.T) {
+	RunTransactionTests(t, []ScriptTest{
+		{
+			Name: "transaction locks release across session reuse",
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(30)`, Expected: []sql.Row{{nil}}},
+				{Query: `/* client A */ COMMIT`, ExpectedTag: "COMMIT"},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(30)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(30)`, Expected: []sql.Row{{"t"}}},
+
+				// Reuse A for another transaction and verify rollback independently.
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(31)`, Expected: []sql.Row{{nil}}},
+				{Query: `/* client A */ ROLLBACK`, ExpectedTag: "ROLLBACK"},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(31)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(31)`, Expected: []sql.Row{{"t"}}},
+
+				// A waiting client must acquire the lock after the owner commits.
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(32)`, Expected: []sql.Row{{nil}}},
+				{Query: `/* client B */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client B */ SELECT pg_advisory_xact_lock(32)`, ExpectedBlocking: true},
+				{Query: `/* client A */ COMMIT`, ExpectedTag: "COMMIT"},
+				{Query: `/* client B */ COMMIT`, ExpectedTag: "COMMIT"},
+				{Query: `/* client C */ SELECT pg_try_advisory_lock(32)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client C */ SELECT pg_advisory_unlock(32)`, Expected: []sql.Row{{"t"}}},
+			},
+		},
+	})
+}
