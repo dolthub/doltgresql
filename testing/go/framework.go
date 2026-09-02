@@ -100,6 +100,14 @@ type ScriptTestAssertion struct {
 	ExpectedNotices []ExpectedNotice
 	Focus           bool
 
+	// ExpectedBlocking starts the query asynchronously and asserts that it has
+	// not completed after 200ms. Transaction tests keep the query running so a
+	// later assertion from another named client can unblock it.
+	ExpectedBlocking bool
+	// CloseClient closes the named client's connection without executing Query.
+	// This is only supported by transaction tests using named clients.
+	CloseClient bool
+
 	BindVars []any
 
 	// SkipResultsCheck is used to skip assertions on the expected rows returned from a query. For now, this is
@@ -240,6 +248,12 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 		t.Run(assertion.Query, func(t *testing.T) {
 			if assertion.Skip {
 				t.Skip("Skip has been set in the assertion")
+			}
+			if assertion.ExpectedBlocking {
+				t.Fatal("ExpectedBlocking assertions require RunTransactionTest")
+			}
+			if assertion.CloseClient {
+				t.Fatal("CloseClient assertions require RunTransactionTest")
 			}
 
 			// Clear out any previously received notices
@@ -411,6 +425,144 @@ func RunScripts(t *testing.T, scripts []ScriptTest) {
 // RunScriptsWithoutNormalization runs the given collection of scripts, without normalizing any rows.
 func RunScriptsWithoutNormalization(t *testing.T, scripts []ScriptTest) {
 	runScripts(t, scripts, false)
+}
+
+const expectedBlockingTimeout = 200 * time.Millisecond
+
+// RunTransactionTests runs scripts whose assertion queries identify persistent
+// client sessions with comments such as "/* client A */".
+func RunTransactionTests(t *testing.T, scripts []ScriptTest) {
+	for _, script := range scripts {
+		RunTransactionTest(t, script)
+	}
+}
+
+// RunTransactionTest runs a script using one persistent connection per named
+// client. A query marked ExpectedBlocking remains in flight until another
+// assertion unblocks it.
+func RunTransactionTest(t *testing.T, script ScriptTest) {
+	if script.Skip {
+		t.Run(script.Name, func(t *testing.T) {
+			t.Skip("Skip has been set in the script")
+		})
+		return
+	}
+	scriptDatabase := script.Database
+	if scriptDatabase == "" {
+		scriptDatabase = "postgres"
+	}
+
+	var ctx context.Context
+	var conn *Connection
+	var controller *svcs.Controller
+	if script.UseLocalFileSystem {
+		port, err := sql.GetEmptyPort()
+		require.NoError(t, err)
+		ctx, conn, controller = CreateServerLocalWithPort(t, scriptDatabase, port)
+	} else {
+		ctx, conn, controller = CreateServer(t, scriptDatabase)
+	}
+	defer func() {
+		conn.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+
+	t.Run(script.Name, func(t *testing.T) {
+		for _, query := range script.SetUpScript {
+			_, err := conn.Exec(ctx, query)
+			require.NoError(t, err, "error running setup query: %s", query)
+		}
+
+		clients := make(map[string]*pgx.Conn)
+		defer func() {
+			for _, client := range clients {
+				_ = client.Close(ctx)
+			}
+		}()
+		blocking := make(map[string]<-chan error)
+
+		waitForClient := func(t *testing.T, clientName string) {
+			done, ok := blocking[clientName]
+			if !ok {
+				return
+			}
+			select {
+			case err := <-done:
+				require.NoError(t, err, "blocked query for client %s failed", clientName)
+				delete(blocking, clientName)
+			case <-time.After(5 * time.Second):
+				t.Fatalf("blocked query for client %s did not complete", clientName)
+			}
+		}
+
+		for _, assertion := range script.Assertions {
+			assertion := assertion
+			clientName := transactionTestClient(assertion.Query)
+			client, ok := clients[clientName]
+			if !ok {
+				if assertion.CloseClient {
+					t.Fatalf("cannot close unknown client %s", clientName)
+				}
+				config := conn.Default.Config().Copy()
+				var err error
+				client, err = pgx.ConnectConfig(ctx, config)
+				require.NoError(t, err)
+				clients[clientName] = client
+			}
+
+			t.Run(assertion.Query, func(t *testing.T) {
+				if assertion.Skip {
+					t.Skip("Skip has been set in the assertion")
+				}
+				waitForClient(t, clientName)
+				if assertion.CloseClient {
+					require.NoError(t, client.Close(ctx))
+					delete(clients, clientName)
+					return
+				}
+				if assertion.ExpectedBlocking {
+					done := make(chan error, 1)
+					go func() {
+						_, err := client.Exec(ctx, assertion.Query, assertion.BindVars...)
+						done <- err
+					}()
+					select {
+					case err := <-done:
+						require.NoError(t, err)
+						t.Fatalf("query completed before blocking timeout")
+					case <-time.After(expectedBlockingTimeout):
+						blocking[clientName] = done
+					}
+					return
+				}
+
+				// Reuse the standard assertion implementation after selecting this
+				// named client's persistent connection.
+				conn.Current = client
+				conn.Username = ""
+				conn.Password = ""
+				runScript(t, ctx, ScriptTest{Assertions: []ScriptTestAssertion{assertion}}, conn, true)
+			})
+		}
+
+		for clientName := range blocking {
+			waitForClient(t, clientName)
+		}
+	})
+}
+
+func transactionTestClient(query string) string {
+	start := strings.Index(query, "/*")
+	end := strings.Index(query, "*/")
+	if start < 0 || end < start {
+		panic("no client comment found in query " + query)
+	}
+	comment := strings.TrimSpace(query[start+2 : end])
+	if !strings.HasPrefix(strings.ToLower(comment), "client ") {
+		panic("no client comment found in query " + query)
+	}
+	return strings.TrimSpace(comment[len("client "):])
 }
 
 // runScripts is the implementation of both RunScripts and RunScriptsWithoutNormalization.

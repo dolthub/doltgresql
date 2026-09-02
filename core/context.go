@@ -51,6 +51,83 @@ type contextValues struct {
 
 	// cache the dateOutputFormat, this is refreshed on SET
 	dateOutputFormat string
+
+	transactionEndCallbacks   []func()
+	sessionAdvisoryLockCounts map[string]int
+}
+
+var _ dsess.DoltgresSessionLifecycle = (*contextValues)(nil)
+
+// DoltgresSessionCacheClear clears branch-dependent cached state while
+// preserving transaction-end callbacks and session advisory lock counts.
+func (cv *contextValues) DoltgresSessionCacheClear() {
+	cv.colls = nil
+	cv.pgCatalogCache = nil
+	cv.runner = nil
+	cv.dateOutputFormat = ""
+}
+
+// DoltgresTransactionEnd releases resources whose lifetime is the current
+// transaction. DoltSession calls it from the audited semantic transaction-end
+// paths, including explicit, implicit, and procedural commit and rollback.
+func (cv *contextValues) DoltgresTransactionEnd() {
+	callbacks := cv.transactionEndCallbacks
+	cv.transactionEndCallbacks = nil
+	for _, callback := range callbacks {
+		callback()
+	}
+}
+
+// AddTransactionEndCallback registers work to run when the current transaction
+// commits or rolls back.
+func AddTransactionEndCallback(ctx *sql.Context, callback func()) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	cv.transactionEndCallbacks = append(cv.transactionEndCallbacks, callback)
+	return nil
+}
+
+// AddSessionAdvisoryLock records a successful session-scoped advisory lock
+// acquisition so that transaction-scoped acquisitions cannot be manually
+// released by pg_advisory_unlock.
+func AddSessionAdvisoryLock(ctx *sql.Context, lockName string) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	if cv.sessionAdvisoryLockCounts == nil {
+		cv.sessionAdvisoryLockCounts = make(map[string]int)
+	}
+	cv.sessionAdvisoryLockCounts[lockName]++
+	return nil
+}
+
+// HasSessionAdvisoryLock returns whether the session has a session-scoped
+// acquisition for the named advisory lock.
+func HasSessionAdvisoryLock(ctx *sql.Context, lockName string) (bool, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return false, err
+	}
+	return cv.sessionAdvisoryLockCounts[lockName] > 0, nil
+}
+
+// RemoveSessionAdvisoryLock records the release of one session-scoped advisory
+// lock acquisition.
+func RemoveSessionAdvisoryLock(ctx *sql.Context, lockName string) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	count := cv.sessionAdvisoryLockCounts[lockName]
+	if count <= 1 {
+		delete(cv.sessionAdvisoryLockCounts, lockName)
+	} else {
+		cv.sessionAdvisoryLockCounts[lockName] = count - 1
+	}
+	return nil
 }
 
 // databaseCollections holds the root object collections cached for a single database, indexed by RootObjectID. A cached
