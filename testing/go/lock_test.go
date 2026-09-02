@@ -176,14 +176,6 @@ func TestAdvisoryLocks(t *testing.T) {
 				{Query: `/* client B */ SELECT pg_advisory_unlock(25)`, Expected: []sql.Row{{"t"}}},
 			},
 		},
-	})
-}
-
-// TestAdvisoryLockQARegressions covers the transaction-release failures
-// reported by automated QA against a Doltgres build that did not include the
-// companion Dolt lifecycle change.
-func TestAdvisoryLockQARegressions(t *testing.T) {
-	RunTransactionTests(t, []ScriptTest{
 		{
 			Name: "transaction locks release across session reuse",
 			Assertions: []ScriptTestAssertion{
