@@ -203,5 +203,27 @@ func TestAdvisoryLocks(t *testing.T) {
 				{Query: `/* client C */ SELECT pg_advisory_unlock(32)`, Expected: []sql.Row{{"t"}}},
 			},
 		},
+		{
+			Name: "advisory locks release when client disconnects",
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_lock(40)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(41)`, Expected: []sql.Row{{nil}}},
+
+				{Query: `/* client B */ SELECT pg_advisory_lock(40)`, ExpectedBlocking: true},
+				{Query: `/* client C */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client C */ SELECT pg_advisory_xact_lock(41)`, ExpectedBlocking: true},
+
+				// Disconnect A without committing or rolling back. Both waiters must proceed.
+				{Query: `/* client A */ DISCONNECT`, CloseClient: true},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(40)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client C */ COMMIT`, ExpectedTag: "COMMIT"},
+
+				{Query: `/* client D */ SELECT pg_try_advisory_lock(40)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client D */ SELECT pg_advisory_unlock(40)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client D */ SELECT pg_try_advisory_lock(41)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client D */ SELECT pg_advisory_unlock(41)`, Expected: []sql.Row{{"t"}}},
+			},
+		},
 	})
 }

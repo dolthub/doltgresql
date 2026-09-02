@@ -104,6 +104,9 @@ type ScriptTestAssertion struct {
 	// not completed after 200ms. Transaction tests keep the query running so a
 	// later assertion from another named client can unblock it.
 	ExpectedBlocking bool
+	// CloseClient closes the named client's connection without executing Query.
+	// This is only supported by transaction tests using named clients.
+	CloseClient bool
 
 	BindVars []any
 
@@ -248,6 +251,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			}
 			if assertion.ExpectedBlocking {
 				t.Fatal("ExpectedBlocking assertions require RunTransactionTest")
+			}
+			if assertion.CloseClient {
+				t.Fatal("CloseClient assertions require RunTransactionTest")
 			}
 
 			// Clear out any previously received notices
@@ -495,6 +501,9 @@ func RunTransactionTest(t *testing.T, script ScriptTest) {
 			clientName := transactionTestClient(assertion.Query)
 			client, ok := clients[clientName]
 			if !ok {
+				if assertion.CloseClient {
+					t.Fatalf("cannot close unknown client %s", clientName)
+				}
 				config := conn.Default.Config().Copy()
 				var err error
 				client, err = pgx.ConnectConfig(ctx, config)
@@ -507,6 +516,11 @@ func RunTransactionTest(t *testing.T, script ScriptTest) {
 					t.Skip("Skip has been set in the assertion")
 				}
 				waitForClient(t, clientName)
+				if assertion.CloseClient {
+					require.NoError(t, client.Close(ctx))
+					delete(clients, clientName)
+					return
+				}
 				if assertion.ExpectedBlocking {
 					done := make(chan error, 1)
 					go func() {
