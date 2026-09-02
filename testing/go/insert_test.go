@@ -139,6 +139,56 @@ ON CONFLICT (id) do update set c1 = $4`,
 			},
 		},
 		{
+			Name: "conditional on conflict update",
+			SetUpScript: []string{
+				"CREATE TABLE conditional_upsert (id INT PRIMARY KEY, version INT, note TEXT)",
+				"INSERT INTO conditional_upsert VALUES (1, 5, 'original'), (2, 1, 'second')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (1, 6, 'advanced') ON CONFLICT (id) DO UPDATE SET version = 6, note = 'advanced' WHERE conditional_upsert.version < 6",
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (1, 4, 'stale') ON CONFLICT (id) DO UPDATE SET version = 4, note = 'stale' WHERE conditional_upsert.version < 4",
+					ExpectedTag: "INSERT 0 0",
+				},
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (1, 7, 'one'), (2, 0, 'two'), (3, 3, 'three') ON CONFLICT (id) DO UPDATE SET version = 7, note = 'updated' WHERE conditional_upsert.version <= 5",
+					ExpectedTag: "INSERT 0 2",
+				},
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (2, 8, 'null predicate') ON CONFLICT (id) DO UPDATE SET version = 8 WHERE NULL",
+					ExpectedTag: "INSERT 0 0",
+				},
+				{
+					Query:       "INSERT INTO conditional_upsert VALUES (2, $1, 'bound') ON CONFLICT (id) DO UPDATE SET version = $1, note = 'bound' WHERE conditional_upsert.version < $1",
+					BindVars:    []any{8},
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query:    "INSERT INTO conditional_upsert VALUES (1, 9, 'proposed') ON CONFLICT (id) DO UPDATE SET version = excluded.version, note = excluded.note WHERE conditional_upsert.version < excluded.version RETURNING id, version, note",
+					Expected: []sql.Row{{1, 9, "proposed"}},
+				},
+				{
+					Query:    "INSERT INTO conditional_upsert VALUES (1, 10, 'casted') ON CONFLICT (id) DO UPDATE SET version = excluded.version::BIGINT, note = excluded.note WHERE conditional_upsert.version < excluded.version RETURNING id, version",
+					Expected: []sql.Row{{1, 10}},
+				},
+				{
+					Query:    "INSERT INTO conditional_upsert SELECT 1, 11::BIGINT, 'selected' ON CONFLICT (id) DO UPDATE SET version = excluded.version, note = excluded.note WHERE conditional_upsert.version < excluded.version RETURNING id, version, note",
+					Expected: []sql.Row{{1, 11, "selected"}},
+				},
+				{
+					Query: "SELECT * FROM conditional_upsert ORDER BY id",
+					Expected: []sql.Row{
+						{1, 11, "selected"},
+						{2, 8, "bound"},
+						{3, 3, "three"},
+					},
+				},
+			},
+		},
+		{
 			Name: "null and unspecified default values",
 			SetUpScript: []string{
 				"CREATE TABLE t (i INT DEFAULT NULL, j INT)",
