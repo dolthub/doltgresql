@@ -143,6 +143,27 @@ func TestAdvisoryLocks(t *testing.T) {
 				{Query: `/* client B */ SELECT pg_try_advisory_lock(21)`, Expected: []sql.Row{{"t"}}},
 				{Query: `/* client B */ SELECT pg_advisory_unlock(21)`, Expected: []sql.Row{{"t"}}},
 
+				// Transaction-scoped locks cannot be released by the session-level unlock function.
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(42)`, Expected: []sql.Row{{nil}}},
+				{Query: `/* client A */ SELECT pg_advisory_unlock(42)`, Expected: []sql.Row{{"f"}}},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(42)`, Expected: []sql.Row{{"f"}}},
+				{Query: `/* client A */ COMMIT`, ExpectedTag: "COMMIT"},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(42)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(42)`, Expected: []sql.Row{{"t"}}},
+
+				// A session acquisition can be released while a transaction acquisition
+				// of the same key remains held until commit.
+				{Query: `/* client A */ SELECT pg_advisory_lock(43)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
+				{Query: `/* client A */ SELECT pg_advisory_xact_lock(43)`, Expected: []sql.Row{{nil}}},
+				{Query: `/* client A */ SELECT pg_advisory_unlock(43)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client A */ SELECT pg_advisory_unlock(43)`, Expected: []sql.Row{{"f"}}},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(43)`, Expected: []sql.Row{{"f"}}},
+				{Query: `/* client A */ COMMIT`, ExpectedTag: "COMMIT"},
+				{Query: `/* client B */ SELECT pg_try_advisory_lock(43)`, Expected: []sql.Row{{"t"}}},
+				{Query: `/* client B */ SELECT pg_advisory_unlock(43)`, Expected: []sql.Row{{"t"}}},
+
 				// The blocking form remains in flight until client A releases the lock.
 				{Query: `/* client A */ BEGIN`, ExpectedTag: "BEGIN"},
 				{Query: `/* client A */ SELECT pg_advisory_xact_lock(22)`, Expected: []sql.Row{{nil}}},

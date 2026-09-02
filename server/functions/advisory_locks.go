@@ -109,16 +109,7 @@ var pg_advisory_lock_bigint = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		lockNumericId := val1.(int64)
-		lockName := fmt.Sprintf("%v", lockNumericId)
-
-		lockSubsystem := getLockSubsystem()
-		if lockSubsystem == nil {
-			return false, errors.Errorf("lock subsystem not available")
-		}
-
-		err := lockSubsystem.Lock(ctx, lockName, time.Millisecond*-1)
-		return err == nil, err
+		return acquireSessionAdvisoryLock(ctx, fmt.Sprintf("%v", val1.(int64)), false)
 	},
 }
 
@@ -131,16 +122,32 @@ var pg_try_advisory_lock_bigint = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		lockNumericId := val1.(int64)
-		lockName := fmt.Sprintf("%v", lockNumericId)
-
-		lockSubsystem := getLockSubsystem()
-		if lockSubsystem == nil {
-			return false, errors.Errorf("lock subsystem not available")
-		}
-
-		return lockSubsystem.TryLock(ctx, lockName)
+		return acquireSessionAdvisoryLock(ctx, fmt.Sprintf("%v", val1.(int64)), true)
 	},
+}
+
+func acquireSessionAdvisoryLock(ctx *sql.Context, lockName string, try bool) (bool, error) {
+	lockSubsystem := getLockSubsystem()
+	if lockSubsystem == nil {
+		return false, errors.Errorf("lock subsystem not available")
+	}
+
+	acquired := true
+	var err error
+	if try {
+		acquired, err = lockSubsystem.TryLock(ctx, lockName)
+	} else {
+		err = lockSubsystem.Lock(ctx, lockName, time.Millisecond*-1)
+	}
+	if err != nil || !acquired {
+		return acquired, err
+	}
+
+	if err = core.AddSessionAdvisoryLock(ctx, lockName); err != nil {
+		_ = lockSubsystem.Unlock(ctx, lockName)
+		return false, err
+	}
+	return true, nil
 }
 
 // pg_advisory_unlock_bigint represents the pg_advisory_unlock(bigint) function.
@@ -160,12 +167,22 @@ var pg_advisory_unlock_bigint = framework.Function1{
 			return false, errors.Errorf("lock subsystem not available")
 		}
 
-		err := lockSubsystem.Unlock(ctx, lockName)
+		hasSessionLock, err := core.HasSessionAdvisoryLock(ctx, lockName)
+		if err != nil || !hasSessionLock {
+			return false, err
+		}
+
+		err = lockSubsystem.Unlock(ctx, lockName)
 		if sql.ErrLockDoesNotExist.Is(err) {
 			return false, nil
 		}
-
-		return err == nil, err
+		if err != nil {
+			return false, err
+		}
+		if err = core.RemoveSessionAdvisoryLock(ctx, lockName); err != nil {
+			return false, err
+		}
+		return true, nil
 	},
 }
 
