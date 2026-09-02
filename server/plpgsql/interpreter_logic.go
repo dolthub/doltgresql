@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
+	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -221,10 +222,20 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 						return nil, err
 					}
 				}
+				if setsFound(operation) {
+					if err = stack.SetFound(ctx, rowFound); err != nil {
+						return nil, err
+					}
+				}
 			} else {
-				_, _, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+				_, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 				if err != nil {
 					return nil, err
+				}
+				if setsFound(operation) {
+					if err = stack.SetFound(ctx, queryProducedRow(rows)); err != nil {
+						return nil, err
+					}
 				}
 			}
 		case OpCode_ExecuteInto:
@@ -242,6 +253,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if err = stack.UpdateRecord(operation.Target, schema, row); err != nil {
 				return nil, err
 			}
+			if setsFound(operation) {
+				if err = stack.SetFound(ctx, len(rows) > 0); err != nil {
+					return nil, err
+				}
+			}
 		case OpCode_DeclareRecord:
 			stack.NewRecord(operation.Target, nil, nil)
 		case OpCode_Get:
@@ -249,19 +265,31 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		case OpCode_Goto:
 			// We must compare to the index - 1, so that the increment hits our target
 			if counter <= operation.Index {
+				// Jumping forward leaves every scope it passes over for good, so each one is torn down
+				// the same way reaching its ScopeEnd would tear it down. A labelled EXIT out of a nested
+				// loop passes over that loop's ScopeEnd this way.
 				for ; counter < operation.Index-1; counter++ {
 					switch statements[counter].OpCode {
 					case OpCode_ScopeBegin:
 						stack.PushScope()
 					case OpCode_ScopeEnd:
-						stack.PopScope()
+						if err := exitScope(ctx, stack); err != nil {
+							return nil, err
+						}
 					}
 				}
 			} else {
+				// Jumping backward passes a scope's ScopeBegin only when that scope is being left for
+				// good, so that is torn down like any other scope exit. A labelled CONTINUE of an outer
+				// loop leaves the inner loop this way. Reaching a ScopeEnd backwards is the opposite: a
+				// scope that already closed is being re-entered, and the fresh scope this pushes carries
+				// nothing to tear down when the walk reaches its ScopeBegin a moment later.
 				for ; counter > operation.Index-1; counter-- {
 					switch statements[counter].OpCode {
 					case OpCode_ScopeBegin:
-						stack.PopScope()
+						if err := exitScope(ctx, stack); err != nil {
+							return nil, err
+						}
 					case OpCode_ScopeEnd:
 						stack.PushScope()
 					}
@@ -272,7 +300,13 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			if err != nil {
 				return nil, err
 			}
-			if retVal.(bool) {
+			conditionMet := retVal.(bool)
+			if isLoopCondition(operation) {
+				// An integer FOR loop has no cursor to carry the fact that its body ran, so its condition
+				// is what records it, for the FOUND the loop reports once it is left.
+				stack.MarkScopeLoop(conditionMet)
+			}
+			if conditionMet {
 				// We're never changing the scope, so we can just assign it directly.
 				// Also, we must assign to index-1, so that the increment hits our target.
 				counter = operation.Index - 1
@@ -280,8 +314,11 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		case OpCode_InsertInto:
 			// TODO: implement
 		case OpCode_Perform:
-			_, _, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
+			_, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
+				return nil, err
+			}
+			if err = stack.SetFound(ctx, queryProducedRow(rows)); err != nil {
 				return nil, err
 			}
 		case OpCode_Raise:
@@ -364,13 +401,17 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return nil, err
 			}
 			stack.InitCursor(operation.Target, schema, rows)
+			// The loop reports FOUND when it is left even if the query matched nothing.
+			stack.MarkScopeLoop(false)
 		case OpCode_ForQueryNext:
 			schema, row, ok := stack.AdvanceCursor(operation.PrimaryData)
 			if !ok {
-				stack.CloseCursor(operation.PrimaryData)
-				// Jump forward past the loop body and back-goto, same mechanism as OpCode_If.
+				// Jump forward past the loop body and back-goto, same mechanism as OpCode_If. The loop's
+				// ScopeEnd is what closes the cursor and reports FOUND, since every way out of the loop
+				// reaches it and this one does not.
 				counter = operation.Index - 1
 			} else {
+				stack.MarkScopeLoop(true)
 				if err := stack.UpdateRecord(operation.Target, schema, row); err != nil {
 					return nil, err
 				}
@@ -385,10 +426,15 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				return nil, err
 			}
 			stack.BufferReturnQueryResults(records)
+			if err = stack.SetFound(ctx, len(rows) > 0); err != nil {
+				return nil, err
+			}
 		case OpCode_ScopeBegin:
 			stack.PushScope()
 		case OpCode_ScopeEnd:
-			stack.PopScope()
+			if err := exitScope(ctx, stack); err != nil {
+				return nil, err
+			}
 		case OpCode_SelectInto:
 			// TODO: implement
 		case OpCode_UpdateInto:
@@ -398,6 +444,49 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		}
 	}
 	return nil, nil
+}
+
+// exitScope performs everything that leaving a scope entails. Both the ScopeEnd opcode and the forward walk
+// of a Goto leave scopes, so they share this rather than each handling scope depth on its own, which would
+// leave whichever of them grew a new responsibility last out of step with the other.
+//
+// A FOR..IN..SELECT loop's scope owns the cursor the loop iterates, so leaving the scope is what closes it.
+// Leaving it is also what reports a FOR loop's FOUND: Postgres sets FOUND when such a loop exits, by
+// whichever path, to whether the body ran at all, and leaves it alone while the loop is running. A WHILE or
+// plain LOOP does not set FOUND, so only a scope its loop marked reports one.
+func exitScope(ctx *sql.Context, stack InterpreterStack) error {
+	if cursorName := stack.ScopeCursor(); len(cursorName) > 0 {
+		stack.CloseCursor(cursorName)
+	}
+	if reportsFound, iterated := stack.ScopeLoop(); reportsFound {
+		if err := stack.SetFound(ctx, iterated); err != nil {
+			return err
+		}
+	}
+	stack.PopScope()
+	return nil
+}
+
+// setsFound reports whether the operation should update the built-in FOUND variable. Only the opcodes that
+// static and dynamic execution share have to ask: PostgreSQL defines a static statement as setting FOUND
+// and a dynamic EXECUTE as leaving it alone.
+func setsFound(operation InterpreterOperation) bool {
+	return operation.Options[OptionSetsFound] == "true"
+}
+
+// isLoopCondition reports whether the operation is the conditional jump that advances an integer FOR loop.
+func isLoopCondition(operation InterpreterOperation) bool {
+	return operation.Options[OptionLoopCondition] == "true"
+}
+
+// queryProducedRow reports whether a statement produced a row for the purposes of FOUND. A data-modifying
+// statement without RETURNING reports a single OkResult row no matter how many rows it touched, so for those
+// it is the affected-row count that answers the question.
+func queryProducedRow(rows []sql.Row) bool {
+	if len(rows) == 1 && gmstypes.IsOkResult(rows[0]) {
+		return rows[0][0].(gmstypes.OkResult).RowsAffected > 0
+	}
+	return len(rows) > 0
 }
 
 // convertRowsToRecords iterates overs |rows| and converts each field in each row

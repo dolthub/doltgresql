@@ -100,6 +100,11 @@ const (
 	TriggerOldRecordName = "old"
 )
 
+// FoundVariableName is the name of the built-in FOUND variable, which PL/pgSQL creates for every function
+// and which reports whether the most recent statement that is defined to set it produced any row.
+// https://www.postgresql.org/docs/15/plpgsql-statements.html#PLPGSQL-STATEMENTS-DIAGNOSTICS
+const FoundVariableName = "found"
+
 // cursorState holds the result set for a FOR record IN query LOOP cursor.
 type cursorState struct {
 	Schema sql.Schema
@@ -132,6 +137,14 @@ type InterpreterVariableReference struct {
 type InterpreterScopeDetails struct {
 	variables map[string]*interpreterVariable
 	label     string
+	// cursor names the FOR..IN..SELECT cursor this scope owns, if it is such a loop's scope. The scope
+	// owning it is what lets the cursor be torn down wherever the loop is left, rather than only where
+	// the cursor runs out.
+	cursor string
+	// reportsFound marks the scope of a loop that sets FOUND when it is left, and iterated records
+	// whether that loop ever advanced into its body.
+	reportsFound bool
+	iterated     bool
 }
 
 // InterpreterStack represents the working information that an interpreter will use during execution. It is not exactly
@@ -407,13 +420,21 @@ func (is *InterpreterStack) ReturnOutParamResults() any {
 	return record
 }
 
-// InitCursor stores the result set for a FOR record IN query LOOP cursor.
+// InitCursor stores the result set for a FOR record IN query LOOP cursor. The cursor is opened in the
+// loop's own scope, which takes ownership of it.
 func (is *InterpreterStack) InitCursor(name string, schema sql.Schema, rows []sql.Row) {
 	is.cursors[name] = &cursorState{
 		Schema: schema,
 		Rows:   rows,
 		Index:  0,
 	}
+	is.stack.Peek().cursor = name
+}
+
+// ScopeCursor returns the name of the cursor the current scope owns, or an empty string when the scope is
+// not that of a FOR..IN..SELECT loop.
+func (is *InterpreterStack) ScopeCursor() string {
+	return is.stack.Peek().cursor
 }
 
 // AdvanceCursor returns the next row for the named cursor and advances its index.
@@ -431,6 +452,32 @@ func (is *InterpreterStack) AdvanceCursor(name string) (sql.Schema, sql.Row, boo
 // CloseCursor removes the named cursor from the stack.
 func (is *InterpreterStack) CloseCursor(name string) {
 	delete(is.cursors, name)
+}
+
+// MarkScopeLoop marks the current scope as a loop's, whose exit reports FOUND, and records whether the loop
+// has just advanced into its body. Only the loop itself knows that it advanced, and it cannot record it in
+// FOUND, which PostgreSQL leaves alone until the loop is left.
+func (is *InterpreterStack) MarkScopeLoop(advanced bool) {
+	details := is.stack.Peek()
+	details.reportsFound = true
+	details.iterated = details.iterated || advanced
+}
+
+// ScopeLoop reports whether leaving the current scope sets FOUND, and if so whether its loop body ran.
+func (is *InterpreterStack) ScopeLoop() (reportsFound bool, iterated bool) {
+	details := is.stack.Peek()
+	return details.reportsFound, details.iterated
+}
+
+// SetFound updates the built-in FOUND variable. Functions compiled before FOUND was supported do not declare
+// it, and a function may shadow the name with a variable of its own, so anything other than the built-in
+// boolean is left alone rather than being overwritten.
+func (is *InterpreterStack) SetFound(ctx *sql.Context, found bool) error {
+	ref := is.GetVariable(FoundVariableName)
+	if ref.Type == nil || ref.Type.ID != pgtypes.Bool.ID {
+		return nil
+	}
+	return is.SetVariable(ctx, FoundVariableName, found)
 }
 
 // UpdateRecord finds the named variable and sets its schema and row value. A nil |val| gives the record the
