@@ -55,6 +55,8 @@ type contextValues struct {
 	transactionEndCallbacks []func()
 }
 
+var _ dsess.DoltgresSessionLifecycle = (*contextValues)(nil)
+
 // DoltgresSessionCacheClear clears branch-dependent cached state while
 // preserving transaction-end callbacks.
 func (cv *contextValues) DoltgresSessionCacheClear() {
