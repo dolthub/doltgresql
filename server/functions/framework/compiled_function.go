@@ -28,6 +28,8 @@ import (
 	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/id"
 	procedures2 "github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -45,16 +47,23 @@ type Function interface {
 
 // CompiledFunction is an expression that represents a fully-analyzed PostgreSQL function.
 type CompiledFunction struct {
-	Name          string
-	Arguments     []sql.Expression
-	IsOperator    bool
-	overloads     *Overloads
-	fnOverloads   []Overload
-	overload      overloadMatch
-	originalTypes []*pgtypes.DoltgresType
-	callResolved  []*pgtypes.DoltgresType
-	runner        sql.StatementRunner
-	stashedErr    error
+	Name           string
+	Arguments      []sql.Expression
+	IsOperator     bool
+	overloads      *Overloads
+	fnOverloads    []Overload
+	overload       overloadMatch
+	originalTypes  []*pgtypes.DoltgresType
+	callResolved   []*pgtypes.DoltgresType
+	runner         sql.StatementRunner
+	stashedErr     error
+	distinctWindow *distinctWindowCall
+}
+
+// distinctWindowCall preserves the parsed function identity until overload resolution completes.
+type distinctWindowCall struct {
+	schema string
+	name   string
 }
 
 var _ sql.FunctionExpression = (*CompiledFunction)(nil)
@@ -62,6 +71,31 @@ var _ sql.NonDeterministicExpression = (*CompiledFunction)(nil)
 var _ procedures.InterpreterExpr = (*CompiledFunction)(nil)
 var _ sql.RowIterExpression = (*CompiledFunction)(nil)
 var _ sql.ExtendedTableFunction = (*CompiledFunction)(nil)
+var _ sql.DistinctWindowFunctionValidator = (*CompiledFunction)(nil)
+
+// ValidateDistinctWindow returns PostgreSQL's error for DISTINCT after overload resolution identifies the function class.
+func (c *CompiledFunction) ValidateDistinctWindow(schema, name string) error {
+	c.distinctWindow = &distinctWindowCall{schema: schema, name: name}
+	return c.distinctWindowError()
+}
+
+// distinctWindowError classifies DISTINCT window usage from the selected overload.
+func (c *CompiledFunction) distinctWindowError() error {
+	if !c.overload.Valid() {
+		return nil
+	}
+	functionName := c.distinctWindow.name
+	if c.distinctWindow.schema != "" {
+		functionName = c.distinctWindow.schema + "." + c.distinctWindow.name
+	}
+	switch c.overload.Function().(type) {
+	case AggregateFunctionInterface, WindowFunctionInterface:
+		return pgerror.New(pgcode.FeatureNotSupported, "DISTINCT is not implemented for window functions")
+	default:
+		return pgerror.Newf(pgcode.WrongObjectType,
+			"DISTINCT specified, but %s is not an aggregate function", functionName)
+	}
+}
 
 // NewCompiledFunction returns a newly compiled function.
 func NewCompiledFunction(ctx *sql.Context, name string, args []sql.Expression, functions *Overloads, isOperator bool) *CompiledFunction {
@@ -725,7 +759,14 @@ func (c *CompiledFunction) WithChildren(ctx *sql.Context, children ...sql.Expres
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	return newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner), nil
+	nc := newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner)
+	nc.distinctWindow = c.distinctWindow
+	if nc.distinctWindow != nil {
+		if err := nc.distinctWindowError(); err != nil {
+			nc.stashedErr = err
+		}
+	}
+	return nc, nil
 }
 
 // SetStatementRunner implements the interface analyzer.Interpreter.

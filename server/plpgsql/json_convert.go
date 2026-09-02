@@ -38,6 +38,11 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 		}
 	}
 	offset := int32(0) - lowestRecordNumber
+	// PL/pgSQL creates the built-in FOUND variable itself, immediately after the function's parameters, so
+	// it arrives looking like a parameter (no line number). We track where it lands so it can be turned
+	// back into a declaration below. A parameter may also be named `found`, in which case the built-in is
+	// the later of the two and shadows it, so the last match is the one that counts.
+	foundVariableIndex := -1
 	// Then we do a second loop that actually adds all of the datums to the block
 	for _, v := range jsonBlock.Datums {
 		switch {
@@ -62,6 +67,9 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 				block.Records[recordParentNumber].Fields, v.RecordField.FieldName)
 		case v.Row != nil:
 		case v.Variable != nil:
+			if v.Variable.LineNumber == 0 && strings.EqualFold(v.Variable.RefName, FoundVariableName) {
+				foundVariableIndex = len(block.Variables)
+			}
 			block.Variables = append(block.Variables, Variable{
 				Name:        v.Variable.RefName,
 				Type:        strings.ToLower(v.Variable.Type.Type.Name),
@@ -73,6 +81,18 @@ func jsonConvert(jsonBlock plpgSQL_block) (Block, error) {
 			// "plpgsql.datum". Name the arms we do handle instead.
 			return Block{}, errors.New("unhandled declared variable: expected a record, record field, row, or variable")
 		}
+	}
+	// FOUND is not passed in by the caller, so it has to be declared and initialized like any other local.
+	// Postgres starts it out false.
+	if foundVariableIndex >= 0 {
+		block.Variables[foundVariableIndex].IsParameter = false
+		block.Variables[foundVariableIndex].Default = "false"
+		// The datum names the type as `pg_catalog."boolean"`, which OpCode_Declare cannot resolve: it maps
+		// a qualified pg_catalog name through TypeForNonKeywordTypeName, which has no entry for the
+		// `boolean` spelling, so the lookup is left asking for a type named `boolean` and fails. Name the
+		// type by its canonical name instead. The same gap makes a hand-written `DECLARE b
+		// pg_catalog.boolean` fail, so teaching that alias table about `boolean` would let this go away.
+		block.Variables[foundVariableIndex].Type = "pg_catalog.bool"
 	}
 	// The NEW and OLD records of a trigger appear in the datum list like any other record, but they are
 	// supplied by the trigger invocation rather than declared by the function, so they must not be

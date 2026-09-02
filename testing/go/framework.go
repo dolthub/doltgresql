@@ -287,7 +287,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 					require.NoError(t, err)
 				}
 			} else if assertion.ExpectedTag != "" {
-				commandTag, err := conn.Exec(ctx, assertion.Query)
+				commandTag, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				require.NoError(t, err)
 				tag := assertion.ExpectedTag
 				if tag == EmptyCommandTag {

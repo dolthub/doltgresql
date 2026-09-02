@@ -92,6 +92,12 @@ func (c *CompiledWindowFunction) WithChildren(ctx *sql.Context, children ...sql.
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
 	nc := newCompiledWindowFunctionInternal(ctx, c.Name, children[:numArgs], c.overloads, c.fnOverloads)
+	nc.distinctWindow = c.distinctWindow
+	if nc.distinctWindow != nil {
+		if err := nc.distinctWindowError(); err != nil {
+			nc.stashedErr = err
+		}
+	}
 	// Preserve the identity assigned by the planbuilder: a later analyzer pass that rebuilds this
 	// expression via WithChildren (e.g. a generic bottom-up transform) must not silently lose the
 	// WithId/WithWindow state that was already bound onto c.
