@@ -44,10 +44,12 @@ var pg_advisory_xact_lock_bigint = framework.Function1{
 	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		_, err := acquireTransactionAdvisoryLock(ctx, fmt.Sprintf("%v", val1.(int64)), false)
-		return nil, err
-	},
+	Callable:           pg_advisory_xact_lock_bigint_callable,
+}
+
+func pg_advisory_xact_lock_bigint_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+	_, err := acquireTransactionAdvisoryLock(ctx, fmt.Sprintf("%v", val1.(int64)), false)
+	return nil, err
 }
 
 // pg_try_advisory_xact_lock_bigint attempts to obtain an exclusive,
@@ -58,9 +60,11 @@ var pg_try_advisory_xact_lock_bigint = framework.Function1{
 	Parameters:         [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	IsNonDeterministic: true,
 	Strict:             true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
-		return acquireTransactionAdvisoryLock(ctx, fmt.Sprintf("%v", val1.(int64)), true)
-	},
+	Callable:           pg_try_advisory_xact_lock_bigint_callable,
+}
+
+func pg_try_advisory_xact_lock_bigint_callable(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+	return acquireTransactionAdvisoryLock(ctx, fmt.Sprintf("%v", val1.(int64)), true)
 }
 
 func acquireTransactionAdvisoryLock(ctx *sql.Context, lockName string, try bool) (bool, error) {
