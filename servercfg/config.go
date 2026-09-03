@@ -45,6 +45,7 @@ func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 		Builder: sql.BuilderOverrides{
 			ParseTableAsColumn:          expression.NewTableToComposite,
 			ScalarFunctionAliasAsColumn: true,
+			InsertIgnoreMode:            sql.InsertIgnoreModeDuplicateKeysOnly,
 			Parser:                      pgsql.NewPostgresParser(),
 		},
 		Hooks: sql.ExecutionHooks{

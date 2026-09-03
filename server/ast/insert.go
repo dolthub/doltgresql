@@ -42,10 +42,17 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 	var ignore string
 	var onDuplicate vitess.OnDup
 	var onDuplicateWhere vitess.Expr
+	var conflictTarget vitess.Columns
 
 	if node.OnConflict != nil {
 		if isIgnore(node.OnConflict) {
 			ignore = vitess.IgnoreStr
+			if len(node.OnConflict.Columns) > 0 {
+				conflictTarget = make(vitess.Columns, len(node.OnConflict.Columns))
+				for i, column := range node.OnConflict.Columns {
+					conflictTarget[i] = vitess.NewColIdent(string(column))
+				}
+			}
 		} else if supportedOnConflictClause(node.OnConflict) {
 			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked
 			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs)
@@ -120,6 +127,7 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 		Returning:        returningExprs,
 		With:             with,
 		Columns:          columns,
+		ConflictTarget:   conflictTarget,
 		Rows:             rows,
 		OnDup:            onDuplicate,
 		OnDupValuesAlias: "excluded",

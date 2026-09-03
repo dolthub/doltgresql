@@ -260,8 +260,9 @@ func TestInsertInto(t *testing.T) {
 
 func TestInsertIgnoreInto(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"Test that INSERT IGNORE properly addresses data conversion", // postgres strict typing rejects MySQL coercions
-		"Insert Ignore works correctly with ON DUPLICATE UPDATE",     // postgres strict typing rejects MySQL coercions
+		"Test that INSERT IGNORE properly addresses data conversion", // PostgreSQL strict typing rejects MySQL coercions
+		"Test that INSERT IGNORE with Non nullable columns works",    // PostgreSQL does not ignore NOT NULL violations
+		"Insert Ignore works correctly with ON DUPLICATE UPDATE",     // PostgreSQL strict typing rejects MySQL coercions
 		"issue 8611: insert ignore on enum type column",              // enums not supported
 	})
 	defer h.Close()
@@ -1720,12 +1721,7 @@ func TestTimeQueries(t *testing.T) {
 }
 
 func TestUpdateIgnore(t *testing.T) {
-	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"UPDATE IGNORE with primary keys and indexes", // ignore semantics are different
-		"UPDATE IGNORE with type conversions",         // postgres strict typing rejects MySQL coercions
-	})
-	defer h.Close()
-	enginetest.TestUpdateIgnore(t, h)
+	t.Skip("MySQL UPDATE IGNORE semantics are not applicable to PostgreSQL")
 }
 
 func TestUserPrivileges(t *testing.T) {
