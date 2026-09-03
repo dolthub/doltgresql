@@ -1687,7 +1687,7 @@ ORDER BY schema_name, table_name;`,
 				`INSERT INTO public.vc VALUES (11, 5);`,
 				`ALTER TABLE public.vc ADD CONSTRAINT b_gt_ten CHECK (b > 10) NOT VALID;`,
 				`CREATE TABLE s2.vc (b int, a int);`,
-				`SET search_path TO 's2, public';`,
+				`SET search_path TO s2, public;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{

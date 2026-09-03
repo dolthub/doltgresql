@@ -140,7 +140,7 @@ func TestDescribe(t *testing.T) {
 					},
 				},
 				{
-					Query: "SET search_path TO 'schema3,schema2'",
+					Query: "SET search_path TO schema3, schema2",
 				},
 				{
 					Query: `DESC t2`,

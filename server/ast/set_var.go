@@ -15,6 +15,7 @@
 package ast
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/lex"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/config"
 )
@@ -52,6 +54,8 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 	if len(node.Values) == 0 {
 		// sanity check
 		return nil, errors.Errorf(`ERROR: syntax error at or near ";"'`)
+	} else if flattened, ok := flattenIdentifierList(node.Name, node.Values); ok {
+		expr = vitess.NewStrVal([]byte(flattened))
 	} else if len(node.Values) > 1 {
 		vals := make([]string, len(node.Values))
 		for i, val := range node.Values {
@@ -106,4 +110,39 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 			}},
 		}, nil
 	}
+}
+
+// flattenIdentifierList renders the values assigned to a parameter whose value is a comma separated list of
+// identifiers. It matches the behavior of Postgres's flatten_set_variable_args with a GUC_LIST_QUOTE parameter. Every element
+// is written out with quote_identifier. An element that needs no quoting loses any quotes it was typed with and one
+// that does need it keeps them.
+//
+// The second return is false when the parameter takes a plain string rather than a list of identifiers, or when a
+// value is something other than a name or a literal. The caller is expected to interpret |values| appropriately
+// in such a case.
+func flattenIdentifierList(configParameterName string, values tree.Exprs) (string, bool) {
+	if !config.IsListQuoteConfigParameter(configParameterName) {
+		return "", false
+	}
+	var buf bytes.Buffer
+	for i, value := range values {
+		if i > 0 {
+			buf.WriteString(", ")
+		}
+		switch value := value.(type) {
+		case *tree.UnresolvedName:
+			if value.NumParts != 1 || value.Star {
+				return "", false
+			}
+			lex.EncodeRestrictedSQLIdent(&buf, value.Parts[0], 0)
+		case *tree.StrVal:
+			lex.EncodeRestrictedSQLIdent(&buf, value.RawString(), 0)
+		case *tree.NumVal:
+			// A number is written out as itself: Postgres does not quote one.
+			buf.WriteString(value.FormattedString())
+		default:
+			return "", false
+		}
+	}
+	return buf.String(), true
 }

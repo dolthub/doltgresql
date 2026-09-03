@@ -1451,14 +1451,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 		{
 			Name: "current_schemas",
 			Assertions: []ScriptTestAssertion{
-				{ // TODO: Not sure why Postgres does not display "$user", which is postgres here
+				{ // "$user" expands to "postgres", which has no matching schema, so it is omitted
 					Query:            `SELECT current_schemas(true);`,
 					ExpectedColNames: []string{"current_schemas"},
 					Expected: []sql.Row{
 						{"{pg_catalog,public}"},
 					},
 				},
-				{ // TODO: Not sure why Postgres does not display "$user" here
+				{ // "$user" expands to "postgres", which has no matching schema, so it is omitted
 					Query: `SELECT current_schemas(false);`,
 					Expected: []sql.Row{
 						{"{public}"},
@@ -1499,6 +1499,153 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{"{public,test_schema}"},
 					},
+				},
+			},
+		},
+		{
+			Name: "current_schema with nonexistent schemas on the search_path",
+			SetUpScript: []string{
+				`CREATE SCHEMA test_schema;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Search path entries that name no existing schema are omitted
+					Query:    `SET search_path TO does_not_exist, test_schema, public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"test_schema"}},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{test_schema,public}"}},
+				},
+				{
+					Query:    `SELECT current_schemas(true);`,
+					Expected: []sql.Row{{"{pg_catalog,test_schema,public}"}},
+				},
+				{
+					// When nothing on the search path exists, current_schema() is NULL and current_schemas() is
+					// empty apart from the implicitly searched pg_catalog
+					Query:    `SET search_path TO does_not_exist;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{}"}},
+				},
+				{
+					Query:    `SELECT current_schemas(true);`,
+					Expected: []sql.Row{{"{pg_catalog}"}},
+				},
+				{
+					// A schema named twice on the search path is only searched, and reported, once
+					Query:    `SET search_path TO test_schema, public, test_schema;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{test_schema,public}"}},
+				},
+				{
+					// An explicit pg_catalog keeps its position instead of being prepended again
+					Query:    `SET search_path TO public, pg_catalog;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schemas(true);`,
+					Expected: []sql.Row{{"{public,pg_catalog}"}},
+				},
+				{
+					// Schema lookup is case-insensitive, but the schema's stored name is what gets reported
+					Query:    `SET search_path TO TEST_SCHEMA;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"test_schema"}},
+				},
+			},
+		},
+		{
+			Name: `current_schema with "$user" on the search_path`,
+			Assertions: []ScriptTestAssertion{
+				{
+					// The default search_path leads with "$user", which expands to the session user, "postgres"
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{`"$user", public`}},
+				},
+				{
+					// No schema named "postgres" exists yet, so the entry is omitted
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{public}"}},
+				},
+				{
+					Query:    `CREATE SCHEMA postgres;`,
+					Expected: []sql.Row{},
+				},
+				{
+					// ... and included once it does exist
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"postgres"}},
+				},
+				{
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{postgres,public}"}},
+				},
+				{
+					// Setting the path explicitly keeps the quotes around "$user", which is what distinguishes
+					// the placeholder from a schema of that literal name
+					Query:    `SET search_path TO "$user", public;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SHOW search_path;`,
+					Expected: []sql.Row{{`"$user", public`}},
+				},
+				{
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"postgres"}},
+				},
+			},
+		},
+		{
+			// Every other assertion here runs as "postgres", so on its own it cannot tell "$user" expanding to
+			// the session's user from a constant. This connects as a second user to pin that down.
+			Name: `"$user" on the search_path expands to the connected user`,
+			SetUpScript: []string{
+				`CREATE USER tester PASSWORD 'password';`,
+				`CREATE SCHEMA tester;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// A schema named "tester" exists, but no schema is named after this session's user
+					Username: "postgres",
+					Password: "password",
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{public}"}},
+				},
+				{
+					// The same unchanged setting names the tester schema for the session that owns the name
+					Username: "tester",
+					Password: "password",
+					Query:    `SELECT current_schema();`,
+					Expected: []sql.Row{{"tester"}},
+				},
+				{
+					Username: "tester",
+					Password: "password",
+					Query:    `SELECT current_schemas(false);`,
+					Expected: []sql.Row{{"{tester,public}"}},
 				},
 			},
 		},
