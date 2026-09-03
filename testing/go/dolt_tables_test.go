@@ -103,7 +103,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -285,7 +285,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -362,7 +362,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -538,7 +538,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -644,7 +644,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -896,7 +896,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1180,7 +1180,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1291,7 +1291,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1414,7 +1414,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{nil, 10, "added"}},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1422,7 +1422,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					Expected: []sql.Row{{nil, 12, "added"}},
 				},
 				{
-					Query:    "SET search_path = 'public,newschema'",
+					Query:    "SET search_path = public, newschema",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1670,7 +1670,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{10, "Another Doe"}, {10, "John Doe"}, {10, "postgres"}},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1983,7 +1983,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2219,7 +2219,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2303,7 +2303,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2360,7 +2360,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2497,7 +2497,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2629,7 +2629,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2713,7 +2713,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2816,7 +2816,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query:    "SET search_path = 'public,dolt'",
+					Query:    "SET search_path = public, dolt",
 					Expected: []sql.Row{},
 				},
 				{
@@ -2990,7 +2990,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{"testview"}},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{
@@ -3149,7 +3149,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{0, "f", nil, 10}},
 				},
 				{
-					Query:    "SET search_path = 'newschema,public'",
+					Query:    "SET search_path = newschema, public",
 					Expected: []sql.Row{},
 				},
 				{

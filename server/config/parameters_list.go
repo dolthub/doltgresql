@@ -36,6 +36,26 @@ func PostgresConfigParameters() map[string]sql.SystemVariable {
 	return postgresConfigParameters
 }
 
+// listQuoteConfigParameters are the parameters whose value is a comma separated list of identifiers rather than a
+// plain string. Postgres renders each element of such a list with quote_identifier when the value is assigned, so
+// quoting that carries meaning (case, characters not valid in a bare identifier, a reserved keyword, the "$user"
+// placeholder) survives into the stored value, while any unnecessary quoting is dropped. These are the parameters
+// carrying GUC_LIST_QUOTE in Postgres's guc_tables.c.
+var listQuoteConfigParameters = map[string]struct{}{
+	"local_preload_libraries":   {},
+	"search_path":               {},
+	"session_preload_libraries": {},
+	"shared_preload_libraries":  {},
+	"temp_tablespaces":          {},
+}
+
+// IsListQuoteConfigParameter returns true if the given parameter's value is a comma separated list of identifiers,
+// each of which is quoted as an identifier when the value is assigned. See listQuoteConfigParameters.
+func IsListQuoteConfigParameter(name string) bool {
+	_, ok := listQuoteConfigParameters[strings.ToLower(name)]
+	return ok
+}
+
 // IsValidDoltConfigParameter returns true if the given parameter name is a valid Dolt configuration parameter.
 func IsValidDoltConfigParameter(name string) bool {
 	_, ok := doltConfigParameters[strings.ToLower(name)]

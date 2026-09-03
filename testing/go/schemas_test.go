@@ -175,7 +175,7 @@ var SchemaTests = []ScriptTest{
 				ExpectedErr: "no schema has been selected to create in",
 			},
 			{
-				Query: `set search_path to '"$user"'`,
+				Query: `set search_path to "$user"`,
 			},
 			{
 				// only available schema doesn't exist
