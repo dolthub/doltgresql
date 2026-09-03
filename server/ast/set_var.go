@@ -120,8 +120,8 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 // The second return is false when the parameter takes a plain string rather than a list of identifiers, or when a
 // value is something other than a name or a literal. The caller is expected to interpret |values| appropriately
 // in such a case.
-func flattenIdentifierList(name string, values tree.Exprs) (string, bool) {
-	if !config.IsListQuoteConfigParameter(name) {
+func flattenIdentifierList(configParameterName string, values tree.Exprs) (string, bool) {
+	if !config.IsListQuoteConfigParameter(configParameterName) {
 		return "", false
 	}
 	var buf bytes.Buffer
