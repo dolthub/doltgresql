@@ -110,9 +110,28 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			return nil, transform.NewTree, errors.Errorf(`function "nextval" could not be found for SERIAL default`)
 		}
 
+		var targetType *pgtypes.DoltgresType
+		var maxValue int64
+		switch doltgresType.Name() {
+		case "smallserial":
+			targetType = pgtypes.Int16
+			maxValue = 32767
+		case "serial":
+			targetType = pgtypes.Int32
+			maxValue = 2147483647
+		case "bigserial":
+			targetType = pgtypes.Int64
+			maxValue = 9223372036854775807
+		}
+		col.Type = targetType
+
+		var defaultExpr sql.Expression = nextVal
+		if !pgtypes.Int64.Equals(targetType) {
+			defaultExpr = pgexprs.NewAssignmentCast(nextVal, pgtypes.Int64, targetType)
+		}
 		nextValExpr := &sql.ColumnDefaultValue{
-			Expr:          nextVal,
-			OutType:       pgtypes.Int64,
+			Expr:          defaultExpr,
+			OutType:       targetType,
 			Literal:       false,
 			ReturnNil:     false,
 			Parenthesized: false,
@@ -122,19 +141,6 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 			col.Generated = nextValExpr
 		} else {
 			col.Default = nextValExpr
-		}
-
-		var maxValue int64
-		switch doltgresType.Name() {
-		case "smallserial":
-			col.Type = pgtypes.Int16
-			maxValue = 32767
-		case "serial":
-			col.Type = pgtypes.Int32
-			maxValue = 2147483647
-		case "bigserial":
-			col.Type = pgtypes.Int64
-			maxValue = 9223372036854775807
 		}
 
 		ctSequences = append(ctSequences, pgnodes.NewCreateSequence(false, "", false, &sequences.Sequence{
