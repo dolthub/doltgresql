@@ -189,6 +189,23 @@ ON CONFLICT (id) do update set c1 = $4`,
 			},
 		},
 		{
+			Name: "on conflict update returning with check constraint",
+			SetUpScript: []string{
+				"CREATE TABLE checked_upsert (id INT PRIMARY KEY, a TEXT CHECK (a <> ''), b TEXT, c TEXT)",
+				"INSERT INTO checked_upsert VALUES (1, 'x', 'y', 'z')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO checked_upsert VALUES (1, 'x', 'y', 'z') ON CONFLICT (id) DO UPDATE SET a = 'n1', b = 'n2' RETURNING id, a, b",
+					Expected: []sql.Row{{1, "n1", "n2"}},
+				},
+				{
+					Query:    "INSERT INTO checked_upsert VALUES (2, 'x', 'y', 'z') ON CONFLICT (id) DO UPDATE SET a = 'n1', b = 'n2' RETURNING id, a, b",
+					Expected: []sql.Row{{2, "x", "y"}},
+				},
+			},
+		},
+		{
 			Name: "on conflict do nothing only ignores uniqueness conflicts",
 			SetUpScript: []string{
 				"CREATE TABLE conflict_parent (id INT PRIMARY KEY)",
