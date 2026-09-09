@@ -11,25 +11,16 @@ procedures.
 
 Git versions file, Doltgres versions tables. It's like Git and Postgres had a baby.
 
-# Doltgres is Beta
+# Doltgres is 1.0
 
-[Doltgres is now Beta quality](https://dolthub.com/blog/2025-04-16-doltgres-goes-beta/), which means
-it's ready for your production use case. There will be bugs and missing features, but [we can fix
-most of them in 24 hours](https://www.dolthub.com/blog/2024-05-15-24-hour-bug-fixes/) if you [file
-an issue](https://github.com/dolthub/doltgresql/issues).
+[Doltgres is 1.0](https://www.dolthub.com/blog/2026-08-06-doltgres-1-0/), which means
+it's ready for your production use case.
 
 The wait is over! Now is the time to [try out Doltgres](#getting-started) and let us know what you
 think. Import your existing Postgres database into Doltgres with `pg_dump` and `psql`, and let us
-know if anything doesn't work.
-
-If you're excited about this project, you can also help speed it along in a few other ways:
-
-- Star this repo
-- Create [issues](https://github.com/dolthub/doltgresql/issues) if you find bugs
-- Create [issues](https://github.com/dolthub/doltgresql/issues) for missing functionality you want
-- Contribute code for features you want (see the [Contribution
-  Guide](https://github.com/dolthub/doltgresql/blob/main/CONTRIBUTING.md))
-- Tell your friends and colleagues
+know if anything doesn't work. [We can fix
+most bugs in 24 hours](https://www.dolthub.com/blog/2024-05-15-24-hour-bug-fixes/) if you [file
+an issue](https://github.com/dolthub/doltgresql/issues).
 
 # Full Documentation
 
@@ -255,20 +246,20 @@ based on a standard suite of correctness tests called `sqllogictest`.
 
 We use these same tests to measure the correctness of DoltgreSQL.
 
-Here are DoltgreSQL's sqllogictest results for version `0.50.0`. Tests that did not run could not
+Here are DoltgreSQL's sqllogictest results for version `1.0.0`. Tests that did not run could not
 complete due to a timeout earlier in the run.
 
 <!-- START_CORRECTNESS_RESULTS_TABLE -->
 
 | Results     | Count   |
 | --          | --      |
-| did not run | 91270   |
-| not ok      | 411415  |
-| ok          | 5188604 |
-| timeout     | 16      |
-| Total Tests | 5691305 |
+| did not run	| 25552 |
+| not ok | 	13197 |
+| ok	| 5636424 |
+| timeout	| 7 |
+| Total Tests	| 5675180 |
 
-| Correctness Percentage | 91.16721 |
+| Correctness Percentage | 99.317097 |
 | --                     | --       |
 
 <!-- END_CORRECTNESS_RESULTS_TABLE -->
