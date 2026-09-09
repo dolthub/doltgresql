@@ -298,3 +298,238 @@ func TestUpdate(t *testing.T) {
 		},
 	})
 }
+
+// TestUpdateAssignmentSemantics covers pre-update-row evaluation, verified against PostgreSQL 18.6.
+// https://github.com/dolthub/doltgresql/issues/3092
+func TestUpdateAssignmentSemantics(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "customer CASE",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = CASE WHEN a = 1 THEN 100 ELSE -1 END"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 100}},
+				},
+			},
+		},
+		{
+			Name: "reversed CASE",
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET b = CASE WHEN a = 1 THEN 100 ELSE -1 END, a = 2"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 100}},
+				},
+			},
+		},
+		{
+			Name: "swap",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = b, b = a"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{0, 1}},
+				},
+			},
+		},
+		{
+			Name: "reversed swap",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET b = a, a = b"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{0, 1}},
+				},
+			},
+		},
+		{
+			Name: "arithmetic chain",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = a + 1, b = a + 10"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 11}},
+				},
+			},
+		},
+		{
+			Name: "NULL propagation",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = NULL, b = CASE WHEN a IS NULL THEN 100 ELSE -1 END"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{nil, -1}},
+				},
+			},
+		},
+		{
+			Name: "multiple rows",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+				"INSERT INTO t_seq VALUES (3, 9)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = a + 1, b = a"},
+				{
+					Query:    "SELECT a, b FROM t_seq ORDER BY a",
+					Expected: []sql.Row{{2, 1}, {4, 3}},
+				},
+			},
+		},
+		{
+			Name: "scalar correlated subquery",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = (SELECT a + 10)"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 11}},
+				},
+			},
+		},
+		{
+			Name: "WHERE subquery",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+				"CREATE TABLE src (x int PRIMARY KEY)",
+				"INSERT INTO src VALUES (1)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = a WHERE a IN (SELECT x FROM src)"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 1}},
+				},
+			},
+		},
+		{
+			Name: "assignment conversion",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 1.6, b = a"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 1}},
+				},
+			},
+		},
+		{
+			Name: "generated stored column",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int, c int GENERATED ALWAYS AS (a+b) STORED)",
+				"INSERT INTO t_seq (a,b) VALUES (1,0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = a"},
+				{
+					Query:    "SELECT a,b,c FROM t_seq",
+					Expected: []sql.Row{{2, 1, 3}},
+				},
+			},
+		},
+		{
+			Name: "join same target",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (id int PRIMARY KEY, a int, b int)",
+				"INSERT INTO t_seq VALUES (1,1,0)",
+				"CREATE TABLE src (id int PRIMARY KEY, x int)",
+				"INSERT INTO src VALUES (1,10)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = a FROM src WHERE t_seq.id = src.id"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{2, 1}},
+				},
+			},
+		},
+		{
+			Name: "join swap",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (id int PRIMARY KEY, a int, b int)",
+				"INSERT INTO t_seq VALUES (1,1,0)",
+				"CREATE TABLE src (id int PRIMARY KEY, x int)",
+				"INSERT INTO src VALUES (1,10)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = b, b = a FROM src WHERE t_seq.id = src.id"},
+				{
+					Query:    "SELECT a, b FROM t_seq",
+					Expected: []sql.Row{{0, 1}},
+				},
+			},
+		},
+		{
+			Name: "repeated target is rejected",
+			Skip: true, // TODO: Reject duplicate targets (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "UPDATE t_seq SET a = a + 1, a = a + 10, b = a",
+					ExpectedErr: `multiple assignments to same column "a"`,
+				},
+				{Query: "SELECT a, b FROM t_seq", Expected: []sql.Row{{1, 0}}},
+			},
+		},
+		{
+			Name: "RETURNING reads completed new row",
+			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
+			SetUpScript: []string{
+				"CREATE TABLE t_seq (a int, b int)",
+				"INSERT INTO t_seq VALUES (1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = b, b = a RETURNING a, b", Expected: []sql.Row{{0, 1}}},
+				{Query: "SELECT a, b FROM t_seq", Expected: []sql.Row{{0, 1}}},
+			},
+		},
+	})
+}
