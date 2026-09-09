@@ -55,6 +55,16 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 			return err
 		}
 		target.TableSpec.AddColumn(columnDef)
+		if node.Unique && !node.PrimaryKey.IsPrimaryKey {
+			indexFields, err := nodeIndexElemList(ctx, tree.IndexElemList{{Column: node.Name}})
+			if err != nil {
+				return err
+			}
+			target.TableSpec.Indexes = append(target.TableSpec.Indexes, &vitess.IndexDefinition{
+				Info:   &vitess.IndexInfo{Unique: true},
+				Fields: indexFields,
+			})
+		}
 		if node.References.Table != nil {
 			fkDef, err := nodeForeignKeyDefinitionFromColumnTableDef(ctx, node.Name, node)
 			if err != nil {

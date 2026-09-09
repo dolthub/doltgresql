@@ -363,9 +363,9 @@ func TestShowIndexes(t *testing.T) {
 				{
 					Query: `SHOW indexes FROM t1`,
 					Expected: []sql.Row{
-						{"t1", 0, "PRIMARY", 1, "a", nil, 0, nil, nil, "", "BTREE", "", "", "YES", nil},
-						{"t1", 1, "idx_name", 1, "name", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
-						{"t1", 1, "idx_value", 1, "value", nil, 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
+						{"t1", 0, "PRIMARY", 1, "a", "A", 0, nil, nil, "", "BTREE", "", "", "YES", nil},
+						{"t1", 1, "idx_name", 1, "name", "A", 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
+						{"t1", 1, "idx_value", 1, "value", "A", 0, nil, nil, "YES", "BTREE", "", "", "YES", nil},
 					},
 				},
 				{

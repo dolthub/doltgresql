@@ -104,12 +104,12 @@ func (iter *pgIndexesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		iter.indexes.tableNames[index.tableOid], // tablename
 		formatIndexName(index.index),            // indexname
 		"",                                      // tablespace
-		getIndexDef(index.index, index.schemaName, iter.indexes.tableSchemas[index.tableOid]), // indexdef
+		getIndexDef(ctx, index.index, index.schemaName, iter.indexes.tableSchemas[index.tableOid]), // indexdef
 	}, nil
 }
 
 // formatIndexName returns the definition of the index.
-func getIndexDef(index sql.Index, schema string, tableSchema sql.Schema) string {
+func getIndexDef(ctx *sql.Context, index sql.Index, schema string, tableSchema sql.Schema) string {
 	name := formatIndexName(index)
 	using := strings.ToLower(index.IndexType())
 	unique := ""
@@ -126,13 +126,14 @@ func getIndexDef(index sql.Index, schema string, tableSchema sql.Schema) string 
 		}
 		if exprText, ok := functions.RenderHiddenIndexColumnExpr(col); ok {
 			cols[i] = exprText
-			continue
+		} else {
+			cols[i] = colName
+			if method, opclass, ok := functions.VectorIndexRendering(index, col); ok {
+				using = method
+				cols[i] += " " + opclass
+			}
 		}
-		cols[i] = colName
-		if method, opclass, ok := functions.VectorIndexRendering(index, col); ok {
-			using = method
-			cols[i] += " " + opclass
-		}
+		cols[i] += functions.IndexColumnSuffix(ctx, index, i)
 	}
 	colsStr := strings.Join(cols, ", ")
 

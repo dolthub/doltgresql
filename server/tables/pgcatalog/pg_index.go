@@ -218,6 +218,8 @@ type pgIndex struct {
 	indisunique    bool
 	indisprimary   bool
 	indkey         []any
+	indclass       []any
+	indoption      []any
 }
 
 // lessIndexOid is a sort function for pgIndex based on indexrelid.
@@ -258,16 +260,9 @@ func (iter *pgIndexTableScanIter) Close(ctx *sql.Context) error {
 func pgIndexToRow(index *pgIndex) sql.Row {
 	// indcollation, indclass, and indoption are per-column vectors that must have exactly one
 	// entry per index key column (the same length as indkey).
-	numKeyCols := int(index.indnatts)
-	indCollation := make([]any, numKeyCols)
-	indClass := make([]any, numKeyCols)
-	indOption := make([]any, numKeyCols)
-	for i := 0; i < numKeyCols; i++ {
+	indCollation := make([]any, index.indnatts)
+	for i := range indCollation {
 		indCollation[i] = id.Null
-		indClass[i] = id.Null
-		// indoption entries are bitmasks of per-column flags (INDOPTION_DESC = 0x0001,
-		// INDOPTION_NULLS_FIRST = 0x0002), neither of which are supported
-		indOption[i] = int16(0)
 	}
 
 	return sql.Row{
@@ -288,11 +283,39 @@ func pgIndexToRow(index *pgIndex) sql.Row {
 		false,                  // indisreplident
 		index.indkey,           // indkey
 		indCollation,           // indcollation
-		indClass,               // indclass
-		indOption,              // indoption
+		index.indclass,         // indclass
+		index.indoption,        // indoption
 		nil,                    // indexprs
 		indexPred(index.index), // indpred
 	}
+}
+
+// indexColumnClass returns the operator class of index column `i`, which is its stored class or else the default class
+// of the column's type.
+func indexColumnClass(opClasses []string, i int, tableSchema sql.Schema, colIdx int) id.Id {
+	if i < len(opClasses) && opClasses[i] != "" {
+		return id.NewId(id.Section_OperatorClass, "btree", opClasses[i])
+	}
+	if colIdx >= 0 {
+		if colType, ok := tableSchema[colIdx].Type.(*pgtypes.DoltgresType); ok {
+			if class, ok := defaultBtreeOperatorClass(colType); ok {
+				return class.oid()
+			}
+		}
+	}
+	return id.Null
+}
+
+// indexColumnOption returns the INDOPTION flags of an index column with `order`, INDOPTION_DESC (1) and INDOPTION_NULLS_FIRST (2).
+func indexColumnOption(order sql.IndexColumnOrder) int16 {
+	var option int16
+	if order.Descending {
+		option |= 1
+	}
+	if !order.NullsLast {
+		option |= 2
+	}
+	return option
 }
 
 // indexPred returns the predicate expression string for partial indexes, or nil for full indexes.
@@ -322,10 +345,16 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			}
 
 			s := tableSchemas[table.OID.AsId()]
-			indKey := make([]any, len(index.Item.Expressions()))
-			for i, expr := range index.Item.Expressions() {
-				colName := extractColName(expr)
-				indKey[i] = int16(s.IndexOfColName(colName)) + 1
+			exprs := index.Item.Expressions()
+			opClasses := functions.IndexOpClasses(index.Item)
+			indKey := make([]any, len(exprs))
+			indClass := make([]any, len(exprs))
+			indOption := make([]any, len(exprs))
+			for i, expr := range exprs {
+				colIdx := s.IndexOfColName(extractColName(expr))
+				indKey[i] = int16(colIdx) + 1
+				indClass[i] = indexColumnClass(opClasses, i, s, colIdx)
+				indOption[i] = indexColumnOption(functions.IndexColumnOrder(ctx, index.Item, i))
 			}
 
 			pgIdx := &pgIndex{
@@ -336,7 +365,9 @@ func cachePgIndexes(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				tableOid:       table.OID.AsId(),
 				tableOidNative: id.Cache().ToOID(table.OID.AsId()),
 				indkey:         indKey,
-				indnatts:       int16(len(index.Item.Expressions())),
+				indclass:       indClass,
+				indoption:      indOption,
+				indnatts:       int16(len(exprs)),
 				indisunique:    index.Item.IsUnique(),
 				indisprimary:   strings.ToLower(index.Item.ID()) == "primary",
 			}

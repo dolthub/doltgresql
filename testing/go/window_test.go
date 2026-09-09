@@ -105,12 +105,12 @@ func TestWindowFunctions(t *testing.T) {
 					// TODO: update expected values once Doltgres adopts Postgres NULLS LAST ordering.
 					Query: "SELECT ship, dense_rank() OVER (ORDER BY ship) AS drnk FROM o WHERE c_id IN (1, 2) ORDER BY ship",
 					Expected: []sql.Row{
-						{nil, int64(1)},
-						{"CA", int64(2)},
-						{"CA", int64(2)},
-						{"CA", int64(2)},
-						{"CA", int64(2)},
-						{"TX", int64(3)},
+						{"CA", int64(1)},
+						{"CA", int64(1)},
+						{"CA", int64(1)},
+						{"CA", int64(1)},
+						{"TX", int64(2)},
+						{nil, int64(3)},
 					},
 				},
 				{

@@ -120,6 +120,12 @@ func vectorIndexOptions(node *tree.CreateIndex, method string) ([]*vitess.IndexO
 	if column.Expr != nil {
 		return nil, errors.Errorf("expression columns in vector indexes are not yet supported")
 	}
+	if column.Direction != tree.DefaultDirection {
+		return nil, errors.Errorf(`access method "%s" does not support ASC/DESC options`, method)
+	}
+	if column.NullsOrder != tree.DefaultNullsOrder {
+		return nil, errors.Errorf(`access method "%s" does not support NULLS FIRST/LAST options`, method)
+	}
 	options := []*vitess.IndexOption{
 		{Name: sql.VectorAccessMethodOptionName, Value: vitess.NewStrVal([]byte(method))},
 	}

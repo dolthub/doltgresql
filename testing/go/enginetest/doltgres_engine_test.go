@@ -270,7 +270,11 @@ func TestInsertIgnoreInto(t *testing.T) {
 }
 
 func TestInsertDuplicateKeyKeyless(t *testing.T) {
-	enginetest.TestInsertDuplicateKeyKeyless(t, newDoltgresServerHarness(t))
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"select c1, c2, c3 from t order by c1, c2, c3", // expects MySQL's NULLs-first ordering
+	})
+	defer h.Close()
+	enginetest.TestInsertDuplicateKeyKeyless(t, h)
 }
 
 func TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t *testing.T) {
@@ -472,6 +476,14 @@ func TestConvert(t *testing.T) {
 func TestScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"can't create table with same name as existing view",      // Doltgres needs to return a different error message
+		"descending index columns",                                // MySQL index prefix syntax (c(10) DESC)
+		"descending index lookups and ordering",                   // MySQL NULLs-first ascending order
+		"descending unique indexes",                               // MySQL REPLACE INTO and ON DUPLICATE KEY UPDATE
+		"descending prefix and expression indexes",                // MySQL index prefix syntax (s(3) DESC)
+		"descending index on a keyless table",                     // MySQL NULLs-first ascending order
+		"descending indexes backing foreign keys",                 // MySQL foreign key error types
+		"descending indexes on assorted types",                    // MySQL ENUM and DATETIME columns
+		"(x between y and z), (x between x and z)",                // expects MySQL's NULLs-first ordering
 		"filter pushdown through join uppercase name",             // syntax error (join without on)
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
 		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
