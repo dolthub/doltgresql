@@ -643,6 +643,57 @@ func TestAggregateFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "numeric SUM over COALESCE",
+			SetUpScript: []string{
+				`CREATE TABLE numeric_sum_values (grp INT, amount NUMERIC(10,2));`,
+				`INSERT INTO numeric_sum_values VALUES
+					(1, 12.50),
+					(1, NULL),
+					(2, NULL),
+					(3, 99999999.99),
+					(3, 0.01);`,
+				`CREATE TABLE numeric_sum_groups (id INT PRIMARY KEY);`,
+				`INSERT INTO numeric_sum_groups VALUES (1), (2);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT count(*), sum(coalesce(amount, 0)), pg_typeof(sum(coalesce(amount, 0))) FROM numeric_sum_values;`,
+					Expected: []sql.Row{{int64(5), Numeric("100000012.50"), "numeric"}},
+				},
+				{
+					Query: `SELECT grp, sum(coalesce(amount, 0)), pg_typeof(sum(coalesce(amount, 0))) FROM numeric_sum_values GROUP BY grp ORDER BY grp;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, Numeric("0.00"), "numeric"},
+						{3, Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT grp, amount,
+						sum(coalesce(amount, 0)) OVER (PARTITION BY grp ORDER BY amount),
+						pg_typeof(sum(coalesce(amount, 0)) OVER (PARTITION BY grp ORDER BY amount))
+					FROM numeric_sum_values ORDER BY grp, amount;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
+						{1, nil, Numeric("12.50"), "numeric"},
+						{2, nil, Numeric("0.00"), "numeric"},
+						{3, Numeric("0.01"), Numeric("0.01"), "numeric"},
+						{3, Numeric("99999999.99"), Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT id,
+						(SELECT sum(coalesce(amount, 0)) FROM numeric_sum_values WHERE grp = numeric_sum_groups.id),
+						pg_typeof((SELECT sum(coalesce(amount, 0)) FROM numeric_sum_values WHERE grp = numeric_sum_groups.id))
+					FROM numeric_sum_groups ORDER BY id;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, Numeric("0.00"), "numeric"},
+					},
+				},
+			},
+		},
+		{
 			Name: "var_pop/var_samp/stddev_pop/stddev_samp with infinite and NaN float8 input",
 			Assertions: []ScriptTestAssertion{
 				{

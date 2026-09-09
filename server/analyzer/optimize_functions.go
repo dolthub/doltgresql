@@ -27,6 +27,7 @@ import (
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtransform "github.com/dolthub/doltgresql/server/transform"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // OptimizeFunctions replaces all functions that fit specific criteria with their optimized variants. Also handles
@@ -76,6 +77,10 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		if !sameNode {
 			projectNode.Child = n
 		}
+		refreshedProjections, sameTypes, err := refreshProjectedAggregateTypes(ctx, projectNode.Child, projectNode.Projections)
+		if err != nil {
+			return nil, transform.SameTree, err
+		}
 
 		// insert node cannot have more than 1 row value if it has set returning function
 		if isInsertNode && hasMultipleExpressionTuples && hasSRF {
@@ -84,7 +89,7 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 
 		// Check if there is set returning function in the projection expressions (e.g. SELECT unnest() [FROM table/srf])
 		hasSRFInProjection := false
-		exprs, sameExprs, err := transform.Exprs(ctx, projectNode.Projections, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		exprs, sameExprs, err := transform.Exprs(ctx, refreshedProjections, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
 			if compiledFunction, ok := expr.(*framework.CompiledFunction); ok {
 				hasSRFInProjection = hasSRFInProjection || compiledFunction.IsSRF()
 				if quickFunction := compiledFunction.GetQuickFunction(ctx); quickFunction != nil {
@@ -111,8 +116,12 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 		if err != nil {
 			return nil, transform.SameTree, err
 		}
-		if !sameExprs {
-			projectNode.Projections = exprs
+		if !sameTypes || !sameExprs {
+			n, err = projectNode.WithExpressions(ctx, exprs...)
+			if err != nil {
+				return nil, transform.SameTree, err
+			}
+			projectNode = n.(*plan.Project)
 		}
 
 		// nested iter is used for set returning functions in the projections only
@@ -123,8 +132,41 @@ func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			projectNode = projectNode.WithIncludesNestedIters(true)
 		}
 
-		return projectNode, sameNode && sameExprs, err
+		return projectNode, sameNode && sameTypes && sameExprs, err
 	})
+}
+
+// refreshProjectedAggregateTypes updates fields whose aggregate type resolved after plan construction.
+func refreshProjectedAggregateTypes(ctx *sql.Context, child sql.Node, projections []sql.Expression) ([]sql.Expression, transform.TreeIdentity, error) {
+	return transform.Exprs(ctx, projections, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		field, ok := expr.(*expression.GetField)
+		if !ok || field.Type(ctx) != pgtypes.Unknown {
+			return expr, transform.SameTree, nil
+		}
+		sourceType := resolvedAggregateType(ctx, child, field.Id())
+		if sourceType == nil {
+			return expr, transform.SameTree, nil
+		}
+		refreshed := expression.NewGetFieldWithTable(
+			field.Index(), int(field.TableId()), sourceType,
+			field.Database(), field.Table(), field.Name(), field.IsNullable(ctx),
+		).WithId(field.Id())
+		return refreshed, transform.NewTree, nil
+	})
+}
+
+// resolvedAggregateType returns the concrete type of the aggregate identified by id beneath node.
+func resolvedAggregateType(ctx *sql.Context, node sql.Node, id sql.ColumnId) sql.Type {
+	var typ sql.Type
+	transform.InspectExpressions(ctx, node, func(ctx *sql.Context, expr sql.Expression) bool {
+		agg, ok := expr.(framework.AggregateFunction)
+		if !ok || agg.Id() != id || agg.Type(ctx) == pgtypes.Unknown {
+			return true
+		}
+		typ = agg.Type(ctx)
+		return false
+	})
+	return typ
 }
 
 // getDefaultExpr takes the default value definition, parses, builds and returns sql.ColumnDefaultValue.
