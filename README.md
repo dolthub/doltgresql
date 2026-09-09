@@ -186,10 +186,8 @@ getting_started=> select * from dolt.log;
 
 - No [Git-style CLI](https://dolthub.com/docs/cli-reference/cli) for version control like in
   [Dolt](https://github.com/dolthub/dolt), only a SQL interface.
-- Can't push to DoltHub or DoltLab, only custom remotes (such as on the file system or to S3).
-- Backup and replication are a work in progress.
 - No GSSAPI support.
-- No extension support yet.
+- Limited extension support.
 - Some Postgres syntax, types, functions, and features are not yet implemented. If you encounter a
   missing feature you need for your application, please [file an issue to let us
   know](https://github.com/dolthub/doltgresql/issues).
@@ -201,43 +199,43 @@ measured by a standard suite of Sysbench tests.
 
 We use these same Sysbench tests to benchmark DoltgreSQL and compare the results to PostgreSQL.
 
-Here are the benchmarks for DoltgreSQL version `0.50.0`. All figures are median latency in
+Latency is benchmarked for Doltgres release 1.0.0. All measurements are median latency in
 milliseconds.
 
 <!-- START_LATENCY_RESULTS_TABLE -->
 
 | Read Tests                   | Postgres | Doltgres | Multiple |
-| ---                          | ---      | ---      | ---      |
-| covering_index_scan_postgres | 1.89     | 5.28     | 2.8      |
-| groupby_scan_postgres        | 5.28     | 46.63    | 8.8      |
-| index_join_postgres          | 1.96     | 10.09    | 5.1      |
-| index_join_scan_postgres     | 0.67     | 8.9      | 13.3     |
-| index_scan_postgres          | 17.95    | 130.13   | 7.2      |
-| oltp_point_select            | 0.14     | 0.52     | 3.7      |
-| oltp_read_only               | 2.48     | 12.75    | 5.1      |
-| select_random_points         | 0.21     | 1.12     | 5.3      |
-| select_random_ranges         | 0.41     | 1.39     | 3.4      |
-| table_scan_postgres          | 17.95    | 132.49   | 7.4      |
-| types_table_scan_postgres    | 43.39    | 292.6    | 6.7      |
-| reads_mean_multiplier        |          |          | 6.3      |
+|------------------------------|----------|----------|----------|
+| covering_index_scan_postgres | 17.95    | 2.43     | 0.1      |
+| groupby_scan_postgres        | 39.65    | 84.47    | 2.1      |
+| index_join_postgres          | 1.82     | 2.3      | 1.3      |
+| index_join_scan_postgres     | 0.68     | 1.67     | 2.5      |
+| index_scan_postgres          | 183.21   | 484.44   | 2.6      |
+| oltp_point_select            | 0.15     | 0.38     | 2.5      |
+| oltp_read_only               | 2.61     | 6.43     | 2.5      |
+| select_random_points         | 0.22     | 0.73     | 3.3      |
+| select_random_ranges         | 0.42     | 1.03     | 2.5      |
+| table_scan_postgres          | 183.21   | 467.3    | 2.6      |
+| types_table_scan_postgres    | 427.07   | 1213.57  | 2.8      |
+| reads_mean_multiplier        |          |          | 2.3      |
 
 
 | Write Tests                  | Postgres | Doltgres | Multiple |
 |------------------------------|----------|----------|----------|
 | oltp_delete_insert_postgres  | 2.22     | 6.79     | 3.1      |
-| oltp_insert                  | 1.1      | 3.68     | 3.3      |
-| oltp_read_write              | 4.25     | 20.37    | 4.8      |
-| oltp_update_index            | 1.12     | 3.55     | 3.2      |
-| oltp_update_non_index        | 1.12     | 3.43     | 3.1      |
-| oltp_write_only              | 1.73     | 7.43     | 4.3      |
-| types_delete_insert_postgres | 2.3      | 7.04     | 3.1      |
-| write_mean_multiplier        |          |          | 3.6      |
+| oltp_insert                  | 1.1      | 3.82     | 3.5      |
+| oltp_read_write              | 4.33     | 13.95    | 3.2      |
+| oltp_update_index            | 1.14     | 3.75     | 3.3      |
+| oltp_update_non_index        | 1.12     | 3.49     | 3.1      |
+| oltp_write_only              | 1.79     | 7.3      | 4.1      |
+| types_delete_insert_postgres | 2.3      | 7.43     | 3.2      |
+| write_mean_multiplier        |          |          | 3.4      |
 
-| Overall Mean Multiple | 5.2 |
-| --------------------- | --- |
+| Overall Mean Multiple | 2.7 |
+|:---------------------:|:---:|
 
 <!-- END_LATENCY_RESULTS_TABLE -->
-<br/>
+</br>
 
 # Correctness
 
@@ -252,15 +250,15 @@ complete due to a timeout earlier in the run.
 <!-- START_CORRECTNESS_RESULTS_TABLE -->
 
 | Results     | Count   |
-| --          | --      |
-| did not run	| 25552 |
-| not ok | 	13197 |
-| ok	| 5636424 |
-| timeout	| 7 |
-| Total Tests	| 5675180 |
+|-------------|---------|
+| did not run | 25552   |
+| not ok      | 13197   |
+| ok          | 5636424 |
+| timeout     | 7       |
+| Total Tests | 5675180 |
 
 | Correctness Percentage | 99.317097 |
-| --                     | --       |
+|------------------------|-----------|
 
 <!-- END_CORRECTNESS_RESULTS_TABLE -->
 <br/>
