@@ -366,24 +366,33 @@ func TestUpdate(t *testing.T) {
 		`with recursive t (n) as (select (1) from dual union all select n + 1 from t where n < 2) UPDATE mytable set s = concat('updated ', i) where i in (select n from t)`,
 	})
 	defer h.Close()
-	h.Setup(setup.MydbData, setup.MytableData, setup.Mytable_del_idxData, setup.FloattableData, setup.NiltableData, setup.TypestableData, setup.Pk_tablesData, setup.OthertableData, setup.TabletestData)
-	for _, tt := range queries.UpdateWriteQueryTests {
-		if tt.WriteQuery == "UPDATE floattable SET f32 = f32 + f32, f64 = f32 * f64 WHERE i = 2;" {
-			// PostgreSQL assignments read the original row: f64 uses the old
-			// f32 (1.5), rather than the newly doubled value (3.0).
-			tt.ExpectedSelect = []sql.Row{{int64(2), float32(3.0), float64(2.25)}}
-			enginetest.RunWriteQueryTest(t, h, tt)
+	enginetest.TestUpdate(t, h)
+}
 
-			// Preserve the original arithmetic result by explicitly doubling
-			// the input to f64, without relying on sequential assignments.
-			tt.WriteQuery = "UPDATE floattable SET f32 = f32 + f32, f64 = (f32 + f32) * f64 WHERE i = 2;"
-			tt.ExpectedSelect = []sql.Row{{int64(2), float32(3.0), float64(4.5)}}
-		}
-		enginetest.RunWriteQueryTest(t, h, tt)
-	}
-	for _, tt := range queries.UpdateScriptTests {
-		enginetest.TestScript(t, h, tt)
-	}
+func TestUpdateFloatAssignments(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	h.Setup(setup.MydbData)
+	enginetest.TestScript(t, h, queries.ScriptTest{
+		Name: "floating-point assignments read the original row",
+		SetUpScript: []string{
+			"CREATE TABLE floattable (i INT PRIMARY KEY, f32 REAL, f64 DOUBLE PRECISION)",
+			"INSERT INTO floattable VALUES (2, 1.5, 1.5), (3, 1.5, 1.5)",
+			"UPDATE floattable SET f32 = f32 + f32, f64 = f32 * f64 WHERE i = 2;",
+			"UPDATE floattable SET f32 = f32 + f32, f64 = (f32 + f32) * f64 WHERE i = 3;",
+		},
+		Assertions: []queries.ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM floattable ORDER BY i",
+				Expected: []sql.Row{
+					// Both assignments use f32's original value of 1.5.
+					{int64(2), float32(3.0), float64(2.25)},
+					// Doubling must be explicit to produce the MySQL test's 4.5.
+					{int64(3), float32(3.0), float64(4.5)},
+				},
+			},
+		},
+	})
 }
 
 func TestUpdateErrors(t *testing.T) {
