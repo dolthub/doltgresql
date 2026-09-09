@@ -42,6 +42,7 @@ var _ doltservercfg.ServerConfig = (*DoltgresConfig)(nil)
 // Overrides implements the interface doltservercfg.ServerConfig.
 func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 	return sql.EngineOverrides{
+		UpdateExpressionApplier: expression.UpdateExpressionApplier{},
 		Builder: sql.BuilderOverrides{
 			ParseTableAsColumn:          expression.NewTableToComposite,
 			ScalarFunctionAliasAsColumn: true,

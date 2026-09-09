@@ -369,6 +369,32 @@ func TestUpdate(t *testing.T) {
 	enginetest.TestUpdate(t, h)
 }
 
+func TestUpdateFloatAssignments(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	h.Setup(setup.MydbData)
+	enginetest.TestScript(t, h, queries.ScriptTest{
+		Name: "floating-point assignments read the original row",
+		SetUpScript: []string{
+			"CREATE TABLE floattable (i INT PRIMARY KEY, f32 REAL, f64 DOUBLE PRECISION)",
+			"INSERT INTO floattable VALUES (2, 1.5, 1.5), (3, 1.5, 1.5)",
+			"UPDATE floattable SET f32 = f32 + f32, f64 = f32 * f64 WHERE i = 2;",
+			"UPDATE floattable SET f32 = f32 + f32, f64 = (f32 + f32) * f64 WHERE i = 3;",
+		},
+		Assertions: []queries.ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM floattable ORDER BY i",
+				Expected: []sql.Row{
+					// Both assignments use f32's original value of 1.5.
+					{int64(2), float32(3.0), float64(2.25)},
+					// Doubling must be explicit to produce the MySQL test's 4.5.
+					{int64(3), float32(3.0), float64(4.5)},
+				},
+			},
+		},
+	})
+}
+
 func TestUpdateErrors(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"try updating string that is too long",  // works but error message doesn't match
