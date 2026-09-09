@@ -305,7 +305,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "customer CASE",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
@@ -334,7 +333,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "swap",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
@@ -349,7 +347,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "reversed swap",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
@@ -364,7 +361,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "arithmetic chain",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
@@ -379,7 +375,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "NULL propagation",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
@@ -394,7 +389,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "multiple rows",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
@@ -410,7 +404,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "scalar correlated subquery",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
@@ -425,7 +418,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "WHERE subquery",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
@@ -442,7 +434,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "assignment conversion",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
@@ -457,7 +448,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "generated stored column",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int, c int GENERATED ALWAYS AS (a+b) STORED)",
 				"INSERT INTO t_seq (a,b) VALUES (1,0)",
@@ -472,7 +462,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "join same target",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (id int PRIMARY KEY, a int, b int)",
 				"INSERT INTO t_seq VALUES (1,1,0)",
@@ -489,7 +478,6 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 		},
 		{
 			Name: "join swap",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (id int PRIMARY KEY, a int, b int)",
 				"INSERT INTO t_seq VALUES (1,1,0)",
@@ -520,8 +508,20 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 			},
 		},
 		{
+			Name: "assignments through foreign key and check handlers",
+			SetUpScript: []string{
+				"CREATE TABLE parent (id int PRIMARY KEY)",
+				"INSERT INTO parent VALUES (1), (2)",
+				"CREATE TABLE t_seq (id int PRIMARY KEY, a int REFERENCES parent(id), b int, CHECK (b < a))",
+				"INSERT INTO t_seq VALUES (9, 1, 0)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "UPDATE t_seq SET a = 2, b = a RETURNING id, a, b", Expected: []sql.Row{{9, 2, 1}}},
+				{Query: "SELECT id, a, b FROM t_seq", Expected: []sql.Row{{9, 2, 1}}},
+			},
+		},
+		{
 			Name: "RETURNING reads completed new row",
-			Skip: true, // TODO: Evaluate explicit assignments against the pre-update row (https://github.com/dolthub/doltgresql/issues/3092).
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",
 				"INSERT INTO t_seq VALUES (1, 0)",
