@@ -54,6 +54,27 @@ const (
 // their opcode. Operations that always set FOUND do not carry it.
 const OptionSetsFound = "sets_found"
 
+// OptionDynamicExpression marks an execute operation whose primary data is an expression producing SQL text.
+const OptionDynamicExpression = "dynamic_expression"
+
+// OptionDynamicBindingPrefix prefixes indexed variable bindings used to evaluate a dynamic SQL expression.
+const OptionDynamicBindingPrefix = "dynamic_binding_"
+
+// OptionDynamicBindingCount records how many indexed bindings a dynamic SQL expression uses.
+const OptionDynamicBindingCount = "dynamic_binding_count"
+
+// OptionDynamicUsingCount records how many USING expressions a dynamic command has.
+const OptionDynamicUsingCount = "dynamic_using_count"
+
+// OptionDynamicUsingExpressionPrefix prefixes indexed dynamic USING expressions.
+const OptionDynamicUsingExpressionPrefix = "dynamic_using_expression_"
+
+// OptionDynamicUsingBindingCountPrefix prefixes the binding count for an indexed USING expression.
+const OptionDynamicUsingBindingCountPrefix = "dynamic_using_binding_count_"
+
+// OptionDynamicUsingBindingPrefix prefixes bindings by USING-expression index and binding index.
+const OptionDynamicUsingBindingPrefix = "dynamic_using_binding_"
+
 // OptionLoopCondition is an Options key marking the conditional jump that advances an integer FOR loop.
 // Every kind of loop compiles to the same conditional jump, and PostgreSQL defines a FOR loop as setting
 // FOUND on exit while a WHILE or a plain LOOP leaves it alone, so the two are told apart by this option.

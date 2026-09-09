@@ -15,6 +15,7 @@
 package framework_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -43,4 +44,17 @@ func TestApplyBindings_RendersRegclassVariableThroughSessionContext(t *testing.T
 	require.NotPanics(t, func() {
 		_, _, _ = framework.InterpretedFunction{}.ApplyBindings(ctx, stack, "SELECT $1", []string{"rel"}, false)
 	})
+
+	// Every occurrence must be replaced, and shorter placeholder indexes must not alter longer ones.
+	bindings := make([]string, 10)
+	for i := range bindings {
+		bindings[i] = fmt.Sprintf("v%d", i+1)
+		stack.NewVariableWithValue(bindings[i], pgtypes.Int32, int32(i+1))
+	}
+
+	stmt, found, err := framework.InterpretedFunction{}.ApplyBindings(
+		ctx, stack, "SELECT $1, $1, $10, $10, $2", bindings, false)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, "SELECT 1, 1, 10, 10, 2", stmt)
 }

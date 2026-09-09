@@ -305,7 +305,8 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 		return stmt, false, nil
 	}
 	newStmt = stmt
-	for i, bindingName := range bindings {
+	for i := len(bindings) - 1; i >= 0; i-- {
+		bindingName := bindings[i]
 		variable, err := stack.GetVariableWithError(bindingName)
 		if err != nil {
 			// Only a name that matches no variable at all leaves the caller free to try something else; a
@@ -332,12 +333,12 @@ func (InterpretedFunction) ApplyBindings(ctx *sql.Context, stack plpgsql.Interpr
 		}
 		if enforceType {
 			if variable.Type.TypCategory == pgtypes.TypeCategory_CompositeTypes {
-				newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`(%s::%s)`, formattedVar, variable.Type.String()), 1)
+				newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`(%s::%s)`, formattedVar, variable.Type.String()))
 			} else {
-				newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`((%s)::%s)`, formattedVar, variable.Type.String()), 1)
+				newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), fmt.Sprintf(`((%s)::%s)`, formattedVar, variable.Type.String()))
 			}
 		} else {
-			newStmt = strings.Replace(newStmt, "$"+strconv.Itoa(i+1), formattedVar, 1)
+			newStmt = strings.ReplaceAll(newStmt, "$"+strconv.Itoa(i+1), formattedVar)
 		}
 	}
 	return newStmt, true, nil
