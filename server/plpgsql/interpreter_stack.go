@@ -160,6 +160,18 @@ type InterpreterStack struct {
 	returnQueryBuffer [][]pgtypes.RecordValue
 	// cursors holds the active FOR record IN query LOOP result sets
 	cursors map[string]*cursorState
+	// unfoldedNames holds the folded names of variables that go through special name resolution for
+	// compatibility with triggers that were compiled by older version of doltgres. These are names
+	// that are declared by the trigger itself --- NEW, OLD and TG_ variables. A body compiled before
+	// Doltgres folded references will refer to these by the identifiers as they appear in the source
+	// text. When these operations name `NEW`, and the the variable is now registered as `new`, the
+	// lookup will fail to find a direct match.
+	//
+	// A lookup that misses retries against this set case-insensitively. This keeps these triggers
+	// running without them needing to be recreated. Only these names are retried, since declared
+	// names, for example, were unfolded at both declare time and reference time by the previous
+	// code.
+	unfoldedNames map[string]struct{}
 }
 
 // NewInterpreterStack creates a new InterpreterStack.
@@ -170,10 +182,11 @@ func NewInterpreterStack(runner sql.StatementRunner) InterpreterStack {
 		variables: make(map[string]*interpreterVariable),
 	})
 	return InterpreterStack{
-		outParams: make([]string, 0),
-		stack:     stack,
-		runner:    runner,
-		cursors:   make(map[string]*cursorState),
+		outParams:     make([]string, 0),
+		stack:         stack,
+		runner:        runner,
+		cursors:       make(map[string]*cursorState),
+		unfoldedNames: make(map[string]struct{}),
 	}
 }
 
@@ -220,48 +233,78 @@ func (is *InterpreterStack) GetVariableWithError(name string) (InterpreterVariab
 		// still attached. Field lookup is case-insensitive here, so the quotes are all that need removing.
 		fieldName = strings.Trim(splitName[1], `"`)
 	}
-	for i := 0; i < is.stack.Len(); i++ {
-		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
-			if len(fieldName) == 0 {
-				return InterpreterVariableReference{
-					Type:  iv.Type,
-					Value: &iv.Value,
-				}, nil
-			} else if len(iv.Record) > 0 {
-				fieldIdx := recordFieldIndex(iv.Record, fieldName)
-				if fieldIdx == -1 {
-					return InterpreterVariableReference{}, ErrRecordHasNoField.New(name, fieldName)
-				}
-				fieldType, ok := iv.Record[fieldIdx].Type.(*pgtypes.DoltgresType)
-				if !ok {
-					return InterpreterVariableReference{}, fmt.Errorf(
-						"field `%s` of record `%s` does not have a Postgres type", fieldName, name)
-				}
-				return InterpreterVariableReference{
-					Type:  fieldType,
-					Value: &(iv.Value.(sql.Row)[fieldIdx]),
-				}, nil
-			} else if iv.IsRecord {
-				// A record that has never been assigned has no shape, so there is no field to read.
-				return InterpreterVariableReference{}, ErrRecordNotAssigned.New(name)
-			} else if iv.Type != nil && iv.Type.IsCompositeType() {
-				for fieldIdx := range iv.Type.CompositeAttrs {
-					if iv.Type.CompositeAttrs[fieldIdx].Name == fieldName {
-						vals := iv.Value.([]pgtypes.RecordValue)
-						return InterpreterVariableReference{
-							Type:  vals[fieldIdx].Type.(*pgtypes.DoltgresType),
-							Value: &(vals[fieldIdx].Value),
-						}, nil
-					}
-				}
+	if iv := is.findVariable(name); iv != nil {
+		if len(fieldName) == 0 {
+			return InterpreterVariableReference{
+				Type:  iv.Type,
+				Value: &iv.Value,
+			}, nil
+		} else if len(iv.Record) > 0 {
+			fieldIdx := recordFieldIndex(iv.Record, fieldName)
+			if fieldIdx == -1 {
 				return InterpreterVariableReference{}, ErrRecordHasNoField.New(name, fieldName)
-			} else {
-				return InterpreterVariableReference{}, fmt.Errorf(
-					"could not identify column `%s` in variable `%s`", fieldName, name)
 			}
+			fieldType, ok := iv.Record[fieldIdx].Type.(*pgtypes.DoltgresType)
+			if !ok {
+				return InterpreterVariableReference{}, fmt.Errorf(
+					"field `%s` of record `%s` does not have a Postgres type", fieldName, name)
+			}
+			return InterpreterVariableReference{
+				Type:  fieldType,
+				Value: &(iv.Value.(sql.Row)[fieldIdx]),
+			}, nil
+		} else if iv.IsRecord {
+			// A record that has never been assigned has no shape, so there is no field to read.
+			return InterpreterVariableReference{}, ErrRecordNotAssigned.New(name)
+		} else if iv.Type != nil && iv.Type.IsCompositeType() {
+			for fieldIdx := range iv.Type.CompositeAttrs {
+				if iv.Type.CompositeAttrs[fieldIdx].Name == fieldName {
+					vals := iv.Value.([]pgtypes.RecordValue)
+					return InterpreterVariableReference{
+						Type:  vals[fieldIdx].Type.(*pgtypes.DoltgresType),
+						Value: &(vals[fieldIdx].Value),
+					}, nil
+				}
+			}
+			return InterpreterVariableReference{}, ErrRecordHasNoField.New(name, fieldName)
+		} else {
+			return InterpreterVariableReference{}, fmt.Errorf(
+				"could not identify column `%s` in variable `%s`", fieldName, name)
 		}
 	}
 	return InterpreterVariableReference{}, ErrVariableNotFound.New(fullName)
+}
+
+// findVariable returns the variable named |name|, searching from the top of the stack down so that an inner
+// declaration shadows an outer one. Returns nil when no scope holds the name. A name that matches nothing
+// exactly is retried folded when it names a caller-supplied variable, which is what lets operations compiled
+// before Doltgres folded references keep resolving; see the unfoldedNames field.
+func (is *InterpreterStack) findVariable(name string) *interpreterVariable {
+	for i := 0; i < is.stack.Len(); i++ {
+		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
+			return iv
+		}
+	}
+	folded := strings.ToLower(name)
+	if folded == name {
+		return nil
+	}
+	if _, ok := is.unfoldedNames[folded]; !ok {
+		return nil
+	}
+	for i := 0; i < is.stack.Len(); i++ {
+		if iv, ok := is.stack.PeekDepth(i).variables[folded]; ok {
+			return iv
+		}
+	}
+	return nil
+}
+
+// markUnfoldedName records that the variable named |name|, which must already be folded, may also be reached
+// by any other casing of that name. It is for the variables a caller supplies to a function rather than ones
+// the function declares, since only those changed names when reference folding was introduced.
+func (is *InterpreterStack) markUnfoldedName(name string) {
+	is.unfoldedNames[name] = struct{}{}
 }
 
 // recordFieldIndex returns the index of the field named |fieldName| within |sch|, or -1 if there is no such
@@ -339,12 +382,9 @@ func (is *InterpreterStack) NewVariableWithValue(name string, typ *pgtypes.Doltg
 // NewVariableAlias creates a new variable alias, named |alias|, in the current frame of this stack,
 // pointing to the specified |variable|.
 func (is *InterpreterStack) NewVariableAlias(alias string, target string) {
-	for i := 0; i < is.stack.Len(); i++ {
-		if iv, ok := is.stack.PeekDepth(i).variables[target]; ok {
-			// TODO: this won't work for RECORD types
-			is.stack.Peek().variables[alias] = iv
-			break
-		}
+	if iv := is.findVariable(target); iv != nil {
+		// TODO: this won't work for RECORD types
+		is.stack.Peek().variables[alias] = iv
 	}
 }
 
@@ -487,13 +527,11 @@ func (is *InterpreterStack) UpdateRecord(name string, schema sql.Schema, val sql
 	if err != nil {
 		return err
 	}
-	for i := 0; i < is.stack.Len(); i++ {
-		if iv, ok := is.stack.PeekDepth(i).variables[name]; ok {
-			iv.Record = normalizedSchema
-			iv.Value = copyRecordRow(normalizedSchema, val)
-			iv.IsRecord = true
-			return nil
-		}
+	if iv := is.findVariable(name); iv != nil {
+		iv.Record = normalizedSchema
+		iv.Value = copyRecordRow(normalizedSchema, val)
+		iv.IsRecord = true
+		return nil
 	}
 	return fmt.Errorf("record variable `%s` could not be found", name)
 }

@@ -80,8 +80,16 @@ func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner sql.Stateme
 	// Add the special variables
 	// These are declared under their folded names, the same as anything the function declares itself, so
 	// that a body may write them in any case (`NEW.x`, `new.x`) the way Postgres allows.
+	//
+	// These variables are specially marked as being reachable from the code by any casing. This is
+	// because a trigger which was compiled before references were folded will hold operations that
+	// refer to these by names which reflect the source text. Thus, the references will be `NEW.x`
+	// rather than `new.x`. For such a trigger to keep working, these go through a compatibility
+	// shim.
 	stack.NewRecord(TriggerOldRecordName, sch, oldRow)
 	stack.NewRecord(TriggerNewRecordName, sch, newRow)
+	stack.markUnfoldedName(TriggerOldRecordName)
+	stack.markUnfoldedName(TriggerNewRecordName)
 	for varName, val := range trigVars {
 		normalized := NormalizeIdentifier(varName)
 		varType, ok := triggerSpecialVariables[normalized]
@@ -89,6 +97,7 @@ func TriggerCall(ctx *sql.Context, iFunc InterpretedFunction, runner sql.Stateme
 			return nil, fmt.Errorf("unknown variable %s for trigger", varName)
 		}
 		stack.NewVariableWithValue(normalized, varType, val)
+		stack.markUnfoldedName(normalized)
 	}
 	return call(ctx, iFunc, stack)
 }
