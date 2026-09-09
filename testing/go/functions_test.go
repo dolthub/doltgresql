@@ -422,7 +422,7 @@ func TestAggregateFunctions(t *testing.T) {
 				{
 					Query: `SELECT array_agg(name ORDER BY nullable_field) FROM test_data;`,
 					Expected: []sql.Row{
-						{"{Bob,Diana,Alice,Charlie,Eve,Frank}"},
+						{"{Alice,Charlie,Eve,Frank,Bob,Diana}"},
 					},
 				},
 				// ORDER BY with GROUP BY
@@ -2487,7 +2487,7 @@ func TestArrayFunctions(t *testing.T) {
 				},
 				{
 					Query:    `SELECT array_to_string(indclass, ',') FROM pg_index WHERE indexrelid = 'vectest_ab'::regclass;`,
-					Expected: []sql.Row{{"0,0"}},
+					Expected: []sql.Row{{"15009,15009"}},
 				},
 			},
 		},

@@ -18,9 +18,12 @@ import (
 	"io"
 	"slices"
 
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/lib/pq/oid"
 
 	"github.com/dolthub/doltgresql/core/id"
+	partypes "github.com/dolthub/doltgresql/postgres/parser/types"
 	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -131,6 +134,66 @@ func (c operatorClass) oid() id.Id {
 	return id.NewId(id.Section_OperatorClass, c.am, c.name)
 }
 
+// acceptsType returns whether a column of `t` may use this built-in class, which Postgres allows when the column type is
+// the input type or is binary coercible to it, as text and varchar are to each other and to bpchar.
+func (c operatorClass) acceptsType(t *pgtypes.DoltgresType) bool {
+	if c.inputType.ID == t.ID {
+		return true
+	}
+	switch t.ID {
+	case pgtypes.Text.ID, pgtypes.VarChar.ID:
+		return c.inputType.ID == pgtypes.Text.ID || c.inputType.ID == pgtypes.BpChar.ID
+	}
+	return false
+}
+
+// btreeOperatorClass returns the built-in btree operator class with the given name.
+func btreeOperatorClass(name string) (operatorClass, bool) {
+	for _, class := range defaultOperatorClasses {
+		if class.am == "btree" && class.name == name {
+			return class, true
+		}
+	}
+	return operatorClass{}, false
+}
+
+// defaultBtreeOperatorClass returns the default btree operator class for columns of `t`, which for varchar is the
+// default class of text. The returned bool is false when `t` has no default btree class.
+func defaultBtreeOperatorClass(t *pgtypes.DoltgresType) (operatorClass, bool) {
+	typeID := t.ID
+	if typeID == pgtypes.VarChar.ID {
+		typeID = pgtypes.Text.ID
+	}
+	for _, class := range defaultOperatorClasses {
+		if class.am == "btree" && class.isDefault && class.inputType.ID == typeID {
+			return class, true
+		}
+	}
+	return operatorClass{}, false
+}
+
+// ValidateBtreeOperatorClass returns an error unless `name` is a built-in btree operator class that accepts columns of
+// `colType`, and reports whether it is the default class for that type so that callers may omit it.
+func ValidateBtreeOperatorClass(name string, colType sql.Type) (isDefault bool, err error) {
+	class, ok := btreeOperatorClass(name)
+	if !ok {
+		return false, errors.Errorf(`operator class "%s" does not exist for access method "btree"`, name)
+	}
+	dgType, ok := colType.(*pgtypes.DoltgresType)
+	if !ok {
+		return false, nil
+	}
+	if !class.acceptsType(dgType) {
+		typeName := dgType.String()
+		if t, ok := partypes.OidToType[oid.Oid(id.Cache().ToOID(dgType.ID.AsId()))]; ok {
+			typeName = t.SQLStandardName()
+		}
+		return false, errors.Errorf(`operator class "%s" does not accept data type %s`, name, typeName)
+	}
+	defaultClass, ok := defaultBtreeOperatorClass(dgType)
+	return ok && defaultClass.name == class.name, nil
+}
+
 // defaultOperatorClasses is the list of built-in operator classes available in Postgres for the access methods and
 // types that Doltgres supports. Unlike operator families, Postgres assigns most operator class OIDs dynamically during
 // initdb, so Doltgres assigns its own fixed OIDs (registered in core/id/cache_operator_class_defaults.go).
@@ -141,6 +204,7 @@ var defaultOperatorClasses = []operatorClass{
 	{am: "btree", name: "bit_ops", familyName: "bit_ops", inputType: pgtypes.Bit, isDefault: true},
 	{am: "btree", name: "bool_ops", familyName: "bool_ops", inputType: pgtypes.Bool, isDefault: true},
 	{am: "btree", name: "bpchar_ops", familyName: "bpchar_ops", inputType: pgtypes.BpChar, isDefault: true},
+	{am: "btree", name: "bpchar_pattern_ops", familyName: "bpchar_pattern_ops", inputType: pgtypes.BpChar, isDefault: false},
 	{am: "btree", name: "bytea_ops", familyName: "bytea_ops", inputType: pgtypes.Bytea, isDefault: true},
 	{am: "btree", name: "char_ops", familyName: "char_ops", inputType: pgtypes.InternalChar, isDefault: true},
 	{am: "btree", name: "date_ops", familyName: "datetime_ops", inputType: pgtypes.Date, isDefault: true},
@@ -156,6 +220,7 @@ var defaultOperatorClasses = []operatorClass{
 	{am: "btree", name: "oid_ops", familyName: "oid_ops", inputType: pgtypes.Oid, isDefault: true},
 	{am: "btree", name: "record_ops", familyName: "record_ops", inputType: pgtypes.Record, isDefault: true},
 	{am: "btree", name: "text_ops", familyName: "text_ops", inputType: pgtypes.Text, isDefault: true},
+	{am: "btree", name: "text_pattern_ops", familyName: "text_pattern_ops", inputType: pgtypes.Text, isDefault: false},
 	{am: "btree", name: "time_ops", familyName: "time_ops", inputType: pgtypes.Time, isDefault: true},
 	{am: "btree", name: "timestamp_ops", familyName: "datetime_ops", inputType: pgtypes.Timestamp, isDefault: true},
 	{am: "btree", name: "timestamptz_ops", familyName: "datetime_ops", inputType: pgtypes.TimestampTZ, isDefault: true},
@@ -164,6 +229,7 @@ var defaultOperatorClasses = []operatorClass{
 	{am: "btree", name: "varbit_ops", familyName: "varbit_ops", inputType: pgtypes.VarBit, isDefault: true},
 	// varchar_ops operates on text, matching Postgres (varchar has no operators of its own)
 	{am: "btree", name: "varchar_ops", familyName: "text_ops", inputType: pgtypes.Text, isDefault: false},
+	{am: "btree", name: "varchar_pattern_ops", familyName: "text_pattern_ops", inputType: pgtypes.Text, isDefault: false},
 	{am: "hash", name: "bool_ops", familyName: "bool_ops", inputType: pgtypes.Bool, isDefault: true},
 	{am: "hash", name: "bpchar_ops", familyName: "bpchar_ops", inputType: pgtypes.BpChar, isDefault: true},
 	{am: "hash", name: "bytea_ops", familyName: "bytea_ops", inputType: pgtypes.Bytea, isDefault: true},
@@ -178,11 +244,14 @@ var defaultOperatorClasses = []operatorClass{
 	{am: "hash", name: "numeric_ops", familyName: "numeric_ops", inputType: pgtypes.Numeric, isDefault: true},
 	{am: "hash", name: "oid_ops", familyName: "oid_ops", inputType: pgtypes.Oid, isDefault: true},
 	{am: "hash", name: "text_ops", familyName: "text_ops", inputType: pgtypes.Text, isDefault: true},
+	{am: "hash", name: "text_pattern_ops", familyName: "text_pattern_ops", inputType: pgtypes.Text, isDefault: false},
 	{am: "hash", name: "timestamp_ops", familyName: "datetime_ops", inputType: pgtypes.Timestamp, isDefault: true},
 	{am: "hash", name: "timestamptz_ops", familyName: "datetime_ops", inputType: pgtypes.TimestampTZ, isDefault: true},
 	{am: "hash", name: "uuid_ops", familyName: "uuid_ops", inputType: pgtypes.Uuid, isDefault: true},
 	// varchar_ops operates on text, matching Postgres (varchar has no operators of its own)
 	{am: "hash", name: "varchar_ops", familyName: "text_ops", inputType: pgtypes.Text, isDefault: false},
+	{am: "hash", name: "varchar_pattern_ops", familyName: "text_pattern_ops", inputType: pgtypes.Text, isDefault: false},
+	{am: "hash", name: "bpchar_pattern_ops", familyName: "bpchar_pattern_ops", inputType: pgtypes.BpChar, isDefault: false},
 }
 
 // pgOpclassRowIter is the sql.RowIter for the pg_opclass table.

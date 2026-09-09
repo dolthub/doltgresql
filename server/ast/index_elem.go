@@ -15,8 +15,9 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
+	"strings"
 
+	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/sirupsen/logrus"
 
@@ -30,32 +31,34 @@ func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexFi
 		if inputColumn.Collation != "" {
 			logrus.Warn("index attribute collation is not yet supported, ignoring")
 		}
-		if inputColumn.OpClass != nil {
-			logrus.Warn("index attribute operator class is not yet supported, ignoring")
-		}
 		if inputColumn.ExcludeOp != nil {
 			return nil, errors.Errorf("index attribute exclude operator is not yet supported")
 		}
+		var opClass string
+		if inputColumn.OpClass != nil {
+			if len(inputColumn.OpClass.Options) > 0 {
+				return nil, errors.Errorf("operator class %s has no options", inputColumn.OpClass.Name)
+			}
+			opClass = strings.TrimPrefix(inputColumn.OpClass.Name, "pg_catalog.")
+		}
 
+		order := vitess.AscScr
+		nullsOrder := vitess.NullsLastStr
 		switch inputColumn.Direction {
-		case tree.DefaultDirection:
-			// Defaults to ASC
-		case tree.Ascending:
-			// The only default supported in GMS for now
+		case tree.DefaultDirection, tree.Ascending:
 		case tree.Descending:
-			logrus.Warn("descending indexes are not yet supported, ignoring sort order")
+			order = vitess.DescScr
+			nullsOrder = vitess.NullsFirstStr
 		default:
 			return nil, errors.Errorf("unknown index sorting direction encountered")
 		}
 
 		switch inputColumn.NullsOrder {
 		case tree.DefaultNullsOrder:
-			// TODO: the default NULL order is reversed compared to MySQL, so the default is technically always wrong.
-			//       To prevent choking on every index, we allow this to proceed (even with incorrect results) for now.
 		case tree.NullsFirst:
-			// The only form supported in GMS for now
+			nullsOrder = vitess.NullsFirstStr
 		case tree.NullsLast:
-			return nil, errors.Errorf("NULLS LAST for indexes is not yet supported")
+			nullsOrder = vitess.NullsLastStr
 		default:
 			return nil, errors.Errorf("unknown NULL ordering for index")
 		}
@@ -71,7 +74,9 @@ func nodeIndexElemList(ctx *Context, node tree.IndexElemList) ([]*vitess.IndexFi
 
 		vitessIndexColumns = append(vitessIndexColumns, &vitess.IndexField{
 			Column:     vitess.NewColIdent(string(inputColumn.Column)),
-			Order:      vitess.AscScr,
+			Order:      order,
+			NullsOrder: nullsOrder,
+			OpClass:    opClass,
 			Expression: expr,
 		})
 	}

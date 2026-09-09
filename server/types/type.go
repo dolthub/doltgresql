@@ -330,18 +330,18 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		}
 	case float32:
 		bb := v2.(float32)
-		if ab == bb {
+		if ab == bb || (ab != ab && bb != bb) {
 			return 0, nil
-		} else if ab < bb {
+		} else if ab < bb || bb != bb {
 			return -1, nil
 		} else {
 			return 1, nil
 		}
 	case float64:
 		bb := v2.(float64)
-		if ab == bb {
+		if ab == bb || (math.IsNaN(ab) && math.IsNaN(bb)) {
 			return 0, nil
-		} else if ab < bb {
+		} else if ab < bb || math.IsNaN(bb) {
 			return -1, nil
 		} else {
 			return 1, nil

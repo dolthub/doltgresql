@@ -1286,7 +1286,7 @@ func TestPgDatabase(t *testing.T) {
 				{
 					Query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
 					Expected: []sql.Row{
-						{258611842, "test", 0, 6, "i", "f", "t", -1, 0, 0, 0, "", "", nil, "", nil, nil},
+						{258611842, "test", 0, 6, "i", "f", "t", -1, 0, 0, 0, "C", "C", nil, "", nil, nil},
 					},
 				},
 			},
@@ -1756,9 +1756,9 @@ func TestPgIndex(t *testing.T) {
 						WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'
 						ORDER BY 1;`,
 					Expected: []sql.Row{
-						{1067629180, 3120782595, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "0", "0", nil, nil},
-						{2070175302, 3120782595, 1, 1, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "0", "0", nil, nil},
-						{3185790121, 1784425749, 2, 2, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1 2", "0 0", "0 0", "0 0", nil, nil},
+						{1067629180, 3120782595, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "15009", "0", nil, nil},
+						{2070175302, 3120782595, 1, 1, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "15009", "0", nil, nil},
+						{3185790121, 1784425749, 2, 2, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1 2", "0 0", "15009 15009", "0 0", nil, nil},
 					},
 				},
 				{ // Different cases and quoted, so it fails
@@ -1791,7 +1791,7 @@ func TestPgIndex(t *testing.T) {
 				},
 				{
 					Query:    "SELECT unnest(indoption) FROM pg_index LIMIT 1;",
-					Expected: []sql.Row{{0}},
+					Expected: []sql.Row{{2}},
 				},
 			},
 		},
@@ -2503,6 +2503,20 @@ func TestPgOpclass(t *testing.T) {
 							WHERE opc.opcname = 'varchar_ops' AND am.amname = 'hash';`,
 					Expected: []sql.Row{
 						{"varchar_ops", "text", "f"},
+					},
+				},
+				{ // The hash pattern classes belong to the hash pattern families, which have their own fixed OIDs
+					Query: `SELECT opf.oid, opc.opcname, t.typname, opc.opcdefault
+							FROM pg_catalog.pg_opclass opc
+							JOIN pg_catalog.pg_am am ON opc.opcmethod = am.oid
+							JOIN pg_catalog.pg_opfamily opf ON opc.opcfamily = opf.oid
+							JOIN pg_catalog.pg_type t ON opc.opcintype = t.oid
+							WHERE opc.opcname LIKE '%pattern%' AND am.amname = 'hash'
+							ORDER BY opc.opcname;`,
+					Expected: []sql.Row{
+						{2231, "bpchar_pattern_ops", "bpchar", "f"},
+						{2229, "text_pattern_ops", "text", "f"},
+						{2229, "varchar_pattern_ops", "text", "f"},
 					},
 				},
 				{
@@ -6001,8 +6015,8 @@ func TestPgIndexIndexes(t *testing.T) {
 					Query: `SELECT * FROM pg_catalog.pg_index i 
 WHERE i.indrelid = 1496157034 order by 1`,
 					Expected: []sql.Row{
-						{3992679530, 1496157034, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "0", "0", nil, nil},
-						{4052612617, 1496157034, 1, 1, "f", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "0", "0", nil, nil},
+						{3992679530, 1496157034, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "15009", "0", nil, nil},
+						{4052612617, 1496157034, 1, 1, "f", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "15009", "0", nil, nil},
 					},
 				},
 				{
@@ -6463,7 +6477,7 @@ WHERE pg_catalog.pg_index.indrelid IN (3491847678)
   AND NOT pg_catalog.pg_index.indisprimary
 ORDER BY pg_catalog.pg_index.indrelid, cls_idx.relname`,
 					Expected: []sql.Row{
-						{3491847678, "dolt_log_commit_hash_key", "t", "t", "0", interface{}(nil), "btree", interface{}(nil), 1, "f", "{commit_hash}", "{f}"},
+						{3491847678, "dolt_log_commit_hash_key", "t", "t", "2", interface{}(nil), "btree", interface{}(nil), 1, "f", "{commit_hash}", "{f}"},
 					},
 				},
 			},

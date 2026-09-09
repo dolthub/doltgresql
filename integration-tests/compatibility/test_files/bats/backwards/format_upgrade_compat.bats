@@ -88,3 +88,116 @@ SQL
   [ "$status" -eq 0 ]
   [[ "$output" =~ "readable-by-all" ]] || false
 }
+
+# Index column options: every index created by a new release records the sort order of its columns in
+# the index schema, because Postgres places NULLs last in an ascending index while the storage default
+# places them first. Older releases reject schemas carrying the unknown fields, so any table with a
+# secondary index created by a new release forces an upgrade, while tables without one stay readable.
+@test "format_upgrade: old clients must upgrade after a new client creates a secondary index" {
+  [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
+  [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
+
+  # --- New: write a table with a plain secondary index, plus a control table ---
+  new_server_start
+  sql <<SQL
+CREATE TABLE control (id INT NOT NULL PRIMARY KEY, val VARCHAR(100));
+INSERT INTO control VALUES (1, 'readable-by-all');
+CREATE TABLE indexed (id INT NOT NULL PRIMARY KEY, n INT);
+CREATE INDEX indexed_n ON indexed (n);
+INSERT INTO indexed VALUES (1, 10), (2, NULL), (3, 5);
+SQL
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'new: secondary index');"
+
+  run sql_csv -c "SELECT id FROM indexed WHERE n > 6;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "1" ]] || false
+  stop_doltgres
+
+  # --- Old: the index schema fields force an upgrade, loudly, in one of the two ways described above ---
+  if old_server_start; then
+    run sql_csv -c "SELECT val FROM control WHERE id = 1;"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "readable-by-all" ]] || false
+
+    run sql -c "SELECT count(*) FROM indexed;"
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "unknown fields" ]] || false
+    stop_doltgres
+  else
+    grep -Eq "unknown fields|panic" "$BATS_REPO/old.log"
+  fi
+
+  # --- New again: after upgrading, everything is readable ---
+  new_server_start
+  run sql_csv -c "SELECT id FROM indexed WHERE n > 6;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "1" ]] || false
+  run sql_csv -c "SELECT val FROM control WHERE id = 1;"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "readable-by-all" ]] || false
+}
+
+# Indexes created by older releases store their columns ascending with NULLs first and carry no order fields. A new
+# release must leave them that way, also when it changes the indexed column's type or the rest of the table, so that
+# tables which never gain a new index stay readable by the older release.
+@test "format_upgrade: new clients keep old indexes readable by old clients through schema changes" {
+  [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
+  [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
+
+  # --- Old: write a table with a secondary index on a nullable column ---
+  # Every column type here is stored the same way by every release. Releases before v0.56.3 cannot read
+  # INT, TEXT, and similar columns once a new release rewrites the table with Dolt's native encodings, which
+  # has nothing to do with indexes.
+  old_server_start
+  sql <<SQL
+CREATE TABLE indexed (id UUID NOT NULL PRIMARY KEY, n DATE, flag BOOLEAN);
+CREATE INDEX indexed_n ON indexed (n);
+INSERT INTO indexed VALUES
+  ('00000000-0000-0000-0000-000000000001', '2024-01-10', true),
+  ('00000000-0000-0000-0000-000000000002', NULL, false),
+  ('00000000-0000-0000-0000-000000000003', '2024-01-05', true);
+SQL
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'old: table with a secondary index');"
+  stop_doltgres
+
+  # --- New: change the indexed column's type and the rest of the table, and write through the index ---
+  new_server_start
+  sql <<SQL
+ALTER TABLE indexed ALTER COLUMN n TYPE TIMESTAMP;
+ALTER TABLE indexed ADD COLUMN extra DATE;
+ALTER TABLE indexed RENAME COLUMN flag TO active;
+INSERT INTO indexed VALUES
+  ('00000000-0000-0000-0000-000000000004', '2024-01-07 12:00:00', true, '2024-02-01'),
+  ('00000000-0000-0000-0000-000000000005', NULL, false, '2024-02-02');
+UPDATE indexed SET n = '2024-01-11' WHERE id = '00000000-0000-0000-0000-000000000001';
+DELETE FROM indexed WHERE id = '00000000-0000-0000-0000-000000000003';
+SQL
+  sql -c "SELECT dolt_add('.'); SELECT dolt_commit('-m', 'new: schema changes around the old index');"
+
+  # the old index keeps its original order, which is NULLS FIRST in Postgres terms
+  run sql_csv -c "SELECT indexdef FROM pg_indexes WHERE indexname = 'indexed_n';"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ "CREATE INDEX indexed_n ON public.indexed USING btree (n NULLS FIRST)" ]] || false
+  run sql_csv -c "SELECT id FROM indexed WHERE n > '2024-01-06' ORDER BY n;"
+  [ "$status" -eq 0 ]
+  [[ "${lines[1]}" == "00000000-0000-0000-0000-000000000004" ]] || false
+  [[ "${lines[2]}" == "00000000-0000-0000-0000-000000000001" ]] || false
+  stop_doltgres
+
+  # --- Old: everything the new release wrote is readable, through the index too ---
+  old_server_start
+  run sql_csv -c "SELECT id, n, active, extra FROM indexed ORDER BY id;"
+  [ "$status" -eq 0 ]
+  [[ "${lines[1]}" == "00000000-0000-0000-0000-000000000001,2024-01-11 00:00:00,t," ]] || false
+  [[ "${lines[2]}" == "00000000-0000-0000-0000-000000000002,,f," ]] || false
+  [[ "${lines[3]}" == "00000000-0000-0000-0000-000000000004,2024-01-07 12:00:00,t,2024-02-01" ]] || false
+  [[ "${lines[4]}" == "00000000-0000-0000-0000-000000000005,,f,2024-02-02" ]] || false
+  run sql_csv -c "SELECT id FROM indexed WHERE n = '2024-01-07 12:00:00';"
+  [ "$status" -eq 0 ]
+  [[ "${lines[1]}" == "00000000-0000-0000-0000-000000000004" ]] || false
+  run sql_csv -c "SELECT id FROM indexed WHERE n IS NULL ORDER BY id;"
+  [ "$status" -eq 0 ]
+  [[ "${lines[1]}" == "00000000-0000-0000-0000-000000000002" ]] || false
+  [[ "${lines[2]}" == "00000000-0000-0000-0000-000000000005" ]] || false
+  stop_doltgres
+}

@@ -66,8 +66,6 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		keyOpt = 1 // colKeyPrimary
 		isNull = false
 		isNotNull = true
-	} else if node.Unique {
-		keyOpt = 3 // colKeyUnique
 	}
 	defaultExpr, err := nodeExpr(ctx, node.DefaultExpr.Expr)
 	if err != nil {
