@@ -33,6 +33,7 @@ type CreateTable struct {
 var _ sql.ExecBuilderNode = (*CreateTable)(nil)
 var _ sql.SchemaTarget = (*CreateTable)(nil)
 var _ sql.Expressioner = (*CreateTable)(nil)
+var _ sql.Nameable = (*CreateTable)(nil)
 
 // NewCreateTable returns a new *CreateTable.
 func NewCreateTable(createTable *plan.CreateTable, sequences []*CreateSequence) *CreateTable {
@@ -60,6 +61,11 @@ func (c *CreateTable) Expressions() []sql.Expression {
 // IsReadOnly implements the interface sql.ExecBuilderNode.
 func (c *CreateTable) IsReadOnly() bool {
 	return false
+}
+
+// Name returns the name of the table being created.
+func (c *CreateTable) Name() string {
+	return c.gmsCreateTable.Name()
 }
 
 // Resolved implements the interface sql.ExecBuilderNode.
