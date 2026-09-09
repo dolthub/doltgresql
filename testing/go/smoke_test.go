@@ -20,6 +20,43 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
+// TestCreateTableAs verifies CTAS execution and transaction rollback through Doltgres create-table wrappers.
+func TestCreateTableAs(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "create table as select",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, k INT)",
+				"INSERT INTO t VALUES (1, 10), (2, 99)",
+				"CREATE TABLE u (k INT PRIMARY KEY)",
+				"INSERT INTO u VALUES (10)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE TABLE c AS SELECT id, k FROM t WHERE NOT EXISTS(SELECT COUNT(*) FROM u WHERE u.k = t.k)",
+				},
+				{
+					Query:    "SELECT id, k FROM c ORDER BY id",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "BEGIN",
+				},
+				{
+					Query: "CREATE TABLE rolled_back AS SELECT 1 AS v",
+				},
+				{
+					Query: "ROLLBACK",
+				},
+				{
+					Query:    "SELECT to_regclass('rolled_back')",
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+	})
+}
+
 func TestSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
