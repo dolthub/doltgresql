@@ -55,6 +55,7 @@ const (
 	ruleId_SetRunner                                                     // setRunner
 	ruleId_TypeSanitizeExistsSubquery                                    // typeSanitizeExistsSubquery
 	ruleId_ResolveTableForDDL                                            // resolveTableForDDL
+	ruleId_AddLikePrefixRanges                                           // addLikePrefixRanges
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -62,6 +63,7 @@ func Init() {
 	// OnceBeforeDefault runs before AlwaysBeforeDefault in GMS
 	analyzer.OnceBeforeDefault = append([]analyzer.Rule{
 		{Id: ruleId_ResolveType, Apply: ResolveType}, // ResolveType rule must run before simplifyFilters rule in GMS
+		{Id: ruleId_AddLikePrefixRanges, Apply: AddLikePrefixRanges},
 		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
 		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint},
 		{Id: ruleId_ResolveTableForDDL, Apply: resolveTableForDDL}},

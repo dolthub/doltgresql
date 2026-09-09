@@ -22,6 +22,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+
+	"github.com/dolthub/doltgresql/server/tables/pgcatalog"
 )
 
 // validateCreateTable validates that a table can be created as specified
@@ -103,6 +105,22 @@ func validateIndexes(ctx *sql.Context, sch sql.Schema, idxDefs sql.IndexDefs) er
 	return nil
 }
 
+// validateIndexOpClass validates the operator class of column `i` of `idxDef`, whose values have type `colType`, and
+// drops it from the definition when it is the default class for that type.
+func validateIndexOpClass(idxDef *sql.IndexDef, i int, colType sql.Type) error {
+	if idxDef.Columns[i].OpClass == "" {
+		return nil
+	}
+	isDefault, err := pgcatalog.ValidateBtreeOperatorClass(idxDef.Columns[i].OpClass, colType)
+	if err != nil {
+		return err
+	}
+	if isDefault {
+		idxDef.Columns[i].OpClass = ""
+	}
+	return nil
+}
+
 // schToColMap returns a map of columns, keyed by their name, for the specified
 // schema |sch|.
 func schToColMap(sch sql.Schema) map[string]*sql.Column {
@@ -119,12 +137,16 @@ func schToColMap(sch sql.Schema) map[string]*sql.Column {
 //   - in the schema
 //   - not duplicated
 //   - a compatible type for an index
+//   - accepted by their operator class, which is dropped from the definition when it is the column type's default
 //
 // TODO: there are other constraints on indexes that we could enforce and are not yet (e.g. JSON as an index)
 func validateIndex(ctx *sql.Context, colMap map[string]*sql.Column, idxDef *sql.IndexDef) error {
 	seenCols := make(map[string]struct{})
-	for _, idxCol := range idxDef.Columns {
+	for i, idxCol := range idxDef.Columns {
 		if idxCol.Expression != nil {
+			if err := validateIndexOpClass(idxDef, i, idxCol.Expression.Type(ctx)); err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -136,6 +158,9 @@ func validateIndex(ctx *sql.Context, colMap map[string]*sql.Column, idxDef *sql.
 			return sql.ErrDuplicateColumn.New(schCol.Name)
 		}
 		seenCols[schCol.Name] = struct{}{}
+		if err := validateIndexOpClass(idxDef, i, schCol.Type); err != nil {
+			return err
+		}
 		if idxDef.IsFullText() {
 			continue
 		}

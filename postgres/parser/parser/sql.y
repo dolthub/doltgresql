@@ -9824,6 +9824,10 @@ opt_opclass:
   {
     $$.val = &tree.IndexElemOpClass{Name: $1}
   }
+| simple_ident '.' IDENT
+  {
+    $$.val = &tree.IndexElemOpClass{Name: $1 + "." + $3}
+  }
 | IDENT '(' opclass_option_list ')'
   {
     $$.val = &tree.IndexElemOpClass{Name: $1, Options: $3.opClassOptions()}

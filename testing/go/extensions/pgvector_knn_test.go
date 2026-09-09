@@ -336,10 +336,9 @@ func TestPgvectorKnn(t *testing.T) {
 					Expected: []sql.Row{{1}, {3}, {5}},
 				},
 				{
-					// The exact scan still includes the NULL rows. Postgres orders them last
-					// ({1}, {3}, {5}, {2}, {4}) while Doltgres currently orders all NULLs first.
+					// The exact scan still includes the NULL rows, which sort last
 					Query:    "SELECT id FROM nulls ORDER BY v <-> '[1.5,1,2]', id;",
-					Expected: []sql.Row{{2}, {4}, {1}, {3}, {5}},
+					Expected: []sql.Row{{1}, {3}, {5}, {2}, {4}},
 				},
 				{
 					Query:    "UPDATE nulls SET v = '[1.5,1,2]' WHERE id = 2;",
@@ -393,7 +392,7 @@ func TestPgvectorKnn(t *testing.T) {
 				{
 					// The exact scan proves the merged rows 4 and 5 are NULL rather than missing
 					Query:    "SELECT id FROM nulls ORDER BY v <-> '[1.5,1,2]', id;",
-					Expected: []sql.Row{{4}, {5}, {2}, {1}, {3}},
+					Expected: []sql.Row{{2}, {1}, {3}, {4}, {5}},
 				},
 				{
 					Query:    "SELECT id FROM nulls AS OF 'HEAD~2' ORDER BY v <-> '[1.5,1,2]' LIMIT 5;",

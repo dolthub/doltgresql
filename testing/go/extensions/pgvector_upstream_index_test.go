@@ -64,7 +64,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <-> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"},
+						{"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
@@ -117,7 +117,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <#> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[1,2,4]"}, {"[1,2,3]"}, {"[1,1,1]"}, {"[0,0,0]"},
+						{"[1,2,4]"}, {"[1,2,3]"}, {"[1,1,1]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
@@ -154,7 +154,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <=> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[0,0,0]"}, {"[1,1,1]"}, {"[1,2,3]"}, {"[1,2,4]"},
+						{"[1,1,1]"}, {"[1,2,3]"}, {"[1,2,4]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
@@ -174,7 +174,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT t.val, t2.val FROM t CROSS JOIN LATERAL (SELECT val FROM t t3 ORDER BY val <=> t.val LIMIT 1) t2 WHERE t.val != '[0,0,0]' ORDER BY t.val;",
 					Expected: []sql.Row{
-						{"[1,1,1]", nil}, {"[1,2,3]", nil}, {"[1,2,4]", nil},
+						{"[1,1,1]", "[1,1,1]"}, {"[1,2,3]", "[1,2,3]"}, {"[1,2,4]", "[1,2,4]"},
 					},
 				},
 				{
@@ -201,7 +201,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <+> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"},
+						{"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
@@ -246,7 +246,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <-> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"},
+						{"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
@@ -295,7 +295,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <#> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[1,2,4]"}, {"[1,2,3]"}, {"[1,1,1]"}, {"[0,0,0]"},
+						{"[1,2,4]"}, {"[1,2,3]"}, {"[1,1,1]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
@@ -332,7 +332,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <=> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[0,0,0]"}, {"[1,1,1]"}, {"[1,2,3]"}, {"[1,2,4]"},
+						{"[1,1,1]"}, {"[1,2,3]"}, {"[1,2,4]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
@@ -373,7 +373,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <+> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"},
+						{"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
@@ -418,7 +418,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <-> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"},
+						{"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
@@ -474,7 +474,7 @@ func TestPgvectorUpstreamIndex(t *testing.T) {
 				{
 					Query: "SELECT val FROM t ORDER BY val <-> '[3,3,3]';",
 					Expected: []sql.Row{
-						{nil}, {"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"},
+						{"[1,2,3]"}, {"[1,2,4]"}, {"[1,1,1]"}, {"[0,0,0]"}, {nil},
 					},
 				},
 				{
