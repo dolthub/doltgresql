@@ -126,8 +126,8 @@ func (iter *pgDatabaseRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		uint32(0), // datfrozenxid
 		uint32(0), // datminmxid
 		id.Null,   // dattablespace
-		"",        // datcollate
-		"",        // datctype
+		"C",       // datcollate
+		"C",       // datctype
 		nil,       // daticulocale
 		"",        // daticurules
 		nil,       // datcollversion

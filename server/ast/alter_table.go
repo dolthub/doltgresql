@@ -128,6 +128,22 @@ func nodeAlterTableCmds(
 			if len(statement.TableSpec.Constraints) > 0 {
 				statement.ConstraintAction = vitess.AddStr
 			}
+			if cmd.ColumnDef.Unique && !cmd.ColumnDef.PrimaryKey.IsPrimaryKey {
+				indexFields, err := nodeIndexElemList(ctx, tree.IndexElemList{{Column: cmd.ColumnDef.Name}})
+				if err != nil {
+					return nil, nil, err
+				}
+				vitessDdlCmds = append(vitessDdlCmds, &vitess.DDL{
+					Action:   "alter",
+					Table:    tableName,
+					IfExists: ifExists,
+					IndexSpec: &vitess.IndexSpec{
+						Action: "create",
+						Type:   "unique",
+						Fields: indexFields,
+					},
+				})
+			}
 
 		case *tree.AlterTableDropColumn:
 			statement, err = nodeAlterTableDropColumn(ctx, cmd, tableName, ifExists)

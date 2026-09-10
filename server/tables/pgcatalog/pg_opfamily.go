@@ -103,6 +103,8 @@ var defaultOperatorFamilies = []operatorFamily{
 	{am: "btree", name: "uuid_ops"},
 	{am: "btree", name: "record_ops"},
 	{am: "btree", name: "jsonb_ops"},
+	{am: "btree", name: "text_pattern_ops"},
+	{am: "btree", name: "bpchar_pattern_ops"},
 	{am: "hash", name: "bpchar_ops"},
 	{am: "hash", name: "char_ops"},
 	{am: "hash", name: "datetime_ops"},
@@ -115,6 +117,8 @@ var defaultOperatorFamilies = []operatorFamily{
 	{am: "hash", name: "bool_ops"},
 	{am: "hash", name: "uuid_ops"},
 	{am: "hash", name: "jsonb_ops"},
+	{am: "hash", name: "text_pattern_ops"},
+	{am: "hash", name: "bpchar_pattern_ops"},
 }
 
 // pgOpfamilyRowIter is the sql.RowIter for the pg_opfamily table.

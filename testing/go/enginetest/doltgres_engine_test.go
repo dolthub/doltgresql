@@ -270,7 +270,11 @@ func TestInsertIgnoreInto(t *testing.T) {
 }
 
 func TestInsertDuplicateKeyKeyless(t *testing.T) {
-	enginetest.TestInsertDuplicateKeyKeyless(t, newDoltgresServerHarness(t))
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"select c1, c2, c3 from t order by c1, c2, c3", // expects MySQL's NULLs-first ordering
+	})
+	defer h.Close()
+	enginetest.TestInsertDuplicateKeyKeyless(t, h)
 }
 
 func TestIgnoreIntoWithDuplicateUniqueKeyKeyless(t *testing.T) {
@@ -363,6 +367,32 @@ func TestUpdate(t *testing.T) {
 	})
 	defer h.Close()
 	enginetest.TestUpdate(t, h)
+}
+
+func TestUpdateFloatAssignments(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	h.Setup(setup.MydbData)
+	enginetest.TestScript(t, h, queries.ScriptTest{
+		Name: "floating-point assignments read the original row",
+		SetUpScript: []string{
+			"CREATE TABLE floattable (i INT PRIMARY KEY, f32 REAL, f64 DOUBLE PRECISION)",
+			"INSERT INTO floattable VALUES (2, 1.5, 1.5), (3, 1.5, 1.5)",
+			"UPDATE floattable SET f32 = f32 + f32, f64 = f32 * f64 WHERE i = 2;",
+			"UPDATE floattable SET f32 = f32 + f32, f64 = (f32 + f32) * f64 WHERE i = 3;",
+		},
+		Assertions: []queries.ScriptTestAssertion{
+			{
+				Query: "SELECT * FROM floattable ORDER BY i",
+				Expected: []sql.Row{
+					// Both assignments use f32's original value of 1.5.
+					{int64(2), float32(3.0), float64(2.25)},
+					// Doubling must be explicit to produce the MySQL test's 4.5.
+					{int64(3), float32(3.0), float64(4.5)},
+				},
+			},
+		},
+	})
 }
 
 func TestUpdateErrors(t *testing.T) {
@@ -472,6 +502,14 @@ func TestConvert(t *testing.T) {
 func TestScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"can't create table with same name as existing view",      // Doltgres needs to return a different error message
+		"descending index columns",                                // MySQL index prefix syntax (c(10) DESC)
+		"descending index lookups and ordering",                   // MySQL NULLs-first ascending order
+		"descending unique indexes",                               // MySQL REPLACE INTO and ON DUPLICATE KEY UPDATE
+		"descending prefix and expression indexes",                // MySQL index prefix syntax (s(3) DESC)
+		"descending index on a keyless table",                     // MySQL NULLs-first ascending order
+		"descending indexes backing foreign keys",                 // MySQL foreign key error types
+		"descending indexes on assorted types",                    // MySQL ENUM and DATETIME columns
+		"(x between y and z), (x between x and z)",                // expects MySQL's NULLs-first ordering
 		"filter pushdown through join uppercase name",             // syntax error (join without on)
 		"issue 7958, update join uppercase table name validation", // update join syntax not supported
 		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
