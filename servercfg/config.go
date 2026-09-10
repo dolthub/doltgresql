@@ -24,6 +24,8 @@ import (
 	"github.com/dolthub/doltgresql/server/hook"
 
 	pgsql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
@@ -48,6 +50,7 @@ func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 			ScalarFunctionAliasAsColumn: true,
 			InsertIgnoreMode:            sql.InsertIgnoreModeDuplicateKeysOnly,
 			Parser:                      pgsql.NewPostgresParser(),
+			ValidateDistinctWindow:      validateDistinctWindow,
 		},
 		Hooks: sql.ExecutionHooks{
 			RenameTable: sql.RenameTable{
@@ -73,6 +76,19 @@ func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 		SchemaFormatter:                 pgsql.NewPostgresSchemaFormatter(),
 		CostedIndexScanExpressionFilter: &analyzer.LogicTreeWalker{},
 	}
+}
+
+// validateDistinctWindow returns PostgreSQL's error for DISTINCT on native window expressions.
+func validateDistinctWindow(schema, name string, expr sql.Expression) error {
+	if _, ok := expr.(sql.WindowAdaptableExpression); ok {
+		return pgerror.New(pgcode.FeatureNotSupported, "DISTINCT is not implemented for window functions")
+	}
+	functionName := name
+	if schema != "" {
+		functionName = schema + "." + name
+	}
+	return pgerror.Newf(pgcode.WrongObjectType,
+		"DISTINCT specified, but %s is not an aggregate function", functionName)
 }
 
 // ToSqlServerConfig returns this configuration struct as an implementation of the Dolt interface.

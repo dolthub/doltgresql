@@ -62,6 +62,36 @@ func TestWindowFunctions(t *testing.T) {
 			},
 		},
 		{
+			Name: "distinct window aggregates are unsupported",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "SELECT count(DISTINCT v) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES (1, 1), (2, 1), (3, 2)) AS t(id, v)",
+					ExpectedErr:     "DISTINCT is not implemented for window functions",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "SELECT sum(DISTINCT v) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM (VALUES (1, 1), (2, 1), (3, 2)) AS t(id, v)",
+					ExpectedErr:     "DISTINCT is not implemented for window functions",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "SELECT avg(DISTINCT v) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES (1, 1.00::numeric), (2, 1.00::numeric), (3, 4.00::numeric)) AS t(id, v)",
+					ExpectedErr:     "DISTINCT is not implemented for window functions",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "SELECT min(DISTINCT v) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM (VALUES (1, 1), (2, 1), (3, 2)) AS t(id, v)",
+					ExpectedErr:     "DISTINCT is not implemented for window functions",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "SELECT max(DISTINCT v) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM (VALUES (1, 1), (2, 1), (3, 2)) AS t(id, v)",
+					ExpectedErr:     "DISTINCT is not implemented for window functions",
+					ExpectedErrCode: "0A000",
+				},
+			},
+		},
+		{
 			// https://github.com/dolthub/doltgresql/issues/1796
 			Name: "basic window functions",
 			SetUpScript: []string{
