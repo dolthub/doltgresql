@@ -16,6 +16,7 @@ package analyzer
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -115,13 +116,13 @@ func ReplaceSerial(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope 
 		switch doltgresType.Name() {
 		case "smallserial":
 			targetType = pgtypes.Int16
-			maxValue = 32767
+			maxValue = math.MaxInt16
 		case "serial":
 			targetType = pgtypes.Int32
-			maxValue = 2147483647
+			maxValue = math.MaxInt32
 		case "bigserial":
 			targetType = pgtypes.Int64
-			maxValue = 9223372036854775807
+			maxValue = math.MaxInt64
 		}
 		col.Type = targetType
 
