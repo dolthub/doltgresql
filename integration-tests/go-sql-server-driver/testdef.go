@@ -322,6 +322,9 @@ func prepareDoltgresServerArgs(t *testing.T, cwd, name string, port int, args []
 		}
 	}
 
+	// Keep test output readable, including when fixtures enable verbose logging.
+	base["log_level"] = "warn"
+
 	listener, _ := base["listener"].(map[string]any)
 	if listener == nil {
 		listener = map[string]any{}

@@ -130,7 +130,7 @@ definePORT() {
 defineCONFIG() {
     PORT=$1
     cat <<EOF
-    log_level: debug
+    log_level: warn
 
     behavior:
       read_only: false

@@ -690,7 +690,7 @@ const port = 5433
 func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQueryEngine {
 	ctrl, err := server.RunInMemory(&servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
-			LogLevelStr: Ptr("debug"),
+			LogLevelStr: Ptr("warn"),
 			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
 				PortNumber: Ptr(port),
 			},
