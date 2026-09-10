@@ -1779,7 +1779,7 @@ func castSQLError(err error) *pgconn.PgError {
 	// Class 22 — Data Exception
 	case pgtypes.ErrDivisionByZero.Is(err):
 		code = pgcode.DivisionByZero
-	case sql.ErrValueOutOfRange.Is(err), pgtypes.ErrValueIsOutOfRangeForType.Is(err),
+	case sql.ErrValueOutOfRange.Is(err), sql.ErrIntegerOutOfRange.Is(err), pgtypes.ErrValueIsOutOfRangeForType.Is(err),
 		pgtypes.ErrOutOfRange.Is(err), pgtypes.ErrInputOutOfRange.Is(err),
 		errors.Is(err, pgtypes.ErrCastOutOfRange):
 		code = pgcode.NumericValueOutOfRange
