@@ -1062,6 +1062,13 @@ type StatementResult struct {
 	Rows [][]string
 }
 
+// CopyInput describes one COPY FROM STDIN exchange. Chunks are sent as CopyData messages; FailMessage sends CopyFail
+// instead of CopyDone after those chunks.
+type CopyInput struct {
+	Chunks      [][]byte
+	FailMessage string
+}
+
 // SimpleQuery sends a single simple-protocol Query ('Q') message, which may contain multiple semicolon-separated
 // statements, and reads the server's responses through the trailing ReadyForQuery.
 type SimpleQuery struct {
@@ -1072,9 +1079,13 @@ type SimpleQuery struct {
 	Expected []StatementResult
 	// ExpectedErr, when non-empty, asserts that an ErrorResponse whose message contains this string is received.
 	ExpectedErr string
+	// ExpectedErrCode, when non-empty, asserts the SQLSTATE of the received ErrorResponse.
+	ExpectedErrCode string
 	// ExpectedReadyStatus is the transaction status expected in the trailing ReadyForQuery message: 'I' (idle),
 	// 'T' (in transaction block), or 'E' (in failed transaction block). The zero value defaults to 'I'.
 	ExpectedReadyStatus byte
+	// CopyInputs supplies one client response for each CopyInResponse in statement order.
+	CopyInputs []CopyInput
 }
 
 // Parse sends an extended-protocol Parse ('P') message. Its response is validated by the next Sync or Flush step.
@@ -1362,6 +1373,8 @@ func (s SimpleQuery) runStep(r *messageFlowRunner) {
 	var results []StatementResult
 	var current *StatementResult
 	errMsg := ""
+	errCode := ""
+	nextCopyInput := 0
 	for {
 		msg := r.receiveNext()
 		switch m := msg.(type) {
@@ -1383,13 +1396,29 @@ func (s SimpleQuery) runStep(r *messageFlowRunner) {
 			current.Tag = string(m.CommandTag)
 			results = append(results, *current)
 			current = nil
+		case *pgproto3.CopyInResponse:
+			require.Less(t, nextCopyInput, len(s.CopyInputs),
+				"step %d: server requested more COPY inputs than the test supplied", r.stepIdx)
+			copyInput := s.CopyInputs[nextCopyInput]
+			for _, data := range copyInput.Chunks {
+				r.send(&pgproto3.CopyData{Data: data})
+			}
+			if copyInput.FailMessage == "" {
+				r.send(&pgproto3.CopyDone{})
+			} else {
+				r.send(&pgproto3.CopyFail{Message: copyInput.FailMessage})
+			}
+			nextCopyInput++
 		case *pgproto3.EmptyQueryResponse:
 			current = nil
 		case *pgproto3.ErrorResponse:
 			require.Empty(t, errMsg, "step %d: received more than one ErrorResponse: %s, then %s",
 				r.stepIdx, errMsg, m.Message)
 			errMsg = m.Message
+			errCode = m.Code
 		case *pgproto3.ReadyForQuery:
+			assert.Equal(t, len(s.CopyInputs), nextCopyInput,
+				"step %d: server requested fewer COPY inputs than the test supplied", r.stepIdx)
 			if s.ExpectedErr != "" {
 				if assert.NotEmpty(t, errMsg, "step %d: expected an error containing %q, but no ErrorResponse "+
 					"was received", r.stepIdx, s.ExpectedErr) {
@@ -1397,6 +1426,9 @@ func (s SimpleQuery) runStep(r *messageFlowRunner) {
 				}
 			} else {
 				assert.Empty(t, errMsg, "step %d: unexpected ErrorResponse: %s", r.stepIdx, errMsg)
+			}
+			if s.ExpectedErrCode != "" {
+				assert.Equal(t, s.ExpectedErrCode, errCode, "step %d: wrong error SQLSTATE", r.stepIdx)
 			}
 			assertStatementResults(t, r.stepIdx, s.Expected, results)
 			assertReadyStatus(t, r.stepIdx, s.ExpectedReadyStatus, m.TxStatus)
