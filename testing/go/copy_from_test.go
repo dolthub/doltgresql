@@ -23,6 +23,137 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCopyFromStdinInMultiStatementSimpleQuery verifies that COPY pauses and resumes a compound simple query.
+func TestCopyFromStdinInMultiStatementSimpleQuery(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name:        "multiple copy inputs preserve statement order",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query: "SELECT 0; COPY test3 FROM STDIN; COPY test3 FROM STDIN; SELECT 1;",
+					CopyInputs: []CopyInput{
+						{Chunks: [][]byte{[]byte("1\n")}},
+						{Chunks: [][]byte{[]byte("2\n")}},
+					},
+					Expected: []StatementResult{
+						{Tag: "SELECT 1", Rows: [][]string{{"0"}}},
+						{Tag: "COPY 1"},
+						{Tag: "COPY 1"},
+						{Tag: "SELECT 1", Rows: [][]string{{"1"}}},
+					},
+				},
+				SimpleQuery{
+					Query:    "SELECT * FROM test3 ORDER BY c;",
+					Expected: []StatementResult{{Tag: "SELECT 2", Rows: [][]string{{"1"}, {"2"}}}},
+				},
+				SimpleQuery{
+					Query:    "DROP TABLE test3;",
+					Expected: []StatementResult{{Tag: "DROP TABLE"}},
+				},
+			},
+		},
+		{
+			Name:        "copy first rolls back when a later statement fails",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:       "COPY test3 FROM STDIN; SELECT * FROM missing_table;",
+					CopyInputs:  []CopyInput{{Chunks: [][]byte{[]byte("1\n")}}},
+					Expected:    []StatementResult{{Tag: "COPY 1"}},
+					ExpectedErr: "missing_table",
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+		{
+			Name:        "copy fail rolls back compound query",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query: "INSERT INTO test3 VALUES (0); COPY test3 FROM STDIN; SELECT 1;",
+					CopyInputs: []CopyInput{{
+						Chunks:      [][]byte{[]byte("1\n"), []byte("2\n")},
+						FailMessage: "client aborted copy",
+					}},
+					Expected:        []StatementResult{{Tag: "INSERT 0 1"}},
+					ExpectedErr:     "client aborted copy",
+					ExpectedErrCode: "57014",
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+		{
+			Name:        "copy fail marks explicit transaction failed",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:               "BEGIN; COPY test3 FROM STDIN; SELECT 1;",
+					CopyInputs:          []CopyInput{{Chunks: [][]byte{[]byte("1\n")}, FailMessage: "client aborted copy"}},
+					Expected:            []StatementResult{{Tag: "BEGIN"}},
+					ExpectedErr:         "client aborted copy",
+					ExpectedErrCode:     "57014",
+					ExpectedReadyStatus: 'E',
+				},
+				SimpleQuery{Query: "ROLLBACK;", Expected: []StatementResult{{Tag: "ROLLBACK"}}},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+		{
+			Name:        "explicit transaction commits copy and surrounding statements",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:      "BEGIN; INSERT INTO test3 VALUES (0); COPY test3 FROM STDIN; INSERT INTO test3 VALUES (2); COMMIT;",
+					CopyInputs: []CopyInput{{Chunks: [][]byte{[]byte("1\n")}}},
+					Expected: []StatementResult{
+						{Tag: "BEGIN"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "COPY 1"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "COMMIT"},
+					},
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3 ORDER BY c;", Expected: [][]string{{"0"}, {"1"}, {"2"}}},
+			},
+		},
+		{
+			Name:        "explicit transaction rolls back copy and surrounding statements",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:      "BEGIN; INSERT INTO test3 VALUES (0); COPY test3 FROM STDIN; INSERT INTO test3 VALUES (2); ROLLBACK;",
+					CopyInputs: []CopyInput{{Chunks: [][]byte{[]byte("1\n")}}},
+					Expected: []StatementResult{
+						{Tag: "BEGIN"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "COPY 1"},
+						{Tag: "INSERT 0 1"},
+						{Tag: "ROLLBACK"},
+					},
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+		{
+			Name:        "copy compound query continues an existing explicit transaction",
+			SetUpScript: []string{"CREATE TABLE test3 (c int);"},
+			Steps: []FlowStep{
+				SimpleQuery{Query: "BEGIN;", Expected: []StatementResult{{Tag: "BEGIN"}}, ExpectedReadyStatus: 'T'},
+				SimpleQuery{
+					Query:               "COPY test3 FROM STDIN; INSERT INTO test3 VALUES (2);",
+					CopyInputs:          []CopyInput{{Chunks: [][]byte{[]byte("1\n")}}},
+					Expected:            []StatementResult{{Tag: "COPY 1"}, {Tag: "INSERT 0 1"}},
+					ExpectedReadyStatus: 'T',
+				},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+				SimpleQuery{Query: "ROLLBACK;", Expected: []StatementResult{{Tag: "ROLLBACK"}}},
+				QueryOnOtherConnection{Query: "SELECT * FROM test3;", Expected: nil},
+			},
+		},
+	})
+}
+
 func TestCopy(t *testing.T) {
 	absTestDataDir, err := filepath.Abs("testdata")
 	require.NoError(t, err)
