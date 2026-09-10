@@ -65,6 +65,7 @@ func TestSSL(t *testing.T) {
 	require.NoError(t, err)
 	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
+			LogLevelStr: &testServerLogLevel,
 			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
 				PortNumber: &port,
 				HostStr:    ptr("127.0.0.1"),

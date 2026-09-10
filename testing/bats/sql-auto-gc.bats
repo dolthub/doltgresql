@@ -27,7 +27,7 @@ make_gen_vals_sql() {
 @test "sql-auto-gc: importing data through a running server runs auto gc" {
     PORT=$( definePORT )
     cat > config.yaml <<EOF
-log_level: debug
+log_level: warn
 
 behavior:
   auto_gc_behavior:
@@ -66,6 +66,7 @@ EOF
 
 @test "sql-auto-gc: auto gc runs by default" {
     PORT=$( definePORT )
+    # These assertions inspect debug messages captured in log.txt.
     cat > config.yaml <<EOF
 log_level: debug
 
@@ -104,6 +105,7 @@ EOF
 
 @test "sql-auto-gc: auto gc can be disabled" {
     PORT=$( definePORT )
+    # These assertions inspect debug messages captured in log.txt.
     cat > config.yaml <<EOF
 log_level: debug
 

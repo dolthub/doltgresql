@@ -26,7 +26,7 @@ func startServer(t *testing.T, host string, unixSocketPath string) (*svcs.Contro
 
 	doltgresConfig := servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
-			LogLevelStr: Ptr("debug"),
+			LogLevelStr: Ptr("warn"),
 			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
 				//HostStr:    Ptr("localhost"),
 				PortNumber: &port,

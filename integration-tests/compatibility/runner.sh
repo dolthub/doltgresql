@@ -93,7 +93,7 @@ _pick_port() {
 _write_config() {
   local dir="$1" port="$2"
   cat > "$dir/runner-config.yaml" <<EOF
-log_level: warning
+log_level: warn
 behavior:
   read_only: false
   disable_client_multi_statements: false
