@@ -617,6 +617,41 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3083: partial index on a non-empty table",
+			SetUpScript: []string{
+				"CREATE TABLE p (id int PRIMARY KEY, flag boolean NOT NULL DEFAULT false);",
+				"INSERT INTO p (id) VALUES (1);",
+				"CREATE TABLE t (id int PRIMARY KEY, k int NOT NULL, flag boolean NOT NULL DEFAULT false);",
+				"INSERT INTO t (id, k, flag) VALUES (1, 10, false), (2, 20, true), (3, 30, false);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CREATE INDEX p_flagged ON p (id) WHERE flag;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id FROM p WHERE flag AND id > 0 ORDER BY id;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO p (id, flag) VALUES (2, true);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id FROM p WHERE flag AND id > 0 ORDER BY id;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "CREATE INDEX t_partial ON t (k) WHERE flag;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE UNIQUE INDEX t_partial_uniq ON t (k) WHERE flag;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }
 
