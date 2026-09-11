@@ -34,7 +34,7 @@ teardown() {
     query_server -c "DROP DATABASE made_by_demo"
 }
 
-@test 'auth: DROP DATABASE requires ownership or SUPERUSER' {
+@test 'auth: DROP DATABASE requires SUPERUSER' {
     query_server -c "CREATE DATABASE victim"
     query_server -c "CREATE ROLE demo LOGIN PASSWORD 'password'"
     query_server -c "GRANT ALL PRIVILEGES ON DATABASE victim TO demo"

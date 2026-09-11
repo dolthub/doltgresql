@@ -118,8 +118,8 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 			if !h.cat.HasDatabase(ctx, database) {
 				continue
 			}
-			// TODO: Allow owners once database ownership is tracked. Until then, only superusers
-			// may drop databases; CREATEDB and database privileges do not grant ownership.
+			// Doltgres does not support per-role ownership; only superusers may drop databases.
+			// CREATEDB and database privileges do not authorize dropping databases.
 			if !state.role.IsSuperUser {
 				return errors.Errorf("must be owner of database %s", database)
 			}
