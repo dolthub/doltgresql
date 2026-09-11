@@ -802,6 +802,27 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3330: information_schema.triggers",
+			SetUpScript: []string{
+				"CREATE TABLE t3330 (a INT PRIMARY KEY);",
+				"CREATE FUNCTION f3330() RETURNS TRIGGER AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER tr_b BEFORE INSERT OR UPDATE ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330();",
+				"CREATE TRIGGER tr_a AFTER INSERT ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330('x', 'y');",
+				"CREATE TRIGGER tr_c BEFORE INSERT ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT trigger_catalog, trigger_schema, trigger_name, event_manipulation, event_object_table, action_order, action_condition, action_statement, action_orientation, action_timing FROM information_schema.triggers ORDER BY trigger_name, event_manipulation;",
+					Expected: []sql.Row{
+						{"postgres", "public", "tr_a", "INSERT", "t3330", 1, nil, "EXECUTE FUNCTION f3330('x', 'y')", "ROW", "AFTER"},
+						{"postgres", "public", "tr_b", "INSERT", "t3330", 1, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE"},
+						{"postgres", "public", "tr_b", "UPDATE", "t3330", 1, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE"},
+						{"postgres", "public", "tr_c", "INSERT", "t3330", 2, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE"},
+					},
+				},
+			},
+		},
 	})
 }
 
