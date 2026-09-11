@@ -854,6 +854,34 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3333: CHECK constraint calling a function",
+			SetUpScript: []string{
+				"CREATE TABLE t3333 (z TEXT PRIMARY KEY CHECK (z ~ '^[0-9]+$'), y TEXT CONSTRAINT y_chk CHECK (regexp_like(y, '^[a-z]+$')));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t3333 VALUES ('123', 'abc');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t3333 VALUES ('12a', 'abc');",
+					ExpectedErr: "violated",
+				},
+				{
+					Query:       "INSERT INTO t3333 VALUES ('124', 'ABC');",
+					ExpectedErr: `Check constraint "y_chk" violated`,
+				},
+				{
+					Query:    "SELECT check_clause FROM information_schema.check_constraints WHERE constraint_name = 'y_chk';",
+					Expected: []sql.Row{{`regexp_like("y",'^[a-z]+$')`}},
+				},
+				{
+					Query:    "SELECT * FROM t3333;",
+					Expected: []sql.Row{{"123", "abc"}},
+				},
+			},
+		},
 	})
 }
 
