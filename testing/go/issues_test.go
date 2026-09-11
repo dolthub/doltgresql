@@ -617,6 +617,316 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3323: INSERT after ALTER TABLE ADD COLUMN on a table with a generated column",
+			SetUpScript: []string{
+				"CREATE TABLE t3323 (a INT PRIMARY KEY, b INT GENERATED ALWAYS AS (a + 1) STORED);",
+				"INSERT INTO t3323 (a) VALUES (1);",
+				"ALTER TABLE t3323 ADD COLUMN c INT DEFAULT 0;",
+				"CREATE TABLE t3323b (a INT PRIMARY KEY, b TEXT GENERATED ALWAYS AS (upper(a::text)) STORED);",
+				"INSERT INTO t3323b (a) VALUES (1);",
+				"ALTER TABLE t3323b ADD COLUMN c INT DEFAULT 0;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t3323 (a) VALUES (2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3323 ORDER BY a;",
+					Expected: []sql.Row{{1, 2, 0}, {2, 3, 0}},
+				},
+				{
+					Query:    "INSERT INTO t3323b (a) VALUES (2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3323b ORDER BY a;",
+					Expected: []sql.Row{{1, "1", 0}, {2, "2", 0}},
+				},
+			},
+		},
+		{
+			Name: "Issue #3324: parentheses are kept in stored default, generated, and check expressions",
+			SetUpScript: []string{
+				"CREATE TABLE t3324 (a INT PRIMARY KEY, b INT DEFAULT (1 + 1) * 2, c INT DEFAULT 2 * (3 + 1) + 1, d INT DEFAULT -(1 + 1), e INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, CONSTRAINT chk3324 CHECK (((a + 1) * 2) > 3));",
+				"INSERT INTO t3324 (a) VALUES (1);",
+				"ALTER TABLE t3324 ADD COLUMN f INT DEFAULT (1 + 1) * 2;",
+				"INSERT INTO t3324 (a) VALUES (2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM t3324 ORDER BY a;",
+					Expected: []sql.Row{{1, 4, 9, -2, 4, 4}, {2, 4, 9, -2, 6, 4}},
+				},
+				{
+					Query:    "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = 't3324' AND column_default IS NOT NULL ORDER BY ordinal_position;",
+					Expected: []sql.Row{{"b", "((1 + 1) * 2)"}, {"c", "((2 * (3 + 1)) + 1)"}, {"d", "(-(1 + 1))"}, {"f", "((1 + 1) * 2)"}},
+				},
+				{
+					Query:    "SELECT check_clause FROM information_schema.check_constraints WHERE constraint_name = 'chk3324';",
+					Expected: []sql.Row{{`((("a" + 1) * 2) > 3)`}},
+				},
+			},
+		},
+		{
+			Name: "Issue #3325: trailing spaces of a bpchar value are ignored",
+			SetUpScript: []string{
+				"CREATE TABLE t3325 (id INT PRIMARY KEY, c CHAR(2) CHECK (c::text IN ('L', 'R')));",
+				"INSERT INTO t3325 VALUES (1, 'L'), (2, 'R ');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT '[' || 'L'::CHAR(2) || ']', length('L'::CHAR(2)), 'L'::CHAR(2) = 'L', 'L '::CHAR(2) = 'L'::CHAR(2), 'L'::CHAR(2)::TEXT = 'L', 'L'::CHAR(2)::VARCHAR = 'L', bpcharcmp('L'::CHAR(2), 'L ');",
+					Expected: []sql.Row{{"[L]", 1, "t", "t", "t", "t", 0}},
+				},
+				{
+					Query:    "SELECT id, '[' || c || ']', c = 'L' FROM t3325 ORDER BY id;",
+					Expected: []sql.Row{{1, "[L]", "t"}, {2, "[R]", "f"}},
+				},
+			},
+		},
+		{
+			Name: "Issue #3326: convert_from and decode",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT convert_from('\x68656c6c6f'::BYTEA, 'UTF8'), convert_from(decode('68656c6c6f', 'hex'), 'UTF8'), convert_from('\xc3a9'::BYTEA, 'UTF8'), convert_from('\xe9'::BYTEA, 'LATIN1');`,
+					Expected: []sql.Row{{"hello", "hello", "é", "é"}},
+				},
+				{
+					Query:    `SELECT decode('aGVsbG8=', 'base64'), decode('abc\000', 'escape'), decode('a\\b', 'escape'), decode('68 65', 'hex');`,
+					Expected: []sql.Row{{[]byte("hello"), []byte{0x61, 0x62, 0x63, 0x00}, []byte(`a\b`), []byte("he")}},
+				},
+				{
+					Query:       `SELECT convert_from('\xff'::BYTEA, 'UTF8');`,
+					ExpectedErr: `invalid byte sequence for encoding "UTF8": 0xff`,
+				},
+				{
+					Query:       `SELECT convert_from('\x68'::BYTEA, 'NOPE');`,
+					ExpectedErr: `invalid source encoding name "NOPE"`,
+				},
+				{
+					Query:       "SELECT decode('6', 'hex');",
+					ExpectedErr: "invalid hexadecimal data: odd number of digits",
+				},
+				{
+					Query:       "SELECT decode('6g', 'hex');",
+					ExpectedErr: `invalid hexadecimal digit: "g"`,
+				},
+				{
+					Query:       "SELECT decode('abc', 'nope');",
+					ExpectedErr: `unrecognized encoding: "nope"`,
+				},
+			},
+		},
+		{
+			Name: "Issue #3327: roles can execute routines without an explicit grant",
+			SetUpScript: []string{
+				"CREATE TABLE t3327 (x INT);",
+				"INSERT INTO t3327 VALUES (1), (2), (3);",
+				"CREATE ROLE reader LOGIN PASSWORD 'password';",
+				"GRANT SELECT ON t3327 TO reader;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT COUNT(*), SUM(x), MAX(x) FROM t3327;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{3, 6, 3}},
+				},
+				{
+					Query:    "SELECT x, ROW_NUMBER() OVER (ORDER BY x) FROM t3327 ORDER BY x;",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{1, 1}, {2, 2}, {3, 3}},
+				},
+				{
+					Query:    "SELECT pg_catalog.lower('A'), lower('A');",
+					Username: "reader",
+					Password: "password",
+					Expected: []sql.Row{{"a", "a"}},
+				},
+			},
+		},
+		{
+			Name: "Issue #3328: information_schema.columns.generation_expression",
+			SetUpScript: []string{
+				"CREATE TABLE t3328 (a INT PRIMARY KEY, s TEXT, b INT GENERATED ALWAYS AS (a + 1) STORED, c TEXT GENERATED ALWAYS AS (upper(s)) STORED, d INT GENERATED ALWAYS AS ((a + 1) * 2) STORED, e INT GENERATED ALWAYS AS (a) STORED);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT column_name, is_generated, generation_expression FROM information_schema.columns WHERE table_name = 't3328' ORDER BY ordinal_position;",
+					Expected: []sql.Row{
+						{"a", "NEVER", nil},
+						{"s", "NEVER", nil},
+						{"b", "ALWAYS", `"a" + 1`},
+						{"c", "ALWAYS", `upper("s")`},
+						{"d", "ALWAYS", `("a" + 1) * 2`},
+						{"e", "ALWAYS", `"a"`},
+					},
+				},
+			},
+		},
+		{
+			Name: "Issue #3330: information_schema.triggers",
+			SetUpScript: []string{
+				"CREATE TABLE t3330 (a INT PRIMARY KEY);",
+				"CREATE FUNCTION f3330() RETURNS TRIGGER AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER tr_b BEFORE INSERT OR UPDATE ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330();",
+				"CREATE TRIGGER tr_a AFTER INSERT ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330('x', 'y');",
+				"CREATE TRIGGER tr_c BEFORE INSERT ON t3330 FOR EACH ROW EXECUTE FUNCTION f3330();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT trigger_catalog, trigger_schema, trigger_name, event_manipulation, event_object_table, action_order, action_condition, action_statement, action_orientation, action_timing FROM information_schema.triggers ORDER BY trigger_name, event_manipulation;",
+					Expected: []sql.Row{
+						{"postgres", "public", "tr_a", "INSERT", "t3330", 1, nil, "EXECUTE FUNCTION f3330('x', 'y')", "ROW", "AFTER"},
+						{"postgres", "public", "tr_b", "INSERT", "t3330", 1, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE"},
+						{"postgres", "public", "tr_b", "UPDATE", "t3330", 1, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE"},
+						{"postgres", "public", "tr_c", "INSERT", "t3330", 2, nil, "EXECUTE FUNCTION f3330()", "ROW", "BEFORE"},
+					},
+				},
+			},
+		},
+		{
+			Name: "Issue #3332: named column constraints",
+			SetUpScript: []string{
+				"CREATE TABLE t3332 (id INT CONSTRAINT id_nn NOT NULL, u INT CONSTRAINT u_uni UNIQUE, d INT CONSTRAINT d_def DEFAULT 5, n INT CONSTRAINT n_null NULL, PRIMARY KEY (id));",
+				"ALTER TABLE t3332 ADD COLUMN w INT CONSTRAINT w_nn NOT NULL DEFAULT 1 CONSTRAINT w_uni UNIQUE;",
+				"INSERT INTO t3332 (id, u) VALUES (1, 1);",
+				"INSERT INTO t3332 (id, u, w) VALUES (2, 2, 2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM t3332 ORDER BY id;",
+					Expected: []sql.Row{{1, 1, 5, nil, 1}, {2, 2, 5, nil, 2}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't3332' ORDER BY indexname;",
+					Expected: []sql.Row{{"t3332_pkey"}, {"u_uni"}, {"w_uni"}},
+				},
+				{
+					Query:       "INSERT INTO t3332 (id, u, w) VALUES (3, 1, 3);",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:       "INSERT INTO t3332 (id, u, w) VALUES (3, 3, 2);",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:       "INSERT INTO t3332 (id, u, w) VALUES (NULL, 4, 4);",
+					ExpectedErr: "non-nullable",
+				},
+			},
+		},
+		{
+			Name: "Issue #3333: CHECK constraint calling a function",
+			SetUpScript: []string{
+				"CREATE TABLE t3333 (z TEXT PRIMARY KEY CHECK (z ~ '^[0-9]+$'), y TEXT CONSTRAINT y_chk CHECK (regexp_like(y, '^[a-z]+$')));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t3333 VALUES ('123', 'abc');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t3333 VALUES ('12a', 'abc');",
+					ExpectedErr: "violated",
+				},
+				{
+					Query:       "INSERT INTO t3333 VALUES ('124', 'ABC');",
+					ExpectedErr: `Check constraint "y_chk" violated`,
+				},
+				{
+					Query:    "SELECT check_clause FROM information_schema.check_constraints WHERE constraint_name = 'y_chk';",
+					Expected: []sql.Row{{`regexp_like("y",'^[a-z]+$')`}},
+				},
+				{
+					Query:    "SELECT * FROM t3333;",
+					Expected: []sql.Row{{"123", "abc"}},
+				},
+			},
+		},
+		{
+			Name: "Issue #3334: regnamespace",
+			SetUpScript: []string{
+				"CREATE SCHEMA s3334;",
+				"CREATE TABLE t3334 (id INT PRIMARY KEY, ns REGNAMESPACE);",
+				"INSERT INTO t3334 VALUES (1, 'public'), (2, 's3334');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT 'public'::REGNAMESPACE, 'public'::REGNAMESPACE::OID = (SELECT oid FROM pg_namespace WHERE nspname = 'public'), 's3334'::REGNAMESPACE::TEXT, to_regnamespace('s3334') IS NOT NULL, to_regnamespace('nope'), (SELECT nspname FROM pg_namespace WHERE oid = 's3334'::REGNAMESPACE);",
+					Expected: []sql.Row{{"public", "t", "s3334", "t", nil, "s3334"}},
+				},
+				{
+					Query:    "SELECT relnamespace::REGNAMESPACE FROM pg_class WHERE relname = 't3334';",
+					Expected: []sql.Row{{"public"}},
+				},
+				{
+					Query:    "SELECT typname FROM pg_type WHERE typname = 'regnamespace';",
+					Expected: []sql.Row{{"regnamespace"}},
+				},
+				{
+					Query:    "SELECT id, ns, ns::TEXT FROM t3334 ORDER BY id;",
+					Expected: []sql.Row{{1, "public", "public"}, {2, "s3334", "s3334"}},
+				},
+				{
+					Query:       "SELECT 'nope'::REGNAMESPACE;",
+					ExpectedErr: `schema "nope" does not exist`,
+				},
+				{
+					Query:       "SELECT 'a.b'::REGNAMESPACE;",
+					ExpectedErr: "invalid name syntax",
+				},
+			},
+		},
+		{
+			Name: "Issue #3336: OLD.* IS DISTINCT FROM NEW.* in a trigger",
+			SetUpScript: []string{
+				"CREATE TABLE t3336 (a INT PRIMARY KEY, b TEXT);",
+				"CREATE TABLE t3336_log (a INT, src TEXT);",
+				"CREATE FUNCTION f3336_when() RETURNS TRIGGER AS $$ BEGIN INSERT INTO t3336_log VALUES (NEW.a, 'when'); RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE FUNCTION f3336_body() RETURNS TRIGGER AS $$ BEGIN IF OLD.* IS DISTINCT FROM NEW.* THEN INSERT INTO t3336_log VALUES (NEW.a, 'body'); END IF; RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER tr3336_when AFTER UPDATE ON t3336 FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*) EXECUTE FUNCTION f3336_when();",
+				"CREATE TRIGGER tr3336_body AFTER UPDATE ON t3336 FOR EACH ROW EXECUTE FUNCTION f3336_body();",
+				"INSERT INTO t3336 VALUES (1, 'x'), (2, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT ROW(2, NULL::TEXT) IS DISTINCT FROM ROW(2, 'y'::TEXT), ROW(2, NULL::TEXT) IS DISTINCT FROM ROW(2, NULL::TEXT), ROW(2, NULL::TEXT) IS NOT DISTINCT FROM ROW(2, NULL::TEXT), ROW(1, 2) IS DISTINCT FROM ROW(1, 3), ROW(1, 2) IS NOT DISTINCT FROM ROW(1, 2);",
+					Expected: []sql.Row{{"t", "f", "t", "t", "t"}},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = 'x' WHERE a = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM t3336_log;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = 'y' WHERE a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = NULL WHERE a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = NULL WHERE a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = 'z' WHERE a = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3336_log ORDER BY a, src;",
+					Expected: []sql.Row{{1, "body"}, {1, "when"}, {2, "body"}, {2, "body"}, {2, "when"}, {2, "when"}},
+				},
+			},
+		},
 	})
 }
 

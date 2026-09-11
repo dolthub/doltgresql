@@ -285,9 +285,9 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "explain select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{"InnerJoin"},
-						{" ├─ test.v1 = jointable.v3"},
+						{" ├─ (test.v1 = jointable.v3)"},
 						{" ├─ Filter"},
-						{" │   ├─ test.v2 = 22"},
+						{" │   ├─ (test.v2 = 22)"},
 						{" │   └─ IndexedTableAccess(test)"},
 						{" │       ├─ index: [test.pk]"},
 						{" │       ├─ filters: [{[NULL, ∞)}]"},
@@ -307,7 +307,7 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "explain select * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
 					Expected: []sql.Row{
 						{"InnerJoin"},
-						{" ├─ (test.v1 = jointable.v3 AND test.v2 = jointable.v4)"},
+						{" ├─ ((test.v1 = jointable.v3) AND (test.v2 = jointable.v4))"},
 						{" ├─ IndexedTableAccess(test)"},
 						{" │   ├─ index: [test.pk]"},
 						{" │   ├─ filters: [{[NULL, ∞)}]"},
@@ -464,9 +464,9 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "explain select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{"InnerJoin"},
-						{" ├─ test.v1 = jointable.v3"},
+						{" ├─ (test.v1 = jointable.v3)"},
 						{" ├─ Filter"},
-						{" │   ├─ test.v2 = 22"},
+						{" │   ├─ (test.v2 = 22)"},
 						{" │   └─ IndexedTableAccess(test)"},
 						{" │       ├─ index: [test.pk]"},
 						{" │       ├─ filters: [{[NULL, ∞)}]"},
@@ -500,7 +500,7 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "explain select * from test join (select * from jointable) sq on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
 					Expected: []sql.Row{
 						{"InnerJoin"},
-						{" ├─ (test.v1 = sq.v3 AND test.v2 = sq.v4)"},
+						{" ├─ ((test.v1 = sq.v3) AND (test.v2 = sq.v4))"},
 						{" ├─ IndexedTableAccess(test)"},
 						{" │   ├─ index: [test.pk]"},
 						{" │   ├─ filters: [{[NULL, ∞)}]"},
@@ -1497,7 +1497,7 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "EXPLAIN SELECT * FROM t WHERE v1 = 20;",
 					Expected: []sql.Row{
 						{"Filter"},
-						{" ├─ t.v1 = 20"},
+						{" ├─ (t.v1 = 20)"},
 						{" └─ Table"},
 						{"     ├─ name: t"},
 						{"     └─ columns: [pk v1]"},
@@ -1675,7 +1675,7 @@ func TestBasicIndexing(t *testing.T) {
 				},
 				{
 					Query:    "SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_one_active_session_per_user';",
-					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_one_active_session_per_user ON public.user_sessions USING btree (user_id) WHERE (user_sessions.is_active = true)"}},
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_one_active_session_per_user ON public.user_sessions USING btree (user_id) WHERE ((user_sessions.is_active = true))"}},
 				},
 				{
 					Query:    "INSERT INTO user_sessions (user_id, is_active) VALUES (42, true);",
@@ -1734,13 +1734,13 @@ func TestBasicIndexing(t *testing.T) {
 				},
 				{
 					Query:    "SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_partial';",
-					Expected: []sql.Row{{"CREATE INDEX idx_partial ON public.t USING btree (a) WHERE (t.a > 1)"}},
+					Expected: []sql.Row{{"CREATE INDEX idx_partial ON public.t USING btree (a) WHERE ((t.a > 1))"}},
 				},
 				{
 					Query: "EXPLAIN SELECT * FROM t WHERE a > 1;",
 					Expected: []sql.Row{
 						{"IndexedTableAccess(t)"},
-						{" ├─ index: [t.a,t.a > 1]"},
+						{" ├─ index: [t.a,(t.a > 1)]"},
 						{" ├─ filters: [{(1, ∞)}]"},
 						{" └─ columns: [a b]"},
 					},
@@ -1749,7 +1749,7 @@ func TestBasicIndexing(t *testing.T) {
 					Query: "EXPLAIN SELECT * FROM t WHERE a > 0;",
 					Expected: []sql.Row{
 						{"Filter"},
-						{" ├─ t.a > 0"},
+						{" ├─ (t.a > 0)"},
 						{" └─ Table"},
 						{"     ├─ name: t"},
 						{"     └─ columns: [a b]"},

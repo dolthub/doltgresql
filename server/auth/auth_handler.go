@@ -23,7 +23,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/server/functions/framework"
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // AuthorizationQueryState contains any cached state for a query.
@@ -373,15 +373,34 @@ func checkPrivilegeOnRoutine(ctx *sql.Context, state AuthorizationQueryState, sc
 	}
 	for _, privilege := range privileges {
 		if !HasRoutinePrivilege(roleRoutineKey, privilege) && !HasRoutinePrivilege(publicRoutineKey, privilege) {
-			// check if it's system function
-			_, ok := framework.Catalog[strings.ToLower(routineName)]
-			if ok && schemaName == "" {
-				// TODO: for now we don't check privilege for pg_catalog tables as it's granted for PUBLIC by default
-				//  need to fix it when we support 'REVOKE privileges FROM PUBLIC'
+			userDefined, err := isUserDefinedRoutine(ctx, schName, routineName)
+			if err != nil {
+				return err
+			}
+			if !userDefined {
+				//TODO: built-in routines are granted to PUBLIC by default, so deny them once REVOKE ... FROM PUBLIC is supported
 				return nil
 			}
 			return errors.Errorf("permission denied for routine %s", routineName)
 		}
 	}
 	return nil
+}
+
+// isUserDefinedRoutine returns whether a function or procedure with the given name exists in the given schema.
+func isUserDefinedRoutine(ctx *sql.Context, schemaName string, routineName string) (bool, error) {
+	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
+	if err != nil {
+		return false, err
+	}
+	funcOverloads, err := funcCollection.GetFunctionOverloads(ctx, id.NewFunction(schemaName, routineName))
+	if err != nil || len(funcOverloads) > 0 {
+		return len(funcOverloads) > 0, err
+	}
+	procCollection, err := core.GetProceduresCollectionFromContext(ctx, "")
+	if err != nil {
+		return false, err
+	}
+	procOverloads, err := procCollection.GetProcedureOverloads(ctx, id.NewProcedure(schemaName, routineName))
+	return len(procOverloads) > 0, err
 }

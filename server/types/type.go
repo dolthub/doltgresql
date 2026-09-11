@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -384,6 +385,10 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 		}
 	case string:
 		bb := v2.(string)
+		if t.ID == BpChar.ID {
+			ab = strings.TrimRight(ab, " ")
+			bb = strings.TrimRight(bb, " ")
+		}
 		if ab == bb {
 			return 0, nil
 		} else if ab < bb {
@@ -567,7 +572,7 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		if ok {
 			return v, sql.InRange, nil
 		}
-	case "oid", "regclass", "regproc", "regtype":
+	case "oid", "regclass", "regnamespace", "regproc", "regtype":
 		if _, ok := v.(id.Id); ok {
 			return v, sql.InRange, nil
 		}
@@ -1170,7 +1175,7 @@ func (t *DoltgresType) Type() query.Type {
 			return sqltypes.Decimal
 		case "oid":
 			return sqltypes.VarChar
-		case "regclass", "regproc", "regtype":
+		case "regclass", "regnamespace", "regproc", "regtype":
 			return sqltypes.Text
 		default:
 			// TODO
@@ -1264,7 +1269,7 @@ func (t *DoltgresType) Zero() interface{} {
 			return int64(0)
 		case "numeric":
 			return apd.New(0, 0)
-		case "oid", "regclass", "regproc", "regtype":
+		case "oid", "regclass", "regnamespace", "regproc", "regtype":
 			return id.Null
 		default:
 			// TODO

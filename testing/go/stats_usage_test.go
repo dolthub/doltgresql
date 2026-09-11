@@ -273,7 +273,7 @@ var StatsUsageTests = []ScriptTest{
 				Query: "EXPLAIN SELECT * FROM big JOIN small ON big.val = small.val;",
 				Expected: []sql.Row{
 					{"HashJoin"},
-					{" ├─ big.val = small.val"},
+					{" ├─ (big.val = small.val)"},
 					{" ├─ Table"},
 					{" │   ├─ name: big"},
 					{" │   └─ columns: [pk val]"},
@@ -292,7 +292,7 @@ var StatsUsageTests = []ScriptTest{
 					{"Project"},
 					{" ├─ columns: [small.pk, small.val, big.pk, big.val]"},
 					{" └─ HashJoin"},
-					{"     ├─ big.val = small.val"},
+					{"     ├─ (big.val = small.val)"},
 					{"     ├─ Table"},
 					{"     │   ├─ name: big"},
 					{"     │   └─ columns: [pk val]"},
@@ -324,7 +324,7 @@ var StatsUsageTests = []ScriptTest{
 				Query: "EXPLAIN SELECT * FROM t WHERE lowcard = 3 AND highcard = 42;",
 				Expected: []sql.Row{
 					{"Filter"},
-					{" ├─ t.lowcard = 3"},
+					{" ├─ (t.lowcard = 3)"},
 					{" └─ IndexedTableAccess(t)"},
 					{"     ├─ index: [t.highcard]"},
 					{"     ├─ filters: [{[42, 42]}]"},
@@ -337,7 +337,7 @@ var StatsUsageTests = []ScriptTest{
 				Query: "EXPLAIN SELECT * FROM t WHERE lowcard = 3 AND highcard > 0;",
 				Expected: []sql.Row{
 					{"Filter"},
-					{" ├─ t.highcard > 0"},
+					{" ├─ (t.highcard > 0)"},
 					{" └─ IndexedTableAccess(t)"},
 					{"     ├─ index: [t.lowcard]"},
 					{"     ├─ filters: [{[3, 3]}]"},

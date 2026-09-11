@@ -1658,7 +1658,7 @@ JOIN pg_catalog.pg_namespace ns ON cl.relnamespace = ns.oid
 WHERE con.contype = 'c'
 ORDER BY schema_name, table_name;`,
 					// TODO: the check should `CHECK ((b > 10))`
-					Expected: []sql.Row{{"public", "attmp3", "b_greater_than_ten", `b_greater_than_ten CHECK "b" > 10 ENFORCED`}},
+					Expected: []sql.Row{{"public", "attmp3", "b_greater_than_ten", `b_greater_than_ten CHECK ("b" > 10) ENFORCED`}},
 				},
 			},
 		},

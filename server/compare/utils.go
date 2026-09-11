@@ -142,3 +142,39 @@ func callComparisonFunction(ctx *sql.Context, op framework.Operator, leftLiteral
 		ctx, "_internal_record_comparison_function", leftLiteral, rightLiteral)
 	return compiledFunction.Eval(ctx, nil)
 }
+
+// RecordsAreDistinct returns whether two records differ in any field, with NULL fields only equal to each other.
+func RecordsAreDistinct(ctx *sql.Context, v1 interface{}, v2 interface{}) (bool, error) {
+	leftRecord, rightRecord, err := checkRecordArgs(v1, v2)
+	if err != nil {
+		return false, err
+	}
+	var leftLiteral, rightLiteral expression.Literal
+	for i := 0; i < len(leftRecord); i++ {
+		if leftRecord[i].Value == nil || rightRecord[i].Value == nil {
+			if leftRecord[i].Value != nil || rightRecord[i].Value != nil {
+				return true, nil
+			}
+			continue
+		}
+		if _, ok := leftRecord[i].Value.([]pgtypes.RecordValue); ok {
+			distinct, err := RecordsAreDistinct(ctx, leftRecord[i].Value, rightRecord[i].Value)
+			if err != nil || distinct {
+				return distinct, err
+			}
+			continue
+		}
+		leftLiteral.Val = leftRecord[i].Value
+		leftLiteral.Typ = leftRecord[i].Type
+		rightLiteral.Val = rightRecord[i].Value
+		rightLiteral.Typ = rightRecord[i].Type
+		res, err := callComparisonFunction(ctx, framework.Operator_BinaryNotEqual, &leftLiteral, &rightLiteral)
+		if err != nil {
+			return false, err
+		}
+		if res == true {
+			return true, nil
+		}
+	}
+	return false, nil
+}

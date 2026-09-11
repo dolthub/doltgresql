@@ -67,9 +67,9 @@ func (b *UnaryOperator) String() string {
 	// We know that we'll always have one parameter here
 	switch f := b.compiledFunc.(type) {
 	case *framework.CompiledFunction:
-		return fmt.Sprintf("%s%s", b.operator.String(), f.Arguments[0].String())
+		return fmt.Sprintf("(%s%s)", b.operator.String(), f.Arguments[0].String())
 	case *framework.QuickFunction1:
-		return fmt.Sprintf("%s%s", b.operator.String(), f.Argument.String())
+		return fmt.Sprintf("(%s%s)", b.operator.String(), f.Argument.String())
 	default:
 		return fmt.Sprintf("unexpected unary operator function type: %T", b.compiledFunc)
 	}

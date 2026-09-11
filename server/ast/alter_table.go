@@ -134,6 +134,7 @@ func nodeAlterTableCmds(
 				}
 				statement.IndexSpec = &vitess.IndexSpec{
 					Action: "create",
+					ToName: vitess.NewColIdent(string(cmd.ColumnDef.UniqueConstraintName)),
 					Type:   "unique",
 					Fields: indexFields,
 				}
