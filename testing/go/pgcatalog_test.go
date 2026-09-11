@@ -672,6 +672,20 @@ func TestPgClass(t *testing.T) {
 			},
 		},
 		{
+			Name:        "pg_class branch virtual index names",
+			SetUpScript: []string{"set dolt_show_system_tables=1"},
+			Assertions: []ScriptTestAssertion{
+				// Branch and remote-branch virtual indexes have distinct catalog names.
+				{
+					Query: `SELECT c.relname, c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = 'public' AND c.relname IN ('dolt_branches_dolt_branches_name_idx_key', 'dolt_remote_branches_dolt_branches_name_idx_key') ORDER BY c.relname;`,
+					Expected: []sql.Row{
+						{"dolt_branches_dolt_branches_name_idx_key", "i"},
+						{"dolt_remote_branches_dolt_branches_name_idx_key", "i"},
+					},
+				},
+			},
+		},
+		{
 			Name: "pg_class relhastriggers",
 			SetUpScript: []string{
 				`CREATE TABLE plain (pk INT primary key);`,
@@ -6697,7 +6711,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{"public", "dolt_schema_conflicts", "postgres", nil, "f", "f", "f", "f"},
 						{"public", "dolt_status", "postgres", nil, "f", "f", "f", "f"},
 						{"public", "dolt_status_ignored", "postgres", nil, "f", "f", "f", "f"},
-						{"public", "dolt_tags", "postgres", nil, "f", "f", "f", "f"},
+						{"public", "dolt_tags", "postgres", nil, "t", "f", "f", "f"},
 						{"s1", "dolt_branches", "postgres", nil, "t", "f", "f", "f"},
 						{"s1", "dolt_column_diff", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "dolt_commit_ancestors", "postgres", nil, "t", "f", "f", "f"},
@@ -6717,7 +6731,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{"s1", "dolt_schema_conflicts", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "dolt_status", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "dolt_status_ignored", "postgres", nil, "f", "f", "f", "f"},
-						{"s1", "dolt_tags", "postgres", nil, "f", "f", "f", "f"},
+						{"s1", "dolt_tags", "postgres", nil, "t", "f", "f", "f"},
 						{"s1", "dolt_workspace_t1", "postgres", nil, "f", "f", "f", "f"},
 						{"s1", "t1", "postgres", nil, "t", "f", "f", "f"},
 					},
@@ -6757,6 +6771,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1060579466, "dolt_status", 2200, "r"},
 						{1523309269, "dolt_status_ignored", 2200, "r"},
 						{1807684176, "dolt_tags", 2200, "r"},
+						{1241754361, "dolt_tags_name_idx", 2200, "i"},
 						{2969045375, "commits_from", 1634633383, "i"},
 						{1819666711, "commits_to", 1634633383, "i"},
 						{1763579892, "dolt_branches", 1634633383, "r"},
@@ -6789,6 +6804,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{3554775706, "dolt_status", 1634633383, "r"},
 						{1227149778, "dolt_status_ignored", 1634633383, "r"},
 						{3246414078, "dolt_tags", 1634633383, "r"},
+						{1294273546, "dolt_tags_name_idx", 1634633383, "i"},
 						{1640933374, "dolt_workspace_t1", 1634633383, "r"},
 						{170053857, "from_pks", 1634633383, "i"},
 						{2849341124, "t1", 1634633383, "r"},

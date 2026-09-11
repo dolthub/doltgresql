@@ -210,8 +210,14 @@ func formatIndexName(idx sql.Index) string {
 		return fmt.Sprintf("%s_pkey", idx.Table())
 	}
 
+	// Branch and remote-branch virtual indexes share an ID, so qualify their
+	// catalog names without depending on Dolt's index implementation type.
+	if idx.ID() == "dolt_branches_name_idx" {
+		return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
+	}
+
 	switch idx.(type) {
-	case *index.BranchNameIndex, *index.CommitIndex:
+	case *index.CommitIndex:
 		return fmt.Sprintf("%s_%s_key", idx.Table(), idx.ID())
 	}
 
