@@ -934,6 +934,45 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			Name: "DO statement",
+			SetUpScript: []string{
+				`CREATE TABLE interpreted_do_values (v INT PRIMARY KEY)`,
+				`CREATE FUNCTION interpreted_do() RETURNS void AS $function$
+BEGIN
+	DO $block$ BEGIN
+		INSERT INTO interpreted_do_values VALUES (42);
+	END $block$;
+END;
+$function$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT interpreted_do()`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT * FROM interpreted_do_values`, Expected: []sql.Row{{int64(42)}}},
+			},
+		},
+		{
+			Name: "DO statement failure is atomic",
+			SetUpScript: []string{
+				`CREATE TABLE interpreted_do_atomic (v INT PRIMARY KEY)`,
+				`CREATE FUNCTION interpreted_do_error() RETURNS void AS $function$
+BEGIN
+	DO $block$ BEGIN
+		INSERT INTO interpreted_do_atomic VALUES (1);
+		RAISE EXCEPTION 'nested DO failed';
+	END $block$;
+END;
+$function$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           `SELECT interpreted_do_error()`,
+					ExpectedErr:     "nested DO failed",
+					ExpectedErrCode: "P0001",
+				},
+				{Query: `SELECT * FROM interpreted_do_atomic`, Expected: []sql.Row{}},
+			},
+		},
+		{
 			// Tests that variable names are correctly substituted with references
 			// to the variables when the function is parsed.
 			Name: "Variable reference substitution",

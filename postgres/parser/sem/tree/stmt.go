@@ -528,6 +528,12 @@ func (*CreateLanguage) StatementType() StatementType { return DDL }
 func (*CreateLanguage) StatementTag() string { return "CREATE LANGUAGE" }
 
 // StatementType implements the Statement interface.
+func (*Do) StatementType() StatementType { return Ack }
+
+// StatementTag implements the Statement interface.
+func (*Do) StatementTag() string { return "DO" }
+
+// StatementType implements the Statement interface.
 func (*CreateMaterializedView) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.

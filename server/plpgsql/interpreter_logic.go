@@ -27,6 +27,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/typecollection"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/types"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -207,18 +209,36 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		case OpCode_Exception:
 			// TODO: implement
 		case OpCode_Execute:
+			dynamic := operation.Options[OptionDynamicExpression] == "true"
+			if dynamic {
+				query, err := evaluateDynamicQuery(ctx, iFunc, operation, stack)
+				if err != nil {
+					return nil, err
+				}
+				operation.PrimaryData = query
+				operation.SecondaryData, err = evaluateDynamicUsing(ctx, iFunc, operation, stack)
+				if err != nil {
+					return nil, err
+				}
+			}
 			if len(operation.Target) > 0 {
 				vars := strings.Split(operation.Target, ",")
 				targetTypes := make([]*pgtypes.DoltgresType, len(vars))
 				for i, varName := range vars {
 					target := stack.GetVariable(varName)
 					if target.Type == nil {
+						if dynamic {
+							stack.PopScope()
+						}
 						return nil, fmt.Errorf("variable `%s` could not be found", varName)
 					}
 					targetTypes[i] = target.Type
 				}
 				row, rowFound, err := iFunc.QueryRowReturn(ctx, stack, operation.PrimaryData, targetTypes, operation.SecondaryData)
 				if err != nil {
+					if dynamic {
+						stack.PopScope()
+					}
 					return nil, err
 				}
 				// When the query matches nothing, every target is set to NULL rather than left alone.
@@ -228,29 +248,59 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 						val = row[i]
 					}
 					if err = stack.SetVariable(ctx, varName, val); err != nil {
+						if dynamic {
+							stack.PopScope()
+						}
 						return nil, err
 					}
 				}
 				if setsFound(operation) {
 					if err = stack.SetFound(ctx, rowFound); err != nil {
+						if dynamic {
+							stack.PopScope()
+						}
 						return nil, err
 					}
 				}
 			} else {
 				_, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 				if err != nil {
+					if dynamic {
+						stack.PopScope()
+					}
 					return nil, err
 				}
 				if setsFound(operation) {
 					if err = stack.SetFound(ctx, queryProducedRow(rows)); err != nil {
+						if dynamic {
+							stack.PopScope()
+						}
 						return nil, err
 					}
 				}
 			}
+			if dynamic {
+				stack.PopScope()
+			}
 		case OpCode_ExecuteInto:
+			dynamic := operation.Options[OptionDynamicExpression] == "true"
+			if dynamic {
+				query, err := evaluateDynamicQuery(ctx, iFunc, operation, stack)
+				if err != nil {
+					return nil, err
+				}
+				operation.PrimaryData = query
+				operation.SecondaryData, err = evaluateDynamicUsing(ctx, iFunc, operation, stack)
+				if err != nil {
+					return nil, err
+				}
+			}
 			// The target is a RECORD, which takes on the shape of the query's result columns.
 			schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, operation.PrimaryData, operation.SecondaryData)
 			if err != nil {
+				if dynamic {
+					stack.PopScope()
+				}
 				return nil, err
 			}
 			// Without STRICT, Postgres keeps the first row and discards the rest, and leaves every field NULL
@@ -260,12 +310,21 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 				row = rows[0]
 			}
 			if err = stack.UpdateRecord(operation.Target, schema, row); err != nil {
+				if dynamic {
+					stack.PopScope()
+				}
 				return nil, err
 			}
 			if setsFound(operation) {
 				if err = stack.SetFound(ctx, len(rows) > 0); err != nil {
+					if dynamic {
+						stack.PopScope()
+					}
 					return nil, err
 				}
+			}
+			if dynamic {
+				stack.PopScope()
 			}
 		case OpCode_DeclareRecord:
 			stack.NewRecord(operation.Target, nil, nil)
@@ -341,8 +400,7 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 			}
 
 			if operation.PrimaryData == "EXCEPTION" {
-				// TODO: Notices at the EXCEPTION level should also abort the current tx.
-				return nil, errors.New(message)
+				return nil, pgerror.New(pgcode.RaiseException, message)
 			} else {
 				noticeResponse := &pgproto3.NoticeResponse{
 					Severity: operation.PrimaryData,
@@ -453,6 +511,73 @@ func call(ctx *sql.Context, iFunc InterpretedFunction, stack InterpreterStack) (
 		}
 	}
 	return nil, nil
+}
+
+// evaluateDynamicQuery evaluates the expression supplying a dynamic EXECUTE command string.
+func evaluateDynamicQuery(ctx *sql.Context, iFunc InterpretedFunction, operation InterpreterOperation, stack InterpreterStack) (string, error) {
+	bindingCount, err := strconv.Atoi(operation.Options[OptionDynamicBindingCount])
+	if err != nil {
+		return "", err
+	}
+	bindings := make([]string, bindingCount)
+	for i := range bindings {
+		bindings[i] = operation.Options[OptionDynamicBindingPrefix+strconv.Itoa(i)]
+	}
+	value, err := iFunc.QuerySingleReturn(ctx, stack, "SELECT ("+operation.PrimaryData+")::text", pgtypes.Text, bindings)
+	if err != nil {
+		return "", err
+	}
+	if value == nil {
+		return "", pgerror.New(pgcode.NullValueNotAllowed, "query string argument of EXECUTE is null")
+	}
+	return value.(string), nil
+}
+
+// evaluateDynamicUsing evaluates USING expressions and exposes their typed values as temporary interpreter variables.
+func evaluateDynamicUsing(ctx *sql.Context, iFunc InterpretedFunction, operation InterpreterOperation, stack InterpreterStack) ([]string, error) {
+	usingCount, err := strconv.Atoi(operation.Options[OptionDynamicUsingCount])
+	if err != nil {
+		return nil, err
+	}
+	temporaryNames := make([]string, usingCount)
+	types := make([]*pgtypes.DoltgresType, usingCount)
+	values := make([]any, usingCount)
+	for i := range usingCount {
+		index := strconv.Itoa(i)
+		bindingCount, err := strconv.Atoi(operation.Options[OptionDynamicUsingBindingCountPrefix+index])
+		if err != nil {
+			return nil, err
+		}
+		bindings := make([]string, bindingCount)
+		for j := range bindings {
+			bindings[j] = operation.Options[OptionDynamicUsingBindingPrefix+index+"_"+strconv.Itoa(j)]
+		}
+		expression := operation.Options[OptionDynamicUsingExpressionPrefix+index]
+		schema, rows, err := iFunc.QueryMultiReturn(ctx, stack, "SELECT ("+expression+")", bindings)
+		if err != nil {
+			return nil, err
+		}
+		if len(schema) != 1 || len(rows) != 1 || len(rows[0]) != 1 {
+			return nil, errors.New("USING expression did not return exactly one value")
+		}
+		typ, ok := schema[0].Type.(*pgtypes.DoltgresType)
+		if !ok {
+			typ, err = pgtypes.FromGmsTypeToDoltgresType(schema[0].Type)
+			if err != nil {
+				return nil, err
+			}
+		}
+		types[i] = typ
+		values[i] = rows[0][0]
+	}
+	stack.PushScope()
+	for i := range usingCount {
+		// A NUL byte cannot occur in a PostgreSQL identifier, so this internal binding cannot shadow a user variable.
+		name := fmt.Sprintf("\x00dynamic_using_%d", i)
+		stack.NewVariableWithValue(name, types[i], values[i])
+		temporaryNames[i] = name
+	}
+	return temporaryNames, nil
 }
 
 // exitScope performs everything that leaving a scope entails. Both the ScopeEnd opcode and the forward walk

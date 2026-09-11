@@ -872,6 +872,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> stmt_block
 %type <tree.Statement> stmt
 %type <tree.Statement> non_transaction_stmt
+%type <tree.Statement> do_stmt
 
 %type <tree.Statement> alter_stmt
 %type <tree.Statement> alter_ddl_stmt
@@ -1531,6 +1532,7 @@ non_transaction_stmt:
 | execute_stmt      // EXTEND WITH HELP: EXECUTE
 | deallocate_stmt   // EXTEND WITH HELP: DEALLOCATE
 | discard_stmt      // EXTEND WITH HELP: DISCARD
+| do_stmt
 | grant_stmt        // EXTEND WITH HELP: GRANT
 | prepare_stmt      // EXTEND WITH HELP: PREPARE
 | revoke_stmt       // EXTEND WITH HELP: REVOKE
@@ -1542,6 +1544,20 @@ non_transaction_stmt:
 | declare_cursor_stmt
 | reindex_stmt
 | vacuum_stmt
+
+do_stmt:
+  DO SCONST
+  {
+    $$.val = &tree.Do{Code: $2}
+  }
+| DO LANGUAGE non_reserved_word_or_sconst SCONST
+  {
+    $$.val = &tree.Do{Language: $3, Code: $4}
+  }
+| DO SCONST LANGUAGE non_reserved_word_or_sconst
+  {
+    $$.val = &tree.Do{Language: $4, Code: $2}
+  }
 
 stmt_list:
   non_transaction_stmt

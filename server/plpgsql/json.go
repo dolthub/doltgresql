@@ -325,7 +325,7 @@ func (stmt *plpgSQL_stmt_assign) Convert() (Assignment, error) {
 func (stmt *plpgSQL_stmt_call) Convert() (ExecuteSQL, error) {
 	var target string
 	var targetIsRecord bool
-	if !stmt.IsCall {
+	if !stmt.IsCall && (stmt.Target.Row != nil || stmt.Target.Variable != nil || stmt.Target.Record != nil) {
 		var err error
 		target, targetIsRecord, err = intoTarget(stmt.Target)
 		if err != nil {
@@ -445,9 +445,8 @@ func (stmt *plpgSQL_stmt_dynexecute) Convert() (DynamicExecute, error) {
 			return DynamicExecute{}, err
 		}
 	}
-	query := strings.TrimSuffix(strings.TrimPrefix(stmt.Query.Expression.Query, "'"), "'")
 	return DynamicExecute{
-		Query:          query,
+		Query:          stmt.Query.Expression.Query,
 		Params:         params,
 		Target:         target,
 		TargetIsRecord: targetIsRecord,

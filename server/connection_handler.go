@@ -519,6 +519,17 @@ func (h *ConnectionHandler) handleQuery(message *pgproto3.Query) (endOfMessages 
 		if handled {
 			return endOfMessages, err
 		}
+		injected, isInjected := queries[0].AST.(sqlparser.InjectedStatement)
+		_, isDo := injected.Statement.(*node.Do)
+		if isInjected && isDo {
+			if err = h.startImplicitTransaction(queries[0]); err != nil {
+				return true, err
+			}
+			if err = h.query(queries[0]); err != nil {
+				return true, err
+			}
+			return true, h.commitImplicitTransaction()
+		}
 		return true, h.query(queries[0])
 	}
 

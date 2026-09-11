@@ -55,6 +55,20 @@ func TestImplicitTransactionsSimpleProtocol(t *testing.T) {
 	setup := []string{"CREATE TABLE mytable (i BIGINT PRIMARY KEY);"}
 	RunMessageFlowTests(t, []MessageFlowTest{
 		{
+			Name:        "successful DO statement commits its writes",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:    "DO $$ BEGIN INSERT INTO mytable VALUES (1); END $$;",
+					Expected: []StatementResult{{Tag: "DO"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT * FROM mytable;",
+					Expected: [][]string{{"1"}},
+				},
+			},
+		},
+		{
 			Name:        "multiple statements commit as a single implicit transaction",
 			SetUpScript: setup,
 			Steps: []FlowStep{
@@ -95,6 +109,114 @@ func TestImplicitTransactionsSimpleProtocol(t *testing.T) {
 				QueryOnOtherConnection{
 					Query:    "SELECT * FROM mytable ORDER BY i;",
 					Expected: [][]string{{"3"}},
+				},
+			},
+		},
+		{
+			Name:        "failed DO statement rolls back its writes",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:       "DO $$ BEGIN INSERT INTO mytable VALUES (1); RAISE EXCEPTION 'forced failure'; END $$;",
+					ExpectedErr: "forced failure",
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (2);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+			},
+		},
+		{
+			Name:        "failed dynamic SQL in DO rolls back its writes",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:       "DO $$ BEGIN INSERT INTO mytable VALUES (1); EXECUTE 'SELECT * FROM missing_dynamic_relation'; END $$;",
+					ExpectedErr: "missing_dynamic_relation",
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+				SimpleQuery{
+					Query:    "INSERT INTO mytable VALUES (2);",
+					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
+				},
+			},
+		},
+		{
+			Name:        "DO statement participates in an explicit transaction",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:               "BEGIN;",
+					Expected:            []StatementResult{{Tag: "BEGIN"}},
+					ExpectedReadyStatus: 'T',
+				},
+				SimpleQuery{
+					Query:               "DO $$ BEGIN INSERT INTO mytable VALUES (1); END $$;",
+					Expected:            []StatementResult{{Tag: "DO"}},
+					ExpectedReadyStatus: 'T',
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+				SimpleQuery{
+					Query:    "ROLLBACK;",
+					Expected: []StatementResult{{Tag: "ROLLBACK"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+			},
+		},
+		{
+			Name:        "failed DO statement aborts an explicit transaction",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:               "BEGIN;",
+					Expected:            []StatementResult{{Tag: "BEGIN"}},
+					ExpectedReadyStatus: 'T',
+				},
+				SimpleQuery{
+					Query:               "DO $$ BEGIN INSERT INTO mytable VALUES (1); RAISE EXCEPTION 'forced failure'; END $$;",
+					ExpectedErr:         "forced failure",
+					ExpectedReadyStatus: 'E',
+				},
+				SimpleQuery{
+					Query:               "SELECT 1;",
+					ExpectedErr:         "current transaction is aborted",
+					ExpectedReadyStatus: 'E',
+				},
+				SimpleQuery{
+					Query:    "ROLLBACK;",
+					Expected: []StatementResult{{Tag: "ROLLBACK"}},
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+			},
+		},
+		{
+			Name:        "DO statement participates in a multi-statement implicit transaction",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				SimpleQuery{
+					Query:       "DO $$ BEGIN INSERT INTO mytable VALUES (1); END $$; SELECT 1/0;",
+					Expected:    []StatementResult{{Tag: "DO"}},
+					ExpectedErr: "division by zero",
+				},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
 				},
 			},
 		},
@@ -625,6 +747,20 @@ func TestImplicitTransactionsSimpleProtocol(t *testing.T) {
 func TestImplicitTransactionsExtendedProtocol(t *testing.T) {
 	setup := []string{"CREATE TABLE mytable (i BIGINT PRIMARY KEY);"}
 	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name:        "failed DO statement rolls back at Sync",
+			SetUpScript: setup,
+			Steps: []FlowStep{
+				Parse{Name: "do", Query: "DO $$ BEGIN INSERT INTO mytable VALUES (1); RAISE EXCEPTION 'forced failure'; END $$"},
+				Bind{PreparedStatement: "do"},
+				Execute{ExpectedErr: "forced failure"},
+				Sync{},
+				QueryOnOtherConnection{
+					Query:    "SELECT count(*) FROM mytable;",
+					Expected: [][]string{{"0"}},
+				},
+			},
+		},
 		{
 			Name:        "statements in a batch commit as a single implicit transaction at Sync",
 			SetUpScript: setup,

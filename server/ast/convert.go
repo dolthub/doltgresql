@@ -137,6 +137,8 @@ func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 		return nodeDelete(ctx, stmt)
 	case *tree.Discard:
 		return nodeDiscard(ctx, stmt)
+	case *tree.Do:
+		return nodeDo(ctx, stmt)
 	case *tree.DropAggregate:
 		return nodeDropAggregate(ctx, stmt)
 	case *tree.DropCast:

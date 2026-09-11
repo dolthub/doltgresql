@@ -246,11 +246,35 @@ func (DynamicExecute) OperationSize() int32 {
 
 // AppendOperations implements the interface Statement.
 func (stmt DynamicExecute) AppendOperations(ops *[]InterpreterOperation, stack *InterpreterStack) error {
+	query, bindings, err := substituteVariableReferences(stmt.Query, stack)
+	if err != nil {
+		return err
+	}
+	options := map[string]string{
+		OptionDynamicExpression:   "true",
+		OptionDynamicBindingCount: strconv.Itoa(len(bindings)),
+	}
+	for i, binding := range bindings {
+		options[OptionDynamicBindingPrefix+strconv.Itoa(i)] = binding
+	}
+	options[OptionDynamicUsingCount] = strconv.Itoa(len(stmt.Params))
+	for i, param := range stmt.Params {
+		expression, paramBindings, err := substituteVariableReferences(param, stack)
+		if err != nil {
+			return err
+		}
+		index := strconv.Itoa(i)
+		options[OptionDynamicUsingExpressionPrefix+index] = expression
+		options[OptionDynamicUsingBindingCountPrefix+index] = strconv.Itoa(len(paramBindings))
+		for j, binding := range paramBindings {
+			options[OptionDynamicUsingBindingPrefix+index+"_"+strconv.Itoa(j)] = binding
+		}
+	}
 	*ops = append(*ops, InterpreterOperation{
-		OpCode:        executeOpCode(stmt.TargetIsRecord),
-		PrimaryData:   stmt.Query,
-		SecondaryData: stmt.Params,
-		Target:        stmt.Target,
+		OpCode:      executeOpCode(stmt.TargetIsRecord),
+		PrimaryData: query,
+		Target:      stmt.Target,
+		Options:     options,
 	})
 	return nil
 }
