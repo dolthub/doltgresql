@@ -18,9 +18,9 @@ teardown() {
     [ "$status" -eq 0 ]
     [ "$output" = "f|f|f" ]
 
-    SQL_USER=demo run query_server -c "CREATE DATABASE made_by_demo"
+    SQL_USER=demo run query_server -v VERBOSITY=verbose -c "CREATE DATABASE made_by_demo"
     [ "$status" -ne 0 ]
-    [[ "$output" =~ "permission denied to create database" ]] || false
+    [[ "$output" =~ "42501: permission denied to create database" ]] || false
 
     run query_server -At -c "SELECT datname FROM pg_database WHERE datname = 'made_by_demo'"
     [ "$status" -eq 0 ]
@@ -39,14 +39,14 @@ teardown() {
     query_server -c "CREATE ROLE demo LOGIN PASSWORD 'password'"
     query_server -c "GRANT ALL PRIVILEGES ON DATABASE victim TO demo"
 
-    SQL_USER=demo run query_server -c "DROP DATABASE victim"
+    SQL_USER=demo run query_server -v VERBOSITY=verbose -c "DROP DATABASE victim"
     [ "$status" -ne 0 ]
-    [[ "$output" =~ "must be owner of database victim" ]] || false
+    [[ "$output" =~ "42501: must be owner of database victim" ]] || false
 
     query_server -c "ALTER ROLE demo CREATEDB"
-    SQL_USER=demo run query_server -c "DROP DATABASE IF EXISTS victim"
+    SQL_USER=demo run query_server -v VERBOSITY=verbose -c "DROP DATABASE IF EXISTS victim"
     [ "$status" -ne 0 ]
-    [[ "$output" =~ "must be owner of database victim" ]] || false
+    [[ "$output" =~ "42501: must be owner of database victim" ]] || false
 
     run query_server -At -c "SELECT datname FROM pg_database WHERE datname = 'victim'"
     [ "$status" -eq 0 ]
