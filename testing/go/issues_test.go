@@ -652,6 +652,35 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3323: INSERT after ALTER TABLE ADD COLUMN on a table with a generated column",
+			SetUpScript: []string{
+				"CREATE TABLE t3323 (a INT PRIMARY KEY, b INT GENERATED ALWAYS AS (a + 1) STORED);",
+				"INSERT INTO t3323 (a) VALUES (1);",
+				"ALTER TABLE t3323 ADD COLUMN c INT DEFAULT 0;",
+				"CREATE TABLE t3323b (a INT PRIMARY KEY, b TEXT GENERATED ALWAYS AS (upper(a::text)) STORED);",
+				"INSERT INTO t3323b (a) VALUES (1);",
+				"ALTER TABLE t3323b ADD COLUMN c INT DEFAULT 0;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t3323 (a) VALUES (2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3323 ORDER BY a;",
+					Expected: []sql.Row{{1, 2, 0}, {2, 3, 0}},
+				},
+				{
+					Query:    "INSERT INTO t3323b (a) VALUES (2);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3323b ORDER BY a;",
+					Expected: []sql.Row{{1, "1", 0}, {2, "2", 0}},
+				},
+			},
+		},
 	})
 }
 

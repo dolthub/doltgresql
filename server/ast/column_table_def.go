@@ -110,15 +110,9 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		}
 	}
 
-	if generated != nil {
-		// GMS requires the AST to wrap function expressions in parens
-		if _, ok := generated.(*vitess.FuncExpr); ok {
-			generated = &vitess.ParenExpr{Expr: generated}
-		}
-
-		// clean up the expressions generated here. our default expression handling generates aliases that aren't
-		// appropriate in this context.
-		generated = clearAliases(generated)
+	// GMS requires the AST to wrap function expressions in parens
+	if _, ok := generated.(*vitess.FuncExpr); ok {
+		generated = &vitess.ParenExpr{Expr: generated}
 	}
 
 	if node.IsSerial || computedByDefaultAsIdentity || computedAsIdentity {
@@ -180,17 +174,4 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		colDef.Type.Constraint = checkConstraints[0]
 	}
 	return colDef, nil
-}
-
-// clearAliases removes As and InputExpression from any AliasedExpr in the expression tree given. This is required
-// in some contexts where we expect the expression to serialize to a string without any alias names.
-func clearAliases(e vitess.Expr) vitess.Expr {
-	_ = vitess.Walk(func(node vitess.SQLNode) (kontinue bool, err error) {
-		if expr, ok := node.(*vitess.AliasedExpr); ok {
-			expr.As = vitess.ColIdent{}
-			expr.InputExpression = ""
-		}
-		return true, nil
-	}, e)
-	return e
 }
