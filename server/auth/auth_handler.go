@@ -23,6 +23,8 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 )
 
@@ -104,8 +106,27 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		return nil
 	case AuthType_CREATE:
 		privileges = []Privilege{Privilege_CREATE}
+	case AuthType_CREATEDATABASE:
+		// CREATEDB is a role attribute, not the CREATE privilege on an existing database.
+		if !state.role.IsSuperUser && !state.role.CanCreateDB {
+			return pgerror.New(pgcode.InsufficientPrivilege, "permission denied to create database")
+		}
+		return nil
 	case AuthType_DELETE:
 		privileges = []Privilege{Privilege_DELETE}
+	case AuthType_DROPDATABASE:
+		for _, database := range auth.TargetNames {
+			// Leave missing databases to normal resolution, including DROP DATABASE IF EXISTS.
+			if !h.cat.HasDatabase(ctx, database) {
+				continue
+			}
+			// Doltgres does not support per-role ownership; only superusers may drop databases.
+			// CREATEDB and database privileges do not authorize dropping databases.
+			if !state.role.IsSuperUser {
+				return pgerror.Newf(pgcode.InsufficientPrivilege, "must be owner of database %s", database)
+			}
+		}
+		return nil
 	case AuthType_DROPTABLE:
 		privileges = []Privilege{Privilege_DROP}
 	case AuthType_EXECUTE:

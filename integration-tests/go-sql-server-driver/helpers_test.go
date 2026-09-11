@@ -15,9 +15,12 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	driver "github.com/dolthub/doltgresql/integration-tests/go-sql-server-driver/driver"
 )
@@ -54,4 +57,33 @@ func RunServerUntilEndOfTest(t *testing.T, rs driver.RepoStore, s *driver.Server
 	db, err := server.DB(driver.Connection{})
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
+}
+
+// GC tests observe informational server logs to detect completion, so generating
+// a listener configuration must not suppress the default or configured log level.
+func TestPrepareDoltgresServerArgsLogging(t *testing.T) {
+	for _, level := range []string{"", "info", "warn", "trace"} {
+		name := level
+		if name == "" {
+			name = "default"
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			var args []string
+			if level != "" {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "server.yaml"), []byte("log_level: "+level+"\n"), 0600))
+				args = []string{"--config", "server.yaml"}
+			}
+			prepareDoltgresServerArgs(t, dir, "test", 5432, args)
+			contents, err := os.ReadFile(filepath.Join(dir, ".generated-test-config.yaml"))
+			require.NoError(t, err)
+			var config map[string]any
+			require.NoError(t, yaml.Unmarshal(contents, &config))
+			if level == "" {
+				require.NotContains(t, config, "log_level", "preserve the server's default logging")
+			} else {
+				require.Equal(t, level, config["log_level"])
+			}
+		})
+	}
 }
