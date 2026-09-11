@@ -3864,6 +3864,54 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Character comparisons ignore trailing spaces",
+		SetUpScript: []string{
+			"CREATE TABLE t_bpchar (id INT PRIMARY KEY, c CHAR(3), u CHAR(3) UNIQUE, v INT);",
+			"INSERT INTO t_bpchar VALUES (1, 'a', 'x', 10), (2, 'a ', 'y ', 20), (3, 'b', 'z', 30);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SELECT id, c, COUNT(*) OVER (PARTITION BY c), SUM(v) OVER (PARTITION BY c) FROM t_bpchar ORDER BY id;",
+				Expected: []sql.Row{
+					{1, "a  ", 2, 30},
+					{2, "a  ", 2, 30},
+					{3, "b  ", 1, 30},
+				},
+			},
+			{
+				Query: "SELECT c, COUNT(*), SUM(v) FROM t_bpchar GROUP BY c ORDER BY c;",
+				Expected: []sql.Row{
+					{"a  ", 2, 30},
+					{"b  ", 1, 30},
+				},
+			},
+			{
+				Query:    "SELECT DISTINCT c FROM t_bpchar ORDER BY c;",
+				Expected: []sql.Row{{"a  "}, {"b  "}},
+			},
+			{
+				Query:    "SELECT id FROM t_bpchar WHERE c = 'a' ORDER BY id;",
+				Expected: []sql.Row{{1}, {2}},
+			},
+			{
+				Query:    "SELECT id FROM t_bpchar WHERE u = 'y';",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:       "INSERT INTO t_bpchar VALUES (4, 'c', 'y', 40);",
+				ExpectedErr: "duplicate unique key",
+			},
+			{
+				Query:    "SELECT c::text, length(c), c || '|' FROM t_bpchar WHERE id = 1;",
+				Expected: []sql.Row{{"a", 1, "a|"}},
+			},
+			{
+				Query:    "SELECT 'ab  '::char(3) = 'ab'::char(3), 'a  '::bpchar = 'a'::bpchar, length('ab  '::char(3));",
+				Expected: []sql.Row{{"t", "t", 2}},
+			},
+		},
+	},
 }
 
 func TestSameTypes(t *testing.T) {

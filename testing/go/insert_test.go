@@ -617,5 +617,29 @@ ON CONFLICT (id) do update set c1 = $4`,
 				},
 			},
 		},
+		{
+			Name: "insert on conflict do nothing returning",
+			SetUpScript: []string{
+				"CREATE TABLE t4 (k INT PRIMARY KEY, v TEXT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t4 VALUES (1, 'a') ON CONFLICT DO NOTHING RETURNING k, v;",
+					Expected: []sql.Row{{1, "a"}},
+				},
+				{
+					Query:    "INSERT INTO t4 VALUES (1, 'b'), (2, 'c') ON CONFLICT DO NOTHING RETURNING k;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "INSERT INTO t4 VALUES (1, 'b') ON CONFLICT (k) DO NOTHING RETURNING *;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t4 ORDER BY k;",
+					Expected: []sql.Row{{1, "a"}, {2, "c"}},
+				},
+			},
+		},
 	})
 }

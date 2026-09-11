@@ -1787,5 +1787,46 @@ ORDER BY schema_name, table_name;`,
 				},
 			},
 		},
+		{
+			Name: "ADD COLUMN IF NOT EXISTS",
+			SetUpScript: []string{
+				"CREATE TABLE t7 (a INT);",
+				"INSERT INTO t7 VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER TABLE t7 ADD COLUMN a INT;",
+					ExpectedErr: `already exists`,
+				},
+				{
+					Query:    "ALTER TABLE t7 ADD COLUMN IF NOT EXISTS a INT;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE t7 ADD COLUMN IF NOT EXISTS b INT;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE t7 ADD COLUMN IF NOT EXISTS a TEXT DEFAULT 'x' UNIQUE;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE t7 ADD IF NOT EXISTS c INT, ADD COLUMN IF NOT EXISTS a INT;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t7;",
+					Expected: []sql.Row{{1, nil, nil}},
+				},
+				{
+					Query:    "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 't7' ORDER BY ordinal_position;",
+					Expected: []sql.Row{{"a", "integer"}, {"b", "integer"}, {"c", "integer"}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't7';",
+					Expected: []sql.Row{},
+				},
+			},
+		},
 	})
 }

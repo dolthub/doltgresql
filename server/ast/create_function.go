@@ -90,28 +90,9 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 	if languageOption, ok := options[tree.OptionLanguage]; ok {
 		switch strings.ToLower(languageOption.Language) {
 		case "plpgsql":
-			// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
-			// This parser also requires the full `CREATE FUNCTION` string, so we'll pass that.
-			parsedBody, err = plpgsql.Parse(ctx.originalQuery)
+			parsedBody, err = parsePlpgsqlBody(ctx)
 			if err != nil {
 				return nil, err
-			}
-			// parse types
-			for i, op := range parsedBody {
-				switch op.OpCode {
-				case plpgsql.OpCode_Declare:
-					// ParseType uses casting to parse the given type, but
-					// some special types cannot be cast. Eg: `user_defined_table_type%ROWTYPE`
-					if declareTyp, err := parser.ParseType(op.PrimaryData); err == nil {
-						if _, dt, err := nodeResolvableTypeReference(ctx, declareTyp, false); err == nil && dt != nil {
-							dtName := dt.Name()
-							if dt.Schema() != "" {
-								dtName = fmt.Sprintf("%s.%s", dt.Schema(), dtName)
-							}
-							parsedBody[i].PrimaryData = dtName
-						}
-					}
-				}
 			}
 		case "sql":
 			as, ok := options[tree.OptionAs1]
@@ -179,6 +160,34 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		},
 		Children: defaults,
 	}, nil
+}
+
+// parsePlpgsqlBody parses the PL/pgSQL body of the statement being converted, resolving the types of its declarations.
+func parsePlpgsqlBody(ctx *Context) ([]plpgsql.InterpreterOperation, error) {
+	// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
+	// This parser also requires the full statement string, so we'll pass that.
+	parsedBody, err := plpgsql.Parse(ctx.originalQuery)
+	if err != nil {
+		return nil, err
+	}
+	// parse types
+	for i, op := range parsedBody {
+		switch op.OpCode {
+		case plpgsql.OpCode_Declare:
+			// ParseType uses casting to parse the given type, but
+			// some special types cannot be cast. Eg: `user_defined_table_type%ROWTYPE`
+			if declareTyp, err := parser.ParseType(op.PrimaryData); err == nil {
+				if _, dt, err := nodeResolvableTypeReference(ctx, declareTyp, false); err == nil && dt != nil {
+					dtName := dt.Name()
+					if dt.Schema() != "" {
+						dtName = fmt.Sprintf("%s.%s", dt.Schema(), dtName)
+					}
+					parsedBody[i].PrimaryData = dtName
+				}
+			}
+		}
+	}
+	return parsedBody, nil
 }
 
 // createAnonymousCompositeType creates a new DoltgresType for the anonymous composite return

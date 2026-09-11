@@ -34,7 +34,7 @@ func handleStringCast(input string, targetType *pgtypes.DoltgresType) (string, e
 	switch targetType.ID {
 	case pgtypes.BpChar.ID:
 		if tm == -1 {
-			return input, nil
+			return strings.TrimRight(input, " "), nil
 		}
 		maxChars, err := pgtypes.GetTypModFromCharLength("char", tm)
 		if err != nil {
@@ -44,11 +44,8 @@ func handleStringCast(input string, targetType *pgtypes.DoltgresType) (string, e
 		str, runeLength := truncateString(input, length)
 		if runeLength > length {
 			return input, cerrors.Wrap(pgtypes.ErrCastOutOfRange, fmt.Sprintf("value too long for type %s", targetType.String()))
-		} else if runeLength < length {
-			return str + strings.Repeat(" ", int(length-runeLength)), nil
-		} else {
-			return str, nil
 		}
+		return strings.TrimRight(str, " "), nil
 	case pgtypes.InternalChar.ID:
 		str, _ := truncateString(input, pgtypes.InternalCharLength)
 		return str, nil

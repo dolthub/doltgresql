@@ -20,7 +20,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
-	"github.com/sirupsen/logrus"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
@@ -133,16 +132,11 @@ func nodeAlterTableCmds(
 				if err != nil {
 					return nil, nil, err
 				}
-				vitessDdlCmds = append(vitessDdlCmds, &vitess.DDL{
-					Action:   "alter",
-					Table:    tableName,
-					IfExists: ifExists,
-					IndexSpec: &vitess.IndexSpec{
-						Action: "create",
-						Type:   "unique",
-						Fields: indexFields,
-					},
-				})
+				statement.IndexSpec = &vitess.IndexSpec{
+					Action: "create",
+					Type:   "unique",
+					Fields: indexFields,
+				}
 			}
 
 		case *tree.AlterTableDropColumn:
@@ -263,10 +257,6 @@ func bareIdentifier(id tree.Name) string {
 
 // nodeAlterTableAddColumn converts a tree.AlterTableAddColumn instance into an equivalent vitess.DDL instance.
 func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
-	if node.IfNotExists {
-		return nil, errors.Errorf("IF NOT EXISTS on a column in an ADD COLUMN statement is not supported yet")
-	}
-
 	vitessColumnDef, err := nodeColumnTableDef(ctx, node.ColumnDef)
 	if err != nil {
 		return nil, err
@@ -291,6 +281,7 @@ func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, table
 		ColumnAction: "add",
 		Table:        tableName,
 		IfExists:     ifExists,
+		IfNotExists:  node.IfNotExists,
 		Column:       vitessColumnDef.Name,
 		TableSpec:    tableSpec,
 	}, nil
@@ -307,7 +298,6 @@ func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tab
 	case tree.DropRestrict:
 		return nil, errors.Errorf("ALTER TABLE DROP COLUMN does not support RESTRICT option")
 	case tree.DropCascade:
-		logrus.Warnf("CASCADE option on DROP COLUMN is not yet supported, ignoring")
 	default:
 		return nil, errors.Errorf("ALTER TABLE with unsupported drop behavior %v", node.DropBehavior)
 	}
@@ -318,6 +308,7 @@ func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tab
 		Table:        tableName,
 		IfExists:     ifExists,
 		Column:       vitess.NewColIdent(node.Column.String()),
+		Cascade:      node.DropBehavior == tree.DropCascade,
 	}, nil
 }
 
