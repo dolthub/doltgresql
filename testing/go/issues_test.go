@@ -916,6 +916,52 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3336: OLD.* IS DISTINCT FROM NEW.* in a trigger",
+			SetUpScript: []string{
+				"CREATE TABLE t3336 (a INT PRIMARY KEY, b TEXT);",
+				"CREATE TABLE t3336_log (a INT, src TEXT);",
+				"CREATE FUNCTION f3336_when() RETURNS TRIGGER AS $$ BEGIN INSERT INTO t3336_log VALUES (NEW.a, 'when'); RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE FUNCTION f3336_body() RETURNS TRIGGER AS $$ BEGIN IF OLD.* IS DISTINCT FROM NEW.* THEN INSERT INTO t3336_log VALUES (NEW.a, 'body'); END IF; RETURN NEW; END; $$ LANGUAGE plpgsql;",
+				"CREATE TRIGGER tr3336_when AFTER UPDATE ON t3336 FOR EACH ROW WHEN (OLD.* IS DISTINCT FROM NEW.*) EXECUTE FUNCTION f3336_when();",
+				"CREATE TRIGGER tr3336_body AFTER UPDATE ON t3336 FOR EACH ROW EXECUTE FUNCTION f3336_body();",
+				"INSERT INTO t3336 VALUES (1, 'x'), (2, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT ROW(2, NULL::TEXT) IS DISTINCT FROM ROW(2, 'y'::TEXT), ROW(2, NULL::TEXT) IS DISTINCT FROM ROW(2, NULL::TEXT), ROW(2, NULL::TEXT) IS NOT DISTINCT FROM ROW(2, NULL::TEXT), ROW(1, 2) IS DISTINCT FROM ROW(1, 3), ROW(1, 2) IS NOT DISTINCT FROM ROW(1, 2);",
+					Expected: []sql.Row{{"t", "f", "t", "t", "t"}},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = 'x' WHERE a = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM t3336_log;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = 'y' WHERE a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = NULL WHERE a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = NULL WHERE a = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t3336 SET b = 'z' WHERE a = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t3336_log ORDER BY a, src;",
+					Expected: []sql.Row{{1, "body"}, {1, "when"}, {2, "body"}, {2, "body"}, {2, "when"}, {2, "when"}},
+				},
+			},
+		},
 	})
 }
 
