@@ -70,6 +70,7 @@ func (*DoltgresConfig) Overrides() sql.EngineOverrides {
 				PreSQLExecution: hook.BeforeTableModifyColumn,
 			},
 			TableDropColumn: sql.TableDropColumn{
+				PreSQLExecution:  hook.BeforeTableDropColumn,
 				PostSQLExecution: hook.AfterTableDropColumn,
 			},
 		},

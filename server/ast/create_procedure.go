@@ -15,13 +15,11 @@
 package ast
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/auth"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
@@ -49,28 +47,9 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 	if languageOption, ok := options[tree.OptionLanguage]; ok {
 		switch strings.ToLower(languageOption.Language) {
 		case "plpgsql":
-			// PL/pgSQL is different from standard Postgres SQL, so we have to use a special parser to handle it.
-			// This parser also requires the full `CREATE PROCEDURE` string, so we'll pass that.
-			parsedBody, err = plpgsql.Parse(ctx.originalQuery)
+			parsedBody, err = parsePlpgsqlBody(ctx)
 			if err != nil {
 				return nil, err
-			}
-			// parse types
-			for i, op := range parsedBody {
-				switch op.OpCode {
-				case plpgsql.OpCode_Declare:
-					// ParseType uses casting to parse the given type, but
-					// some special types cannot be cast. Eg: `user_defined_table_type%ROWTYPE`
-					if declareTyp, err := parser.ParseType(op.PrimaryData); err == nil {
-						if _, dt, err := nodeResolvableTypeReference(ctx, declareTyp, false); err == nil && dt != nil {
-							dtName := dt.Name()
-							if dt.Schema() != "" {
-								dtName = fmt.Sprintf("%s.%s", dt.Schema(), dtName)
-							}
-							parsedBody[i].PrimaryData = dtName
-						}
-					}
-				}
 			}
 		case "sql":
 			as, ok := options[tree.OptionAs1]
