@@ -365,6 +365,104 @@ func TestAuthTests(t *testing.T) {
 			},
 		},
 		{
+			Name: `CREATE DATABASE authorization`,
+			SetUpScript: []string{
+				`CREATE ROLE demo LOGIN PASSWORD 'password';`,
+				`GRANT ALL PRIVILEGES ON DATABASE postgres TO demo;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = 'demo';`,
+					Expected: []sql.Row{{"f", "f", "f"}},
+				},
+				{
+					Query:       `CREATE DATABASE made_by_demo;`,
+					Username:    `demo`,
+					Password:    `password`,
+					ExpectedErr: `permission denied to create database`,
+				},
+				{
+					Query:    `SELECT datname FROM pg_database WHERE datname = 'made_by_demo';`,
+					Expected: []sql.Row{},
+				},
+				{Query: `ALTER ROLE demo CREATEDB;`},
+				{
+					Query:    `CREATE DATABASE made_by_demo;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{Query: `ALTER ROLE demo NOCREATEDB;`},
+				{
+					Query:       `CREATE DATABASE denied_after_revoke;`,
+					Username:    `demo`,
+					Password:    `password`,
+					ExpectedErr: `permission denied to create database`,
+				},
+				{Query: `DROP DATABASE made_by_demo;`},
+				{Query: `ALTER ROLE demo SUPERUSER;`},
+				{
+					Query:    `CREATE DATABASE made_by_super;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{Query: `DROP DATABASE made_by_super;`},
+			},
+		},
+		{
+			Name: `DROP DATABASE authorization`,
+			SetUpScript: []string{
+				`CREATE DATABASE victim;`,
+				`CREATE ROLE demo LOGIN PASSWORD 'password';`,
+				`GRANT ALL PRIVILEGES ON DATABASE victim TO demo;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `DROP DATABASE victim;`,
+					Username:    `demo`,
+					Password:    `password`,
+					ExpectedErr: `must be owner of database victim`,
+				},
+				{
+					Query:       `DROP DATABASE IF EXISTS victim;`,
+					Username:    `demo`,
+					Password:    `password`,
+					ExpectedErr: `must be owner of database victim`,
+				},
+				{
+					Query:    `DROP DATABASE IF EXISTS missing_database;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{
+					Query:       `DROP DATABASE missing_database;`,
+					Username:    `demo`,
+					Password:    `password`,
+					ExpectedErr: `database not found: missing_database`,
+				},
+				{Query: `ALTER ROLE demo CREATEDB;`},
+				{
+					Query:       `DROP DATABASE victim;`,
+					Username:    `demo`,
+					Password:    `password`,
+					ExpectedErr: `must be owner of database victim`,
+				},
+				{
+					Query:    `SELECT datname FROM pg_database WHERE datname = 'victim';`,
+					Expected: []sql.Row{{"victim"}},
+				},
+				{Query: `ALTER ROLE demo SUPERUSER;`},
+				{
+					Query:    `DROP DATABASE victim;`,
+					Username: `demo`,
+					Password: `password`,
+				},
+				{
+					Query:    `SELECT datname FROM pg_database WHERE datname = 'victim';`,
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: `GRANT/REVOKE SELECT Privilege`,
 			SetUpScript: []string{
 				`CREATE USER user1 PASSWORD 'a';`,
@@ -1316,7 +1414,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 				authTestAssertAsBasic("call dolt_commit('-am', 'resolve conflicts');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 				authTestAssertAsBasic("call dolt_update_column_tag('test_table', 'v', '123');", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
-				authTestAssertAsBasic("drop database cloned_bak1;", []sql.Row{}, ""),
+				authTestAssertAsBasic("drop database cloned_bak1;", nil, "must be owner of database cloned_bak1"),
+				authTestAssertAsSuper("drop database cloned_bak1;", []sql.Row{}, ""),
 				// TODO(elianddb): "procedure aggregation is not yet supported" error blocks no-parameter CALLs
 				authTestSkipAssertAsBasic("call dolt_purge_dropped_databases();", nil, functions.ErrDoltProcedureSelectOnly.Error()),
 
@@ -1523,7 +1622,8 @@ func TestAuthDoltProcedures(t *testing.T) {
 
 				authTestAssertAsBasic("select dolt_fetch('origin', 'main');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
-				authTestAssertAsBasic("drop database cloned_bak1", []sql.Row{}, ""),
+				authTestAssertAsBasic("drop database cloned_bak1", nil, "must be owner of database cloned_bak1"),
+				authTestAssertAsSuper("drop database cloned_bak1", []sql.Row{}, ""),
 				authTestAssertAsBasic("select dolt_undrop('cloned_bak1');", nil, functions.ErrDoltProcedurePermissionDenied.Error()),
 
 				authTestAssertAsBasic("select length(dolt_commit('-am', 'resolve conflicts')::text) = 32;", []sql.Row{{"t"}}, ""),

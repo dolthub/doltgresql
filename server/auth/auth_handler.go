@@ -104,8 +104,27 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		return nil
 	case AuthType_CREATE:
 		privileges = []Privilege{Privilege_CREATE}
+	case AuthType_CREATEDATABASE:
+		// CREATEDB is a role attribute, not the CREATE privilege on an existing database.
+		if !state.role.IsSuperUser && !state.role.CanCreateDB {
+			return errors.New("permission denied to create database")
+		}
+		return nil
 	case AuthType_DELETE:
 		privileges = []Privilege{Privilege_DELETE}
+	case AuthType_DROPDATABASE:
+		for _, database := range auth.TargetNames {
+			// Leave missing databases to normal resolution, including DROP DATABASE IF EXISTS.
+			if !h.cat.HasDatabase(ctx, database) {
+				continue
+			}
+			// TODO: Allow owners once database ownership is tracked. Until then, only superusers
+			// may drop databases; CREATEDB and database privileges do not grant ownership.
+			if !state.role.IsSuperUser {
+				return errors.Errorf("must be owner of database %s", database)
+			}
+		}
+		return nil
 	case AuthType_DROPTABLE:
 		privileges = []Privilege{Privilege_DROP}
 	case AuthType_EXECUTE:
