@@ -149,6 +149,10 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 	datetimePrecision := getDatetimePrecision(col.Type)
 
 	columnDefault := information_schema.GetColumnDefault(ctx, col.Default)
+	var generationExpression any
+	if col.Generated != nil {
+		generationExpression = trimEnclosingParens(col.Generated.String())
+	}
 
 	return sql.Row{
 		catName,               // table_catalog
@@ -193,9 +197,34 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 		nil,                   // identity_minimum TODO
 		"NO",                  // identity_cycle TODO
 		isGenerated,           // is_generated
-		nil,                   // generation_expression TODO
+		generationExpression,  // generation_expression
 		"YES",                 // is_updatable
 	}
+}
+
+// trimEnclosingParens removes every pair of parentheses that wraps the entire expression.
+func trimEnclosingParens(expr string) string {
+	for len(expr) > 1 && expr[0] == '(' && expr[len(expr)-1] == ')' && parenDepthStaysPositive(expr[1:len(expr)-1]) {
+		expr = expr[1 : len(expr)-1]
+	}
+	return expr
+}
+
+// parenDepthStaysPositive returns whether `expr` never closes a parenthesis that it did not open.
+func parenDepthStaysPositive(expr string) bool {
+	depth := 0
+	for _, r := range expr {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth < 0 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // getRowsFromTable returns array of rows for all accessible columns of the given table.
