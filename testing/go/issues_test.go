@@ -823,6 +823,37 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3332: named column constraints",
+			SetUpScript: []string{
+				"CREATE TABLE t3332 (id INT CONSTRAINT id_nn NOT NULL, u INT CONSTRAINT u_uni UNIQUE, d INT CONSTRAINT d_def DEFAULT 5, n INT CONSTRAINT n_null NULL, PRIMARY KEY (id));",
+				"ALTER TABLE t3332 ADD COLUMN w INT CONSTRAINT w_nn NOT NULL DEFAULT 1 CONSTRAINT w_uni UNIQUE;",
+				"INSERT INTO t3332 (id, u) VALUES (1, 1);",
+				"INSERT INTO t3332 (id, u, w) VALUES (2, 2, 2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM t3332 ORDER BY id;",
+					Expected: []sql.Row{{1, 1, 5, nil, 1}, {2, 2, 5, nil, 2}},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't3332' ORDER BY indexname;",
+					Expected: []sql.Row{{"t3332_pkey"}, {"u_uni"}, {"w_uni"}},
+				},
+				{
+					Query:       "INSERT INTO t3332 (id, u, w) VALUES (3, 1, 3);",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:       "INSERT INTO t3332 (id, u, w) VALUES (3, 3, 2);",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:       "INSERT INTO t3332 (id, u, w) VALUES (NULL, 4, 4);",
+					ExpectedErr: "non-nullable",
+				},
+			},
+		},
 	})
 }
 
