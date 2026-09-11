@@ -322,8 +322,8 @@ func prepareDoltgresServerArgs(t *testing.T, cwd, name string, port int, args []
 		}
 	}
 
-	// Keep test output readable, including when fixtures enable verbose logging.
-	base["log_level"] = "warn"
+	// Preserve the configured (or default) log level: output visitors use server
+	// log messages to detect events such as GC completion.
 
 	listener, _ := base["listener"].(map[string]any)
 	if listener == nil {
